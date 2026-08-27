@@ -195,7 +195,7 @@ export const trustedAgents: SchemaNode = {
                       children: [
                         {
                           type: 'we-text',
-                          props: { variant: 'footnote', styles: { 'word-break': 'break-all' } },
+                          props: { variant: 'footnote' },
                           children: ['$did'],
                         },
                         {
@@ -412,7 +412,7 @@ export const backup: SchemaNode = {
             condition: { $store: 'runtimeStore.backupStatus' },
             then: {
               type: 'we-text',
-              props: { variant: 'footnote', color: 'text-muted', styles: { 'word-break': 'break-all' } },
+              props: { variant: 'footnote', color: 'text-muted' },
               children: [{ $store: 'runtimeStore.backupStatus' }],
             },
           },
@@ -640,7 +640,7 @@ export const peerNetwork: SchemaNode = {
                           children: [
                             {
                               type: 'we-code',
-                              props: { block: true, styles: { 'word-break': 'break-all' } },
+                              props: { block: true },
                               children: ['$info'],
                             },
                           ],

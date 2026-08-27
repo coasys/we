@@ -111,7 +111,7 @@ export const consentPrompt: SchemaNode = confirmModal({
             },
             {
               type: 'we-text',
-              props: { variant: 'footnote', color: 'text-muted', styles: { 'word-break': 'break-all' } },
+              props: { variant: 'footnote', color: 'text-muted' },
               children: [{ $store: 'runtimeStore.pendingConsent.peerId' }],
             },
           ],

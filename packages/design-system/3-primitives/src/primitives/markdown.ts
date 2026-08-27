@@ -18,9 +18,15 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
 };
 
 const styles = css`
+  /*
+    No word-break: break-word here any more — the typography layer's overflow-wrap default covers
+    it, on [part='base'] where the overflowWrap prop can override it, and it inherits into the
+    rendered markdown's own elements from there. The old rule was the same behaviour under a
+    deprecated alias and, being on :host with no custom-property indirection, was unreachable from
+    a schema.
+  */
   :host {
     line-height: 1.5;
-    word-break: break-word;
   }
 
   /* Paragraphs */

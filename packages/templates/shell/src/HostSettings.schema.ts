@@ -27,7 +27,7 @@ function detail(label: string, value: SchemaProp): SchemaNode {
           { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: [label] },
           {
             type: 'we-text',
-            props: { variant: 'footnote', textAlign: 'right', styles: { 'word-break': 'break-all' } },
+            props: { variant: 'footnote', textAlign: 'right' },
             children: [value],
           },
         ],

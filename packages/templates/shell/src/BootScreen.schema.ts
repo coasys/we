@@ -614,7 +614,7 @@ const bootFailure: SchemaNode = {
             condition: { $store: 'sessionStore.bootError' },
             then: {
               type: 'we-code',
-              props: { block: true, styles: { 'word-break': 'break-word' } },
+              props: { block: true },
               children: [{ $store: 'sessionStore.bootError' }],
             },
           },

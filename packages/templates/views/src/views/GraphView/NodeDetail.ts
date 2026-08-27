@@ -207,9 +207,10 @@ const fieldRow: SchemaNode = {
     { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: ['$field.name'] },
     {
       type: 'we-text',
-      // A value with no spaces in it — a URI, an id, a hash — has nowhere to break, so without this
-      // one field can push the whole panel sideways. Belt and braces beside the adapter's own cap.
-      props: { variant: 'body', styles: { 'overflow-wrap': 'anywhere' } },
+      // A value with no spaces in it — a URI, an id, a hash — has nowhere to break, and without a
+      // break one field can push the whole panel sideways. That is now the typography layer's
+      // default rather than this node's business; the adapter's own cap still sits beside it.
+      props: { variant: 'body' },
       children: ['$field.value'],
     },
   ],

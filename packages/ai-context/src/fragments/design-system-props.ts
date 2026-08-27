@@ -177,6 +177,18 @@ we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
 | letterSpacing | "tighter" \\| "tight" \\| "normal" \\| "wide" \\| "wider" \\| "widest" | Letter spacing token |
 | textDecoration | "underline" \\| "line-through" \\| "overline" \\| "none" | Text decoration |
 | textTransform | "uppercase" \\| "lowercase" \\| "capitalize" \\| "none" | Text transform |
+| whiteSpace | "normal" \\| "nowrap" \\| "pre" \\| "pre-wrap" \\| "pre-line" \\| "break-spaces" | How whitespace and line breaks in the source text are treated |
+| overflowWrap | "normal" \\| "break-word" \\| "anywhere" | Where a line may break inside a word too long to fit. **Defaults to \`anywhere\`** — see below |
+
+**Text that cannot break is text that breaks the page.** \`overflowWrap\` defaults to \`anywhere\` on
+every typography component and on \`Column\`/\`Row\`/\`Grid\`/\`Card\`, so a URL, a DID, or a transcriber's
+run-together output wraps instead of stretching its card off the screen. **Do not set it, and do not
+reach for \`styles: { 'word-break': ... }\` — that is the patch this default replaced.**
+
+Set \`overflowWrap: 'normal'\` only to deliberately opt a box *out* of breaking. Note \`'break-word'\` is
+the value that looks right and is not: it breaks in the same places as \`anywhere\` but does not
+reduce the element's min-content width, and a flex item and a \`1fr\` grid track are both sized by
+min-content — so under it the long string still pushes its container wider than the viewport.
 
 **Typography defaults:** fontSize and fontWeight have **no built-in defaults** — omitting them inherits from parent elements (browser default is ~16px / normal weight). Do not set fontSize or fontWeight unless you need a non-default value. For example, \`fontSize: '300'\` (16px) and \`fontWeight: '500'\` (normal) are the inherited defaults — omit them.
 

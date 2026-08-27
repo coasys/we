@@ -55,7 +55,7 @@ const accountSection: SchemaNode = {
             },
             {
               type: 'we-text',
-              props: { variant: 'body', styles: { 'word-break': 'break-all' } },
+              props: { variant: 'body' },
               children: ['$me.did'],
             },
           ],
