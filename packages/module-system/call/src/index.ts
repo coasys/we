@@ -1509,10 +1509,32 @@ export const callModule = defineModule({
   // anchor nobody provides, which otherwise renders nowhere and looks like a module switched off.
   anchors: [CALL_CONTROLS_ANCHOR, CALL_STATUS_ANCHOR],
 
-  // Drawn by the host's module rail. No `activeWhen`: this starts a call rather than toggling a
-  // panel, and once you are in one the call bar is the thing that shows it — a highlighted rail tab
-  // as well would be saying it twice.
-  launcher: { icon: 'phone-call', label: 'Start call', action: 'joinSpaceCall', availableWhen: 'canCall' },
+  /*
+    Drawn by the host's module rail.
+
+    `activeWhen` used to be omitted, on the grounds that this starts a call rather than toggling a
+    panel and the call bar already says one is running — a highlighted rail tab would be saying it
+    twice. Two things were wrong with that.
+
+    The rail is the surface people scan for "where am I", and it is the only chrome that is always
+    there: the bar is a strip at the bottom centre, this is a column at the right edge, and they are
+    not read at the same moment. Being in a call is the most stateful thing this app does, and it was
+    the one row of that rail that could never show it.
+
+    Worse, a launcher with no state is a launcher whose click has to mean one thing, and this one's
+    meant three — dead in the space call, and a silent teardown of any other. `goToCall` is the
+    reading that survives every state, so the button lights up and stays useful rather than becoming
+    an unlabelled hazard. `activeLabel` is what stops the tooltip describing the act it no longer
+    performs; see the store.
+  */
+  launcher: {
+    icon: 'phone-call',
+    label: 'Start call',
+    activeLabel: 'Go to the call',
+    action: 'goToCall',
+    activeWhen: 'active',
+    availableWhen: 'canCall',
+  },
 
   /*
     A call in progress keeps its chrome wherever you go.

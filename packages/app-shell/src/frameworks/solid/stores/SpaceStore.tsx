@@ -1940,8 +1940,8 @@ export function SpaceStoreProvider(props: ParentProps) {
    * What the module rail renders: one entry per enabled module that declares a launcher.
    *
    * Reads `moduleStores` so `active` tracks the module's own state — the notes tab highlights while
-   * its panel is open. A module with no `activeWhen` (a call, which starts rather than toggles) is
-   * simply never highlighted.
+   * its panel is open, the call tab while you are in a call. A module with no `activeWhen` is simply
+   * never highlighted.
    */
   /** Read a boolean off a module's own store, unwrapping the accessor a module store exposes. */
   const read = (moduleId: string, key: string | undefined, fallback: boolean): boolean => {
@@ -2425,11 +2425,14 @@ export function SpaceStoreProvider(props: ParentProps) {
       .filter(({ definition }) => read(definition.id, definition.launcher!.availableWhen, true))
       .map(({ definition }) => {
         const launcher = definition.launcher!;
+        const active = read(definition.id, launcher.activeWhen, false);
         return {
           id: definition.id,
           icon: launcher.icon,
-          label: launcher.label,
-          active: read(definition.id, launcher.activeWhen, false),
+          // The active label where there is one, so a tooltip cannot describe an act the button has
+          // stopped performing. Most launchers declare none and this is `label` in both states.
+          label: (active && launcher.activeLabel) || launcher.label,
+          active,
         };
       });
   });
