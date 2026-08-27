@@ -26,5 +26,6 @@ export { eventsTemplate } from './EventsTemplate.schema.ts';
 export { instagramTemplate } from './InstagramTemplate.schema.ts';
 export { kanbanTemplate } from './KanbanTemplate.schema.ts';
 export { twitterTemplate } from './TwitterTemplate.schema.ts';
+export { workshopTemplate } from './WorkshopTemplate.schema.ts';
 export { youtubeTemplate } from './YoutubeTemplate.schema.ts';
 export { KIND, MODE } from './shared.ts';

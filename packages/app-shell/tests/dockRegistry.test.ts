@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { bundledModules } from '../src/shared/registries/bundledModules';
 import {
@@ -12,6 +12,7 @@ import {
 } from '../src/shared/registries/dockRegistry';
 import { registerEditorDocks } from '../src/shared/registries/editorDocks';
 import { moduleRegistry, moduleStores } from '../src/shared/registries/moduleRegistry';
+import { onSlotRegistryChanged, slotRegistry } from '../src/shared/registries/slotRegistry';
 import { TEMPLATE_SURFACE } from '../src/shared/registries/templateSurface';
 
 /**
@@ -192,5 +193,47 @@ describe('chrome that is not a module’s', () => {
     // Same reason registration is observable at all: a plain object cannot be depended on, and a
     // memo that never read the value has nothing to re-run for.
     expect(announced).toBe(2);
+  });
+});
+
+/**
+ * Chrome that arrives after the shell has been built.
+ *
+ * Contributions used to all register at boot, so the shell reading `nodes()` once was enough. A
+ * template declaring panels registers its frames reactively, long after — and without a channel to
+ * say so they landed in a list nobody read again, which looks exactly like the panel being broken
+ * rather than absent.
+ */
+describe('a slot contributed after the first render', () => {
+  const node = { type: 'Column' };
+
+  it('announces on register', () => {
+    const listener = vi.fn();
+    const stop = onSlotRegistryChanged(listener);
+    slotRegistry.register({ anchor: 'dock-right', id: 'late:1', node });
+    stop();
+    slotRegistry.remove('late:1');
+
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('announces on remove, so a withdrawn panel stops rendering', () => {
+    slotRegistry.register({ anchor: 'dock-right', id: 'late:2', node });
+
+    const listener = vi.fn();
+    const stop = onSlotRegistryChanged(listener);
+    slotRegistry.remove('late:2');
+    stop();
+
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('stays quiet removing something that was never there', () => {
+    const listener = vi.fn();
+    const stop = onSlotRegistryChanged(listener);
+    slotRegistry.remove('never-registered');
+    stop();
+
+    expect(listener).not.toHaveBeenCalled();
   });
 });

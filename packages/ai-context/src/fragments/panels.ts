@@ -60,6 +60,13 @@ Two kinds of entry, one list:
 | \`size\`     | \`sm\` \`md\` \`lg\` \`full\`. Named, never pixels: only the host can see the viewport.             |
 | \`grow\`     | Share of the *spare* room in a column, relative to neighbours. Absent means 1; 0 pins a height. |
 | \`displace\` | Push the content aside instead of covering it. Edge snaps only — ignored on a corner.          |
+| \`route\`    | Only while this segment is in the path. Absent means every route.                               |
+| \`open\`     | Whether to open it as well as place it. Absent means yes — see the warning below.               |
+
+**\`open: false\` when a module's launcher does more than open a panel.** Placing a \`module\` panel
+invokes the action its launcher declares, and that is not always "open a panel" — the call module's
+is \`goToCall\`, which *joins a call* when there is not one. Declaring the call window without
+\`open: false\` would start a call the moment somebody entered the space.
 
 **Never write pixels.** A template cannot see the viewport, and a guessed pixel is wrong on a
 display it never ran on. That is what \`size\` and \`grow\` are for.
@@ -83,6 +90,9 @@ full-bleed sheet, since two narrow cards over content leave nothing of either.
 \`meta.panels\` is the middle rung of three. Whatever the reader last dragged a panel to wins; then
 the template's declaration; then the module's own opening bid. The declaration is resolved live and
 never written, so switching template or section is non-destructive.
+
+A shell that routes itself — every showcase template does — scopes a declaration with \`route\`
+instead, since it has no sections to hang one on.
 
 A **section** (\`meta.role: 'view'\`) may declare panels too, and should when the layout is about
 that section rather than the whole interface — a graph wants a transcript beside it and an inbox

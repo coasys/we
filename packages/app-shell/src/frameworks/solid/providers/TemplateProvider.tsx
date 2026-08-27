@@ -1,7 +1,7 @@
 import { queryIRFlag } from '@shared/queryIRFlag';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { moduleStores } from '@shared/registries/moduleRegistry';
-import { slotRegistry } from '@shared/registries/slotRegistry';
+import { onSlotRegistryChanged, slotRegistry } from '@shared/registries/slotRegistry';
 import { buildTemplateBag, CHROME_TIER, SPACE_TIER } from '@shared/registries/templateSurface';
 import { calendarMonth, calendarMonths, monthLabel, yearLabel } from '@shared/sources/calendarMonth';
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
@@ -36,7 +36,7 @@ import { expandViewRoutes, hasViewsMarker } from '@we/schema-shared';
 import type { VisualEditorContextValue } from '@we/schema-solid';
 import { RenderSchema, VisualEditorProvider } from '@we/schema-solid';
 import { CHROME_RAIL_WIDTH } from '@we/template-shell';
-import { createEffect, createMemo, createSignal, onMount, Show, untrack } from 'solid-js';
+import { createEffect, createMemo, createSignal, onCleanup, onMount, Show, untrack } from 'solid-js';
 
 import { PersistentAppFrames } from '../layouts/PersistentAppFrames';
 import { SHELL_SIDEBAR_WIDTH, TemplateLayout } from '../layouts/TemplateLayout';
@@ -275,12 +275,39 @@ export default function TemplateProvider() {
   const chromeBag = buildTemplateBag(stores, { grants: CHROME_TIER });
   const templateBag = buildTemplateBag(stores, { grants: SPACE_TIER });
 
-  // Shell chrome — host slots plus anything feature modules contribute.
-  // Rendered once outside the keyed Router so it never remounts on template switches; that isolation
-  // is why a template has no channel into the shell.
+  /*
+    Shell chrome — host slots plus anything feature modules or the interface itself contribute.
+
+    Outside the keyed Router, so it never remounts on template switches; that isolation is why a
+    template has no channel into the shell.
+
+    ## Why the children are a getter, and why the node has a type
+
+    Contributions used to all arrive before the first render — modules register at boot — so reading
+    `nodes()` once was enough. A template declaring panels breaks that: its frames register when a
+    template says it has them, which is after this runs. So the list is re-read when the registry
+    announces.
+
+    The `type` is what makes the re-read reach anything. A *typeless* node renders its children
+    through an unmemoized fragment, so the read is untracked and a getter would never re-run; a typed
+    one goes through `createMemo(() => renderChildren(node.children))`. `display: contents` keeps the
+    wrapper out of the layout entirely — the same trick `dockFrame` uses, for the same reason.
+
+    The node's own identity never changes, so nothing here rebuilds. `renderChildren` maps with a
+    reference-keyed `<For>`, so a newly declared panel mounts on its own and every other piece of
+    chrome — a call's live video among them — stays exactly where it was.
+  */
+  const [slotVersion, setSlotVersion] = createSignal(0);
+  onCleanup(onSlotRegistryChanged(() => setSlotVersion((version) => version + 1)));
+
   const shellSchema: TemplateSchema = {
     meta: { name: 'Shell', description: 'App shell chrome', icon: '' },
-    children: slotRegistry.nodes(),
+    type: 'Column',
+    props: { styles: { display: 'contents' } },
+    get children() {
+      slotVersion();
+      return slotRegistry.nodes();
+    },
   };
 
   const notFoundNode = {

@@ -12,6 +12,7 @@ import {
   setTemplatePanels,
   templatePanelDockId,
   templatePanels,
+  templatePanelScope,
 } from '../src/shared/registries/templatePanels';
 
 describe('what an interface declares', () => {
@@ -59,5 +60,37 @@ describe('what an interface declares', () => {
     // A module's docks are `<moduleId>:<index>`; a template naming its panel `call` must not land
     // on top of the call module's.
     expect(templatePanelDockId('call')).not.toBe('call:0');
+  });
+});
+
+describe('the scope a placement is remembered under', () => {
+  it('travels with the declaration', () => {
+    setTemplatePanels([{ id: 'a' }], 'workshop');
+
+    expect(templatePanelScope()).toBe('workshop');
+  });
+
+  it('announces when only the scope changed', () => {
+    const panels = [{ id: 'a' }];
+    setTemplatePanels(panels, 'workshop');
+
+    const listener = vi.fn();
+    const stop = onTemplatePanelsChanged(listener);
+    // The same panels under a different interface are a different layout: a placement stored against
+    // one must not be read as the other's.
+    setTemplatePanels(panels, 'channels');
+    stop();
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(templatePanelScope()).toBe('channels');
+  });
+
+  it('clears when nothing declares any', () => {
+    setTemplatePanels([{ id: 'a' }], 'workshop');
+    setTemplatePanels([], '');
+
+    // An interface that declares nothing shares the unscoped key, so a panel somebody positioned in
+    // an ordinary space stays where they put it.
+    expect(templatePanelScope()).toBe('');
   });
 });

@@ -345,6 +345,40 @@ export const zTemplateMeta: z.ZodType<TemplateMeta> = z
     segment: z.string().optional(),
     /** A view that stays mounted across sibling navigation. See `TemplateMeta.keepAlive`. */
     keepAlive: z.boolean().optional(),
+    /** Fixed chrome this shell paints, for floating panels to clear. See `TemplateMeta.chromeReserve`. */
+    chromeReserve: z
+      .object({
+        top: z.number().optional(),
+        bottom: z.number().optional(),
+        width: z.number().optional(),
+      })
+      .optional(),
+    /**
+     * The panels this interface has, and where each starts. See `TemplatePanel`.
+     *
+     * `node` is typed but not structurally checked here: this schema is what *checks* a node, so
+     * recursing into it would be a cycle. The node inside a panel is walked like any other by the
+     * validator's own traversal, which is where its props and component names are verified.
+     */
+    panels: z
+      .array(
+        z.object({
+          id: z.string(),
+          module: z.string().optional(),
+          node: z.custom<SchemaNode>().optional(),
+          title: z.string().optional(),
+          snap: z
+            .enum(['top-left', 'top', 'top-right', 'right', 'bottom-right', 'bottom', 'bottom-left', 'left'])
+            .optional(),
+          order: z.number().optional(),
+          size: z.enum(['sm', 'md', 'lg', 'full']).optional(),
+          grow: z.number().optional(),
+          displace: z.boolean().optional(),
+          route: z.string().optional(),
+          open: z.boolean().optional(),
+        }),
+      )
+      .optional(),
     stores: z
       .union([
         z.array(z.string()),
