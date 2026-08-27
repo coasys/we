@@ -102,7 +102,7 @@ function resolveAnchors(node: SchemaNode): SchemaNode | SchemaNode[] {
   return { ...node, children: nextChildren, props: nextProps, slots: nextSlots } as SchemaNode;
 }
 
-/** Anything node-shaped. Token objects (`{ $store: … }`) have no `type`, so they fall through here. */
+/** Anything node-shaped. Token objects (`{ $: … }`) have no `type`, so they fall through here. */
 const isNode = (value: unknown): value is SchemaNode =>
   !!value && typeof value === 'object' && typeof (value as { type?: unknown }).type === 'string';
 

@@ -17,7 +17,7 @@ export const spaceModal = {
     {
       type: '$single',
       props: {
-        item: { $query: { entity: 'Space', where: { id: { $local: 'selectedPin.id' } }, include: { signals: true } } },
+        item: { $query: { entity: 'Space', where: { id: { $: 'local.selectedPin.id' } }, include: { signals: true } } },
         as: 'space',
       },
       children: [
@@ -29,10 +29,10 @@ export const spaceModal = {
             {
               type: '$if',
               props: {
-                condition: '$space.coverImage',
+                condition: { $: 'space.coverImage' },
                 then: {
                   type: 'we-image',
-                  props: { src: '$space.coverImage', width: '100%', height: '160px', fit: 'cover', r: '300' },
+                  props: { src: { $: 'space.coverImage' }, width: '100%', height: '160px', fit: 'cover', r: '300' },
                 },
               },
             },
@@ -45,10 +45,10 @@ export const spaceModal = {
                 {
                   type: '$if',
                   props: {
-                    condition: '$space.avatar',
+                    condition: { $: 'space.avatar' },
                     then: {
                       type: 'we-image',
-                      props: { src: '$space.avatar', width: '60px', height: '60px', fit: 'cover', r: 'full' },
+                      props: { src: { $: 'space.avatar' }, width: '60px', height: '60px', fit: 'cover', r: 'full' },
                     },
                     else: { type: 'we-icon', props: { name: 'globe', size: 'xl', color: 'text-faint' } },
                   },
@@ -57,15 +57,15 @@ export const spaceModal = {
                   type: 'Column',
                   props: { gap: '100' },
                   children: [
-                    { type: 'we-text', props: { variant: 'heading-md' }, children: ['$space.name'] },
+                    { type: 'we-text', props: { variant: 'heading-md' }, children: [{ $: 'space.name' }] },
                     {
                       type: '$if',
                       props: {
-                        condition: '$space.description',
+                        condition: { $: 'space.description' },
                         then: {
                           type: 'we-text',
                           props: { variant: 'body' },
-                          children: ['$space.description'],
+                          children: [{ $: 'space.description' }],
                         },
                       },
                     },
@@ -86,10 +86,13 @@ export const spaceModal = {
                     {
                       type: 'SignalControl',
                       props: {
-                        signalType: '$sig',
+                        signalType: { $: 'sig' },
                         signals: { $: 'filter(space.signals, { signalTypeId: sig.id })' },
-                        myDid: '$me.did',
-                        onSignal: { $action: 'spaceStore.upsertSignal', args: ['$space.id', '$sig.id', '$arg'] },
+                        myDid: { $: 'me.did' },
+                        onSignal: {
+                          $action: 'spaceStore.upsertSignal',
+                          args: [{ $: 'space.id' }, { $: 'sig.id' }, { $: 'arg' }],
+                        },
                       },
                     },
                   ],
@@ -102,7 +105,7 @@ export const spaceModal = {
             {
               type: '$if',
               props: {
-                condition: '$space.url',
+                condition: { $: 'space.url' },
                 then: {
                   type: '$if',
                   props: {
@@ -115,7 +118,7 @@ export const spaceModal = {
                         height: '40px',
                         onClick: [
                           { $setLocal: 'selectedPin', value: null },
-                          { $action: 'spaceStore.navigateToSpace', args: ['$space.url'] },
+                          { $action: 'spaceStore.navigateToSpace', args: [{ $: 'space.url' }] },
                         ],
                       },
                     },
@@ -127,10 +130,10 @@ export const spaceModal = {
                         height: '40px',
                         onClick: {
                           $action: 'spaceStore.joinSpace',
-                          args: ['$space.url'],
+                          args: [{ $: 'space.url' }],
                           onSuccess: [
                             { $setLocal: 'selectedPin', value: null },
-                            { $action: 'spaceStore.navigateToSpace', args: ['$space.url'] },
+                            { $action: 'spaceStore.navigateToSpace', args: [{ $: 'space.url' }] },
                           ],
                         },
                       },

@@ -1,5 +1,6 @@
 import { gatePrompt } from '@we/schema-kit';
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
+import { expr } from '@we/schema-shared';
 
 export interface MarketplaceListOptions {
   /** What to list out of the marketplace dataset — `Template` or `Theme`. */
@@ -52,12 +53,12 @@ export function marketplaceList(opts: MarketplaceListOptions): SchemaNode {
   const grid = opts.layout !== 'list';
 
   /** What the grid actually shows — the filter the count below must agree with. */
-  const matching = { $filter: { items: { $local: key }, where: { name: { contains: { $local: 'search' } } } } };
+  const matching = { $: `filter(local.${key}, { name: { contains: local.search } })` };
 
   const rows: SchemaNode = {
     type: '$each',
     props: { items: matching, as: opts.as },
-    children: [{ type: 'TemplateCard', props: { template: `$${opts.as}`, ...opts.card } }],
+    children: [{ type: 'TemplateCard', props: { template: { $: opts.as }, ...opts.card } }],
   };
 
   return {
@@ -73,7 +74,7 @@ export function marketplaceList(opts: MarketplaceListOptions): SchemaNode {
         dataset: 'datasetStore.marketplaceDataset',
         subscribe: true,
         ...(opts.where && { where: opts.where }),
-        ...(opts.sortable && { order: { createdAt: { $local: 'sort' } } }),
+        ...(opts.sortable && { order: { createdAt: { $: 'local.sort' } } }),
         ...(opts.include && { include: opts.include }),
       },
     },
@@ -90,10 +91,10 @@ export function marketplaceList(opts: MarketplaceListOptions): SchemaNode {
               // input's own defaults.
               ...(grid && { maxWidth: '300px' }),
               placeholder: `Search ${opts.label}…`,
-              value: { $local: 'search' },
+              value: { $: 'local.search' },
               // `$arg` rather than `$event.detail`: `Search` is a layer-4 component and calls its
               // handler with the value itself, not with a DOM event.
-              onSearch: { $setLocal: 'search', from: '$arg' },
+              onSearch: { $setLocal: 'search', value: { $: 'arg' } },
               width: '100%',
             },
           },
@@ -102,12 +103,12 @@ export function marketplaceList(opts: MarketplaceListOptions): SchemaNode {
                 {
                   type: 'we-select',
                   props: {
-                    value: { $local: 'sort' },
+                    value: { $: 'local.sort' },
                     options: [
                       { value: 'desc', label: 'Newest first' },
                       { value: 'asc', label: 'Oldest first' },
                     ],
-                    onChange: { $setLocal: 'sort', from: '$event.detail' },
+                    onChange: { $setLocal: 'sort', value: { $: 'event.detail' } },
                   },
                 } as SchemaNode,
               ]
@@ -126,11 +127,11 @@ export function marketplaceList(opts: MarketplaceListOptions): SchemaNode {
         */
         type: '$if',
         props: {
-          condition: { $local: `${key}Loaded` },
+          condition: { $: `local.${key}Loaded` },
           then: {
             type: '$if',
             props: {
-              condition: { $count: { items: matching } },
+              condition: expr`count(${matching})`,
               then: grid
                 ? {
                     type: 'Column',
@@ -144,7 +145,7 @@ export function marketplaceList(opts: MarketplaceListOptions): SchemaNode {
               else: {
                 type: '$if',
                 props: {
-                  condition: { $local: 'search' },
+                  condition: { $: 'local.search' },
                   then: gatePrompt({
                     icon: 'magnifying-glass',
                     iconColor: 'text-faint',

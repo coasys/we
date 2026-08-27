@@ -63,52 +63,52 @@ const portable: Record<string, SchemaNode> = {
     value: 'Berlin',
     control: { type: 'we-switch' },
   }),
-  statChip: statChip({ icon: 'chat-dots', count: '$channel.$count', label: 'Conversations' }),
+  statChip: statChip({ icon: 'chat-dots', count: { $: 'channel.$count' }, label: 'Conversations' }),
   'statChip (value)': statChip({ icon: 'lock-simple', label: 'Access', value: 'Shared' }),
   cardShell: cardShell({ header: [{ type: 'we-text', children: ['h'] }], body: [] }),
   'cardList (query)': cardList({
     query: { entity: 'SignalType', subscribe: true },
     as: 'sig',
     empty: emptyNote('none'),
-    children: [{ type: 'we-text', children: ['$sig.name'] }],
+    children: [{ type: 'we-text', children: [{ $: 'sig.name' }] }],
   }),
   'cardList (items)': cardList({
-    items: { $local: 'rows' },
+    items: { $: 'local.rows' },
     as: 'row',
     empty: emptyNote('none'),
-    children: [{ type: 'we-text', children: ['$row.name'] }],
+    children: [{ type: 'we-text', children: [{ $: 'row.name' }] }],
   }),
   confirmModal: confirmModal({
-    open: { $local: 'confirmOpen' },
+    open: { $: 'local.confirmOpen' },
     close: { $setLocal: 'confirmOpen', value: false },
     title: 'Delete?',
     body: 'Gone forever.',
     confirmLabel: 'Delete',
-    confirm: { $action: 'spaceStore.deleteCollection', args: ['$post.id'] },
+    confirm: { $action: 'spaceStore.deleteCollection', args: [{ $: 'post.id' }] },
     busyLocal: 'deleting',
   }),
   composerModal: composerModal({
     openLocal: 'composeOpen',
     title: 'New post',
-    saveAction: { $action: 'spaceStore.createPost', args: ['$arg'] },
+    saveAction: { $action: 'spaceStore.createPost', args: [{ $: 'arg' }] },
   }),
   'composerModal (unguarded)': composerModal({
     openLocal: 'composeOpen',
     title: 'New post',
     guardDraft: false,
-    saveAction: { $action: 'spaceStore.createPost', args: ['$arg'] },
+    saveAction: { $action: 'spaceStore.createPost', args: [{ $: 'arg' }] },
   }),
   'formModal (guarded)': formModal({
-    open: { $local: 'formOpen' },
+    open: { $: 'local.formOpen' },
     close: { $setLocal: 'formOpen', value: false },
     title: 'New thing',
     localState: { thingName: { type: 'string', initial: '' } },
     children: [field({ name: 'thingName', label: 'Name' })],
-    discardWhen: { $local: 'thingName' },
-    submit: { $action: 'model.create', args: ['CollectionBlock', { title: { $local: 'thingName' } }] },
+    discardWhen: { $: 'local.thingName' },
+    submit: { $action: 'model.create', args: ['CollectionBlock', { title: { $: 'local.thingName' } }] },
   }),
   formModal: formModal({
-    open: { $local: 'formOpen' },
+    open: { $: 'local.formOpen' },
     close: { $setLocal: 'formOpen', value: false },
     title: 'New thing',
     localState: {
@@ -116,9 +116,9 @@ const portable: Record<string, SchemaNode> = {
       creating: { type: 'boolean', initial: false },
     },
     children: [field({ name: 'thingName', label: 'Name' })],
-    disabled: { $not: { $local: 'thingName' } },
+    disabled: { $: '!local.thingName' },
     busyLocal: 'creating',
-    submit: { $action: 'model.create', args: ['CollectionBlock', { title: { $local: 'thingName' } }] },
+    submit: { $action: 'model.create', args: ['CollectionBlock', { title: { $: 'local.thingName' } }] },
   }),
   field: field({ name: 'name', label: 'Name', validated: true, touchOnBlur: true }),
   'field (select)': field({ name: 'mode', control: 'select', props: { options: [] } }),
@@ -134,10 +134,14 @@ const portable: Record<string, SchemaNode> = {
         label: 'Spaces',
         badge: '3',
         reorderable: true,
-        onReorder: { $action: 'datasetStore.reorderDatasets', args: ['$arg.detail'] },
+        onReorder: { $action: 'datasetStore.reorderDatasets', args: [{ $: 'arg.detail' }] },
         action: { icon: 'plus', label: 'Create a space', onClick: { $action: 'shellStore.setCreateSpaceOpen' } },
         children: [
-          railItem({ id: '$space.uuid', avatar: { src: '$space.avatar', name: '$space.name' }, label: '$space.name' }),
+          railItem({
+            id: { $: 'space.uuid' },
+            avatar: { src: { $: 'space.avatar' }, name: { $: 'space.name' } },
+            label: { $: 'space.name' },
+          }),
         ],
       }),
     ],
@@ -150,19 +154,19 @@ const portable: Record<string, SchemaNode> = {
     `@we/schema-kit` where a module can reach it.
   */
   peopleTooltip: peopleTooltip({
-    items: '$call.participants',
-    image: '$person.avatar',
-    hash: '$person.did',
-    name: '$person.name',
+    items: { $: 'call.participants' },
+    image: { $: 'person.avatar' },
+    hash: { $: 'person.did' },
+    name: { $: 'person.name' },
     children: [{ type: 'we-text', children: ['7'] }],
   }),
 };
 
 const weDomain: Record<string, SchemaNode> = {
-  agentByline: agentByline({ did: '$post.author', timestamp: '$post.createdAt' }),
-  'agentByline (stacked)': agentByline({ did: '$u.author', as: 'speaker', stacked: true }),
-  peopleRow: peopleRow({ items: { $store: 'spaceStore.members' }, noun: 'Member' }),
-  'peopleRow (dids)': peopleRow({ items: '$call.participants', dids: true }),
+  agentByline: agentByline({ did: { $: 'post.author' }, timestamp: { $: 'post.createdAt' } }),
+  'agentByline (stacked)': agentByline({ did: { $: 'u.author' }, as: 'speaker', stacked: true }),
+  peopleRow: peopleRow({ items: { $: 'spaceStore.members' }, noun: 'Member' }),
+  'peopleRow (dids)': peopleRow({ items: { $: 'call.participants' }, dids: true }),
   adminSection: adminSection({ title: 'Models', icon: 'sparkle', refresh: 'runtimeStore.loadAiModels', children: [] }),
   marketplaceList: marketplaceList({
     entity: 'Template',
@@ -277,16 +281,17 @@ describe('the portable tier names no store and no agent machinery', () => {
 });
 
 describe('contracts call sites depend on', () => {
-  it('peopleRow in dids mode seeds avatar hashes with a token, never the literal $item', () => {
-    // THE bug this branch was born from: a bare '$item' in a $map select is a literal, so every
-    // generated face came out identical. The fragment must emit a token object.
-    let select: Record<string, unknown> | undefined;
+  it('peopleRow in dids mode seeds avatar hashes from the did itself, never a literal', () => {
+    // THE bug this branch was born from: a literal where the hash belongs gives every generated face
+    // the same colour. The projection must read the comprehension's own variable.
+    let avatars: string | undefined;
     walk(weDomain['peopleRow (dids)'], (n) => {
-      if ('$map' in n) select = (n.$map as { select: Record<string, unknown> }).select;
+      const value = (n.props as { avatars?: { $?: string } } | undefined)?.avatars;
+      if (n.type === 'AvatarStack' && value?.$) avatars = value.$;
     });
-    expect(select).toBeDefined();
-    expect(select!.hash).not.toBe('$item');
-    expect(select!.hash).toEqual({ $concat: ['$item'] });
+    expect(avatars).toBeDefined();
+    expect(avatars).not.toContain("'$item'");
+    expect(avatars).toMatch(/hash: [a-zA-Z]+\b/);
   });
 
   it('field wires the event each control actually emits', () => {
@@ -316,7 +321,7 @@ describe('contracts call sites depend on', () => {
 
     // The modal's own close and the Cancel button are the same guarded expression — two exits that
     // disagreed about whether the draft mattered is the bug this shape exists to make impossible.
-    const guarded = { $if: { condition: { $local: 'thingName' }, then: expect.anything(), else: expect.anything() } };
+    const guarded = { $if: { condition: { $: 'local.thingName' }, then: expect.anything(), else: expect.anything() } };
     expect((modal.props as Record<string, unknown>).close).toMatchObject(guarded);
     let cancel: unknown;
     walk(modal, (n) => {
@@ -353,7 +358,7 @@ describe('contracts call sites depend on', () => {
       let reads = 0;
       walk(node, (n) => {
         if (n.$setLocal === 'confirmDiscardOpen') writes += 1;
-        if (n.$local === 'confirmDiscardOpen') reads += 1;
+        if (typeof n.$ === 'string' && n.$.includes('local.confirmDiscardOpen')) reads += 1;
       });
       if (writes === 0 && reads === 0) continue;
       expect(writes, `${name} reads the discard flag but never raises it`).toBeGreaterThan(0);
@@ -385,10 +390,12 @@ describe('contracts call sites depend on', () => {
     expect(node.$queries).toHaveProperty('sigRows');
     const readers: unknown[] = [];
     walk(node, (n) => {
-      if ('$count' in n) readers.push((n.$count as { items: unknown }).items);
+      if (n.type === '$if') readers.push((n.props as { condition: unknown }).condition);
       if (n.type === '$each') readers.push((n.props as { items: unknown }).items);
     });
-    expect(readers).toEqual([{ $local: 'sigRows' }, { $local: 'sigRows' }]);
+    expect(readers).toContainEqual({ $: 'count(local.sigRows)' });
+    expect(readers).toContainEqual({ $: 'local.sigRows' });
+    for (const reader of readers) expect((reader as { $: string }).$).toContain('local.sigRows');
   });
 
   it('agentByline uses one interpolation for the profile in both arrangements', () => {
@@ -398,8 +405,8 @@ describe('contracts call sites depend on', () => {
       walk(node, (n) => {
         if (n.type === 'we-avatar') avatarProps = n.props as Record<string, unknown>;
       });
-      expect(avatarProps.image).toBe(`$${as}.avatar`);
-      expect(avatarProps.hash).toBe(`$${as}.did`);
+      expect(avatarProps.image).toEqual({ $: `${as}.avatar` });
+      expect(avatarProps.hash).toEqual({ $: `${as}.did` });
     }
   });
 

@@ -47,7 +47,7 @@ describe('audio', () => {
     const sinkSlot = slotNodes().find((node) => walk(node).some((child) => child.type === 'we-audio'));
     const condition = JSON.stringify((sinkSlot?.props as Record<string, unknown>)?.condition);
 
-    expect(condition).toBe(JSON.stringify({ $store: 'modules.call.active' }));
+    expect(condition).toBe(JSON.stringify({ $: 'modules.call.active' }));
   });
 
   it('leaves your own tile out of it', () => {

@@ -1,7 +1,7 @@
 /**
  * A month, as rows a template can draw.
  *
- * The first `$source`, and the case that motivated the token: a month grid needs to know which
+ * The first host source, and the case that motivated the mechanism: a month grid needs to know which
  * weekday the 1st falls on, how many days the month has, and how many leading and trailing cells
  * make up whole weeks. None of that is expressible in the operator set — there is no arithmetic, no
  * date maths, and no way to generate a sequence — so before this, drawing a month meant a component
@@ -128,7 +128,7 @@ export function calendarMonth(options: CalendarMonthOptions = {}): CalendarDay[]
 /**
  * The month a grid is showing, as a heading — "August 2026".
  *
- * A source rather than a `$concat` of parts, because month *names* are a lookup and the schema has
+ * A source rather than an interpolation of parts, because month *names* are a lookup and the schema has
  * no table to look them up in. Locale-aware via `toLocaleString`, which is the one place a browser
  * convention is the right answer: a month's name is a fact about a language, not about a community.
  */

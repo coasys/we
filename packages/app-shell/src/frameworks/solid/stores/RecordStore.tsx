@@ -108,7 +108,7 @@ export interface RecordStore {
    *
    * Here rather than in the template because the fields come from the *model*: a shape a community
    * defined this morning has properties no schema was written against, so there is no set of
-   * `$local` names for an expression to test. The store is the only place that can see them.
+   * local names for an expression to test. The store is the only place that can see them.
    *
    * A pristine form — opened and not typed in — closes without ceremony. Asking there would train
    * the answer out of anyone, which costs them the one time it was about something real.

@@ -22,6 +22,17 @@ export const globeView: TemplateSchema = {
   },
   type: 'Column',
   props: { width: '100%', height: '100%' },
+  // The spaces with a location, subscribed once for the layer that draws them.
+  $queries: {
+    spaceRows: {
+      entity: 'Space',
+      where: {
+        url: { not: { $: 'datasetStore.currentDatasetCid' } },
+        name: { contains: { $: 'local.searchText' } },
+      },
+      include: { location: true },
+    },
+  },
   $localState: {
     // Search filter
     searchText: { type: 'string', initial: '' },
@@ -70,7 +81,7 @@ export const globeView: TemplateSchema = {
                             id: 'skybox',
                             label: 'Skybox',
                             icon: 'image',
-                            checked: { $local: 'showSkybox' },
+                            checked: { $: 'local.showSkybox' },
                             onToggle: { $toggleLocal: 'showSkybox' },
                           },
                           {
@@ -78,7 +89,7 @@ export const globeView: TemplateSchema = {
                             id: 'stars',
                             label: 'Procedural Stars',
                             icon: 'sparkle',
-                            checked: { $local: 'showStars' },
+                            checked: { $: 'local.showStars' },
                             onToggle: { $toggleLocal: 'showStars' },
                           },
                           {
@@ -86,7 +97,7 @@ export const globeView: TemplateSchema = {
                             id: 'solar-system',
                             label: 'Solar System',
                             icon: 'atom',
-                            checked: { $local: 'showSolarSystem' },
+                            checked: { $: 'local.showSolarSystem' },
                             onToggle: { $toggleLocal: 'showSolarSystem' },
                           },
                         ],
@@ -102,7 +113,7 @@ export const globeView: TemplateSchema = {
                             id: 'countries',
                             label: 'Country Outlines',
                             icon: 'flag',
-                            checked: { $local: 'showCountryOutlines' },
+                            checked: { $: 'local.showCountryOutlines' },
                             onToggle: { $toggleLocal: 'showCountryOutlines' },
                           },
                           {
@@ -110,7 +121,7 @@ export const globeView: TemplateSchema = {
                             id: 'h3',
                             label: 'H3 Hexagons',
                             icon: 'hexagon',
-                            checked: { $local: 'showH3Hexagons' },
+                            checked: { $: 'local.showH3Hexagons' },
                             onToggle: { $toggleLocal: 'showH3Hexagons' },
                           },
                         ],
@@ -126,7 +137,7 @@ export const globeView: TemplateSchema = {
                             id: 'user-locations',
                             label: 'User Locations',
                             icon: 'map-pin',
-                            checked: { $local: 'showUserLocations' },
+                            checked: { $: 'local.showUserLocations' },
                             onToggle: { $toggleLocal: 'showUserLocations' },
                           },
                           {
@@ -134,7 +145,7 @@ export const globeView: TemplateSchema = {
                             id: 'space-locations',
                             label: 'Space Locations',
                             icon: 'map-pin',
-                            checked: { $local: 'showSpaceLocations' },
+                            checked: { $: 'local.showSpaceLocations' },
                             onToggle: { $toggleLocal: 'showSpaceLocations' },
                           },
                         ],
@@ -147,7 +158,7 @@ export const globeView: TemplateSchema = {
                   type: 'Search',
                   props: {
                     placeholder: 'Search spaces and people…',
-                    onSearch: { $setLocal: 'searchText', from: '$event' },
+                    onSearch: { $setLocal: 'searchText', value: { $: 'event' } },
                   },
                 },
                 // Create Space Button
@@ -173,12 +184,12 @@ export const globeView: TemplateSchema = {
         backgroundLayers: [
           {
             factory: 'skyboxLayer',
-            enabled: { $local: 'showSkybox' },
+            enabled: { $: 'local.showSkybox' },
             options: { textureSet: 'tycho2-4k' },
           },
           {
             factory: 'proceduralStarsLayer',
-            enabled: { $local: 'showStars' },
+            enabled: { $: 'local.showStars' },
             options: {
               count: 2000,
               minDistance: 10000,
@@ -193,7 +204,7 @@ export const globeView: TemplateSchema = {
           },
           {
             factory: 'solarSystemLayer',
-            enabled: { $local: 'showSolarSystem' },
+            enabled: { $: 'local.showSolarSystem' },
             options: {
               planets: ['mercury', 'venus', 'earth', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune'],
               showSun: true,
@@ -210,56 +221,37 @@ export const globeView: TemplateSchema = {
           {
             factory: 'pointLocationsLayer',
             id: 'space-locations',
-            enabled: { $local: 'showSpaceLocations' },
+            enabled: { $: 'local.showSpaceLocations' },
             options: {
               locations: {
-                $map: {
-                  items: {
-                    $query: {
-                      entity: 'Space',
-                      where: {
-                        url: { not: { $store: 'datasetStore.currentDatasetCid' } },
-                        name: { contains: { $local: 'searchText' } },
-                      },
-                      include: { location: true },
-                    },
-                  },
-                  select: {
-                    id: '$item.id',
-                    kind: 'space',
-                    name: '$item.name',
-                    latitude: '$item.location.latitude',
-                    longitude: '$item.location.longitude',
-                    avatar: '$item.avatar',
-                  },
-                },
+                $: "local.spaceRows.map(s, { id: s.id, kind: 'space', name: s.name, latitude: s.location.latitude, longitude: s.location.longitude, avatar: s.avatar })",
               },
               markerSize: 20,
               defaultColor: '#a855f7',
-              onLocationClick: { $setLocal: 'selectedPin', from: '$event' },
+              onLocationClick: { $setLocal: 'selectedPin', value: { $: 'event' } },
             },
           },
           {
             factory: 'pointLocationsLayer',
             id: 'agent-locations',
-            enabled: { $local: 'showUserLocations' },
+            enabled: { $: 'local.showUserLocations' },
             options: {
               locations: {
                 $: "filter(spaceStore.members, { location: { exists: true }, handle: { contains: local.searchText } }).map(item, { id: item.did, kind: 'agent', name: item.name, latitude: item.location.latitude, longitude: item.location.longitude, avatar: item.avatar })",
               },
               markerSize: 30,
               defaultColor: '#f97316',
-              onLocationClick: { $setLocal: 'selectedPin', from: '$event' },
+              onLocationClick: { $setLocal: 'selectedPin', value: { $: 'event' } },
             },
           },
           {
             factory: 'countryOutlinesLayer',
-            enabled: { $local: 'showCountryOutlines' },
+            enabled: { $: 'local.showCountryOutlines' },
             options: { color: '#ffffff', opacity: 0.5, width: 2 },
           },
           {
             factory: 'h3HexagonsLayer',
-            enabled: { $local: 'showH3Hexagons' },
+            enabled: { $: 'local.showH3Hexagons' },
             options: {
               maxResolution: 8,
               color: '#3388ff',

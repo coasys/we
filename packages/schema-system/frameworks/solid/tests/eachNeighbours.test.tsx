@@ -37,7 +37,7 @@ describe('$each neighbour context', () => {
         {
           type: '$each',
           props: { items: MESSAGES, as: 'message' },
-          children: [{ type: 'Stack', children: ['$index', ':', '$message.text', ' '] }],
+          children: [{ type: 'Stack', children: [{ $: 'index' }, ':', { $: 'message.text' }, ' '] }],
         },
       ],
     });
@@ -52,7 +52,7 @@ describe('$each neighbour context', () => {
         {
           type: '$each',
           props: { items: MESSAGES, as: 'message' },
-          children: [{ type: 'Stack', children: ['[', '$prev.text', ']'] }],
+          children: [{ type: 'Stack', children: ['[', { $: 'prev.text' }, ']'] }],
         },
       ],
     });
@@ -72,9 +72,9 @@ describe('$each neighbour context', () => {
             {
               type: '$if',
               props: {
-                condition: { $eq: ['$message.author', '$prev.author'] },
-                then: { type: 'Stack', children: ['· ', '$message.text', ' '] },
-                else: { type: 'Stack', children: ['$message.author', ': ', '$message.text', ' '] },
+                condition: { $: 'message.author == prev.author' },
+                then: { type: 'Stack', children: ['· ', { $: 'message.text' }, ' '] },
+                else: { type: 'Stack', children: [{ $: 'message.author' }, ': ', { $: 'message.text' }, ' '] },
               },
             },
           ],
@@ -98,8 +98,8 @@ describe('$each neighbour context', () => {
           children: [
             {
               type: '$each',
-              props: { items: '$group.rows', as: 'row' },
-              children: [{ type: 'Stack', children: ['$index', '$row', ' '] }],
+              props: { items: { $: 'group.rows' }, as: 'row' },
+              children: [{ type: 'Stack', children: [{ $: 'index' }, { $: 'row' }, ' '] }],
             },
           ],
         },

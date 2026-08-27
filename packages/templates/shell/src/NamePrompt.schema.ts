@@ -33,7 +33,7 @@ import { field, formModal } from '@we/template-kit';
  * has answered, so this never flashes at somebody who does have a name.
  */
 export const namePrompt: SchemaNode = formModal({
-  open: { $store: 'profileStore.needsName' },
+  open: { $: 'profileStore.needsName' },
   // Dismissing is answering "not now", which is the only other answer there is. The backdrop, the
   // close button and Cancel all land here.
   close: { $action: 'profileStore.dismissNamePrompt' },
@@ -73,7 +73,7 @@ export const namePrompt: SchemaNode = formModal({
   cancelLabel: 'Not now',
   // Not `updateOwnProfile`: the store action dismisses before it publishes, so a failed write
   // cannot re-raise this modal on top of the toast explaining the failure.
-  submit: { $action: 'profileStore.saveNameFromPrompt', args: [{ $local: 'promptName' }] },
+  submit: { $action: 'profileStore.saveNameFromPrompt', args: [{ $: 'local.promptName' }] },
   // No discard guard. One word is not worth a second dialog asking whether they meant to close the
   // first — and "Not now" is a legitimate answer here, not an accident to be caught.
 });

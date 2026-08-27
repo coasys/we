@@ -1,4 +1,5 @@
 import type { TemplateSchema } from '@we/schema-shared';
+import { expr } from '@we/schema-shared';
 import { pageShell } from '@we/template-kit';
 
 import { blocksList } from './BlocksList.ts';
@@ -109,7 +110,7 @@ export const cardsView: TemplateSchema = {
       {
         type: '$if',
         props: {
-          condition: { $not: { $in: [{ $local: 'contentType' }, NON_BLOCK_CONTENT_TYPES] } },
+          condition: expr`!(local.contentType in ${NON_BLOCK_CONTENT_TYPES})`,
           then: blocksList,
         },
       },

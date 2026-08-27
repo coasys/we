@@ -246,10 +246,8 @@ For per-file validation or other options, see the **Schema Validation** section 
 \`{ "$": "count(local.rows) > 0 && local.search != ''" }\` — with a closed grammar (references,
 comparison, boolean and arithmetic operators, interpolation, a ternary, five comprehension macros)
 and an open **function library** (\`packages/schema-system/shared/src/expressions/functions.ts\`).
-The old operator tokens (\`$eq\`, \`$and\`, \`$concat\`, \`$count\`, \`$filter\`, \`$find\`, \`$plural\`,
-\`$map\`, \`$pick\`, prop-level \`$if\` …) are that language's syntax tree written as JSON: they still
-render, \`operatorToExpr\` reads them, and the codemod (\`src/cli/we-expressions-codemod.ts\`) prints
-them into the new spelling. Write new schemas as expressions.
+There are no other value tokens: a store read, a local read, a comparison, a count, a label — each
+is an expression, and a plain string anywhere in a schema is text.
 
 A need for computation the language lacks is answered on the **code** side of the data/code line:
 
@@ -258,8 +256,8 @@ A need for computation the language lacks is answered on the **code** side of th
   bar as a component: three real uses, not one. The generated context lists it from the registry, so
   there is no doc to update.
 - **A host source** — a function this deployment registers in
-  \`packages/app-shell/src/shared/sources/index.ts\`, reachable as \`calendarMonth({ … })\` and as
-  \`{ "$source": … }\`. Catalogued from the registry into the context and known to the validator.
+  \`packages/app-shell/src/shared/sources/index.ts\`, reachable as \`calendarMonth({ … })\`.
+  Catalogued from the registry into the context and known to the validator.
 
 Neither changes the parser, the validator's grammar, the renderer or the LLM's view of the syntax.
 That is the whole reason for the split: the accretion pressure that produced forty operators now
@@ -406,8 +404,8 @@ include: {
   $myLikeSignal: {
     from: 'signals',
     where: {
-      signalTypeId: { $find: { items: { $local: 'signalTypes' }, where: { slug: 'like' }, select: 'id' } },
-      author: '$me.did',
+      signalTypeId: { $: "find(local.signalTypes, { slug: 'like' }).id" },
+      author: { $: 'me.did' },
     },
     limit: 1,
   },

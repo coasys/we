@@ -14,30 +14,14 @@ export type {
   TransitionConfig,
   TransitionEffect,
   ExpressionToken,
-  StoreToken,
-  ConcatToken,
   ActionToken,
   IfToken,
-  MapToken,
-  PickToken,
-  EqToken,
-  NeToken,
-  LtToken,
-  GtToken,
-  NotToken,
-  AndToken,
-  OrToken,
   QueryToken,
   QueryDescriptor,
   OperatorToken,
   LocalStateField,
   QueryStateField,
-  LocalToken,
   SetLocalToken,
-  ErrorToken,
-  ValidToken,
-  TouchedToken,
-  FormValidToken,
   TouchToken,
   ResetLocalToken,
   ToggleLocalToken,
@@ -86,7 +70,7 @@ export {
   noMemo,
   setLocalWarningSink,
 } from './propResolvers';
-export type { LocalFieldMeta, LocalMetaMap, MapProp } from './propResolvers';
+export type { LocalFieldMeta, LocalMetaMap } from './propResolvers';
 export { DEFERRED_ARG, isDeferredArg, setExpressionWarningSink } from './propResolvers/expression';
 export * from './expressions';
 export { hasToken } from './predicates';
@@ -153,7 +137,6 @@ export { findNodeChain, findScopeRef, getScopeAtNode, inferRefKind, scopeRefToTo
 export type { ScopeGroup, ScopeOptions, ScopeRef, ScopeRefKind, ScopeValueType } from './scope';
 export {
   classifyContent,
-  conditionForm,
   contentAsText,
   emptyComparison,
   isBlankComparison,
@@ -170,7 +153,6 @@ export {
 export type {
   ComparisonOperator,
   ConditionComparison,
-  ConditionForm,
   ConditionExpr,
   ConditionGroup,
   ConditionOperand,

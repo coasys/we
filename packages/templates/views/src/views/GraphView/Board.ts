@@ -36,7 +36,7 @@ import { clearOnEmptySelection, selectNode } from './NodeDetail';
  */
 
 /** Which board is open. A picker writes it; the seed refuses to load until it is set. */
-const BOARD = { $local: 'boardId' };
+const BOARD = { $: 'local.boardId' };
 
 const boardCards: SchemaNode = {
   type: 'GraphView',
@@ -116,7 +116,7 @@ const boardCards: SchemaNode = {
     ],
     behaviours: [
       // Before drag-node, which is what makes arming mean anything: both claim a press on a node.
-      { type: 'connect-nodes', options: { armed: { $local: 'connecting' } } },
+      { type: 'connect-nodes', options: { armed: { $: 'local.connecting' } } },
       // The two halves of a double-click: on a node it opens, on empty canvas it creates.
       'node-double-click',
       'canvas-double-click',
@@ -145,7 +145,7 @@ const boardCards: SchemaNode = {
     // risk worth guarding against is rearranging somebody else's board by accident.
     controls: ['zoom-in', 'zoom-out', 'fit', 'lock'],
     height: '100%',
-    revision: { $local: 'revision' },
+    revision: { $: 'local.revision' },
     onNodeClick: selectNode,
     // Clicking empty canvas deselects — the same handler the other three modes carry. The board is
     // where it matters most: it is the mode you click around in, and without it the only way to
@@ -156,10 +156,10 @@ const boardCards: SchemaNode = {
     // id: the click that precedes the second one has already selected the node, and the modal reads
     // the selection.
     onNodeDoubleClick: { $setLocal: 'cardOpen', value: true },
-    onEdgeClick: { $setLocal: 'selectedEdge', from: '$event' },
+    onEdgeClick: { $setLocal: 'selectedEdge', value: { $: 'event' } },
     // The same store call the knowledge map makes: connecting two things means the same thing
     // wherever you drew the line, and both end up in the same form.
-    onEdgeCreate: { $action: 'recordStore.connectNodes', args: ['$event'] },
+    onEdgeCreate: { $action: 'recordStore.connectNodes', args: [{ $: 'event' }] },
     /*
       Double-click empty canvas to make something there.
 
@@ -168,7 +168,7 @@ const boardCards: SchemaNode = {
       where a note goes before you know what it says.
     */
     onCanvasDoubleClick: [
-      { $setLocal: 'newCardAt', from: '$event' },
+      { $setLocal: 'newCardAt', value: { $: 'event' } },
       { $setLocal: 'newCardOpen', value: true },
     ],
     /*
@@ -185,7 +185,7 @@ const boardCards: SchemaNode = {
     */
     onNodeDragEnd: {
       $action: 'recordStore.placeOnBoard',
-      args: [BOARD, '$event.recordId', '$event.recordType', '$event.x', '$event.y'],
+      args: [BOARD, { $: 'event.recordId' }, { $: 'event.recordType' }, { $: 'event.x' }, { $: 'event.y' }],
     },
     /*
       The corner drag, written back — and binding this is what puts the handle on a selected card.
@@ -194,7 +194,7 @@ const boardCards: SchemaNode = {
       fact about the pair. Shrinking a post to fit six of them on a wall is not editing the post, and
       the same post on somebody else's board must not change size because of it.
     */
-    onNodeResize: { $action: 'recordStore.resizeOnBoard', args: [BOARD, '$event'] },
+    onNodeResize: { $action: 'recordStore.resizeOnBoard', args: [BOARD, { $: 'event' }] },
   },
 };
 
@@ -219,7 +219,7 @@ export const boardBar: SchemaNode = {
         placeholder: 'Pick a board…',
         options: { $: 'local.boards.map(item, { label: item.title, value: item.id })' },
         value: BOARD,
-        onChange: { $setLocal: 'boardId', from: '$event.detail' },
+        onChange: { $setLocal: 'boardId', value: { $: 'event.detail' } },
       },
     },
     {
@@ -308,7 +308,7 @@ export const boardBar: SchemaNode = {
 
 /** Naming a board. `model.create` rather than the composer — a board is a container, not a document. */
 const newBoardModal: SchemaNode = formModal({
-  open: { $local: 'newBoardOpen' },
+  open: { $: 'local.newBoardOpen' },
   close: { $setLocal: 'newBoardOpen', value: false },
   title: 'New board',
   size: 'sm',
@@ -320,12 +320,12 @@ const newBoardModal: SchemaNode = formModal({
   submitLabel: 'Create',
   submit: {
     $action: 'model.create',
-    args: ['CollectionBlock', { kind: 'board', title: { $local: 'boardName' } }],
+    args: ['CollectionBlock', { kind: 'board', title: { $: 'local.boardName' } }],
     // Straight into the new board: making one and then having to find it in a picker is a step
     // nobody wanted.
     onSuccess: [
-      { $setLocal: 'boardId', from: '$result.id' },
-      { $setLocal: 'revision', by: 1 },
+      { $setLocal: 'boardId', value: { $: 'result.id' } },
+      { $setLocal: 'revision', value: { $: 'local.revision + 1' } },
     ],
   },
 });
@@ -357,11 +357,11 @@ const newCardModal: SchemaNode = composerModal({
   saveAction: {
     $action: 'recordStore.createCardOnBoard',
     // `'$arg'` first: the serialized tree, then where it goes.
-    args: ['$arg', { board: BOARD, at: { $local: 'newCardAt' } }],
+    args: [{ $: 'arg' }, { board: BOARD, at: { $: 'local.newCardAt' } }],
   },
   onSaved: [
     { $setLocal: 'newCardAt', value: null },
-    { $setLocal: 'revision', by: 1 },
+    { $setLocal: 'revision', value: { $: 'local.revision + 1' } },
   ],
 });
 

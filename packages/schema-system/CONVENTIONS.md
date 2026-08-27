@@ -25,22 +25,18 @@ tokens:
 
 The value layer lives in `shared/src/expressions/`: `ast.ts` (the grammar and why it is closed),
 `lexer.ts`/`parser.ts`, `printer.ts` (canonical round trip for the editor), `evaluate.ts` (total,
-inert, reactive), `check.ts` (column-precise static checking), `functions.ts` (the library),
-`convert.ts` (to and from the legacy operator tokens). `propResolvers/expression.ts` is the one
-dispatcher branch it adds.
+inert, reactive), `check.ts` (column-precise static checking), `functions.ts` (the library).
+`propResolvers/expression.ts` is the dispatcher branch that evaluates it.
 
 **Rules:**
 
 - **No new value operators, and no new syntax.** The grammar in `ast.ts` is final. A need for
   computation is a function (below) or a host source.
-- Handler and reference tokens use the `$` prefix followed by a **single lowercase word**, as before.
+- Handler tokens use the `$` prefix followed by a **single lowercase word**.
 - Renderer-level operators appear as `node.type` values and are handled in `SchemaRenderer.tsx`.
-- The legacy value tokens (`$eq`, `$and`, `$concat`, `$count`, `$filter`, `$find`, `$plural`,
-  `$map`, `$pick`, `$not`, `$or`, `$in`, `$lt`, `$gt`, `$ne`, `$source`, prop-level `$if`) are the
-  language's syntax tree as JSON. They keep resolving — `dispatcher.ts` still branches on them and
-  `operatorParity.test.ts` still holds them to the zod union — but nothing is added to that set,
-  and new schemas are written as expressions. `src/cli/we-expressions-codemod.ts` prints a file's
-  operator trees into the new spelling.
+- **Strings are text.** A plain string in a prop, in `children` or in an `$action` argument is a
+  literal; a reference is always `{ $: '…' }`. The validator rejects the old string spelling
+  (`'$item.name'`), and `dispatcher.ts` resolves nothing from a string.
 
 ## Adding a Library Function
 
@@ -111,24 +107,15 @@ The dispatcher handles recursion depth limits (max 10) automatically.
 
 `markReactive()` tags a function with the `REACTIVE_ACCESSOR` symbol. The renderer uses this to distinguish reactive accessors from event handlers — accessors get unwrapped, event handlers pass through to the DOM.
 
-## Context Resolution (`$item.*` Strings)
+## Context Resolution (the names an expression reads)
 
-Plain strings starting with `$` followed by a key present in the `context` object are resolved by the dispatcher:
+`$each`, `$single` and `$agent` bind their `as` name (default `item`) into the render context, and
+an expression reads it as a root: `{ $: 'item.name' }` → `context.item.name`. `index` and `prev`
+are bound alongside. The root order in `buildEnvironment` is `local`, then the context, then the
+host's `$`-globals (`me`, `currentDataset`, `surface`), then the store namespace — so a name bound
+by `$each` shadows a store of the same name, as the validator also assumes.
 
-```
-"$item.name"       → context.item.name
-"$space.uuid"      → context.space.uuid
-"$team"            → context.team (whole object)
-```
-
-This is the mechanism `$each` children use to access the current iteration item, and `$map`'s `select` uses for `$item.*` references.
-
-**Rules:**
-
-- The context key (text between `$` and the first `.`) must exist in the context object — otherwise the string is returned as-is (no error).
-- Dot-separated paths are walked recursively: `$item.profile.avatar` → `context.item.profile.avatar`.
-- `$each` injects items into context using the `as` prop (default: `'item'`), so `$item.name` works by default.
-- For nested `$each` loops, use distinct `as` values to avoid shadowing: `as: 'team'` → `$team.name`.
+For nested `$each` loops, use distinct `as` values to avoid shadowing: `as: 'team'` → `team.name`.
 
 ## Component Resolution
 
@@ -165,6 +152,6 @@ The renderer resolves `node.type` to a component using these rules (in order):
 
 - `SchemaProp` — the recursive base type for all prop values. Kept as `string | number | boolean | Record<string, unknown> | SchemaProp[] | undefined` for Zod compatibility.
 - `OperatorToken` — union of all typed operator tokens. Opt-in for schema authors who want autocomplete; not enforced at the `SchemaNode.props` level.
-- Individual token types (`StoreToken`, `ConcatToken`, etc.) are exported for use in utility functions and type guards.
+- Individual token types (`ExpressionToken`, `ActionToken`, `SetLocalToken`, etc.) are exported for use in utility functions and type guards.
 
 **Rule:** New operator types are added to the `OperatorToken` union but `SchemaProp` stays generic — the Zod validation layer handles structural validation separately.

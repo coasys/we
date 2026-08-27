@@ -49,7 +49,7 @@ import { agentByline, emptyState, gatePrompt } from '@we/template-kit';
 const EXTRACTED = ['TaskBlock', 'EventBlock'];
 
 /** The call whose transcript is on screen — the record the module is writing into right now. */
-const CALL = { $store: 'modules.transcribe.collectionId' };
+const CALL = { $: 'modules.transcribe.collectionId' };
 
 /** Routes, as segments. Compared against `routeStore.segments`, which is how `route` matches too. */
 const ROUTE = { board: 'board', tasks: 'tasks', record: 'record' } as const;
@@ -98,11 +98,11 @@ const switcher: SchemaNode = {
             r: 'pill',
             gap: '200',
             variant: { $: "nav.segment in routeStore.segments ? 'secondary' : 'ghost'" },
-            onClick: { $action: 'routeStore.navigate', args: ['$nav.path'] },
+            onClick: { $action: 'routeStore.navigate', args: [{ $: 'nav.path' }] },
           },
           children: [
-            { type: 'we-icon', props: { name: '$nav.icon' } },
-            { type: 'we-text', children: ['$nav.label'] },
+            { type: 'we-icon', props: { name: { $: 'nav.icon' } } },
+            { type: 'we-text', children: [{ $: 'nav.label' }] },
           ],
         },
       ],
@@ -129,7 +129,7 @@ const extractionPanel: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $store: 'interpretationStore.capable' },
+        condition: { $: 'interpretationStore.capable' },
         then: {
           type: 'Column',
           props: { width: '100%', flex: '1', minHeight: '0', gap: '300' },
@@ -139,7 +139,7 @@ const extractionPanel: SchemaNode = {
             // above, and no empty state here.
             {
               type: '$each',
-              props: { items: { $store: 'interpretationStore.activity' }, as: 'pass' },
+              props: { items: { $: 'interpretationStore.activity' }, as: 'pass' },
               children: [
                 {
                   type: 'Row',
@@ -148,7 +148,7 @@ const extractionPanel: SchemaNode = {
                     {
                       type: '$if',
                       props: {
-                        condition: '$pass.running',
+                        condition: { $: 'pass.running' },
                         then: { type: 'we-spinner', props: { size: 'xs' } },
                         else: { type: 'we-icon', props: { name: 'check', color: 'success-text' } },
                       },
@@ -156,12 +156,12 @@ const extractionPanel: SchemaNode = {
                     {
                       type: 'we-text',
                       props: { variant: 'footnote', flex: '1', truncate: true },
-                      children: ['$pass.label'],
+                      children: [{ $: 'pass.label' }],
                     },
                     {
                       type: 'we-text',
                       props: { variant: 'footnote', color: 'text-faint' },
-                      children: ['$pass.elapsed'],
+                      children: [{ $: 'pass.elapsed' }],
                     },
                   ],
                 },
@@ -207,7 +207,7 @@ const extractionPanel: SchemaNode = {
                                 {
                                   type: 'we-text',
                                   props: { variant: 'footnote', flex: '1', truncate: true },
-                                  children: ['$item.title'],
+                                  children: [{ $: 'item.title' }],
                                 },
                               ],
                             },
@@ -280,7 +280,7 @@ const board: SchemaNode = {
     ],
     behaviours: [
       // Before drag-node, which is what makes arming mean anything: both claim a press on a node.
-      { type: 'connect-nodes', options: { armed: { $local: 'connecting' } } },
+      { type: 'connect-nodes', options: { armed: { $: 'local.connecting' } } },
       'select',
       { type: 'drag-node', options: { pin: true } },
       // Last, because it is the background fallback — listed earlier it claims the press `select`
@@ -292,7 +292,7 @@ const board: SchemaNode = {
     height: '100%',
     // Connecting two records means the same thing wherever the line was drawn, so it goes through
     // the same store call the knowledge map makes and ends in the same form.
-    onEdgeCreate: { $action: 'recordStore.connectNodes', args: ['$event'] },
+    onEdgeCreate: { $action: 'recordStore.connectNodes', args: [{ $: 'event' }] },
     /*
       The drop, written back — an upsert against the *board* rather than an update of the record.
 
@@ -303,9 +303,9 @@ const board: SchemaNode = {
     */
     onNodeDragEnd: {
       $action: 'recordStore.placeOnBoard',
-      args: [CALL, '$event.recordId', '$event.recordType', '$event.x', '$event.y'],
+      args: [CALL, { $: 'event.recordId' }, { $: 'event.recordType' }, { $: 'event.x' }, { $: 'event.y' }],
     },
-    onNodeResize: { $action: 'recordStore.resizeOnBoard', args: [CALL, '$event'] },
+    onNodeResize: { $action: 'recordStore.resizeOnBoard', args: [CALL, { $: 'event' }] },
   },
 };
 
@@ -381,7 +381,7 @@ const tasksRoute: RouteSchema = {
               type: 'Column',
               props: { gap: '300', bg: 'surface', r: '400', border: '1px solid border', p: '400' },
               $queries: {
-                tasks: { entity: 'TaskBlock', where: { status: '$column.status' }, order: { createdAt: 'desc' } },
+                tasks: { entity: 'TaskBlock', where: { status: { $: 'column.status' } }, order: { createdAt: 'desc' } },
               },
               children: [
                 {
@@ -390,8 +390,8 @@ const tasksRoute: RouteSchema = {
                   children: [
                     {
                       type: 'we-text',
-                      props: { variant: 'label', color: '$column.color' },
-                      children: ['$column.label'],
+                      props: { variant: 'label', color: { $: 'column.color' } },
+                      children: [{ $: 'column.label' }],
                     },
                     {
                       type: 'we-badge',
@@ -410,21 +410,21 @@ const tasksRoute: RouteSchema = {
                       children: [
                         {
                           type: '$each',
-                          props: { items: { $local: 'tasks' }, as: 'task' },
+                          props: { items: { $: 'local.tasks' }, as: 'task' },
                           children: [
                             {
                               type: 'Column',
                               props: { gap: '200', bg: 'surface-sunken', r: '300', p: '300' },
                               children: [
-                                { type: 'we-text', props: { fontWeight: 'medium' }, children: ['$task.title'] },
+                                { type: 'we-text', props: { fontWeight: 'medium' }, children: [{ $: 'task.title' }] },
                                 {
                                   type: '$if',
                                   props: {
-                                    condition: '$task.description',
+                                    condition: { $: 'task.description' },
                                     then: {
                                       type: 'we-text',
                                       props: { variant: 'footnote', color: 'text-muted' },
-                                      children: ['$task.description'],
+                                      children: [{ $: 'task.description' }],
                                     },
                                   },
                                 },
@@ -434,14 +434,14 @@ const tasksRoute: RouteSchema = {
                                   children: [
                                     // Who wrote it — which for an extracted task is whoever's node
                                     // ran the pass, so it answers "where did this come from".
-                                    agentByline({ did: '$task.author', as: 'author', avatarSize: 'xxs' }),
+                                    agentByline({ did: { $: 'task.author' }, as: 'author', avatarSize: 'xxs' }),
                                     {
                                       type: '$if',
                                       props: {
-                                        condition: '$task.dueDate',
+                                        condition: { $: 'task.dueDate' },
                                         then: {
                                           type: 'we-timestamp',
-                                          props: { value: '$task.dueDate', fontSize: '100', color: 'text-faint' },
+                                          props: { value: { $: 'task.dueDate' }, fontSize: '100', color: 'text-faint' },
                                         },
                                       },
                                     },
@@ -498,7 +498,7 @@ const recordRoute: RouteSchema = {
               children: [
                 {
                   type: '$each',
-                  props: { items: { $local: 'calls' }, as: 'call' },
+                  props: { items: { $: 'local.calls' }, as: 'call' },
                   children: [
                     {
                       type: 'Column',
@@ -516,7 +516,7 @@ const recordRoute: RouteSchema = {
                                 { type: 'we-icon', props: { name: 'phone-call', color: 'accent-text' } },
                                 {
                                   type: 'we-timestamp',
-                                  props: { value: '$call.createdAt', relative: true, flex: '1' },
+                                  props: { value: { $: 'call.createdAt' }, relative: true, flex: '1' },
                                 },
                                 {
                                   type: 'we-icon',
@@ -534,7 +534,7 @@ const recordRoute: RouteSchema = {
                           // and collapsing must not tear it down and refetch on every toggle.
                           type: '$animate',
                           props: {
-                            condition: { $local: 'open' },
+                            condition: { $: 'local.open' },
                             enterTransition: { type: 'reveal', duration: 250 },
                           },
                           children: [
@@ -548,7 +548,11 @@ const recordRoute: RouteSchema = {
                                     items: {
                                       $query: {
                                         entity: 'TextBlock',
-                                        scope: { anchor: 'CollectionBlock', via: 'children', anchorId: '$call.id' },
+                                        scope: {
+                                          anchor: 'CollectionBlock',
+                                          via: 'children',
+                                          anchorId: { $: 'call.id' },
+                                        },
                                         // Oldest first: a transcript read backwards is not a transcript.
                                         order: { createdAt: 'asc' },
                                       },
@@ -557,13 +561,17 @@ const recordRoute: RouteSchema = {
                                   },
                                   children: [
                                     agentByline({
-                                      did: '$utterance.author',
+                                      did: { $: 'utterance.author' },
                                       as: 'speaker',
                                       stacked: true,
                                       nameColor: 'text-muted',
-                                      timestamp: '$utterance.createdAt',
+                                      timestamp: { $: 'utterance.createdAt' },
                                       children: [
-                                        { type: 'we-text', props: { color: 'text' }, children: ['$utterance.text'] },
+                                        {
+                                          type: 'we-text',
+                                          props: { color: 'text' },
+                                          children: [{ $: 'utterance.text' }],
+                                        },
                                       ],
                                     }),
                                   ],

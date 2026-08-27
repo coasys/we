@@ -522,8 +522,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
     '## Stores',
     '',
     'Stores provide state (readable values) and actions (methods) for dynamic logic in schemas.',
-    'Access state with $store and call actions with $action.',
-    'For ephemeral/form state, use $localState/$local/$setLocal instead of stores (see Dynamic Logic).',
+    'Read state in an expression ({ "$": "storeName.member" }) and call actions with $action.',
+    'For ephemeral/form state, use $localState with local.* reads and $setLocal writes instead of stores (see Dynamic Logic).',
   ];
 
   const descriptions: Record<string, { state: Record<string, string>; actions: Record<string, string> }> = {
@@ -547,7 +547,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         devTools:
           'boolean — whether developer affordances should be VISIBLE. True in a development build unless a developer has thrown the Settings → Developer switch to see what a shipped app looks like. Reactive, so a control gated on it appears and disappears on the press. Gate any developer-only control on this — a schema-test page, a fixture toggle — and wrap it in $if rather than hiding it, since a hidden row is still in the accessibility tree and still found by find-in-page. Never true in a production build, whatever the switch says',
         setDevTools:
-          'shows or hides developer affordances for this device. Takes the value a switch emits, so pass "$event.detail" bare — an operator such as $not around it would resolve at render time and send a constant. Cannot turn them ON in a production build; the build is the ceiling. Gate the control that calls this on isDevelopment, NOT on devTools — gating the way to the switch on the switch makes turning it off a one-way door',
+          'shows or hides developer affordances for this device. Takes the value a switch emits, so pass `event.detail` bare — wrapping it in another token would resolve at render time and send a constant. Cannot turn them ON in a production build; the build is the ceiling. Gate the control that calls this on isDevelopment, NOT on devTools — gating the way to the switch on the switch makes turning it off a one-way door',
       },
       actions: {
         login: '(password: string): unlocks the agent and loads user data',
@@ -560,7 +560,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         finishSetup: "(): leaves 'finishing' for the running app — sets bootState to 'ready'",
         logout: '(): locks the agent and returns to the login screen',
         setDevTools:
-          '(on: boolean): shows or hides developer affordances for this session. Takes the value the control shows, so a we-switch can pass $event.detail bare. Cannot turn developer UI on in a production build',
+          '(on: boolean): shows or hides developer affordances for this session. Takes the value the control shows, so a we-switch can pass `event.detail` bare. Cannot turn developer UI on in a production build',
       },
     },
     accountStore: {
@@ -748,7 +748,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         currentPath: 'string (the current route path)',
         segments: 'string[] (currentPath split by "/", e.g. ["/foo/bar"] → ["foo", "bar"])',
         params:
-          "Record<string, string> — the URL's query parameters, reactive; read one as { $store: 'routeStore.params.<name>' }. Prefer $localState with syncParam for fields a view owns; read params directly only for parameters something else writes",
+          "Record<string, string> — the URL's query parameters, reactive; read one as { $: 'routeStore.params.<name>' }. Prefer $localState with syncParam for fields a view owns; read params directly only for parameters something else writes",
       },
       actions: {
         navigate:
@@ -803,7 +803,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         setSystemTheme:
           "(polarity: 'light' | 'dark', themeId: string): sets one side of the Follow-system pair. An empty id returns that side to the built-in",
         setUseTemplateTheme:
-          '(enabled: boolean): persists whether templates may bring their own theme. Boolean, so a switch can pass $event.detail bare',
+          '(enabled: boolean): persists whether templates may bring their own theme. Boolean, so a switch can pass `event.detail` bare',
         startEditing:
           '(themeId?: string): opens a theme editing session on that theme, or on the current one. Prefer editorStore.enterThemeEditing, which also opens the panel',
         changeBasePreset:
@@ -830,11 +830,11 @@ export function generateStoresText(entries: StoreEntry[]): string {
         setDefaultTheme:
           '(themeId: string): sets the preferred default theme (persists to AgentSettings.defaultThemeId)',
         setThemeScopeGlobal:
-          "(global: boolean): persists whether a space's theme covers the whole window (true) or only the space's own content (false, the default). Takes a boolean because a switch emits one and a schema cannot map it to a string — `$if` in an action's args resolves at render time, before the event exists",
+          "(global: boolean): persists whether a space's theme covers the whole window (true) or only the space's own content (false, the default). Takes a boolean because a switch emits one; an expression over event in the args is evaluated when the switch fires, so pass `event.detail` bare",
         previewThemeScope:
           "(scope: 'global' | 'scoped' | null): previews a scope for the current theme-editing session without writing the preference; null drops the preview. Cleared when editing ends",
         setThemeInstalled:
-          '(themeId: string, visible: boolean): shows or hides a custom theme in the pickers; does not delete it. Takes the value rather than toggling, so a `we-switch` can pass `$event.detail` straight through',
+          '(themeId: string, visible: boolean): shows or hides a custom theme in the pickers; does not delete it. Takes the value rather than toggling, so a `we-switch` can pass `event.detail` straight through',
         installFromMarketplace:
           '(marketplaceThemeId: string): installs a marketplace theme into your own library (installedThemes). A personal act — use installToSpace to give the community a theme',
         installToSpace:
@@ -856,7 +856,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         templateManagementList:
           'TemplateManagementItem[] — flat list of all templates with management metadata (id, name, icon, description, isBuiltIn, isInstalled, isDefault)',
         switcherGroups:
-          'TemplateSwitcherGroup[] — pre-grouped flat items for the template switcher UI; each group has { label: string, items: { id, name, icon, editable }[] }. Groups: "Space templates", "My templates", "Built-in". Use $filter where: { name: { contains: ... } } for search since items have a flat name field. `editable` says whether editing THAT row would open a session that can be saved — gate a per-row edit control on it rather than on editorStore.isReadOnly, which answers for whichever template is currently rendered and so gives every row the same verdict.',
+          'TemplateSwitcherGroup[] — pre-grouped flat items for the template switcher UI; each group has { label: string, items: { id, name, icon, editable }[] }. Groups: "Space templates", "My templates", "Built-in". Use filter(group.items, { name: { contains: local.search } }) for search since items have a flat name field. `editable` says whether editing THAT row would open a session that can be saved — gate a per-row edit control on it rather than on editorStore.isReadOnly, which answers for whichever template is currently rendered and so gives every row the same verdict.',
         currentSwitcherId:
           "string — the id the template switcher should show as selected. The switcher's own spelling of the current template: it differs from currentTemplate.id while a space override or a preview is in effect",
         loading: 'boolean — the template lists are still being read. Gate empty states on it',
@@ -905,13 +905,13 @@ export function generateStoresText(entries: StoreEntry[]): string {
         viewNav:
           '{ id, segment, label, icon, path }[] — the sections as a nav strip reads them: enabled by the community, minus those this agent hid, in order. One source with the routes, so nav and routes cannot disagree',
         mutedDids:
-          "string[] — DIDs this agent has muted, everywhere. Private, held in the root dataset. A feed filters on it before rendering: { $not: { $in: ['$post.author', { $store: 'spaceStore.mutedDids' }] } }. Hides on this screen only — a neighbourhood is writable by every member, so nothing here removes anything for anyone else",
+          "string[] — DIDs this agent has muted, everywhere. Private, held in the root dataset. A feed filters on it before rendering: { $: '!(post.author in spaceStore.mutedDids)' }. Hides on this screen only — a neighbourhood is writable by every member, so nothing here removes anything for anyone else",
         mutedAgents:
           'MutedAgent[] — the full mute records (did, description), for a settings list that wants the note as well as the DID',
         readMarkers:
-          '{ nodeId, lastReadAt }[] — when this agent last read each node. No row means never read, so everything is unread. Read with $find on nodeId; a schema cannot index a keyed map by a context ref',
+          '{ nodeId, lastReadAt }[] — when this agent last read each node. No row means never read, so everything is unread. Read with find(spaceStore.readMarkers, { nodeId: item.id }); a keyed map would not be indexable by a row',
         unreadNodeIds:
-          "string[] — ids of the containers in this space holding something newer than this agent's marker for them, or never read. What an unread dot reads: { $in: ['$channel.id', { $store: 'spaceStore.unreadNodeIds' }] }. Ids rather than counts, since a count needs every child's timestamp",
+          "string[] — ids of the containers in this space holding something newer than this agent's marker for them, or never read. What an unread dot reads: { $: 'channel.id in spaceStore.unreadNodeIds' }. Ids rather than counts, since a count needs every child's timestamp",
         myMentions:
           '{ id, author, createdAt }[] — nodes in this space that mention this agent, newest first. createdAt is the backend’s comparable timestamp. Filtered client-side, so right for a space and wrong for an inbox across many',
         autoInterpret:
@@ -948,7 +948,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         installedModules:
           'string[] — ids of the feature modules THIS AGENT wants available anywhere. Personal, held in the root dataset; unset means "not decided" and falls back to every registered module',
         templateOverrideOptions:
-          '{ label, value }[] — options for the per-space template override picker: "Use the space\u2019s default" (space-default), "Use my default" (agent-default), then every template. Each of the first two names what it resolves to. Pre-built because a schema can $map a store array into options but cannot prepend one, and without those entries overriding would be one-way',
+          '{ label, value }[] — options for the per-space template override picker: "Use the space\u2019s default" (space-default), "Use my default" (agent-default), then every template. Each of the first two names what it resolves to. Pre-built because a schema can map a store array into options but cannot prepend one, and without those entries overriding would be one-way',
         themeOverrideOptions: '{ label, value }[] — the same, for themes',
         spaceThemePinned:
           'boolean — this agent has pinned a theme for the space on screen that differs from what would otherwise apply, so there is something for a reset to undo. False outside a space, and false for a pin that happens to name what the space resolves to anyway. Gate a "pinned here / reset" affordance on it rather than on the pin merely existing',
@@ -967,9 +967,9 @@ export function generateStoresText(entries: StoreEntry[]): string {
         moveChild:
           '(childId: string, fromId: string, toId: string): moves a child between two collections — a card between kanban columns. Relinks the two children edges; the child itself is untouched',
         setAttending:
-          "(nodeId: string, attending: boolean): joins or leaves a node's participant roster — an RSVP. Writes only this agent's own entry, so the roster stays conflict-free. Boolean, so a switch can pass $event.detail bare",
+          "(nodeId: string, attending: boolean): joins or leaves a node's participant roster — an RSVP. Writes only this agent's own entry, so the roster stays conflict-free. Boolean, so a switch can pass `event.detail` bare",
         setAgentMuted:
-          '(did: string, muted: boolean, description?: string): mutes or unmutes an agent for this agent everywhere, with an optional note. Positively phrased so a switch can pass $event.detail bare',
+          '(did: string, muted: boolean, description?: string): mutes or unmutes an agent for this agent everywhere, with an optional note. Positively phrased so a switch can pass `event.detail` bare',
         markRead:
           '(nodeId: string, spaceUuid?): marks a node read as of now, so it leaves unreadNodeIds. Silent on failure — a lost marker is a stale dot, not an error',
         setAutoInterpret:
@@ -981,7 +981,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         reorderViews:
           "(viewIds: string[], spaceUuid?): sets the whole section order at once — what a drag-reorder writes. Pair with we-sortable's onReorder",
         setViewVisible:
-          '(viewId: string, visible: boolean, spaceUuid?): shows or hides a section for this agent in one space, without changing what the community has. Private. Positively phrased so a switch can pass $event.detail bare',
+          '(viewId: string, visible: boolean, spaceUuid?): shows or hides a section for this agent in one space, without changing what the community has. Private. Positively phrased so a switch can pass `event.detail` bare',
         createRelationshipType:
           '(config: Partial<RelationshipType>): names a kind of connection this community makes — "contradicts", "came out of". The counterpart to createSignalType; slug derived from name if blank',
         removeSpaceFromGlobal:
@@ -1004,7 +1004,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         createSignalType:
           '(config: Partial<SignalType>): creates a new signal type in the community; slug auto-derived from name if blank',
         unreadNodeIds:
-          'string[] — ids of containers in this space holding something newer than your read marker. The read side of `ReadMarker`: use it for unread dots with `{ "$in": ["$channel.id", { "$store": "spaceStore.unreadNodeIds" }] }` rather than recomputing a `$latestChild` projection and a `$gt` per row',
+          'string[] — ids of containers in this space holding something newer than your read marker. The read side of `ReadMarker`: use it for unread dots with `{ "$": "channel.id in spaceStore.unreadNodeIds" }` rather than recomputing a `$latestChild` projection and a comparison per row',
         myMentions:
           '{ id, author, createdAt }[] — nodes in this space that name you, newest first. The read side of `WeNode.mentions`, which the composer has always written and nothing could read',
         uploadFile:
@@ -1023,7 +1023,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         copyGuestLink:
           "(uuid: string): copies that space's guest invite link — a URL that creates an account on the space's host and joins, with no sign-up and no download. Empty, and the control hidden, unless BOTH this app's origin and the node's URL are addresses a recipient could reach: a loopback address on either half resolves to the reader's own machine. Read `spaceList[].guestLink` to decide whether to offer it; `shareLink` is the one for somebody who already has WE",
         canAdministerSpace:
-          '(uuid: string): whether this agent may change what every member of that space sees — true for a personal space, and for a shared one they authored. A UI affordance for deciding whether to offer the controls, NOT enforcement: a shared space is a neighbourhood every member can write to. Ask by name rather than comparing author to $me.did, so the answer can grow (multiple admins, roles) without every template changing',
+          '(uuid: string): whether this agent may change what every member of that space sees — true for a personal space, and for a shared one they authored. A UI affordance for deciding whether to offer the controls, NOT enforcement: a shared space is a neighbourhood every member can write to. Ask by name rather than comparing author to me.did, so the answer can grow (multiple admins, roles) without every template changing',
         getSubgroupMessages:
           "(subgroupId: string): messages belonging to one of Flux's conversation subgroups, fetched on demand. A dialect query against a foreign schema rather than a WE model, so it goes through the backend's interop surface instead of $query — which is why it is a store method and not a relation you can drill into",
         exportCallTranscript:
@@ -1031,13 +1031,13 @@ export function generateStoresText(entries: StoreEntry[]): string {
         setModuleInstalled:
           '(moduleId: string, installed: boolean): turns a module on or off for this agent in every space. Personal — writes AgentSettings.installedModules in the root dataset, so no other member sees it',
         setModuleVisible:
-          '(moduleId: string, visible: boolean, spaceUuid?): shows or hides a module for this agent in one space, without changing what the community runs. Private: written to the root dataset, never to the space. Phrased positively so a switch can pass `$event.detail` bare \u2014 wrapping it in an operator such as `$not` would evaluate at render time and send a constant',
+          '(moduleId: string, visible: boolean, spaceUuid?): shows or hides a module for this agent in one space, without changing what the community runs. Private: written to the root dataset, never to the space. Phrased positively so a switch can pass `event.detail` bare \u2014 wrapping it in another token would evaluate at render time and send a constant',
         setSpaceTemplateOverride:
           "(templateId: string, spaceUuid?): sets the template THIS AGENT sees in one space, overriding the community's default. Three values: 'space-default' follows the space, 'agent-default' follows your own global default (tracking later changes to it), or a concrete template id pins that one. Private, and applied immediately when that space is the one on screen. Note the sentinels are named values, not '' — the ORM skips empty strings on update, so '' cannot clear a property",
         setSpaceThemeOverride:
           '(themeId: string, spaceUuid?): sets the theme THIS AGENT sees in one space. Same three values as setSpaceTemplateOverride. Private',
         applyTheme:
-          '(themeId: string): applies a theme where the agent is — pinned to the space on screen, or set as their global default when there is no space. What a theme picker in chrome should call: it persists, where setCurrentTheme only sets a signal that the next resolution overwrites. Which of the two it does is decided at click time, so a schema cannot express it with $if (whose args resolve at render time)',
+          '(themeId: string): applies a theme where the agent is — pinned to the space on screen, or set as their global default when there is no space. What a theme picker in chrome should call: it persists, where setCurrentTheme only sets a signal that the next resolution overwrites. Which of the two it does is decided at click time, against state a schema cannot see',
         clearSpaceThemePin:
           '(): drops this agent\u2019s theme pin for the space on screen, returning it to whatever would otherwise apply. The way back out of applyTheme, so the picker need not spell the FOLLOW_SPACE sentinel as a literal. Pair with spaceThemePinned',
         setModuleEnabled:
@@ -1055,7 +1055,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         recordDraft:
           "the open form's draft ({ entity, label, icon, fields[] }) or null while closed — its non-nullness is what mounts the modal. Each field is { name, label, control, required, options, placeholder, value }, derived from the model's own declaration, so a form exists for a model nobody wrote a form for",
         recordDraftDirty:
-          "boolean — the open form holds something worth keeping. What a discard guard reads: the fields come from the model, so a shape this community defined has properties no schema was written against and there is no set of $local names an expression could test. Pass it to discardGuard's `dirty`",
+          "boolean — the open form holds something worth keeping. What a discard guard reads: the fields come from the model, so a shape this community defined has properties no schema was written against and there is no set of local names an expression could test. Pass it to discardGuard's `dirty`",
         recordErrors: 'string[] — validation errors from the last save attempt, plus any backend failure',
         savingRecord: 'boolean — a create is in flight',
         lastCreatedId:
@@ -1114,19 +1114,19 @@ export function generateStoresText(entries: StoreEntry[]): string {
         relationshipTargets:
           "{ label, value }[] — what a relationship may point at here, ready for a we-select: this space's own models, then block types, then other apps' models. Core infrastructure entities are deliberately absent",
         identityOptions:
-          '{ label, value }[] — "None" plus every named property of the open draft, for the identity picker. Built in the store because a schema can $map options but cannot prepend one',
+          '{ label, value }[] — "None" plus every named property of the open draft, for the identity picker. Built in the store because a schema can map options but cannot prepend one',
         hintEditor:
           'the hint editor state ({ entity, classHint, defaultClassHint, rows: { name, predicate, hint, defaultHint }[], customized }) or null while closed — non-nullness mounts the hint editor modal',
         hintBusy: 'boolean — the hint editor is loading or saving',
         memberOptions:
-          "{ rowId, options }[] — each member's default-value picker entries. Read with $find on rowId rather than off $member: rows are mutated in place while typing, so values hanging off the row cannot be reactive",
+          "{ rowId, options }[] — each member's default-value picker entries. Read with find(shapeStore.memberOptions, { rowId: member.rowId }) rather than off member: rows are mutated in place while typing, so values hanging off the row cannot be reactive",
         confirmDiscard: 'boolean — the "discard this model?" confirmation is showing',
         confirmReplaceFields:
           'boolean — the "replace the fields below?" confirmation is showing. Only ever raised for a generation over hand-written rows; a generated proposal nobody touched re-runs on the click',
         generateIntent:
           "'none' | 'generate' | 'regenerate' | 'replace' — what the generate button would do right now, given what the draft holds. Label it \"Regenerate\" on 'regenerate' and 'replace' and \"Generate\" otherwise — 'none' is an empty draft, which has nothing to re-run, so testing for 'generate' alone labels a fresh form wrongly. Disable only on 'none', and route the click through requestGenerateFields, which decides whether to ask first",
         expandedMembers:
-          "string[] — rowIds whose detail panel is open. Read with { $in: ['$member.rowId', { $store: 'shapeStore.expandedMembers' }] }; a new row and any row an error names open themselves. Generation leaves rows closed — a collapsed row shows its hint, so what was generated is readable without opening anything",
+          "string[] — rowIds whose detail panel is open. Read with { $: 'member.rowId in shapeStore.expandedMembers' }; a new row and any row an error names open themselves. Generation leaves rows closed — a collapsed row shows its hint, so what was generated is readable without opening anything",
       },
       actions: {
         openShapeWizard:
@@ -1147,7 +1147,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         commitDraft:
           '(): publishes in-place edits to the draft signal. Typed fields are mutated without touching it so inputs keep focus, which leaves derived values stale — pair with onBlur on a field something else is computed from',
         reorderMembers:
-          '(rowIds: string[]): applies a drag-reorder. Pair with we-sortable\'s onReorder and pass "$arg.detail" — order is the stored declaration order, not decoration',
+          '(rowIds: string[]): applies a drag-reorder. Pair with we-sortable\'s onReorder and pass { $: "arg.detail" } — order is the stored declaration order, not decoration',
         replaceDraft:
           '(draft): replaces the whole draft — how the LLM flow hands a generated model to the same review path',
         generateShapeDraft:
@@ -1255,7 +1255,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         createSpaceOpen:
           'boolean — the create-space modal is open. Shell state because more than one place opens it; bind the modal’s open prop to this and close it with setCreateSpaceOpen',
         dockGeometry:
-          "Record<dockId, DockGeometry> — every registered panel's resolved box (top, left, width, height, edge, mode). Read a field as { $store: 'shellStore.dockGeometry.<id>.<field>' }; the frame a panel is wrapped in binds its geometry this way so a move rewrites props rather than remounting",
+          "Record<dockId, DockGeometry> — every registered panel's resolved box (top, left, width, height, edge, mode). Read a field as { $: 'shellStore.dockGeometry.<id>.<field>' }; the frame a panel is wrapped in binds its geometry this way so a move rewrites props rather than remounting",
         contentInset:
           '{ top, right, bottom, left } in pixels — what the content viewport gives up to panels that displace it. Read it to keep your own fixed chrome clear of docked panels',
         dockResizing:
@@ -1277,7 +1277,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         beginDockResize:
           "(id: string): remembers a panel's current size so the drag that follows is measured from it. Wire it to we-resize-handle's resizestart",
         resizeDock:
-          "(id: string, side: 'left' | 'right' | 'top' | 'bottom' | 'top-left' | …, dx: number, dy: number): applies a resize drag from that side or corner, in screen pixels since it began. Wire it to resize with $arg.detail.delta",
+          "(id: string, side: 'left' | 'right' | 'top' | 'bottom' | 'top-left' | …, dx: number, dy: number): applies a resize drag from that side or corner, in screen pixels since it began. Wire it to resize with { $: 'arg.detail.delta' }",
         endDockResize: '(): ends the drag and persists the size',
         fitDock:
           '(id: string): shrinks a panel to the shape its content wants, keeping the width the user chose — only when the module declares an aspect for its panel',
@@ -1314,7 +1314,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         apps: 'RegisteredApp[] — list of registered external apps (id, name, image)',
         activeAppId: 'string | null — id of the currently active app, or null if none',
         appsWithWe:
-          'RegisteredApp[] — the apps list with a WE entry prepended, for an app switcher that offers the way back to templates as one more row. Prepended here because a schema can $map a list but cannot add to it',
+          'RegisteredApp[] — the apps list with a WE entry prepended, for an app switcher that offers the way back to templates as one more row. Prepended here because a schema can map a list but cannot add to it',
       },
       actions: {
         activateApp: '(id: string): activates an app and switches to its view',

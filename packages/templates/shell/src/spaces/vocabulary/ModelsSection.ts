@@ -91,7 +91,7 @@ const removeMemberButton: SchemaNode = {
     // Square, like every icon-only button: the default's horizontal padding is sized for a word
     // beside the icon, which leaves a lozenge around a single glyph.
     square: true,
-    onClick: { $action: 'shapeStore.removeMember', args: ['$member.rowId'] },
+    onClick: { $action: 'shapeStore.removeMember', args: [{ $: 'member.rowId' }] },
   },
   children: [{ type: 'we-icon', props: { name: 'trash' } }],
 };
@@ -109,8 +109,8 @@ const memberNameInput: SchemaNode = {
     placeholder: { $: "member.kind == 'relationship' ? 'Relationship name…' : 'Property name…'" },
     width: '160px',
     size: 'sm',
-    value: '$member.name',
-    onInput: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'name', '$arg.detail'] },
+    value: { $: 'member.name' },
+    onInput: { $action: 'shapeStore.setMemberField', args: [{ $: 'member.rowId' }, 'name', { $: 'arg.detail' }] },
     // Typed member fields mutate in place (the focus concession), so reactive readers — the
     // generate button's guard among them — only learn a row was touched when the edit is published.
     onBlur: { $action: 'shapeStore.commitDraft' },
@@ -125,7 +125,7 @@ const expandToggle: SchemaNode = {
     size: 'sm',
     square: true,
     title: 'Show hint, default and options',
-    onClick: { $action: 'shapeStore.toggleMemberExpanded', args: ['$member.rowId'] },
+    onClick: { $action: 'shapeStore.toggleMemberExpanded', args: [{ $: 'member.rowId' }] },
   },
   children: [
     {
@@ -160,8 +160,11 @@ const defaultValueControl: SchemaNode = {
         // itself from the number, so this grows for a long one instead of clipping it.
         width: 'fit-content',
         placeholder: 'None',
-        value: '$member.defaultValue',
-        onChange: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'defaultValue', '$arg.detail'] },
+        value: { $: 'member.defaultValue' },
+        onChange: {
+          $action: 'shapeStore.setMemberField',
+          args: [{ $: 'member.rowId' }, 'defaultValue', { $: 'arg.detail' }],
+        },
       },
     },
     else: {
@@ -178,8 +181,11 @@ const defaultValueControl: SchemaNode = {
             // value records which was meant. Splitting them would buy nothing: nothing enforces a
             // scalar type, since the compiler never reads one.
             showTime: true,
-            value: '$member.defaultValue',
-            onChange: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'defaultValue', '$arg.detail'] },
+            value: { $: 'member.defaultValue' },
+            onChange: {
+              $action: 'shapeStore.setMemberField',
+              args: [{ $: 'member.rowId' }, 'defaultValue', { $: 'arg.detail' }],
+            },
           },
         },
         else: {
@@ -202,10 +208,10 @@ const defaultValueControl: SchemaNode = {
                 // Through the store rather than off `$member`: the row is mutated in place while
                 // its values are typed, so anything read from the row itself cannot update.
                 options: { $: 'find(shapeStore.memberOptions, { rowId: member.rowId }).options' },
-                value: '$member.defaultValue',
+                value: { $: 'member.defaultValue' },
                 onChange: {
                   $action: 'shapeStore.setMemberField',
-                  args: ['$member.rowId', 'defaultValue', '$arg.detail'],
+                  args: [{ $: 'member.rowId' }, 'defaultValue', { $: 'arg.detail' }],
                 },
               },
             },
@@ -215,10 +221,10 @@ const defaultValueControl: SchemaNode = {
                 size: 'sm',
                 width: DEFAULT_CONTROL_WIDTH,
                 placeholder: 'None',
-                value: '$member.defaultValue',
+                value: { $: 'member.defaultValue' },
                 onInput: {
                   $action: 'shapeStore.setMemberField',
-                  args: ['$member.rowId', 'defaultValue', '$arg.detail'],
+                  args: [{ $: 'member.rowId' }, 'defaultValue', { $: 'arg.detail' }],
                 },
               },
             },
@@ -262,10 +268,10 @@ const propertyDetail: SchemaNode = {
                   props: {
                     size: 'sm',
                     placeholder: 'fiction, non-fiction, poetry',
-                    value: '$member.options',
+                    value: { $: 'member.options' },
                     onInput: {
                       $action: 'shapeStore.setMemberField',
-                      args: ['$member.rowId', 'options', '$arg.detail'],
+                      args: [{ $: 'member.rowId' }, 'options', { $: 'arg.detail' }],
                     },
                     // The default picker below is built from these, so the edit is published when
                     // it is finished rather than on every keystroke.
@@ -296,8 +302,11 @@ const propertyDetail: SchemaNode = {
                 rows: 2,
                 size: 'sm',
                 placeholder: 'The title as spoken, without a subtitle.',
-                value: '$member.hint',
-                onInput: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'hint', '$arg.detail'] },
+                value: { $: 'member.hint' },
+                onInput: {
+                  $action: 'shapeStore.setMemberField',
+                  args: [{ $: 'member.rowId' }, 'hint', { $: 'arg.detail' }],
+                },
                 onBlur: { $action: 'shapeStore.commitDraft' },
               },
             },
@@ -348,8 +357,11 @@ const propertyRow: SchemaNode = {
                 size: 'sm',
                 width: '130px',
                 options: PROPERTY_TYPE_OPTIONS,
-                value: '$member.type',
-                onChange: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'type', '$arg.detail'] },
+                value: { $: 'member.type' },
+                onChange: {
+                  $action: 'shapeStore.setMemberField',
+                  args: [{ $: 'member.rowId' }, 'type', { $: 'arg.detail' }],
+                },
               },
             },
             /*
@@ -365,10 +377,10 @@ const propertyRow: SchemaNode = {
               type: 'we-checkbox',
               props: {
                 size: 'sm',
-                checked: '$member.required',
+                checked: { $: 'member.required' },
                 onChange: {
                   $action: 'shapeStore.setMemberField',
-                  args: ['$member.rowId', 'required', '$arg.detail'],
+                  args: [{ $: 'member.rowId' }, 'required', { $: 'arg.detail' }],
                 },
               },
               children: [{ type: 'we-text', props: { variant: 'label' }, children: ['Required'] }],
@@ -432,7 +444,7 @@ const propertyRow: SchemaNode = {
                 */
                 styles: { 'white-space': 'nowrap', overflow: 'hidden', 'text-overflow': 'ellipsis' },
               },
-              children: ['$member.hint'],
+              children: [{ $: 'member.hint' }],
             },
           },
         },
@@ -477,11 +489,11 @@ const relationshipRow: SchemaNode = {
                 // of links. No persistent label: the arrow icon beside the picker carries the
                 // direction once a target is chosen.
                 placeholder: 'Links to…',
-                options: { $store: 'shapeStore.relationshipTargets' },
-                value: '$member.target',
+                options: { $: 'shapeStore.relationshipTargets' },
+                value: { $: 'member.target' },
                 onChange: {
                   $action: 'shapeStore.setMemberField',
-                  args: ['$member.rowId', 'target', '$arg.detail'],
+                  args: [{ $: 'member.rowId' }, 'target', { $: 'arg.detail' }],
                 },
               },
             },
@@ -491,8 +503,11 @@ const relationshipRow: SchemaNode = {
                 size: 'sm',
                 labelOff: 'One',
                 labelOn: 'Many',
-                checked: '$member.many',
-                onChange: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'many', '$arg.detail'] },
+                checked: { $: 'member.many' },
+                onChange: {
+                  $action: 'shapeStore.setMemberField',
+                  args: [{ $: 'member.rowId' }, 'many', { $: 'arg.detail' }],
+                },
               },
             },
           ],
@@ -511,7 +526,7 @@ const relationshipRow: SchemaNode = {
  */
 const memberRow: SchemaNode = {
   type: 'div',
-  props: { 'data-we-id': '$member.rowId', style: { width: '100%' } },
+  props: { 'data-we-id': { $: 'member.rowId' }, style: { width: '100%' } },
   children: [
     {
       type: '$if',
@@ -544,7 +559,7 @@ const generateButton: SchemaNode = {
       props: {
         variant: 'secondary',
         title: 'Fill in the fields from the name and description — and anything above still left blank',
-        loading: { $store: 'shapeStore.generating' },
+        loading: { $: 'shapeStore.generating' },
         // 'none' is the only state with nothing to work from. A generation that would discard
         // written rows stays clickable and asks instead — refusing the click outright is what made
         // the first attempt the only attempt.
@@ -612,8 +627,8 @@ const shapeWizardModal: SchemaNode = {
                 {
                   type: 'we-icon-picker',
                   props: {
-                    value: { $store: 'shapeStore.shapeDraft.icon' },
-                    onChange: { $action: 'shapeStore.setShapeField', args: ['icon', '$arg.detail'] },
+                    value: { $: 'shapeStore.shapeDraft.icon' },
+                    onChange: { $action: 'shapeStore.setShapeField', args: ['icon', { $: 'arg.detail' }] },
                   },
                 },
               ],
@@ -628,10 +643,10 @@ const shapeWizardModal: SchemaNode = {
                     // Runs the words together on purpose: it is the spelling the field accepts, and
                     // the placeholder is the first place anyone learns that multi-word names are fine.
                     placeholder: 'BookRecommendation',
-                    value: { $store: 'shapeStore.shapeDraft.name' },
+                    value: { $: 'shapeStore.shapeDraft.name' },
                     // Renaming changes what queries resolve, so an existing model's name is fixed.
-                    disabled: { $store: 'shapeStore.editingShapeId' },
-                    onInput: { $action: 'shapeStore.setShapeField', args: ['name', '$arg.detail'] },
+                    disabled: { $: 'shapeStore.editingShapeId' },
+                    onInput: { $action: 'shapeStore.setShapeField', args: ['name', { $: 'arg.detail' }] },
                   },
                 },
               ],
@@ -648,8 +663,8 @@ const shapeWizardModal: SchemaNode = {
               props: {
                 rows: 1,
                 placeholder: 'A book someone in the group recommended',
-                value: { $store: 'shapeStore.shapeDraft.description' },
-                onInput: { $action: 'shapeStore.setShapeField', args: ['description', '$arg.detail'] },
+                value: { $: 'shapeStore.shapeDraft.description' },
+                onInput: { $action: 'shapeStore.setShapeField', args: ['description', { $: 'arg.detail' }] },
               },
             },
           ],
@@ -669,8 +684,8 @@ const shapeWizardModal: SchemaNode = {
                 // copy than to explain (see TaskBlock's rationale in @we/models).
                 placeholder:
                   'Only counts when someone is actually recommending it, not books merely mentioned. Use the title as spoken, and the author if said.',
-                value: { $store: 'shapeStore.shapeDraft.classHint' },
-                onInput: { $action: 'shapeStore.setShapeField', args: ['classHint', '$arg.detail'] },
+                value: { $: 'shapeStore.shapeDraft.classHint' },
+                onInput: { $action: 'shapeStore.setShapeField', args: ['classHint', { $: 'arg.detail' }] },
               },
             },
           ],
@@ -710,7 +725,7 @@ const shapeWizardModal: SchemaNode = {
                     {
                       type: '$if',
                       props: {
-                        condition: { $store: 'shapeStore.aiAvailable' },
+                        condition: { $: 'shapeStore.aiAvailable' },
                         then: {
                           type: 'we-text',
                           props: { variant: 'footnote', color: 'text-faint', textAlign: 'center' },
@@ -737,12 +752,12 @@ const shapeWizardModal: SchemaNode = {
                 width: '100%',
                 // Order is the declaration order the manifest stores, and will be the field order
                 // of the derived creation form — so reordering is data, not decoration.
-                onReorder: { $action: 'shapeStore.reorderMembers', args: ['$arg.detail'] },
+                onReorder: { $action: 'shapeStore.reorderMembers', args: [{ $: 'arg.detail' }] },
               },
               children: [
                 {
                   type: '$each',
-                  props: { items: { $store: 'shapeStore.shapeDraft.members' }, as: 'member' },
+                  props: { items: { $: 'shapeStore.shapeDraft.members' }, as: 'member' },
                   children: [memberRow],
                 },
               ],
@@ -790,9 +805,9 @@ const shapeWizardModal: SchemaNode = {
               props: {
                 size: 'sm',
                 width: '240px',
-                options: { $store: 'shapeStore.identityOptions' },
+                options: { $: 'shapeStore.identityOptions' },
                 value: { $: "shapeStore.shapeDraft.identityMember ? shapeStore.shapeDraft.identityMember : 'none'" },
-                onChange: { $action: 'shapeStore.setIdentityMember', args: ['$arg.detail'] },
+                onChange: { $action: 'shapeStore.setIdentityMember', args: [{ $: 'arg.detail' }] },
               },
             },
           ],
@@ -807,8 +822,8 @@ const shapeWizardModal: SchemaNode = {
               children: [
                 {
                   type: '$each',
-                  props: { items: { $store: 'shapeStore.draftErrors' }, as: 'error' },
-                  children: [{ type: 'we-alert', props: { variant: 'danger' }, children: ['$error'] }],
+                  props: { items: { $: 'shapeStore.draftErrors' }, as: 'error' },
+                  children: [{ type: 'we-alert', props: { variant: 'danger' }, children: [{ $: 'error' }] }],
                 },
               ],
             },
@@ -830,8 +845,8 @@ const shapeWizardModal: SchemaNode = {
           type: 'we-button',
           props: {
             variant: 'primary',
-            loading: { $store: 'shapeStore.savingShape' },
-            disabled: { $store: 'shapeStore.savingShape' },
+            loading: { $: 'shapeStore.savingShape' },
+            disabled: { $: 'shapeStore.savingShape' },
             onClick: { $action: 'shapeStore.saveShapeDraft' },
           },
           children: [{ $: "shapeStore.editingShapeId ? 'Save changes' : 'Create model'" }],
@@ -862,7 +877,7 @@ const hintEditorModal: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $store: 'shapeStore.hintEditor.customized' },
+            condition: { $: 'shapeStore.hintEditor.customized' },
             then: { type: 'we-badge', props: { variant: 'primary' }, children: ['Customized for this space'] },
             else: { type: 'we-badge', props: { variant: 'neutral' }, children: ['Using defaults'] },
           },
@@ -888,27 +903,30 @@ const hintEditorModal: SchemaNode = {
               type: 'we-textarea',
               props: {
                 rows: 3,
-                value: { $store: 'shapeStore.hintEditor.classHint' },
-                onInput: { $action: 'shapeStore.setHintDraft', args: ['class', '$arg.detail'] },
+                value: { $: 'shapeStore.hintEditor.classHint' },
+                onInput: { $action: 'shapeStore.setHintDraft', args: ['class', { $: 'arg.detail' }] },
               },
             },
           ],
         },
         {
           type: '$each',
-          props: { items: { $store: 'shapeStore.hintEditor.rows' }, as: 'row' },
+          props: { items: { $: 'shapeStore.hintEditor.rows' }, as: 'row' },
           children: [
             {
               type: 'we-form-field',
-              props: { label: '$row.name' },
+              props: { label: { $: 'row.name' } },
               children: [
                 {
                   type: 'we-textarea',
                   props: {
                     rows: 2,
                     placeholder: 'No hint — the AI sees only the field name and type',
-                    value: '$row.hint',
-                    onInput: { $action: 'shapeStore.setHintDraft', args: ['$row.predicate', '$arg.detail'] },
+                    value: { $: 'row.hint' },
+                    onInput: {
+                      $action: 'shapeStore.setHintDraft',
+                      args: [{ $: 'row.predicate' }, { $: 'arg.detail' }],
+                    },
                   },
                 },
               ],
@@ -925,12 +943,12 @@ const hintEditorModal: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $store: 'shapeStore.hintEditor.customized' },
+            condition: { $: 'shapeStore.hintEditor.customized' },
             then: {
               type: 'we-button',
               props: {
                 variant: 'ghost',
-                loading: { $store: 'shapeStore.hintBusy' },
+                loading: { $: 'shapeStore.hintBusy' },
                 onClick: { $action: 'shapeStore.resetHintEditor' },
               },
               children: [
@@ -954,8 +972,8 @@ const hintEditorModal: SchemaNode = {
               type: 'we-button',
               props: {
                 variant: 'primary',
-                loading: { $store: 'shapeStore.hintBusy' },
-                disabled: { $store: 'shapeStore.hintBusy' },
+                loading: { $: 'shapeStore.hintBusy' },
+                disabled: { $: 'shapeStore.hintBusy' },
                 onClick: { $action: 'shapeStore.saveHintEditor' },
               },
               children: ['Save for this space'],
@@ -995,7 +1013,7 @@ const shapeRow: SchemaNode = {
                   type: 'Row',
                   props: { gap: '200', ay: 'center' },
                   children: [
-                    { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['$shape.name'] },
+                    { type: 'we-text', props: { fontWeight: 'semibold' }, children: [{ $: 'shape.name' }] },
                     {
                       type: 'we-badge',
                       props: { variant: 'neutral', size: 'xs' },
@@ -1010,7 +1028,7 @@ const shapeRow: SchemaNode = {
                 {
                   type: 'we-text',
                   props: { variant: 'footnote', color: 'text-faint' },
-                  children: ['$shape.description'],
+                  children: [{ $: 'shape.description' }],
                 },
               ],
             },
@@ -1025,7 +1043,7 @@ const shapeRow: SchemaNode = {
               props: {
                 variant: 'ghost',
                 size: 'sm',
-                onClick: { $action: 'shapeStore.openHintEditor', args: ['$shape.name'] },
+                onClick: { $action: 'shapeStore.openHintEditor', args: [{ $: 'shape.name' }] },
               },
               children: [
                 { type: 'we-icon', props: { name: 'sparkle' } },
@@ -1040,7 +1058,7 @@ const shapeRow: SchemaNode = {
                 variant: 'ghost',
                 size: 'sm',
                 square: true,
-                onClick: { $action: 'shapeStore.openShapeWizard', args: ['$shape.id'] },
+                onClick: { $action: 'shapeStore.openShapeWizard', args: [{ $: 'shape.id' }] },
               },
               children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],
             },
@@ -1050,7 +1068,7 @@ const shapeRow: SchemaNode = {
                 variant: 'ghost',
                 size: 'sm',
                 square: true,
-                onClick: { $setLocal: 'confirmDeleteShapeId', value: '$shape.id' },
+                onClick: { $setLocal: 'confirmDeleteShapeId', value: { $: 'shape.id' } },
               },
               children: [{ type: 'we-icon', props: { name: 'trash' } }],
             },
@@ -1064,8 +1082,8 @@ const shapeRow: SchemaNode = {
         condition: { $: 'count(shape.problems)' },
         then: {
           type: '$each',
-          props: { items: '$shape.problems', as: 'problem' },
-          children: [{ type: 'we-alert', props: { variant: 'warning' }, children: ['$problem'] }],
+          props: { items: { $: 'shape.problems' }, as: 'problem' },
+          children: [{ type: 'we-alert', props: { variant: 'warning' }, children: [{ $: 'problem' }] }],
         },
       },
     },
@@ -1082,7 +1100,7 @@ const hintEntityRow: SchemaNode = {
       props: { gap: '200', ay: 'center' },
       children: [
         { type: 'we-icon', props: { name: 'package', color: 'text-muted' } },
-        { type: 'we-text', children: ['$entity.entity'] },
+        { type: 'we-text', children: [{ $: 'entity.entity' }] },
         { type: 'we-badge', props: { variant: 'neutral', size: 'xs' }, children: ['Built-in'] },
       ],
     },
@@ -1091,7 +1109,7 @@ const hintEntityRow: SchemaNode = {
       props: {
         variant: 'ghost',
         size: 'sm',
-        onClick: { $action: 'shapeStore.openHintEditor', args: ['$entity.entity'] },
+        onClick: { $action: 'shapeStore.openHintEditor', args: [{ $: 'entity.entity' }] },
       },
       children: [
         { type: 'we-icon', props: { name: 'sparkle' } },
@@ -1108,7 +1126,7 @@ const hintEntityRow: SchemaNode = {
  * is not itself dismissed by the backdrop click that raised the question.
  */
 const discardConfirmModal: SchemaNode = confirmModal({
-  open: { $store: 'shapeStore.confirmDiscard' },
+  open: { $: 'shapeStore.confirmDiscard' },
   close: { $action: 'shapeStore.cancelDiscard' },
   title: 'Discard this model?',
   body: 'What you have filled in will be lost. Nothing has been saved to the space yet.',
@@ -1125,7 +1143,7 @@ const discardConfirmModal: SchemaNode = confirmModal({
  * dialogs. Beside the wizard rather than inside it, like the discard confirmation.
  */
 const replaceFieldsConfirmModal: SchemaNode = confirmModal({
-  open: { $store: 'shapeStore.confirmReplaceFields' },
+  open: { $: 'shapeStore.confirmReplaceFields' },
   close: { $action: 'shapeStore.cancelReplaceFields' },
   title: 'Replace the fields below?',
   body: 'Generating starts the field list again from the name, description and AI hint. The fields you have written will be replaced.',
@@ -1140,12 +1158,12 @@ const replaceFieldsConfirmModal: SchemaNode = confirmModal({
   shapes the old `openLocal` option could not express.
 */
 const deleteConfirmModal: SchemaNode = confirmModal({
-  open: { $local: 'confirmDeleteShapeId' },
+  open: { $: 'local.confirmDeleteShapeId' },
   close: { $setLocal: 'confirmDeleteShapeId', value: '' },
   title: 'Remove this model?',
   body: 'Entries already created with it keep their data, and other members keep seeing them — only the definition is removed from this space.',
   confirmLabel: 'Remove',
-  confirm: { $action: 'shapeStore.deleteShape', args: [{ $local: 'confirmDeleteShapeId' }] },
+  confirm: { $action: 'shapeStore.deleteShape', args: [{ $: 'local.confirmDeleteShapeId' }] },
 });
 
 export const modelsSection: SchemaNode = {
@@ -1164,7 +1182,7 @@ export const modelsSection: SchemaNode = {
       {
         type: '$if',
         props: {
-          condition: { $store: 'shapeStore.shapesLoaded' },
+          condition: { $: 'shapeStore.shapesLoaded' },
           then: {
             type: '$if',
             props: {
@@ -1175,7 +1193,7 @@ export const modelsSection: SchemaNode = {
                 children: [
                   {
                     type: '$each',
-                    props: { items: { $store: 'shapeStore.spaceShapes' }, as: 'shape' },
+                    props: { items: { $: 'shapeStore.spaceShapes' }, as: 'shape' },
                     children: [shapeRow],
                   },
                 ],
@@ -1218,8 +1236,8 @@ export const modelsSection: SchemaNode = {
           },
         ],
       },
-      { type: '$if', props: { condition: { $store: 'shapeStore.shapeDraft' }, then: shapeWizardModal } },
-      { type: '$if', props: { condition: { $store: 'shapeStore.hintEditor' }, then: hintEditorModal } },
+      { type: '$if', props: { condition: { $: 'shapeStore.shapeDraft' }, then: shapeWizardModal } },
+      { type: '$if', props: { condition: { $: 'shapeStore.hintEditor' }, then: hintEditorModal } },
       discardConfirmModal,
       replaceFieldsConfirmModal,
       deleteConfirmModal,

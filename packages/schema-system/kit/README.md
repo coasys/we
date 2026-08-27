@@ -24,7 +24,7 @@ This package is the lower of the two fragment tiers:
 
 | Tier      | Package                              | May reference                                                           |
 | --------- | ------------------------------------ | ----------------------------------------------------------------------- |
-| Portable  | **`@we/schema-kit`** (this one)      | components, primitives, `$local` contracts it documents                 |
+| Portable  | **`@we/schema-kit`** (this one)      | components, primitives, `local` contracts it documents                  |
 | WE-domain | `@we/template-kit` (`templates/kit`) | WE's stores (`profileStore`, `spaceStore`, `runtimeStore`) and `$agent` |
 
 The split is the kit's honest dependency declaration, and it is enforced rather than trusted:
@@ -52,7 +52,7 @@ deployment — including one that has never heard of WE's stores.
 They live in **[`../../templates/kit/CONVENTIONS.md`](../../templates/kit/CONVENTIONS.md)**, which
 governs both tiers: the extraction threshold (three real uses, or a divergence that is already a
 bug), the single-options-object API rule, the body style that keeps a fragment readable as the tree
-it emits, semantic colour roles, and the duty to document every `$local` a fragment reads from or
+it emits, semantic colour roles, and the duty to document every local a fragment reads from or
 writes to its ancestors.
 
 The architecture story — why fragments exist at all, and where the layer is going — is

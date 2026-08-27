@@ -42,7 +42,7 @@ export const openCardModal: SchemaNode = {
     then: {
       type: '$single',
       props: {
-        item: { $query: { entity: 'CollectionBlock', where: { id: { $local: 'selected.recordId' } } } },
+        item: { $query: { entity: 'CollectionBlock', where: { id: { $: 'local.selected.recordId' } } } },
         as: 'card',
       },
       children: [
@@ -50,10 +50,10 @@ export const openCardModal: SchemaNode = {
           openLocal: 'cardOpen',
           title: 'Card',
           saveLabel: 'Save',
-          editorState: '$card.editorState',
+          editorState: { $: 'card.editorState' },
           // `'$arg'` goes second: `updatePost(postId, json)`.
-          saveAction: { $action: 'spaceStore.updatePost', args: ['$card.id', '$arg'] },
-          onSaved: [{ $setLocal: 'revision', by: 1 }],
+          saveAction: { $action: 'spaceStore.updatePost', args: [{ $: 'card.id' }, { $: 'arg' }] },
+          onSaved: [{ $setLocal: 'revision', value: { $: 'local.revision + 1' } }],
         }),
       ],
     },

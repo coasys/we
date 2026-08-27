@@ -1,15 +1,19 @@
 /**
- * Condition model — a small, lossless editing grammar over the boolean operator tokens.
+ * Condition model — a small, lossless editing grammar over the expressions a visual editor can
+ * show as rows.
  *
- * `parseCondition` converts a condition token into a flat comparison/group structure the
- * visual editor can render as rows; `serializeCondition` converts it back. Parsing is
- * deliberately strict: anything the grammar can't represent exactly (`$count`, `$concat`,
- * `$formValid`, deeper nesting than {@link MAX_CONDITION_DEPTH}) returns `null`, and the
- * editor falls back to the raw JSON editor for that condition. That keeps the round-trip
+ * `parseCondition` reads an expression token into a flat comparison/group structure the editor
+ * renders as rows; `serializeCondition` prints it back. Parsing is deliberately strict: anything the
+ * grammar can't represent exactly (arithmetic, a comprehension, a call other than `count` and the
+ * form-state readers, deeper nesting than {@link MAX_CONDITION_DEPTH}) returns `null`, and the
+ * editor falls back to the raw expression editor for that condition. That keeps the round trip
  * honest — the builder never silently rewrites an expression it didn't fully understand.
+ *
+ * Built on the expression AST rather than on the token objects it replaced: the rows are the same,
+ * the spelling underneath is `{ $: "local.open && item.n > 0" }`.
  */
-
-import { expressionSourceToOperator, isExpressionToken, operatorToExpr, printExpression } from './expressions';
+import type { Expr, ExpressionSource } from './expressions';
+import { isExpressionToken, parseExpression, printExpression } from './expressions';
 
 // ── Public types ────────────────────────────────────────────────────────────
 
@@ -22,16 +26,18 @@ export const UNARY_OPERATORS: ComparisonOperator[] = ['truthy', 'falsy'];
 export type FormStateToken = 'formValid' | 'valid' | 'touched' | 'error';
 
 export type ConditionOperand =
+  /** A store member — `spaceStore.members`, `modules.notes.open`. */
   | { kind: 'store'; path: string }
+  /** A `$localState`/`$queries` field — the path after `local.`. */
   | { kind: 'local'; path: string }
-  /** A context reference string — `$item.name`, `$me.did`. */
+  /** A name bound by `$each` or a host binding — `item.name`, `me.did`. */
   | { kind: 'context'; path: string }
   | { kind: 'literal'; value: string | number | boolean | null }
   /** A literal list, only valid as the right-hand side of `in`. */
   | { kind: 'list'; value: (string | number | boolean)[] }
-  /** `$count` over a list-valued reference — "how many X are there". */
+  /** `count(…)` over a list-valued reference — "how many X are there". */
   | { kind: 'count'; items: ConditionOperand }
-  /** `$formValid` / `$valid` / `$touched` / `$error` over a field name. */
+  /** `formValid()` / `valid('f')` / `touched('f')` / `error('f')`. */
   | { kind: 'formState'; token: FormStateToken; field: string };
 
 export interface ConditionComparison {
@@ -53,212 +59,193 @@ export type ConditionExpr = ConditionComparison | ConditionGroup;
 /**
  * How many levels of grouping the builder represents: a top-level group whose children
  * may themselves be groups, but no deeper. Real templates nest at most this far; beyond
- * it the row-based UI stops being clearer than the JSON.
+ * it the row-based UI stops being clearer than the expression.
  */
 export const MAX_CONDITION_DEPTH = 2;
 
-const BINARY_TOKEN_OPS: Record<string, ComparisonOperator> = {
-  $eq: 'eq',
-  $ne: 'ne',
-  $gt: 'gt',
-  $lt: 'lt',
-  $in: 'in',
-};
-
-const FORM_STATE_TOKENS: Record<string, FormStateToken> = {
-  $formValid: 'formValid',
-  $valid: 'valid',
-  $touched: 'touched',
-  $error: 'error',
-};
-
-const OPERATOR_TOKENS: Record<ComparisonOperator, string> = {
-  eq: '$eq',
-  ne: '$ne',
-  gt: '$gt',
-  lt: '$lt',
-  in: '$in',
-  nin: '$in', // wrapped in $not by serializeCondition
-  truthy: '',
-  falsy: '$not',
+const FORM_STATE_CALLS: Record<string, FormStateToken> = {
+  formValid: 'formValid',
+  valid: 'valid',
+  touched: 'touched',
+  error: 'error',
 };
 
 // ── Parsing ─────────────────────────────────────────────────────────────────
 
-function parseOperand(value: unknown): ConditionOperand | null {
-  if (value === null) return { kind: 'literal', value: null };
-
-  if (typeof value === 'string') {
-    // A `$`-prefixed string is a context reference; anything else is a plain literal.
-    return value.startsWith('$') ? { kind: 'context', path: value } : { kind: 'literal', value };
-  }
-  if (typeof value === 'number' || typeof value === 'boolean') return { kind: 'literal', value };
-
-  if (Array.isArray(value)) {
-    const primitives = value.every((v) => typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean');
-    return primitives ? { kind: 'list', value: value as (string | number | boolean)[] } : null;
-  }
-
-  if (typeof value === 'object') {
-    const obj = value as Record<string, unknown>;
-    const keys = Object.keys(obj);
-    if (keys.length !== 1) return null;
-    if (typeof obj.$store === 'string') return { kind: 'store', path: obj.$store };
-    if (typeof obj.$local === 'string') return { kind: 'local', path: obj.$local };
-
-    // `$count` over a list — the only wrapping operator the builder represents, because
-    // "how many of these are there" is how most list conditions are actually written.
-    if (obj.$count && typeof obj.$count === 'object' && !Array.isArray(obj.$count)) {
-      const countKeys = Object.keys(obj.$count as object);
-      if (countKeys.length !== 1 || countKeys[0] !== 'items') return null;
-      const items = parseOperand((obj.$count as Record<string, unknown>).items);
-      if (!items || items.kind === 'list' || items.kind === 'literal') return null;
-      return { kind: 'count', items };
-    }
-
-    // Validation-state readers. `$formValid: '$scope'` is the idiomatic whole-form check;
-    // the others name a single field.
-    const [tokenKey] = keys;
-    const formToken = FORM_STATE_TOKENS[tokenKey];
-    if (formToken) {
-      const field = obj[tokenKey];
-      if (typeof field === 'string') return { kind: 'formState', token: formToken, field };
-      if (formToken === 'formValid' && field === true) return { kind: 'formState', token: formToken, field: '$scope' };
-      return null;
-    }
+/** A dotted reference, or null for anything else. */
+function chainOf(expr: Expr): string[] | null {
+  if (expr.kind === 'ident') return [expr.name];
+  if (expr.kind === 'member') {
+    const inner = chainOf(expr.object);
+    return inner ? [...inner, expr.property] : null;
   }
   return null;
 }
 
-function parseExpr(token: unknown, depth: number): ConditionExpr | null {
-  if (typeof token === 'object' && token !== null && !Array.isArray(token)) {
-    const obj = token as Record<string, unknown>;
-    const keys = Object.keys(obj);
+function referenceOperand(expr: Expr): ConditionOperand | null {
+  const chain = chainOf(expr);
+  if (!chain) return null;
+  const [root, ...rest] = chain;
+  if (root === 'local') return rest.length ? { kind: 'local', path: rest.join('.') } : null;
+  if (/Store$/.test(root) || root === 'modules') return rest.length ? { kind: 'store', path: chain.join('.') } : null;
+  return { kind: 'context', path: chain.join('.') };
+}
 
-    if (keys.length === 1) {
-      const [key] = keys;
-      const value = obj[key];
-
-      // Logical groups
-      if ((key === '$and' || key === '$or') && Array.isArray(value)) {
-        if (depth + 1 > MAX_CONDITION_DEPTH) return null;
-        const children: ConditionExpr[] = [];
-        for (const child of value) {
-          const parsed = parseExpr(child, depth + 1);
-          if (!parsed) return null;
-          children.push(parsed);
-        }
-        if (children.length === 0) return null;
-        return { type: 'group', operator: key === '$and' ? 'and' : 'or', children };
-      }
-
-      // Binary comparisons
-      const operator = BINARY_TOKEN_OPS[key];
-      if (operator && Array.isArray(value) && value.length === 2) {
-        const left = parseOperand(value[0]);
-        const right = parseOperand(value[1]);
-        if (!left || !right) return null;
-        // A list only makes sense as the right-hand side of `in`.
-        if (left.kind === 'list') return null;
-        if (right.kind === 'list' && operator !== 'in') return null;
-        return { type: 'comparison', operator, left, right };
-      }
-
-      if (key === '$not') {
-        // `$not` over `$in` is the "is not one of" row — `$in` is the one comparison with
-        // no negated counterpart, so this round-trips exactly rather than approximating.
-        if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-          const inner = value as Record<string, unknown>;
-          if (Object.keys(inner).length === 1 && Array.isArray(inner.$in) && inner.$in.length === 2) {
-            const left = parseOperand(inner.$in[0]);
-            const right = parseOperand(inner.$in[1]);
-            if (left && right && left.kind !== 'list') return { type: 'comparison', operator: 'nin', left, right };
-            return null;
-          }
-        }
-        // `$not` over a plain reference reads as "is falsy". `$not` wrapping any other
-        // comparison stays raw — folding it into `ne` would change the token on save.
-        const operand = parseOperand(value);
-        if (!operand || operand.kind === 'list') return null;
-        return { type: 'comparison', operator: 'falsy', left: operand };
-      }
+function parseOperand(expr: Expr): ConditionOperand | null {
+  if (expr.kind === 'literal') return { kind: 'literal', value: expr.value };
+  if (expr.kind === 'list') {
+    const values: (string | number | boolean)[] = [];
+    for (const element of expr.elements) {
+      if (element.kind !== 'literal' || element.value === null) return null;
+      values.push(element.value);
     }
+    return { kind: 'list', value: values };
+  }
+  if (expr.kind === 'call') {
+    const args = expr.receiver ? [expr.receiver, ...expr.args] : expr.args;
+    if (expr.callee === 'count' && args.length === 1) {
+      const items = parseOperand(args[0]);
+      if (!items || items.kind === 'list' || items.kind === 'literal') return null;
+      return { kind: 'count', items };
+    }
+    const token = FORM_STATE_CALLS[expr.callee];
+    if (token === 'formValid' && args.length === 0) return { kind: 'formState', token, field: '$scope' };
+    if (token && token !== 'formValid' && args.length === 1) {
+      const [field] = args;
+      if (field.kind === 'literal' && typeof field.value === 'string')
+        return { kind: 'formState', token, field: field.value };
+    }
+    return null;
+  }
+  return referenceOperand(expr);
+}
+
+const BINARY_OPS: Record<string, ComparisonOperator> = { '==': 'eq', '!=': 'ne', '>': 'gt', '<': 'lt', in: 'in' };
+
+function parseExpr(expr: Expr, depth: number): ConditionExpr | null {
+  if (expr.kind === 'logical' && (expr.op === '&&' || expr.op === '||')) {
+    if (depth + 1 > MAX_CONDITION_DEPTH) return null;
+    const operator = expr.op === '&&' ? 'and' : 'or';
+    // `a && b && c` parses left-nested; flatten a chain of the same connective into one group.
+    const parts: Expr[] = [];
+    const gather = (node: Expr): void => {
+      if (node.kind === 'logical' && node.op === expr.op) {
+        gather(node.left);
+        gather(node.right);
+      } else parts.push(node);
+    };
+    gather(expr);
+    const children: ConditionExpr[] = [];
+    for (const part of parts) {
+      const parsed = parseExpr(part, depth + 1);
+      if (!parsed) return null;
+      children.push(parsed);
+    }
+    return { type: 'group', operator, children };
   }
 
-  // A bare reference used as a condition — `condition: { $local: 'showComments' }`.
-  const operand = parseOperand(token);
+  if (expr.kind === 'binary') {
+    const operator = BINARY_OPS[expr.op];
+    if (!operator) return null;
+    const left = parseOperand(expr.left);
+    const right = parseOperand(expr.right);
+    if (!left || !right) return null;
+    if (left.kind === 'list') return null;
+    if (right.kind === 'list' && operator !== 'in') return null;
+    return { type: 'comparison', operator, left, right };
+  }
+
+  if (expr.kind === 'unary' && expr.op === '!') {
+    // `!(a in list)` is the "is not one of" row.
+    if (expr.operand.kind === 'binary' && expr.operand.op === 'in') {
+      const left = parseOperand(expr.operand.left);
+      const right = parseOperand(expr.operand.right);
+      if (left && right && left.kind !== 'list') return { type: 'comparison', operator: 'nin', left, right };
+      return null;
+    }
+    const operand = parseOperand(expr.operand);
+    if (!operand || operand.kind === 'list') return null;
+    return { type: 'comparison', operator: 'falsy', left: operand };
+  }
+
+  // A bare reference used as a condition — `local.showComments`.
+  const operand = parseOperand(expr);
   if (operand && operand.kind !== 'list' && operand.kind !== 'literal') {
     return { type: 'comparison', operator: 'truthy', left: operand };
   }
   return null;
 }
 
+function parseSource(token: unknown): Expr | null {
+  if (!isExpressionToken(token)) return null;
+  try {
+    return parseExpression(token.$);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Parse a condition token into the editing model.
- * Returns null when the token is outside the grammar — callers should fall back to raw JSON.
+ * Returns null when the expression is outside the grammar — callers should fall back to the raw editor.
  */
 export function parseCondition(token: unknown): ConditionExpr | null {
-  if (token === undefined) return null;
-  return parseExpr(asOperatorTree(token), 0);
-}
-
-/**
- * An expression token, as the operator tree the builder's grammar is written over.
- *
- * The builder edits comparisons and groups; an expression is the same thing in another spelling,
- * so a condition written as `{ $: "local.open && item.n > 0" }` opens in the row editor exactly as
- * its operator form would. Anything the editor subset cannot represent — arithmetic, a macro —
- * stays an expression and falls back to the raw editor, as an unrepresentable operator tree does.
- */
-function asOperatorTree(token: unknown): unknown {
-  if (!isExpressionToken(token)) return token;
-  return expressionSourceToOperator(token.$) ?? token;
-}
-
-export type ConditionForm = 'operator' | 'expression';
-
-/** Which spelling a condition token uses, so an edit can be written back in the same one. */
-export function conditionForm(token: unknown): ConditionForm {
-  return isExpressionToken(token) ? 'expression' : 'operator';
+  const expr = parseSource(token);
+  return expr ? parseExpr(expr, 0) : null;
 }
 
 // ── Serializing ─────────────────────────────────────────────────────────────
 
-function serializeOperand(operand: ConditionOperand): unknown {
+function quote(value: string): string {
+  return printExpression({ kind: 'literal', value, span: [0, 0] });
+}
+
+function operandSource(operand: ConditionOperand): string {
   switch (operand.kind) {
     case 'store':
-      return { $store: operand.path };
-    case 'local':
-      return { $local: operand.path };
     case 'context':
       return operand.path;
+    case 'local':
+      return `local.${operand.path}`;
     case 'literal':
-      return operand.value;
+      return operand.value === null
+        ? 'null'
+        : typeof operand.value === 'string'
+          ? quote(operand.value)
+          : String(operand.value);
     case 'list':
-      return operand.value;
+      return `[${operand.value.map((v) => (typeof v === 'string' ? quote(v) : String(v))).join(', ')}]`;
     case 'count':
-      return { $count: { items: serializeOperand(operand.items) } };
+      return `count(${operandSource(operand.items)})`;
     case 'formState':
-      return { [`$${operand.token}`]: operand.field };
+      return operand.token === 'formValid' ? 'formValid()' : `${operand.token}(${quote(operand.field)})`;
   }
 }
 
-export function serializeCondition(expr: ConditionExpr, form: ConditionForm = 'operator'): unknown {
-  const tree = serializeConditionTree(expr);
-  if (form !== 'expression') return tree;
-  const converted = operatorToExpr(tree);
-  return converted ? { $: printExpression(converted) } : tree;
-}
+const OPERATOR_TEXT: Record<Exclude<ComparisonOperator, 'truthy' | 'falsy' | 'nin'>, string> = {
+  eq: '==',
+  ne: '!=',
+  gt: '>',
+  lt: '<',
+  in: 'in',
+};
 
-function serializeConditionTree(expr: ConditionExpr): unknown {
+function conditionSource(expr: ConditionExpr, nested = false): string {
   if (expr.type === 'group') {
-    return { [expr.operator === 'and' ? '$and' : '$or']: expr.children.map(serializeConditionTree) };
+    const joined = expr.children
+      .map((child) => conditionSource(child, true))
+      .join(expr.operator === 'and' ? ' && ' : ' || ');
+    return nested ? `(${joined})` : joined;
   }
-  if (expr.operator === 'truthy') return serializeOperand(expr.left);
-  if (expr.operator === 'falsy') return { $not: serializeOperand(expr.left) };
+  if (expr.operator === 'truthy') return operandSource(expr.left);
+  if (expr.operator === 'falsy') return `!${operandSource(expr.left)}`;
   const right: ConditionOperand = expr.right ?? { kind: 'literal', value: null };
-  const comparison = { [OPERATOR_TOKENS[expr.operator]]: [serializeOperand(expr.left), serializeOperand(right)] };
-  return expr.operator === 'nin' ? { $not: comparison } : comparison;
+  if (expr.operator === 'nin') return `!(${operandSource(expr.left)} in ${operandSource(right)})`;
+  return `${operandSource(expr.left)} ${OPERATOR_TEXT[expr.operator]} ${operandSource(right)}`;
+}
+
+export function serializeCondition(expr: ConditionExpr): ExpressionSource {
+  return { $: conditionSource(expr) };
 }
 
 // ── Values (as opposed to conditions) ───────────────────────────────────────
@@ -266,18 +253,25 @@ function serializeConditionTree(expr: ConditionExpr): unknown {
 /**
  * A value position — a `children` entry, or a prop that resolves to a value rather than
  * a boolean. Parses to an operand so the editor can offer the same reference picker it
- * uses inside conditions; returns null for expressions it can't represent ($concat,
- * $map, $plural, …), which fall back to raw JSON.
+ * uses inside conditions; returns null for expressions it can't represent (arithmetic,
+ * interpolation, a comprehension), which fall back to the raw editor.
  */
 export function parseValue(token: unknown): ConditionOperand | null {
-  return parseOperand(asOperatorTree(token));
+  if (typeof token === 'string') return { kind: 'literal', value: token };
+  if (typeof token === 'number' || typeof token === 'boolean' || token === null)
+    return { kind: 'literal', value: token };
+  const expr = parseSource(token);
+  return expr ? parseOperand(expr) : null;
 }
 
+/** A literal stays a literal; a reference becomes an expression token. */
 export function serializeValue(operand: ConditionOperand): unknown {
-  return serializeOperand(operand);
+  if (operand.kind === 'literal') return operand.value;
+  if (operand.kind === 'list') return operand.value;
+  return { $: operandSource(operand) };
 }
 
-/** The prop-level `$if` form — resolves to a value, unlike the node-level `$if` operator. */
+/** A conditional value — the ternary `test ? a : b` with literal or reference branches. */
 export interface ValueIf {
   condition: unknown;
   then: unknown;
@@ -285,29 +279,36 @@ export interface ValueIf {
 }
 
 /**
- * Recognise `{ $if: { condition, then, else? } }` used in a value position — including
- * inside `children`, where it renders one of two strings.
+ * Recognise `{ $: "cond ? a : b" }` used in a value position — including inside `children`,
+ * where it renders one of two strings. The branches must be literals or references; a nested
+ * ternary or arithmetic is the raw editor's.
  */
 export function parseValueIf(token: unknown): ValueIf | null {
-  if (typeof token !== 'object' || token === null || Array.isArray(token)) return null;
-  const obj = asOperatorTree(token) as Record<string, unknown>;
-  if (Object.keys(obj).length !== 1 || !obj.$if) return null;
-
-  const inner = obj.$if;
-  if (typeof inner !== 'object' || inner === null || Array.isArray(inner)) return null;
-  const { condition, then, else: otherwise, ...rest } = inner as Record<string, unknown>;
-  // Transitions et al. belong to the node-level operator; if they're present this isn't
-  // a plain value conditional and the raw editor should handle it.
-  if (Object.keys(rest).length > 0) return null;
-  if (condition === undefined || then === undefined) return null;
-
+  const expr = parseSource(token);
+  if (!expr || expr.kind !== 'conditional') return null;
+  const branch = (node: Expr): unknown => {
+    const operand = parseOperand(node);
+    return operand ? serializeValue(operand) : undefined;
+  };
+  const then = branch(expr.consequent);
+  if (then === undefined) return null;
+  const otherwise =
+    expr.alternate.kind === 'literal' && expr.alternate.value === null ? undefined : branch(expr.alternate);
+  if (expr.alternate.kind !== 'literal' && otherwise === undefined) return null;
+  const condition: ExpressionSource = { $: printExpression(expr.test) };
   return otherwise === undefined ? { condition, then } : { condition, then, else: otherwise };
 }
 
-export function serializeValueIf(value: ValueIf): unknown {
-  const inner: Record<string, unknown> = { condition: value.condition, then: value.then };
-  if (value.else !== undefined) inner.else = value.else;
-  return { $if: inner };
+function valueSource(value: unknown): string {
+  if (isExpressionToken(value)) return `(${value.$})`;
+  if (typeof value === 'string') return quote(value);
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return 'null';
+}
+
+export function serializeValueIf(value: ValueIf): ExpressionSource {
+  const test = isExpressionToken(value.condition) ? value.condition.$ : valueSource(value.condition);
+  return { $: `${test} ? ${valueSource(value.then)} : ${valueSource(value.else ?? null)}` };
 }
 
 /**

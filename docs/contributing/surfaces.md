@@ -250,17 +250,23 @@ Blocks are stored as models, so a new block type is usually a new model too.
 - **Register** `registerBlock()` in `core-blocks.ts`; components via `registerCoreBlockComponents()`
 - **Verify** `pnpm --filter @we/block-shared test` and `pnpm --filter @we/block-solid typecheck`
 
-### Schema operators
+### Expression functions
 
-New vocabulary in the schema language itself (`$if`, `$concat`, `$plural`, …). The highest-leverage
-and highest-cost surface on this page: an operator is available to every template ever written, and
-removing one is breaking. Component-agnostic boilerplate only.
+Computation the expression language's library lacks. The grammar itself — references, operators,
+comprehensions — is closed and is not a contribution surface; what grows is the function library
+(`count`, `filter`, `plural`, `pick`, …), and every function is available to every template ever
+written, so removing one is breaking. Pure and total only: wrong-typed input answers with the empty
+value of its kind, never a throw. Three real uses before adding one, as for a component.
 
-- **Lives in** `packages/schema-system/shared/src/propResolvers/`
-- **Conventions** [schema-system/CONVENTIONS.md](../../packages/schema-system/CONVENTIONS.md) — "Adding a New Prop-Level Operator" is a six-step checklist; follow it exactly
-- **Copy** `packages/schema-system/shared/src/propResolvers/plural.ts`
-- **Register** wire into `dispatcher.ts`, add to the `OperatorToken` union in `types.ts`, export from `index.ts`
-- **Verify** `pnpm --filter @we/schema-shared test`, then document it in `packages/ai-context/src/fragments/schema-operators.ts` and `generate-context`
+- **Lives in** `packages/schema-system/shared/src/expressions/functions.ts`
+- **Conventions** [schema-system/CONVENTIONS.md](../../packages/schema-system/CONVENTIONS.md) — "Adding a function to the expression library"
+- **Copy** `plural` in `functions.ts`
+- **Register** `defineFunction({ name, category, params, doc, example, impl })` — the registry is the declaration; the validator, the evaluator and the generated context all read it
+- **Verify** `pnpm --filter @we/schema-shared test`, then `generate-context` (the library table in the schema reference comes from the registry)
+
+A function this deployment alone needs is a **host source** instead — registered in
+`packages/app-shell/src/shared/sources/index.ts`, catalogued under "Host functions" in the generated
+context, and known to the validator from there.
 
 ### Stores
 

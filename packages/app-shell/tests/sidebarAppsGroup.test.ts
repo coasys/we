@@ -41,7 +41,7 @@ const nodes = walk(sidebar);
 /** The loop that renders one row per app, found by what it iterates. */
 const appsLoop = nodes.find((node) => {
   const items = (node.props as Node | undefined)?.items as Node | undefined;
-  return node.type === '$each' && items?.$store === 'appStore.appsWithWe';
+  return node.type === '$each' && items?.$ === 'appStore.appsWithWe';
 });
 
 describe('sidebar Apps group', () => {

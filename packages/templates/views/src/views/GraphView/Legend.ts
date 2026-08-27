@@ -1,4 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
+import { expr } from '@we/schema-shared';
 
 import { swatchRow } from './Palette';
 
@@ -37,7 +38,7 @@ import { swatchRow } from './Palette';
  * called `TypeStyle` and lives on the board rather than being a colour field on the type.
  */
 
-const BOARD = { $local: 'boardId' };
+const BOARD = { $: 'local.boardId' };
 
 /** The colour this type currently carries on this board, or empty. */
 const colorOf = { $: 'find(local.boardTypeStyles, { nodeType: placement.nodeType }).color' };
@@ -58,7 +59,7 @@ const typeRow: SchemaNode = {
       props: {
         variant: 'bare',
         width: '100%',
-        onClick: { $toggleLocalIn: 'openTypes', value: '$placement.nodeType' },
+        onClick: { $toggleLocalIn: 'openTypes', value: { $: 'placement.nodeType' } },
       },
       children: [
         {
@@ -73,11 +74,11 @@ const typeRow: SchemaNode = {
                 r: '100',
                 // Falls back to the neutral every unstyled card is drawn in, so the key never shows
                 // a colour the board is not using.
-                bg: { $if: { condition: colorOf, then: colorOf, else: 'accent-muted' } },
+                bg: expr`${colorOf} ? ${colorOf} : 'accent-muted'`,
                 border: '1px solid border-strong',
               },
             },
-            { type: 'we-text', props: { variant: 'label', truncate: true }, children: ['$placement.nodeType'] },
+            { type: 'we-text', props: { variant: 'label', truncate: true }, children: [{ $: 'placement.nodeType' }] },
             {
               type: 'we-text',
               props: { variant: 'footnote', color: 'text-muted', ml: 'auto' },
@@ -107,10 +108,10 @@ const typeRow: SchemaNode = {
           current: colorOf,
           pick: (token) => ({
             $action: 'recordStore.setTypeColor',
-            args: [BOARD, '$placement.nodeType', token],
+            args: [BOARD, { $: 'placement.nodeType' }, token],
             // The graph re-reads and merges, so every card of that type changes at once — which is
             // the whole point of colouring a type rather than a card.
-            onSuccess: [{ $setLocal: 'revision', by: 1 }],
+            onSuccess: [{ $setLocal: 'revision', value: { $: 'local.revision + 1' } }],
           }),
         }),
       },
@@ -151,7 +152,7 @@ export const boardLegend: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $and: [BOARD, { $local: 'legendOpen' }] },
+        condition: expr`${BOARD} && local.legendOpen`,
         enterTransition: [
           { type: 'slide', direction: 'right', distance: '24px', duration: 180 },
           { type: 'fade', duration: 150 },
@@ -230,7 +231,7 @@ export const boardLegend: SchemaNode = {
                         condition: { $: 'count(local.boardPlacements)' },
                         then: {
                           type: '$each',
-                          props: { items: { $local: 'boardPlacements' }, as: 'placement' },
+                          props: { items: { $: 'local.boardPlacements' }, as: 'placement' },
                           children: [
                             {
                               /*

@@ -1,7 +1,6 @@
 /**
- * Schema operators fragment — documents schema structure, the expression layer, the tokens that
- * remain (references, handlers, queries, local state), and block-level dynamic structures ($each,
- * $if, $query).
+ * Schema operators fragment — documents schema structure, the expression layer, the handler and
+ * query tokens, local state, and block-level dynamic structures ($each, $if, $query).
  *
  * Hand-maintained, except the function library, which is generated from the registry so the
  * documented set and the callable set are one list.
@@ -43,9 +42,7 @@ export function formatFunctionLibrary(library: FunctionDoc[], sources: SourceEnt
       lines.push(`    ${fn.name}(${fn.params.join(', ')}) — ${fn.doc}  e.g. ${fn.example}`);
     }
   }
-  lines.push(
-    '  Host functions (this deployment registers them; also reachable as { "$source": { "name", "options" } }):',
-  );
+  lines.push('  Host functions (this deployment registers them):');
   if (!sources.length) lines.push('    (none)');
   for (const source of sources) {
     lines.push(`    ${source.name}(${source.params.join(', ')}) — ${source.doc}  e.g. ${source.example}`);
@@ -61,7 +58,7 @@ export function schemaOperators(library: FunctionDoc[], sources: SourceEntry[]):
 A schema is a tree of nodes. Each node can have:
 - type: The component to render (string, e.g. "we-button", "Column")
 - props: An object of props for the component
-- children: An array of child nodes (or strings for text), or token objects like { $store: '...' } or { $concat: [...] }.
+- children: An array of child nodes, strings for text, or expressions like { "$": "post.title" } (rendered as text).
 - slots: Named slots for advanced composition (optional)
 - slot: The name of the slot this node should be rendered into (optional)
 - routes: For routing components, an array of nestable route objects (optional)
@@ -81,11 +78,13 @@ Example node:
 
 ## Prop-level Dynamic Logic & Expressions
 
-Special tokens in props enable dynamic, reactive, or computed behavior.
+Two kinds of token go in props: an EXPRESSION, { "$": "…" }, for anything computed (a store read, a
+condition, a label, a list), and a HANDLER ($action, $setLocal, …) for anything that happens on an
+event. A plain string is always text. There are no other value tokens.
 
 Store reference:
-{ "$store": "storeName.property.path" }
-Resolves a value from a named store, supporting nested paths.
+{ "$": "storeName.property.path" }
+Reads a value from a named store, supporting nested paths — reactive, so the prop follows the store.
 
 Action/event:
 { "$action": "storeName.method", "args": [...] }
@@ -97,14 +96,14 @@ first parameter is OPTIONAL receives a PointerEvent from a button written the ob
 you mean explicitly when the method has an optional leading parameter — note "args": [] does not help, since
 an empty list is treated as "no args given" and forwards the event too.
 Supports async lifecycle callbacks — fired after the store method's Promise resolves/rejects:
-  onSuccess: [...actions]  — fired on resolve; '$result' (and '$result.<path>') in args refers to the resolved value
-  onError: [...actions]    — fired on reject; '$result.message' etc. refers to the error object
+  onSuccess: [...actions]  — fired on resolve; { "$": "result" } (and result.<path>) in args refers to the resolved value
+  onError: [...actions]    — fired on reject; { "$": "result.message" } etc. refers to the error object
   onFinally: [...actions]  — fired regardless of outcome
 Non-promise (synchronous) methods are unaffected — lifecycle keys are ignored.
 Example — close modal after async submission:
 { "$action": "spaceStore.createSpace", "args": [...], "onSuccess": [{ "$setLocal": "modalOpen", "value": false }] }
 Example — navigate to newly created item:
-{ "$action": "spaceStore.createSpace", "args": [...], "onSuccess": [{ "$setLocal": "modalOpen", "value": false }, { "$action": "routeStore.navigate", "args": [{ "$concat": ["/space/", "$result.uuid"] }] }] }
+{ "$action": "spaceStore.createSpace", "args": [...], "onSuccess": [{ "$setLocal": "modalOpen", "value": false }, { "$action": "routeStore.navigate", "args": [{ "$": "\`/space/\${result.uuid}\`" }] }] }
 
 Model mutations via $action (use these for creating/updating/deleting model instances):
 model.create — creates a model instance in the current perspective (default) or a specified one:
@@ -112,11 +111,11 @@ model.create — creates a model instance in the current perspective (default) o
 The third argument is an options object. Omit it to use the current space perspective.
 
 model.update — updates a model instance:
-{ "$action": "model.update", "args": ["ModelName", "$item.id", { "field": "newValue" }] }
-To target a non-current perspective: { "$action": "model.update", "args": ["ModelName", "$item.id", { "field": "value" }, { "perspective": "datasetStore.rootDataset" }] }
+{ "$action": "model.update", "args": ["ModelName", { "$": "item.id" }, { "field": "newValue" }] }
+To target a non-current perspective: { "$action": "model.update", "args": ["ModelName", { "$": "item.id" }, { "field": "value" }, { "perspective": "datasetStore.rootDataset" }] }
 
 model.delete — deletes a model instance:
-{ "$action": "model.delete", "args": ["ModelName", "$item.id"] }
+{ "$action": "model.delete", "args": ["ModelName", { "$": "item.id" }] }
 
 Use perspective: 'datasetStore.rootDataset' for we-root models (AgentSettings, ChatSession, etc.).
 Use the default (no perspective) for space-scoped models (Space, Signal, etc.).
@@ -138,6 +137,8 @@ References — what a name starts from:
   surface.tier, surface.width    the responsive boundary
   event, arg, result             the callback argument inside a handler, and a settled $action's value
 A plain string in an expression is ALWAYS a literal: 'item.name' is five words, item.name is a read.
+A plain string in a PROP or in children is text too: "$item.name" renders those ten characters. A
+reference is always written { "$": "item.name" }; the validator rejects the old string spelling.
 A store's actions are unreachable — spaceStore.createPost reads as nothing; only $action calls.
 
 Operators, in JavaScript's spelling and precedence:
@@ -148,7 +149,7 @@ Operators, in JavaScript's spelling and precedence:
   ??                             the fallback-value idiom:  local.name ?? 'Untitled'
   test ? a : b                   conditional value
   + - * / %                      arithmetic; + joins strings when either side is one; / by 0 is 0
-  \`…\${expr}…\`                    interpolation — the old $concat
+  \`…\${expr}…\`                    interpolation
   a.name   a[i]                  property and index reads; a missing path is undefined, never an error
   [a, b]   { key: value }        list and object literals — the where-object below is one
 
@@ -207,30 +208,21 @@ Rules:
 - No new value operators will be added and no new syntax. Computation the library lacks is a function
   the host registers, catalogued under "Host functions" above.
 
-Legacy tokens. { "$eq": [a, b] }, { "$ne": … }, { "$lt": … }, { "$gt": … }, { "$in": … }, { "$not": … },
-{ "$and": [ … ] }, { "$or": [ … ] }, { "$concat": [ … ] }, { "$count": { "items" } },
-{ "$filter": { "items", "where", "limit" } }, { "$find": { "items", "where", "select" } },
-{ "$plural": { "count", "one", "other" } }, { "$map": { "items", "select" } }, { "$pick": { "from", "props" } }
-and the prop-level { "$if": { "condition", "then", "else" } } are the same language written as JSON
-and still render — an existing template needs no change — but write new schemas as expressions.
-Context-reference STRINGS ("$item.name", "$me.did") likewise still resolve inside those tokens and as
-bare children; inside an expression they are literals.
-
 Query (data retrieval):
 { "$query": { "entity": "ModelName", "where": { "field": "value" }, "limit": 10, "order": { "field": "asc" } } }
 Queries the current dataset for entity instances. Always returns an array.
 Options: entity (required), where, order, limit, offset, include, scope, dataset, subscribe.
 subscribe defaults to true — reactive live updates. Set subscribe: false to do a one-time fetch.
-By default $query targets the current dataset ($currentDataset). Use dataset to query a different dataset —
-required when reading entities from an external app (e.g. Flux) that is open as a WE space:
-{ "$query": { "entity": "Channel", "dataset": "$currentDataset" } }
+By default $query targets the current dataset. Use dataset to query a different dataset — required
+when reading entities from an external app (e.g. Flux) that is open as a WE space:
+{ "$query": { "entity": "Channel", "dataset": { "$": "currentDataset" } } }
 
 Backend-neutral identity & dataset refs — prefer these over backend-store paths inside $query and conditions:
-- $currentDataset — the currently active dataset (an AD4M perspective, in the AD4M backend). Use as a dataset value.
+- currentDataset — the currently active dataset (an AD4M perspective, in the AD4M backend). Use as a dataset value.
   A host store's dataset accessor (e.g. \`dataset: 'datasetStore.marketplaceDataset'\`) works as a dataset value too.
   When passing a dataset to a *component prop* rather than a query, append \`.handle\` — component props take the
-  backend's own dataset handle: { "perspective": { "$store": "datasetStore.currentDataset.handle" } }.
-- $me — the current agent's identity object. Use $me.did for their DID (ownership checks, author filters, e.g. { "$eq": ["$post.author", "$me.did"] }); $me.handle / $me.avatar for profile fields once loaded.
+  backend's own dataset handle: { "perspective": { "$": "datasetStore.currentDataset.handle" } }.
+- me — the current agent's identity object. Use me.did for their DID (ownership checks, author filters, e.g. { "$": "post.author == me.did" }); me.handle / me.avatar for profile fields once loaded.
 
 Eager-loading relations with include (most common relational pattern):
 include hydrates related model instances in the same query — no extra fetches needed.
@@ -263,15 +255,9 @@ Sorting by a count projection — order can reference a $-prefixed count key dir
 Requirements: only a single order key is supported when it targets a projection (mixing it with a second sort key falls back
 to a plain property sort), and the query must also specify limit or offset — without one the count isn't computed yet at
 sort time and the order silently has no effect. Always pair count-projection ordering with a limit.
-Combine with $if for a user-togglable sort field (e.g. "newest" vs "most liked"):
+Combine with a ternary for a user-togglable sort field (e.g. "newest" vs "most liked"):
 {
-  "order": {
-    "$if": {
-      "condition": { "$eq": [{ "$local": "sortField" }, "likes"] },
-      "then": { "$likeCount": { "$local": "sortDirection" } },
-      "else": { "createdAt": { "$local": "sortDirection" } }
-    }
-  }
+  "order": { "$": "local.sortField == 'likes' ? { $likeCount: local.sortDirection } : { createdAt: local.sortDirection }" }
 }
 
 Sorting by a related model property — order can reference a dotted "relation.property" path for a HasOne/HasMany
@@ -287,11 +273,11 @@ relation declared on the model, sorting by a scalar property on the related inst
 Same requirements as count-projection ordering above: only a single order key, and pair with limit/offset — without
 one the relation data isn't attached yet at sort time and the order silently has no effect. include isn't required
 for the sort itself (the relation is resolved from the model's declared shape), but you'll usually want it anyway to
-read the field in the UI (e.g. "$space.location.country").
-Combine with $if the same way as count-projection ordering to let the user toggle between sort fields.
+read the field in the UI (e.g. { "$": "space.location.country" }).
+Combine with a ternary the same way as count-projection ordering to let the user toggle between sort fields.
 
 Single-item projection — add a derived field that resolves to one instance or null:
-{ "$query": { "entity": "Post", "include": { "$myLike": { "from": "likes", "where": { "author": "$me.did" }, "limit": 1 } } } }
+{ "$query": { "entity": "Post", "include": { "$myLike": { "from": "likes", "where": { "author": { "$": "me.did" } }, "limit": 1 } } } }
 With limit: 1 the field unwraps to T | null instead of an array.
 
 include only works with typed relations — ones where the target model class is known.
@@ -300,18 +286,18 @@ relations marked "→ ModelName" are typed (safe for include); relations marked 
 are untyped and will crash at runtime if used with include — use a scope drill-down instead.
 
 Relational queries — fetch a parent record's children (drill-down navigation):
-{ "$query": { "entity": "Conversation", "scope": { "anchor": "Channel", "via": "conversations", "anchorId": "$channel.id" } } }
+{ "$query": { "entity": "Conversation", "scope": { "anchor": "Channel", "via": "conversations", "anchorId": { "$": "channel.id" } } } }
 scope.anchor is the parent entity type; scope.via is its relation whose targets are this query's entity (the
 HasMany relation listed for that entity in externalModels); scope.anchorId is the parent record's id (typically
 from a $each context variable or a route segment). The adapter resolves the relation to a backend handle —
 no protocol details live in the template.
 Use this pattern when navigating to a detail route and loading only that record's children.
-For external-app datasets, always add dataset: "$currentDataset".
+For external-app datasets, always add dataset: { "$": "currentDataset" }.
 
 Local state (scoped ephemeral state):
 Declare on any node: "$localState": { "name": { "type": "string", "initial": "" } }
 Supported types: "string", "boolean", "number", "function", "object", "array".
-"array" is a set of values — the type $toggleLocalIn writes and $in reads. Use it for per-row state
+"array" is a set of values — the type $toggleLocalIn writes and \`in\` reads. Use it for per-row state
 (which rows are open, which are selected) where the rows come from data.
 Two opt-in persistence tiers (see docs/architecture/routing-and-view-state.md for the full rules):
 - "syncParam": "<param>" mirrors the field into a URL query parameter — for VIEW STATE (selected
@@ -329,21 +315,20 @@ The deciding question: "if I sent this URL to someone, should they see the effec
 no but future-me should: persist; no one: plain.
 Links may also carry ?template=<id> and ?theme=<id> — the shell applies them when the recipient has
 them and warns (toast) when not. Templates never handle these params themselves.
-Read:  { "$local": "name" } — returns the signal value (reactive).
-       { "$local": "name.nested.path" } — dot-notation reads into object-typed fields (reactive).
-Write: { "$setLocal": "name", "from": "$event.target.value" } — event handler that updates the signal.
+Read:  { "$": "local.name" } — the signal value (reactive).
+       { "$": "local.name.nested.path" } — dot paths read into object-typed fields (reactive).
+Write: { "$setLocal": "name", "value": { "$": "event.target.value" } } — event handler that sets what the expression computes when it fires, with event in scope.
        { "$setLocal": "name", "value": "literal" } — sets to a literal value (string, number, boolean, null, object).
-       { "$setLocal": "name", "merge": { "field": "$event.detail" } } — shallow-merges fields into an object-typed signal. Values are resolved as event paths (e.g. "$event.detail") or passed as literals. Use for partial updates to object state.
-       { "$setLocal": "name", "by": 20 } — adds to a NUMBER field, reading the current value first. A non-numeric current value counts as 0.
-       { "$setLocal": "name", "value": { "$": "local.name + event.step" } } — sets what an expression computes when the handler fires, with event in scope. The general form of "by".
-Note "value" is a LITERAL unless it is an expression: any other token object inside it is stored as the object, not as what it would resolve to. To store something computed write { "$": "…" }, or use "from"/"merge", whose values are resolved as event paths.
+       { "$setLocal": "name", "merge": { "field": { "$": "event.detail" } } } — shallow-merges fields into an object-typed signal; each field is a literal or an expression. Use for partial updates to object state.
+       { "$setLocal": "name", "value": { "$": "local.name + 20" } } — arithmetic on the current value, for paging and counters.
+Note "value" is a LITERAL unless it is an expression: any other token object inside it is stored as the object, not as what it would resolve to.
 Toggle: { "$toggleLocal": "fieldName" } — toggles a boolean field (equivalent to setting it to !current). Use for show/hide, open/close, expand/collapse patterns.
-Toggle one of many: { "$toggleLocalIn": "fieldName", "value": "$group.id" } — adds the value to an
-  array-typed field, or removes it if already there. Read it back with $in:
-  { "$in": ["$group.id", { "$local": "collapsedGroups" }] }.
+Toggle one of many: { "$toggleLocalIn": "fieldName", "value": { "$": "group.id" } } — adds the value to an
+  array-typed field, or removes it if already there. Read it back with \`in\`:
+  { "$": "group.id in local.collapsedGroups" }.
   This is how PER-ROW state works when the rows come from data. $localState field names are fixed
   when the template is written, so "expanded?" cannot be a boolean per row for rows that come from a
-  $query or a $store — there is no name to give them. Hold the ids instead:
+  $query or a store — there is no name to give them. Hold the ids instead:
     "$localState": { "collapsedGroups": { "type": "array", "initial": [] } }
   A fixed, known-in-advance set of sections is still better served by one boolean each.
 Call function: { "$callLocal": "fieldName" } — event handler that calls the function stored in a function-typed local field.
@@ -351,33 +336,34 @@ Call function: { "$callLocal": "fieldName" } — event handler that calls the fu
   The field must be declared as type: 'function' and set via $setLocal.
   Example: { "onClick": { "$callLocal": "onConfirm" } }
 State is created on mount and destroyed on unmount. Nested $localState declarations merge, inner fields shadow outer.
-$local values can be used in $action args: { "$action": "store.method", "args": [{ "$local": "name" }] }
+Local values can be used in $action args: { "$action": "store.method", "args": [{ "$": "local.name" }] }
 
 Object-typed local state (consolidating related scalar fields):
 When several related fields share a common condition on their initial values (e.g. all null/empty when a store value is absent), prefer a single "object" field seeded from the store, then read sub-fields with dot-notation and write with merge.
-Example — location object (replaces 5 separate scalar fields with $if guards):
-  "$localState": { "location": { "type": "object", "initial": { "$store": "spaceStore.currentSpace.location" } } }
-  Read:  { "$local": "location.latitude" }, { "$local": "location.city" }
-  Write (picker confirm): { "$setLocal": "location", "from": "$event.detail" }
-  Write (partial edit):   { "$setLocal": "location", "merge": { "city": "$event.detail" } }
+Example — location object (replaces 5 separate scalar fields with conditional initials):
+  "$localState": { "location": { "type": "object", "initial": { "$": "spaceStore.currentSpace.location" } } }
+  Read:  { "$": "local.location.latitude" }, { "$": "local.location.city" }
+  Write (picker confirm): { "$setLocal": "location", "value": { "$": "event.detail" } }
+  Write (partial edit):   { "$setLocal": "location", "merge": { "city": { "$": "event.detail" } } }
   Write (clear):          { "$setLocal": "location", "value": null }
-  Condition (has location): { "$local": "location" }
-Use "object" whenever you would otherwise write 3+ related scalar fields each needing $if on their initial value.
+  Condition (has location): { "$": "local.location" }
+Use "object" whenever you would otherwise write 3+ related scalar fields each needing a conditional initial value.
 
 Hoisted query state ($queries):
-Declare on any node to run reactive subscriptions at the node root and expose results in $local.
-Solves two problems: avoids N duplicate subscriptions inside $each loops, and makes query results available for $if conditions.
+Declare on any node to run reactive subscriptions at the node root and expose results under local.
+Solves two problems: avoids N duplicate subscriptions inside $each loops, and makes query results available to conditions.
 "$queries": { "signalTypes": { "entity": "SignalType", "subscribe": true } }
-Results are injected into $local as read-only reactive arrays, accessible via { "$local": "signalTypes" }.
+Results are injected into local as read-only reactive arrays, read as { "$": "local.signalTypes" }.
 Query options are identical to $each's $query prop (entity, where, order, limit, include, dataset, subscribe).
-Each entry also exposes a read-only boolean { "$local": "<name>Loaded" } — false until the first
-result set (or error) arrives, then true for good. Gate a loading skeleton on it so the empty
-state only ever asserts "loaded and empty", never "not answered yet":
-{ "$if": { "condition": { "$local": "signalTypesLoaded" }, "then": <list-or-empty>, "else": <skeleton> } }
-$queries and $localState share the same $local namespace — avoid duplicate names across both.
+Each entry also exposes a read-only boolean local.<name>Loaded — false until the first result set (or
+error) arrives, then true for good. Gate a loading skeleton on it so the empty state only ever
+asserts "loaded and empty", never "not answered yet":
+{ "type": "$if", "props": { "condition": { "$": "local.signalTypesLoaded" }, "then": <list-or-empty>, "else": <skeleton> } }
+$queries and $localState share the same local namespace — avoid duplicate names across both.
 $setLocal will warn and no-op on $queries entries (they are read-only).
-Use with $count + $gt for conditional visibility:
-{ "condition": { "$gt": [{ "$count": { "items": { "$local": "signalTypes" } } }, 0] } }
+A $query cannot be read inside an expression — a question for the backend is hoisted here and read
+back through local. Use count() for conditional visibility:
+{ "condition": { "$": "count(local.signalTypes)" } }
 Example:
 {
   "$queries": { "signalTypes": { "entity": "SignalType", "subscribe": true } },
@@ -385,7 +371,7 @@ Example:
   "children": [
     {
       "type": "$each",
-      "props": { "items": { "$local": "signalTypes" }, "as": "sig" },
+      "props": { "items": { "$": "local.signalTypes" }, "as": "sig" },
       "children": [...]
     }
   ]
@@ -406,7 +392,7 @@ Boolean toggle pattern (show/hide comments, expand/collapse sections, etc.):
     {
       "type": "$if",
       "props": {
-        "condition": { "$local": "showComments" },
+        "condition": { "$": "local.showComments" },
         "then": { "type": "Column", "children": [{ "type": "we-text", "children": ["Comments visible"] }] }
       }
     }
@@ -428,11 +414,11 @@ Declare validation rules on fields:
 
 Built-in rules: required, minLength (value: N), maxLength (value: N), min (value: N), max (value: N), pattern (value: regex string), match (field: otherFieldName). All accept optional "message" override.
 
-Read tokens:
-{ "$error": "fieldName" } — first validation error message (only shown after field is touched), or "".
-{ "$valid": "fieldName" } — true if all rules pass (regardless of touched state).
-{ "$touched": "fieldName" } — true after the field has been blurred/touched.
-{ "$formValid": "$scope" } — true if ALL validated fields in the current $localState scope pass.
+Read functions (in an expression):
+{ "$": "error('fieldName')" } — first validation error message (only shown after field is touched), or "".
+{ "$": "valid('fieldName')" } — true if all rules pass (regardless of touched state).
+{ "$": "touched('fieldName')" } — true after the field has been blurred/touched.
+{ "$": "formValid()" } — true if ALL validated fields in the current $localState scope pass.
 
 Action tokens:
 { "$touch": "fieldName" } — marks a single field as touched (in onBlur; opt-in, see below).
@@ -440,8 +426,9 @@ Action tokens:
 { "$resetLocal": "$scope" } — resets all fields to initial values and clears touched state.
 
 Handler arrays (compose multiple actions on one event):
-{ "onClick": [{ "$touch": "$all" }, { "$if": { "condition": { "$formValid": "$scope" }, "then": { "$action": "store.submit", "onSuccess": [{ "$setLocal": "modalOpen", "value": false }] } } }] }
-Array entries execute sequentially. Non-function entries (e.g. $if with false condition) are skipped.
+{ "onClick": [{ "$touch": "$all" }, { "$if": { "condition": { "$": "formValid()" }, "then": { "$action": "store.submit", "onSuccess": [{ "$setLocal": "modalOpen", "value": false }] } } }] }
+Array entries execute sequentially. { "$if": { "condition", "then", "else" } } in a handler position runs one side or the
+other when the event fires — its condition may read event. It is the one place $if is a token rather than a node.
 Prefer onSuccess over a bare $setLocal before the $action — the bare form closes the modal immediately (losing the loading spinner); onSuccess waits for the Promise to resolve.
 
 Typical form pattern — validate on submit:
@@ -453,23 +440,23 @@ Typical form pattern — validate on submit:
   "children": [
     {
       "type": "we-form-field",
-      "props": { "label": "Name", "error": { "$error": "name" } },
+      "props": { "label": "Name", "error": { "$": "error('name')" } },
       "children": [{
         "type": "we-input",
         "props": {
-          "value": { "$local": "name" },
-          "onInput": { "$setLocal": "name", "from": "$event.detail" }
+          "value": { "$": "local.name" },
+          "onInput": { "$setLocal": "name", "value": { "$": "event.detail" } }
         }
       }]
     },
     {
       "type": "we-button",
       "props": {
-        "loading": { "$local": "submitting" },
-        "disabled": { "$local": "submitting" },
+        "loading": { "$": "local.submitting" },
+        "disabled": { "$": "local.submitting" },
         "onClick": [
           { "$touch": "$all" },
-          { "$if": { "condition": { "$formValid": "$scope" }, "then": { "$action": "store.save", "args": [{ "$local": "name" }], "onSuccess": [{ "$setLocal": "submitDone", "value": true }] } } }
+          { "$if": { "condition": { "$": "formValid()" }, "then": { "$action": "store.save", "args": [{ "$": "local.name" }], "onSuccess": [{ "$setLocal": "submitDone", "value": true }] } } }
         ]
       },
       "children": ["Submit"]
@@ -477,13 +464,13 @@ Typical form pattern — validate on submit:
   ]
 }
 
-The submit button is disabled only while the request is in flight — NOT on { "$not": { "$formValid": "$scope" } }.
+The submit button is disabled only while the request is in flight — NOT on { "$": "!formValid()" }.
 Those two are mutually exclusive. A button disabled while the form is invalid can never be clicked in the one
 state where { "$touch": "$all" } would reveal something, so the guard chain becomes dead code and blur is left
 as the user's only feedback path. Choose one shape:
   - Validate on submit (above). The button is always clickable and the errors appear on the click that was
     refused, which is where the user asked the question.
-  - Hard gate: "disabled": { "$not": { "$formValid": "$scope" } }, and then drop { "$touch": "$all" } as dead
+  - Hard gate: "disabled": { "$": "!formValid()" }, and then drop { "$touch": "$all" } as dead
     and wire "onBlur": { "$touch": "fieldName" } per field — otherwise no error is ever reachable.
 
 "onBlur": { "$touch": "fieldName" } is an opt-in, not boilerplate. It earns its place on long multi-field forms
@@ -496,7 +483,7 @@ validation machinery and gate on the value itself:
 {
   "$localState": { "password": { "type": "string", "initial": "" } },
   ...
-  "disabled": { "$not": { "$local": "password" } }
+  "disabled": { "$": "!local.password" }
 }
 A "required" rule here would exist only to drive "disabled", and its message is then one stray { "$touch": … }
 away from telling the user "Password is required" about a field they simply have not typed into yet.
@@ -506,28 +493,28 @@ away from telling the user "Password is required" about a field they simply have
 Block-level structures use "type" starting with "$" for dynamic rendering of schema nodes.
 
 Each loop:
-{ "type": "$each", "props": { "items": { "$store": "storeName.arrayProperty" }, "as": "itemName" }, "children": [ ... ] }
-Renders children once for each item. The "as" name becomes a context key. Defaults to "item" — omit "as" unless you need a different name.
+{ "type": "$each", "props": { "items": { "$": "storeName.arrayProperty" }, "as": "itemName" }, "children": [ ... ] }
+Renders children once for each item. The "as" name becomes a name expressions read — { "$": "itemName.title" }. Defaults to "item" — omit "as" unless you need a different name.
 
-Each row also gets two context keys describing its position in the list:
-- { "$index": ... } — read as "$index", the 0-based position.
-- "$prev" — the previous item, absent on the first row. Read fields off it like any context ref: "$prev.author".
+Each row also gets two names describing its position in the list:
+- index — the 0-based position.
+- prev — the previous item, absent on the first row. Read fields off it like any name: { "$": "prev.author" }.
 
-"$prev" is what makes **grouping** expressible — collapsing consecutive rows by the same author so
+prev is what makes **grouping** expressible — collapsing consecutive rows by the same author so
 a run of messages shows one avatar and byline instead of repeating them. Without it a row can only
 ask about itself, and the compact form is unreachable by any prop or theme:
 {
   "type": "$if",
   "props": {
-    "condition": { "$eq": ["$message.author", "$prev.author"] },
+    "condition": { "$": "message.author == prev.author" },
     "then": { "...": "compact row — no avatar, no byline" },
     "else": { "...": "full row" }
   }
 }
-The first row has no "$prev" at all, so the condition is false there and it keeps its byline —
+The first row has no prev at all, so the condition is false there and it keeps its byline —
 which is what a feed wants, and why absent must not read as "same as the last item".
 
-Both shadow in a nested $each, exactly as the item does: the inner "$index" restarts at 0.
+Both shadow in a nested $each, exactly as the item does: the inner index restarts at 0.
 
 Conditional rendering:
 { "type": "$if", "props": { "condition": ..., "then": { ... }, "else": { ... } } }
@@ -561,7 +548,7 @@ Do NOT use $animate when the child should be absent from the DOM. Use $if for co
 For an open/close that must NOT destroy what is inside it — a section holding a scroll position, a
 half-typed field, or a live subscription a collapsed row shouldn't tear down — use $animate with
 condition rather than $if, which unmounts the content when closed.
-condition works like $if's condition (any resolvable prop — $store, $local, $eq, …), except the child
+condition works like $if's condition (an expression), except the child
 is never unmounted: only enterTransition/exitTransition replay as it changes. The initial render
 already matches whatever the condition is at mount — a node that starts open does not flash
 closed-then-open, and one that starts closed does not briefly show its content first.
@@ -587,11 +574,11 @@ must not resubscribe every time it opens):
 {
   "type": "$animate",
   "props": {
-    "condition": { "$not": { "$local": "sectionCollapsed" } },
+    "condition": { "$": "!local.sectionCollapsed" },
     "enterTransition": { "type": "reveal", "duration": 250 }
   },
-  "children": [{ "type": "$each", "props": { "items": { "$store": "listStore.items" }, "as": "item" },
-    "children": [{ "type": "we-text", "children": ["$item.name"] }] }]
+  "children": [{ "type": "$each", "props": { "items": { "$": "listStore.items" }, "as": "item" },
+    "children": [{ "type": "we-text", "children": [{ "$": "item.name" }] }] }]
 }
 Example (scroll-reveal):
 {
@@ -616,8 +603,8 @@ Place a sentinel at the bottom of the header, reference it in the sticky nav:
     "exitTransition": { "type": "fade", "duration": 200 }
   },
   "children": [{ "type": "Row", "props": { "ay": "center", "gap": "300" }, "children": [
-    { "type": "we-avatar", "props": { "image": "$space.avatar", "size": "sm" } },
-    { "type": "we-text", "props": { "fontWeight": "600" }, "children": ["$space.name"] }
+    { "type": "we-avatar", "props": { "image": { "$": "space.avatar" }, "size": "sm" } },
+    { "type": "we-text", "props": { "fontWeight": "600" }, "children": [{ "$": "space.name" }] }
   ]}]
 }
 
@@ -628,7 +615,7 @@ Single model item (load one record, render children with it in context):
     "item": { "$query": { "entity": "ModelName", "params": { ... }, "subscribe": true } },
     "as": "profile"   // context key for children — default: 'item'
   },
-  "children": [{ "type": "we-text", "children": ["$profile.username"] }]
+  "children": [{ "type": "we-text", "children": [{ "$": "profile.username" }] }]
 }
 Renders nothing until a matching record is found. Like $each but for a single result.
 query options (entity, params, include, dataset, subscribe) work identically to $query.
@@ -640,7 +627,7 @@ Indicates where nested routes should render within a layout.
 Responsive boundary:
 { "type": "$surface", "props": { "as": "pane" }, "children": [ ... ] }
 A box the content inside it measures itself against. Everything inside it — \`*UpProps\` on any
-descendant, and \`$surface.tier\` read as a context ref — is answered by THIS box rather than by the
+descendant, and \`surface.tier\` read in an expression — is answered by THIS box rather than by the
 window or the page.
 
 The host already puts one wherever it mounts a schema tree (the template area, the shell overlays,
@@ -649,10 +636,9 @@ Declare one when a *part* of your layout should adapt to itself — a two-pane w
 pane is narrow while the page is wide. Nesting works; the innermost surface wins.
 
 \`as\` names the context key (default \`surface\`), so a nested one can be addressed separately.
-Read it with \`"$surface.tier"\` (\`base\` | \`sm\` | \`md\` | \`lg\`) or \`"$surface.width"\` (px):
+Read it with \`surface.tier\` (\`base\` | \`sm\` | \`md\` | \`lg\`) or \`surface.width\` (px):
 
-{ "$if": { "condition": { "$eq": [{ "$store": "…" }, "…"] } } }   ← ordinary
-{ "$if": { "condition": { "$eq": ["$surface.tier", "base"] }, "then": <drawer>, "else": <sidebar> } }
+{ "type": "$if", "props": { "condition": { "$": "surface.tier == 'base'" }, "then": <drawer>, "else": <sidebar> } }
 
 USE THIS SPARINGLY, and only for a genuinely different tree. \`$if\` unmounts and rebuilds its
 subtree when the condition changes, which loses scroll position, half-typed input and any live

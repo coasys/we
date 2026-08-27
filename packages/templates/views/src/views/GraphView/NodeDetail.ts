@@ -1,4 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
+import { expr } from '@we/schema-shared';
 
 import { swatchRow } from './Palette';
 
@@ -44,7 +45,7 @@ const CLEAR = { $setLocal: 'expandKind', value: '' };
  * selection.
  */
 export const selectNode = [
-  { $setLocal: 'selected', from: '$event' },
+  { $setLocal: 'selected', value: { $: 'event' } },
   CLEAR,
   { $setLocal: 'panelClosed', value: false },
 ];
@@ -84,7 +85,7 @@ const openButton = (label: string, icon: string, kind: string): SchemaNode => ({
   type: 'we-button',
   props: {
     size: 'xs',
-    variant: { $if: { condition: { $eq: [{ $local: 'expandKind' }, kind] }, then: 'secondary', else: 'ghost' } },
+    variant: expr`local.expandKind == ${kind} ? 'secondary' : 'ghost'`,
     onClick: { $setLocal: 'expandKind', value: kind },
   },
   children: [{ type: 'we-icon', props: { name: icon } }, label],
@@ -104,9 +105,9 @@ const openButton = (label: string, icon: string, kind: string): SchemaNode => ({
  */
 const setStyle = (field: string, value: unknown) => ({
   $action: 'recordStore.setCardStyle',
-  args: [{ $local: 'boardId' }, { $local: 'selected.recordId' }, field, value],
+  args: [{ $: 'local.boardId' }, { $: 'local.selected.recordId' }, field, value],
   // The graph re-reads and merges, so the change lands on the card rather than at the next reload.
-  onSuccess: [{ $setLocal: 'revision', by: 1 }],
+  onSuccess: [{ $setLocal: 'revision', value: { $: 'local.revision + 1' } }],
 });
 
 const cardStyle: SchemaNode = {
@@ -120,7 +121,7 @@ const cardStyle: SchemaNode = {
         { type: 'we-divider' },
         { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: ['Card'] },
         swatchRow({
-          current: { $local: 'selected.data.boardColor' },
+          current: { $: 'local.selected.data.boardColor' },
           pick: (token) => setStyle('color', token),
         }),
         {
@@ -132,13 +133,13 @@ const cardStyle: SchemaNode = {
               props: {
                 size: 'sm',
                 width: '100%',
-                value: { $local: 'selected.data.boardCardShape' },
+                value: { $: 'local.selected.data.boardCardShape' },
                 options: [
                   { label: 'Note', value: 'note' },
                   { label: 'Square', value: 'square' },
                   { label: 'Round', value: 'round' },
                 ],
-                onChange: setStyle('cardShape', '$event.detail'),
+                onChange: setStyle('cardShape', { $: 'event.detail' }),
               },
             },
           ],
@@ -164,7 +165,7 @@ const cardStyle: SchemaNode = {
                 max: 2,
                 step: 0.05,
                 showValue: true,
-                value: { $local: 'selected.data.boardContentScale' },
+                value: { $: 'local.selected.data.boardContentScale' },
                 /*
                   Preview while dragging, write on release.
 
@@ -175,9 +176,9 @@ const cardStyle: SchemaNode = {
                 */
                 onInput: {
                   $action: 'recordStore.previewCardStyle',
-                  args: [{ $local: 'selected.recordId' }, 'contentScale', '$event.detail'],
+                  args: [{ $: 'local.selected.recordId' }, 'contentScale', { $: 'event.detail' }],
                 },
-                onChange: setStyle('contentScale', '$event.detail'),
+                onChange: setStyle('contentScale', { $: 'event.detail' }),
               },
             },
           ],
@@ -192,14 +193,14 @@ const fieldRow: SchemaNode = {
   type: 'Column',
   props: { gap: '100', width: '100%' },
   children: [
-    { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: ['$field.name'] },
+    { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: [{ $: 'field.name' }] },
     {
       type: 'we-text',
       // A value with no spaces in it — a URI, an id, a hash — has nowhere to break, and without a
       // break one field can push the whole panel sideways. That is now the typography layer's
       // default rather than this node's business; the adapter's own cap still sits beside it.
       props: { variant: 'body' },
-      children: ['$field.value'],
+      children: [{ $: 'field.value' }],
     },
   ],
 };
@@ -214,7 +215,7 @@ const fieldRow: SchemaNode = {
 const actions: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $local: 'selected.recordId' },
+    condition: { $: 'local.selected.recordId' },
     then: {
       type: 'Column',
       props: { gap: '300', width: '100%' },
@@ -291,10 +292,10 @@ const actions: SchemaNode = {
                     // Recursive, and kind-agnostic: the one delete that serves every collection.
                     onClick: {
                       $action: 'spaceStore.deleteCollection',
-                      args: [{ $local: 'selected.recordId' }],
+                      args: [{ $: 'local.selected.recordId' }],
                       onSuccess: [
                         { $setLocal: 'selected', value: null },
-                        { $setLocal: 'revision', by: 1 },
+                        { $setLocal: 'revision', value: { $: 'local.revision + 1' } },
                       ],
                     },
                   },
@@ -323,10 +324,10 @@ const actions: SchemaNode = {
                     ml: 'auto',
                     onClick: {
                       $action: 'recordStore.removeFromBoard',
-                      args: [{ $local: 'boardId' }, { $local: 'selected.recordId' }],
+                      args: [{ $: 'local.boardId' }, { $: 'local.selected.recordId' }],
                       onSuccess: [
                         { $setLocal: 'selected', value: null },
-                        { $setLocal: 'revision', by: 1 },
+                        { $setLocal: 'revision', value: { $: 'local.revision + 1' } },
                       ],
                     },
                   },
@@ -414,7 +415,7 @@ export const nodeDetailPanel: SchemaNode = {
                 borderBottom: '1px solid border',
               },
               children: [
-                { type: 'we-badge', props: { size: 'xs' }, children: [{ $local: 'selected.type' }] },
+                { type: 'we-badge', props: { size: 'xs' }, children: [{ $: 'local.selected.type' }] },
                 {
                   type: 'we-button',
                   props: {
@@ -445,7 +446,7 @@ export const nodeDetailPanel: SchemaNode = {
                   type: 'Column',
                   props: { gap: '400', width: '100%', px: '400', py: '400' },
                   children: [
-                    { type: 'we-text', props: { variant: 'heading-sm' }, children: [{ $local: 'selected.label' }] },
+                    { type: 'we-text', props: { variant: 'heading-sm' }, children: [{ $: 'local.selected.label' }] },
                     actions,
                     cardStyle,
                     {
@@ -459,7 +460,7 @@ export const nodeDetailPanel: SchemaNode = {
                             { type: 'we-divider' },
                             {
                               type: '$each',
-                              props: { items: { $local: 'selected.fields' }, as: 'field' },
+                              props: { items: { $: 'local.selected.fields' }, as: 'field' },
                               children: [fieldRow],
                             },
                           ],

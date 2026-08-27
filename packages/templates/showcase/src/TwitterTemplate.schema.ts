@@ -49,11 +49,11 @@ const leftRail: SchemaNode = {
             width: '100%',
             ax: 'start',
             gap: '300',
-            onClick: { $action: 'routeStore.navigate', args: ['$nav.path'] },
+            onClick: { $action: 'routeStore.navigate', args: [{ $: 'nav.path' }] },
           },
           children: [
-            { type: 'we-icon', props: { name: '$nav.icon' } },
-            { type: 'we-text', children: ['$nav.label'] },
+            { type: 'we-icon', props: { name: { $: 'nav.icon' } } },
+            { type: 'we-text', children: [{ $: 'nav.label' }] },
           ],
         },
       ],
@@ -96,7 +96,7 @@ const postCard = (opts: { clickable?: boolean }): SchemaNode => {
           {
             type: 'BlockRenderer',
             props: {
-              editorState: '$post.editorState',
+              editorState: { $: 'post.editorState' },
             },
           },
         ],
@@ -104,7 +104,7 @@ const postCard = (opts: { clickable?: boolean }): SchemaNode => {
     : {
         type: 'BlockRenderer',
         props: {
-          editorState: '$post.editorState',
+          editorState: { $: 'post.editorState' },
         },
       };
 
@@ -113,15 +113,15 @@ const postCard = (opts: { clickable?: boolean }): SchemaNode => {
     props: { width: '100%', p: '400', borderBottom: '1px solid border' },
     children: [
       agentByline({
-        did: '$post.author',
-        timestamp: '$post.createdAt',
+        did: { $: 'post.author' },
+        timestamp: { $: 'post.createdAt' },
         stacked: true,
         children: [
           body,
           {
             type: 'Row',
             props: { gap: '600', ay: 'center', width: '100%', pt: '200' },
-            children: [signalRow('$post'), replyCount('$post')],
+            children: [signalRow('post'), replyCount('post')],
           },
         ],
       }),
@@ -160,9 +160,9 @@ const timeline: SchemaNode = {
               props: {
                 size: 'sm',
                 variant: { $: "local.sortField == tab.value ? 'secondary' : 'ghost'" },
-                onClick: { $setLocal: 'sortField', from: '$tab.value' },
+                onClick: { $setLocal: 'sortField', value: { $: 'tab.value' } },
               },
-              children: ['$tab.label'],
+              children: [{ $: 'tab.label' }],
             },
           ],
         },
@@ -207,7 +207,7 @@ const postDetail: RouteSchema = {
         item: {
           $query: {
             entity: 'CollectionBlock',
-            where: { id: { $store: 'routeStore.segments.1' } },
+            where: { id: { $: 'routeStore.segments[1]' } },
             include: { signals: true },
             limit: 1,
           },
@@ -231,7 +231,7 @@ const postDetail: RouteSchema = {
           openLocal: 'replyOpen',
           title: 'Reply',
           kind: KIND.reply,
-          parentId: '$post.id',
+          parentId: { $: 'post.id' },
           // Discourse, not composition: a reply hangs off the post rather than becoming part of it.
           predicate: 'we://comment',
           saveLabel: 'Reply',
@@ -241,21 +241,21 @@ const postDetail: RouteSchema = {
           props: { px: '400', pb: '600', width: '100%' },
           children: [
             commentThread({
-              anchorId: { $store: 'routeStore.segments.1' },
+              anchorId: { $: 'routeStore.segments[1]' },
               empty: noReplies(),
               reply: (as) => [
                 {
                   type: 'Column',
                   props: { width: '100%', gap: '200', py: '300', borderTop: '1px solid border' },
                   children: [
-                    agentByline({ did: `$${as}.author`, timestamp: `$${as}.createdAt` }),
+                    agentByline({ did: { $: `${as}.author` }, timestamp: { $: `${as}.createdAt` } }),
                     {
                       type: 'BlockRenderer',
                       props: {
-                        editorState: `$${as}.editorState`,
+                        editorState: { $: `${as}.editorState` },
                       },
                     },
-                    signalRow(`$${as}`),
+                    signalRow(as),
                   ],
                 },
               ],
@@ -314,7 +314,7 @@ export const twitterTemplate: TemplateSchema = {
         collectionFeed({
           kind: KIND.post,
           as: 'post',
-          where: { author: { eq: { $store: 'sessionStore.me.did' } } },
+          where: { author: { eq: { $: 'sessionStore.me.did' } } },
           include: { signals: true },
           empty: emptyState({ icon: 'user', label: 'posts of your own', delay: 0 }),
           children: [postCard({ clickable: true })],

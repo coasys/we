@@ -12,6 +12,6 @@ export const marketplaceBrowser: SchemaNode = marketplaceList({
     mode: 'compact',
     installLabel: 'Install to Space',
     installed: { $: 'count(filter(templateStore.spaceTemplates, { id: marketplaceTemplate.slug }))' },
-    onInstall: { $action: 'templateStore.installToSpace', args: ['$marketplaceTemplate.id'] },
+    onInstall: { $action: 'templateStore.installToSpace', args: [{ $: 'marketplaceTemplate.id' }] },
   },
 });

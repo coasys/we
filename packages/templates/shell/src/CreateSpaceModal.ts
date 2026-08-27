@@ -50,7 +50,7 @@ export const createSpaceModal = {
     {
       type: 'EditableImage',
       props: {
-        src: { $local: 'coverImage' },
+        src: { $: 'local.coverImage' },
         alt: 'Cover image',
         fit: 'cover',
         width: '100%',
@@ -63,7 +63,7 @@ export const createSpaceModal = {
         placeholderIcon: 'panorama',
         uploadLabel: 'Upload cover image',
         editLabel: 'Change cover image',
-        onImageChange: { $setLocal: 'coverImage', from: '$event' },
+        onImageChange: { $setLocal: 'coverImage', value: { $: 'event' } },
       },
     },
 
@@ -75,7 +75,7 @@ export const createSpaceModal = {
         {
           type: 'EditableImage',
           props: {
-            src: { $local: 'avatar' },
+            src: { $: 'local.avatar' },
             alt: 'Space avatar',
             fit: 'cover',
             width: '120px',
@@ -86,7 +86,7 @@ export const createSpaceModal = {
             uploadLabel: 'Add image',
             editLabel: 'Change image',
             fontSize: '200',
-            onImageChange: { $setLocal: 'avatar', from: '$event' },
+            onImageChange: { $setLocal: 'avatar', value: { $: 'event' } },
           },
         },
       ],
@@ -110,10 +110,10 @@ export const createSpaceModal = {
             {
               type: 'we-location-picker',
               props: {
-                latitude: { $local: 'location.latitude' },
-                longitude: { $local: 'location.longitude' },
+                latitude: { $: 'local.location.latitude' },
+                longitude: { $: 'local.location.longitude' },
                 placeholder: 'Pin your space on the globe…',
-                onChange: { $setLocal: 'location', from: '$event.detail' },
+                onChange: { $setLocal: 'location', value: { $: 'event.detail' } },
               },
             },
           ],
@@ -121,7 +121,7 @@ export const createSpaceModal = {
         {
           type: '$if',
           props: {
-            condition: { $local: 'location' },
+            condition: { $: 'local.location' },
             then: {
               type: 'Row',
               props: { gap: '400' },
@@ -133,9 +133,9 @@ export const createSpaceModal = {
                     {
                       type: 'we-input',
                       props: {
-                        value: { $local: 'location.city' },
+                        value: { $: 'local.location.city' },
                         placeholder: 'City…',
-                        onInput: { $setLocal: 'location', merge: { city: '$event.detail' } },
+                        onInput: { $setLocal: 'location', merge: { city: { $: 'event.detail' } } },
                       },
                     },
                   ],
@@ -147,9 +147,9 @@ export const createSpaceModal = {
                     {
                       type: 'we-input',
                       props: {
-                        value: { $local: 'location.country' },
+                        value: { $: 'local.location.country' },
                         placeholder: 'Country…',
-                        onInput: { $setLocal: 'location', merge: { country: '$event.detail' } },
+                        onInput: { $setLocal: 'location', merge: { country: { $: 'event.detail' } } },
                       },
                     },
                   ],
@@ -193,7 +193,7 @@ export const createSpaceModal = {
             onChange: [
               {
                 $if: {
-                  condition: '$event.detail',
+                  condition: { $: 'event.detail' },
                   then: { $setLocal: 'access', value: 'shared' },
                   else: { $setLocal: 'access', value: 'personal' },
                 },
@@ -255,7 +255,7 @@ export const createSpaceModal = {
                 onChange: [
                   {
                     $if: {
-                      condition: '$event.detail',
+                      condition: { $: 'event.detail' },
                       then: { $setLocal: 'discovery', value: 'listed' },
                       else: { $setLocal: 'discovery', value: 'hidden' },
                     },
@@ -303,24 +303,24 @@ export const createSpaceModal = {
           props: {
             text: 'Create Space',
             height: '40px',
-            loading: { $local: 'submitting' },
-            disabled: { $local: 'submitting' },
+            loading: { $: 'local.submitting' },
+            disabled: { $: 'local.submitting' },
             onClick: [
               { $touch: '$all' },
               { $setLocal: 'submitting', value: true },
               {
                 $if: {
-                  condition: { $formValid: '$scope' },
+                  condition: { $: 'formValid()' },
                   then: {
                     $action: 'spaceStore.createSpace',
                     args: [
-                      { $local: 'name' },
-                      { $local: 'description' },
-                      { $local: 'access' },
-                      { $local: 'discovery' },
-                      { $local: 'avatar' },
-                      { $local: 'coverImage' },
-                      { $local: 'location' },
+                      { $: 'local.name' },
+                      { $: 'local.description' },
+                      { $: 'local.access' },
+                      { $: 'local.discovery' },
+                      { $: 'local.avatar' },
+                      { $: 'local.coverImage' },
+                      { $: 'local.location' },
                     ],
                     onSuccess: [{ $action: 'shellStore.setCreateSpaceOpen', args: [false] }],
                     onFinally: [{ $setLocal: 'submitting', value: false }],
@@ -343,5 +343,5 @@ export const createSpaceModal = {
  */
 export const createSpaceModalMount: SchemaNode = {
   type: '$if',
-  props: { condition: { $store: 'shellStore.createSpaceOpen' }, then: createSpaceModal },
+  props: { condition: { $: 'shellStore.createSpaceOpen' }, then: createSpaceModal },
 };

@@ -105,7 +105,7 @@ export interface QueryAdapter {
 
 /**
  * The exact keys the renderer reads off the injected `stores` bag — the empirical data contract as
- * surfaced by the in-memory reference host. A host provides these (plus any `$store` namespaces its templates
+ * surfaced by the in-memory reference host. A host provides these (plus any store namespaces its templates
  * reference). All optional so a presentation-only (L0) host can omit the data ones entirely.
  */
 export interface RendererDataBindings {
@@ -156,7 +156,7 @@ export interface RendererDataBindings {
    */
   $ephemeral?: EphemeralPort;
   /**
-   * Named functions a schema may compute values from — the `$source` token's registry.
+   * Named functions a schema may compute values from — the host-function registry an expression calls into.
    *
    * The escape hatch in the form the rest of WE already uses: the authoring surface is JSON, so
    * anything genuinely computational is reachable *from* JSON by name, exactly as the graph does
@@ -166,10 +166,10 @@ export interface RendererDataBindings {
    * series, a page range) has to be a bespoke component, and everything inside it stops being
    * template-owned.
    *
-   * **Synchronous and pure**, and that constraint is what keeps `$source` from becoming a second
+   * **Synchronous and pure**, and that constraint is what keeps a host source from becoming a second
    * data layer. Anything that fetches is a `$query`; anything that holds state is a store. Because
    * a source is a pure function of its options, resolving one is a memo rather than a subscription
-   * — which is why `$source` works in props, conditions *and* children, where `$query` cannot.
+   * — which is why a host source works in props, conditions *and* children, where `$query` cannot.
    *
    * Rows are the motivating case and not the only one: a month grid needs its days *and* a label for
    * the month and a way to step to the next. A second token for computed scalars would be a worse
@@ -183,7 +183,7 @@ export interface RendererDataBindings {
 
 /**
  * The `stores` bag as the renderer sees it: the declared data bindings above, plus whatever
- * namespaces a host's templates reach by dot-path (`$store: 'someStore.field'`). The index
+ * namespaces a host's templates reach by dot-path (`someStore.field`). The index
  * signature is what keeps it open — the contract is a floor, not a closed set.
  *
  * Declared as an extending interface rather than `RendererDataBindings & Record<string, unknown>`:

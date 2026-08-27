@@ -61,9 +61,9 @@ export type { ExpressionCallEnv, FunctionCategory, FunctionSpec } from './functi
 export { arityOf, defineFunction, getFunction, hasFunction, listFunctions } from './functions';
 export type { ExpressionIssue, ExpressionScope } from './check';
 export { checkExpression, isCallTime, suggest } from './check';
-export type { ConvertOptions } from './convert';
-export { expressionSourceToOperator, exprToOperator, operatorToExpr } from './convert';
 export { matchesWhere } from './where';
+export type { ExpressionSource } from './compose';
+export { expr, ref, sourceOf } from './compose';
 
 /** The token key. `{ $: 'expression' }`. */
 export const EXPRESSION_KEY = '$';

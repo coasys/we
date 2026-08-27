@@ -1,7 +1,7 @@
 import { Column, Row } from '@we/components/solid';
 import { tokenVar } from '@we/design-utils';
 import type { ComparisonOperator, ConditionExpr, ConditionOperand, ScopeGroup } from '@we/schema-shared';
-import { conditionForm, isUnaryOperator, parseCondition, serializeCondition } from '@we/schema-shared';
+import { isUnaryOperator, parseCondition, serializeCondition } from '@we/schema-shared';
 import { createEffect, createMemo, createSignal, For, Show, untrack } from 'solid-js';
 
 import { exprComplete, operandValueType } from '../helpers';
@@ -48,15 +48,13 @@ export function ConditionEditor(props: {
 }) {
   const [draft, setDraft] = createSignal<ConditionExpr | null>(parseCondition(props.condition));
   const [rawMode, setRawMode] = createSignal(false);
-  // Written back in the spelling it arrived in: a condition authored as an expression stays one.
-  const form = () => conditionForm(props.condition);
 
   // Adopt external edits (undo/redo, AI changes, selecting another node) but ignore the
   // echo of our own writes, which would otherwise clobber an in-progress row.
   createEffect(() => {
     const incoming = props.condition;
     const current = untrack(draft);
-    if (current && JSON.stringify(serializeCondition(current, form())) === JSON.stringify(incoming)) return;
+    if (current && JSON.stringify(serializeCondition(current)) === JSON.stringify(incoming)) return;
     setDraft(parseCondition(incoming));
   });
 
@@ -65,7 +63,7 @@ export function ConditionEditor(props: {
 
   const update = (next: ConditionExpr) => {
     setDraft(next);
-    if (exprComplete(next)) props.onChange(serializeCondition(next, form()));
+    if (exprComplete(next)) props.onChange(serializeCondition(next));
   };
 
   const rows = createMemo<ConditionExpr[]>(() => {

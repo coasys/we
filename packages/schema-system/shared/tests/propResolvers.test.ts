@@ -2,62 +2,48 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { noMemo, REACTIVE_ACCESSOR, resolveProp, resolveProps, splitProps } from '../src/propResolvers';
 import type { LocalFieldMeta } from '../src/propResolvers/local';
-import {
-  extractFromPath,
-  resolveErrorProp,
-  resolveFormValidProp,
-  resolveLocalProp,
-  resolveResetLocalProp,
-  resolveSetLocalProp,
-  resolveTouchedProp,
-  resolveTouchProp,
-  resolveValidProp,
-} from '../src/propResolvers/local';
+import { resolveResetLocalProp, resolveSetLocalProp, resolveTouchProp } from '../src/propResolvers/local';
 import { markReactive } from '../src/propResolvers/reactive';
 
+const unwrap = (value: unknown): unknown =>
+  typeof value === 'function' && REACTIVE_ACCESSOR in value ? (value as unknown as () => unknown)() : value;
+
+const read = (source: string, stores: Record<string, unknown> = {}, context: Record<string, unknown> = {}) =>
+  unwrap(resolveProp({ $: source }, stores, context, noMemo));
+
 describe('propResolvers (combined)', () => {
-  it('resolves $store single and nested paths', () => {
+  it('reads store paths through an expression', () => {
     const stores = { userStore: { name: 'Sam', profile: { name: 'Sam', email: 's@example.com' } } };
-    expect(resolveProp({ $store: 'userStore.name' }, stores, {})).toBe('Sam');
-    expect(resolveProp({ $store: 'userStore.profile.name' }, stores, {})).toBe('Sam');
+    expect(read('userStore.name', stores)).toBe('Sam');
+    expect(read('userStore.profile.name', stores)).toBe('Sam');
   });
 
-  it('resolves $item.* context references', () => {
+  it('reads context names through an expression', () => {
     const ctx = { user: { name: 'Zed' } };
-    expect(resolveProp('$user.name', {}, ctx)).toBe('Zed');
-    // non-existent context key returns string as-is
-    expect(resolveProp('$missing.key', {}, ctx)).toBe('$missing.key');
+    expect(read('user.name', {}, ctx)).toBe('Zed');
+    expect(read('missing.key', {}, ctx)).toBeUndefined();
   });
 
-  it('maps arrays with $map and $item selectors', () => {
-    const stores = {};
-    const ctx = {};
-    const map = {
-      $map: {
-        items: [{ meta: { name: 'one' } }, { meta: { name: 'two' } }],
-        select: { title: '$item.meta.name' },
-      },
-    };
-
-    const result = resolveProp(map, stores, ctx) as Array<{ title: string }>;
-    expect(Array.isArray(result)).toBe(true);
-    expect(result[0]).toEqual({ title: 'one' });
+  it('leaves strings as text', () => {
+    expect(resolveProp('$user.name', {}, { user: { name: 'Zed' } })).toBe('$user.name');
+    expect(resolveProp('plain', {}, {})).toBe('plain');
   });
 
-  it('picks props with $pick', () => {
+  it('projects lists with a map comprehension', () => {
+    const ctx = { rows: [{ meta: { name: 'one' } }, { meta: { name: 'two' } }] };
+    expect(read('rows.map(r, { title: r.meta.name })', {}, ctx)).toEqual([{ title: 'one' }, { title: 'two' }]);
+  });
+
+  it('picks props with pick()', () => {
     const stores = { userStore: { profile: { name: 'Alice', email: 'a@e.com' } } };
-    const pick = { $pick: { from: { $store: 'userStore.profile' }, props: ['name'] } };
-    const result = resolveProp(pick, stores, {}, undefined);
-    expect(result).toEqual({ name: 'Alice' });
+    expect(read("pick(userStore.profile, ['name'])", stores)).toEqual({ name: 'Alice' });
+    expect(read("pick(userStore.missing, ['name'])", stores)).toEqual({});
   });
 
-  it('resolves equality $eq and $ne', () => {
-    const stores = {};
-    expect(resolveProp({ $eq: [1, 1] }, stores, {})).toBe(true);
-    expect(resolveProp({ $ne: [1, 2] }, stores, {})).toBe(true);
-    const a = () => 5;
-    const b = () => 5;
-    expect(resolveProp({ $eq: [a, b] }, stores, {})).toBe(true);
+  it('compares with == and !=', () => {
+    expect(read('1 == 1')).toBe(true);
+    expect(read('1 != 2')).toBe(true);
+    expect(read("'a' == 'b'")).toBe(false);
   });
 
   it('splitProps separates primitive and complex props', () => {
@@ -68,9 +54,9 @@ describe('propResolvers (combined)', () => {
     expect(complexProps).toHaveProperty('b');
   });
 
-  it('throws when $store references entire store', () => {
+  it('reads nothing for a whole store', () => {
     const stores = { userStore: { name: 'X' } };
-    expect(() => resolveProp({ $store: 'userStore' }, stores, {})).toThrow();
+    expect(read('userStore', stores)).toBeUndefined();
   });
 
   it('resolveActionProp handles ../ relative route navigation', () => {
@@ -89,30 +75,27 @@ describe('propResolvers (combined)', () => {
     expect(callArgs[0]).toBe('/a/foo');
   });
 
-  it('resolveProp with custom memo returns accessor for nested $store', () => {
-    // Tagged, because that is what a store bag now contains: the host marks state accessors when it
-    // builds a template's bag, and `walkPath` calls only those.
+  it('resolveProp with a memo returns a reactive accessor for a store read', () => {
+    // Tagged, because that is what a store bag contains: the host marks state accessors when it
+    // builds a template's bag, and an expression calls only those.
     const stores = { s: { nested: { val: markReactive(() => 5) } } };
     const memo = (fn: () => number) => () => fn();
-    const res = resolveProp({ $store: 's.nested.val' }, stores, {}, memo as <T>(fn: () => T) => T) as () => number;
+    const res = resolveProp({ $: 's.nested.val' }, stores, {}, memo as <T>(fn: () => T) => T) as () => number;
     expect(typeof res).toBe('function');
     expect(res()).toBe(5);
   });
 
-  it('never calls an untagged function while resolving a $store path', () => {
+  it('never calls an untagged function while reading a store path', () => {
     /*
-      `$store` used to invoke any function it walked past, which made it an execution channel: a
-      template naming a zero-argument store method had it called during paint, with no click and no
-      user intent. `{ $store: 'sessionStore.logout' }` on any prop logged you out while the page was
-      drawing.
-
-      An action in the bag is now a function the resolver walks past without touching, and the path
-      resolves to nothing rather than to a side effect.
+      A store read must not be an execution channel: a template naming a zero-argument store method
+      must not have it called during paint, with no click and no user intent. An action in the bag
+      is a function the resolver walks past without touching, and the path resolves to nothing
+      rather than to a side effect.
     */
     let called = false;
     const stores = { sessionStore: { logout: () => (called = true) } };
 
-    expect(resolveProp({ $store: 'sessionStore.logout' }, stores, {}, noMemo)).toBeUndefined();
+    expect(read('sessionStore.logout', stores)).toBeUndefined();
     expect(called).toBe(false);
   });
 
@@ -120,13 +103,12 @@ describe('propResolvers (combined)', () => {
     // Returning the function itself would put the channel straight back: a component receiving it
     // could call it, and a template has no legitimate way to have produced a callable.
     const stores = { s: { action: () => 'boom' } };
-    expect(resolveProp({ $store: 's.action' }, stores, {}, noMemo)).toBeUndefined();
+    expect(read('s.action', stores)).toBeUndefined();
   });
 
-  it('resolveStoreProp returns undefined if path missing', () => {
+  it('reads undefined for a missing path', () => {
     const stores = { s: { nested: {} } };
-    const res = resolveProp({ $store: 's.nested.missing' }, stores, {});
-    expect(res).toBeUndefined();
+    expect(read('s.nested.missing', stores)).toBeUndefined();
   });
 
   it('resolveProp calls store method for non-route action', () => {
@@ -138,46 +120,39 @@ describe('propResolvers (combined)', () => {
     expect(doer).toHaveBeenCalledWith(42);
   });
 
-  it('resolveIfProp chooses else branch when false', () => {
-    const stores = {};
-    const ctx = { val: false };
-    const val = resolveProp({ $if: { condition: '$val', then: 'A', else: 'B' } }, stores, ctx);
-    expect(val).toBe('B');
+  it('a ternary chooses the else branch when false', () => {
+    expect(read("val ? 'A' : 'B'", {}, { val: false })).toBe('B');
   });
 
-  it('resolveIfProp standard path does not eagerly invoke $action handler', () => {
+  it('a handler $if does not eagerly invoke its $action', () => {
     const handler = vi.fn();
     const stores = { myStore: { submit: handler } };
     const ctx = { isValid: true };
     const schema = {
       $if: {
-        condition: '$isValid',
+        condition: { $: 'isValid' },
         then: { $action: 'myStore.submit', args: ['data'] },
       },
     };
-    // Resolving the $if should NOT call the action — it should return the handler function
     const result = resolveProp(schema, stores, ctx);
     expect(handler).not.toHaveBeenCalled();
-    // The result should be a reactive accessor wrapping the handler function
     expect(typeof result).toBe('function');
+    (result as () => void)();
+    expect(handler).toHaveBeenCalledWith('data');
   });
 
   it('handler array dispatches all actions when $if.then is an array', () => {
-    const setLocal = vi.fn();
     const save = vi.fn();
     const stores = { spaceStore: { save } };
-    const isDirty = { isDirty: true };
     const localCtx = {
-      ...isDirty,
-      $localSignals: { isDirty: () => true },
-      $setLocalSignal: (_k: string, _v: unknown) => setLocal(_k, _v),
+      isDirty: true,
+      $localSetters: { saving: vi.fn() },
     };
-    // Simulate the pattern: onClick resolves an object with an onClick handler array
     const schema = {
       onClick: [
         {
           $if: {
-            condition: '$isDirty',
+            condition: { $: 'isDirty' },
             then: [
               { $setLocal: 'saving', value: true },
               { $action: 'spaceStore.save', args: [] },
@@ -189,6 +164,7 @@ describe('propResolvers (combined)', () => {
     const resolved = resolveProp(schema, stores, localCtx) as { onClick: () => void };
     resolved.onClick();
     expect(save).toHaveBeenCalled();
+    expect(localCtx.$localSetters.saving).toHaveBeenCalledWith(true);
   });
 
   it('handler array $if.then array: only dispatches when condition is true', () => {
@@ -199,7 +175,7 @@ describe('propResolvers (combined)', () => {
       onClick: [
         {
           $if: {
-            condition: '$flag',
+            condition: { $: 'flag' },
             then: [
               { $action: 's.a', args: [] },
               { $action: 's.b', args: [] },
@@ -217,6 +193,19 @@ describe('propResolvers (combined)', () => {
     resolvedTrue.onClick();
     expect(actionA).toHaveBeenCalled();
     expect(actionB).toHaveBeenCalled();
+  });
+
+  it('a handler $if reads the event in its condition', () => {
+    const onEnter = vi.fn();
+    const stores = { s: { onEnter } };
+    const schema = {
+      onKeyDown: [{ $if: { condition: { $: "event.key == 'Enter'" }, then: { $action: 's.onEnter' } } }],
+    };
+    const resolved = resolveProp(schema, stores, {}) as { onKeyDown: (e: unknown) => void };
+    resolved.onKeyDown({ key: 'Escape' });
+    expect(onEnter).not.toHaveBeenCalled();
+    resolved.onKeyDown({ key: 'Enter' });
+    expect(onEnter).toHaveBeenCalled();
   });
 
   it('routeStore.navigate with absolute path does not normalize', () => {
@@ -248,29 +237,6 @@ describe('propResolvers (combined)', () => {
     expect(typeof navigate.mock.calls[1][0]).toBe('string');
   });
 
-  it('resolveMapProp handles accessor items and constant selects', () => {
-    const stores = {};
-    const ctx = {};
-    const map = {
-      $map: {
-        items: () => [{ meta: { name: 'one' } }],
-        select: { title: '$item.meta.name' },
-      },
-    };
-    const result = resolveProp(map, stores, ctx) as Array<{ title: string }>;
-    expect(Array.isArray(result)).toBe(true);
-    expect(result[0]).toEqual({ title: 'one' });
-
-    const map2 = {
-      $map: {
-        items: [{ meta: { name: 'one' } }],
-        select: { title: '$item.meta.name', constant: 123 },
-      },
-    };
-    const result2 = resolveProp(map2, stores, ctx) as Array<{ title: string; constant: number }>;
-    expect(result2[0].constant).toBe(123);
-  });
-
   it('action with missing method should return undefined', () => {
     const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const missing = resolveProp({ $action: 'noStore.noMethod', args: [] }, {}, {});
@@ -278,200 +244,92 @@ describe('propResolvers (combined)', () => {
     spy.mockRestore();
   });
 
-  it('resolvePickProp returns empty object when source is primitive', () => {
-    const stores = { userStore: { profile: 'not-object' } };
-    const pick = { $pick: { from: { $store: 'userStore.profile' }, props: ['name'] } };
-    const res = resolveProp(pick, stores, {}, undefined);
-    expect(res).toEqual({});
-  });
-
   it('resolveProps resolves mixed props', () => {
     const stores = { s: { v: 1 } };
-    const props = { a: 1, b: { $store: 's.v' }, c: { $concat: ['hello', ' ', 'world'] } };
+    const props = { a: 1, b: { $: 's.v' }, c: { $: "'hello' + ' ' + 'world'" } };
     const out = resolveProps(props, stores, {});
     expect(out.a).toBe(1);
-    expect(out.b).toBe(1);
-    expect(out.c).toBe('hello world');
+    expect(unwrap(out.b)).toBe(1);
+    expect(unwrap(out.c)).toBe('hello world');
   });
 
-  it('$map transforms single objects (not just arrays)', () => {
-    const stores = {};
-    const ctx = {};
-    const map = {
-      $map: {
-        items: { id: 'template-1', meta: { name: 'My Template', icon: 'star' } },
-        select: { id: '$item.id', name: '$item.meta.name', icon: '$item.meta.icon' },
-      },
-    };
-
-    const result = resolveProp(map, stores, ctx) as { id: string; name: string; icon: string };
-    expect(result).toEqual({ id: 'template-1', name: 'My Template', icon: 'star' });
-  });
-
-  it('$map transforms single object from store accessor', () => {
+  it('projects a single object from a store accessor', () => {
     const stores = {
       templateStore: {
         currentTemplate: markReactive(() => ({ id: 'default', meta: { name: 'Default', icon: 'home' } })),
       },
     };
-    const map = {
-      $map: {
-        items: { $store: 'templateStore.currentTemplate' },
-        select: { id: '$item.id', name: '$item.meta.name', icon: '$item.meta.icon' },
-      },
-    };
-
-    const result = resolveProp(map, stores, {}) as { id: string; name: string; icon: string };
-    expect(result).toEqual({ id: 'default', name: 'Default', icon: 'home' });
+    const source =
+      '{ id: templateStore.currentTemplate.id, name: templateStore.currentTemplate.meta.name, icon: templateStore.currentTemplate.meta.icon }';
+    expect(read(source, stores)).toEqual({ id: 'default', name: 'Default', icon: 'home' });
   });
 
-  it('$map still works with arrays', () => {
-    const stores = {};
-    const map = {
-      $map: {
-        items: [
-          { id: '1', meta: { name: 'One', icon: 'a' } },
-          { id: '2', meta: { name: 'Two', icon: 'b' } },
-        ],
-        select: { id: '$item.id', name: '$item.meta.name' },
-      },
-    };
-
-    const result = resolveProp(map, stores, {}) as Array<{ id: string; name: string }>;
-    expect(Array.isArray(result)).toBe(true);
-    expect(result).toHaveLength(2);
-    expect(result[0]).toEqual({ id: '1', name: 'One' });
-    expect(result[1]).toEqual({ id: '2', name: 'Two' });
-  });
-
-  it('$arg.property extracts nested property from callback argument', () => {
+  it('an expression on arg extracts a nested property from the callback argument', () => {
     const doSomething = vi.fn();
     const stores = { myStore: { doSomething } };
-    const action = { $action: 'myStore.doSomething', args: ['$arg.id'] };
+    const action = { $action: 'myStore.doSomething', args: [{ $: 'arg.id' }] };
 
     const fn = resolveProp(action, stores, {}) as (arg: unknown) => void;
     expect(typeof fn).toBe('function');
-
-    // Call with object that has nested id property
     fn({ id: 'abc123', name: 'Test', meta: { icon: 'star' } });
-
-    // Should have called the method with just the extracted id
     expect(doSomething).toHaveBeenCalledWith('abc123');
   });
 
-  it('$arg.deep.path extracts deeply nested property', () => {
+  it('arg reads deeply nested properties', () => {
     const callback = vi.fn();
     const stores = { store: { callback } };
-    const action = { $action: 'store.callback', args: ['$arg.user.profile.email'] };
+    const action = { $action: 'store.callback', args: [{ $: 'arg.user.profile.email' }] };
 
     const fn = resolveProp(action, stores, {}) as (arg: unknown) => void;
     fn({ user: { profile: { email: 'test@example.com', name: 'Test' } } });
-
     expect(callback).toHaveBeenCalledWith('test@example.com');
   });
 
-  it('$arg without property passes entire first argument', () => {
+  it('a bare arg passes the entire first argument', () => {
     const callback = vi.fn();
     const stores = { store: { callback } };
-    const action = { $action: 'store.callback', args: ['$arg'] };
+    const action = { $action: 'store.callback', args: [{ $: 'arg' }] };
 
     const fn = resolveProp(action, stores, {}) as (arg: unknown) => void;
     const testObj = { id: '123', name: 'Test' };
     fn(testObj);
-
     expect(callback).toHaveBeenCalledWith(testObj);
   });
 
-  it('$arg works with DOM events (can access event properties)', () => {
+  it('arg works with DOM events (can access event properties)', () => {
     const callback = vi.fn();
     const stores = { store: { callback } };
-    const action = { $action: 'store.callback', args: ['$arg.target.value'] };
+    const action = { $action: 'store.callback', args: [{ $: 'arg.target.value' }] };
 
     const fn = resolveProp(action, stores, {}) as (arg: unknown) => void;
-
-    // Simulate an input event
-    const mockEvent = {
-      target: { value: 'extracted-value' },
-      key: 'Enter',
-    } as unknown as Event;
-
-    // When event is passed, $arg can now access any event property
+    const mockEvent = { target: { value: 'extracted-value' }, key: 'Enter' } as unknown as Event;
     fn(mockEvent);
-
-    // Should extract the target.value from the event
     expect(callback).toHaveBeenCalledWith('extracted-value');
   });
 
-  it('$arg can access keyboard event properties', () => {
+  it('arg expressions sit among static args', () => {
     const callback = vi.fn();
     const stores = { store: { callback } };
-    const action = { $action: 'store.callback', args: ['$arg.key'] };
-
-    const fn = resolveProp(action, stores, {}) as (arg: unknown) => void;
-
-    // Simulate a keyboard event
-    const mockEvent = {
-      key: 'Enter',
-      target: { value: 'test' },
-    } as unknown as KeyboardEvent;
-
-    fn(mockEvent);
-
-    // Should extract the key property from the event
-    expect(callback).toHaveBeenCalledWith('Enter');
-  });
-
-  it('$arg with multiple args processes only $arg tokens', () => {
-    const callback = vi.fn();
-    const stores = { store: { callback } };
-    const action = { $action: 'store.callback', args: ['$arg.id', 'static-value', 42] };
+    const action = { $action: 'store.callback', args: [{ $: 'arg.id' }, 'static-value', 42] };
 
     const fn = resolveProp(action, stores, { ignored: true }) as (arg: unknown) => void;
     fn({ id: 'test-id', name: 'Test' });
-
     expect(callback).toHaveBeenCalledWith('test-id', 'static-value', 42);
   });
 
-  // --- $and / $or operators ---
+  // --- boolean logic ---
 
-  it('$and returns true when all operands are truthy', () => {
-    expect(resolveProp({ $and: [true, 1, 'yes'] }, {}, {})).toBe(true);
+  it('&& and || answer with booleans', () => {
+    expect(read("true && 1 && 'yes'")).toBe(true);
+    expect(read('true && false')).toBe(false);
+    expect(read("false || 0 || 'yes'")).toBe(true);
+    expect(read("false || 0 || '' || null")).toBe(false);
   });
 
-  it('$and returns false when any operand is falsy', () => {
-    expect(resolveProp({ $and: [true, false, true] }, {}, {})).toBe(false);
-    expect(resolveProp({ $and: [1, 0] }, {}, {})).toBe(false);
-  });
-
-  it('$and short-circuits on first falsy value', () => {
-    expect(resolveProp({ $and: [false, 'should-not-matter'] }, {}, {})).toBe(false);
-  });
-
-  it('$and works with $store operands', () => {
-    const stores = { s: { a: markReactive(() => true), b: markReactive(() => false) } };
-    expect(resolveProp({ $and: [{ $store: 's.a' }, { $store: 's.b' }] }, stores, {})).toBe(false);
-    const stores2 = { s: { a: markReactive(() => true), b: markReactive(() => true) } };
-    expect(resolveProp({ $and: [{ $store: 's.a' }, { $store: 's.b' }] }, stores2, {})).toBe(true);
-  });
-
-  it('$or returns true when any operand is truthy', () => {
-    expect(resolveProp({ $or: [false, 0, 'yes'] }, {}, {})).toBe(true);
-    expect(resolveProp({ $or: [false, true] }, {}, {})).toBe(true);
-  });
-
-  it('$or returns false when all operands are falsy', () => {
-    expect(resolveProp({ $or: [false, 0, '', null] }, {}, {})).toBe(false);
-  });
-
-  it('$or short-circuits on first truthy value', () => {
-    expect(resolveProp({ $or: [true, 'should-not-matter'] }, {}, {})).toBe(true);
-  });
-
-  it('$and/$or compose with $not and $store', () => {
+  it('boolean logic reads store accessors', () => {
     const stores = { s: { isAdmin: markReactive(() => true), isLocked: markReactive(() => false) } };
-    // { $and: [{ $store: 's.isAdmin' }, { $not: { $store: 's.isLocked' } }] }
-    const result = resolveProp({ $and: [{ $store: 's.isAdmin' }, { $not: { $store: 's.isLocked' } }] }, stores, {});
-    expect(result).toBe(true);
+    expect(read('s.isAdmin && !s.isLocked', stores)).toBe(true);
+    expect(read('s.isAdmin && s.isLocked', stores)).toBe(false);
   });
 
   // --- $action error handling ---
@@ -495,14 +353,14 @@ describe('propResolvers (combined)', () => {
 
   // --- $action lifecycle callbacks ---
 
-  it('onSuccess fires after async action resolves', async () => {
+  it('onSuccess fires after async action resolves, with result in scope', async () => {
     const successValue = { uuid: 'space-123' };
     const onSuccessSpy = vi.fn();
     const stores = { myStore: { create: () => Promise.resolve(successValue), notify: onSuccessSpy } };
     const action = {
       $action: 'myStore.create',
       args: [],
-      onSuccess: [{ $action: 'myStore.notify', args: ['$result.uuid'] }],
+      onSuccess: [{ $action: 'myStore.notify', args: [{ $: 'result.uuid' }] }],
     };
     const fn = resolveProp(action, stores, {}) as () => void;
     fn();
@@ -516,7 +374,7 @@ describe('propResolvers (combined)', () => {
     const action = {
       $action: 'myStore.fail',
       args: [],
-      onError: [{ $action: 'myStore.handleError', args: ['$result.message'] }],
+      onError: [{ $action: 'myStore.handleError', args: [{ $: 'result.message' }] }],
     };
     const fn = resolveProp(action, stores, {}) as () => void;
     fn();
@@ -595,90 +453,85 @@ describe('propResolvers (combined)', () => {
     expect(successSpy).not.toHaveBeenCalled();
   });
 
-  // --- $concat ---
+  // --- interpolation ---
 
-  it('$concat joins string parts', () => {
-    const result = resolveProp({ $concat: ['/space/', 'abc123'] }, {}, {});
-    expect(result).toBe('/space/abc123');
+  it('interpolation joins string parts', () => {
+    expect(read("`/space/${'abc123'}`")).toBe('/space/abc123');
   });
 
-  it('$concat resolves context references in parts', () => {
-    const ctx = { space: { uuid: 'xyz' } };
-    const result = resolveProp({ $concat: ['/space/', '$space.uuid'] }, {}, ctx);
-    expect(result).toBe('/space/xyz');
+  it('interpolation reads context', () => {
+    expect(read('`/space/${space.uuid}`', {}, { space: { uuid: 'xyz' } })).toBe('/space/xyz');
   });
 
-  it('$concat treats null/undefined parts as empty strings', () => {
-    const result = resolveProp({ $concat: ['hello', null, 'world'] }, {}, {});
-    expect(result).toBe('helloworld');
-  });
-
-  // --- Context reference strings ---
-
-  it('resolves $contextKey.path strings from context', () => {
-    const ctx = { item: { name: 'Test', meta: { icon: 'star' } } };
-    expect(resolveProp('$item.name', {}, ctx)).toBe('Test');
-    expect(resolveProp('$item.meta.icon', {}, ctx)).toBe('star');
-  });
-
-  it('resolves $contextKey without dot path to whole value', () => {
-    const ctx = { item: 'hello' };
-    expect(resolveProp('$item', {}, ctx)).toBe('hello');
-  });
-
-  it('returns string as-is when context key not found', () => {
-    expect(resolveProp('$unknown.key', {}, {})).toBe('$unknown.key');
-  });
-
-  it('returns undefined for missing nested path in context', () => {
-    const ctx = { item: { name: 'Test' } };
-    expect(resolveProp('$item.nonexistent.deep', {}, ctx)).toBeUndefined();
+  it('interpolation writes nothing for a missing value', () => {
+    expect(read('`hello${missing}world`')).toBe('helloworld');
   });
 });
 
-// --- $local / $setLocal ---
+// --- locals ---
 
-describe('$local resolver', () => {
+describe('local reads', () => {
   it('returns a reactive accessor for a declared field', () => {
-    const accessor = () => 'hello';
-    const context = { $local: { name: accessor } };
-    const result = resolveLocalProp({ $local: 'name' }, context);
+    const context = { $local: { name: markReactive(() => 'hello') } };
+    const result = resolveProp({ $: 'local.name' }, {}, context, (fn) => fn);
     expect(typeof result).toBe('function');
-    expect((result as () => unknown)()).toBe('hello');
+    expect(unwrap(result)).toBe('hello');
     expect(REACTIVE_ACCESSOR in (result as object)).toBe(true);
   });
 
-  it('returns undefined and warns when no $local in context', () => {
-    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const result = resolveLocalProp({ $local: 'name' }, {});
-    expect(result).toBeUndefined();
-    expect(spy).toHaveBeenCalledWith(expect.stringContaining('no $localState'));
-    spy.mockRestore();
+  it('reads nothing for an undeclared field', () => {
+    const context = { $local: { name: markReactive(() => '') } };
+    expect(read('local.missing', {}, context)).toBeUndefined();
+    expect(read('local.missing', {}, {})).toBeUndefined();
   });
 
-  it('returns undefined and warns for undeclared field', () => {
-    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const context = { $local: { name: () => '' } };
-    const result = resolveLocalProp({ $local: 'missing' }, context);
-    expect(result).toBeUndefined();
-    expect(spy).toHaveBeenCalledWith(expect.stringContaining('not declared'));
-    spy.mockRestore();
+  it('reads into an object-typed field', () => {
+    const context = { $local: { location: markReactive(() => ({ city: 'Lisbon' })) } };
+    expect(read('local.location.city', {}, context)).toBe('Lisbon');
   });
 });
 
 describe('$setLocal resolver', () => {
-  it('creates an event handler that calls the setter with extracted value', () => {
+  it('creates an event handler that sets what the expression computes when it fires', () => {
     const setter = vi.fn();
     const context = { $localSetters: { name: setter } };
-    const handler = resolveSetLocalProp({ $setLocal: 'name', from: '$event.target.value' }, context);
+    const handler = resolveSetLocalProp(
+      { $setLocal: 'name', value: { $: 'event.target.value' } },
+      context,
+      {},
+      resolveProp,
+    );
     expect(typeof handler).toBe('function');
     handler({ target: { value: 'hello' } });
     expect(setter).toHaveBeenCalledWith('hello');
   });
 
+  it('sets a literal value', () => {
+    const setter = vi.fn();
+    const handler = resolveSetLocalProp({ $setLocal: 'name', value: 'fixed' }, { $localSetters: { name: setter } });
+    handler({ target: { value: 'ignored' } });
+    expect(setter).toHaveBeenCalledWith('fixed');
+  });
+
+  it('merges fields into an object-typed field', () => {
+    const setter = vi.fn();
+    const context = {
+      $local: { location: markReactive(() => ({ city: 'Lisbon', country: 'PT' })) },
+      $localSetters: { location: setter },
+    };
+    const handler = resolveSetLocalProp(
+      { $setLocal: 'location', merge: { city: { $: 'event.detail' } } },
+      context,
+      {},
+      resolveProp,
+    );
+    handler({ detail: 'Porto' });
+    expect(setter).toHaveBeenCalledWith({ city: 'Porto', country: 'PT' });
+  });
+
   it('returns noop and warns when no $localSetters in context', () => {
     const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const handler = resolveSetLocalProp({ $setLocal: 'name', from: '$event' }, {});
+    const handler = resolveSetLocalProp({ $setLocal: 'name', value: { $: 'event' } }, {});
     expect(typeof handler).toBe('function');
     handler('anything'); // should not throw
     expect(spy).toHaveBeenCalledWith(expect.stringContaining('no $localState'));
@@ -688,76 +541,35 @@ describe('$setLocal resolver', () => {
   it('returns noop and warns for undeclared setter', () => {
     const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const context = { $localSetters: { name: vi.fn() } };
-    const handler = resolveSetLocalProp({ $setLocal: 'missing', from: '$event' }, context);
+    const handler = resolveSetLocalProp({ $setLocal: 'missing', value: { $: 'event' } }, context);
     handler('anything');
     expect(spy).toHaveBeenCalledWith(expect.stringContaining('not declared'));
     spy.mockRestore();
   });
 });
 
-describe('extractFromPath', () => {
-  it('returns raw event for "$event"', () => {
-    const event = { target: { value: 'x' } };
-    expect(extractFromPath(event, '$event')).toBe(event);
-  });
-
-  it('extracts nested path from event', () => {
-    const event = { target: { value: 'hello' } };
-    expect(extractFromPath(event, '$event.target.value')).toBe('hello');
-  });
-
-  it('extracts single-level path', () => {
-    const event = { detail: 42 };
-    expect(extractFromPath(event, '$event.detail')).toBe(42);
-  });
-
-  it('returns undefined for missing path', () => {
-    expect(extractFromPath({}, '$event.missing.deep')).toBeUndefined();
-  });
-
-  it('extracts numeric array index from path', () => {
-    const file = { name: 'photo.png' };
-    const event = { detail: [file, { name: 'other.png' }] };
-    expect(extractFromPath(event, '$event.detail.0')).toBe(file);
-    expect(extractFromPath(event, '$event.detail.1')).toEqual({ name: 'other.png' });
-  });
-
-  it('returns undefined for out-of-bounds array index', () => {
-    const event = { detail: ['only'] };
-    expect(extractFromPath(event, '$event.detail.5')).toBeUndefined();
-  });
-
-  it('$arg returns raw first callback argument (alias for $event)', () => {
-    const value = 'hello';
-    expect(extractFromPath(value, '$arg')).toBe(value);
-  });
-
-  it('$arg.path extracts nested property from first callback argument', () => {
-    const event = new CustomEvent('input', { detail: 'typed value' });
-    expect(extractFromPath(event, '$arg.detail')).toBe('typed value');
-  });
-
-  it('$arg.deep.path extracts deeply nested property', () => {
-    const event = { target: { value: 'x' } };
-    expect(extractFromPath(event, '$arg.target.value')).toBe('x');
-  });
-});
-
-describe('$local/$setLocal via dispatcher', () => {
-  it('resolveProp dispatches $local tokens', () => {
-    const accessor = () => 'test';
-    const context = { $local: { field: accessor } };
-    const result = resolveProp({ $local: 'field' }, {}, context);
-    expect(typeof result).toBe('function');
-    expect((result as () => unknown)()).toBe('test');
+describe('locals via dispatcher', () => {
+  it('resolveProp reads a local', () => {
+    const context = { $local: { field: markReactive(() => 'test') } };
+    expect(read('local.field', {}, context)).toBe('test');
   });
 
   it('resolveProp dispatches $setLocal tokens', () => {
     const setter = vi.fn();
     const context = { $localSetters: { field: setter } };
-    const handler = resolveProp({ $setLocal: 'field', from: '$event.detail' }, {}, context) as (e: unknown) => void;
+    const handler = resolveProp({ $setLocal: 'field', value: { $: 'event.detail' } }, {}, context) as (
+      e: unknown,
+    ) => void;
     handler({ detail: 'value' });
     expect(setter).toHaveBeenCalledWith('value');
+  });
+
+  it('resolveProp dispatches $toggleLocal tokens', () => {
+    const setter = vi.fn();
+    const context = { $local: { open: markReactive(() => false) }, $localSetters: { open: setter } };
+    const handler = resolveProp({ $toggleLocal: 'open' }, {}, context) as () => void;
+    handler();
+    expect(setter).toHaveBeenCalledWith(true);
   });
 });
 
@@ -766,13 +578,13 @@ describe('$action arg unwrapping', () => {
     const method = vi.fn();
     const stores = { myStore: { method } };
 
-    // Simulate a $local accessor (marked reactive)
     let value = 'initial';
     const accessor = markReactive(() => value);
 
     const context = { $local: { name: accessor } };
-    const action = { $action: 'myStore.method', args: [{ $local: 'name' }] };
-    const fn = resolveProp(action, stores, context) as () => void;
+    const action = { $action: 'myStore.method', args: [{ $: 'local.name' }] };
+    // A render-time memo hands the handler an accessor, read when the handler fires.
+    const fn = resolveProp(action, stores, context, ((fn: () => unknown) => fn) as <T>(fn: () => T) => T) as () => void;
 
     // Change the value before calling — unwrap should read current value
     value = 'updated';
@@ -790,7 +602,7 @@ describe('$action arg unwrapping', () => {
   });
 });
 
-// --- Validation token resolver tests ---
+// --- Validation state ---
 
 function createMockMeta(overrides: Partial<LocalFieldMeta> = {}): LocalFieldMeta {
   return {
@@ -804,110 +616,73 @@ function createMockMeta(overrides: Partial<LocalFieldMeta> = {}): LocalFieldMeta
   };
 }
 
-describe('$error resolver', () => {
+describe('error()', () => {
   it('returns empty string when not touched', () => {
     const meta = createMockMeta({ errors: () => ['Required'], touched: () => false });
-    const context = { $localMeta: { name: meta } };
-    const result = resolveErrorProp({ $error: 'name' }, context);
-    expect(typeof result).toBe('function');
-    expect((result as () => unknown)()).toBe('');
+    expect(read("error('name')", {}, { $localMeta: { name: meta } })).toBe('');
   });
 
   it('returns first error when touched', () => {
     const meta = createMockMeta({ errors: () => ['Required', 'Too short'], touched: () => true });
-    const context = { $localMeta: { name: meta } };
-    const result = resolveErrorProp({ $error: 'name' }, context);
-    expect((result as () => unknown)()).toBe('Required');
+    expect(read("error('name')", {}, { $localMeta: { name: meta } })).toBe('Required');
   });
 
   it('returns empty string when touched but no errors', () => {
     const meta = createMockMeta({ errors: () => [], touched: () => true });
-    const context = { $localMeta: { name: meta } };
-    const result = resolveErrorProp({ $error: 'name' }, context);
-    expect((result as () => unknown)()).toBe('');
+    expect(read("error('name')", {}, { $localMeta: { name: meta } })).toBe('');
   });
 
-  it('returns empty string and warns for unknown field', () => {
-    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const context = { $localMeta: {} };
-    const result = resolveErrorProp({ $error: 'missing' }, context);
-    expect(result).toBe('');
-    expect(spy).toHaveBeenCalledWith(expect.stringContaining('not found'));
-    spy.mockRestore();
+  it('returns empty string for an unknown field', () => {
+    expect(read("error('missing')", {}, { $localMeta: {} })).toBe('');
   });
 });
 
-describe('$valid resolver', () => {
+describe('valid()', () => {
   it('returns true when no errors', () => {
     const meta = createMockMeta({ errors: () => [] });
-    const context = { $localMeta: { name: meta } };
-    const result = resolveValidProp({ $valid: 'name' }, context);
-    expect((result as () => unknown)()).toBe(true);
+    expect(read("valid('name')", {}, { $localMeta: { name: meta } })).toBe(true);
   });
 
   it('returns false when there are errors (ignores touched)', () => {
     const meta = createMockMeta({ errors: () => ['Required'], touched: () => false });
-    const context = { $localMeta: { name: meta } };
-    const result = resolveValidProp({ $valid: 'name' }, context);
-    expect((result as () => unknown)()).toBe(false);
+    expect(read("valid('name')", {}, { $localMeta: { name: meta } })).toBe(false);
   });
 
-  it('returns true and warns for unknown field', () => {
-    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const result = resolveValidProp({ $valid: 'missing' }, { $localMeta: {} });
-    expect(result).toBe(true);
-    spy.mockRestore();
+  it('returns true for an unknown field', () => {
+    expect(read("valid('missing')", {}, { $localMeta: {} })).toBe(true);
   });
 });
 
-describe('$touched resolver', () => {
-  it('returns false when not touched', () => {
-    const meta = createMockMeta({ touched: () => false });
-    const context = { $localMeta: { name: meta } };
-    const result = resolveTouchedProp({ $touched: 'name' }, context);
-    expect((result as () => unknown)()).toBe(false);
-  });
-
-  it('returns true when touched', () => {
-    const meta = createMockMeta({ touched: () => true });
-    const context = { $localMeta: { name: meta } };
-    const result = resolveTouchedProp({ $touched: 'name' }, context);
-    expect((result as () => unknown)()).toBe(true);
+describe('touched()', () => {
+  it('reads the touched flag', () => {
+    expect(read("touched('name')", {}, { $localMeta: { name: createMockMeta({ touched: () => false }) } })).toBe(false);
+    expect(read("touched('name')", {}, { $localMeta: { name: createMockMeta({ touched: () => true }) } })).toBe(true);
   });
 });
 
-describe('$formValid resolver', () => {
+describe('formValid()', () => {
   it('returns true when all scoped fields are valid', () => {
-    const meta1 = createMockMeta({ errors: () => [] });
-    const meta2 = createMockMeta({ errors: () => [] });
     const context = {
-      $localMeta: { name: meta1, email: meta2 },
+      $localMeta: { name: createMockMeta(), email: createMockMeta() },
       $localScopeFields: ['name', 'email'],
     };
-    const result = resolveFormValidProp(context);
-    expect((result as () => unknown)()).toBe(true);
+    expect(read('formValid()', {}, context)).toBe(true);
   });
 
   it('returns false when any scoped field has errors', () => {
-    const meta1 = createMockMeta({ errors: () => [] });
-    const meta2 = createMockMeta({ errors: () => ['Required'] });
     const context = {
-      $localMeta: { name: meta1, email: meta2 },
+      $localMeta: { name: createMockMeta(), email: createMockMeta({ errors: () => ['Required'] }) },
       $localScopeFields: ['name', 'email'],
     };
-    const result = resolveFormValidProp(context);
-    expect((result as () => unknown)()).toBe(false);
+    expect(read('formValid()', {}, context)).toBe(false);
   });
 
   it('ignores fields not in scope', () => {
-    const meta1 = createMockMeta({ errors: () => [] });
-    const meta2 = createMockMeta({ errors: () => ['Required'] });
     const context = {
-      $localMeta: { name: meta1, email: meta2 },
+      $localMeta: { name: createMockMeta(), email: createMockMeta({ errors: () => ['Required'] }) },
       $localScopeFields: ['name'], // email not in scope
     };
-    const result = resolveFormValidProp(context);
-    expect((result as () => unknown)()).toBe(true);
+    expect(read('formValid()', {}, context)).toBe(true);
   });
 });
 
@@ -924,10 +699,11 @@ describe('$touch resolver', () => {
   it('creates a handler that touches all scoped fields', () => {
     const setTouched1 = vi.fn();
     const setTouched2 = vi.fn();
-    const meta1 = createMockMeta({ setTouched: setTouched1 });
-    const meta2 = createMockMeta({ setTouched: setTouched2 });
     const context = {
-      $localMeta: { name: meta1, email: meta2 },
+      $localMeta: {
+        name: createMockMeta({ setTouched: setTouched1 }),
+        email: createMockMeta({ setTouched: setTouched2 }),
+      },
       $localScopeFields: ['name', 'email'],
     };
     const handler = resolveTouchProp({ $touch: '$all' }, context);
@@ -939,10 +715,11 @@ describe('$touch resolver', () => {
   it('$all only touches scoped fields, not inherited', () => {
     const parentTouch = vi.fn();
     const childTouch = vi.fn();
-    const parentMeta = createMockMeta({ setTouched: parentTouch });
-    const childMeta = createMockMeta({ setTouched: childTouch });
     const context = {
-      $localMeta: { parentField: parentMeta, childField: childMeta },
+      $localMeta: {
+        parentField: createMockMeta({ setTouched: parentTouch }),
+        childField: createMockMeta({ setTouched: childTouch }),
+      },
       $localScopeFields: ['childField'], // only child in scope
     };
     const handler = resolveTouchProp({ $touch: '$all' }, context);
@@ -956,10 +733,8 @@ describe('$resetLocal resolver', () => {
   it('creates a handler that resets all scoped fields', () => {
     const reset1 = vi.fn();
     const reset2 = vi.fn();
-    const meta1 = createMockMeta({ reset: reset1 });
-    const meta2 = createMockMeta({ reset: reset2 });
     const context = {
-      $localMeta: { name: meta1, email: meta2 },
+      $localMeta: { name: createMockMeta({ reset: reset1 }), email: createMockMeta({ reset: reset2 }) },
       $localScopeFields: ['name', 'email'],
     };
     const handler = resolveResetLocalProp(context);
@@ -971,10 +746,11 @@ describe('$resetLocal resolver', () => {
   it('only resets scoped fields, not inherited', () => {
     const parentReset = vi.fn();
     const childReset = vi.fn();
-    const parentMeta = createMockMeta({ reset: parentReset });
-    const childMeta = createMockMeta({ reset: childReset });
     const context = {
-      $localMeta: { parentField: parentMeta, childField: childMeta },
+      $localMeta: {
+        parentField: createMockMeta({ reset: parentReset }),
+        childField: createMockMeta({ reset: childReset }),
+      },
       $localScopeFields: ['childField'],
     };
     const handler = resolveResetLocalProp(context);
@@ -985,42 +761,9 @@ describe('$resetLocal resolver', () => {
 });
 
 describe('dispatcher integration — validation tokens', () => {
-  it('resolves $error through dispatcher', () => {
-    const meta = createMockMeta({ errors: () => ['Required'], touched: () => true });
-    const context = { $localMeta: { name: meta } };
-    const result = resolveProp({ $error: 'name' }, {}, context);
-    expect(typeof result).toBe('function');
-    expect((result as () => unknown)()).toBe('Required');
-  });
-
-  it('resolves $valid through dispatcher', () => {
-    const meta = createMockMeta({ errors: () => [] });
-    const context = { $localMeta: { name: meta } };
-    const result = resolveProp({ $valid: 'name' }, {}, context);
-    expect(typeof result).toBe('function');
-    expect((result as () => unknown)()).toBe(true);
-  });
-
-  it('resolves $touched through dispatcher', () => {
-    const meta = createMockMeta({ touched: () => true });
-    const context = { $localMeta: { name: meta } };
-    const result = resolveProp({ $touched: 'name' }, {}, context);
-    expect(typeof result).toBe('function');
-    expect((result as () => unknown)()).toBe(true);
-  });
-
-  it('resolves $formValid through dispatcher', () => {
-    const meta = createMockMeta({ errors: () => [] });
-    const context = { $localMeta: { name: meta }, $localScopeFields: ['name'] };
-    const result = resolveProp({ $formValid: '$scope' }, {}, context);
-    expect(typeof result).toBe('function');
-    expect((result as () => unknown)()).toBe(true);
-  });
-
   it('resolves $touch through dispatcher', () => {
     const setTouched = vi.fn();
-    const meta = createMockMeta({ setTouched });
-    const context = { $localMeta: { name: meta }, $localScopeFields: ['name'] };
+    const context = { $localMeta: { name: createMockMeta({ setTouched }) }, $localScopeFields: ['name'] };
     const handler = resolveProp({ $touch: 'name' }, {}, context) as () => void;
     handler();
     expect(setTouched).toHaveBeenCalledWith(true);
@@ -1028,10 +771,26 @@ describe('dispatcher integration — validation tokens', () => {
 
   it('resolves $resetLocal through dispatcher', () => {
     const reset = vi.fn();
-    const meta = createMockMeta({ reset });
-    const context = { $localMeta: { name: meta }, $localScopeFields: ['name'] };
+    const context = { $localMeta: { name: createMockMeta({ reset }) }, $localScopeFields: ['name'] };
     const handler = resolveProp({ $resetLocal: '$scope' }, {}, context) as () => void;
     handler();
     expect(reset).toHaveBeenCalled();
+  });
+
+  it('a submit guard composes touch, formValid() and the action', () => {
+    const setTouched = vi.fn();
+    const submit = vi.fn();
+    const context = {
+      $localMeta: { name: createMockMeta({ setTouched, errors: () => ['Required'] }) },
+      $localScopeFields: ['name'],
+    };
+    const handler = resolveProp(
+      { onClick: [{ $touch: '$all' }, { $if: { condition: { $: 'formValid()' }, then: { $action: 's.submit' } } }] },
+      { s: { submit } },
+      context,
+    ) as { onClick: () => void };
+    handler.onClick();
+    expect(setTouched).toHaveBeenCalledWith(true);
+    expect(submit).not.toHaveBeenCalled();
   });
 });

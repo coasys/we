@@ -40,7 +40,7 @@ describe('$action path resolution', () => {
   it('passes resolved args through', () => {
     const add = vi.fn();
     const handler = resolve(
-      { $action: 'modules.notes.add', args: ['hello', { $store: 'cfg.tag' }] },
+      { $action: 'modules.notes.add', args: ['hello', { $: 'cfg.tag' }] },
       { modules: { notes: { add } }, cfg: { tag: 'urgent' } },
     );
 
@@ -48,31 +48,38 @@ describe('$action path resolution', () => {
     expect(add).toHaveBeenCalledWith('hello', 'urgent');
   });
 
-  it('extracts callback-argument paths via $arg', () => {
+  it('extracts callback-argument paths via an expression on arg', () => {
     const set = vi.fn();
-    const handler = resolve({ $action: 'store.set', args: ['notes', '$arg.detail'] }, { store: { set } });
+    const handler = resolve({ $action: 'store.set', args: ['notes', { $: 'arg.detail' }] }, { store: { set } });
 
     (handler as (e: unknown) => void)({ detail: false });
     expect(set).toHaveBeenCalledWith('notes', false);
   });
 
-  it('extracts callback-argument paths via $event, the same as $arg', () => {
-    // A lone `{ $action, args }` resolves once at render time, where `$event` matches no context key
-    // — and an unresolved `$`-string is returned verbatim. So this used to hand the store the
-    // *string* `'$event.detail'`: truthy, silent, no error. `setModuleEnabled(id, '$event.detail')`
-    // is what that looked like from the outside — a toggle that could only switch a module on.
+  it('reads event the same as arg', () => {
+    // A lone `{ $action, args }` resolves once at render time, before any event exists. An
+    // expression naming `event` is deferred to the callback rather than evaluated to nothing — so
+    // the store is handed the detail, not `undefined` and not a literal string.
+    const set = vi.fn();
+    const handler = resolve({ $action: 'store.set', args: ['notes', { $: 'event.detail' }] }, { store: { set } });
+
+    (handler as (e: unknown) => void)({ detail: false });
+    expect(set).toHaveBeenCalledWith('notes', false);
+  });
+
+  it('leaves a dollar-prefixed string as the text it is', () => {
     const set = vi.fn();
     const handler = resolve({ $action: 'store.set', args: ['notes', '$event.detail'] }, { store: { set } });
 
     (handler as (e: unknown) => void)({ detail: false });
-    expect(set).toHaveBeenCalledWith('notes', false);
+    expect(set).toHaveBeenCalledWith('notes', '$event.detail');
   });
 
-  it('passes the whole callback argument for a bare $event or $arg', () => {
+  it('passes the whole callback argument for a bare event or arg', () => {
     const set = vi.fn();
     const event = { detail: 42 };
-    const viaEvent = resolve({ $action: 'store.set', args: ['$event'] }, { store: { set } });
-    const viaArg = resolve({ $action: 'store.set', args: ['$arg'] }, { store: { set } });
+    const viaEvent = resolve({ $action: 'store.set', args: [{ $: 'event' }] }, { store: { set } });
+    const viaArg = resolve({ $action: 'store.set', args: [{ $: 'arg' }] }, { store: { set } });
 
     (viaEvent as (e: unknown) => void)(event);
     (viaArg as (e: unknown) => void)(event);
@@ -97,7 +104,7 @@ describe('$action path resolution', () => {
   });
 
   it('does not invoke accessors while walking to the method', () => {
-    // Unlike `$store`'s walkPath, which calls signal accessors at each step to unwrap values, the
+    // Unlike a store read in an expression, which calls signal accessors to unwrap values, the
     // path to a method must not be invoked — a store namespace is a plain object, and calling a
     // signal on the way through would be wrong.
     const signal = vi.fn(() => 'value');
@@ -119,13 +126,13 @@ describe('lifecycle dispatch resolves without a reactive owner', () => {
    * The observable half of that, and what these pin: an argument resolved through a memo arrives as
    * an *accessor*, so anything reading it before `deepUnwrap` sees a function rather than a value.
    */
-  it('passes a $concat argument to a lifecycle action as a string, not an accessor', async () => {
+  it('passes an interpolated argument to a lifecycle action as a string, not an accessor', async () => {
     const navigate = vi.fn();
     const create = vi.fn().mockResolvedValue({ id: 'abc' });
     const handler = resolve(
       {
         $action: 'myStore.create',
-        onSuccess: [{ $action: 'routeStore.navigate', args: [{ $concat: ['/board/', '$result.id'] }] }],
+        onSuccess: [{ $action: 'routeStore.navigate', args: [{ $: '`/board/${result.id}`' }] }],
       },
       { myStore: { create }, routeStore: { navigate } },
     );
@@ -139,7 +146,7 @@ describe('lifecycle dispatch resolves without a reactive owner', () => {
     const save = vi.fn();
     // A render-time resolve keeps the reactive memo; `deepUnwrap` flattens it before the call.
     const handler = resolveProp(
-      { $action: 'myStore.save', args: [{ $concat: ['a', 'b'] }] },
+      { $action: 'myStore.save', args: [{ $: "'a' + 'b'" }] },
       { myStore: { save } },
       {},
       (fn) => fn(),

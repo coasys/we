@@ -74,7 +74,7 @@ describe('SchemaRenderer', () => {
     const TestComp = (props: any) => <span>{typeof props.value === 'function' ? props.value() : props.value}</span>;
     const registry: ComponentRegistry = { TestComp };
     const stores = { userStore: { name: 'Alice' } };
-    const node: SchemaNode = { type: 'TestComp', props: { value: { $store: 'userStore.name' } } };
+    const node: SchemaNode = { type: 'TestComp', props: { value: { $: 'userStore.name' } } };
     const { container } = renderSchema(node, { registry, stores });
     expect(container.textContent).toBe('Alice');
   });
@@ -98,8 +98,8 @@ describe('SchemaRenderer', () => {
     const stores = { listStore: { items: ['a', 'b', 'c'] } };
     const node: SchemaNode = {
       type: '$each',
-      props: { items: { $store: 'listStore.items' }, as: 'item' },
-      children: [{ type: 'TestItem', props: { label: '$item' } }],
+      props: { items: { $: 'listStore.items' }, as: 'item' },
+      children: [{ type: 'TestItem', props: { label: { $: 'item' } } }],
     };
     const { container } = renderSchema(node, { registry, stores });
     const lis = container.querySelectorAll('li');
@@ -117,7 +117,7 @@ describe('SchemaRenderer', () => {
     const node: SchemaNode = {
       type: '$if',
       props: {
-        condition: { $store: 'appStore.show' },
+        condition: { $: 'appStore.show' },
         then: { type: 'TestComp' },
         else: { type: 'div' },
       },
@@ -138,7 +138,7 @@ describe('SchemaRenderer', () => {
     const node: SchemaNode = {
       type: '$if',
       props: {
-        condition: { $store: 'appStore.show' },
+        condition: { $: 'appStore.show' },
         then: { type: 'TestComp' },
         else: { type: 'div', children: [{ type: 'span' }] },
       },
@@ -184,12 +184,12 @@ describe('SchemaRenderer', () => {
     const node: SchemaNode = {
       type: 'div',
       $localState: {
-        editName: { type: 'string', initial: { $store: 'spaceStore.currentSpace.name' } as any },
+        editName: { type: 'string', initial: { $: 'spaceStore.currentSpace.name' } as any },
       },
       children: [
         {
           type: 'InputComp',
-          props: { value: { $local: 'editName' } },
+          props: { value: { $: 'local.editName' } },
         },
       ],
     };
@@ -198,22 +198,21 @@ describe('SchemaRenderer', () => {
     expect(input.value).toBe('My Space');
   });
 
-  it('seeds $localState from a $-prefixed context string, as every other position accepts', () => {
-    // Only object tokens were resolved, so a form seeded from a `$each` item rendered the string
-    // `$space.name` in its input — no error, and the field looked filled in. This is the shape a
-    // per-space settings page needs: the space comes from the loop, not from a store path.
+  it('seeds $localState from an expression over the $each item, as every other position accepts', () => {
+    // A form seeded from a `$each` item is the shape a per-space settings page needs: the space
+    // comes from the loop, not from a store path.
     const InputComp = (props: any) => <input data-testid="input" value={props.value} />;
     const registry: ComponentRegistry = { InputComp };
-    // Tagged, as a real bag's state accessors are — `$store` reads only tagged accessors now.
+    // Tagged, as a real bag's state accessors are — an expression reads only tagged accessors.
     const stores = { spaceStore: { spaceList: markReactive(() => [{ uuid: 'abc', name: 'My Space' }]) } };
     const node: SchemaNode = {
       type: '$each',
-      props: { items: { $store: 'spaceStore.spaceList' }, as: 'space' },
+      props: { items: { $: 'spaceStore.spaceList' }, as: 'space' },
       children: [
         {
           type: 'div',
-          $localState: { editName: { type: 'string', initial: '$space.name' as any } },
-          children: [{ type: 'InputComp', props: { value: { $local: 'editName' } } }],
+          $localState: { editName: { type: 'string', initial: { $: 'space.name' } as any } },
+          children: [{ type: 'InputComp', props: { value: { $: 'local.editName' } } }],
         },
       ],
     };
@@ -228,7 +227,7 @@ describe('SchemaRenderer', () => {
     const node: SchemaNode = {
       type: 'div',
       $localState: { price: { type: 'string', initial: '$5.00' as any } },
-      children: [{ type: 'InputComp', props: { value: { $local: 'price' } } }],
+      children: [{ type: 'InputComp', props: { value: { $: 'local.price' } } }],
     };
     const { container } = renderSchema(node, { registry, stores: {} });
     const input = container.querySelector('[data-testid="input"]') as HTMLInputElement;
@@ -250,9 +249,9 @@ describe('SchemaRenderer', () => {
     const node: SchemaNode = {
       type: 'div',
       $localState: {
-        editName: { type: 'string', initial: { $store: 'spaceStore.currentSpace.name' } as any },
+        editName: { type: 'string', initial: { $: 'spaceStore.currentSpace.name' } as any },
       },
-      children: [{ type: 'InputComp', props: { value: { $local: 'editName' } } }],
+      children: [{ type: 'InputComp', props: { value: { $: 'local.editName' } } }],
     };
     const { container } = renderSchema(node, { registry, stores });
     const input = () => container.querySelector('[data-testid="input"]') as HTMLInputElement;
@@ -323,14 +322,14 @@ describe('$if branch slots', () => {
     expect(container.textContent).toBe('deep');
   });
 
-  it('renders nothing for a prop-level token in a branch slot — the trap', () => {
+  it('renders nothing for a value token in a branch slot — the trap', () => {
     const node: SchemaNode = {
       type: '$if',
       props: {
         condition: false,
         then: { type: 'we-text', children: ['then'] },
-        // Wrong spelling: an operator token where a node belongs.
-        else: { $if: { condition: true, then: { type: 'we-text', children: ['never-rendered'] } } },
+        // Wrong spelling: an expression where a node belongs.
+        else: { $: "'never-rendered'" } as any,
       },
     };
     const { container } = renderSchema(node, { registry });

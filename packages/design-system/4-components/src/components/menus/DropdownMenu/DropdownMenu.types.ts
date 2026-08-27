@@ -8,6 +8,15 @@ interface MenuItemBase {
   label: string;
   icon?: string;
   disabled?: boolean;
+  /**
+   * Leave the entry out while true — the way a schema makes an item conditional.
+   *
+   * A schema cannot wrap an entry in a conditional: an entry carries a handler, and a value
+   * expression cannot hold one. So the condition travels *on* the entry — `hidden: { $:
+   * '!modules.call.focusedId' }` — and the menu keeps the entry's place in the list so its
+   * neighbours are not rebuilt when it comes and goes.
+   */
+  hidden?: boolean;
 }
 
 /**
@@ -16,7 +25,8 @@ interface MenuItemBase {
 export interface DropdownMenuAction extends MenuItemBase {
   type?: 'action';
   variant?: 'default' | 'danger';
-  onAction: () => void;
+  /** Optional when the menu has `onSelect`, which is how a schema handles rows that came from data. */
+  onAction?: () => void;
 }
 
 /**
@@ -61,6 +71,14 @@ export type DropdownMenuEntry = DropdownMenuAction | DropdownMenuToggle | Dropdo
  */
 export interface DropdownMenuProps {
   items: DropdownMenuEntry[];
+  /**
+   * Fired with the action item that was chosen, after its own `onAction` if it has one.
+   *
+   * What lets a schema build a menu out of data: `items` can be a comprehension over rows —
+   * `local.columns.map(c, { id: c.id, label: c.title })` — which cannot attach a handler per row,
+   * so the menu reports the row and one handler on the menu reads it as `arg`.
+   */
+  onSelect?: (item: DropdownMenuAction) => void;
   placement?: Placement;
   triggerLabel?: string;
   triggerIcon?: string;

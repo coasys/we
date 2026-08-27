@@ -22,8 +22,8 @@ import { agentByline, collectionFeed, emptyState, peopleRow } from '@we/template
 
 import { composerModal, KIND } from './shared.ts';
 
-/** Am I on this roster? `$in` over the DID list — membership, not a scan. */
-const isAttending = (as: string) => ({ $in: ['$me.did', `$${as}.participants`] });
+/** Am I on this roster? `in` over the DID list — membership, not a scan. */
+const isAttending = (as: string) => ({ $: `me.did in ${as}.participants` });
 
 const rsvpButton = (as: string): SchemaNode => ({
   type: '$if',
@@ -35,7 +35,7 @@ const rsvpButton = (as: string): SchemaNode => ({
         variant: 'secondary',
         size: 'sm',
         // Removes this agent's own entry and nothing else — see the note on add-only rosters.
-        onClick: { $action: 'spaceStore.setAttending', args: [`$${as}.id`, false] },
+        onClick: { $action: 'spaceStore.setAttending', args: [{ $: `${as}.id` }, false] },
       },
       children: [{ type: 'we-icon', props: { name: 'check' } }, 'Going'],
     },
@@ -44,7 +44,7 @@ const rsvpButton = (as: string): SchemaNode => ({
       props: {
         variant: 'primary',
         size: 'sm',
-        onClick: { $action: 'spaceStore.setAttending', args: [`$${as}.id`, true] },
+        onClick: { $action: 'spaceStore.setAttending', args: [{ $: `${as}.id` }, true] },
       },
       children: ['RSVP'],
     },
@@ -70,8 +70,8 @@ const eventCard: SchemaNode = {
           type: 'Column',
           props: { gap: '200', flex: '1', minWidth: '0' },
           children: [
-            { type: 'we-text', props: { variant: 'heading-sm' }, children: ['$event.title'] },
-            agentByline({ did: '$event.author', timestamp: '$event.createdAt', avatarSize: 'xs' }),
+            { type: 'we-text', props: { variant: 'heading-sm' }, children: [{ $: 'event.title' }] },
+            agentByline({ did: { $: 'event.author' }, timestamp: { $: 'event.createdAt' }, avatarSize: 'xs' }),
           ],
         },
         rsvpButton('event'),
@@ -80,7 +80,7 @@ const eventCard: SchemaNode = {
     {
       type: 'BlockRenderer',
       props: {
-        editorState: '$event.editorState',
+        editorState: { $: 'event.editorState' },
       },
     },
     {
@@ -90,7 +90,7 @@ const eventCard: SchemaNode = {
         // The roster, drawn from `participants`. `minHeight` on the row because AvatarStack has no
         // height with no avatars, and profiles resolve after the record they belong to — without a
         // floor the row collapses and then shoves everything below it down a second time.
-        peopleRow({ items: '$event.participants', dids: true, noun: 'going', max: 6 }),
+        peopleRow({ items: { $: 'event.participants' }, dids: true, noun: 'going', max: 6 }),
       ],
     },
   ],

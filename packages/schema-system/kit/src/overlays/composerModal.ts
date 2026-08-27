@@ -59,7 +59,7 @@ export interface ComposerModalOptions {
    * what was just written. These run alongside the fragment's own rather than instead of them.
    */
   onSaved?: SchemaProp[];
-  /** Content to prefill — `'$post.editorState'` for an edit. Omit for a blank composition. */
+  /** Content to prefill — `{ $: 'post.editorState' }` for an edit. Omit for a blank composition. */
   editorState?: SchemaProp;
   /**
    * Ask before a backdrop click or Escape throws the draft away. **On by default** — pass `false`
@@ -80,7 +80,7 @@ export function composerModal(opts: ComposerModalOptions): SchemaNode {
     in the kit whose source is a component rather than a control, because Lexical's document is not
     reachable from `$local` — see `BlockComposer.onDirtyChange`.
   */
-  const guard = opts.guardDraft === false ? null : discardGuard({ dirty: { $local: 'draftDirty' }, close });
+  const guard = opts.guardDraft === false ? null : discardGuard({ dirty: { $: 'local.draftDirty' }, close });
 
   return {
     /*
@@ -90,7 +90,7 @@ export function composerModal(opts: ComposerModalOptions): SchemaNode {
     */
     type: '$if',
     props: {
-      condition: { $local: opts.openLocal },
+      condition: { $: `local.${opts.openLocal}` },
       then: {
         type: 'we-modal',
         // A workspace, not a form: the composer is a document editor and wants the room. `ax` used
@@ -119,8 +119,8 @@ export function composerModal(opts: ComposerModalOptions): SchemaNode {
                 type: 'BlockComposer',
                 props: {
                   ...(opts.editorState !== undefined && { editorState: opts.editorState }),
-                  ...(guard && { onDirtyChange: { $setLocal: 'draftDirty', from: '$event' } }),
-                  onReady: { $setLocal: 'savePost', from: '$event.save' },
+                  ...(guard && { onDirtyChange: { $setLocal: 'draftDirty', value: { $: 'event' } } }),
+                  onReady: { $setLocal: 'savePost', value: { $: 'event.save' } },
                   onSave: [
                     { $setLocal: 'submitting', value: true },
                     {
@@ -152,10 +152,10 @@ export function composerModal(opts: ComposerModalOptions): SchemaNode {
                 type: 'we-button',
                 props: {
                   variant: 'primary',
-                  loading: { $local: 'submitting' },
+                  loading: { $: 'local.submitting' },
                   // Disabled only while in flight, never on "nothing typed yet" — the house rule.
                   // Nothing about a draft is locally judgeable anyway.
-                  disabled: { $local: 'submitting' },
+                  disabled: { $: 'local.submitting' },
                   onClick: { $callLocal: 'savePost' },
                 },
                 children: [opts.saveLabel ?? 'Post'],

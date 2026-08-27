@@ -1,4 +1,5 @@
-import type { SchemaNode, SchemaProp } from '@we/schema-shared';
+import type { ExpressionToken, SchemaNode, SchemaProp } from '@we/schema-shared';
+import { expr, ref } from '@we/schema-shared';
 
 import { marketplaceBrowser } from './vocabulary/MarketplaceBrowser.ts';
 import { themeMarketplaceBrowser } from './vocabulary/ThemeMarketplaceBrowser.ts';
@@ -18,11 +19,12 @@ import { themeMarketplaceBrowser } from './vocabulary/ThemeMarketplaceBrowser.ts
 const defaultPickerRow = (opts: {
   as: string;
   icon: SchemaProp;
-  name: string;
+  name: string | ExpressionToken;
+  /** The path, inside an expression, of the id this row compares itself against. */
   currentDefault: string;
   setDefault: string;
 }): SchemaNode => {
-  const isDefault = { $eq: [`$${opts.as}.id`, opts.currentDefault] };
+  const isDefault = expr`${ref(opts.as, 'id')} == ${{ $: opts.currentDefault }}`;
 
   return {
     type: 'Row',
@@ -31,7 +33,7 @@ const defaultPickerRow = (opts: {
       ax: 'between',
       p: '300',
       r: '300',
-      bg: { $if: { condition: isDefault, then: 'surface-active', else: 'page' } },
+      bg: expr`${isDefault} ? 'surface-active' : 'page'`,
     },
     children: [
       {
@@ -55,7 +57,7 @@ const defaultPickerRow = (opts: {
           else: {
             type: '$if',
             props: {
-              condition: '$space.canAdminister',
+              condition: { $: 'space.canAdminister' },
               then: {
                 type: 'we-button',
                 props: {
@@ -64,7 +66,7 @@ const defaultPickerRow = (opts: {
                   // The space is named explicitly. On the route this replaced it could be omitted,
                   // because there was only ever one space in question; here the row being configured
                   // is usually not the one on screen.
-                  onClick: { $action: opts.setDefault, args: [`$${opts.as}.id`, '$space.uuid'] },
+                  onClick: { $action: opts.setDefault, args: [{ $: `${opts.as}.id` }, { $: 'space.uuid' }] },
                 },
                 children: ['Set as default'],
               },
@@ -78,19 +80,19 @@ const defaultPickerRow = (opts: {
 
 const templateRow = defaultPickerRow({
   as: 'template',
-  icon: '$template.meta.icon',
-  name: '$template.meta.name',
+  icon: { $: 'template.meta.icon' },
+  name: { $: 'template.meta.name' },
   // The row's own space, not `spaceStore.spaceDefaultTemplateId` — that reads the space on screen,
   // which would mark the wrong row as default on every other space's page.
-  currentDefault: '$space.defaultTemplateId',
+  currentDefault: 'space.defaultTemplateId',
   setDefault: 'spaceStore.setSpaceDefaultTemplate',
 });
 
 const themeRow = defaultPickerRow({
   as: 'theme',
-  icon: '$theme.icon',
-  name: '$theme.name',
-  currentDefault: '$space.defaultThemeId',
+  icon: { $: 'theme.icon' },
+  name: { $: 'theme.name' },
+  currentDefault: 'space.defaultThemeId',
   setDefault: 'spaceStore.setSpaceDefaultTheme',
 });
 
@@ -127,7 +129,7 @@ const group = (label: string, items: SchemaProp, as: string, row: SchemaNode): S
 const browseToggle = (localFlag: string, browser: SchemaNode): SchemaNode => ({
   type: '$if',
   props: {
-    condition: '$space.canAdminister',
+    condition: { $: 'space.canAdminister' },
     then: {
       type: 'Column',
       props: { gap: '200' },
@@ -135,17 +137,9 @@ const browseToggle = (localFlag: string, browser: SchemaNode): SchemaNode => ({
         {
           type: 'we-button',
           props: { variant: 'secondary', size: 'sm', onClick: { $toggleLocal: localFlag } },
-          children: [
-            {
-              $if: {
-                condition: { $local: localFlag },
-                then: 'Hide',
-                else: 'Browse the marketplace',
-              },
-            },
-          ],
+          children: [{ $: `local.${localFlag} ? 'Hide' : 'Browse the marketplace'` }],
         },
-        { type: '$if', props: { condition: { $local: localFlag }, then: browser } },
+        { type: '$if', props: { condition: { $: `local.${localFlag}` }, then: browser } },
       ],
     },
   },
@@ -160,18 +154,18 @@ export const spaceDefaultsSection: SchemaNode = {
   },
   children: [
     sectionBox('Default template', 'The interface members get when they open this space.', [
-      group('Built-in', { $store: 'templateStore.builtInTemplates' }, 'template', templateRow),
+      group('Built-in', { $: 'templateStore.builtInTemplates' }, 'template', templateRow),
       {
         type: '$if',
         props: {
           condition: { $: 'count(templateStore.spaceTemplates)' },
-          then: group('In this space', { $store: 'templateStore.spaceTemplates' }, 'template', templateRow),
+          then: group('In this space', { $: 'templateStore.spaceTemplates' }, 'template', templateRow),
         },
       },
       browseToggle('showMarketplace', marketplaceBrowser),
     ]),
     sectionBox('Default theme', 'The look members get when they open this space.', [
-      group('Built-in', { $store: 'themeStore.builtInThemes' }, 'theme', themeRow),
+      group('Built-in', { $: 'themeStore.builtInThemes' }, 'theme', themeRow),
       /*
         "Follow system" is not a built-in theme — it resolves to one rather than being one, which is
         why `themeStore` keeps it in a list of its own — but it is a choice made in the same place,
@@ -182,12 +176,12 @@ export const spaceDefaultsSection: SchemaNode = {
         for it in a space's settings would let a community repoint what "Follow system" means for
         everybody who opened their template.
       */
-      group('Automatic', { $store: 'themeStore.automaticThemes' }, 'theme', themeRow),
+      group('Automatic', { $: 'themeStore.automaticThemes' }, 'theme', themeRow),
       {
         type: '$if',
         props: {
           condition: { $: 'count(themeStore.spaceThemes)' },
-          then: group('In this space', { $store: 'themeStore.spaceThemes' }, 'theme', themeRow),
+          then: group('In this space', { $: 'themeStore.spaceThemes' }, 'theme', themeRow),
         },
       },
       browseToggle('showThemeMarketplace', themeMarketplaceBrowser),

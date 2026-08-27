@@ -16,7 +16,7 @@ import { emptyNote } from '@we/template-kit';
 const kindBadge: SchemaNode = {
   type: '$if',
   props: {
-    condition: '$space.isWeSpace',
+    condition: { $: 'space.isWeSpace' },
     then: {
       type: 'we-badge',
       props: {
@@ -54,7 +54,7 @@ const spaceCard: SchemaNode = {
         variant: 'bare',
         flex: '1',
         ax: 'start',
-        onClick: { $action: 'spaceStore.navigateToSpace', args: ['$space.uuid'] },
+        onClick: { $action: 'spaceStore.navigateToSpace', args: [{ $: 'space.uuid' }] },
       },
       children: [
         {
@@ -64,8 +64,8 @@ const spaceCard: SchemaNode = {
             {
               type: 'we-avatar',
               props: {
-                image: '$space.avatar',
-                initials: '$space.name',
+                image: { $: 'space.avatar' },
+                initials: { $: 'space.name' },
                 icon: { $: "space.isWeSpace ? '' : 'intersect-three'" },
                 size: 'sm',
               },
@@ -77,16 +77,19 @@ const spaceCard: SchemaNode = {
                 {
                   type: 'Row',
                   props: { gap: '200', ay: 'center', wrap: true },
-                  children: [{ type: 'we-text', props: { variant: 'label' }, children: ['$space.name'] }, kindBadge],
+                  children: [
+                    { type: 'we-text', props: { variant: 'label' }, children: [{ $: 'space.name' }] },
+                    kindBadge,
+                  ],
                 },
                 {
                   type: '$if',
                   props: {
-                    condition: '$space.description',
+                    condition: { $: 'space.description' },
                     then: {
                       type: 'we-text',
                       props: { variant: 'footnote', color: 'text-faint', truncate: true },
-                      children: ['$space.description'],
+                      children: [{ $: 'space.description' }],
                     },
                   },
                 },
@@ -134,7 +137,7 @@ export const spacesListSection: SchemaNode = {
           children: [
             {
               type: '$each',
-              props: { items: { $store: 'spaceStore.spaceList' }, as: 'space' },
+              props: { items: { $: 'spaceStore.spaceList' }, as: 'space' },
               children: [spaceCard],
             },
           ],

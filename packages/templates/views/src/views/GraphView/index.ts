@@ -1,4 +1,5 @@
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
+import { expr } from '@we/schema-shared';
 import { recordFormModal } from '@we/template-kit';
 
 import { boardBar, boardCanvas, boardQuery } from './Board';
@@ -38,7 +39,7 @@ const LAYOUTS = [
 
 /** Layout spec built from the picker, so every mode honours the same choice. */
 const layoutSpec = {
-  type: { $local: 'layout' },
+  type: { $: 'local.layout' },
   options: { $: "local.layout == 'tree' ? { direction: 'right', levelGap: 200 } : { distance: 130 }" },
 };
 
@@ -64,7 +65,7 @@ const schemaGraph: SchemaNode = {
     // before `select`, that press never reaches selection and clicking the background cannot clear it.
     behaviours: ['node-double-click', 'select', { type: 'drag-node' }, 'pan-zoom'],
     height: '100%',
-    revision: { $local: 'revision' },
+    revision: { $: 'local.revision' },
     onNodeClick: selectNode,
     onSelectionChange: clearOnEmptySelection,
     onNodeDoubleClick: { $setLocal: 'cardOpen', value: true },
@@ -132,7 +133,7 @@ const knowledgeGraph: SchemaNode = {
     ],
     behaviours: [
       // Before drag-node, which is what makes arming mean anything: both claim a press on a node.
-      { type: 'connect-nodes', options: { armed: { $local: 'connecting' } } },
+      { type: 'connect-nodes', options: { armed: { $: 'local.connecting' } } },
       // `select` before `pan-zoom`, which is the background fallback: pan-zoom claims a press on the
       // background, and dispatch stops at the first behaviour that claims — so listing it first left
       // `select` never seeing a background press, and clicking empty canvas could not deselect.
@@ -150,15 +151,15 @@ const knowledgeGraph: SchemaNode = {
       'pan-zoom',
     ],
     height: '100%',
-    revision: { $local: 'revision' },
+    revision: { $: 'local.revision' },
     onNodeClick: selectNode,
     onSelectionChange: clearOnEmptySelection,
     onNodeDoubleClick: { $setLocal: 'cardOpen', value: true },
     expandRequest,
-    onEdgeClick: { $setLocal: 'selectedEdge', from: '$event' },
+    onEdgeClick: { $setLocal: 'selectedEdge', value: { $: 'event' } },
     // Straight to the store: it opens the same record form every other model uses, on
     // `Relationship`, holding the two ends the gesture produced.
-    onEdgeCreate: { $action: 'recordStore.connectNodes', args: ['$event'] },
+    onEdgeCreate: { $action: 'recordStore.connectNodes', args: [{ $: 'event' }] },
   },
 };
 
@@ -194,7 +195,7 @@ const contentGraph: SchemaNode = {
     // one behaviour ever sees the gesture. The panel's Open button still reaches a document here.
     behaviours: ['select', 'expand-on-double-click', 'pan-zoom'],
     height: '100%',
-    revision: { $local: 'revision' },
+    revision: { $: 'local.revision' },
     onNodeClick: selectNode,
     onSelectionChange: clearOnEmptySelection,
     expandRequest,
@@ -209,7 +210,7 @@ const picker = (field: string, options: readonly { value: string; label: string 
     type: 'we-button',
     props: {
       size: 'sm',
-      variant: { $if: { condition: { $eq: [{ $local: field }, option.value] }, then: 'primary', else: 'ghost' } },
+      variant: expr`${{ $: `local.${field}` }} == ${option.value} ? 'primary' : 'ghost'`,
       onClick: { $setLocal: field, value: option.value },
     },
     children: [option.label],
@@ -427,7 +428,7 @@ export const graphView: TemplateSchema = {
       board work says so twice. A modal is not a compromise here: what is being authored is a
       record, which has nothing to do with where it will land.
     */
-    recordFormModal({ onCreated: [{ $setLocal: 'revision', by: 1 }] }),
+    recordFormModal({ onCreated: [{ $setLocal: 'revision', value: { $: 'local.revision + 1' } }] }),
 
     {
       type: 'Column',

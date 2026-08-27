@@ -1,4 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
+import { expr } from '@we/schema-shared';
 
 /**
  * Start a call, and put its record on the list before a word is said.
@@ -30,7 +31,7 @@ import type { SchemaNode } from '@we/schema-shared';
 const startCallButton: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $store: 'modules.call.canCall' },
+    condition: { $: 'modules.call.canCall' },
     then: {
       type: 'we-button',
       props: {
@@ -45,7 +46,7 @@ const startCallButton: SchemaNode = {
         onClick: [
           {
             $if: {
-              condition: { $store: 'modules.call.active' },
+              condition: { $: 'modules.call.active' },
               then: { $action: 'modules.call.goToCall' },
             },
           },
@@ -57,7 +58,7 @@ const startCallButton: SchemaNode = {
                 args: ['CollectionBlock', { kind: 'call', type: 'collection' }],
                 onSuccess: [
                   { $action: 'modules.call.joinSpaceCall' },
-                  { $action: 'modules.transcribe.resume', args: ['$result.id'] },
+                  { $action: 'modules.transcribe.resume', args: [{ $: 'result.id' }] },
                 ],
               },
             },
@@ -98,7 +99,7 @@ const contentTypeOptions = [
 const displayModeButton = (mode: string, icon: string): SchemaNode => ({
   type: 'we-button',
   props: {
-    variant: { $if: { condition: { $eq: [{ $local: 'displayMode' }, mode] }, then: 'secondary', else: 'ghost' } },
+    variant: expr`local.displayMode == ${mode} ? 'secondary' : 'ghost'`,
     square: true,
     onClick: { $setLocal: 'displayMode', value: mode },
   },
@@ -122,8 +123,8 @@ export const cardsHeader: SchemaNode = {
           type: 'Search',
           props: {
             placeholder: 'Search…',
-            value: { $local: 'searchText' },
-            onSearch: { $setLocal: 'searchText', from: '$event' },
+            value: { $: 'local.searchText' },
+            onSearch: { $setLocal: 'searchText', value: { $: 'event' } },
           },
         },
         // Content type
@@ -131,23 +132,20 @@ export const cardsHeader: SchemaNode = {
           type: 'Select',
           props: {
             // label: 'Type',
-            value: { $local: 'contentType' },
+            value: { $: 'local.contentType' },
             options: contentTypeOptions,
             placeholder: 'All content',
             // Reset sortField on switch — a field like "likes" or "location" from the
             // previous content type won't be a valid option for the new one.
             onChange: [
-              { $setLocal: 'contentType', from: '$event' },
+              { $setLocal: 'contentType', value: { $: 'event' } },
               { $setLocal: 'sortField', value: 'date' },
             ],
           },
         },
         // Sort field (posts only — date vs. most liked)
-        // Note: options must be a static array per branch — $if wraps array branch
-        // values into an event-handler dispatcher (its `onClick: [...]` use case),
-        // so a single Select with `options: { $if: {...} }` breaks Select's own
-        // handling of the (now-function, not array) options prop. Two separate
-        // $if-gated Select nodes sidestep that entirely.
+        // Two $if-gated Select nodes rather than one Select with a conditional `options`, so each
+        // keeps a static list and its own selection state.
         {
           type: '$if',
           props: {
@@ -156,13 +154,13 @@ export const cardsHeader: SchemaNode = {
               type: 'Select',
               props: {
                 label: 'Sort by',
-                value: { $local: 'sortField' },
+                value: { $: 'local.sortField' },
                 searchable: false,
                 options: [
                   { label: 'Date', value: 'date', icon: 'calendar' },
                   { label: 'Likes', value: 'likes', icon: 'heart' },
                 ],
-                onChange: { $setLocal: 'sortField', from: '$event' },
+                onChange: { $setLocal: 'sortField', value: { $: 'event' } },
               },
             },
           },
@@ -176,13 +174,13 @@ export const cardsHeader: SchemaNode = {
               type: 'Select',
               props: {
                 label: 'Sort by',
-                value: { $local: 'sortField' },
+                value: { $: 'local.sortField' },
                 searchable: false,
                 options: [
                   { label: 'Date', value: 'date', icon: 'calendar' },
                   { label: 'Location', value: 'location', icon: 'map-pin' },
                 ],
-                onChange: { $setLocal: 'sortField', from: '$event' },
+                onChange: { $setLocal: 'sortField', value: { $: 'event' } },
               },
             },
           },
@@ -192,13 +190,13 @@ export const cardsHeader: SchemaNode = {
           type: 'Select',
           props: {
             label: 'Order',
-            value: { $local: 'sortDirection' },
+            value: { $: 'local.sortDirection' },
             searchable: false,
             options: [
               { label: 'Desc', value: 'DESC', icon: 'sort-descending' },
               { label: 'Asc', value: 'ASC', icon: 'sort-ascending' },
             ],
-            onChange: { $setLocal: 'sortDirection', from: '$event' },
+            onChange: { $setLocal: 'sortDirection', value: { $: 'event' } },
           },
         },
         // Display mode toggle

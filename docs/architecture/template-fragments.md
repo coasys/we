@@ -45,12 +45,12 @@ argues for extracting _something_, not for extracting it into code.
 Concretely, code means: behaviour and focus management, accessibility semantics, browser APIs,
 measurement, performance-critical rendering. That is the whole list.
 
-| Wants to be                           | When                                                              | Examples                                        |
-| ------------------------------------- | ----------------------------------------------------------------- | ----------------------------------------------- |
-| **A primitive** (`@we/primitives`)    | focus traps, top layer, keyboard, ARIA                            | `we-modal`, `we-popover`, `we-input`            |
-| **A component** (`@we/components`)    | measurement, layout maths, third-party libs                       | `AvatarStack`, `CollapsedContent`, `CodeEditor` |
-| **A fragment** (`@we/template-kit`)   | arrangement, even when repeated fourteen times                    | `gatePrompt`, `cardList`, `agentByline`         |
-| **An operator** (`@we/schema-shared`) | the repetition is _schema boilerplate_ **and** component-agnostic | `$in` rather than `$filter`+`$count`+`$gt`      |
+| Wants to be                          | When                                           | Examples                                        |
+| ------------------------------------ | ---------------------------------------------- | ----------------------------------------------- |
+| **A primitive** (`@we/primitives`)   | focus traps, top layer, keyboard, ARIA         | `we-modal`, `we-popover`, `we-input`            |
+| **A component** (`@we/components`)   | measurement, layout maths, third-party libs    | `AvatarStack`, `CollapsedContent`, `CodeEditor` |
+| **A fragment** (`@we/template-kit`)  | arrangement, even when repeated fourteen times | `gatePrompt`, `cardList`, `agentByline`         |
+| **A function** (`@we/schema-shared`) | computation the expression library lacks       | `plural()` rather than a ternary per label      |
 
 **Why the line sits there and not somewhere more convenient.** A prop is a customisation somebody
 predicted, implemented and shipped; a node tree is every customisation, including the ones nobody
@@ -138,7 +138,7 @@ rendering when that fragment changes. Hence a devDependency in a module, never a
 `@we/module-shared` and `@we/schema-shared`, which are genuinely runtime contracts.
 
 **Enforcement is a test, because it cannot be a manifest.** `kit.test.ts` reads every file in
-`@we/schema-kit`, comments stripped, and fails on a `$store:` or `'$agent'`. The expansion walk beside
+`@we/schema-kit`, comments stripped, and fails on a WE store name or `'$agent'`. The expansion walk beside
 it only covers fragments a fixture exists for — and the four collection fragments above, which all
 filter on `spaceStore.mutedDids`, were moved into the portable package during this split and caught
 by nothing until the source check existed.
@@ -147,19 +147,19 @@ by nothing until the source check existed.
 
 Fragments here are **not pure functions of their props**. They read up the tree and write into it:
 
-| Fragment                     | Requires in scope                                                 | Writes                                      |
-| ---------------------------- | ----------------------------------------------------------------- | ------------------------------------------- |
-| `cardShell`, `gridWrapper`   | `$local: 'displayMode'`                                           | —                                           |
-| `railItem`, `railGroup`      | `$local: 'expanded'`, `'collapsedGroups'` (both from `railShell`) | `railGroup` writes `collapsedGroups`        |
-| `cardList`                   | —                                                                 | `$local: '<as>Rows'`                        |
-| `emptyState({ searchable })` | `$local: 'searchText'`                                            | —                                           |
-| `marketplaceList`            | —                                                                 | `$local: 'search'`, `'sort'`, `'<as>Items'` |
-| `confirmModal`               | the `openLocal` / `busyLocal` booleans                            | —                                           |
+| Fragment                     | Requires in scope                                                 | Writes                                          |
+| ---------------------------- | ----------------------------------------------------------------- | ----------------------------------------------- |
+| `cardShell`, `gridWrapper`   | `local.displayMode`                                               | —                                               |
+| `railItem`, `railGroup`      | `local.expanded`, `local.collapsedGroups` (both from `railShell`) | `railGroup` writes `collapsedGroups`            |
+| `cardList`                   | —                                                                 | `local.<as>Rows`                                |
+| `emptyState({ searchable })` | `local.searchText`                                                | —                                               |
+| `marketplaceList`            | —                                                                 | `local.search`, `local.sort`, `local.<as>Items` |
+| `confirmModal`               | the `openLocal` / `busyLocal` booleans                            | —                                               |
 
 Reading up rather than taking a prop is deliberate — the display toggle belongs to the page, and
 threading it through every list and card would add a prop to each whose only job is to be passed on.
-The cost is that **a missing ambient value fails silently**: `$local` warns to the console and
-resolves to `undefined`, so the UI renders confidently wrong.
+The cost is that **a missing ambient value fails silently**: an undeclared local reads as
+`undefined`, so the UI renders confidently wrong.
 
 Inside one repo that is manageable, and the contracts are documented on each fragment. It is _not_
 manageable once fragments are installable by strangers — which is why declared requirements are a
@@ -251,7 +251,7 @@ Small, and all optional-by-default:
   the renderer, which is what keeps the invariant intact.
 - `requires: { local: [...], context: [...] }` on a definition, checked at insert against
   `getScopeAtNode` — which already exists, for the visual editor's value pickers. This is where the
-  silent-`$local` failure class finally gets caught.
+  silent-local failure class finally gets caught.
 - Editor: the four operations and a drift indicator.
 
 Nothing in `@we/schema-solid`, nothing in the backend, nothing in the module contract.
@@ -273,7 +273,7 @@ Nothing in `@we/schema-solid`, nothing in the backend, nothing in the module con
 Done:
 
 1. The kit, and both of WE's own template packages built from it.
-2. Loud failures — `$map` select lints, hoisted-query write checks, the previously unchecked
+2. Loud failures — column-precise expression checks, hoisted-query write checks, the previously unchecked
    `$toggleLocal`/`$callLocal`, all with tests.
 3. Form wiring — landed as the `field` _fragment_ rather than the operator this document first
    assumed: which event carries a control's value is design-system knowledge, and an operator would

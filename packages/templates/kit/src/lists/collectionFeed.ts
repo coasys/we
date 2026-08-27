@@ -33,7 +33,7 @@ export interface CollectionFeedOptions {
   /**
    * Id of the parent whose `children` these are. Omit for collections loose in the space.
    *
-   * Usually a route segment (`{ $store: 'routeStore.segments.1' }`) or a `$each` context ref.
+   * Usually a route segment (`{ $: 'routeStore.segments[1]' }`) or a name `$each` bound.
    */
   anchorId?: AnchorId;
   /** Context key for each row, as `$each`'s `as`. Also names the hoisted results (`<as>Rows`). */
@@ -86,10 +86,10 @@ export function collectionFeed(opts: CollectionFeedOptions): SchemaNode {
         page of twenty posts show fifteen whenever five were muted — the limit is applied by the
         backend, so anything removed afterwards is a hole in the page rather than a shorter list.
       */
-      author: { not: { $store: 'spaceStore.mutedDids' } },
+      author: { not: { $: 'spaceStore.mutedDids' } },
     },
     order: { createdAt: opts.order ?? 'desc' },
-    ...(paged && { limit: { $local: sizeField } }),
+    ...(paged && { limit: { $: `local.${sizeField}` } }),
     ...(opts.include && { include: opts.include }),
     ...(opts.anchorId !== undefined && {
       scope: { anchor: 'CollectionBlock', via: 'children', anchorId: opts.anchorId },
@@ -99,10 +99,14 @@ export function collectionFeed(opts: CollectionFeedOptions): SchemaNode {
   const rows: SchemaNode = {
     type: '$if',
     props: {
-      condition: { $count: { items: { $local: key } } },
+      condition: { $: `count(local.${key})` },
       then: opts.wrapper
-        ? opts.wrapper([{ type: '$each', props: { items: { $local: key }, as: opts.as }, children: opts.children }])
-        : defaultWrapper([{ type: '$each', props: { items: { $local: key }, as: opts.as }, children: opts.children }]),
+        ? opts.wrapper([
+            { type: '$each', props: { items: { $: `local.${key}` }, as: opts.as }, children: opts.children },
+          ])
+        : defaultWrapper([
+            { type: '$each', props: { items: { $: `local.${key}` }, as: opts.as }, children: opts.children },
+          ]),
       else: opts.empty,
     },
   };
@@ -116,7 +120,7 @@ export function collectionFeed(opts: CollectionFeedOptions): SchemaNode {
       {
         type: '$if',
         props: {
-          condition: { $local: `${key}Loaded` },
+          condition: { $: `local.${key}Loaded` },
           then: rows,
           ...(opts.loading && { else: opts.loading }),
         },

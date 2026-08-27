@@ -33,36 +33,16 @@ function processArgTokens(resolvedArgs: unknown[], callArgs: unknown[]): unknown
 }
 
 /**
- * `$arg` and `$event` both mean "the first callback argument", exactly as they already do in
- * `extractFromPath` (the `$setLocal` path).
+ * An argument that was about the callback.
  *
- * `$event` was previously understood here only when the handler was an *array* — that path rebuilds
- * the context with `event` at call time, so `resolveProp` resolved it before this ran. A lone
- * `{ $action, args }` resolves once at render time instead, where `$event` matches no context key
- * and an unresolved `$`-string is returned verbatim (see the dispatcher's final `return value`). So
- * the store method was handed the *string* `'$event.detail'` — truthy, silently, with no error
- * anywhere. `spaceStore.setModuleEnabled(id, '$event.detail')` is what that looks like from the
- * outside: a module toggle that can only ever switch a module on.
+ * `args` resolve once at render time, where there is no event. An expression naming `event`,
+ * `arg` or `result` therefore resolved to a *deferred* function — see `resolveExpressionProp` —
+ * and the callback argument is what it was waiting for. Everything else arrived as a value and is
+ * passed through; nested arrays and objects are walked because a deferred expression may sit inside
+ * an options object.
  */
 function processArgValue(arg: unknown, callArgs: unknown[]): unknown {
-  // An expression naming `event`/`arg` resolved at render time to a deferred function; the
-  // callback argument is what it was waiting for.
   if (isDeferredArg(arg)) return arg(callArgs[0]);
-  if (typeof arg === 'string' && (arg.startsWith('$arg') || arg.startsWith('$event'))) {
-    // Handle $arg / $event without property - return the entire first argument
-    if (arg === '$arg' || arg === '$event') {
-      return callArgs[0];
-    }
-    // Handle $arg.property.path / $event.property.path syntax to extract nested properties
-    const prefix = arg.startsWith('$arg.') ? '$arg.' : arg.startsWith('$event.') ? '$event.' : undefined;
-    if (prefix) {
-      const path = arg.slice(prefix.length).split('.');
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let result: any = callArgs[0]; // Get first callback argument
-      for (const prop of path) result = result?.[prop];
-      return result;
-    }
-  }
   // Recurse into arrays
   if (Array.isArray(arg)) {
     return arg.map((item) => processArgValue(item, callArgs));
@@ -79,9 +59,9 @@ function processArgValue(arg: unknown, callArgs: unknown[]): unknown {
 }
 
 // Resolves $action props: { $action: 'routeStore.navigate', args: ['/home'] }
-// Supports $arg token for extracting properties from callback arguments: args: ['$arg.id']
+// An argument may be an expression about the callback: args: [{ $: 'arg.id' }]
 // Supports lifecycle callbacks: onSuccess, onError, onFinally — fired after async actions resolve.
-// Within lifecycle arrays, '$result' resolves to the action's return value (onSuccess) or error (onError).
+// Within lifecycle arrays, `result` is the action's return value (onSuccess) or error (onError).
 export function resolveActionProp(
   value: unknown,
   context: Props,
@@ -163,7 +143,7 @@ export function resolveActionProp(
         }
       }
 
-      // Process $arg tokens - extract properties from callback arguments
+      // Hand deferred expressions the callback argument they were waiting for.
       const finalArgs = processArgTokens(resolvedArgs, callArgs);
 
       // Use finalArgs if any were defined in schema, otherwise use callArgs

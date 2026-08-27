@@ -3074,6 +3074,11 @@
           "optional": true
         },
         {
+          "name": "onSelect",
+          "type": "((item: DropdownMenuAction) => void)",
+          "optional": true
+        },
+        {
           "name": "placement",
           "type": "Placement",
           "optional": true

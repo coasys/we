@@ -8,7 +8,7 @@ export const spaceSidebar: SchemaNode = {
     {
       type: 'EditableImage',
       props: {
-        src: { $store: 'spaceStore.currentSpace.coverImage' },
+        src: { $: 'spaceStore.currentSpace.coverImage' },
         alt: 'Cover image',
         fit: 'cover',
         width: '100%',
@@ -17,7 +17,7 @@ export const spaceSidebar: SchemaNode = {
         placeholderIcon: 'panorama',
         uploadLabel: 'Upload cover image',
         editLabel: 'Change cover image',
-        onImageChange: { $action: 'spaceStore.updateSpaceImage', args: ['coverImage', '$arg'] },
+        onImageChange: { $action: 'spaceStore.updateSpaceImage', args: ['coverImage', { $: 'arg' }] },
       },
     },
     {
@@ -28,7 +28,7 @@ export const spaceSidebar: SchemaNode = {
         {
           type: 'EditableImage',
           props: {
-            src: { $store: 'spaceStore.currentSpace.avatar' },
+            src: { $: 'spaceStore.currentSpace.avatar' },
             alt: 'Profile picture',
             fit: 'cover',
             width: '120px',
@@ -39,7 +39,7 @@ export const spaceSidebar: SchemaNode = {
             uploadLabel: 'Add image',
             editLabel: 'Change image',
             fontSize: '200',
-            onImageChange: { $action: 'spaceStore.updateSpaceImage', args: ['avatar', '$arg'] },
+            onImageChange: { $action: 'spaceStore.updateSpaceImage', args: ['avatar', { $: 'arg' }] },
           },
         },
       ],
@@ -55,7 +55,7 @@ export const spaceSidebar: SchemaNode = {
             textAlign: 'center',
             loading: { $: '!spaceStore.currentSpace' },
           },
-          children: [{ $store: 'spaceStore.currentSpace.name' }],
+          children: [{ $: 'spaceStore.currentSpace.name' }],
         },
         {
           type: 'we-text',
@@ -65,7 +65,7 @@ export const spaceSidebar: SchemaNode = {
             mb: '400',
             loading: { $: '!spaceStore.currentSpace' },
           },
-          children: [{ $store: 'spaceStore.currentSpace.description' }],
+          children: [{ $: 'spaceStore.currentSpace.description' }],
         },
       ],
     },
@@ -78,17 +78,17 @@ export const spaceSidebar: SchemaNode = {
           // The same resolved list the header layout reads, and the same one the routes are built
           // from — see the note there for what having three copies of it cost.
           type: '$each',
-          props: { items: { $store: 'spaceStore.viewNav' }, as: 'view' },
+          props: { items: { $: 'spaceStore.viewNav' }, as: 'view' },
           children: [
             {
               type: 'we-button',
               props: {
                 variant: { $: "routeStore.segments[2] == view.segment ? 'primary' : 'ghost'" },
-                onClick: { $action: 'routeStore.navigate', args: ['$view.path'] },
+                onClick: { $action: 'routeStore.navigate', args: [{ $: 'view.path' }] },
               },
               children: [
-                { type: 'we-icon', props: { name: '$view.icon' } },
-                { type: 'we-text', children: ['$view.label'] },
+                { type: 'we-icon', props: { name: { $: 'view.icon' } } },
+                { type: 'we-text', children: [{ $: 'view.label' }] },
               ],
             },
           ],

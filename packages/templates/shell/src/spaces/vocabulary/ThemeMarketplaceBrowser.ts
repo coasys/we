@@ -18,7 +18,7 @@ export const themeMarketplaceBrowser: SchemaNode = marketplaceList({
   card: {
     mode: 'compact',
     installed: { $: 'find(themeStore.spaceThemes, { name: marketplaceTheme.name }).version' },
-    onInstall: { $action: 'themeStore.installToSpace', args: ['$marketplaceTheme.id'] },
+    onInstall: { $action: 'themeStore.installToSpace', args: [{ $: 'marketplaceTheme.id' }] },
     isLoading: { $: 'themeStore.operationLoading == `space-install:${marketplaceTheme.id}`' },
   },
 });

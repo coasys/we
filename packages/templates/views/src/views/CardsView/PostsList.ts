@@ -17,14 +17,10 @@ export const postsList: SchemaNode = {
     cardList({
       query: {
         entity: 'CollectionBlock',
-        where: { type: 'root', textContent: { contains: { $local: 'searchText' } } },
+        where: { type: 'root', textContent: { contains: { $: 'local.searchText' } } },
         limit: 20,
         order: {
-          $if: {
-            condition: { $: "local.sortField == 'likes'" },
-            then: { $likeCount: { $local: 'sortDirection' } },
-            else: { createdAt: { $local: 'sortDirection' } },
-          },
+          $: "local.sortField == 'likes' ? { $likeCount: local.sortDirection } : { createdAt: local.sortDirection }",
         },
         include: {
           signals: true,
@@ -70,7 +66,7 @@ export const postsList: SchemaNode = {
                 editPostOpen: { type: 'boolean', initial: false },
               },
               children: [
-                agentByline({ did: '$post.author', timestamp: '$post.createdAt' }),
+                agentByline({ did: { $: 'post.author' }, timestamp: { $: 'post.createdAt' } }),
                 {
                   type: '$if',
                   props: {
@@ -94,9 +90,9 @@ export const postsList: SchemaNode = {
                         composerModal({
                           title: 'Edit Post',
                           openLocal: 'editPostOpen',
-                          editorState: '$post.editorState',
+                          editorState: { $: 'post.editorState' },
                           // `'$arg'` second: `updatePost(postId, json)`.
-                          saveAction: { $action: 'spaceStore.updatePost', args: ['$post.id', '$arg'] },
+                          saveAction: { $action: 'spaceStore.updatePost', args: [{ $: 'post.id' }, { $: 'arg' }] },
                           saveLabel: 'Save',
                         }),
                         {
@@ -110,12 +106,12 @@ export const postsList: SchemaNode = {
                           children: [{ type: 'we-icon', props: { name: 'trash' } }],
                         },
                         confirmModal({
-                          open: { $local: 'confirmDeleteOpen' },
+                          open: { $: 'local.confirmDeleteOpen' },
                           close: { $setLocal: 'confirmDeleteOpen', value: false },
                           title: 'Delete post?',
                           body: 'This will permanently delete the post and everything inside it. This cannot be undone.',
                           confirmLabel: 'Delete',
-                          confirm: { $action: 'spaceStore.deleteCollection', args: ['$post.id'] },
+                          confirm: { $action: 'spaceStore.deleteCollection', args: [{ $: 'post.id' }] },
                         }),
                       ],
                     },
@@ -128,7 +124,7 @@ export const postsList: SchemaNode = {
             {
               type: 'BlockRenderer',
               props: {
-                editorState: '$post.editorState',
+                editorState: { $: 'post.editorState' },
               },
             },
             {
@@ -141,17 +137,17 @@ export const postsList: SchemaNode = {
                   children: [
                     {
                       type: '$each',
-                      props: { items: { $local: 'signalTypes' }, as: 'sig' },
+                      props: { items: { $: 'local.signalTypes' }, as: 'sig' },
                       children: [
                         {
                           type: 'SignalControl',
                           props: {
-                            signalType: '$sig',
+                            signalType: { $: 'sig' },
                             signals: { $: 'filter(post.signals, { signalTypeId: sig.id })' },
-                            myDid: '$me.did',
+                            myDid: { $: 'me.did' },
                             onSignal: {
                               $action: 'spaceStore.upsertSignal',
-                              args: ['$post.id', '$sig.id', '$arg'],
+                              args: [{ $: 'post.id' }, { $: 'sig.id' }, { $: 'arg' }],
                             },
                           },
                         },

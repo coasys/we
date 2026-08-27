@@ -1,4 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
+import { expr } from '@we/schema-shared';
 import { gatePrompt } from '@we/template-kit';
 
 // The join prompt body differs depending on whether this is the WE global discovery space
@@ -31,13 +32,13 @@ function joinControls(label: string): SchemaNode[] {
         variant: 'primary',
         loading: joiningThisSpace,
         disabled: joiningThisSpace,
-        onClick: { $action: 'spaceStore.joinSpace', args: [{ $store: 'routeStore.segments.1' }] },
+        onClick: { $action: 'spaceStore.joinSpace', args: [{ $: 'routeStore.segments[1]' }] },
       },
     },
     {
       type: '$if',
       props: {
-        condition: { $and: [joiningThisSpace, { $store: 'spaceStore.joinSlow' }] },
+        condition: expr`${joiningThisSpace} && spaceStore.joinSlow`,
         then: {
           type: 'we-text',
           props: { variant: 'footnote', color: 'text-faint', textAlign: 'center', maxWidth: '400px' },
@@ -53,7 +54,7 @@ function joinControls(label: string): SchemaNode[] {
         then: {
           type: 'we-text',
           props: { variant: 'footnote', color: 'danger-text', textAlign: 'center', maxWidth: '400px' },
-          children: [{ $store: 'spaceStore.joinError.message' }],
+          children: [{ $: 'spaceStore.joinError.message' }],
         },
       },
     },
@@ -92,7 +93,7 @@ const notConfiguredPrompt: SchemaNode = gatePrompt({
 export const spaceGate: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $store: 'datasetStore.globalSpaceConfigured' },
+    condition: { $: 'datasetStore.globalSpaceConfigured' },
     then: {
       type: '$if',
       props: {

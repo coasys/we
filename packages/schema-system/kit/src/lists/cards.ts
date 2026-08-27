@@ -4,7 +4,7 @@
  * ## What these require from the surrounding template
  *
  * These are the kit's most scope-dependent fragments, so the contract is written down rather than
- * discovered: `cardShell` and `gridWrapper` read **`$local: 'displayMode'`** (`'compact' | 'expanded'
+ * discovered: `cardShell` and `gridWrapper` read **`local.displayMode`** (`'compact' | 'expanded'
  * | 'grid'`) from an ancestor, and `cardList` *writes* its query results into `$local` under
  * `<as>Rows`. A template using them must declare `displayMode` somewhere above, and must not use
  * that derived name for anything else.
@@ -15,6 +15,7 @@
  * become insertable.
  */
 import type { LocalStateField, QueryStateField, SchemaNode, SchemaProp } from '@we/schema-shared';
+import { expr } from '@we/schema-shared';
 
 import { skeletonList } from '../states/skeletonList.ts';
 
@@ -40,6 +41,11 @@ export interface CardShellOptions {
    * controls were in exactly that state.
    */
   localState?: Record<string, LocalStateField>;
+  /**
+   * Subscriptions the card holds — a call's transcript, what extraction wrote onto it. Declared on
+   * the card so they can name the row (`call.id`), which nothing above the `$each` can.
+   */
+  queries?: Record<string, QueryStateField>;
 }
 
 const defaultMaxHeight = { $: "local.displayMode == 'grid' ? '250px' : '100px'" };
@@ -59,6 +65,7 @@ export function cardShell(opts: CardShellOptions): SchemaNode {
   const maxHeight = opts.maxHeight ?? defaultMaxHeight;
 
   return {
+    ...(opts.queries && { $queries: opts.queries }),
     $localState: {
       expanded: { type: 'boolean', initial: false },
       modalOpen: { type: 'boolean', initial: false },
@@ -107,7 +114,7 @@ export function cardShell(opts: CardShellOptions): SchemaNode {
       {
         type: '$if',
         props: {
-          condition: { $local: 'modalOpen' },
+          condition: { $: 'local.modalOpen' },
           then: {
             type: 'we-modal',
             // `lg`: this is a card opened out to be read, so it wants the measure a page of content
@@ -174,12 +181,12 @@ export interface CardListOptions {
  */
 export function cardList(opts: CardListOptions): SchemaNode {
   const key = `${opts.as}Rows`;
-  const items = opts.query ? { $local: key } : opts.items;
+  const items = opts.query ? { $: `local.${key}` } : opts.items;
 
   const list: SchemaNode = {
     type: '$if',
     props: {
-      condition: { $count: { items } },
+      condition: expr`count(${items})`,
       then: gridWrapper([{ type: '$each', props: { items, as: opts.as }, children: opts.children }]),
       else: opts.empty,
     },
@@ -196,7 +203,7 @@ export function cardList(opts: CardListOptions): SchemaNode {
     children: [
       {
         type: '$if',
-        props: { condition: { $local: `${key}Loaded` }, then: list, else: skeletonList() },
+        props: { condition: { $: `local.${key}Loaded` }, then: list, else: skeletonList() },
       },
     ],
   };

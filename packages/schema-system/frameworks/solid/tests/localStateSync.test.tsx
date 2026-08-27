@@ -44,7 +44,7 @@ function node(field: Record<string, unknown>): SchemaNode {
       {
         type: 'Probe',
         props: {
-          value: { $local: 'contentType' },
+          value: { $: 'local.contentType' },
           set: { $setLocal: 'contentType', value: 'users' } as never,
         },
       },
@@ -84,7 +84,7 @@ describe('$localState syncParam (URL tier)', () => {
       children: [
         {
           type: 'Probe',
-          props: { value: { $local: 'contentType' }, set: { $setLocal: 'contentType', value: 'posts' } as never },
+          props: { value: { $: 'local.contentType' }, set: { $setLocal: 'contentType', value: 'posts' } as never },
         },
       ],
     };

@@ -178,9 +178,7 @@ export const DOCK_CONTENT_ATTR = 'data-we-dock-content';
  * A displacing panel is opaque for the reason it has no radius and no shadow: it has *taken* its
  * room rather than borrowed it, so it meets the content edge to edge and is not on top of anything.
  */
-const isGlass = (id: string) => ({
-  $and: [{ $store: dockGeometryPath(id, 'floating') }, { $not: { $store: dockGeometryPath(id, 'maximised') } }],
-});
+const isGlass = (id: string) => `${dockGeometryPath(id, 'floating')} && !${dockGeometryPath(id, 'maximised')}`;
 
 /*
   Frosted glass is a theme's decision, and it already has the vocabulary for it.
@@ -210,7 +208,7 @@ const glassBg = (role: string) =>
 const GLASS_BLUR = `blur(var(--we-theme-surface-blur, ${PANEL_BLUR_PX}))`;
 
 export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
-  const geo = (field: string) => ({ $store: dockGeometryPath(entry.id, field) });
+  const geo = (field: string) => ({ $: dockGeometryPath(entry.id, field) });
   const glass = isGlass(entry.id);
 
   return {
@@ -242,18 +240,18 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
               // Translucent while it is a card, so the app stays visible behind it and the panel
               // reads as being *over* something rather than as a hole cut in the window. The theme
               // owns how far — see `glassBg` — and `isGlass` owns when.
-              bg: { $if: { condition: glass, then: glassBg('surface-sunken'), else: 'surface-sunken' } },
+              bg: { $: `${glass} ? '${glassBg('surface-sunken')}' : 'surface-sunken'` },
               // Backdrop blur belongs with the transparency and goes when it does: it is expensive,
               // it makes the element a containing block for fixed descendants, and over an opaque
               // background it would cost both of those for nothing visible.
-              styles: { $if: { condition: glass, then: { 'backdrop-filter': GLASS_BLUR }, else: {} } },
+              styles: { 'backdrop-filter': { $: `${glass} ? '${GLASS_BLUR}' : 'none'` } },
               border: '1px solid border',
               // Rounded and lifted only while floating. A card over the app should read as being on
               // top; a panel that has taken room *from* the app meets it edge to edge, where a radius
               // would leave slivers of background in the corners and a shadow would fall on content
               // that is beside it rather than beneath it.
-              r: { $if: { condition: geo('floating'), then: '500' } },
-              shadow: { $if: { condition: geo('floating'), then: 'xl' } },
+              r: { $: `${dockGeometryPath(entry.id, 'floating')} ? '500' : null` },
+              shadow: { $: `${dockGeometryPath(entry.id, 'floating')} ? 'xl' : null` },
               overflow: 'hidden',
               zIndex: 'sticky',
               /*
@@ -360,7 +358,7 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
 function whileRestored(id: string, node: SchemaNode): SchemaNode {
   return {
     type: '$if',
-    props: { condition: { $not: { $store: `shellStore.dockPlacement.${id}.maximised` } }, then: node },
+    props: { condition: { $: `!shellStore.dockPlacement.${id}.maximised` }, then: node },
   };
 }
 
@@ -383,7 +381,7 @@ function titleBar(entry: DockEntry): SchemaNode {
         than the body it labels — about half at the default 0.3, and still the same way round at
         whatever the theme sets, which is the right way round for the part you grab.
       */
-      bg: { $if: { condition: isGlass(entry.id), then: glassBg('page'), else: 'page' } },
+      bg: { $: `${isGlass(entry.id)} ? '${glassBg('page')}' : 'page'` },
       borderBottom: '1px solid border',
       /*
         Double-click to maximise, the other half of the convention the grip completes.
@@ -403,8 +401,11 @@ function titleBar(entry: DockEntry): SchemaNode {
           label: 'Move panel',
           // `onXxx`, not `on:xxx`: the schema renderer recognises an event prop by a capital after
           // "on" and Solid lowercases the rest, so these bind `movestart`, `move` and `moveend`.
-          onMovestart: { $action: 'shellStore.beginDockMove', args: [entry.id, '$arg.detail.x', '$arg.detail.y'] },
-          onMove: { $action: 'shellStore.moveDock', args: [entry.id, '$arg.detail.dx', '$arg.detail.dy'] },
+          onMovestart: {
+            $action: 'shellStore.beginDockMove',
+            args: [entry.id, { $: 'arg.detail.x' }, { $: 'arg.detail.y' }],
+          },
+          onMove: { $action: 'shellStore.moveDock', args: [entry.id, { $: 'arg.detail.dx' }, { $: 'arg.detail.dy' }] },
           onMoveend: { $action: 'shellStore.endDockMove', args: [entry.id] },
         },
       },
@@ -453,18 +454,12 @@ function fitButton(id: string): SchemaNode {
  * this is the same answer, made visible before the click rather than after it.
  */
 function displaceButton(id: string): SchemaNode {
-  const place = (field: string) => ({ $store: `shellStore.dockPlacement.${id}.${field}` });
+  const place = (field: string) => `shellStore.dockPlacement.${id}.${field}`;
 
   return {
     type: 'we-tooltip',
     props: {
-      title: {
-        $if: {
-          condition: place('canDisplace'),
-          then: 'Push content aside',
-          else: 'Snap to an edge to push content aside',
-        },
-      },
+      title: { $: `${place('canDisplace')} ? 'Push content aside' : 'Snap to an edge to push content aside'` },
       placement: 'bottom',
     },
     children: [
@@ -473,8 +468,8 @@ function displaceButton(id: string): SchemaNode {
         props: {
           size: 'xs',
           square: true,
-          variant: { $if: { condition: place('displace'), then: 'secondary', else: 'ghost' } },
-          disabled: { $not: place('canDisplace') },
+          variant: { $: `${place('displace')} ? 'secondary' : 'ghost'` },
+          disabled: { $: `!${place('canDisplace')}` },
           onClick: { $action: 'shellStore.toggleDockDisplace', args: [id] },
         },
         children: [{ type: 'we-icon', props: { name: 'columns' } }],
@@ -494,12 +489,12 @@ function displaceButton(id: string): SchemaNode {
  * capability being on or off, so "expand" and "contract" say more than a highlight would.
  */
 function maximiseButton(id: string): SchemaNode {
-  const maximised = { $store: `shellStore.dockPlacement.${id}.maximised` };
+  const maximised = `shellStore.dockPlacement.${id}.maximised`;
 
   return {
     type: 'we-tooltip',
     props: {
-      title: { $if: { condition: maximised, then: 'Exit full screen', else: 'Full screen' } },
+      title: { $: `${maximised} ? 'Exit full screen' : 'Full screen'` },
       placement: 'bottom',
     },
     children: [
@@ -508,13 +503,13 @@ function maximiseButton(id: string): SchemaNode {
         props: {
           size: 'xs',
           square: true,
-          variant: { $if: { condition: maximised, then: 'secondary', else: 'ghost' } },
+          variant: { $: `${maximised} ? 'secondary' : 'ghost'` },
           onClick: { $action: 'shellStore.toggleMaximiseDock', args: [id] },
         },
         children: [
           {
             type: 'we-icon',
-            props: { name: { $if: { condition: maximised, then: 'arrows-in', else: 'arrows-out' } } },
+            props: { name: { $: `${maximised} ? 'arrows-in' : 'arrows-out'` } },
           },
         ],
       },
@@ -564,7 +559,7 @@ function closeButton(entry: DockEntry): SchemaNode {
 
 function positionMenu(entry: DockEntry): SchemaNode {
   const id = entry.id;
-  const place = (field: string) => ({ $store: `shellStore.dockPlacement.${id}.${field}` });
+  const place = (field: string) => `shellStore.dockPlacement.${id}.${field}`;
 
   /*
     An options object, not three positional arguments — and the reason is the icon bundler.
@@ -580,7 +575,7 @@ function positionMenu(entry: DockEntry): SchemaNode {
     type: 'toggle',
     label: opts.label,
     icon: opts.icon,
-    checked: { $eq: [place('snap'), opts.snap] },
+    checked: { $: `${place('snap')} == '${opts.snap}'` },
     onToggle: { $action: 'shellStore.snapDock', args: [id, opts.snap] },
   });
 
@@ -629,7 +624,7 @@ function positionMenu(entry: DockEntry): SchemaNode {
           // Disabled rather than hidden, for the reason `displaceButton` is: a control that vanishes
           // when you move a panel is one you stop looking for, and the disabled state carries the
           // actual rule — there is a layout to go back to, and you are not on it.
-          disabled: { $not: { $store: `shellStore.layoutPinned.${id}` } },
+          disabled: { $: `!shellStore.layoutPinned.${id}` },
           onAction: { $action: 'shellStore.resetDockToLayout', args: [id] },
         },
         at({ snap: 'top-left', label: 'Top left', icon: 'arrow-up-left' }),
@@ -657,14 +652,16 @@ function positionMenu(entry: DockEntry): SchemaNode {
  * Thin, and only lit when active: eight dashed boxes plus four dashed lines would be more decoration
  * than the screen can carry. The line says *between these two*, which a box cannot.
  */
+const INSERT_IS_ACTIVE = 'shellStore.activeInsert == `${slot.mode}:${slot.edge}:${slot.index}`';
+
 function insertLines(id: string): SchemaNode {
   return {
     type: '$if',
     props: {
-      condition: { $eq: [{ $store: 'shellStore.movingDock' }, id] },
+      condition: { $: `shellStore.movingDock == '${id}'` },
       then: {
         type: '$each',
-        props: { items: { $store: 'shellStore.insertSlots' }, as: 'slot' },
+        props: { items: { $: 'shellStore.insertSlots' }, as: 'slot' },
         children: [
           {
             /*
@@ -675,40 +672,18 @@ function insertLines(id: string): SchemaNode {
             type: 'Column',
             props: {
               position: 'fixed',
-              top: '$slot.top',
-              left: '$slot.left',
-              width: '$slot.width',
-              height: '$slot.height',
+              top: { $: 'slot.top' },
+              left: { $: 'slot.left' },
+              width: { $: 'slot.width' },
+              height: { $: 'slot.height' },
               r: 'pill',
               // The drag is a pointer capture on the grip; a target that could swallow a pointer event
               // would end the drag it exists to guide.
               pointerEvents: 'none',
               // Above every panel, for the reason the snap targets are — see there.
               zIndex: 'chrome',
-              bg: {
-                $if: {
-                  condition: {
-                    $eq: [
-                      { $store: 'shellStore.activeInsert' },
-                      { $concat: ['$slot.mode', ':', '$slot.edge', ':', '$slot.index'] },
-                    ],
-                  },
-                  then: 'accent',
-                  else: 'surface-active',
-                },
-              },
-              opacity: {
-                $if: {
-                  condition: {
-                    $eq: [
-                      { $store: 'shellStore.activeInsert' },
-                      { $concat: ['$slot.mode', ':', '$slot.edge', ':', '$slot.index'] },
-                    ],
-                  },
-                  then: 1,
-                  else: 0.4,
-                },
-              },
+              bg: { $: `${INSERT_IS_ACTIVE} ? 'accent' : 'surface-active'` },
+              opacity: { $: `${INSERT_IS_ACTIVE} ? 1 : 0.4` },
             },
           },
         ],
@@ -728,23 +703,25 @@ function insertLines(id: string): SchemaNode {
  * `pointerEvents: 'none'` throughout: the drag is a pointer capture on the grip, and a target that
  * could swallow a pointer event would end the drag it exists to guide.
  */
+const SNAP_IS_ACTIVE = 'shellStore.activeSnap == target.id';
+
 function snapTargets(id: string): SchemaNode {
   return {
     type: '$if',
     props: {
-      condition: { $eq: [{ $store: 'shellStore.movingDock' }, id] },
+      condition: { $: `shellStore.movingDock == '${id}'` },
       then: {
         type: '$each',
-        props: { items: { $store: 'shellStore.snapTargets' }, as: 'target' },
+        props: { items: { $: 'shellStore.snapTargets' }, as: 'target' },
         children: [
           {
             type: 'Column',
             props: {
               position: 'fixed',
-              top: '$target.top',
-              left: '$target.left',
-              width: '$target.width',
-              height: '$target.height',
+              top: { $: 'target.top' },
+              left: { $: 'target.left' },
+              width: { $: 'target.width' },
+              height: { $: 'target.height' },
               r: '500',
               pointerEvents: 'none',
               /*
@@ -756,23 +733,9 @@ function snapTargets(id: string): SchemaNode {
                 than none, since the rule it is teaching looks intermittent.
               */
               zIndex: 'chrome',
-              border: {
-                $if: {
-                  condition: { $eq: [{ $store: 'shellStore.activeSnap' }, '$target.id'] },
-                  then: '2px solid primary-500',
-                  else: '2px dashed neutral-300',
-                },
-              },
-              bg: {
-                $if: {
-                  condition: { $eq: [{ $store: 'shellStore.activeSnap' }, '$target.id'] },
-                  then: 'accent-muted',
-                  else: 'transparent',
-                },
-              },
-              opacity: {
-                $if: { condition: { $eq: [{ $store: 'shellStore.activeSnap' }, '$target.id'] }, then: 0.9, else: 0.5 },
-              },
+              border: { $: `${SNAP_IS_ACTIVE} ? '2px solid primary-500' : '2px dashed neutral-300'` },
+              bg: { $: `${SNAP_IS_ACTIVE} ? 'accent-muted' : 'transparent'` },
+              opacity: { $: `${SNAP_IS_ACTIVE} ? 0.9 : 0.5` },
             },
           },
         ],
@@ -796,9 +759,9 @@ function snapTargets(id: string): SchemaNode {
  * the arithmetic at the other end differs.
  */
 function grips(id: string): SchemaNode[] {
-  const geo = (field: string) => ({ $store: dockGeometryPath(id, field) });
+  const geo = (field: string) => dockGeometryPath(id, field);
   /*
-    A maximised panel has no grips, and saying so takes an `$and` rather than reading `floating`.
+    A maximised panel has no grips, and saying so takes a conjunction rather than reading `floating`.
 
     The geometry already says it — `handleX` and `handleY` are both absent, which is the docstring's
     "there is nothing left to give it" — but the maximised box also reports `floating: true`, which it
@@ -811,14 +774,14 @@ function grips(id: string): SchemaNode[] {
     would restore to was gone, and for a panel whose dock thickness falls back to the card, so was the
     size it would dock at.
   */
-  const grippable = { $and: [{ $not: geo('maximised') }, geo('floating')] };
+  const grippable = `!${geo('maximised')} && ${geo('floating')}`;
 
   const edges: SchemaNode[] = (['left', 'right', 'top', 'bottom'] as const).map((side) => ({
     type: '$if',
     props: {
       // Shown when the panel floats, or when this is the single side a displacing panel can trade.
       condition: {
-        $or: [grippable, { $eq: [geo(side === 'left' || side === 'right' ? 'handleX' : 'handleY'), side] }],
+        $: `(${grippable}) || ${geo(side === 'left' || side === 'right' ? 'handleX' : 'handleY')} == '${side}'`,
       },
       then: resizeEdge(id, side),
     },
@@ -826,7 +789,7 @@ function grips(id: string): SchemaNode[] {
 
   const corners: SchemaNode[] = (['top-left', 'top-right', 'bottom-left', 'bottom-right'] as const).map((corner) => ({
     type: '$if',
-    props: { condition: grippable, then: resizeCorner(id, corner) },
+    props: { condition: { $: grippable }, then: resizeCorner(id, corner) },
   }));
 
   return [...edges, ...corners];
@@ -835,7 +798,6 @@ function grips(id: string): SchemaNode[] {
 /** One side, dragged along its own axis. */
 function resizeEdge(id: string, side: 'left' | 'right' | 'top' | 'bottom'): SchemaNode {
   const vertical = side === 'left' || side === 'right';
-  const geo = (field: string) => ({ $store: dockGeometryPath(id, field) });
 
   return {
     type: 'we-resize-handle',
@@ -854,7 +816,7 @@ function resizeEdge(id: string, side: 'left' | 'right' | 'top' | 'bottom'): Sche
         every window corner anybody has dragged. Keyboard focus still shows: see `line` on the
         primitive.
       */
-      line: { $if: { condition: geo('floating'), then: 'none', else: 'auto' } },
+      line: { $: `${dockGeometryPath(id, 'floating')} ? 'none' : 'auto'` },
       styles: { '--we-resize-handle-thickness': '3px' },
       position: 'absolute',
       zIndex: 'sticky',
@@ -867,7 +829,7 @@ function resizeEdge(id: string, side: 'left' | 'right' | 'top' | 'bottom'): Sche
         $action: 'shellStore.resizeDock',
         // The axis this side does not own is passed as zero rather than omitted: one action signature
         // serves edges and corners, and an edge simply contributes nothing on the axis it is pinned to.
-        args: vertical ? [id, side, '$arg.detail.delta', 0] : [id, side, 0, '$arg.detail.delta'],
+        args: vertical ? [id, side, { $: 'arg.detail.delta' }, 0] : [id, side, 0, { $: 'arg.detail.delta' }],
       },
       onResizeend: { $action: 'shellStore.endDockResize' },
     },
@@ -891,7 +853,7 @@ function resizeCorner(id: string, corner: 'top-left' | 'top-right' | 'bottom-lef
       // Diagonal both ways, so the cursor names the axis pair rather than a direction of travel.
       styles: { cursor: corner === 'top-left' || corner === 'bottom-right' ? 'nwse-resize' : 'nesw-resize' },
       onMovestart: { $action: 'shellStore.beginDockResize', args: [id] },
-      onMove: { $action: 'shellStore.resizeDock', args: [id, corner, '$arg.detail.dx', '$arg.detail.dy'] },
+      onMove: { $action: 'shellStore.resizeDock', args: [id, corner, { $: 'arg.detail.dx' }, { $: 'arg.detail.dy' }] },
       onMoveend: { $action: 'shellStore.endDockResize' },
     },
     // No glyph: a corner grip is read from the cursor and from the corner it sits in, and a visible

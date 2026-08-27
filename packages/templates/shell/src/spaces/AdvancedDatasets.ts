@@ -1,4 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
+import { expr } from '@we/schema-shared';
 
 /**
  * Every dataset this agent holds, as datasets rather than as spaces — ids, share URIs, and the two
@@ -32,17 +33,11 @@ const datasetCard: SchemaNode = {
         {
           type: 'we-icon',
           props: {
-            name: {
-              $if: {
-                condition: isSystem,
-                then: 'hard-drives',
-                else: { $: "dataset.sharedUri ? 'globe' : 'folder'" },
-              },
-            },
+            name: expr`${isSystem} ? 'hard-drives' : (dataset.sharedUri ? 'globe' : 'folder')`,
             size: '16px',
           },
         },
-        { type: 'we-text', props: { variant: 'label' }, children: ['$dataset.name'] },
+        { type: 'we-text', props: { variant: 'label' }, children: [{ $: 'dataset.name' }] },
         {
           type: '$if',
           props: {
@@ -60,7 +55,7 @@ const datasetCard: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: '$dataset.sharedUri',
+        condition: { $: 'dataset.sharedUri' },
         then: {
           type: 'we-text',
           props: { variant: 'footnote', color: 'text-faint' },
@@ -79,8 +74,8 @@ const datasetCard: SchemaNode = {
             size: 'sm',
             onClick: {
               $action: 'datasetStore.cleanupSpaceSdna',
-              args: ['$dataset.id'],
-              onSuccess: [{ $setLocal: 'sdnaCleanupResult', from: '$result' }],
+              args: [{ $: 'dataset.id' }],
+              onSuccess: [{ $setLocal: 'sdnaCleanupResult', value: { $: 'result' } }],
             },
           },
           children: [
@@ -93,7 +88,7 @@ const datasetCard: SchemaNode = {
           props: {
             variant: 'danger',
             size: 'sm',
-            onClick: { $action: 'spaceStore.removeSpace', args: ['$dataset.id'] },
+            onClick: { $action: 'spaceStore.removeSpace', args: [{ $: 'dataset.id' }] },
           },
           children: [
             { type: 'we-icon', props: { name: 'trash' } },
@@ -121,11 +116,11 @@ const datasetCard: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $local: 'sdnaCleanupResult' },
+        condition: { $: 'local.sdnaCleanupResult' },
         then: {
           type: 'we-text',
           props: { variant: 'footnote', color: 'text-faint' },
-          children: [{ $local: 'sdnaCleanupResult' }],
+          children: [{ $: 'local.sdnaCleanupResult' }],
         },
       },
     },
@@ -151,7 +146,7 @@ export const advancedDatasetsSection: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $local: 'advancedOpen' },
+        condition: { $: 'local.advancedOpen' },
         then: {
           type: 'Column',
           props: { gap: '200' },
@@ -163,7 +158,7 @@ export const advancedDatasetsSection: SchemaNode = {
             },
             {
               type: '$each',
-              props: { items: { $store: 'datasetStore.datasets' }, as: 'dataset' },
+              props: { items: { $: 'datasetStore.datasets' }, as: 'dataset' },
               children: [datasetCard],
             },
           ],

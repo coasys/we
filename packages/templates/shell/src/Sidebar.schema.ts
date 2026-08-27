@@ -86,7 +86,7 @@ const rail: SchemaNode = railShell({
       {
         type: '$if',
         props: {
-          condition: { $store: 'sessionStore.devTools' },
+          condition: { $: 'sessionStore.devTools' },
           then: railItem({
             icon: 'flask',
             label: 'Schema Tests',
@@ -131,7 +131,7 @@ const rail: SchemaNode = railShell({
       reorderable: true,
       // `$arg.detail` is where we-sortable puts the reordered ids. The event is `reorder`, which
       // Solid reaches from `onReorder` by lowercasing — a listener named `we-reorder` never fires.
-      onReorder: { $action: 'datasetStore.reorderDatasets', args: ['$arg.detail'] },
+      onReorder: { $action: 'datasetStore.reorderDatasets', args: [{ $: 'arg.detail' }] },
       // Creating a space used to mean going to Settings first, which is a long way round for the
       // thing this group is a list of. The modal is shell chrome, so opening it from here and from
       // Settings reaches the same one.
@@ -143,16 +143,16 @@ const rail: SchemaNode = railShell({
       children: [
         {
           type: '$each',
-          props: { items: { $store: 'spaceStore.orderedSidebarItems' }, as: 'space' },
+          props: { items: { $: 'spaceStore.orderedSidebarItems' }, as: 'space' },
           children: [
             railItem({
-              id: '$space.uuid',
+              id: { $: 'space.uuid' },
               // Seeded by uuid, not name: the generated colour is this space's identity, so it
               // must not change when somebody renames it.
-              avatar: { src: '$space.avatar', name: '$space.name', hash: '$space.uuid' },
-              label: '$space.name',
+              avatar: { src: { $: 'space.avatar' }, name: { $: 'space.name' }, hash: { $: 'space.uuid' } },
+              label: { $: 'space.name' },
               active: { $: 'space.spaceId == routeStore.segments[1]' },
-              onClick: { $action: 'spaceStore.navigateToSpace', args: ['$space.spaceId'] },
+              onClick: { $action: 'spaceStore.navigateToSpace', args: [{ $: 'space.spaceId' }] },
               /*
                 Which space the call is in — now that a call outlives leaving its space, that is a
                 question the rail has to be able to answer.
@@ -212,11 +212,11 @@ const rail: SchemaNode = railShell({
           children: [
             {
               type: '$each',
-              props: { items: { $store: 'appStore.appsWithWe' }, as: 'app' },
+              props: { items: { $: 'appStore.appsWithWe' }, as: 'app' },
               children: [
                 railItem({
-                  avatar: { src: '$app.image', name: '$app.name', hash: '$app.id' },
-                  label: '$app.name',
+                  avatar: { src: { $: 'app.image' }, name: { $: 'app.name' }, hash: { $: 'app.id' } },
+                  label: { $: 'app.name' },
                   active: { $: "app.id == 'we' ? !appStore.activeAppId : app.id == appStore.activeAppId" },
                   onClick: {
                     $if: {
@@ -224,7 +224,7 @@ const rail: SchemaNode = railShell({
                       then: [{ $action: 'appStore.deactivateApp' }, { $action: 'shellStore.closeShellView' }],
                       else: [
                         { $action: 'shellStore.closeShellView' },
-                        { $action: 'appStore.activateApp', args: ['$app.id'] },
+                        { $action: 'appStore.activateApp', args: [{ $: 'app.id' }] },
                       ],
                     },
                   },

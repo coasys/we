@@ -28,11 +28,11 @@ export const fluxChannelsList: SchemaNode = {
         dataset: '$currentDataset',
         where: {
           OR: [
-            { name: { contains: { $local: 'searchText' } } },
-            { description: { contains: { $local: 'searchText' } } },
+            { name: { contains: { $: 'local.searchText' } } },
+            { description: { contains: { $: 'local.searchText' } } },
           ],
         },
-        order: { timestamp: { $local: 'sortDirection' } },
+        order: { timestamp: { $: 'local.sortDirection' } },
         limit: 20,
         include: {
           conversations: true,
@@ -57,7 +57,7 @@ export const fluxChannelsList: SchemaNode = {
                     {
                       type: 'we-text',
                       props: { variant: 'heading-sm' },
-                      children: ['$channel.conversations[0].conversationName'],
+                      children: [{ $: 'channel.conversations[0].conversationName' }],
                     },
                   ],
                 },
@@ -68,16 +68,16 @@ export const fluxChannelsList: SchemaNode = {
             {
               type: '$if',
               props: {
-                condition: '$channel.description',
-                then: { type: 'we-text', props: { color: 'text-muted' }, children: ['$channel.description'] },
+                condition: { $: 'channel.description' },
+                then: { type: 'we-text', props: { color: 'text-muted' }, children: [{ $: 'channel.description' }] },
               },
             },
             {
               type: 'Row',
               props: { gap: '500', ay: 'center', wrap: true },
               children: [
-                statChip({ icon: 'chat-dots', count: '$channel.$conversationCount', label: 'Conversations' }),
-                statChip({ icon: 'envelope-simple', count: '$channel.$messageCount', label: 'Messages' }),
+                statChip({ icon: 'chat-dots', count: { $: 'channel.$conversationCount' }, label: 'Conversations' }),
+                statChip({ icon: 'envelope-simple', count: { $: 'channel.$messageCount' }, label: 'Messages' }),
               ],
             },
           ],

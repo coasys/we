@@ -19,10 +19,10 @@ export const usersList: SchemaNode = cardList({
         {
           type: '$if',
           props: {
-            condition: '$user.coverImage',
+            condition: { $: 'user.coverImage' },
             then: {
               type: 'we-image',
-              props: { src: '$user.coverImage', width: '100%', height: '120px', fit: 'cover', r: '400' },
+              props: { src: { $: 'user.coverImage' }, width: '100%', height: '120px', fit: 'cover', r: '400' },
             },
           },
         },
@@ -34,17 +34,23 @@ export const usersList: SchemaNode = cardList({
               type: 'we-avatar',
               // `hash` as well as `image`, never instead: a member whose profile
               // hasn't arrived still gets a stable, distinct generated face.
-              props: { image: '$user.avatar', hash: '$user.did', initials: '$user.name', size: 'lg', shadow: 'md' },
+              props: {
+                image: { $: 'user.avatar' },
+                hash: { $: 'user.did' },
+                initials: { $: 'user.name' },
+                size: 'lg',
+                shadow: 'md',
+              },
             },
             {
               type: 'Column',
               props: { gap: '100', flex: '1' },
               children: [
-                { type: 'we-text', props: { variant: 'heading-sm' }, children: ['$user.name'] },
+                { type: 'we-text', props: { variant: 'heading-sm' }, children: [{ $: 'user.name' }] },
                 {
                   type: '$if',
                   props: {
-                    condition: '$user.handle',
+                    condition: { $: 'user.handle' },
                     then: {
                       type: 'we-text',
                       props: { variant: 'label' },
@@ -61,8 +67,8 @@ export const usersList: SchemaNode = cardList({
         {
           type: '$if',
           props: {
-            condition: '$user.bio',
-            then: { type: 'we-text', props: { color: 'text-muted' }, children: ['$user.bio'] },
+            condition: { $: 'user.bio' },
+            then: { type: 'we-text', props: { color: 'text-muted' }, children: [{ $: 'user.bio' }] },
           },
         },
         {
@@ -70,7 +76,7 @@ export const usersList: SchemaNode = cardList({
           props: {
             // Gated on city, not the location object: a lat/lng-only location (reverse
             // geocoding off) has nothing readable to show, and would render ", ".
-            condition: '$user.location.city',
+            condition: { $: 'user.location.city' },
             then: {
               type: 'Row',
               props: { gap: '500', ay: 'center', wrap: true },

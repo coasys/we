@@ -15,12 +15,12 @@
  * ## The `modules` namespace must always exist
  *
  * Subtle and easy to get wrong. `$store` resolution splits on `.`, and a **single-segment** path does
- * `stores[storeName][prop]` with no guard — so `{ $store: 'modules.notes' }` throws if the `modules`
+ * `stores[storeName][prop]` with no guard — so reading `modules.notes` throws if the `modules`
  * key is absent, rather than returning undefined. Deeper paths go through `walkPath`, which does
  * degrade safely.
  *
  * So: the namespace object is always present, and an individual module's key is absent until it
- * registers. That is exactly what makes `{ $if: { condition: { $store: 'modules.notes' } } }` the
+ * registers. That is exactly what makes `{ $: 'modules.notes' }` as a condition the
  * supported way for a template to depend on an optional module.
  */
 import { type SchemaPort, validateManifest } from '@we/backend-shared';
@@ -116,11 +116,11 @@ const modules = new Map<string, RegisteredModule>();
  * something". See `ModuleDefinition.holdsWhen`.
  */
 function gateOnSpace(moduleId: string, node: SchemaNode, holdsWhen?: string): SchemaNode {
-  const enabledHere = { $in: [moduleId, { $store: 'spaceStore.activeModules' }] };
+  const enabledHere = `'${moduleId}' in spaceStore.activeModules`;
   return {
     type: '$if',
     props: {
-      condition: holdsWhen ? { $or: [enabledHere, { $store: holdsWhen }] } : enabledHere,
+      condition: { $: holdsWhen ? `${enabledHere} || ${holdsWhen}` : enabledHere },
       then: node,
     },
   };

@@ -42,7 +42,7 @@ export function adminSection(opts: AdminSectionOptions): SchemaNode {
               variant: 'ghost',
               size: 'sm',
               onClick: { $action: refresh },
-              loading: { $store: 'runtimeStore.loading' },
+              loading: { $: 'runtimeStore.loading' },
             },
             children: [{ type: 'we-icon', props: { name: 'arrows-clockwise' } }],
           },

@@ -40,10 +40,16 @@ const COLUMNS = [
   { status: 'done', label: 'Done', color: 'success-text' },
 ] as const;
 
-/** Tasks in one state, oldest first. */
+/** Tasks in one state, oldest first — hoisted on the view root under `rowsOf(status)`. */
 const tasksIn = (status: string) => ({
-  $query: { entity: 'TaskBlock', where: { status }, order: { createdAt: 'asc' }, limit: 100 },
+  entity: 'TaskBlock',
+  where: { status },
+  order: { createdAt: 'asc' },
+  limit: 100,
 });
+// `in-progress` → `inProgressTasks`: a hoisted query's name is read as an identifier.
+const rowsOf = (status: string) => `${status.replace(/-(\w)/g, (_, c: string) => c.toUpperCase())}Tasks`;
+const rows = (status: string) => ({ $: `local.${rowsOf(status)}` });
 
 /**
  * Moving a card is a `model.update` of one scalar.
@@ -63,7 +69,7 @@ const moveMenu: SchemaNode = {
     items: COLUMNS.map((spec) => ({
       id: spec.status,
       label: `Move to ${spec.label}`,
-      onAction: { $action: 'model.update', args: ['TaskBlock', '$task.id', { status: spec.status }] },
+      onAction: { $action: 'model.update', args: ['TaskBlock', { $: 'task.id' }, { status: spec.status }] },
     })),
   },
 };
@@ -80,15 +86,15 @@ const cardBody: SchemaNode = {
     border: '1px solid border',
   },
   children: [
-    { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['$task.title'] },
+    { type: 'we-text', props: { fontWeight: 'semibold' }, children: [{ $: 'task.title' }] },
     {
       type: '$if',
       props: {
-        condition: '$task.description',
+        condition: { $: 'task.description' },
         then: {
           type: 'we-text',
           props: { fontSize: '200', color: 'text', truncate: true },
-          children: ['$task.description'],
+          children: [{ $: 'task.description' }],
         },
       },
     },
@@ -107,25 +113,25 @@ const cardBody: SchemaNode = {
                 size: 'xs',
                 variant: { $: "task.priority == 'high' ? 'danger' : 'neutral'" },
               },
-              children: ['$task.priority'],
+              children: [{ $: 'task.priority' }],
             },
           },
         },
         {
           type: '$if',
           props: {
-            condition: '$task.dueDate',
+            condition: { $: 'task.dueDate' },
             then: {
               type: 'we-text',
               props: { fontSize: '200', color: 'text' },
-              children: ['$task.dueDate'],
+              children: [{ $: 'task.dueDate' }],
             },
           },
         },
         {
           type: '$if',
           props: {
-            condition: '$task.assignee',
+            condition: { $: 'task.assignee' },
             then: {
               type: 'we-text',
               props: { fontSize: '200', color: 'text' },
@@ -152,7 +158,7 @@ const cardBody: SchemaNode = {
  */
 const card: SchemaNode = {
   type: 'div',
-  props: { 'data-we-id': '$task.id', style: { width: '100%', cursor: 'grab' } },
+  props: { 'data-we-id': { $: 'task.id' }, style: { width: '100%', cursor: 'grab' } },
   children: [cardBody],
 };
 
@@ -188,7 +194,7 @@ const column = (spec: (typeof COLUMNS)[number]): SchemaNode => ({
             variant: 'footnote',
             color: 'text-muted',
             ml: 'auto',
-            text: { $count: { items: tasksIn(spec.status) } },
+            text: { $: `count(local.${rowsOf(spec.status)})` },
           },
         },
       ],
@@ -214,12 +220,15 @@ const column = (spec: (typeof COLUMNS)[number]): SchemaNode => ({
         zone: spec.status,
         group: 'tasks',
         gap: 'var(--we-space-300)',
-        onMoved: { $action: 'model.update', args: ['TaskBlock', '$arg.detail.id', { status: '$arg.detail.to' }] },
+        onMoved: {
+          $action: 'model.update',
+          args: ['TaskBlock', { $: 'arg.detail.id' }, { status: { $: 'arg.detail.to' } }],
+        },
       },
       children: [
         {
           type: '$each',
-          props: { items: tasksIn(spec.status), as: 'task' },
+          props: { items: rows(spec.status), as: 'task' },
           children: [card],
         },
       ],
@@ -236,7 +245,7 @@ const column = (spec: (typeof COLUMNS)[number]): SchemaNode => ({
  * so a task filed under "Done" left the picker on "Done" for the next one.
  */
 const composer: SchemaNode = formModal({
-  open: { $local: 'composerOpen' },
+  open: { $: 'local.composerOpen' },
   close: { $setLocal: 'composerOpen', value: false },
   title: 'New task',
   size: 'sm',
@@ -265,9 +274,9 @@ const composer: SchemaNode = formModal({
     args: [
       'TaskBlock',
       {
-        title: { $local: 'draftTitle' },
-        description: { $local: 'draftDescription' },
-        status: { $local: 'draftStatus' },
+        title: { $: 'local.draftTitle' },
+        description: { $: 'local.draftDescription' },
+        status: { $: 'local.draftStatus' },
       },
     ],
   },
@@ -288,6 +297,8 @@ export const tasksView: TemplateSchema = {
   $localState: {
     composerOpen: { type: 'boolean', initial: false },
   },
+  // One subscription per column, shared by the column's count and its cards.
+  $queries: Object.fromEntries(COLUMNS.map((spec) => [rowsOf(spec.status), tasksIn(spec.status)])),
   children: [
     {
       type: 'Column',
@@ -309,9 +320,7 @@ export const tasksView: TemplateSchema = {
         {
           type: '$if',
           props: {
-            condition: {
-              $or: COLUMNS.map((spec) => ({ $count: { items: tasksIn(spec.status) } })),
-            },
+            condition: { $: COLUMNS.map((spec) => `count(local.${rowsOf(spec.status)})`).join(' || ') },
             then: {
               type: 'Row',
               props: { width: '100%', gap: '400', ay: 'start', overflow: 'auto' },

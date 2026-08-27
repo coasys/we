@@ -28,8 +28,8 @@ export const viewsRoute: SchemaNode = marketplaceList({
     // Slug *and* author: a marketplace is a shared space, so two agents can publish under the same
     // slug and only one of them is the one you installed.
     installed: { $: 'find(templateStore.myTemplates, { id: template.slug, author: template.author }).templateVersion' },
-    onInstall: { $action: 'templateStore.installFromMarketplace', args: ['$template.id'] },
-    onDelete: { $action: 'templateStore.deleteMarketplaceTemplate', args: ['$template.id'] },
+    onInstall: { $action: 'templateStore.installFromMarketplace', args: [{ $: 'template.id' }] },
+    onDelete: { $action: 'templateStore.deleteMarketplaceTemplate', args: [{ $: 'template.id' }] },
     isLoading: { $: 'templateStore.operationLoading == `marketplace-install:${template.id}`' },
   },
 });

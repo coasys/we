@@ -11,8 +11,8 @@ import type { SchemaNode } from '@we/schema-shared';
 export type Content = NonNullable<SchemaNode['children']>[number];
 
 /**
- * What can identify the anchor of a `scope` drill-down: a literal id, a context ref (`'$channel.id'`),
- * or a token object (`{ $store: 'routeStore.segments.1' }`).
+ * What can identify the anchor of a `scope` drill-down: a literal id, or an expression
+ * (`{ $: 'channel.id' }`, `{ $: 'routeStore.segments[1]' }`).
  *
  * Narrower than `SchemaProp` on purpose, and matching `QueryStateField`'s own `scope.anchorId`
  * exactly. An anchor is one record's id, so the members `SchemaProp` adds — a boolean, an array —

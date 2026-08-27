@@ -1,44 +1,37 @@
+/**
+ * The prop dispatcher — what a token in a prop resolves to.
+ *
+ * Three kinds of token reach here, and nothing else:
+ *
+ * - **An expression**, `{ $: '…' }` — the whole value layer. Every computed value is one of these.
+ * - **A handler** — `$action`, `$setLocal`, `$toggleLocal`, `$toggleLocalIn`, `$callLocal`,
+ *   `$touch`, `$resetLocal`, and `$if` as the conditional *between* handlers. The statement layer:
+ *   a closed set of verbs, enumerable because capability grants attach to verbs.
+ * - **A query**, `{ $query }`, which the renderer turns into a subscription before this ever sees
+ *   it — listed in the zod union, resolved here to nothing.
+ *
+ * A plain string is text. It used to be a reference when it began with `$` and named a context
+ * key, which meant a string's meaning depended on what happened to be in scope, and a `'$item'`
+ * that resolved as five characters was a bug that survived four reviews. A reference is always
+ * `{ $: 'item.name' }` now; there is nothing for a string to be but itself.
+ */
 import { hasToken } from '../predicates';
 import { resolveActionProp } from './action';
-import { resolveCountProp, resolveFilterProp, resolveFindProp } from './arrayOps';
-import {
-  resolveAndProp,
-  resolveEqProp,
-  resolveGtProp,
-  resolveInProp,
-  resolveLtProp,
-  resolveNeProp,
-  resolveNotProp,
-  resolveOrProp,
-} from './comparisons';
-import { resolveConcatProp } from './concat';
-import { resolveIfProp } from './conditional';
+import { resolveIfHandler } from './conditional';
 import { resolveExpressionProp } from './expression';
 import {
   resolveCallLocalProp,
-  resolveErrorProp,
-  resolveFormValidProp,
-  resolveLocalProp,
   resolveResetLocalProp,
   resolveSetLocalProp,
   resolveToggleLocalInProp,
   resolveToggleLocalProp,
-  resolveTouchedProp,
   resolveTouchProp,
-  resolveValidProp,
 } from './local';
-import { resolveMapProp } from './map';
-import { resolvePickProp } from './pick';
-import { resolvePluralProp } from './plural';
 import { REACTIVE_ACCESSOR } from './reactive';
-import { resolveSourceProp, type SourceProp } from './source';
-import { resolveStoreProp } from './store';
-import type { ConcatProp, CountProp, FilterProp, FindProp, MapProp, Memo, PickProp, PluralProp, Props } from './types';
+import type { Memo, Props } from './types';
 import { noMemo } from './types';
 
-/**
- * Check if an object contains any schema tokens (keys starting with $)
- */
+/** Check if an object contains any schema tokens (keys starting with $) */
 function hasAnyToken(value: unknown): boolean {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   return Object.keys(value).some((k) => k.startsWith('$'));
@@ -47,8 +40,8 @@ function hasAnyToken(value: unknown): boolean {
 /**
  * Resolve any prop based on its token type, with recursive resolution for nested structures
  * @param value - The value to resolve
- * @param stores - Store objects for $store tokens
- * @param context - Context for $item.* context references
+ * @param stores - The template's store bag
+ * @param context - Context — the names `$each` bound, `$local`, the event inside a handler
  * @param memo - Memoization function (framework-specific)
  * @param depth - Current recursion depth (for safety limit)
  */
@@ -59,19 +52,10 @@ export function resolveProp(value: unknown, stores: Props, context: Props, memo:
     return value;
   }
 
-  // Handle token objects (objects with $ keys)
   if (hasAnyToken(value)) {
-    // The expression layer. First, because it is the form the value operators below are the AST
-    // of — see `expressions/index.ts`.
     if (hasToken(value, '$', 'string')) return resolveExpressionProp(value as { $: string }, stores, context, memo);
-    if (hasToken(value, '$store', 'string')) return resolveStoreProp(value, stores, memo);
-    if (hasToken(value, '$local', 'string')) return resolveLocalProp(value as { $local: string }, context, memo);
     if (hasToken(value, '$setLocal', 'string'))
-      return resolveSetLocalProp(value as { $setLocal: string; from?: string; value?: unknown }, context, stores);
-    if (hasToken(value, '$error', 'string')) return resolveErrorProp(value as { $error: string }, context);
-    if (hasToken(value, '$valid', 'string')) return resolveValidProp(value as { $valid: string }, context);
-    if (hasToken(value, '$touched', 'string')) return resolveTouchedProp(value as { $touched: string }, context);
-    if (hasToken(value, '$formValid', 'string')) return resolveFormValidProp(context);
+      return resolveSetLocalProp(value as { $setLocal: string; value?: unknown }, context, stores, resolveProp);
     if (hasToken(value, '$touch', 'string')) return resolveTouchProp(value as { $touch: string }, context);
     if (hasToken(value, '$resetLocal', 'string')) return resolveResetLocalProp(context);
     if (hasToken(value, '$toggleLocal', 'string'))
@@ -85,32 +69,9 @@ export function resolveProp(value: unknown, stores: Props, context: Props, memo:
       );
     if (hasToken(value, '$callLocal', 'string')) return resolveCallLocalProp(value as { $callLocal: string }, context);
     if (hasToken(value, '$action', 'string')) return resolveActionProp(value, context, stores, memo, resolveProp);
-    if (hasToken(value, '$concat', 'array'))
-      return resolveConcatProp((value as { $concat: ConcatProp }).$concat, stores, context, memo, resolveProp);
-    if (hasToken(value, '$map', 'object'))
-      return resolveMapProp(value['$map'] as MapProp, stores, context, memo, resolveProp);
-    if (hasToken(value, '$pick', 'object'))
-      return resolvePickProp(value['$pick'] as PickProp, stores, context, memo, resolveProp);
-    if (hasToken(value, '$if', 'object')) return resolveIfProp(value, stores, context, memo, resolveProp);
-    if (hasToken(value, '$not', 'object') || hasToken(value, '$not', 'string'))
-      return resolveNotProp(value, stores, context, memo, resolveProp);
-    if (hasToken(value, '$eq', 'array')) return resolveEqProp(value, stores, context, memo, resolveProp);
-    if (hasToken(value, '$ne', 'array')) return resolveNeProp(value, stores, context, memo, resolveProp);
-    if (hasToken(value, '$lt', 'array')) return resolveLtProp(value, stores, context, memo, resolveProp);
-    if (hasToken(value, '$gt', 'array')) return resolveGtProp(value, stores, context, memo, resolveProp);
-    if (hasToken(value, '$and', 'array')) return resolveAndProp(value, stores, context, memo, resolveProp);
-    if (hasToken(value, '$or', 'array')) return resolveOrProp(value, stores, context, memo, resolveProp);
-    if (hasToken(value, '$in', 'array')) return resolveInProp(value, stores, context, memo, resolveProp);
-    if (hasToken(value, '$filter', 'object'))
-      return resolveFilterProp((value as { $filter: FilterProp }).$filter, stores, context, memo, resolveProp);
-    if (hasToken(value, '$count', 'object'))
-      return resolveCountProp((value as { $count: CountProp }).$count, stores, context, memo, resolveProp);
-    if (hasToken(value, '$find', 'object'))
-      return resolveFindProp((value as { $find: FindProp }).$find, stores, context, memo, resolveProp);
-    if (hasToken(value, '$source', 'object'))
-      return resolveSourceProp((value as { $source: SourceProp }).$source, stores, context, memo, resolveProp);
-    if (hasToken(value, '$plural', 'object'))
-      return resolvePluralProp((value as { $plural: PluralProp }).$plural, stores, context, memo, resolveProp);
+    if (hasToken(value, '$if', 'object')) return resolveIfHandler(value, stores, context, resolveProp);
+    // `$query` is the renderer's; a `$localState`/`$queries` key beside `type` makes this a node,
+    // which the renderer also owns. Neither is a value here.
   }
 
   // Recursively resolve arrays
@@ -127,13 +88,12 @@ export function resolveProp(value: unknown, stores: Props, context: Props, memo:
       // resolved values captured at render time.
       if (k.length > 2 && k.startsWith('on') && k[2] === k[2].toUpperCase() && Array.isArray(v)) {
         resolved[k] = (...args: unknown[]) => {
-          // Inject the event into context so $event.* references (e.g. '$event.detail')
+          // Inject the event into context so `event.*` references (e.g. `event.detail`)
           // resolve correctly inside $if conditions within handler arrays.
           const callContext = args.length > 0 ? { ...context, event: args[0] } : context;
           for (const item of v) {
             // Resolve lazily at call time so $if conditions read current store state
             let fn = resolveProp(item, stores, callContext, memo, depth + 1);
-            // $if without $arg returns a reactive accessor (memo) wrapping the action fn — unwrap it
             if (typeof fn === 'function' && (fn as { [REACTIVE_ACCESSOR]?: boolean })[REACTIVE_ACCESSOR]) {
               fn = (fn as () => unknown)();
             }
@@ -153,40 +113,7 @@ export function resolveProp(value: unknown, stores: Props, context: Props, memo:
     return resolved;
   }
 
-  // Primitives, functions, null, undefined - return as-is
-  // Resolve $<contextKey> and $<contextKey>.<path> strings against context
-  // e.g. "$item.name" → context.item.name, "$team.id" → context.team.id, "$item" → context.item
-  if (typeof value === 'string' && value.startsWith('$') && value.length > 1) {
-    const dotIndex = value.indexOf('.');
-    const contextKey = dotIndex > 1 ? value.slice(1, dotIndex) : value.slice(1);
-    if (contextKey in context) {
-      if (dotIndex === -1) return context[contextKey];
-      const path = value.slice(dotIndex + 1).split('.');
-      let current: unknown = context[contextKey];
-      for (const p of path) {
-        const arrayMatch = /^(.+)\[(\d+)\]$/.exec(p);
-        if (arrayMatch) {
-          current = ((current as Record<string, unknown>)?.[arrayMatch[1]] as unknown[])?.[Number(arrayMatch[2])];
-        } else {
-          current = (current as Record<string, unknown>)?.[p];
-        }
-      }
-      return current;
-    }
-    // Neutral global refs not in the local render context (e.g. `$me`) → a `$`-prefixed store global
-    // the host injects. Keeps identity/dataset vocabulary backend-neutral: templates say `$me`, the
-    // host provides `$me`. Local context keys are checked first, so `$item`/`$space` always win.
-    const globalKey = `$${contextKey}`;
-    const bag = stores as Record<string, unknown> | undefined;
-    if (bag && globalKey in bag) {
-      const g = bag[globalKey];
-      let current: unknown = typeof g === 'function' ? (g as () => unknown)() : g;
-      if (dotIndex !== -1) {
-        for (const seg of value.slice(dotIndex + 1).split('.')) current = (current as Record<string, unknown>)?.[seg];
-      }
-      return current;
-    }
-  }
+  // Primitives, functions, null, undefined — as they are. A string is text.
   return value;
 }
 

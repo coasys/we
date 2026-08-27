@@ -1,10 +1,11 @@
 import type { LocalStateField, QueryStateField, SchemaNode, SchemaProp } from '@we/schema-shared';
+import { expr } from '@we/schema-shared';
 
 import type { Content } from '../types.ts';
 import { discardGuard } from './discardGuard.ts';
 
 export interface FormModalOptions {
-  /** What decides whether it is showing — `{ $local: 'composerOpen' }` or a store flag. */
+  /** What decides whether it is showing — `{ $: 'local.composerOpen' }` or a store flag. */
   open: SchemaProp;
   /** How it is dismissed. The backdrop, the close button and Cancel all run it. */
   close: SchemaProp;
@@ -36,7 +37,7 @@ export interface FormModalOptions {
   submit: Record<string, unknown>;
   /**
    * The precondition — what must be filled in before submitting means anything, as an expression
-   * over the draft (`{ $not: { $local: 'name' } }`).
+   * over the draft (`{ $: '!local.name' }`).
    *
    * Combined with the in-flight flag for you, so a caller writes what the *form* requires and never
    * has to remember to `$or` the spinner into it. Leave it out for a form with no precondition.
@@ -49,11 +50,11 @@ export interface FormModalOptions {
   cancelLabel?: Content;
   /** A boolean `$local` to spin the submit button while the action runs. See `confirmModal`. */
   busyLocal?: string;
-  /** An in-flight flag somebody else owns — `{ $store: 'spaceStore.creatingSpace' }`. */
+  /** An in-flight flag somebody else owns — `{ $: 'spaceStore.creatingSpace' }`. */
   busy?: SchemaProp;
   /**
    * Ask before a backdrop click or Escape throws the draft away — an expression that is true when
-   * there is something worth keeping (`{ $or: [{ $local: 'name' }, { $local: 'description' }] }`).
+   * there is something worth keeping (`{ $: 'local.name || local.description' }`).
    *
    * Worth it on any form holding more than a word or two. Leave it off for a single-field one,
    * where the guard costs more attention than the field is worth. See `discardGuard`.
@@ -84,7 +85,7 @@ export interface FormModalOptions {
  * `CreateSpaceModal` is the one of those and stays hand-written.
  */
 export function formModal(opts: FormModalOptions): SchemaNode {
-  const busy = opts.busy ?? (opts.busyLocal ? { $local: opts.busyLocal } : undefined);
+  const busy = opts.busy ?? (opts.busyLocal ? { $: `local.${opts.busyLocal}` } : undefined);
 
   const submitAction = {
     ...opts.submit,
@@ -101,12 +102,12 @@ export function formModal(opts: FormModalOptions): SchemaNode {
   /*
     The precondition and the spinner, combined here rather than at the call site.
 
-    Written by hand this came out as `{ $or: [{ $not: { $local: 'name' } }, { $local: 'creating' }] }`
+    Written by hand this came out as `!local.name || local.creating`
     in one place and as a bare precondition in five others — which leaves the submit button live
     during its own save, so a second click starts a second one.
   */
   const disabled =
-    opts.disabled !== undefined && busy !== undefined ? { $or: [opts.disabled, busy] } : (opts.disabled ?? busy);
+    opts.disabled !== undefined && busy !== undefined ? expr`${opts.disabled} || ${busy}` : (opts.disabled ?? busy);
 
   // The guard replaces `close`, adds a flag to the modal's own state, and mounts a confirmation
   // among its children — see `discardGuard` for why all three positions are needed.

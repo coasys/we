@@ -25,20 +25,17 @@ Anything computed — a condition, a label, a count, a filtered list — is one 
 | `{ $: "plural(count(local.rows), 'row', 'rows')" }`  | a library call                           |
 
 References start from a store, `local`, a name `$each` bound, `me`, `surface`, or `event` inside a
-handler. Checked statically with a column; total and inert at paint. The legacy value tokens
-(`$eq`, `$and`, `$concat`, `$count`, `$filter`, `$find`, `$plural`, `$map`, `$pick`, prop-level
-`$if` …) are this language written as JSON and still render.
+handler. Checked statically with a column; total and inert at paint. A plain string is always
+text — a reference is always `{ $: '…' }`.
 
-### Reference and handler tokens
+### Handler and query tokens
 
-| Token         | Purpose                             | Example                                                            |
-| ------------- | ----------------------------------- | ------------------------------------------------------------------ |
-| `$store`      | Reactive store access               | `{ $store: 'userStore.name' }`                                     |
-| `$local`      | A `$localState` / `$queries` field  | `{ $local: 'searchText' }`                                         |
-| `$action`     | Store method call + async lifecycle | `{ $action: 'store.method', args: ['$arg.id'], onSuccess: [...] }` |
-| `$setLocal` … | Write local state                   | `{ $setLocal: 'page', value: { $: 'local.page + 20' } }`           |
-| `$query`      | Data retrieval                      | `{ $query: { entity: 'Post', where: { … } } }`                     |
-| `$item.*`     | Context reference (legacy string)   | `'$space.name'` (inside `$each` children)                          |
+| Token         | Purpose                             | Example                                                                  |
+| ------------- | ----------------------------------- | ------------------------------------------------------------------------ |
+| `$action`     | Store method call + async lifecycle | `{ $action: 'store.method', args: [{ $: 'arg.id' }], onSuccess: [...] }` |
+| `$setLocal` … | Write local state                   | `{ $setLocal: 'page', value: { $: 'local.page + 20' } }`                 |
+| `$if`         | Choose between handlers             | `{ $if: { condition: { $: 'formValid()' }, then: { $action: '…' } } }`   |
+| `$query`      | Data retrieval                      | `{ $query: { entity: 'Post', where: { … } } }`                           |
 
 ### Renderer Operators
 

@@ -440,20 +440,16 @@ describe('a module that is holding something live', () => {
   it('is gated on the space alone when it holds nothing', () => {
     moduleRegistry.register(mod({ id: 'plain', slots: [chrome] }), host);
 
-    // Unchanged for every module that does not opt in — no `$or`, just the space's decision.
-    expect(gateOf('plain')).toHaveProperty('$in');
-    expect(gateOf('plain')).not.toHaveProperty('$or');
+    // Unchanged for every module that does not opt in — no disjunct, just the space's decision.
+    expect(gateOf('plain')).toEqual({ $: "'plain' in spaceStore.activeModules" });
   });
 
   it('also renders wherever its own key says it is holding something', () => {
     moduleRegistry.register(mod({ id: 'held', slots: [chrome], holdsWhen: 'modules.held.active' }), host);
 
-    const or = gateOf('held').$or as unknown[];
-    expect(or).toHaveLength(2);
     // Still hidden by neither condition alone — the space's decision keeps working where the module
     // is holding nothing, which is the ordinary case even for a module that can hold something.
-    expect(or[0]).toHaveProperty('$in');
-    expect(or[1]).toEqual({ $store: 'modules.held.active' });
+    expect(gateOf('held')).toEqual({ $: "'held' in spaceStore.activeModules || modules.held.active" });
   });
 
   it('gates a dock the same way as a slot', () => {
@@ -464,6 +460,6 @@ describe('a module that is holding something live', () => {
       host,
     );
 
-    expect(gateOf('docked')).toHaveProperty('$or');
+    expect(gateOf('docked').$).toContain('|| modules.docked.active');
   });
 });

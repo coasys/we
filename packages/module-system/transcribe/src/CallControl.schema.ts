@@ -67,7 +67,7 @@ const peerNotice: SchemaNode = {
     },
     then: {
       type: '$agent',
-      props: { did: { $store: 'modules.transcribe.invitedBy' }, as: 'starter' },
+      props: { did: { $: 'modules.transcribe.invitedBy' }, as: 'starter' },
       children: [
         {
           type: 'Row',
@@ -104,7 +104,7 @@ export const callControl: SchemaNode = {
   props: {
     // The bar is only drawn during a call, so this needs no call condition of its own — but it does
     // need the audio one: mid-call, before devices are acquired, there is briefly nothing to record.
-    condition: { $store: 'modules.transcribe.available' },
+    condition: { $: 'modules.transcribe.available' },
     then: {
       type: 'Row',
       props: { ay: 'center', gap: '200' },

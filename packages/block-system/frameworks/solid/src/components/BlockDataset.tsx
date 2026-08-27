@@ -9,7 +9,7 @@ import { createContext, type JSX, useContext } from 'solid-js';
  * Every template that rendered or composed a block carried this, verbatim:
  *
  * ```ts
- * perspective: { $store: 'datasetStore.currentDataset.handle' }
+ * perspective: { $: 'datasetStore.currentDataset.handle' }
  * ```
  *
  * Eight files in this repo alone, and it would have been in every template anyone ever wrote. It is

@@ -32,7 +32,7 @@ export interface PickerPopoverOptions {
    * separate ones, and a `groups` option able to describe both would be two shapes behind one name.
    * The chrome around the list is what repeated, so the chrome is what this owns.
    *
-   * Filter against `{ $local: 'pickerSearch' }` — declared here, readable from anywhere inside.
+   * Filter against `{ $: 'local.pickerSearch' }` — declared here, readable from anywhere inside.
    */
   body: Content;
   /** Actions below the list, off the end of the scroll area — "New", a scope toggle. */
@@ -71,7 +71,7 @@ export interface PickerPopoverOptions {
  * a key needs a listener, and that belongs in a primitive rather than here.
  */
 export function pickerPopover(opts: PickerPopoverOptions): SchemaNode {
-  const open = { $local: opts.openLocal };
+  const open = { $: `local.${opts.openLocal}` };
   const close = { $setLocal: opts.openLocal, value: false };
 
   return {
@@ -140,8 +140,8 @@ export function pickerPopover(opts: PickerPopoverOptions): SchemaNode {
                 type: 'Search',
                 props: {
                   placeholder: opts.searchPlaceholder,
-                  value: { $local: 'pickerSearch' },
-                  onSearch: { $setLocal: 'pickerSearch', from: '$arg' },
+                  value: { $: 'local.pickerSearch' },
+                  onSearch: { $setLocal: 'pickerSearch', value: { $: 'arg' } },
                   m: '200',
                 },
               },

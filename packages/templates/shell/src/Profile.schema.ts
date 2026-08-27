@@ -9,7 +9,7 @@ export const profileTemplate: TemplateSchema = {
     {
       type: 'EditableImage',
       props: {
-        src: { $store: 'profileStore.ownProfile.coverImage' },
+        src: { $: 'profileStore.ownProfile.coverImage' },
         alt: 'Cover image',
         fit: 'cover',
         width: '100%',
@@ -18,7 +18,7 @@ export const profileTemplate: TemplateSchema = {
         placeholderIcon: 'panorama',
         uploadLabel: 'Upload cover image',
         editLabel: 'Change cover image',
-        onImageChange: { $action: 'profileStore.updateProfileImage', args: ['coverImage', '$arg'] },
+        onImageChange: { $action: 'profileStore.updateProfileImage', args: ['coverImage', { $: 'arg' }] },
         onImageRemove: { $action: 'profileStore.clearProfileImage', args: ['coverImage'] },
       },
     },
@@ -32,7 +32,7 @@ export const profileTemplate: TemplateSchema = {
         {
           type: 'EditableImage',
           props: {
-            src: { $store: 'profileStore.ownProfile.avatar' },
+            src: { $: 'profileStore.ownProfile.avatar' },
             alt: 'Profile picture',
             fit: 'cover',
             width: '120px',
@@ -43,7 +43,7 @@ export const profileTemplate: TemplateSchema = {
             uploadLabel: 'Add photo',
             editLabel: 'Change photo',
             fontSize: '200',
-            onImageChange: { $action: 'profileStore.updateProfileImage', args: ['avatar', '$arg'] },
+            onImageChange: { $action: 'profileStore.updateProfileImage', args: ['avatar', { $: 'arg' }] },
             onImageRemove: { $action: 'profileStore.clearProfileImage', args: ['avatar'] },
           },
         },
@@ -67,7 +67,7 @@ export const profileTemplate: TemplateSchema = {
             {
               type: '$if',
               props: {
-                condition: { $store: 'profileStore.ownProfile.handle' },
+                condition: { $: 'profileStore.ownProfile.handle' },
                 then: {
                   type: 'we-text',
                   props: { variant: 'body' },
@@ -82,11 +82,11 @@ export const profileTemplate: TemplateSchema = {
         {
           type: '$if',
           props: {
-            condition: { $store: 'profileStore.ownProfile.bio' },
+            condition: { $: 'profileStore.ownProfile.bio' },
             then: {
               type: 'we-text',
               props: { variant: 'body', lineHeight: '1.5' },
-              children: [{ $store: 'profileStore.ownProfile.bio' }],
+              children: [{ $: 'profileStore.ownProfile.bio' }],
             },
           },
         },
@@ -95,7 +95,7 @@ export const profileTemplate: TemplateSchema = {
         {
           type: '$if',
           props: {
-            condition: { $store: 'profileStore.ownProfile.location' },
+            condition: { $: 'profileStore.ownProfile.location' },
             then: {
               type: 'Row',
               props: { gap: '200', ay: 'center' },
@@ -122,7 +122,7 @@ export const profileTemplate: TemplateSchema = {
             {
               type: 'we-text',
               props: { variant: 'body' },
-              children: ['$me.did'],
+              children: [{ $: 'me.did' }],
             },
           ],
         },
@@ -155,10 +155,10 @@ export const profileTemplate: TemplateSchema = {
                       type: 'we-input',
                       props: {
                         placeholder: 'First name',
-                        value: { $store: 'profileStore.ownProfile.firstName' },
+                        value: { $: 'profileStore.ownProfile.firstName' },
                         onChange: {
                           $action: 'profileStore.updateOwnProfile',
-                          args: [{ firstName: '$arg.detail' }],
+                          args: [{ firstName: { $: 'arg.detail' } }],
                         },
                       },
                     },
@@ -172,10 +172,10 @@ export const profileTemplate: TemplateSchema = {
                       type: 'we-input',
                       props: {
                         placeholder: 'Last name',
-                        value: { $store: 'profileStore.ownProfile.lastName' },
+                        value: { $: 'profileStore.ownProfile.lastName' },
                         onChange: {
                           $action: 'profileStore.updateOwnProfile',
-                          args: [{ lastName: '$arg.detail' }],
+                          args: [{ lastName: { $: 'arg.detail' } }],
                         },
                       },
                     },
@@ -191,10 +191,10 @@ export const profileTemplate: TemplateSchema = {
                   type: 'we-input',
                   props: {
                     placeholder: 'yourhandle',
-                    value: { $store: 'profileStore.ownProfile.handle' },
+                    value: { $: 'profileStore.ownProfile.handle' },
                     onChange: {
                       $action: 'profileStore.updateOwnProfile',
-                      args: [{ handle: '$arg.detail' }],
+                      args: [{ handle: { $: 'arg.detail' } }],
                     },
                   },
                 },
@@ -208,10 +208,10 @@ export const profileTemplate: TemplateSchema = {
                   type: 'we-textarea',
                   props: {
                     placeholder: 'Tell us about yourself...',
-                    value: { $store: 'profileStore.ownProfile.bio' },
+                    value: { $: 'profileStore.ownProfile.bio' },
                     onChange: {
                       $action: 'profileStore.updateOwnProfile',
-                      args: [{ bio: '$arg.detail' }],
+                      args: [{ bio: { $: 'arg.detail' } }],
                     },
                   },
                 },
@@ -224,18 +224,18 @@ export const profileTemplate: TemplateSchema = {
                 {
                   type: 'we-location-picker',
                   props: {
-                    latitude: { $store: 'profileStore.ownProfile.location.latitude' },
-                    longitude: { $store: 'profileStore.ownProfile.location.longitude' },
+                    latitude: { $: 'profileStore.ownProfile.location.latitude' },
+                    longitude: { $: 'profileStore.ownProfile.location.longitude' },
                     placeholder: 'Pin your location on the globe…',
                     onChange: {
                       $action: 'profileStore.updateOwnLocation',
                       args: [
                         {
-                          latitude: '$arg.detail.latitude',
-                          longitude: '$arg.detail.longitude',
-                          city: '$arg.detail.city',
-                          country: '$arg.detail.country',
-                          countryCode: '$arg.detail.countryCode',
+                          latitude: { $: 'arg.detail.latitude' },
+                          longitude: { $: 'arg.detail.longitude' },
+                          city: { $: 'arg.detail.city' },
+                          country: { $: 'arg.detail.country' },
+                          countryCode: { $: 'arg.detail.countryCode' },
                         },
                       ],
                     },
@@ -246,7 +246,7 @@ export const profileTemplate: TemplateSchema = {
             {
               type: '$if',
               props: {
-                condition: { $store: 'profileStore.ownProfile.location' },
+                condition: { $: 'profileStore.ownProfile.location' },
                 then: {
                   type: 'Row',
                   props: { gap: '300', wrap: true },
@@ -259,10 +259,10 @@ export const profileTemplate: TemplateSchema = {
                           type: 'we-input',
                           props: {
                             placeholder: 'City',
-                            value: { $store: 'profileStore.ownProfile.location.city' },
+                            value: { $: 'profileStore.ownProfile.location.city' },
                             onChange: {
                               $action: 'profileStore.updateOwnLocation',
-                              args: [{ city: '$arg.detail' }],
+                              args: [{ city: { $: 'arg.detail' } }],
                             },
                           },
                         },
@@ -276,10 +276,10 @@ export const profileTemplate: TemplateSchema = {
                           type: 'we-input',
                           props: {
                             placeholder: 'Country',
-                            value: { $store: 'profileStore.ownProfile.location.country' },
+                            value: { $: 'profileStore.ownProfile.location.country' },
                             onChange: {
                               $action: 'profileStore.updateOwnLocation',
-                              args: [{ country: '$arg.detail' }],
+                              args: [{ country: { $: 'arg.detail' } }],
                             },
                           },
                         },

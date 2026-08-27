@@ -51,9 +51,7 @@ array, a missing model).
 **If the list filters on a search box**, say so instead of claiming the space is empty:
 
 \`\`\`json
-{ "$if": { "condition": { "$local": "searchText" },
-           "then": "No posts match your search.",
-           "else": "This space doesn't have any posts." } }
+{ "$": "local.searchText ? 'No posts match your search.' : \"This space doesn't have any posts.\"" }
 \`\`\`
 
 ### A list with its empty state — hoist the query so the count is readable
@@ -74,7 +72,7 @@ array, a missing model).
           "children": [
             {
               "type": "$each",
-              "props": { "items": { "$local": "postRows" }, "as": "post" },
+              "props": { "items": { "$": "local.postRows" }, "as": "post" },
               "children": [{ "type": "Card", "children": ["…"] }]
             }
           ]
@@ -145,7 +143,7 @@ they share an icon, a heading, a width and a button row:
 
 \`\`\`ts
 confirmModal({
-  open: { $local: 'confirmDeleteOpen' },
+  open: { $: 'local.confirmDeleteOpen' },
   close: { $setLocal: 'confirmDeleteOpen', value: false },
   title: 'Delete post?',
   body: 'This will permanently delete the post and everything inside it. This cannot be undone.',
@@ -158,7 +156,7 @@ It returns the \`$if\` as well as the modal, and clears \`open\` from all three 
 Cancel, and the action's \`onSuccess\`.
 
 - \`open\` and \`close\` are **expressions**, so a dialog gated on a store flag
-  (\`{ $store: 'shapeStore.confirmDiscard' }\`) or on a string id works the same way.
+  (\`{ $: 'shapeStore.confirmDiscard' }\`) or on a string id works the same way.
 - \`cancel\` for a cancel button that does more than close — "Keep editing" dismisses the question
   and leaves the wizard behind it open.
 - \`tone: 'primary'\` for a question with no casualty; the default \`danger\` picks a warning icon and
@@ -177,7 +175,7 @@ Undeclared, \`$setLocal\` warns and no-ops: the button renders, takes the click,
 
 \`\`\`ts
 formModal({
-  open: { $local: 'composerOpen' },
+  open: { $: 'local.composerOpen' },
   close: { $setLocal: 'composerOpen', value: false },
   title: 'New task',
   size: 'sm',
@@ -185,7 +183,7 @@ formModal({
   children: [field({ name: 'draftTitle', label: 'What needs doing?', placeholder: 'Ship the docs' })],
   disabled: { $: '!local.draftTitle' },
   submitLabel: 'Add task',
-  submit: { $action: 'model.create', args: ['TaskBlock', { title: { $local: 'draftTitle' } }] },
+  submit: { $action: 'model.create', args: ['TaskBlock', { title: { $: 'local.draftTitle' } }] },
 })
 \`\`\`
 
@@ -253,7 +251,7 @@ outside the scroll region, sharing the modal's padding and gap, while the defaul
 closes — it fires when somebody calls the composer's own \`save()\`, which it hands out exactly once
 through \`onReady\`. So the sequence is: \`onReady\` stores that function in a **\`function\`-typed**
 \`$localState\` field, the button calls it with \`$callLocal\`, \`save()\` serializes the tree, and
-\`onSave\` runs the action with the tree as \`$arg\`.
+\`onSave\` runs the action with the tree as \`arg\`.
 
 \`\`\`json
 {
@@ -267,13 +265,13 @@ through \`onReady\`. So the sequence is: \`onReady\` stores that function in a *
     {
       "type": "BlockComposer",
       "props": {
-        "perspective": { "$store": "datasetStore.currentDataset.handle" },
-        "onReady": { "$setLocal": "savePost", "from": "$event.save" },
+        "perspective": { "$": "datasetStore.currentDataset.handle" },
+        "onReady": { "$setLocal": "savePost", "value": { "$": "event.save" } },
         "onSave": [
           { "$setLocal": "submitting", "value": true },
           {
             "$action": "spaceStore.createPost",
-            "args": ["$arg"],
+            "args": [{ "$": "arg" }],
             "onSuccess": [{ "$setLocal": "composeOpen", "value": false }],
             "onFinally": [{ "$setLocal": "submitting", "value": false }]
           }
@@ -284,8 +282,8 @@ through \`onReady\`. So the sequence is: \`onReady\` stores that function in a *
       "type": "we-button",
       "props": {
         "variant": "primary",
-        "loading": { "$local": "submitting" },
-        "disabled": { "$local": "submitting" },
+        "loading": { "$": "local.submitting" },
+        "disabled": { "$": "local.submitting" },
         "onClick": { "$callLocal": "savePost" }
       },
       "children": ["Post"]
@@ -301,7 +299,7 @@ the cause. And because \`onReady\` is optional, omitting it makes the composer r
 save button of its own, so the screen ends up with two buttons and only the unexpected one works.
 (\`we-validate-schemas\` rejects \`onSave\` without \`onReady\`.)
 
-\`$arg\` goes wherever the action wants it — first for \`createPost(json, options)\`, second for
+\`{ "$": "arg" }\` goes wherever the action wants it — first for \`createPost(json, options)\`, second for
 \`updatePost(postId, json)\`.
 
 **Prefer \`composerModal\` from \`@we/template-kit\`**, which owns all of the above; write it out by
@@ -312,24 +310,24 @@ hand only when the modal itself needs a different shape.
 \`\`\`json
 {
   "type": "we-form-field",
-  "props": { "label": "Name", "error": { "$error": "name" } },
+  "props": { "label": "Name", "error": { "$": "error('name')" } },
   "children": [
     {
       "type": "we-input",
       "props": {
         "placeholder": "Space name…",
-        "value": { "$local": "name" },
-        "onInput": { "$setLocal": "name", "from": "$event.detail" }
+        "value": { "$": "local.name" },
+        "onInput": { "$setLocal": "name", "value": { "$": "event.detail" } }
       }
     }
   ]
 }
 \`\`\`
 
-\`$error\` is already empty until the field is touched, so it needs no \`$if\` around it. Which event
+\`error()\` is already empty until the field is touched, so it needs no condition around it. Which event
 carries the value depends on the control: \`we-input\`/\`we-textarea\` emit \`onInput\` with
-\`$event.detail\`, \`we-select\` emits \`onChange\` with \`$event.detail\`, and \`Search\` calls back
-with the value itself as \`$arg\`.
+\`event.detail\`, \`we-select\` emits \`onChange\` with \`event.detail\`, and \`Search\` calls back
+with the value itself as \`arg\`.
 
 ### Author byline
 
@@ -560,7 +558,7 @@ themselves come from a \`$query\`.
     "collapsedGroups": { "type": "array", "initial": [] }
   },
   "props": {
-    "width": { "$if": { "condition": { "$local": "expanded" }, "then": "240px", "else": "80px" } },
+    "width": { "$": "local.expanded ? '240px' : '80px'" },
     "transition": "width 300 ease-in-out",
     "height": "100%",
     "overflow": "hidden",
@@ -578,7 +576,7 @@ themselves come from a \`$query\`.
         {
           "type": "$if",
           "props": {
-            "condition": { "$local": "expanded" },
+            "condition": { "$": "local.expanded" },
             "enterTransition": [{ "type": "reveal", "axis": "inline", "duration": 250 }, { "type": "fade", "duration": 150 }],
             "exitTransition": [{ "type": "reveal", "axis": "inline", "duration": 250 }, { "type": "fade", "duration": 150 }],
             "then": { "type": "we-text", "props": { "truncate": true }, "children": ["Profile"] }
@@ -625,5 +623,5 @@ are only valid inside a \`railShell\`.
 For drag-to-reorder, wrap a group's items in \`we-sortable\` and give each row a \`data-we-id\` on
 a **native element** — a web component's props are assigned as DOM properties, so the attribute
 \`we-sortable\` looks for would never exist on a \`we-button\`. Listen with \`onReorder\` and read
-the new order from \`$arg.detail\`.
+the new order from \`{ "$": "arg.detail" }\`.
 `;

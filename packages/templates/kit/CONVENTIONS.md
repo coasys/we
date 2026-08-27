@@ -14,12 +14,12 @@ API, same body style, same doc-comment duty; only the address differs.
 > semantics, browser APIs, measurement, performance-critical rendering — that is the whole list.
 > Everything above it is arrangement, and arrangement stays data.
 
-| It wants to be                    | When                                          | Example                  |
-| --------------------------------- | --------------------------------------------- | ------------------------ |
-| A primitive (`@we/primitives`)    | focus trap, top layer, keyboard, ARIA         | `we-modal`               |
-| A component (`@we/components`)    | measurement, layout maths, third-party libs   | `AvatarStack`            |
-| **A fragment (here)**             | arrangement, however often repeated           | `gatePrompt`, `cardList` |
-| An operator (`@we/schema-shared`) | schema boilerplate that is component-agnostic | `$in`                    |
+| It wants to be                   | When                                        | Example                  |
+| -------------------------------- | ------------------------------------------- | ------------------------ |
+| A primitive (`@we/primitives`)   | focus trap, top layer, keyboard, ARIA       | `we-modal`               |
+| A component (`@we/components`)   | measurement, layout maths, third-party libs | `AvatarStack`            |
+| **A fragment (here)**            | arrangement, however often repeated         | `gatePrompt`, `cardList` |
+| A function (`@we/schema-shared`) | computation the expression library lacks    | `plural()`               |
 
 The pairs come apart deliberately: `AvatarStack` is a component (overlap maths) and the count beside
 it is a fragment; `we-modal` is a primitive and the confirm dialog inside it is a fragment. When the
@@ -122,14 +122,14 @@ costs them the one time it was about something real.
   colour, an access level — is set from the first frame, so including it makes the guard fire on an
   untouched form. Every guard in the codebase excludes them, and each says so at the call site.
 - **A form seeded from a record asks whether it _changed_, not whether it is _filled in_.** The
-  blank forms use `{ $or: [{ $local: 'name' }, …] }`; an edit form uses
-  `{ $ne: [{ $local: 'titleDraft' }, '$call.title'] }`. Getting this backwards means an edit modal
+  blank forms use `{ $: 'local.name || …' }`; an edit form uses
+  `{ $: 'local.titleDraft != call.title' }`. Getting this backwards means an edit modal
   reports unsaved work before anybody has touched it.
 - **Where the fields are not known in advance, the store answers.** A record form's fields come from
-  the model, so no set of `$local` names exists to test — `recordStore.recordDraftDirty` and
+  the model, so no set of local names exists to test — `recordStore.recordDraftDirty` and
   `runtimeStore.aiFormDirty` are the two of these, and both are derived, not stored.
 - **Content inside a component is the component's to report.** A `BlockComposer`'s document lives in
-  Lexical and no `$local` can see it; it pushes `onDirtyChange` instead. Any component that owns
+  Lexical and no local can see it; it pushes `onDirtyChange` instead. Any component that owns
   editable content and can appear in a modal owes the same.
 
 ### When to leave it off
@@ -140,7 +140,7 @@ site so the omission reads as a decision rather than an oversight.
 
 ## Ambient scope
 
-Fragments may read `$local` from ancestors and write results into `$local` — that is what makes
+Fragments may read locals from ancestors and write results into them — that is what makes
 `cardShell` usable without threading `displayMode` through every layer. The costs are borne by
 documentation until insert-time checking exists:
 

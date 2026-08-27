@@ -24,7 +24,7 @@ contract, and product meet. These are the rules that keep it navigable.
   `provideInstalledModules`, `setNavigateFunction`) are tolerated debt, not
   a pattern to extend.
 - A store's public surface is schema-facing API. Every state member and
-  action is reachable from templates via `$store`/`$action`, extracted into
+  action is reachable from templates through an expression or `$action`, extracted into
   the generated reference by `@we/ai-context` — so name members for template
   authors, document them in `ai-context/src/fragments/stores.ts`, and treat
   removals as breaking (a stale fragment entry fails the build).

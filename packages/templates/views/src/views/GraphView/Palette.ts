@@ -1,4 +1,5 @@
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
+import { expr } from '@we/schema-shared';
 
 /**
  * The colours a board can be painted with, and the row that picks one.
@@ -36,7 +37,7 @@ export const SWATCHES = [
  * `$each` over the palette: the caller says what picking *means* and the loop says which colour it
  * happened to. Both call sites end up writing to a store, one per card and one per type.
  */
-export function swatchRow(options: { current: SchemaProp; pick: (token: string) => SchemaProp }): SchemaNode {
+export function swatchRow(options: { current: SchemaProp; pick: (token: SchemaProp) => SchemaProp }): SchemaNode {
   return {
     type: 'Row',
     props: { gap: '200', ay: 'center', wrap: true, width: '100%' },
@@ -53,7 +54,7 @@ export function swatchRow(options: { current: SchemaProp; pick: (token: string) 
             props: {
               variant: 'bare',
               title: { $: "swatch.token ? swatch.token : 'Default'" },
-              onClick: options.pick('$swatch.token'),
+              onClick: options.pick({ $: 'swatch.token' }),
             },
             children: [
               {
@@ -65,13 +66,7 @@ export function swatchRow(options: { current: SchemaProp; pick: (token: string) 
                   ax: 'center',
                   ay: 'center',
                   bg: { $: "swatch.token ? swatch.token : 'surface-sunken'" },
-                  border: {
-                    $if: {
-                      condition: { $eq: [options.current, '$swatch.token'] },
-                      then: '2px solid primary-600',
-                      else: '1px solid neutral-300',
-                    },
-                  },
+                  border: expr`${options.current} == swatch.token ? '2px solid primary-600' : '1px solid neutral-300'`,
                 },
                 children: [
                   // The default swatch has no colour to show, so it says so with a mark — otherwise

@@ -7,7 +7,7 @@ import { field, formModal } from '@we/template-kit';
  * in the signal-types section's header rather than in here.
  */
 export const createSignalTypeModal = formModal({
-  open: { $local: 'createSignalTypeOpen' },
+  open: { $: 'local.createSignalTypeOpen' },
   close: { $setLocal: 'createSignalTypeOpen', value: false },
   title: 'New signal type',
   /*
@@ -63,8 +63,8 @@ export const createSignalTypeModal = formModal({
             {
               type: 'we-icon-picker',
               props: {
-                value: { $local: 'icon' },
-                onChange: { $setLocal: 'icon', from: '$event.detail' },
+                value: { $: 'local.icon' },
+                onChange: { $setLocal: 'icon', value: { $: 'event.detail' } },
               },
             },
           ],
@@ -82,8 +82,8 @@ export const createSignalTypeModal = formModal({
                   type: 'we-icon-picker',
                   props: {
                     placeholder: 'Same as icon',
-                    value: { $local: 'iconSecondary' },
-                    onChange: { $setLocal: 'iconSecondary', from: '$event.detail' },
+                    value: { $: 'local.iconSecondary' },
+                    onChange: { $setLocal: 'iconSecondary', value: { $: 'event.detail' } },
                   },
                 },
               ],
@@ -109,8 +109,8 @@ export const createSignalTypeModal = formModal({
                 {
                   type: 'we-number-input',
                   props: {
-                    value: { $local: 'rangeMin' },
-                    onChange: { $setLocal: 'rangeMin', from: '$event.detail' },
+                    value: { $: 'local.rangeMin' },
+                    onChange: { $setLocal: 'rangeMin', value: { $: 'event.detail' } },
                   },
                 },
               ],
@@ -122,8 +122,8 @@ export const createSignalTypeModal = formModal({
                 {
                   type: 'we-number-input',
                   props: {
-                    value: { $local: 'rangeMax' },
-                    onChange: { $setLocal: 'rangeMax', from: '$event.detail' },
+                    value: { $: 'local.rangeMax' },
+                    onChange: { $setLocal: 'rangeMax', value: { $: 'event.detail' } },
                   },
                 },
               ],
@@ -135,10 +135,10 @@ export const createSignalTypeModal = formModal({
                 {
                   type: 'we-number-input',
                   props: {
-                    value: { $local: 'step' },
+                    value: { $: 'local.step' },
                     min: 0.1,
                     step: 0.1,
-                    onChange: { $setLocal: 'step', from: '$event.detail' },
+                    onChange: { $setLocal: 'step', value: { $: 'event.detail' } },
                   },
                 },
               ],
@@ -159,12 +159,12 @@ export const createSignalTypeModal = formModal({
           props: {
             preview: true,
             signalType: {
-              icon: { $local: 'icon' },
-              iconSecondary: { $local: 'iconSecondary' },
-              mode: { $local: 'mode' },
-              rangeMin: { $local: 'rangeMin' },
-              rangeMax: { $local: 'rangeMax' },
-              step: { $local: 'step' },
+              icon: { $: 'local.icon' },
+              iconSecondary: { $: 'local.iconSecondary' },
+              mode: { $: 'local.mode' },
+              rangeMin: { $: 'local.rangeMin' },
+              rangeMax: { $: 'local.rangeMax' },
+              step: { $: 'local.step' },
             },
           },
         },
@@ -181,16 +181,16 @@ export const createSignalTypeModal = formModal({
     $action: 'spaceStore.createSignalType',
     args: [
       {
-        name: { $local: 'name' },
-        slug: { $local: 'slug' },
-        description: { $local: 'description' },
-        icon: { $local: 'icon' },
-        iconSecondary: { $local: 'iconSecondary' },
-        mode: { $local: 'mode' },
-        aggregate: { $local: 'aggregate' },
-        rangeMin: { $local: 'rangeMin' },
-        rangeMax: { $local: 'rangeMax' },
-        step: { $local: 'step' },
+        name: { $: 'local.name' },
+        slug: { $: 'local.slug' },
+        description: { $: 'local.description' },
+        icon: { $: 'local.icon' },
+        iconSecondary: { $: 'local.iconSecondary' },
+        mode: { $: 'local.mode' },
+        aggregate: { $: 'local.aggregate' },
+        rangeMin: { $: 'local.rangeMin' },
+        rangeMax: { $: 'local.rangeMax' },
+        step: { $: 'local.step' },
       },
     ],
   },

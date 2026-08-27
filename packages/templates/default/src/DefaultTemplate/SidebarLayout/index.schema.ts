@@ -26,11 +26,11 @@ export const sidebarLayout: TemplateSchema = {
         {
           type: '$if',
           props: {
-            condition: { $store: 'datasetStore.currentDataset' },
+            condition: { $: 'datasetStore.currentDataset' },
             then: {
               type: '$if',
               props: {
-                condition: { $store: 'datasetStore.isWeSpace' },
+                condition: { $: 'datasetStore.isWeSpace' },
                 then: {
                   type: 'Row',
                   props: { flex: '1', height: '100%' },
@@ -46,7 +46,7 @@ export const sidebarLayout: TemplateSchema = {
             // renders in the meantime rather than a guess.
             else: {
               type: '$if',
-              props: { condition: { $store: 'spaceStore.routeSpaceUnjoined' }, then: spaceGate },
+              props: { condition: { $: 'spaceStore.routeSpaceUnjoined' }, then: spaceGate },
             },
           },
         },

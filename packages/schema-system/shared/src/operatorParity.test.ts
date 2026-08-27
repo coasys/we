@@ -9,11 +9,11 @@ import { describe, expect, it } from 'vitest';
  * is rejected by the validator, so a schema that renders correctly fails to validate — or, worse,
  * is written to avoid a validation error that was never real.
  *
- * Both had happened by the time this was written. `$plural` was documented, resolvable, and missing
- * from the union, so any schema using a count-noun label was an error; the only fragment emitting
- * one had no validated caller, so nobody found out for months. Token-valued `limit` was the same
- * story — the renderer deep-resolves query params, but the schema said `number`, which made every
- * paginated list unvalidatable.
+ * Both had happened by the time this was written. A count-noun operator was documented, resolvable,
+ * and missing from the union, so any schema using one was an error; the only fragment emitting it
+ * had no validated caller, so nobody found out for months. Token-valued `limit` was the same story —
+ * the renderer deep-resolves query params, but the schema said `number`, which made every paginated
+ * list unvalidatable.
  *
  * Reading the source is deliberate. The drift is *textual* — two lists of names in two files — and
  * neither side exposes its set at runtime: the dispatcher is an if-chain and the union is a zod
@@ -27,9 +27,9 @@ const SRC = import.meta.dirname;
  * Comments out, before anything is extracted.
  *
  * Not defensive tidying — it is load-bearing, and this test failed to catch its own motivating bug
- * without it. The doc comment above `zPluralToken` contains the literal text `{ $plural: … }` as an
- * example, so deleting `zPluralToken` from the union still left `$plural` in the extracted set and
- * the drift went unnoticed a second time. Prose about operators will always contain operators.
+ * without it. The doc comment above a token's schema contains the literal token as an example, so
+ * deleting the schema from the union still left its name in the extracted set and the drift went
+ * unnoticed a second time. Prose about operators will always contain operators.
  *
  * Line comments are stripped only when they begin a line or follow a space, so the `//` in
  * `we://children` survives.
@@ -41,7 +41,7 @@ function stripComments(source: string): string {
 const dispatcherSource = stripComments(readFileSync(resolve(SRC, 'propResolvers/dispatcher.ts'), 'utf-8'));
 const zodSource = stripComments(readFileSync(resolve(SRC, 'zodSchemas.ts'), 'utf-8'));
 
-/** Operator names the dispatcher branches on: `hasToken(value, '$store', …)`. */
+/** Operator names the dispatcher branches on: `hasToken(value, '$setLocal', …)`. */
 function dispatcherOperators(): Set<string> {
   // `[a-zA-Z]*`, not `+`: the expression token's key is the bare `$`.
   return new Set([...dispatcherSource.matchAll(/hasToken\(value, '(\$[a-zA-Z]*)'/g)].map((m) => m[1]));
@@ -85,10 +85,11 @@ describe('prop operators are declared in both the dispatcher and the zod union',
     const { names: zod, unresolved } = zodOperators();
 
     expect(unresolved, 'union members whose declaration could not be found').toEqual([]);
-    expect(dispatcher.size).toBeGreaterThan(20);
-    expect(zod.size).toBeGreaterThan(20);
-    expect(dispatcher).toContain('$store');
-    expect(zod).toContain('$store');
+    expect(dispatcher.size).toBeGreaterThan(5);
+    expect(zod.size).toBeGreaterThan(5);
+    expect(dispatcher).toContain('$');
+    expect(zod).toContain('$');
+    expect(dispatcher).toContain('$setLocal');
   });
 
   it('every operator the dispatcher resolves is accepted by the validator', () => {

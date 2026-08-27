@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 import { markReactive } from '../propResolvers/reactive';
 import { referencedPaths, referencedRoots } from './ast';
 import { checkExpression, isCallTime } from './check';
-import { exprToOperator, operatorToExpr } from './convert';
 import { evaluateExpression, namespace } from './evaluate';
 import { listFunctions } from './functions';
 import { ExpressionSyntaxError, parseExpression } from './parser';
@@ -195,95 +194,5 @@ describe('checking', () => {
 
   it('is lenient about unknown roots in a fragment', () => {
     expect(checkExpression(parseExpression('anything.at.all'), { ...scope, strict: false, locals: null })).toEqual([]);
-  });
-});
-
-describe('conversion from operators', () => {
-  const convert = (token: unknown) => {
-    const ast = operatorToExpr(token);
-    return ast ? printExpression(ast) : null;
-  };
-
-  it.each([
-    [{ $store: 'spaceStore.members' }, 'spaceStore.members'],
-    [{ $store: 'routeStore.segments.1' }, 'routeStore.segments[1]'],
-    [{ $local: 'search' }, 'local.search'],
-    [{ $eq: ['$item.role', 'admin'] }, "item.role == 'admin'"],
-    [{ $not: { $store: 'a.b' } }, '!a.b'],
-    [{ $and: [{ $local: 'a' }, { $local: 'b' }, '$c'] }, 'local.a && local.b && c'],
-    [
-      { $or: [{ $eq: ['$x', 1] }, { $gt: [{ $count: { items: { $local: 'rows' } } }, 0] }] },
-      'x == 1 || count(local.rows) > 0',
-    ],
-    [{ $in: ['$item.role', ['admin', 'mod']] }, "item.role in ['admin', 'mod']"],
-    [{ $concat: ['/space/', '$space.uuid', '/posts'] }, '`/space/${space.uuid}/posts`'],
-    [{ $if: { condition: { $local: 'open' }, then: 'a', else: 'b' } }, "local.open ? 'a' : 'b'"],
-    [{ $if: { condition: { $local: 'open' }, then: 'a' } }, "local.open ? 'a' : null"],
-    [{ $count: { items: { $store: 'spaceStore.members' } } }, 'count(spaceStore.members)'],
-    [
-      {
-        $filter: {
-          items: { $store: 'spaceStore.members' },
-          where: { role: 'admin', name: { contains: { $local: 's' } } },
-          limit: 2,
-        },
-      },
-      "filter(spaceStore.members, { role: 'admin', name: { contains: local.s } }, 2)",
-    ],
-    [
-      { $find: { items: { $local: 'signalTypes' }, where: { slug: 'like' }, select: 'id' } },
-      "find(local.signalTypes, { slug: 'like' }).id",
-    ],
-    [
-      { $plural: { count: { $count: { items: '$x' } }, one: 'Member', other: 'Members' } },
-      "plural(count(x), 'Member', 'Members')",
-    ],
-    [{ $pick: { from: { $store: 'a.b' }, props: ['c', '$likeCount'] } }, "pick(a.b, ['c', '$likeCount'])"],
-    [
-      { $map: { items: { $store: 'a.list' }, select: { name: '$item.meta.name', tag: '$literal', n: 1 } } },
-      "a.list.map(item, { name: item.meta.name, tag: '$literal', n: 1 })",
-    ],
-    [
-      { $source: { name: 'calendarMonth', options: { month: { $local: 'month' } } } },
-      'calendarMonth({ month: local.month })',
-    ],
-    [{ $error: 'email' }, "error('email')"],
-    [{ $formValid: '$scope' }, 'formValid()'],
-  ])('%j', (token, printed) => {
-    expect(convert(token)).toBe(printed);
-  });
-
-  it('refuses anything outside the value layer', () => {
-    expect(convert({ $action: 'a.b' })).toBeNull();
-    expect(convert({ $if: { condition: '$x', then: { type: 'we-text' } } })).toBeNull();
-    expect(convert({ $if: { condition: '$x', then: [{ $action: 'a.b' }] } })).toBeNull();
-    expect(convert({ $if: { condition: '$x', then: 'a', enterTransition: { type: 'fade' } } })).toBeNull();
-    expect(convert({ $count: { items: { $query: { entity: 'Post' } } } })).toBeNull();
-    expect(convert({ $store: 'wholeStore' })).toBeNull();
-  });
-
-  it('evaluates a converted tree exactly as the operator did', () => {
-    const roots = { item: { role: 'admin', n: 3 }, list: ['admin'] };
-    const ast = operatorToExpr({ $and: [{ $in: ['$item.role', '$list'] }, { $gt: ['$item.n', 2] }] })!;
-    expect(evaluateExpression(ast, env(roots))).toBe(true);
-  });
-});
-
-describe('conversion to operators, for the condition editor', () => {
-  it.each([
-    ['spaceStore.members.count() > 0', { $gt: [{ $count: { items: { $store: 'spaceStore.members' } } }, 0] }],
-    ["local.a && item.b == 'x'", { $and: [{ $local: 'a' }, { $eq: ['$item.b', 'x'] }] }],
-    ['!local.open', { $not: { $local: 'open' } }],
-    ["item.role in ['a', 'b']", { $in: ['$item.role', ['a', 'b']] }],
-    ["error('email')", { $error: 'email' }],
-    ['formValid()', { $formValid: '$scope' }],
-    ['modules.notes.open', { $store: 'modules.notes.open' }],
-  ])('%s', (source, token) => {
-    expect(exprToOperator(parseExpression(source))).toEqual(token);
-  });
-
-  it('returns null outside the editor subset', () => {
-    expect(exprToOperator(parseExpression('a + b'))).toBeNull();
-    expect(exprToOperator(parseExpression('items.filter(x, x.ok)'))).toBeNull();
   });
 });

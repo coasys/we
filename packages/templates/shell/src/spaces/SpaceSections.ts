@@ -56,7 +56,7 @@ const sectionRow: SchemaNode = {
           type: '$if',
           props: {
             // Only meaningful where a drag would change something everyone sees.
-            condition: '$space.canAdminister',
+            condition: { $: 'space.canAdminister' },
             then: {
               /*
                 A native carrier for `data-we-handle`, with a focusable control inside.
@@ -101,16 +101,16 @@ const sectionRow: SchemaNode = {
             },
           },
         },
-        { type: 'we-icon', props: { name: '$view.icon', size: '20px' } },
+        { type: 'we-icon', props: { name: { $: 'view.icon' }, size: '20px' } },
         {
           type: 'Column',
           props: { gap: '100' },
           children: [
-            { type: 'we-text', props: { variant: 'label' }, children: ['$view.name'] },
+            { type: 'we-text', props: { variant: 'label' }, children: [{ $: 'view.name' }] },
             {
               type: 'we-text',
               props: { variant: 'footnote', color: 'text-faint' },
-              children: ['$view.description'],
+              children: [{ $: 'view.description' }],
             },
             sectionStatus,
           ],
@@ -130,7 +130,7 @@ const sectionRow: SchemaNode = {
               type: 'we-switch',
               props: {
                 size: 'sm',
-                checked: '$view.visible',
+                checked: { $: 'view.visible' },
                 // Nothing to show yourself while the space does not have the section, so the control
                 // cannot do what it appears to.
                 disabled: { $: '!view.enabled' },
@@ -138,7 +138,7 @@ const sectionRow: SchemaNode = {
                 // the event exists. Same trap as the module switches.
                 onChange: {
                   $action: 'spaceStore.setViewVisible',
-                  args: ['$view.id', '$event.detail', '$space.uuid'],
+                  args: [{ $: 'view.id' }, { $: 'event.detail' }, { $: 'space.uuid' }],
                 },
               },
             },
@@ -153,11 +153,11 @@ const sectionRow: SchemaNode = {
               type: 'we-switch',
               props: {
                 size: 'sm',
-                checked: '$view.enabled',
+                checked: { $: 'view.enabled' },
                 disabled: { $: '!space.canAdminister' },
                 onChange: {
                   $action: 'spaceStore.setViewEnabled',
-                  args: ['$view.id', '$event.detail', '$space.uuid'],
+                  args: [{ $: 'view.id' }, { $: 'event.detail' }, { $: 'space.uuid' }],
                 },
               },
             },
@@ -178,7 +178,7 @@ const sectionRow: SchemaNode = {
  */
 const draggableRow: SchemaNode = {
   type: 'div',
-  props: { 'data-we-id': '$view.id', style: { width: '100%' } },
+  props: { 'data-we-id': { $: 'view.id' }, style: { width: '100%' } },
   children: [sectionRow],
 };
 
@@ -241,7 +241,7 @@ const sectionsCard: SchemaNode = {
         locked: { $: '!space.canAdminister' },
         // `$arg.detail` is where we-sortable puts the reordered ids. The event is `reorder`, which
         // Solid reaches from `onReorder` by lowercasing.
-        onReorder: { $action: 'spaceStore.reorderViews', args: ['$arg.detail', '$space.uuid'] },
+        onReorder: { $action: 'spaceStore.reorderViews', args: [{ $: 'arg.detail' }, { $: 'space.uuid' }] },
       },
       children: [
         {
@@ -278,5 +278,5 @@ const sectionsCard: SchemaNode = {
 
 export const spaceSectionsSection: SchemaNode = {
   type: '$if',
-  props: { condition: '$space.usesSections', then: sectionsCard, else: noSectionsNotice },
+  props: { condition: { $: 'space.usesSections' }, then: sectionsCard, else: noSectionsNotice },
 };

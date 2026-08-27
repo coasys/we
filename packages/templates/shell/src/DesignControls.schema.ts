@@ -25,12 +25,11 @@
  * `mountTemplateEditor` gives an embedding application through `EditorHost`. See `EditingBar.tsx`.
  */
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
+import { expr } from '@we/schema-shared';
 import { field, pickerPopover, pickerRow } from '@we/template-kit';
 
 /** Rows whose name contains what is typed in the picker's search box. */
-const matching = (items: SchemaProp) => ({
-  $filter: { items, where: { name: { contains: { $local: 'pickerSearch' } } } },
-});
+const matching = (items: SchemaProp) => expr`filter(${items}, { name: { contains: local.pickerSearch } })`;
 
 /**
  * The flags that hold each picker open, declared together on the rail by `chromeRail`.
@@ -53,9 +52,7 @@ const closeTemplatePicker = { $setLocal: TEMPLATE_PICKER_OPEN, value: false };
 const closeThemePicker = { $setLocal: THEME_PICKER_OPEN, value: false };
 
 /** A theme or template's own icon, falling back where a record has none. */
-const iconOr = (path: string, fallback: string) => ({
-  $if: { condition: path, then: path, else: fallback },
-});
+const iconOr = (path: string, fallback: string) => expr`${{ $: path }} ? ${{ $: path }} : ${fallback}`;
 
 /**
  * A labelled group of rows, absent entirely when the search has emptied it.
@@ -64,11 +61,11 @@ const iconOr = (path: string, fallback: string) => ({
  * heading over nothing is worse than no group at all, and the two must agree about what "nothing"
  * means.
  */
-function section(label: string, rows: SchemaProp, body: SchemaNode): SchemaNode {
+function section(label: SchemaProp, rows: SchemaProp, body: SchemaNode): SchemaNode {
   return {
     type: '$if',
     props: {
-      condition: { $count: { items: rows } },
+      condition: expr`count(${rows})`,
       then: {
         type: 'Column',
         props: { gap: '100' },
@@ -91,7 +88,7 @@ function destinationToggle(): SchemaNode {
     type: 'we-button',
     props: {
       size: 'sm',
-      variant: { $if: { condition: { $eq: [{ $local: 'destination' }, value] }, then: 'secondary', else: 'ghost' } },
+      variant: expr`local.destination == ${value} ? 'secondary' : 'ghost'`,
       onClick: { $setLocal: 'destination', value },
     },
     children: [label],
@@ -151,9 +148,9 @@ function nameDialog(opts: {
               {
                 type: 'we-icon-picker',
                 props: {
-                  value: { $local: 'icon' },
+                  value: { $: 'local.icon' },
                   size: 'sm',
-                  onChange: { $setLocal: 'icon', from: '$event.detail' },
+                  onChange: { $setLocal: 'icon', value: { $: 'event.detail' } },
                 },
               },
             ],
@@ -165,7 +162,7 @@ function nameDialog(opts: {
             children: [
               {
                 type: 'we-button',
-                props: { size: 'sm', variant: 'ghost', disabled: { $local: 'saving' }, onClick: opts.close },
+                props: { size: 'sm', variant: 'ghost', disabled: { $: 'local.saving' }, onClick: opts.close },
                 children: ['Cancel'],
               },
               {
@@ -176,13 +173,13 @@ function nameDialog(opts: {
                   // locally judgeable beyond "is there one", and a rule here would exist only to
                   // drive this prop while offering to tell somebody their empty field is empty.
                   disabled: { $: '!local.name' },
-                  loading: { $local: 'saving' },
+                  loading: { $: 'local.saving' },
                   onClick: [
                     { $setLocal: 'saving', value: true },
                     opts.confirm({
-                      name: { $local: 'name' },
-                      icon: { $local: 'icon' },
-                      destination: { $local: 'destination' },
+                      name: { $: 'local.name' },
+                      icon: { $: 'local.icon' },
+                      destination: { $: 'local.destination' },
                     }),
                   ],
                 },
@@ -198,7 +195,7 @@ function nameDialog(opts: {
 
 // ── Templates ───────────────────────────────────────────────────────────────────────────────────
 
-const templateRows = matching('$group.items');
+const templateRows = matching({ $: 'group.items' });
 
 /**
  * The template picker.
@@ -224,18 +221,21 @@ export function templatePicker(): SchemaNode {
         searchPlaceholder: 'Search templates…',
         body: {
           type: '$each',
-          props: { items: { $store: 'templateStore.switcherGroups' }, as: 'group' },
+          props: { items: { $: 'templateStore.switcherGroups' }, as: 'group' },
           children: [
-            section('$group.label', templateRows, {
+            section({ $: 'group.label' }, templateRows, {
               type: '$each',
               props: { items: templateRows, as: 'template' },
               children: [
                 pickerRow({
-                  icon: '$template.icon',
-                  label: '$template.name',
+                  icon: { $: 'template.icon' },
+                  label: { $: 'template.name' },
                   selected: { $: 'template.id == templateStore.currentSwitcherId' },
                   isDefault: { $: 'template.id == spaceStore.spaceDefaultTemplateId' },
-                  select: [{ $action: 'templateStore.switchTemplate', args: ['$template.id'] }, closeTemplatePicker],
+                  select: [
+                    { $action: 'templateStore.switchTemplate', args: [{ $: 'template.id' }] },
+                    closeTemplatePicker,
+                  ],
                   actions: [
                     {
                       icon: 'pencil-simple',
@@ -255,12 +255,12 @@ export function templatePicker(): SchemaNode {
                         offering this on a built-in opens a session over something that cannot be
                         saved.
                       */
-                      when: '$template.editable',
+                      when: { $: 'template.editable' },
                       // Switch first, exactly as forking does below: an editing session is opened
                       // over whatever is current, so editing a row you are not on has to make it
                       // current before entering.
                       onClick: [
-                        { $action: 'templateStore.switchTemplate', args: ['$template.id'] },
+                        { $action: 'templateStore.switchTemplate', args: [{ $: 'template.id' }] },
                         { $action: 'editorStore.enterTemplateEditing', args: ['edit'] },
                         closeTemplatePicker,
                       ],
@@ -271,7 +271,7 @@ export function templatePicker(): SchemaNode {
                       // Switch first: a fork is seeded from whatever is current, so forking a row you
                       // are not on has to make it current before asking for a name.
                       onClick: [
-                        { $action: 'templateStore.switchTemplate', args: ['$template.id'] },
+                        { $action: 'templateStore.switchTemplate', args: [{ $: 'template.id' }] },
                         { $action: 'editorStore.startFork' },
                         closeTemplatePicker,
                       ],
@@ -299,12 +299,12 @@ export function templatePicker(): SchemaNode {
       }),
 
       nameDialog({
-        open: { $store: 'editorStore.pickerOpen' },
+        open: { $: 'editorStore.pickerOpen' },
         close: { $action: 'editorStore.cancelPicker' },
         title: { $: "editorStore.pickerAction == 'fresh' ? 'New template' : 'Fork template'" },
-        initialName: { $store: 'editorStore.pickerDefaultName' },
-        initialIcon: { $store: 'editorStore.pickerDefaultIcon' },
-        showDestination: { $store: 'editorStore.pickerShowDestination' },
+        initialName: { $: 'editorStore.pickerDefaultName' },
+        initialIcon: { $: 'editorStore.pickerDefaultIcon' },
+        showDestination: { $: 'editorStore.pickerShowDestination' },
         confirmLabel: { $: "editorStore.pickerAction == 'fresh' ? 'Create' : 'Fork'" },
         confirm: ({ name, icon, destination }) => ({
           $action: 'editorStore.confirmPicker',
@@ -320,15 +320,15 @@ export function templatePicker(): SchemaNode {
 
 /** A theme section, over one of the three store arrays the themes are grouped into. */
 function themeSection(label: string, storePath: string): SchemaNode {
-  const rows = matching({ $store: storePath });
+  const rows = matching({ $: storePath });
 
   return section(label, rows, {
     type: '$each',
     props: { items: rows, as: 'theme' },
     children: [
       pickerRow({
-        icon: iconOr('$theme.icon', 'paint-bucket'),
-        label: '$theme.name',
+        icon: iconOr('theme.icon', 'paint-bucket'),
+        label: { $: 'theme.name' },
         selected: { $: 'theme.id == themeStore.currentThemeId' },
         isDefault: { $: 'theme.id == spaceStore.spaceDefaultThemeId' },
         // `applyTheme` rather than `themeStore.setCurrentTheme`: the choice is persisted where it was
@@ -341,7 +341,7 @@ function themeSection(label: string, storePath: string): SchemaNode {
         // a theme repaints the whole window, this popover included, so the click is self-evidently
         // landed — and choosing a theme is the one thing here people do by comparison, trying three
         // in a row. Closing after each turned that into three round trips through the rail button.
-        select: { $action: 'spaceStore.applyTheme', args: ['$theme.id'] },
+        select: { $action: 'spaceStore.applyTheme', args: [{ $: 'theme.id' }] },
         actions: [
           /*
             The pin — a state, not an offer, which is why it is filled and why it appears on exactly
@@ -366,8 +366,8 @@ function themeSection(label: string, storePath: string): SchemaNode {
             // A built-in has no stored overrides to edit — forking is the way in, as it always was.
             when: { $: "theme.origin != 'built-in'" },
             onClick: [
-              { $action: 'themeStore.setCurrentTheme', args: ['$theme.id'] },
-              { $action: 'themeStore.startEditing', args: ['$theme.id'] },
+              { $action: 'themeStore.setCurrentTheme', args: [{ $: 'theme.id' }] },
+              { $action: 'themeStore.startEditing', args: [{ $: 'theme.id' }] },
               { $action: 'editorStore.enterThemeEditing' },
               closeThemePicker,
             ],
@@ -378,9 +378,9 @@ function themeSection(label: string, storePath: string): SchemaNode {
             // `from` rather than `value`: only `from` resolves a context ref, so this is how the row
             // being clicked reaches the dialog above. `value` would store the literal "$theme.id".
             onClick: [
-              { $setLocal: 'forkSource', from: '$theme.id' },
-              { $setLocal: 'forkName', from: '$theme.name' },
-              { $setLocal: 'forkIcon', from: '$theme.icon' },
+              { $setLocal: 'forkSource', value: { $: 'theme.id' } },
+              { $setLocal: 'forkName', value: { $: 'theme.name' } },
+              { $setLocal: 'forkIcon', value: { $: 'theme.icon' } },
               { $setLocal: 'forkOpen', value: true },
               closeThemePicker,
             ],
@@ -454,9 +454,9 @@ export function themePicker(): SchemaNode {
                       type: 'we-select',
                       props: {
                         size: 'sm',
-                        options: { $store: 'themeStore.systemThemeOptions' },
-                        value: { $store: 'themeStore.systemThemes.light' },
-                        onChange: { $action: 'themeStore.setSystemTheme', args: ['light', '$arg.detail'] },
+                        options: { $: 'themeStore.systemThemeOptions' },
+                        value: { $: 'themeStore.systemThemes.light' },
+                        onChange: { $action: 'themeStore.setSystemTheme', args: ['light', { $: 'arg.detail' }] },
                       },
                     },
                   ],
@@ -469,9 +469,9 @@ export function themePicker(): SchemaNode {
                       type: 'we-select',
                       props: {
                         size: 'sm',
-                        options: { $store: 'themeStore.systemThemeOptions' },
-                        value: { $store: 'themeStore.systemThemes.dark' },
-                        onChange: { $action: 'themeStore.setSystemTheme', args: ['dark', '$arg.detail'] },
+                        options: { $: 'themeStore.systemThemeOptions' },
+                        value: { $: 'themeStore.systemThemes.dark' },
+                        onChange: { $action: 'themeStore.setSystemTheme', args: ['dark', { $: 'arg.detail' }] },
                       },
                     },
                   ],
@@ -524,10 +524,10 @@ export function themePicker(): SchemaNode {
                 {
                   type: 'we-switch',
                   props: {
-                    checked: { $store: 'themeStore.themeScopeGlobal' },
+                    checked: { $: 'themeStore.themeScopeGlobal' },
                     // Passed bare: the switch emits the boolean, and wrapping it in an operator would
                     // resolve at render time and send a constant.
-                    onChange: { $action: 'themeStore.setThemeScopeGlobal', args: ['$event.detail'] },
+                    onChange: { $action: 'themeStore.setThemeScopeGlobal', args: [{ $: 'event.detail' }] },
                   },
                 },
               ],
@@ -537,26 +537,26 @@ export function themePicker(): SchemaNode {
       }),
 
       nameDialog({
-        open: { $local: 'forkOpen' },
+        open: { $: 'local.forkOpen' },
         close: { $setLocal: 'forkOpen', value: false },
         title: { $: "local.forkSource ? 'Fork theme' : 'New theme'" },
-        initialName: { $local: 'forkName' },
-        initialIcon: { $local: 'forkIcon' },
+        initialName: { $: 'local.forkName' },
+        initialIcon: { $: 'local.forkIcon' },
         showDestination: true,
         confirmLabel: { $: "local.forkSource ? 'Fork' : 'Create'" },
         confirm: ({ name, icon, destination }) => ({
           $action: 'themeStore.createAndStartEditing',
-          args: [name, icon, { $local: 'forkSource' }, destination],
+          args: [name, icon, { $: 'local.forkSource' }, destination],
           // Resolves `false` when the create failed rather than rejecting, so the close and the mode
           // switch are guarded on the result — otherwise a failed create closes over its own error.
           onSuccess: [
             {
               $if: {
-                condition: '$result',
+                condition: { $: 'result' },
                 then: { $action: 'editorStore.enterThemeEditing' },
               },
             },
-            { $if: { condition: '$result', then: { $setLocal: 'forkOpen', value: false } } },
+            { $if: { condition: { $: 'result' }, then: { $setLocal: 'forkOpen', value: false } } },
           ],
           onFinally: [{ $setLocal: 'saving', value: false }],
         }),

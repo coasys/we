@@ -73,7 +73,7 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
         },
         { name: 'limit', type: 'number', description: 'Rows per type. Default 200.' },
       ],
-      example: `{ "source": "board", "options": { "board": { "$local": "boardId" } } }`,
+      example: `{ "source": "board", "options": { "board": { "$": "local.boardId" } } }`,
     },
     {
       id: 'dataset',
@@ -319,7 +319,7 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
           description: 'Whether the gesture is live. Default true. Disarmed, the press falls through to drag-node.',
         },
       ],
-      example: `"behaviours": [{ "type": "connect-nodes", "options": { "armed": { "$local": "connecting" } } }, "select", { "type": "drag-node" }, "pan-zoom"]`,
+      example: `"behaviours": [{ "type": "connect-nodes", "options": { "armed": { "$": "local.connecting" } } }, "select", { "type": "drag-node" }, "pan-zoom"]`,
     },
     {
       id: 'node-double-click',

@@ -5,8 +5,8 @@ export const spacesList: SchemaNode = cardList({
   query: {
     entity: 'Space',
     where: {
-      url: { not: { $store: 'datasetStore.currentDatasetCid' } },
-      OR: [{ name: { contains: { $local: 'searchText' } } }, { description: { contains: { $local: 'searchText' } } }],
+      url: { not: { $: 'datasetStore.currentDatasetCid' } },
+      OR: [{ name: { contains: { $: 'local.searchText' } } }, { description: { contains: { $: 'local.searchText' } } }],
     },
     limit: 20,
     order: {
@@ -29,10 +29,10 @@ export const spacesList: SchemaNode = cardList({
         {
           type: '$if',
           props: {
-            condition: '$space.coverImage',
+            condition: { $: 'space.coverImage' },
             then: {
               type: 'we-image',
-              props: { src: '$space.coverImage', width: '100%', height: '120px', fit: 'cover', r: '400' },
+              props: { src: { $: 'space.coverImage' }, width: '100%', height: '120px', fit: 'cover', r: '400' },
             },
           },
         },
@@ -47,9 +47,9 @@ export const spacesList: SchemaNode = cardList({
               children: [
                 {
                   type: 'we-avatar',
-                  props: { image: '$space.avatar', initials: '$space.name', size: 'lg', shadow: 'md' },
+                  props: { image: { $: 'space.avatar' }, initials: { $: 'space.name' }, size: 'lg', shadow: 'md' },
                 },
-                { type: 'we-text', props: { variant: 'heading-sm' }, children: ['$space.name'] },
+                { type: 'we-text', props: { variant: 'heading-sm' }, children: [{ $: 'space.name' }] },
               ],
             },
             {
@@ -70,12 +70,12 @@ export const spacesList: SchemaNode = cardList({
                       children: [{ type: 'we-icon', props: { name: 'trash' } }],
                     },
                     confirmModal({
-                      open: { $local: 'confirmDeleteOpen' },
+                      open: { $: 'local.confirmDeleteOpen' },
                       close: { $setLocal: 'confirmDeleteOpen', value: false },
                       title: 'Remove from discovery?',
                       body: 'This will remove this space from the global discovery listing. The space and all its content will remain intact.',
                       confirmLabel: 'Remove',
-                      confirm: { $action: 'model.delete', args: ['Space', '$space.id'] },
+                      confirm: { $action: 'model.delete', args: ['Space', { $: 'space.id' }] },
                     }),
                   ],
                 },
@@ -88,8 +88,8 @@ export const spacesList: SchemaNode = cardList({
         {
           type: '$if',
           props: {
-            condition: '$space.description',
-            then: { type: 'we-text', props: { color: 'text-muted' }, children: ['$space.description'] },
+            condition: { $: 'space.description' },
+            then: { type: 'we-text', props: { color: 'text-muted' }, children: [{ $: 'space.description' }] },
           },
         },
         {
@@ -112,7 +112,7 @@ export const spacesList: SchemaNode = cardList({
                 // Gated on city, not the location object: a lat/lng-only location
                 // (reverse geocoding off) renders ", " and says nothing. Matches
                 // the member card's gate.
-                condition: '$space.location.city',
+                condition: { $: 'space.location.city' },
                 then: statChip({
                   icon: 'map-pin',
                   label: 'Location',
@@ -128,12 +128,12 @@ export const spacesList: SchemaNode = cardList({
                 { type: 'we-text', props: { color: 'text-muted' }, children: ['Created:'] },
                 {
                   type: 'we-timestamp',
-                  props: { value: '$space.createdAt', relative: true, color: 'text' },
+                  props: { value: { $: 'space.createdAt' }, relative: true, color: 'text' },
                 },
                 { type: 'we-text', props: { color: 'text-muted' }, children: ['by'] },
                 {
                   type: '$agent',
-                  props: { did: '$space.author', as: 'creator' },
+                  props: { did: { $: 'space.author' }, as: 'creator' },
                   children: [
                     {
                       type: 'Row',
@@ -141,12 +141,12 @@ export const spacesList: SchemaNode = cardList({
                       children: [
                         {
                           type: 'we-avatar',
-                          props: { size: 'xs', image: '$creator.avatar', hash: '$creator.did' },
+                          props: { size: 'xs', image: { $: 'creator.avatar' }, hash: { $: 'creator.did' } },
                         },
                         {
                           type: 'we-text',
                           props: { color: 'text' },
-                          children: ['$creator.name'],
+                          children: [{ $: 'creator.name' }],
                         },
                       ],
                     },
@@ -162,7 +162,7 @@ export const spacesList: SchemaNode = cardList({
         {
           type: '$if',
           props: {
-            condition: '$space.url',
+            condition: { $: 'space.url' },
             then: {
               type: '$if',
               props: {
@@ -174,7 +174,7 @@ export const spacesList: SchemaNode = cardList({
                     text: 'Enter Space',
                     variant: 'primary',
                     size: 'sm',
-                    onClick: { $action: 'spaceStore.navigateToSpace', args: ['$space.url'] },
+                    onClick: { $action: 'spaceStore.navigateToSpace', args: [{ $: 'space.url' }] },
                   },
                 },
                 else: {
@@ -185,13 +185,13 @@ export const spacesList: SchemaNode = cardList({
                     variant: 'primary',
                     size: 'sm',
                     alignSelf: 'start',
-                    loading: { $local: 'joining' },
+                    loading: { $: 'local.joining' },
                     onClick: [
                       { $setLocal: 'joining', value: true },
                       {
                         $action: 'spaceStore.joinSpace',
-                        args: ['$space.url'],
-                        onSuccess: [{ $action: 'spaceStore.navigateToSpace', args: ['$space.url'] }],
+                        args: [{ $: 'space.url' }],
+                        onSuccess: [{ $action: 'spaceStore.navigateToSpace', args: [{ $: 'space.url' }] }],
                         onError: [{ $setLocal: 'joining', value: false }],
                       },
                     ],

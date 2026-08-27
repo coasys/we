@@ -80,8 +80,8 @@ const feedTemplate: SchemaNode = {
           type: 'Stack',
           props: { testid: 'post' },
           children: [
-            { type: 'Field', children: ['$post.title'] },
-            { type: 'Field', children: ['by ', '$post.author.name'] },
+            { type: 'Field', children: [{ $: 'post.title' }] },
+            { type: 'Field', children: ['by ', { $: 'post.author.name' }] },
           ],
         },
       ],

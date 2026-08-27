@@ -47,7 +47,7 @@ export type ModelStore = {
  * than at runtime.
  *
  * Only host-specific members are declared below; everything neutral comes from the contract, and
- * the inherited index signature keeps `$store: 'someStore.field'` dot-paths open.
+ * the inherited index signature keeps `someStore.field` dot-paths open.
  */
 export interface Stores extends RendererStores {
   // Restated explicitly: an interface does not pick up an inherited index signature for

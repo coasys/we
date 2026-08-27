@@ -74,7 +74,7 @@ A **Template** is a JSON schema (a tree of nodes). Rendering:
 1. Each node has `type`, `props`, `children`, and optional `routes` / `slots` / `$localState` /
    `$queries`.
 2. Props resolve through the shared dispatcher (`@we/schema-shared` → `propResolvers/dispatcher.ts`).
-   Token objects (`$store`, `$if`, `$query`, `$local`, `$action`, …) become plain values or
+   Expressions (`{ $: '…' }`) and handler/query tokens (`$action`, `$query`, …) become plain values or
    **reactive accessors** via a framework-injected `memo`; `markReactive()` tags accessors.
 3. The renderer (`@we/schema-solid`) looks up `type` in the `ComponentRegistry`: a custom-element
    tag string for `@we/primitives`, a framework component for `@we/components` / `@we/widgets`.

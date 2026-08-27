@@ -3,8 +3,8 @@
  *
  * ## Why a table and not four exports
  *
- * These reach a template two ways — `{ $source: { name, options } }` and, in an expression,
- * `calendarMonth({ month: local.month })` — and both resolve the name against `$sources` at paint.
+ * These reach a template as functions in an expression — `calendarMonth({ month: local.month })` —
+ * resolved against the `$sources` bag at paint.
  * What neither can do is tell an author the name exists. The graph plugins had exactly this
  * problem: a good protocol, no catalogue in the generated context, so an LLM could not write a
  * globe template. A host function that is not in the context is one an author has to already know.
@@ -32,8 +32,8 @@ export interface HostSource {
 }
 
 /**
- * Every entry names its options as one object parameter, because that is what `$source` has
- * always passed and an expression calls them the same way: `monthLabel({ offset: local.offset })`.
+ * Every entry names its options as one object parameter, because that is how an expression calls
+ * them: `monthLabel({ offset: local.offset })`.
  */
 export const hostSources: readonly HostSource[] = [
   {

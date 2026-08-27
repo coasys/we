@@ -51,7 +51,7 @@ export function mediaGrid(opts: MediaGridOptions): SchemaNode {
         // The mute filter, as unconditional here as in `collectionFeed` — a grid is a feed with a
         // different arrangement, and a block list that works in one view and not the other is
         // worse than none.
-        not: { $store: 'spaceStore.mutedDids' },
+        not: { $: 'spaceStore.mutedDids' },
         ...(opts.author !== undefined && { eq: opts.author }),
       },
     },
@@ -74,21 +74,21 @@ export function mediaGrid(opts: MediaGridOptions): SchemaNode {
       {
         type: '$if',
         props: {
-          condition: { $count: { items: { $local: key } } },
+          condition: { $: `count(local.${key})` },
           then: {
             type: 'Grid',
             props: { minChildWidth: opts.minTileWidth ?? '220px', gap: '200', width: '100%' },
             children: [
               {
                 type: '$each',
-                props: { items: { $local: key }, as },
+                props: { items: { $: `local.${key}` }, as },
                 children: [
                   {
                     // Only rows that actually carry an image. A blank tile in a photo grid reads as
                     // a broken image, not as a post without one.
                     type: '$if',
                     props: {
-                      condition: `$${as}.$firstImage.src`,
+                      condition: { $: `${as}.$firstImage.src` },
                       then: {
                         // `bare` rather than `ghost`: the tile supplies its own affordance, and
                         // ghost's hover background would paint a rectangle over the picture.
@@ -106,8 +106,8 @@ export function mediaGrid(opts: MediaGridOptions): SchemaNode {
                               {
                                 type: 'we-image',
                                 props: {
-                                  src: `$${as}.$firstImage.src`,
-                                  alt: `$${as}.$firstImage.altText`,
+                                  src: { $: `${as}.$firstImage.src` },
+                                  alt: { $: `${as}.$firstImage.altText` },
                                   fit: 'cover',
                                   loading: 'lazy',
                                   width: '100%',
@@ -147,7 +147,7 @@ export function mediaGrid(opts: MediaGridOptions): SchemaNode {
               },
             ],
           },
-          else: { type: '$if', props: { condition: { $local: `${key}Loaded` }, then: opts.empty } },
+          else: { type: '$if', props: { condition: { $: `local.${key}Loaded` }, then: opts.empty } },
         },
       },
     ],

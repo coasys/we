@@ -62,7 +62,8 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
 
   const handleAction = (item: DropdownMenuAction) => {
     if (item.disabled) return;
-    item.onAction();
+    item.onAction?.();
+    props.onSelect?.(item);
     closeMenu();
   };
 
@@ -224,9 +225,16 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
    * shift every later entry into a row built for a different item, and a snapshot taken once at
    * creation would never see the condition change, so the entry would be right at mount and frozen
    * afterwards. A hole holds its index, and the memo re-reads it.
+   *
+   * `hidden` is the same thing said on the entry: a value expression cannot wrap an entry that
+   * carries a handler, so the condition travels on the entry and is read here, by position, exactly
+   * as a hole is.
    */
   const renderEntry = (getEntry: () => SolidDropdownMenuEntry) => {
-    const present = createMemo(() => Boolean(getEntry()));
+    const present = createMemo(() => {
+      const entry = getEntry();
+      return Boolean(entry) && !('hidden' in entry && entry.hidden);
+    });
     return <Show when={present()}>{renderBody(getEntry)}</Show>;
   };
 

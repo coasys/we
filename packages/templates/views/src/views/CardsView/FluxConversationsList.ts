@@ -24,11 +24,11 @@ export const fluxConversationsList: SchemaNode = {
         dataset: '$currentDataset',
         where: {
           OR: [
-            { conversationName: { contains: { $local: 'searchText' } } },
-            { summary: { contains: { $local: 'searchText' } } },
+            { conversationName: { contains: { $: 'local.searchText' } } },
+            { summary: { contains: { $: 'local.searchText' } } },
           ],
         },
-        order: { timestamp: { $local: 'sortDirection' } },
+        order: { timestamp: { $: 'local.sortDirection' } },
         limit: 20,
       },
       as: 'conversation',
@@ -44,7 +44,7 @@ export const fluxConversationsList: SchemaNode = {
                 {
                   type: 'we-text',
                   props: { variant: 'heading-sm' },
-                  children: ['$conversation.conversationName'],
+                  children: [{ $: 'conversation.conversationName' }],
                 },
               ],
             },
@@ -53,11 +53,11 @@ export const fluxConversationsList: SchemaNode = {
             {
               type: '$if',
               props: {
-                condition: '$conversation.summary',
-                then: { type: 'we-text', props: { color: 'text-muted' }, children: ['$conversation.summary'] },
+                condition: { $: 'conversation.summary' },
+                then: { type: 'we-text', props: { color: 'text-muted' }, children: [{ $: 'conversation.summary' }] },
               },
             },
-            peopleRow({ items: '$conversation.participants', dids: true, noun: 'Participant' }),
+            peopleRow({ items: { $: 'conversation.participants' }, dids: true, noun: 'Participant' }),
           ],
         }),
       ],

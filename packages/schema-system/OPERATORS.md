@@ -49,12 +49,12 @@ same grammar `$query`'s `where` takes: equality, list membership, `not`, `contai
 **Total and inert.** A missing path is `undefined`, arithmetic on a non-number is on 0, a
 comprehension over a non-list is empty; nothing throws during paint. Property reads reach data only;
 `__proto__`, `constructor` and `prototype` are refused by the parser; a function met on the way is
-read only if it is a tagged accessor, exactly as `$store` reads.
+read only if it is a tagged accessor — a store's actions are unreachable from a value.
 
 **Checked statically.** `we-validate-schemas` parses every expression and reports, with a column:
 an unknown name (with "did you mean"), an unknown store member, an undeclared local, an unknown
-function, a wrong argument count, prototype access. That is what `{ $store: 'spaceStore.membrs' }`
-never got.
+function, a wrong argument count, prototype access — and a reference written as a plain string
+(`'$item.name'`), which would render as text.
 
 **Call time.** An expression naming `event`/`arg`/`result` at the top level of `$action`'s `args`,
 or as a `$setLocal` `value`, is evaluated when the handler fires. Nested inside another token it
@@ -70,27 +70,23 @@ side of the data/code line:
 
 Neither touches the parser, the validator's grammar, the renderer or what an author has to learn.
 
-## Legacy value tokens
+## Strings are text
 
-`{ $eq }`, `{ $ne }`, `{ $lt }`, `{ $gt }`, `{ $in }`, `{ $not }`, `{ $and }`, `{ $or }`,
-`{ $concat }`, `{ $count }`, `{ $filter }`, `{ $find }`, `{ $plural }`, `{ $map }`, `{ $pick }`,
-`{ $source }` and the prop-level `{ $if: { condition, then, else } }` are the expression language's
-syntax tree written as JSON. They still render — `operatorToExpr` reads them — and an existing
-template needs no change. Context-reference strings (`'$item.name'`) likewise still resolve inside
-those tokens and as bare children.
-
-Write new schemas as expressions. `src/cli/we-expressions-codemod.ts` prints a file's operator trees
-into the new spelling; it was run once over the repo's own templates, which are the reference corpus.
+A plain string is a literal everywhere — in a prop, in `children`, in an `$action` argument. There
+is no reference spelled as a string: `'$item.name'` renders those ten characters, and the validator
+rejects it. The value operators that once lived beside the expression (`$eq`, `$and`, `$concat`,
+`$count`, `$filter`, `$find`, `$plural`, `$map`, `$pick`, `$store`, `$local`, the prop-level `$if`)
+are gone; each is a spelling inside the expression now.
 
 ## The tokens that remain
 
 Documented in full in the generated reference; the short list:
 
-- **References** — `{ $store: 'store.member.path' }`, `{ $local: 'field.path' }`. Still valid
-  leaf spellings of `store.member.path` and `local.field.path`.
 - **Handlers** — `{ $action: 'store.method', args, onSuccess, onError, onFinally }`,
-  `{ $setLocal: 'field', from | value | merge | by }`, `{ $toggleLocal }`, `{ $toggleLocalIn }`,
-  `{ $callLocal }`, `{ $touch }`, `{ $resetLocal }`; handler arrays compose them.
+  `{ $setLocal: 'field', value | merge }` (an expression `value` is evaluated when the handler
+  fires), `{ $toggleLocal }`, `{ $toggleLocalIn }`, `{ $callLocal }`, `{ $touch }`,
+  `{ $resetLocal }`, and `{ $if: { condition, then, else } }` choosing between handlers; handler
+  arrays compose them.
 - **Queries** — `{ $query: … }` in a prop, `$queries` hoisted on a node.
 - **Local state** — `$localState` with `validate`, `persist`, `syncParam`.
 - **Structure** — `$each`, node-level `$if` (with transitions), `$animate`, `$single`, `$routes`,
@@ -100,4 +96,4 @@ Documented in full in the generated reference; the short list:
 
 An expression can name only what the template's bag holds. `templateSurface.ts` builds that bag
 per tier and its walker reads every store path an expression mentions, so a reference past the
-grant is reported at install time exactly as a `$store` one is, and resolves to nothing at paint.
+grant is reported at install time, and resolves to nothing at paint.

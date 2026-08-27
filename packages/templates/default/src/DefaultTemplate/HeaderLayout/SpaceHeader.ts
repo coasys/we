@@ -17,7 +17,7 @@ export const spaceHeader: SchemaNode = {
             {
               type: 'EditableImage',
               props: {
-                src: { $store: 'spaceStore.currentSpace.coverImage' },
+                src: { $: 'spaceStore.currentSpace.coverImage' },
                 alt: 'Cover image',
                 fit: 'cover',
                 width: '100%',
@@ -25,7 +25,7 @@ export const spaceHeader: SchemaNode = {
                 rb: '600',
                 aspect: 4 / 1,
                 placeholderIcon: 'panorama',
-                onImageChange: { $action: 'spaceStore.updateSpaceImage', args: ['coverImage', '$arg'] },
+                onImageChange: { $action: 'spaceStore.updateSpaceImage', args: ['coverImage', { $: 'arg' }] },
               },
             },
             {
@@ -36,7 +36,7 @@ export const spaceHeader: SchemaNode = {
                 {
                   type: 'EditableImage',
                   props: {
-                    src: { $store: 'spaceStore.currentSpace.avatar' },
+                    src: { $: 'spaceStore.currentSpace.avatar' },
                     alt: 'Profile picture',
                     fit: 'cover',
                     width: '120px',
@@ -44,7 +44,7 @@ export const spaceHeader: SchemaNode = {
                     r: 'avatar',
                     ring: '0 0 0 2px var(--we-ring-color)',
                     placeholderIcon: 'users-three',
-                    onImageChange: { $action: 'spaceStore.updateSpaceImage', args: ['avatar', '$arg'] },
+                    onImageChange: { $action: 'spaceStore.updateSpaceImage', args: ['avatar', { $: 'arg' }] },
                   },
                 },
                 // Space Details
@@ -70,20 +70,20 @@ export const spaceHeader: SchemaNode = {
                         loading: { $: '!spaceStore.currentSpace' },
                         loadingWidth: '220px',
                       },
-                      children: [{ $store: 'spaceStore.currentSpace.name' }],
+                      children: [{ $: 'spaceStore.currentSpace.name' }],
                     },
                     {
                       type: '$if',
                       props: {
-                        condition: { $store: 'spaceStore.currentSpace' },
+                        condition: { $: 'spaceStore.currentSpace' },
                         then: {
                           type: '$if',
                           props: {
-                            condition: { $store: 'spaceStore.currentSpace.description' },
+                            condition: { $: 'spaceStore.currentSpace.description' },
                             then: {
                               type: 'we-text',
                               props: { truncate: true },
-                              children: [{ $store: 'spaceStore.currentSpace.description' }],
+                              children: [{ $: 'spaceStore.currentSpace.description' }],
                             },
                             else: {
                               type: 'we-text',
@@ -99,7 +99,7 @@ export const spaceHeader: SchemaNode = {
                     // roster hangs off both rather than off the avatars alone. Hovering the words
                     // and getting nothing was the tell that the tooltip belonged out here.
                     peopleRow({
-                      items: { $store: 'spaceStore.members' },
+                      items: { $: 'spaceStore.members' },
                       noun: 'Member',
                       // Members resolve on their own path, later than the space itself, so without
                       // a floor this row collapsed and then pushed the header down a second time.
@@ -210,8 +210,8 @@ export const spaceNavBar: SchemaNode = {
                         {
                           type: 'we-avatar',
                           props: {
-                            image: { $store: 'spaceStore.currentSpace.avatar' },
-                            initials: { $store: 'spaceStore.currentSpace.name' },
+                            image: { $: 'spaceStore.currentSpace.avatar' },
+                            initials: { $: 'spaceStore.currentSpace.name' },
                             // `md`, matching the buttons beside it: the bar is now exactly one
                             // control tall, and an `lg` avatar is taller than that.
                             size: 'md',
@@ -220,7 +220,7 @@ export const spaceNavBar: SchemaNode = {
                         {
                           type: 'we-text',
                           props: { fontWeight: 'semibold', whiteSpace: 'nowrap' },
-                          children: [{ $store: 'spaceStore.currentSpace.name' }],
+                          children: [{ $: 'spaceStore.currentSpace.name' }],
                         },
                       ],
                     },
@@ -262,19 +262,19 @@ export const spaceNavBar: SchemaNode = {
                   // carried About and Settings with Flux commented out, the sidebar carried Flux and
                   // neither of the others. Both now read what the routes are built from.
                   type: '$each',
-                  props: { items: { $store: 'spaceStore.viewNav' }, as: 'view' },
+                  props: { items: { $: 'spaceStore.viewNav' }, as: 'view' },
                   children: [
                     {
                       type: 'we-button',
                       props: {
                         variant: { $: "routeStore.segments[2] == view.segment ? 'primary' : 'ghost'" },
-                        onClick: { $action: 'routeStore.navigate', args: ['$view.path'] },
+                        onClick: { $action: 'routeStore.navigate', args: [{ $: 'view.path' }] },
                       },
                       children: [
-                        { type: 'we-icon', props: { name: '$view.icon' } },
+                        { type: 'we-icon', props: { name: { $: 'view.icon' } } },
                         {
                           type: 'we-text',
-                          children: ['$view.label'],
+                          children: [{ $: 'view.label' }],
                         },
                       ],
                     },
@@ -307,10 +307,10 @@ export const spaceNavBar: SchemaNode = {
                     // shape is a coincidence; the members row above and the participant rows on cards
                     // are the three that made a fragment worth having.
                     then: peopleTooltip({
-                      items: { $store: 'presenceStore.online' },
-                      image: '$person.avatar',
-                      hash: '$person.did',
-                      name: '$person.name',
+                      items: { $: 'presenceStore.online' },
+                      image: { $: 'person.avatar' },
+                      hash: { $: 'person.did' },
+                      name: { $: 'person.name' },
                       children: [
                         {
                           type: 'Row',

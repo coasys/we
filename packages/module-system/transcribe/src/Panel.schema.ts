@@ -16,6 +16,7 @@
  * should move to.
  */
 import { type SchemaNode } from '@we/schema-shared';
+import { expr } from '@we/schema-shared';
 
 /**
  * A message shown for exactly one status.
@@ -28,7 +29,7 @@ function note(status: string, icon: string, text: string, action?: SchemaNode): 
   return {
     type: '$if',
     props: {
-      condition: { $eq: [{ $store: 'modules.transcribe.status' }, status] },
+      condition: expr`modules.transcribe.status == ${status}`,
       then: {
         type: 'Column',
         props: { gap: '200', ay: 'start' },
@@ -62,7 +63,7 @@ function note(status: string, icon: string, text: string, action?: SchemaNode): 
 const meter: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $store: 'modules.transcribe.enabled' },
+    condition: { $: 'modules.transcribe.enabled' },
     then: {
       type: 'Column',
       props: { gap: '150' },
@@ -107,7 +108,7 @@ const meter: SchemaNode = {
                 // `styles` rather than `width`, because the value is computed per frame and a DS prop
                 // takes a token. This is the escape hatch working as intended.
                 styles: {
-                  width: { $store: 'modules.transcribe.levelPercent' },
+                  width: { $: 'modules.transcribe.levelPercent' },
                   transition: 'width 80ms linear',
                   'max-width': '100%',
                 },
@@ -122,7 +123,7 @@ const meter: SchemaNode = {
                 height: '100%',
                 width: '2px',
                 bg: 'border-strong',
-                styles: { left: { $store: 'modules.transcribe.thresholdPercent' } },
+                styles: { left: { $: 'modules.transcribe.thresholdPercent' } },
               },
             },
           ],
@@ -192,7 +193,7 @@ const coverage: SchemaNode = {
           */
           type: '$if',
           props: {
-            condition: { $store: 'modules.transcribe.partialCoverage' },
+            condition: { $: 'modules.transcribe.partialCoverage' },
             then: {
               type: 'we-text',
               props: { variant: 'footnote', color: 'text-faint' },
@@ -232,13 +233,13 @@ const proposals: SchemaNode = {
         },
         {
           type: '$each',
-          props: { items: { $store: 'modules.transcribe.proposals' }, as: 'proposal' },
+          props: { items: { $: 'modules.transcribe.proposals' }, as: 'proposal' },
           children: [
             {
               type: 'Column',
               props: { bg: 'warning-surface', r: '300', p: '300', gap: '200' },
               children: [
-                { type: 'we-text', props: { variant: 'footnote' }, children: ['$proposal.summary'] },
+                { type: 'we-text', props: { variant: 'footnote' }, children: [{ $: 'proposal.summary' }] },
                 {
                   type: 'Row',
                   props: { gap: '200', ay: 'center' },
@@ -248,7 +249,7 @@ const proposals: SchemaNode = {
                       props: {
                         size: 'xs',
                         variant: 'secondary',
-                        onClick: { $action: 'modules.transcribe.acceptProposal', args: ['$proposal.id'] },
+                        onClick: { $action: 'modules.transcribe.acceptProposal', args: [{ $: 'proposal.id' }] },
                       },
                       children: ['Keep'],
                     },
@@ -257,7 +258,7 @@ const proposals: SchemaNode = {
                       props: {
                         size: 'xs',
                         variant: 'ghost',
-                        onClick: { $action: 'modules.transcribe.rejectProposal', args: ['$proposal.id'] },
+                        onClick: { $action: 'modules.transcribe.rejectProposal', args: [{ $: 'proposal.id' }] },
                       },
                       children: ['Discard'],
                     },
@@ -287,7 +288,7 @@ const proposals: SchemaNode = {
 const extract: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $store: 'modules.transcribe.extractable' },
+    condition: { $: 'modules.transcribe.extractable' },
     then: {
       type: 'Column',
       props: { gap: '200', bg: 'surface-sunken', r: '300', p: '300' },
@@ -353,7 +354,7 @@ const extract: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $store: 'modules.transcribe.watchProblem' },
+            condition: { $: 'modules.transcribe.watchProblem' },
             then: {
               type: 'Row',
               props: { gap: '200', ay: 'center' },
@@ -399,7 +400,7 @@ const extract: SchemaNode = {
             then: {
               type: 'we-alert',
               props: { variant: 'warning' },
-              children: [{ $store: 'modules.transcribe.extractError' }],
+              children: [{ $: 'modules.transcribe.extractError' }],
             },
           },
         },
@@ -451,7 +452,7 @@ export const transcriptFeed: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $store: 'modules.transcribe.collectionId' },
+            condition: { $: 'modules.transcribe.collectionId' },
             then: {
               type: '$each',
               props: {
@@ -461,7 +462,7 @@ export const transcriptFeed: SchemaNode = {
                     scope: {
                       anchor: 'CollectionBlock',
                       via: 'children',
-                      anchorId: { $store: 'modules.transcribe.collectionId' },
+                      anchorId: { $: 'modules.transcribe.collectionId' },
                     },
                     // Oldest first, because a transcript read backwards is not a transcript.
                     order: { createdAt: 'asc' },
@@ -479,7 +480,7 @@ export const transcriptFeed: SchemaNode = {
                 */
                 {
                   type: '$agent',
-                  props: { did: '$utterance.author', as: 'speaker' },
+                  props: { did: { $: 'utterance.author' }, as: 'speaker' },
                   children: [
                     {
                       type: 'Column',
@@ -493,23 +494,23 @@ export const transcriptFeed: SchemaNode = {
                               type: 'we-avatar',
                               props: {
                                 size: 'xxs',
-                                image: '$speaker.avatar',
+                                image: { $: 'speaker.avatar' },
                                 // Always alongside `image`, never instead of it: a stable
                                 // generated avatar keeps somebody whose profile has not
                                 // arrived visually distinct from everybody else whose
                                 // profile has not arrived.
-                                hash: '$utterance.author',
+                                hash: { $: 'utterance.author' },
                               },
                             },
                             {
                               type: 'we-text',
                               props: { variant: 'footnote', color: 'text-muted', truncate: true },
-                              children: ['$speaker.name'],
+                              children: [{ $: 'speaker.name' }],
                             },
                             {
                               type: 'we-timestamp',
                               props: {
-                                value: '$utterance.createdAt',
+                                value: { $: 'utterance.createdAt' },
                                 relative: true,
                                 fontSize: '100',
                                 color: 'text-faint',
@@ -517,7 +518,7 @@ export const transcriptFeed: SchemaNode = {
                             },
                           ],
                         },
-                        { type: 'we-text', props: { color: 'text' }, children: ['$utterance.text'] },
+                        { type: 'we-text', props: { color: 'text' }, children: [{ $: 'utterance.text' }] },
                       ],
                     },
                   ],
@@ -563,7 +564,7 @@ export const panel: SchemaNode = {
                 {
                   type: '$if',
                   props: {
-                    condition: { $store: 'modules.transcribe.listening' },
+                    condition: { $: 'modules.transcribe.listening' },
                     then: { type: 'we-badge', props: { variant: 'danger', size: 'xs' }, children: ['REC'] },
                   },
                 },
@@ -657,7 +658,7 @@ export const panel: SchemaNode = {
             // no button. The `else` says who can fix it instead.
             type: '$if',
             props: {
-              condition: { $store: 'runtimeStore.canManageAi' },
+              condition: { $: 'runtimeStore.canManageAi' },
               then: {
                 type: 'we-button',
                 props: {
@@ -684,7 +685,7 @@ export const panel: SchemaNode = {
             then: {
               type: 'we-alert',
               props: { variant: 'warning' },
-              children: [{ $store: 'modules.transcribe.error' }],
+              children: [{ $: 'modules.transcribe.error' }],
             },
           },
         },
@@ -696,7 +697,7 @@ export const panel: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $store: 'modules.transcribe.pending' },
+            condition: { $: 'modules.transcribe.pending' },
             then: {
               type: 'Column',
               props: { bg: 'accent-muted', r: '300', p: '300', gap: '200' },
@@ -717,7 +718,7 @@ export const panel: SchemaNode = {
                     },
                   ],
                 },
-                { type: 'we-text', children: [{ $store: 'modules.transcribe.pending' }] },
+                { type: 'we-text', children: [{ $: 'modules.transcribe.pending' }] },
               ],
             },
           },

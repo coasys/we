@@ -31,6 +31,7 @@
  * generate its groups from a `$query` — see `$toggleLocalIn` in OPERATORS.md.
  */
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
+import { expr } from '@we/schema-shared';
 import type { AvatarTone } from '@we/tokens';
 
 import type { Content } from '../types.ts';
@@ -132,13 +133,7 @@ export function railShell(opts: RailShellOptions): SchemaNode {
   return {
     type: 'Column',
     props: {
-      width: {
-        $if: {
-          condition: { $local: 'expanded' },
-          then: opts.expandedWidth ?? '240px',
-          else: opts.collapsedWidth ?? '80px',
-        },
-      },
+      width: expr`local.expanded ? ${opts.expandedWidth ?? '240px'} : ${opts.collapsedWidth ?? '80px'}`,
       // The token, not a number of ms — this is the one duration here that can be a token, and a
       // theme's animationSpeed preset overrides it. See DURATION_MS.
       transition: 'width 300 ease-in-out',
@@ -231,7 +226,7 @@ export function railButton(opts: RailButtonOptions): SchemaNode {
         type: 'we-button',
         props: {
           square: true,
-          variant: { $if: { condition: opts.active ?? false, then: 'secondary', else: 'ghost' } },
+          variant: expr`${opts.active ?? false} ? 'secondary' : 'ghost'`,
           ...(opts.onClick !== undefined && { onClick: opts.onClick }),
         },
         children: [{ type: 'we-icon', props: { name: opts.icon } }],
@@ -348,8 +343,8 @@ export function railItem(opts: RailItemOptions): SchemaNode {
         `accent-muted` is a small chroma shift from the `neutral-100` it replaces rather than a
         redesign — same lightness, the theme's primary saturation instead of its neutral one.
       */
-      bg: { $if: { condition: active, then: 'accent-muted', else: '' } },
-      color: { $if: { condition: active, then: 'accent-text', else: 'text-muted' } },
+      bg: expr`${active} ? 'accent-muted' : ''`,
+      color: expr`${active} ? 'accent-text' : 'text-muted'`,
       /*
         The current row deepens on hover rather than losing its colour.
 
@@ -363,20 +358,8 @@ export function railItem(opts: RailItemOptions): SchemaNode {
         answer to a different question. The inactive arm repeats ghost's own values, since replacing
         the object means restating everything it would have set.
       */
-      hoverProps: {
-        $if: {
-          condition: active,
-          then: { bg: 'surface-active', color: 'accent-text' },
-          else: { bg: 'surface-hover', color: 'text' },
-        },
-      },
-      activeProps: {
-        $if: {
-          condition: active,
-          then: { bg: 'surface-active', color: 'accent-text' },
-          else: { bg: 'surface-active', color: 'text' },
-        },
-      },
+      hoverProps: expr`${active} ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-hover', color: 'text' }`,
+      activeProps: expr`${active} ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-active', color: 'text' }`,
     },
     children: [
       mark,
@@ -391,7 +374,7 @@ export function railItem(opts: RailItemOptions): SchemaNode {
       {
         type: '$if',
         props: {
-          condition: { $local: 'expanded' },
+          condition: { $: 'local.expanded' },
           enterTransition: revealInline,
           exitTransition: revealInline,
           then: {
@@ -479,8 +462,8 @@ export interface RailGroupOptions {
 }
 
 export function railGroup(opts: RailGroupOptions): SchemaNode {
-  const isCollapsed = { $in: [opts.id, { $local: 'collapsedGroups' }] };
-  const isExpanded = { $local: 'expanded' };
+  const isCollapsed = expr`${opts.id} in local.collapsedGroups`;
+  const isExpanded = { $: 'local.expanded' };
 
   const items: SchemaNode = opts.reorderable
     ? {
@@ -511,8 +494,8 @@ export function railGroup(opts: RailGroupOptions): SchemaNode {
           width: '100%',
           ay: 'center',
           gap: '100',
-          opacity: { $if: { condition: isExpanded, then: 1, else: 0 } },
-          pointerEvents: { $if: { condition: isExpanded, then: 'auto', else: 'none' } },
+          opacity: expr`${isExpanded} ? 1 : 0`,
+          pointerEvents: expr`${isExpanded} ? 'auto' : 'none'`,
           transition: 'opacity 300 ease-in-out',
         },
         children: [
@@ -535,7 +518,7 @@ export function railGroup(opts: RailGroupOptions): SchemaNode {
               {
                 type: 'we-icon',
                 props: {
-                  name: { $if: { condition: isCollapsed, then: 'caret-right', else: 'caret-down' } },
+                  name: expr`${isCollapsed} ? 'caret-right' : 'caret-down'`,
                   size: 'xs',
                   color: 'text-faint',
                 },
@@ -597,7 +580,7 @@ export function railGroup(opts: RailGroupOptions): SchemaNode {
       {
         type: '$animate',
         props: {
-          condition: { $not: isCollapsed },
+          condition: expr`!${isCollapsed}`,
           enterTransition: revealBlock,
           exitTransition: revealBlock,
         },

@@ -3,13 +3,13 @@
 Generates WE's AI/schema reference from the code itself — the package behind
 `CLAUDE.md`. One assembly, emitted to every surface that needs it:
 
-| Output                                                  | Consumer                                    |
-| ------------------------------------------------------- | ------------------------------------------- |
-| `CLAUDE.md` (repo root)                                 | Claude Code and human orientation           |
-| `.github/copilot-instructions.md`                       | GitHub Copilot                              |
-| `.cursor/rules/we-schema.mdc`                           | Cursor                                      |
-| `packages/ai-context/src/schemaContext.ts`              | The in-app AI editor's system prompt        |
-| `packages/ai-context/context.json`                      | Structured form of the same reference       |
+| Output                                                       | Consumer                                               |
+| ------------------------------------------------------------ | ------------------------------------------------------ |
+| `CLAUDE.md` (repo root)                                      | Claude Code and human orientation                      |
+| `.github/copilot-instructions.md`                            | GitHub Copilot                                         |
+| `.cursor/rules/we-schema.mdc`                                | Cursor                                                 |
+| `packages/ai-context/src/schemaContext.ts`                   | The in-app AI editor's system prompt                   |
+| `packages/ai-context/context.json`                           | Structured form of the same reference                  |
 | `packages/schema-system/shared/src/generated/contextData.ts` | The schema validator's component/store/token knowledge |
 
 All six are tracked; CI diffs them after `pnpm build`, so changing an input
@@ -27,7 +27,7 @@ reference cannot silently drift from the code:
 - `cem.ts` — primitives + props from the Custom Elements Manifest
 - `typescript.ts` — Solid component props via ts-morph (function declarations
   with a `@superclass` JSDoc tag)
-- `appShell.ts` — the store surface (every `$store`/`$action`-reachable
+- `appShell.ts` — the store surface (every expression- or `$action`-reachable
   member) parsed from the store interfaces; its header records why this is
   derived rather than hand-listed
 - `models.ts` / `tokens.ts` / `plugins.ts` — entity models, design tokens,
@@ -35,7 +35,7 @@ reference cannot silently drift from the code:
 
 **Fragments** (`src/fragments/`) are the hand-written halves: the
 architecture orientation, schema structure and operator prose, store member
-*descriptions* (`stores.ts` — merged against the extracted surface; an entry
+_descriptions_ (`stores.ts` — merged against the extracted surface; an entry
 for a member that no longer exists fails the build), rules, and patterns.
 
 `generate.ts` merges the two and writes every output. **Never edit the

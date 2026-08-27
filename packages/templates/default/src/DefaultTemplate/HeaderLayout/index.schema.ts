@@ -33,11 +33,11 @@ export const headerLayout: TemplateSchema = {
           // isn't a WE space yet, so it gets the "Initialize as WE space" gate instead.
           type: '$if',
           props: {
-            condition: { $store: 'datasetStore.currentDataset' },
+            condition: { $: 'datasetStore.currentDataset' },
             then: {
               type: '$if',
               props: {
-                condition: { $store: 'datasetStore.isWeSpace' },
+                condition: { $: 'datasetStore.isWeSpace' },
                 then: {
                   type: 'Column',
                   children: [
@@ -71,7 +71,7 @@ export const headerLayout: TemplateSchema = {
             // renders in the meantime rather than a guess.
             else: {
               type: '$if',
-              props: { condition: { $store: 'spaceStore.routeSpaceUnjoined' }, then: spaceGate },
+              props: { condition: { $: 'spaceStore.routeSpaceUnjoined' }, then: spaceGate },
             },
           },
         },

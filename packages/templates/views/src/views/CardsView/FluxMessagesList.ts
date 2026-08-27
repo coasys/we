@@ -22,16 +22,16 @@ export const fluxMessagesList: SchemaNode = {
       query: {
         entity: 'Message',
         dataset: '$currentDataset',
-        where: { body: { contains: { $local: 'searchText' } } },
-        order: { timestamp: { $local: 'sortDirection' } },
+        where: { body: { contains: { $: 'local.searchText' } } },
+        order: { timestamp: { $: 'local.sortDirection' } },
         limit: 30,
       },
       as: 'message',
       empty: noRows,
       children: [
         cardShell({
-          header: [agentByline({ did: '$message.author', timestamp: '$message.createdAt' })],
-          body: [{ type: 'we-html', props: { content: '$message.body' } }],
+          header: [agentByline({ did: { $: 'message.author' }, timestamp: { $: 'message.createdAt' } })],
+          body: [{ type: 'we-html', props: { content: { $: 'message.body' } } }],
         }),
       ],
     }),

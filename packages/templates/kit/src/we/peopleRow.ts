@@ -1,5 +1,6 @@
 import { peopleTooltip } from '@we/schema-kit';
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
+import { expr } from '@we/schema-shared';
 
 export interface PeopleRowOptions {
   /** The people. Profile objects by default; bare DIDs when `dids` is set. */
@@ -49,20 +50,19 @@ export interface PeopleRowOptions {
 export function peopleRow(opts: PeopleRowOptions): SchemaNode {
   const as = opts.as ?? 'person';
   /**
-   * Join a DID to one field of its cached profile. Takes the context ref because the same join runs
-   * in two scopes: the stack's `$map` addresses a person as `$item`, the roster rows as `$<as>`.
+   * Join a DID to one field of its cached profile. Takes the reference's source because the same
+   * join runs in two scopes: the stack's comprehension addresses a person as `m`, the roster rows
+   * as `<as>`.
    */
-  const lookup = (ref: string, field: string) => ({
-    $find: { items: { $store: 'profileStore.profiles' }, where: { did: ref }, select: field },
-  });
-  const count = { $count: { items: opts.items } };
+  const lookup = (did: string, field: string) => `find(profileStore.profiles, { did: ${did} }).${field}`;
+  const count = expr`count(${opts.items})`;
 
   return peopleTooltip({
     items: opts.items,
     as,
-    image: opts.dids ? lookup(`$${as}`, 'avatar') : `$${as}.avatar`,
-    hash: opts.dids ? { $concat: [`$${as}`] } : `$${as}.did`,
-    name: opts.dids ? lookup(`$${as}`, 'name') : `$${as}.name`,
+    image: opts.dids ? { $: lookup(as, 'avatar') } : { $: `${as}.avatar` },
+    hash: opts.dids ? { $: as } : { $: `${as}.did` },
+    name: opts.dids ? { $: lookup(as, 'name') } : { $: `${as}.name` },
     children: [
       {
         type: 'Row',
@@ -76,28 +76,15 @@ export function peopleRow(opts: PeopleRowOptions): SchemaNode {
           {
             type: 'AvatarStack',
             props: {
-              avatars: {
-                $map: {
-                  items: opts.items,
-                  select: opts.dids
-                    ? {
-                        image: lookup('$item', 'avatar'),
-                        /*
-                          Wrapped rather than written as a bare `'$item'`. `$map`'s `select`
-                          resolves a string only when it starts with `'$item.'`; a bare one is a
-                          literal, so the hash would be the five characters `$item` for everybody
-                          and every generated avatar in the row would come out identical.
-
-                          Set unconditionally, never as a fallback for a missing `image`: it seeds
-                          an avatar that is stable per agent, so somebody whose profile has not
-                          arrived is still visually distinct from everybody else whose profile has
-                          not arrived. A real picture wins where there is one.
-                        */
-                        hash: { $: '`${item}`' },
-                      }
-                    : { image: '$item.avatar', hash: '$item.did' },
-                },
-              },
+              /*
+                `hash` is set unconditionally, never as a fallback for a missing `image`: it seeds
+                an avatar that is stable per agent, so somebody whose profile has not arrived is
+                still visually distinct from everybody else whose profile has not arrived. A real
+                picture wins where there is one.
+              */
+              avatars: opts.dids
+                ? expr`${opts.items}.map(m, { image: ${{ $: lookup('m', 'avatar') }}, hash: m })`
+                : expr`${opts.items}.map(m, { image: m.avatar, hash: m.did })`,
               max: opts.max ?? 5,
               size: opts.size ?? 'sm',
               ring: '0 0 0 2px var(--we-ring-color)',
@@ -122,7 +109,7 @@ export function peopleRow(opts: PeopleRowOptions): SchemaNode {
                       */
                       type: 'we-text',
                       props: { whiteSpace: 'nowrap' },
-                      children: [{ $plural: { count, one: opts.noun, other: opts.nounPlural ?? `${opts.noun}s` } }],
+                      children: [expr`plural(${count}, ${opts.noun}, ${opts.nounPlural ?? `${opts.noun}s`})`],
                     },
                   ],
                 } as SchemaNode,

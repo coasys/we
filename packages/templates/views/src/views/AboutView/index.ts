@@ -69,7 +69,7 @@ export const aboutView: TemplateSchema = {
                   loading: { $: '!spaceStore.currentSpace' },
                   loadingWidth: '220px',
                 },
-                children: [{ $store: 'spaceStore.currentSpace.name' }],
+                children: [{ $: 'spaceStore.currentSpace.name' }],
               },
             ],
           },
@@ -86,12 +86,12 @@ export const aboutView: TemplateSchema = {
               {
                 type: '$if',
                 props: {
-                  condition: { $store: 'spaceStore.currentSpace' },
+                  condition: { $: 'spaceStore.currentSpace' },
                   then: {
                     type: '$if',
                     props: {
-                      condition: { $store: 'spaceStore.currentSpace.description' },
-                      then: { type: 'we-text', children: [{ $store: 'spaceStore.currentSpace.description' }] },
+                      condition: { $: 'spaceStore.currentSpace.description' },
+                      then: { type: 'we-text', children: [{ $: 'spaceStore.currentSpace.description' }] },
                       else: {
                         type: 'we-text',
                         props: { italic: true },
@@ -127,7 +127,7 @@ export const aboutView: TemplateSchema = {
           {
             type: '$if',
             props: {
-              condition: { $store: 'spaceStore.currentSpace.location' },
+              condition: { $: 'spaceStore.currentSpace.location' },
               then: attributeRow({
                 icon: 'map-pin',
                 label: 'Location',
@@ -141,7 +141,7 @@ export const aboutView: TemplateSchema = {
             label: 'Created',
             value: {
               type: 'we-timestamp',
-              props: { value: { $store: 'spaceStore.currentSpace.createdAt' }, relative: true, fontWeight: 'bold' },
+              props: { value: { $: 'spaceStore.currentSpace.createdAt' }, relative: true, fontWeight: 'bold' },
             },
             description: {
               type: 'Row',
@@ -150,20 +150,20 @@ export const aboutView: TemplateSchema = {
                 { type: 'we-text', props: { variant: 'body' }, children: ['By'] },
                 {
                   type: '$agent',
-                  props: { did: { $store: 'spaceStore.currentSpace.author' }, as: 'agent' },
+                  props: { did: { $: 'spaceStore.currentSpace.author' }, as: 'agent' },
                   children: [
                     {
                       type: 'we-avatar',
                       props: {
-                        image: '$agent.avatar',
-                        hash: { $store: 'spaceStore.currentSpace.author' },
+                        image: { $: 'agent.avatar' },
+                        hash: { $: 'spaceStore.currentSpace.author' },
                         size: 'xs',
                       },
                     },
                     {
                       type: 'we-text',
                       props: { variant: 'body', truncate: true, maxWidth: '160px' },
-                      children: ['$agent.name'],
+                      children: [{ $: 'agent.name' }],
                     },
                   ],
                 },

@@ -64,17 +64,11 @@ const CHILDREN_PREDICATE = 'we://children';
 /**
  * This space's notes collection, resolved live rather than remembered.
  *
- * Re-derived wherever it is needed, which reads wasteful and is not: the renderer memoises the query,
- * and the alternative — holding the id in the store — would be a value that has to be invalidated
+ * One hoisted subscription on the panel, read wherever it is needed, and the alternative — holding the id in the store — would be a value that has to be invalidated
  * every time the dataset changes. Getting that wrong writes one space's notes into another, which is
  * the kind of bug nobody notices until the wrong people can read them.
  */
-const collectionId = {
-  $find: {
-    items: { $query: { entity: 'CollectionBlock', where: { kind: NOTES_KIND }, limit: 1 } },
-    select: 'id',
-  },
-};
+const collectionId = { $: 'first(local.notesCollection).id' };
 
 /**
  * One note, for whichever entity is holding it.
@@ -87,13 +81,13 @@ const noteCard = (entity: string): SchemaNode => ({
   type: 'Column',
   props: { bg: 'surface-sunken', r: '300', p: '300', gap: '200' },
   children: [
-    { type: 'we-text', children: ['$note.text'] },
+    { type: 'we-text', children: [{ $: 'note.text' }] },
     {
       type: 'we-button',
       props: {
         variant: 'ghost',
         size: 'xs',
-        onClick: { $action: 'model.delete', args: [entity, '$note.id'] },
+        onClick: { $action: 'model.delete', args: [entity, { $: 'note.id' }] },
       },
       children: [{ type: 'we-icon', props: { name: 'trash' } }],
     },
@@ -127,6 +121,8 @@ const panel: SchemaNode = {
     condition: { $: 'datasetStore.currentDataset && modules.notes.open' },
     then: {
       type: 'Column',
+      // The collection every note hangs off, subscribed once for the whole panel — see `collectionId`.
+      $queries: { notesCollection: { entity: 'CollectionBlock', where: { kind: NOTES_KIND }, limit: 1 } },
       props: {
         /**
          * Fills the box the host gave it. It used to position itself — `fixed`, `right: 48px`, a
@@ -153,10 +149,10 @@ const panel: SchemaNode = {
             {
               type: 'we-textarea',
               props: {
-                value: { $local: 'draft' },
+                value: { $: 'local.draft' },
                 placeholder: 'Jot something down…',
                 rows: 3,
-                onInput: { $setLocal: 'draft', from: '$event.detail' },
+                onInput: { $setLocal: 'draft', value: { $: 'event.detail' } },
               },
             },
             /*
@@ -183,7 +179,7 @@ const panel: SchemaNode = {
                         $action: 'model.create',
                         args: [
                           'TextBlock',
-                          { text: { $local: 'draft' } },
+                          { text: { $: 'local.draft' } },
                           { parent: { id: collectionId, predicate: CHILDREN_PREDICATE } },
                         ],
                       },
@@ -211,8 +207,8 @@ const panel: SchemaNode = {
                             $action: 'model.create',
                             args: [
                               'TextBlock',
-                              { text: { $local: 'draft' } },
-                              { parent: { id: '$result.id', predicate: CHILDREN_PREDICATE } },
+                              { text: { $: 'local.draft' } },
+                              { parent: { id: { $: 'result.id' }, predicate: CHILDREN_PREDICATE } },
                             ],
                           },
                           { $setLocal: 'draft', value: '' },

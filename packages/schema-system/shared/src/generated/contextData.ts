@@ -1113,6 +1113,7 @@ export const contextData: ContextData = {
       props: [
         { name: 'styles', type: 'Record<string, string | number>', optional: true },
         { name: 'class', type: 'string', optional: true },
+        { name: 'onSelect', type: '((item: DropdownMenuAction) => void)', optional: true },
         { name: 'placement', type: 'Placement', optional: true },
         { name: 'triggerLabel', type: 'string', optional: true },
         { name: 'triggerIcon', type: 'string', optional: true },

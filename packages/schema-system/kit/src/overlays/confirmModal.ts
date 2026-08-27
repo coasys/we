@@ -10,8 +10,8 @@ const TONES = {
 
 export interface ConfirmModalOptions {
   /**
-   * What decides whether it is showing — `{ $local: 'confirmDeleteOpen' }`, or a store flag such as
-   * `{ $store: 'shapeStore.confirmDiscard' }`.
+   * What decides whether it is showing — `{ $: 'local.confirmDeleteOpen' }`, or a store flag such as
+   * `{ $: 'shapeStore.confirmDiscard' }`.
    *
    * A resolvable expression rather than the name of a `$local`, which is what this used to take.
    * Four of the confirmations in the codebase are gated on a *store* — a wizard's "discard this?"
@@ -73,7 +73,7 @@ export interface ConfirmModalOptions {
    */
   busyLocal?: string;
   /**
-   * An in-flight flag somebody else owns — `{ $store: 'accountStore.busy' }`.
+   * An in-flight flag somebody else owns — `{ $: 'accountStore.busy' }`.
    *
    * The read-only counterpart of `busyLocal`, and not the same option wearing two names: this one
    * is only bound, where `busyLocal` is set and cleared around the action. A store that runs the
@@ -108,7 +108,7 @@ export interface ConfirmModalOptions {
  */
 export function confirmModal(opts: ConfirmModalOptions): SchemaNode {
   const tone = TONES[opts.tone ?? 'danger'];
-  const busy = opts.busy ?? (opts.busyLocal ? { $local: opts.busyLocal } : undefined);
+  const busy = opts.busy ?? (opts.busyLocal ? { $: `local.${opts.busyLocal}` } : undefined);
 
   /*
     Where the close goes depends on what the confirm actually is.

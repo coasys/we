@@ -626,7 +626,8 @@ function checkExpressionToken(
   const issues = checkExpression(ast, {
     storeNames: ctx.storeNames,
     storeMembers: ctx.storeMembers,
-    locals: state.localScope,
+    // A whole template with no `$localState` has an empty scope, not an unknowable one.
+    locals: state.localScope ?? (state.isFragment ? null : new Set()),
     contextNames: state.contextScope,
     strict: !state.isFragment,
     hostFunctions: ctx.hostFunctions,
@@ -781,6 +782,13 @@ const BORDER_PROPS = new Set(['border', 'borderTop', 'borderRight', 'borderBotto
 
 /** Flag a role named in camelCase, wherever a colour can appear — including behind `$if`. */
 function checkColourValue(propName: string, value: unknown, path: string, errors: ValidationError[]): void {
+  // A colour computed by an expression is one of its string literals — `open ? 'accentMuted' : 'surface'`.
+  if (isExpressionToken(value)) {
+    for (const literal of value.$.matchAll(/'([^'\\]*)'|"([^"\\]*)"/g)) {
+      checkColourValue(propName, literal[1] ?? literal[2], path, errors);
+    }
+    return;
+  }
   if (typeof value === 'string') {
     const candidate = BORDER_PROPS.has(propName) ? value.split(' ').slice(2).join(' ') : value;
     // Only when the two spellings actually differ — `page` and `surface` are the same either way.
@@ -796,12 +804,27 @@ function checkColourValue(propName: string, value: unknown, path: string, errors
     }
     return;
   }
-  // A colour reached through $if/$store still lands on the same prop.
-  if (value && typeof value === 'object') {
-    for (const [key, inner] of Object.entries(value as Record<string, unknown>)) {
-      if (key === 'then' || key === 'else' || key === '$if') checkColourValue(propName, inner, path, errors);
-    }
-  }
+}
+
+/**
+ * A string that was a reference in the old spelling — `'$post.title'`, `'$event.detail'`, `'$me.did'`.
+ *
+ * A plain string is text now, so this would render as the characters themselves — a title reading
+ * `$post.title` — and nothing at runtime says so. The roots are the ones a reference could start
+ * from; a literal that happens to begin with a dollar sign and a word is left alone.
+ */
+const LEGACY_REFERENCE =
+  /^\$(event|arg|result|me|item|index|prev|surface|local|currentDataset|[a-zA-Z]+Store|modules)(\.[A-Za-z0-9_$]+)*$/;
+
+function checkLegacyReference(value: unknown, path: string, errors: ValidationError[], dottedOnly = false): void {
+  if (typeof value !== 'string' || !LEGACY_REFERENCE.test(value)) return;
+  // In text, a bare `$arg` is as likely to be prose about the token as a reference to it.
+  if (dottedOnly && !value.includes('.')) return;
+  errors.push({
+    path,
+    message: `"${value}" is a reference in the old string spelling and would render as text. Write { "$": "${value.slice(1)}" }.`,
+    severity: 'error',
+  });
 }
 
 function checkProps(
@@ -864,12 +887,12 @@ function checkProps(
       continue;
     }
 
+    checkLegacyReference(propValue, propPath, errors);
+
     // Check prop type category (only for static values, not token objects)
-    // Skip $-prefixed strings — these are dynamic references (e.g. $each iteration vars)
     if (propTypes && !isTokenObject(propValue) && typeof propValue !== 'object') {
-      const isDynamicRef = typeof propValue === 'string' && propValue.startsWith('$');
       const expectedCategory = propTypes.get(propName);
-      if (expectedCategory && expectedCategory !== 'unknown' && !isDynamicRef) {
+      if (expectedCategory && expectedCategory !== 'unknown') {
         const actualType = typeof propValue;
         if (actualType === 'string' || actualType === 'boolean' || actualType === 'number') {
           const allowed =
@@ -942,11 +965,6 @@ function checkTokenValue(
     return;
   }
 
-  // $store token
-  if ('$store' in obj && typeof obj.$store === 'string') {
-    checkStoreRef(obj.$store, `${path}.$store`, ctx, errors);
-  }
-
   // $action token
   if ('$action' in obj && typeof obj.$action === 'string') {
     checkActionRef(obj.$action, `${path}.$action`, ctx, errors);
@@ -960,11 +978,6 @@ function checkTokenValue(
       checkModelRef(query.entity, `${path}.$query.entity`, ctx, errors);
     }
     checkQueryInternals(query, `${path}.$query`, ctx, state, errors);
-  }
-
-  // $local token
-  if ('$local' in obj && typeof obj.$local === 'string') {
-    checkLocalRef(obj.$local, `${path}.$local`, 'local', state, errors);
   }
 
   // $setLocal token
@@ -993,31 +1006,11 @@ function checkTokenValue(
     checkLocalRef(obj.$callLocal, `${path}.$callLocal`, 'callLocal', state, errors);
   }
 
-  // $error token
-  if ('$error' in obj && typeof obj.$error === 'string') {
-    checkLocalRef(obj.$error, `${path}.$error`, 'error', state, errors);
-  }
-
-  // $valid token
-  if ('$valid' in obj && typeof obj.$valid === 'string') {
-    checkLocalRef(obj.$valid, `${path}.$valid`, 'valid', state, errors);
-  }
-
-  // $touched token
-  if ('$touched' in obj && typeof obj.$touched === 'string') {
-    checkLocalRef(obj.$touched, `${path}.$touched`, 'touched', state, errors);
-  }
-
   // $touch token
   if ('$touch' in obj && typeof obj.$touch === 'string') {
     if (obj.$touch !== '$all') {
       checkLocalRef(obj.$touch, `${path}.$touch`, 'touch', state, errors);
     }
-  }
-
-  // $formValid token — skip $scope
-  if ('$formValid' in obj && typeof obj.$formValid === 'string') {
-    // $formValid: "$scope" is always valid — skip
   }
 
   // $resetLocal token — skip $scope
@@ -1029,90 +1022,12 @@ function checkTokenValue(
   }
 
   // Recurse into nested token objects ($if, $concat, $map, $eq, $ne, etc.)
+  // The handler conditional: an expression, and a handler or a list of them on each side.
   if ('$if' in obj && typeof obj.$if === 'object' && obj.$if !== null) {
     const ifObj = obj.$if as Record<string, unknown>;
     checkTokenValue(ifObj.condition, `${path}.$if.condition`, ctx, state, errors);
     checkTokenValue(ifObj.then, `${path}.$if.then`, ctx, state, errors);
     checkTokenValue(ifObj.else, `${path}.$if.else`, ctx, state, errors);
-  }
-
-  if ('$concat' in obj && Array.isArray(obj.$concat)) {
-    for (let i = 0; i < obj.$concat.length; i++) {
-      checkTokenValue(obj.$concat[i], `${path}.$concat[${i}]`, ctx, state, errors);
-    }
-  }
-
-  if ('$map' in obj && typeof obj.$map === 'object' && obj.$map !== null) {
-    const mapObj = obj.$map as Record<string, unknown>;
-    // `items`, not `source` — this read the wrong key since it was written, so a bad `$store`
-    // inside a `$map`'s source was never reported.
-    checkTokenValue(mapObj.items, `${path}.$map.items`, ctx, state, errors);
-    if (mapObj.select && typeof mapObj.select === 'object') {
-      for (const [k, v] of Object.entries(mapObj.select as Record<string, unknown>)) {
-        checkMapSelectValue(v, `${path}.$map.select.${k}`, errors);
-        checkTokenValue(v, `${path}.$map.select.${k}`, ctx, state, errors);
-      }
-    }
-  }
-
-  if ('$not' in obj) {
-    checkTokenValue(obj.$not, `${path}.$not`, ctx, state, errors);
-  }
-
-  if ('$eq' in obj && Array.isArray(obj.$eq)) {
-    for (let i = 0; i < obj.$eq.length; i++) {
-      checkTokenValue(obj.$eq[i], `${path}.$eq[${i}]`, ctx, state, errors);
-    }
-  }
-
-  if ('$ne' in obj && Array.isArray(obj.$ne)) {
-    for (let i = 0; i < obj.$ne.length; i++) {
-      checkTokenValue(obj.$ne[i], `${path}.$ne[${i}]`, ctx, state, errors);
-    }
-  }
-
-  if ('$lt' in obj && Array.isArray(obj.$lt)) {
-    for (let i = 0; i < obj.$lt.length; i++) {
-      checkTokenValue(obj.$lt[i], `${path}.$lt[${i}]`, ctx, state, errors);
-    }
-  }
-
-  if ('$gt' in obj && Array.isArray(obj.$gt)) {
-    for (let i = 0; i < obj.$gt.length; i++) {
-      checkTokenValue(obj.$gt[i], `${path}.$gt[${i}]`, ctx, state, errors);
-    }
-  }
-
-  if ('$and' in obj && Array.isArray(obj.$and)) {
-    for (let i = 0; i < obj.$and.length; i++) {
-      checkTokenValue(obj.$and[i], `${path}.$and[${i}]`, ctx, state, errors);
-    }
-  }
-
-  if ('$or' in obj && Array.isArray(obj.$or)) {
-    for (let i = 0; i < obj.$or.length; i++) {
-      checkTokenValue(obj.$or[i], `${path}.$or[${i}]`, ctx, state, errors);
-    }
-  }
-
-  /*
-    The array operators, whose internals were unchecked for the same reason `$query`'s were: their
-    payload is a plain object, and everything above only recurses through shapes it recognises.
-
-    `items` is the one that matters — it routinely holds a `$store` or a whole `$query`, and a typo in
-    either produced an empty list and no complaint. `where` values are checked too, since they take
-    the same tokens.
-  */
-  for (const op of ['$filter', '$find', '$count'] as const) {
-    if (op in obj && typeof obj[op] === 'object' && obj[op] !== null) {
-      const spec = obj[op] as Record<string, unknown>;
-      checkNestedTokens(spec.items, `${path}.${op}.items`, ctx, state, errors);
-      if (spec.where) checkNestedTokens(spec.where, `${path}.${op}.where`, ctx, state, errors);
-    }
-  }
-
-  if ('$plural' in obj && typeof obj.$plural === 'object' && obj.$plural !== null) {
-    checkNestedTokens((obj.$plural as Record<string, unknown>).count, `${path}.$plural.count`, ctx, state, errors);
   }
 }
 
@@ -1208,81 +1123,18 @@ function checkNestedTokens(
   }
 }
 
-function checkStoreRef(ref: string, path: string, ctx: ValidationContext, errors: ValidationError[]): void {
-  const dotIdx = ref.indexOf('.');
-  const storeName = dotIdx === -1 ? ref : ref.slice(0, dotIdx);
-
-  if (!ctx.storeNames.has(storeName)) {
-    const known = [...ctx.storeNames].join(', ');
-    errors.push({
-      path,
-      message: `Unknown store "${storeName}" in $store token. Known stores: ${known}`,
-      severity: 'error',
-    });
-    return;
-  }
-
-  if (dotIdx === -1) return;
-
-  // Split remaining path: e.g. "sharedSpaces.length" → ["sharedSpaces", "length"]
-  const rest = ref.slice(dotIdx + 1);
-  const segments = rest.split('.');
-  const rootMember = segments[0];
-
-  // Validate root member exists on store
-  const members = ctx.storeMembers.get(storeName);
-  if (members && !members.has(rootMember)) {
-    const known = [...members].join(', ');
-    errors.push({
-      path,
-      message: `Unknown member "${rootMember}" on store "${storeName}". Known members: ${known}`,
-      severity: 'warning',
-    });
-    return;
-  }
-
-  // Validate nested property access if type metadata is available
-  if (segments.length > 1) {
-    const meta = ctx.storeMemberMeta.get(storeName)?.get(rootMember);
-    if (meta) {
-      const nestedProp = segments[1];
-      // .length is always valid on arrays
-      if (meta.type === 'array' && nestedProp === 'length') return;
-      // Check against known properties
-      if (meta.properties && !meta.properties.includes(nestedProp)) {
-        const known = meta.properties.join(', ');
-        errors.push({
-          path,
-          message: `Unknown property "${nestedProp}" on "${storeName}.${rootMember}" (${meta.type}). Known properties: ${known}`,
-          severity: 'warning',
-        });
-      }
-    }
-  }
-}
-
 /**
- * An `$event`/`$arg` reference buried inside an operator object in `$action` args can never resolve.
+ * An expression about the event, nested where it is evaluated before the event exists.
  *
- * Args are resolved once at render time, and only a *bare* `'$event.detail'` string survives that
- * pass to be substituted at call time. Wrap one in `$not`, `$if`, `$concat` — anything — and the
- * operator evaluates immediately, against a context with no event in it, where the reference is
- * just an unresolved `$`-string. That string is truthy, so the argument silently becomes a
- * constant: `{ $not: '$event.detail' }` is always `false`, and a switch bound to it only ever
- * sends one value.
- *
- * Nothing errors at runtime — the store is handed a plausible argument — so this is only findable
- * by noticing a control that does not work. Twice now, hence a rule. Pass the raw value and let the
- * store do the mapping, or take what the event emits directly.
+ * `args` resolve at render time. At the top level an expression naming `event`/`arg` is deferred to
+ * the callback — that is how `args: [{ $: 'event.detail' }]` works. Inside another token it is
+ * evaluated at once, against no event, and becomes a constant: `{ $setLocal: 'x', value: { $: '…' } }`
+ * is fine (a handler), but an object argument holding one is not. Nothing errors at runtime — the
+ * store is handed a plausible argument — so this is only findable by noticing a control that does
+ * not work.
  */
 function checkActionArgs(args: unknown[], path: string, errors: ValidationError[]): void {
-  const isEventRef = (v: unknown): v is string =>
-    typeof v === 'string' && (v === '$event' || v === '$arg' || v.startsWith('$event.') || v.startsWith('$arg.'));
-
   const walk = (value: unknown, at: string, insideOperator: boolean): void => {
-    // The same trap in expression form: `{ $not: { $: 'event.detail' } }` evaluates the `$not` at
-    // render time over a deferred value. At the top level of `args` the expression is deferred and
-    // evaluated with the event, which is what the string form has always done there.
     if (isExpressionToken(value)) {
       if (!insideOperator) return;
       try {
@@ -1293,22 +1145,14 @@ function checkActionArgs(args: unknown[], path: string, errors: ValidationError[
       errors.push({
         path: at,
         message:
-          `An expression reading the event is nested inside an operator, where it is evaluated before the event ` +
-          `exists. Put the whole computation in one expression at the top level of args, or map the value in the store.`,
+          `An expression reading the event is nested inside another token, where it is evaluated before the ` +
+          `event exists and becomes a constant. Put the whole computation in one expression at the top level of args.`,
         severity: 'error',
       });
       return;
     }
-    if (isEventRef(value)) {
-      if (insideOperator) {
-        errors.push({
-          path: at,
-          message:
-            `"${value}" is nested inside an operator, where it is evaluated before the event exists ` +
-            `and resolves to a constant. Pass it as a bare argument and map the value in the store.`,
-          severity: 'error',
-        });
-      }
+    if (typeof value === 'string') {
+      checkLegacyReference(value, at, errors);
       return;
     }
     if (Array.isArray(value)) {
@@ -1381,43 +1225,6 @@ function checkModelRef(name: string, path: string, ctx: ValidationContext, error
       severity: 'error',
     });
   }
-}
-
-/**
- * A `$map` `select` value that looks like a reference but is resolved as a literal.
- *
- * `resolveSelectValue` substitutes a string only when it starts with `'$item.'`. Everything else is
- * passed through untouched, so a bare `'$item'` becomes the five characters `$item` — identical for
- * every row. Four participant stacks seeded their avatars that way and rendered the same generated
- * face for everybody, which reads as a styling quirk rather than as a bug, and survived four
- * separate reviews. The fix is a token object (`{ $concat: ['$item'] }`), which is always resolved.
- *
- * `'$item'` is an error because it is never intentional. Other `$`-strings are a warning: a literal
- * beginning with `$` is legal, just very rarely what somebody meant to write.
- */
-function checkMapSelectValue(value: unknown, path: string, errors: ValidationError[]): void {
-  if (typeof value !== 'string' || !value.startsWith('$')) return;
-  if (value.startsWith('$item.')) return;
-
-  if (value === '$item') {
-    errors.push({
-      path,
-      message:
-        `"$item" in a $map select is resolved as a literal, not as the current item — only ` +
-        `"$item.<path>" is substituted. Every row will get the same value. ` +
-        `Use { "$concat": ["$item"] } instead.`,
-      severity: 'error',
-    });
-    return;
-  }
-
-  errors.push({
-    path,
-    message:
-      `"${value}" in a $map select is passed through as a literal string. Only "$item.<path>" is ` +
-      `substituted; wrap a context reference in a token object to have it resolved.`,
-    severity: 'warning',
-  });
 }
 
 /**
@@ -1674,8 +1481,12 @@ function walkChildren(
   if (Array.isArray(children)) {
     for (let i = 0; i < children.length; i++) {
       const child = children[i];
-      if (typeof child !== 'object' || child === null) continue;
       const childPath = `${path}.children[${i}]`;
+      if (typeof child === 'string') {
+        checkLegacyReference(child, childPath, errors, true);
+        continue;
+      }
+      if (typeof child !== 'object' || child === null) continue;
 
       /*
         A token sitting directly in `children` — `{ $plural: … }` beside a count, `{ $store: … }`

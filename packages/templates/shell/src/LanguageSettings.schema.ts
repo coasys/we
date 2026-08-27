@@ -26,11 +26,11 @@ const languageRow: SchemaNode = {
           type: 'Row',
           props: { gap: '200', ay: 'center' },
           children: [
-            { type: 'we-text', props: { variant: 'label' }, children: ['$language.name'] },
+            { type: 'we-text', props: { variant: 'label' }, children: [{ $: 'language.name' }] },
             {
               type: '$if',
               props: {
-                condition: '$language.system',
+                condition: { $: 'language.system' },
                 then: { type: 'we-badge', props: { variant: 'neutral', size: 'xs' }, children: ['System'] },
               },
             },
@@ -41,7 +41,7 @@ const languageRow: SchemaNode = {
         {
           type: 'we-code',
           props: { block: true },
-          children: ['$language.address'],
+          children: [{ $: 'language.address' }],
         },
       ],
     },
@@ -54,7 +54,7 @@ const languageRow: SchemaNode = {
           props: {
             variant: 'ghost',
             size: 'sm',
-            onClick: { $action: 'runtimeStore.removeLanguage', args: ['$language.address'] },
+            onClick: { $action: 'runtimeStore.removeLanguage', args: [{ $: 'language.address' }] },
           },
           children: [{ type: 'we-icon', props: { name: 'trash' } }],
         },
@@ -66,7 +66,7 @@ const languageRow: SchemaNode = {
 export const languagesSection: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $store: 'runtimeStore.canManageLanguages' },
+    condition: { $: 'runtimeStore.canManageLanguages' },
     then: adminSection({
       title: 'Languages',
       icon: 'code',
@@ -82,7 +82,7 @@ export const languagesSection: SchemaNode = {
               children: [
                 {
                   type: '$each',
-                  props: { items: { $store: 'runtimeStore.languages' }, as: 'language' },
+                  props: { items: { $: 'runtimeStore.languages' }, as: 'language' },
                   children: [languageRow],
                 },
               ],
@@ -100,8 +100,8 @@ export const languagesSection: SchemaNode = {
                 flex: '1',
                 size: 'sm',
                 placeholder: 'Language address, e.g. QmUTkvPcyaUGntqfzi3iR1xomADm5yYC2j8hcPdhMHpTem',
-                value: { $local: 'newLanguageAddress' },
-                onInput: { $setLocal: 'newLanguageAddress', from: '$event.detail' },
+                value: { $: 'local.newLanguageAddress' },
+                onInput: { $setLocal: 'newLanguageAddress', value: { $: 'event.detail' } },
               },
             },
             {
@@ -112,11 +112,11 @@ export const languagesSection: SchemaNode = {
                 variant: 'secondary',
                 // The backend fetches the bundle over the network, so this is the one runtime action
                 // that can take long enough to need a spinner rather than just finishing.
-                loading: { $store: 'runtimeStore.loading' },
+                loading: { $: 'runtimeStore.loading' },
                 disabled: { $: '!local.newLanguageAddress' },
                 onClick: {
                   $action: 'runtimeStore.installLanguage',
-                  args: [{ $local: 'newLanguageAddress' }],
+                  args: [{ $: 'local.newLanguageAddress' }],
                   onSuccess: [{ $setLocal: 'newLanguageAddress', value: '' }],
                 },
               },

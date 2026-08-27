@@ -10,6 +10,6 @@ import { composerModal } from '@we/template-kit';
 export const createPostModal = composerModal({
   title: 'Create Post',
   openLocal: 'createPostOpen',
-  saveAction: { $action: 'spaceStore.createPost', args: ['$arg'] },
+  saveAction: { $action: 'spaceStore.createPost', args: [{ $: 'arg' }] },
   saveLabel: 'Post',
 });

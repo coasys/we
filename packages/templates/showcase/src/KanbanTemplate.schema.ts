@@ -83,12 +83,16 @@ const boardsRoute: RouteSchema = {
                     hoverProps: { borderColor: 'accent' },
                   },
                   children: [
-                    { type: 'we-text', props: { fontWeight: 'semibold', truncate: true }, children: ['$board.title'] },
+                    {
+                      type: 'we-text',
+                      props: { fontWeight: 'semibold', truncate: true },
+                      children: [{ $: 'board.title' }],
+                    },
                     {
                       type: 'Row',
                       props: { gap: '100', ay: 'center' },
                       children: [
-                        { type: 'we-number', props: { value: '$board.$columnCount' } },
+                        { type: 'we-number', props: { value: { $: 'board.$columnCount' } } },
                         {
                           type: 'we-text',
                           props: { variant: 'footnote', color: 'text-faint' },
@@ -148,13 +152,13 @@ const boardRoute: RouteSchema = {
                 item: {
                   $query: {
                     entity: 'CollectionBlock',
-                    where: { id: { $store: 'routeStore.segments.1' } },
+                    where: { id: { $: 'routeStore.segments[1]' } },
                     limit: 1,
                   },
                 },
                 as: 'board',
               },
-              children: [{ type: 'we-text', props: { variant: 'heading-sm' }, children: ['$board.title'] }],
+              children: [{ type: 'we-text', props: { variant: 'heading-sm' }, children: [{ $: 'board.title' }] }],
             },
           ],
         },
@@ -167,7 +171,7 @@ const boardRoute: RouteSchema = {
     },
 
     kanbanBoard({
-      boardId: { $store: 'routeStore.segments.1' },
+      boardId: { $: 'routeStore.segments[1]' },
       empty: emptyState({
         icon: 'columns',
         label: 'columns',
@@ -189,18 +193,18 @@ const boardRoute: RouteSchema = {
             {
               type: 'BlockRenderer',
               props: {
-                editorState: `$${as}.editorState`,
+                editorState: { $: `${as}.editorState` },
               },
             },
             {
               type: 'Row',
               props: { ax: 'between', ay: 'center', width: '100%' },
               children: [
-                agentByline({ did: `$${as}.author`, timestamp: `$${as}.createdAt`, avatarSize: 'xs' }),
-                moveCardMenu(`$${as}`, '$column'),
+                agentByline({ did: { $: `${as}.author` }, timestamp: { $: `${as}.createdAt` }, avatarSize: 'xs' }),
+                moveCardMenu(as, 'column'),
               ],
             },
-            signalRow(`$${as}`),
+            signalRow(as),
           ],
         },
       ],
@@ -225,7 +229,7 @@ const boardRoute: RouteSchema = {
             // A card is a composed document like a post — same composer, same blocks. It is only a
             // card because of where it lives.
             kind: KIND.post,
-            parentId: `$${as}.id`,
+            parentId: { $: `${as}.id` },
             saveLabel: 'Add',
           }),
         ],
@@ -237,7 +241,7 @@ const boardRoute: RouteSchema = {
       title: 'New column',
       kind: KIND.column,
       placeholder: 'In progress',
-      parentId: { $store: 'routeStore.segments.1' },
+      parentId: { $: 'routeStore.segments[1]' },
     }),
   ],
 };

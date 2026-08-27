@@ -47,7 +47,7 @@ describe('$animate with a condition — stays mounted, toggles in place', () => 
     const stores = { appStore: { show: markReactive(show) } };
     const node: SchemaNode = {
       type: '$animate',
-      props: { condition: { $store: 'appStore.show' }, enterTransition: { type: 'fade', duration: 50 } },
+      props: { condition: { $: 'appStore.show' }, enterTransition: { type: 'fade', duration: 50 } },
       children: [{ type: 'Box' }],
     };
     const { container } = renderSchema(node, { registry, stores });
@@ -67,7 +67,7 @@ describe('$animate with a condition — stays mounted, toggles in place', () => 
     const stores = { appStore: { show: markReactive(show) } };
     const node: SchemaNode = {
       type: '$animate',
-      props: { condition: { $store: 'appStore.show' }, enterTransition: { type: 'fade', duration: 50 } },
+      props: { condition: { $: 'appStore.show' }, enterTransition: { type: 'fade', duration: 50 } },
       children: [{ type: 'Box' }],
     };
     const { container } = renderSchema(node, { registry, stores });
@@ -85,7 +85,7 @@ describe('$animate with a condition — stays mounted, toggles in place', () => 
     const stores = { appStore: { show: markReactive(show) } };
     const node: SchemaNode = {
       type: '$animate',
-      props: { condition: { $store: 'appStore.show' }, enterTransition: { type: 'fade', duration: 50 } },
+      props: { condition: { $: 'appStore.show' }, enterTransition: { type: 'fade', duration: 50 } },
       children: [{ type: 'Box' }],
     };
     const { container } = renderSchema(node, { registry, stores });
@@ -122,7 +122,7 @@ describe('$animate with a condition — stays mounted, toggles in place', () => 
     const stores = { groupStore: { open: markReactive(open) } };
     const node: SchemaNode = {
       type: '$animate',
-      props: { condition: { $store: 'groupStore.open' }, enterTransition: { type: 'reveal', duration: 50 } },
+      props: { condition: { $: 'groupStore.open' }, enterTransition: { type: 'reveal', duration: 50 } },
       children: [{ type: 'Box' }],
     };
     const { container } = renderSchema(node, { registry, stores });
@@ -140,7 +140,7 @@ describe('$animate with a condition — stays mounted, toggles in place', () => 
     const stores = { appStore: { show: markReactive(show) } };
     const node: SchemaNode = {
       type: '$animate',
-      props: { condition: { $store: 'appStore.show' }, enterTransition: { type: 'fade', duration: 50 } },
+      props: { condition: { $: 'appStore.show' }, enterTransition: { type: 'fade', duration: 50 } },
       children: [{ type: 'Box' }],
     };
     const { container } = renderSchema(node, { registry, stores });

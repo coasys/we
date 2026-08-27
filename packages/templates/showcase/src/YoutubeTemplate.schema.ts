@@ -41,7 +41,7 @@ const videoInclude = {
 const videoCard: SchemaNode = {
   type: '$if',
   props: {
-    condition: '$video.$firstVideo.url',
+    condition: { $: 'video.$firstVideo.url' },
     then: {
       type: 'we-button',
       props: {
@@ -57,11 +57,11 @@ const videoCard: SchemaNode = {
             {
               type: '$if',
               props: {
-                condition: '$video.$firstVideo.thumbnail',
+                condition: { $: 'video.$firstVideo.thumbnail' },
                 then: {
                   type: 'we-image',
                   props: {
-                    src: '$video.$firstVideo.thumbnail',
+                    src: { $: 'video.$firstVideo.thumbnail' },
                     fit: 'cover',
                     loading: 'lazy',
                     width: '100%',
@@ -91,7 +91,7 @@ const videoCard: SchemaNode = {
               props: { fontWeight: 'semibold', truncate: true, textAlign: 'left', width: '100%' },
               children: [{ $: 'video.$firstVideo.title ? video.$firstVideo.title : video.textContent' }],
             },
-            agentByline({ did: '$video.author', timestamp: '$video.createdAt' }),
+            agentByline({ did: { $: 'video.author' }, timestamp: { $: 'video.createdAt' } }),
           ],
         },
       ],
@@ -144,7 +144,7 @@ const watchRoute: RouteSchema = {
             item: {
               $query: {
                 entity: 'CollectionBlock',
-                where: { id: { $store: 'routeStore.segments.1' } },
+                where: { id: { $: 'routeStore.segments[1]' } },
                 include: { signals: true },
                 limit: 1,
               },
@@ -157,14 +157,14 @@ const watchRoute: RouteSchema = {
             {
               type: 'BlockRenderer',
               props: {
-                editorState: '$post.editorState',
+                editorState: { $: 'post.editorState' },
               },
             },
-            agentByline({ did: '$post.author', timestamp: '$post.createdAt' }),
+            agentByline({ did: { $: 'post.author' }, timestamp: { $: 'post.createdAt' } }),
             {
               type: 'Row',
               props: { gap: '600', ay: 'center' },
-              children: [signalRow('$post'), replyCount('$post')],
+              children: [signalRow('post'), replyCount('post')],
             },
             {
               type: 'we-button',
@@ -180,23 +180,23 @@ const watchRoute: RouteSchema = {
               openLocal: 'replyOpen',
               title: 'Comment',
               kind: KIND.reply,
-              parentId: '$post.id',
+              parentId: { $: 'post.id' },
               predicate: 'we://comment',
               saveLabel: 'Comment',
             }),
             commentThread({
-              anchorId: { $store: 'routeStore.segments.1' },
+              anchorId: { $: 'routeStore.segments[1]' },
               empty: noReplies(),
               reply: (as) => [
                 {
                   type: 'Column',
                   props: { width: '100%', gap: '100', py: '200' },
                   children: [
-                    agentByline({ did: `$${as}.author`, timestamp: `$${as}.createdAt` }),
+                    agentByline({ did: { $: `${as}.author` }, timestamp: { $: `${as}.createdAt` } }),
                     {
                       type: 'BlockRenderer',
                       props: {
-                        editorState: `$${as}.editorState`,
+                        editorState: { $: `${as}.editorState` },
                       },
                     },
                   ],
@@ -249,12 +249,16 @@ const playlistsRoute: RouteSchema = {
               type: 'Column',
               props: { gap: '100', p: '400', bg: 'surface-sunken', r: '400', border: '1px solid border' },
               children: [
-                { type: 'we-text', props: { fontWeight: 'semibold', truncate: true }, children: ['$playlist.title'] },
+                {
+                  type: 'we-text',
+                  props: { fontWeight: 'semibold', truncate: true },
+                  children: [{ $: 'playlist.title' }],
+                },
                 {
                   type: 'Row',
                   props: { gap: '100', ay: 'center' },
                   children: [
-                    { type: 'we-number', props: { value: '$playlist.$count' } },
+                    { type: 'we-number', props: { value: { $: 'playlist.$count' } } },
                     {
                       type: 'we-text',
                       props: { variant: 'footnote', color: 'text-faint' },
@@ -320,9 +324,9 @@ export const youtubeTemplate: TemplateSchema = {
                   props: {
                     size: 'sm',
                     variant: { $: "routeStore.currentPath == nav.path ? 'secondary' : 'ghost'" },
-                    onClick: { $action: 'routeStore.navigate', args: ['$nav.path'] },
+                    onClick: { $action: 'routeStore.navigate', args: [{ $: 'nav.path' }] },
                   },
-                  children: ['$nav.label'],
+                  children: [{ $: 'nav.label' }],
                 },
               ],
             },

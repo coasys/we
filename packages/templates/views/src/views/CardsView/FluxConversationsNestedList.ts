@@ -22,7 +22,7 @@ function withLocalState(node: SchemaNode, extra: Record<string, LocalStateField>
 const caretIcon = (openField: string): SchemaNode => ({
   type: 'we-icon',
   props: {
-    name: { $if: { condition: { $local: openField }, then: 'caret-down', else: 'caret-right' } },
+    name: { $: `local.${openField} ? 'caret-down' : 'caret-right'` },
     size: 'sm',
   },
 });
@@ -32,7 +32,7 @@ const caretIcon = (openField: string): SchemaNode => ({
 // Fetched lazily on first expand through spaceStore.getSubgroupMessages, a raw SPARQL query
 // mirroring Flux's own ConversationSubgroup.itemsData(). subgroupMessages stays null until
 // loaded, then holds the (possibly empty) array — an empty array is still truthy in JS, so
-// $local: 'subgroupMessages' alone distinguishes "not yet loaded" from "loaded".
+// local.subgroupMessages alone distinguishes "not yet loaded" from "loaded".
 const subgroupMessagesToggle: SchemaNode = {
   type: 'we-button',
   props: {
@@ -47,8 +47,8 @@ const subgroupMessagesToggle: SchemaNode = {
           condition: { $: '!local.subgroupMessages' },
           then: {
             $action: 'spaceStore.getSubgroupMessages',
-            args: ['$subgroup.id'],
-            onSuccess: [{ $setLocal: 'subgroupMessages', from: '$result' }],
+            args: [{ $: 'subgroup.id' }],
+            onSuccess: [{ $setLocal: 'subgroupMessages', value: { $: 'result' } }],
           },
         },
       },
@@ -59,7 +59,7 @@ const subgroupMessagesToggle: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $local: 'subgroupMessages' },
+        condition: { $: 'local.subgroupMessages' },
         then: {
           type: 'Row',
           props: { gap: '100', ay: 'center' },
@@ -81,21 +81,21 @@ const subgroupMessagesToggle: SchemaNode = {
 const subgroupMessagesList: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $local: 'subgroupMessagesOpen' },
+    condition: { $: 'local.subgroupMessagesOpen' },
     then: {
       type: 'Column',
       props: { gap: '300' }, // pl: '600', borderLeft: '2px solid border'
       children: [
         {
           type: '$each',
-          props: { items: { $local: 'subgroupMessages' }, as: 'msg' },
+          props: { items: { $: 'local.subgroupMessages' }, as: 'msg' },
           children: [
             {
               type: 'Column',
               props: { gap: '200', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
               children: [
-                agentByline({ did: '$msg.author', timestamp: '$msg.timestamp' }),
-                { type: 'we-html', props: { color: 'text', content: '$msg.body' } },
+                agentByline({ did: { $: 'msg.author' }, timestamp: { $: 'msg.timestamp' } }),
+                { type: 'we-html', props: { color: 'text', content: { $: 'msg.body' } } },
               ],
             },
           ],
@@ -122,17 +122,17 @@ const subgroupCard: SchemaNode = withLocalState(
         props: { ay: 'center', gap: '300' },
         children: [
           { type: 'we-icon', props: { name: 'chat-dots' } },
-          { type: 'we-text', props: { fontSize: '400' }, children: ['$subgroup.subgroupName'] },
+          { type: 'we-text', props: { fontSize: '400' }, children: [{ $: 'subgroup.subgroupName' }] },
         ],
       },
       {
         type: '$if',
         props: {
-          condition: '$subgroup.summary',
-          then: { type: 'we-text', props: { color: 'text-muted' }, children: ['$subgroup.summary'] },
+          condition: { $: 'subgroup.summary' },
+          then: { type: 'we-text', props: { color: 'text-muted' }, children: [{ $: 'subgroup.summary' }] },
         },
       },
-      peopleRow({ items: '$subgroup.participants', dids: true, noun: 'Participant' }),
+      peopleRow({ items: { $: 'subgroup.participants' }, dids: true, noun: 'Participant' }),
       subgroupMessagesToggle,
       subgroupMessagesList,
     ],
@@ -151,7 +151,7 @@ const conversationSubgroupsToggle: SchemaNode = {
   },
   children: [
     { type: 'we-icon', props: { name: 'chat-dots', size: 'sm' } },
-    { type: 'we-number', props: { value: '$conversation.$subgroupCount' } },
+    { type: 'we-number', props: { value: { $: 'conversation.$subgroupCount' } } },
     {
       type: 'we-text',
       children: [{ $: "plural(conversation.$subgroupCount, 'Subgroup', 'Subgroups')" }],
@@ -163,7 +163,7 @@ const conversationSubgroupsToggle: SchemaNode = {
 const conversationSubgroupsList: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $local: 'subgroupsOpen' },
+    condition: { $: 'local.subgroupsOpen' },
     then: {
       type: 'Column',
       props: { gap: '200' }, // pl: '600', borderLeft: '2px solid border'
@@ -180,7 +180,7 @@ const conversationSubgroupsList: SchemaNode = {
                 // perspective's model manifest (→ `ad4m://has_child`), so no raw predicate lives in the
                 // template — and it hands AD4M the `{ id, predicate }` form, sidestepping its broken
                 // relation-name resolver (`resolveParentPredicate`).
-                scope: { anchor: 'Conversation', via: 'subgroupEntities', anchorId: '$conversation.id' },
+                scope: { anchor: 'Conversation', via: 'subgroupEntities', anchorId: { $: 'conversation.id' } },
               },
             },
             as: 'subgroup',
@@ -202,11 +202,11 @@ export const fluxConversationsNestedList: SchemaNode = {
         dataset: '$currentDataset',
         where: {
           OR: [
-            { conversationName: { contains: { $local: 'searchText' } } },
-            { summary: { contains: { $local: 'searchText' } } },
+            { conversationName: { contains: { $: 'local.searchText' } } },
+            { summary: { contains: { $: 'local.searchText' } } },
           ],
         },
-        order: { timestamp: { $local: 'sortDirection' } },
+        order: { timestamp: { $: 'local.sortDirection' } },
         limit: 20,
         include: {
           $subgroupCount: {
@@ -230,7 +230,7 @@ export const fluxConversationsNestedList: SchemaNode = {
                   {
                     type: 'we-text',
                     props: { variant: 'heading-sm' },
-                    children: ['$conversation.conversationName'],
+                    children: [{ $: 'conversation.conversationName' }],
                   },
                 ],
               },
@@ -239,15 +239,15 @@ export const fluxConversationsNestedList: SchemaNode = {
               {
                 type: '$if',
                 props: {
-                  condition: '$conversation.summary',
+                  condition: { $: 'conversation.summary' },
                   then: {
                     type: 'we-text',
                     props: { color: 'text-muted' },
-                    children: ['$conversation.summary'],
+                    children: [{ $: 'conversation.summary' }],
                   },
                 },
               },
-              peopleRow({ items: '$conversation.participants', dids: true, noun: 'Participant' }),
+              peopleRow({ items: { $: 'conversation.participants' }, dids: true, noun: 'Participant' }),
               conversationSubgroupsToggle,
               conversationSubgroupsList,
             ],

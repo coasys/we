@@ -36,6 +36,8 @@ export interface ExpressionIssue {
   span: Span;
 }
 
+const FIELD_READERS = new Set(['error', 'valid', 'touched']);
+
 export function checkExpression(expr: Expr, scope: ExpressionScope): ExpressionIssue[] {
   const issues: ExpressionIssue[] = [];
 
@@ -86,6 +88,18 @@ export function checkExpression(expr: Expr, scope: ExpressionScope): ExpressionI
 
     if (WELL_KNOWN_ROOTS.has(root) || scope.contextNames.has(root)) continue;
 
+    // A name spelled like a store is a store, whatever composes the fragment: nothing binds a
+    // `fooStore` through `as`, so an unknown one is wrong even where other roots are unknowable.
+    if (/Store$/.test(root)) {
+      const hint = suggest(root, scope.storeNames);
+      issues.push({
+        message: `Unknown store "${root}"${hint ? ` — did you mean "${hint}"?` : ''}`,
+        severity: 'error',
+        span,
+      });
+      continue;
+    }
+
     if (scope.strict) {
       const candidates = new Set([...scope.storeNames, ...scope.contextNames, ...WELL_KNOWN_ROOTS]);
       const hint = suggest(root, candidates);
@@ -99,6 +113,18 @@ export function checkExpression(expr: Expr, scope: ExpressionScope): ExpressionI
 
   walkExpr(expr, (node) => {
     if (node.kind !== 'call') return;
+    // The form-state readers name a field as a string; it has to be one the scope declares.
+    if (FIELD_READERS.has(node.callee) && scope.locals !== null) {
+      const [field] = node.args;
+      if (field?.kind === 'literal' && typeof field.value === 'string' && !scope.locals.has(field.value)) {
+        const hint = suggest(field.value, scope.locals);
+        issues.push({
+          message: `${node.callee}('${field.value}') names a field $localState does not declare here${hint ? ` — did you mean '${hint}'?` : ''}`,
+          severity: 'error',
+          span: node.span,
+        });
+      }
+    }
     const spec = getFunction(node.callee);
     const given = node.args.length + (node.receiver ? 1 : 0);
     if (!spec) {
