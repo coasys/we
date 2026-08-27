@@ -103,6 +103,8 @@ export function createGuestConnector(hostUrl: string): BackendConnector {
 
       return {
         client,
+        // This identity was created by the link, not chosen. See `BackendInitResult.guest`.
+        guest: true,
         ports: createAd4mBackendPorts(client, ctx, {
           administersNode: false,
           capabilities,

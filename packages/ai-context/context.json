@@ -6117,6 +6117,9 @@
           "type": "object",
           "properties": ["email", "remainingCredits", "walletAddress", "freeAccess"]
         },
+        "isGuest": {
+          "type": "boolean"
+        },
         "isDevelopment": {
           "type": "boolean"
         },

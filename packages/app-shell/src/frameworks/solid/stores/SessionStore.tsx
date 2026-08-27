@@ -70,6 +70,16 @@ export interface SessionStore {
   host: Accessor<BackendHostInfo | undefined>;
   /** This agent's account with that node — credits, email — when it keeps one. */
   hostAccount: Accessor<BackendAccountInfo | undefined>;
+  /**
+   * This identity was minted by the connector for somebody who arrived without one — a guest, in
+   * the sense a guest invite link means.
+   *
+   * Not the same question as `host`: an ordinary member of a hosted deployment has a host and is
+   * not a guest. This is "did this person choose this identity, or did a link create one for
+   * them", and it changes what the app should say to them — starting with why it is asking for a
+   * name, since the usual explanation ("your account was set up outside WE") is untrue here.
+   */
+  isGuest: Accessor<boolean>;
   /** Whether this is a development build. A fact about the build, and only that. */
   isDevelopment: Accessor<boolean>;
   /**
@@ -169,6 +179,7 @@ export function SessionStoreProvider(props: ParentProps) {
   const [port, setPort] = createSignal<number | undefined>(undefined);
   const [token, setToken] = createSignal<string | undefined>(undefined);
   const [serverUrl, setServerUrl] = createSignal<string | undefined>(undefined);
+  const [isGuest, setIsGuest] = createSignal(false);
   const [host, setHost] = createSignal<BackendHostInfo | undefined>(undefined);
   const [hostAccount, setHostAccount] = createSignal<BackendAccountInfo | undefined>(undefined);
 
@@ -258,10 +269,12 @@ export function SessionStoreProvider(props: ParentProps) {
         disconnect,
         host: hostInfo,
         account,
+        guest,
       } = await backend.initialize({ selfId: () => me()?.did });
       disconnectBackend = disconnect ?? null;
       setHost(hostInfo);
       setHostAccount(account);
+      setIsGuest(guest === true);
       setClient(c);
       setBackendPorts(ports);
       const session = ports.agentSession;
@@ -475,6 +488,7 @@ export function SessionStoreProvider(props: ParentProps) {
     serverUrl,
     host,
     hostAccount,
+    isGuest,
     isDevelopment: () => platform.isDevelopment,
     devTools,
     setDevTools,

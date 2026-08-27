@@ -179,6 +179,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     me: state('identity'),
     host: state('session'),
     hostAccount: state('session'),
+    isGuest: state('session'),
     isDevelopment: state('session'),
     devTools: state('session'),
     setDevTools: action('session'),

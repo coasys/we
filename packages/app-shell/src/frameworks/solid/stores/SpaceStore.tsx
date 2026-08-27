@@ -11,7 +11,7 @@ import {
   syncSpaceToParent,
 } from '@shared/spaceSync';
 import { resolveSpaceTheme, type ThemeResolutionInput } from '@shared/themeResolution';
-import { deriveSlug } from '@shared/utils';
+import { copyText, deriveSlug } from '@shared/utils';
 import type { ViewSetting } from '@shared/viewResolution';
 import {
   activeSections,
@@ -2194,13 +2194,8 @@ export function SpaceStoreProvider(props: ParentProps) {
   async function copyShareLink(uuid: string): Promise<void> {
     const link = spaceList().find((s) => s.uuid === uuid)?.shareLink;
     if (!link) return;
-    try {
-      await navigator.clipboard.writeText(link);
-      toastService.success('Link copied');
-    } catch (error) {
-      console.error('SpaceStore: could not copy share link', error);
-      toastService.error('Could not copy the link');
-    }
+    if (await copyText(link)) toastService.success('Link copied');
+    else toastService.error('Could not copy the link');
   }
 
   /**
@@ -2216,13 +2211,8 @@ export function SpaceStoreProvider(props: ParentProps) {
       toastService.error('Guest links require a hosted node');
       return;
     }
-    try {
-      await navigator.clipboard.writeText(link);
-      toastService.success('Guest invite link copied');
-    } catch (error) {
-      console.error('SpaceStore: could not copy guest link', error);
-      toastService.error('Could not copy the link');
-    }
+    if (await copyText(link)) toastService.success('Guest invite link copied');
+    else toastService.error('Could not copy the link');
   }
 
   /**

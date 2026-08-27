@@ -502,7 +502,12 @@ const shareSection: SchemaNode = {
               type: 'we-text',
               props: {
                 variant: 'footnote',
-                flex: '1',
+                // The designated shrinker. `minWidth: '0'` is the load-bearing half: `truncate` sets
+                // `white-space: nowrap`, so this item's min-content width is the whole link, and a flex
+                // item's automatic minimum is exactly that — it refused every request to compress and
+                // pushed the panel sideways instead of eliding.
+                flex: '1 1 auto',
+                minWidth: '0',
                 truncate: true,
                 p: '200',
                 bg: 'surface-sunken',
@@ -547,7 +552,12 @@ const shareSection: SchemaNode = {
                       type: 'we-text',
                       props: {
                         variant: 'footnote',
-                        flex: '1',
+                        // The designated shrinker. `minWidth: '0'` is the load-bearing half: `truncate` sets
+                        // `white-space: nowrap`, so this item's min-content width is the whole link, and a flex
+                        // item's automatic minimum is exactly that — it refused every request to compress and
+                        // pushed the panel sideways instead of eliding.
+                        flex: '1 1 auto',
+                        minWidth: '0',
                         truncate: true,
                         p: '200',
                         bg: 'surface-sunken',

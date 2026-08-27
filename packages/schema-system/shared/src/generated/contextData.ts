@@ -2429,6 +2429,7 @@ export const contextData: ContextData = {
           properties: ['id', 'name', 'description', 'imageUrl', 'location', 'url', 'computeSpecs', 'aiModels', 'rates'],
         },
         hostAccount: { type: 'object', properties: ['email', 'remainingCredits', 'walletAddress', 'freeAccess'] },
+        isGuest: { type: 'boolean' },
         isDevelopment: { type: 'boolean' },
         devTools: { type: 'boolean' },
         ephemeralPort: { type: 'object' },
