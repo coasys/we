@@ -9,6 +9,7 @@
 export { accountSettings, removeAccountModal } from './AccountSettings.schema';
 export { bootScreen } from './BootScreen.schema';
 export { consentPrompt, consentSecret } from './ConsentPrompt.schema';
+export { namePrompt } from './NamePrompt.schema';
 export { landingPageTemplate } from './about';
 export { marketplaceTemplate } from './marketplace';
 export { CHROME_RAIL_WIDTH, chromeRail } from './ChromeRail.schema';

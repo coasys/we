@@ -2175,10 +2175,14 @@ PresenceStore:
 ProfileStore:
 - State:
   - profiles: AgentProfileSummary[] — cache of all fetched profiles (did, firstName, lastName, handle, bio, avatar, coverImage, location)
-  - ownProfile: AgentProfileSummary | undefined — reactive accessor for the current user's own profile (derived from the cache)
+  - ownProfile: AgentProfileSummary | undefined — reactive accessor for the current user's own profile (derived from the cache). Note `name` is assembled for display and falls back to "Anonymous", so it is never empty — test firstName/lastName/handle to ask whether somebody has a name
+  - ownProfileLoaded: boolean — the own-profile fetch has answered. An empty profile is otherwise indistinguishable from an unfetched one, so anything asking "has this person set a name?" reads every boot frame as "no". Same reason as datasetStore.datasetsLoaded
+  - needsName: boolean — this agent has no name of any kind and has not waved the question away this session, as a settled fact (false until the app is ready and the profile fetch has answered). What the name prompt mounts on; also the right gate for any "finish setting up" nudge of your own
   - pendingAvatar: unknown
 - Actions:
   - setPendingAvatar(file: File): holds a picture chosen before an agent exists; uploaded by completeAccountSetup
+  - saveNameFromPrompt(name: string): sets the name and stops asking. Dismisses before publishing, so a failed write cannot re-raise the prompt on top of the toast explaining it — which is why this exists rather than calling updateOwnProfile from the schema
+  - dismissNamePrompt(): stops asking for a name until the next launch. Not persisted: a nameless agent degrades every other member's experience, so the only permanent exit is setting a name
   - completeAccountSetup(name: string, password: string): the whole of first-run setup — creates the agent, then publishes the name and picture, then lets the app appear
   - fetchProfile(did: string): fetches and caches an agent's profile from their public dataset
   - updateOwnProfile(fields: { firstName?, lastName?, handle?, bio? }): updates own profile text fields and publishes to the public dataset

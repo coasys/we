@@ -5793,12 +5793,20 @@
           "type": "object",
           "properties": ["did", "firstName", "lastName", "handle", "bio", "avatar", "coverImage", "location"]
         },
+        "ownProfileLoaded": {
+          "type": "boolean"
+        },
+        "needsName": {
+          "type": "boolean"
+        },
         "pendingAvatar": {
           "type": "string"
         }
       },
       "actions": [
         "setPendingAvatar",
+        "saveNameFromPrompt",
+        "dismissNamePrompt",
         "completeAccountSetup",
         "fetchProfile",
         "updateOwnProfile",

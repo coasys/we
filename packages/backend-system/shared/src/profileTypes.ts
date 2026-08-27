@@ -67,6 +67,16 @@ export function isProfileEmpty(summary: AgentProfileSummary): boolean {
 }
 
 /**
+ * What an agent is called when nothing in their profile says.
+ *
+ * A word, not a DID: a DID is an address, and showing one where a name goes reads as a bug rather
+ * than as an identity. Exported so a caller can tell a placeholder from a name somebody chose —
+ * though `isProfileEmpty` is the better question, since it reads the stored fields rather than
+ * comparing rendered text.
+ */
+export const ANONYMOUS_AGENT_NAME = 'Anonymous';
+
+/**
  * What to call an agent, from whatever their profile holds.
  *
  * One rule, in one place, because there was already more than one: the identities port assembled
@@ -74,11 +84,31 @@ export function isProfileEmpty(summary: AgentProfileSummary): boolean {
  * inline with no fallback and no trim. Two answers to the same question, and the template one was
  * wrong for anybody who had published a handle and nothing else.
  *
- * Falls back to the handle rather than to the DID: a DID is an address, and showing one where a name
- * goes reads as a bug rather than as an identity. Callers get `''` and decide for themselves — the
- * avatar stack draws a face with no label, which says "we do not know who this is" honestly.
+ * Falls back to the handle, and then to {@link ANONYMOUS_AGENT_NAME}. The fallback lives here and
+ * not at each render site for the same reason the assembly does: a byline, a call tile and a member
+ * row must not disagree about what an unnamed person is called, and the moment the choice is a
+ * caller's, one of them forgets and renders an empty string where a name goes.
+ *
+ * This used to return `''`, on the reasoning that a blank label says "we do not know who this is"
+ * honestly. It does not — it says nothing at all, and reads as a broken byline rather than as an
+ * unnamed person. The case it was written to protect is the avatar stack, which labels faces with
+ * `hash` and never reads this, so it is unaffected either way. Meanwhile a real population arrived
+ * with no name at all: agents created outside WE, through ad4m-connect, whom WE never asks (see
+ * `getProfile` in @we/backend-ad4m).
+ *
+ * Pass an explicit `fallback` where a placeholder would be worse than nothing — `''` for a label
+ * that is decoration beside a face that already identifies the person.
  */
-export function displayName(profile: Pick<AgentProfileSummary, 'firstName' | 'lastName' | 'handle'>): string {
-  const full = [profile.firstName, profile.lastName].filter(Boolean).join(' ').trim();
-  return full || profile.handle?.trim() || '';
+export function displayName(
+  profile: Pick<AgentProfileSummary, 'firstName' | 'lastName' | 'handle'>,
+  fallback: string = ANONYMOUS_AGENT_NAME,
+): string {
+  // Each part trimmed before joining, not just the result: a stored field with padding on both
+  // sides otherwise survives as a run of spaces in the middle of the name, where trimming the
+  // joined string cannot reach it.
+  const full = [profile.firstName, profile.lastName]
+    .map((part) => part?.trim())
+    .filter(Boolean)
+    .join(' ');
+  return full || profile.handle?.trim() || fallback;
 }

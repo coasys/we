@@ -7,17 +7,71 @@ import { FILE_STORAGE_LANGUAGE } from '@we/models';
 
 export const WE_PROFILE_SOURCE = 'we://profile';
 export const WE_LOCATION_SOURCE = 'we://location';
+/**
+ * Where the ADAM Launcher puts a profile: links whose source is the agent's own DID. It shares no
+ * predicate with either of the other two formats — see the launcher fallback in {@link getProfile}.
+ */
+export const LAUNCHER_PROFILE_SOURCE = 'ad4m://profile';
 
+/**
+ * Unwrap a literal target into the string it stands for.
+ *
+ * Three shapes reach this, because three different apps have written a name into an agent's public
+ * perspective and none of them agreed:
+ *
+ * - `literal:string:James` — what `Literal.from(value).toUrl()` produces, and what WE itself writes.
+ * - `literal:json:{"author":…,"data":"James","proof":…}` — what `expression.create(value, 'literal')`
+ *   produces, which is what Flux's profile writer calls. The executor signs the content and encodes
+ *   the whole **signed-expression envelope** as the literal (see `expression_create` in
+ *   rust-executor's `languages/mod.rs`), so the decoded value is an object with the real value on
+ *   `data`. Flux's own reader unwraps it; this one did not, and `String(envelope)` is the string
+ *   `"[object Object]"` — which is what every Flux-origin peer was called throughout WE.
+ * - `literal://string:James` — the pre-0.9 spelling. `Literal.fromUrl` refuses it outright, so it
+ *   fell to the catch and was displayed as the raw URL.
+ *
+ * Never returns a non-string, whatever it is handed: this is the sole gate between a peer's
+ * published bytes and every byline, avatar label and member row in the app, and the failure mode of
+ * letting an object through is not an error anybody sees — it is a person rendered as
+ * `[object Object]` and no clue where it came from.
+ */
 function parseLiteralTarget(target: string): string {
-  if (target.startsWith('literal:')) {
-    try {
-      const val = Literal.fromUrl(target).get();
-      return String(val);
-    } catch {
-      return target;
-    }
+  if (!target.startsWith('literal:')) return target;
+
+  // `literal://` is rejected by `Literal.fromUrl`, and the payload after the slashes is otherwise
+  // identical — so normalise rather than lose it.
+  const url = target.startsWith('literal://') ? `literal:${target.slice('literal://'.length)}` : target;
+
+  try {
+    return stringifyLiteralValue(Literal.fromUrl(url).get(), target);
+  } catch {
+    return target;
   }
-  return target;
+}
+
+/**
+ * A decoded literal as display text, unwrapping a signed-expression envelope if that is what it is.
+ *
+ * The envelope check is `data` plus one of the signing fields rather than `data` alone: a profile
+ * field could legitimately be an object with a `data` key, and taking `.data` off that would be a
+ * different silent corruption in place of the one this fixes. `data` may itself be any JSON value,
+ * so it recurses once — an envelope inside an envelope is not a shape anything writes, and the
+ * recursion is bounded by unwrapping only when the envelope test passes.
+ */
+function stringifyLiteralValue(value: unknown, fallback: string): string {
+  if (value == null) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+
+  if (typeof value === 'object') {
+    const envelope = value as { data?: unknown; author?: unknown; proof?: unknown; timestamp?: unknown };
+    const signed = 'author' in envelope || 'proof' in envelope || 'timestamp' in envelope;
+    if ('data' in envelope && signed) return stringifyLiteralValue(envelope.data, fallback);
+    // An object that is not an envelope has no sensible display form. The raw target at least says
+    // where to look; `[object Object]` says nothing at all.
+    return fallback;
+  }
+
+  return fallback;
 }
 
 async function resolveExpressionToDataUri(url: string, client: Ad4mClient): Promise<string | undefined> {
@@ -40,7 +94,16 @@ async function resolveExpressionToDataUri(url: string, client: Ad4mClient): Prom
 
 /**
  * Fetch and parse an agent's profile from their public AD4M perspective.
- * Reads WE format (we://profile source) first, falls back to Flux/SIOC format.
+ *
+ * Three formats, tried in order, because an AD4M agent is not created by WE. Somebody who reaches
+ * WE Web through ad4m-connect brought an identity made somewhere else — the ADAM Launcher, Flux, a
+ * hosted node — and whatever named them there is the only name they have. Reading one format meant
+ * every such peer arrived nameless, and WE never asks for a name from an agent that already exists
+ * (see `SessionStore.initialise`: an existing agent goes straight to `login`, skipping the setup
+ * screen that collects one), so nameless is where they stayed.
+ *
+ * Order is precedence: WE's own format wins where it exists, since it is the one WE writes and so
+ * the one the person edited most recently.
  */
 export async function getProfile(did: string, backendClient: unknown): Promise<AgentProfileSummary> {
   const client = backendClient as Ad4mClient;
@@ -98,6 +161,34 @@ export async function getProfile(did: string, backendClient: unknown): Promise<A
             break;
           case 'sioc://has_profile_image':
             if (!result.avatar) result.avatar = await resolveExpressionToDataUri(link.data.target, client);
+            break;
+        }
+      }
+    }
+
+    // Fallback: ADAM Launcher format.
+    //
+    // It matches neither of the above on either axis. Its source is the agent's own DID (the code
+    // that writes it passes `source: agentStatus.did`, though `ad4m://profile` is declared beside
+    // the predicates and may be what a future version uses, so both are accepted), and its name
+    // predicates are `has_firstname`/`has_lastname` — not the `has_given_name`/`has_family_name`
+    // that Flux uses. Two near-misses in one format, which is why a launcher-created agent read as
+    // a completely blank profile rather than a partially-parsed one.
+    if (!result.firstName && !result.lastName && !result.handle) {
+      const launcherLinks = links.filter(
+        (l) => l.data.source === cleanedDid || l.data.source === LAUNCHER_PROFILE_SOURCE,
+      );
+      for (const link of launcherLinks) {
+        const val = parseLiteralTarget(link.data.target);
+        switch (link.data.predicate) {
+          case 'sioc://has_firstname':
+            result.firstName = val;
+            break;
+          case 'sioc://has_lastname':
+            result.lastName = val;
+            break;
+          case 'sioc://has_username':
+            result.handle = val;
             break;
         }
       }

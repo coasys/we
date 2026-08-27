@@ -20,6 +20,7 @@ import {
   viewSettings,
 } from '@shared/viewResolution';
 import type { AgentProfileSummary, DatasetRef } from '@we/backend-shared';
+import { displayName } from '@we/backend-shared';
 import type { SerializedBlockNode } from '@we/block-shared';
 import { createBlocks, deleteBlocks, reconcileBlocks } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
@@ -1741,9 +1742,15 @@ export function SpaceStoreProvider(props: ParentProps) {
       // A speaker's label the way the byline renders it: their display name, else their DID. The
       // cache is keyed on the bare DID — `fetchProfile` strips the scheme on the way in — so a
       // prefixed author has to be stripped here too or it would never match what was just fetched.
+      //
+      // Re-derived with the DID as the fallback rather than reading the cache's own `name`, which
+      // falls back to "Anonymous". That is right on screen, where a face sits beside the label and
+      // tells one unnamed peer from another — and wrong in a text file, where it is all there is:
+      // three unnamed speakers would come out as three identical "Anonymous" lines, and a
+      // transcript that cannot tell its speakers apart is not a transcript.
       const nameFor = (did: string): string => {
         const profile = profileStore.profiles().find((entry) => entry.did === did.replace('did://', ''));
-        return profile?.name || did;
+        return profile ? displayName(profile, did) : did;
       };
 
       const lines = turns.map((turn) => `${nameFor(turn.speaker)}, ${turn.timestamp}: ${turn.text}`);

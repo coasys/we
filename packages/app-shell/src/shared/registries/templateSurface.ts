@@ -353,9 +353,16 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
   profileStore: {
     profiles: state('identity'),
     ownProfile: state('identity'),
+    ownProfileLoaded: state('identity'),
     fetchProfile: action('identity'),
     pendingAvatar: state('agent'),
     setPendingAvatar: action('agent'),
+    // 'agent' rather than 'identity': needsName reports something about the viewer's own account
+    // and its two actions write to it, which is the agent group's whole distinction from reading
+    // the directory. A template that merely paints has no business asking whether you are unnamed.
+    needsName: state('agent'),
+    saveNameFromPrompt: action('agent'),
+    dismissNamePrompt: action('agent'),
     updateOwnProfile: action('agent'),
     updateProfileImage: action('agent'),
     clearProfileImage: action('agent'),

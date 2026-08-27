@@ -31,6 +31,7 @@ import type { InterpretationActivity, InterpretationPhase, InterpretationRelay }
 import {
   byActivityInterest,
   createInterpretationRelay,
+  displayName,
   INTERPRETATION_ACTIVITY_CHANNEL,
   isSettled,
 } from '@we/backend-shared';
@@ -353,7 +354,11 @@ export function InterpretationStoreProvider(props: ParentProps) {
         const running = !isSettled(row.phase);
         const mine = row.mine || (!!me && row.runner === me);
         const profile = row.runner ? profileStore.profiles().find((p) => p.did === row.runner) : undefined;
-        const name = [profile?.firstName, profile?.lastName].filter(Boolean).join(' ') || profile?.handle || 'Someone';
+        // `displayName` rather than the concatenation this used to inline — the same rule as every
+        // byline, so one person is not "Anonymous" on their post and something else in this bar.
+        // 'Someone' survives as the fallback for a *missing* profile, which is a different fact
+        // from a profile that is present and unnamed, and reads better in the labels below.
+        const name = profile ? displayName(profile) : 'Someone';
         const count = row.ids?.length ?? 0;
 
         return {
