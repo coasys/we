@@ -53,10 +53,28 @@ const BG_IMAGE_CSS = `
 // source of truth, so this stylesheet can never drift out of sync with the JS that populates
 // it. The focus selector comes from the shared focusSelector() for the same reason: it is the
 // one place that decides what `focusProps` means, for Lit primitives and Solid layout
-// primitives alike. Declaration order below is the precedence order: for equal-specificity
-// selectors, the rule declared later wins when multiple states are true at once (e.g.
-// :hover:active), so focus < :hover < :active reproduces the same active-over-hover-over-focus
-// precedence useStateProps used to compute via JS merge order before this stylesheet existed.
+// primitives alike.
+//
+// Declaration order below is the precedence order: at equal specificity the rule declared later
+// wins when several states are true at once, so this reads hover < focus < active < disabled — the
+// same order `ELEMENT_STATES` gives the Lit primitives, and the two families must agree because
+// `hoverProps` and `focusProps` mean one thing to whoever writes them.
+//
+// **Focus outranks hover**, and that is the load-bearing half. A state rule declares every property
+// in the set and falls back to the *base* value for whatever it does not set, so whichever state
+// wins discards the loser's values wholesale — including properties only the loser mentions. With
+// hover last, the hover rule's `box-shadow` resolves to base (none) and **takes the focus ring with
+// it** for as long as the pointer rests on the focused element. That is the common case, not an
+// exotic one: clicking a text field focuses it with the pointer sitting right there.
+//
+// This used to read focus < hover, on the stated grounds of reproducing the JS merge order
+// `useStateProps` computed before this stylesheet existed. That is a description of what the code
+// did, not an argument for it, and what it did was drop the ring.
+//
+// The cost of the choice is real and is the lesser one: a focused element shows its *resting* fill
+// rather than its hover fill while the pointer is over it, because focus stays quiet about the
+// properties hover sets. Where that matters, `focusProps` restates them — see `we-input`, which is
+// where this was found.
 function buildInteractiveStateCSS(): string {
   /*
     Both gates share the base declarations.
@@ -75,7 +93,7 @@ function buildInteractiveStateCSS(): string {
   // way and the styling follows. Declared last so a disabled element's styles win
   // over hover/active at equal specificity.
   const disabled = `[data-we-interactive][aria-disabled='true'] { ${joinStateDeclsCSS('--we-ds-disabled-', '--we-ds-', INTERACTIVE_SPECS)} }`;
-  return [base, focus, hover, active, disabled].join('\n');
+  return [base, hover, focus, active, disabled].join('\n');
 }
 
 /*
@@ -96,6 +114,14 @@ function buildInteractiveStateCSS(): string {
 function buildResponsiveCSS(): string {
   return [generateTierCSS(), tierRulesCSS('[data-we-responsive]', '--we-ds-', INTERACTIVE_SPECS)].join('\n');
 }
+
+/**
+ * The state rules alone, for the precedence test.
+ *
+ * Exported rather than reached through `injectDSInteropStyles`, which needs a document and returns
+ * nothing — and the thing under test is the *order* of these rules, which is decided here.
+ */
+export const buildInteractiveStateCSSForTest = buildInteractiveStateCSS;
 
 /**
  * The DS interop stylesheet — the escape hatch for the handful of CSS features Solid's
