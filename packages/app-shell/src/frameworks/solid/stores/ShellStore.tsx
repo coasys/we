@@ -972,7 +972,10 @@ export function ShellStoreProvider(props: ParentProps) {
 
   createEffect(() => {
     const wanted = declaredPanels()
-      .filter((panel) => panel.module)
+      // `open: false` places without opening. The module's launcher action is not always "open a
+      // panel" — the call module's is `goToCall`, which joins a call when there is not one — so a
+      // template that placed the call window would otherwise start a call on entering the space.
+      .filter((panel) => panel.module && panel.open !== false)
       .map((panel) => panel.module as string);
 
     for (const moduleId of wanted) {

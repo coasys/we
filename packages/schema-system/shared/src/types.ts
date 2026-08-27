@@ -48,6 +48,26 @@ export type TemplatePanel = {
   grow?: number;
   /** Push the content aside rather than covering it. Honoured on an edge snap only. */
   displace?: boolean;
+  /**
+   * Only while this segment is in the path. Absent means every route.
+   *
+   * What makes a layout change as somebody moves between sections — a graph wants a transcript
+   * beside it and a task list does not. A section that declares its own `meta.panels` needs none of
+   * this; `route` is for a shell that routes itself, which is how every showcase template works and
+   * which has no sections to hang a declaration on.
+   */
+  route?: string;
+  /**
+   * Whether to open the panel as well as place it. Absent means yes.
+   *
+   * Opening a module's panel means invoking the action its launcher declares, and that action is not
+   * always "open a panel": the call module's is `goToCall`, which **joins a call** when there is not
+   * one. A template that placed the call window would therefore start a call on entering the space.
+   *
+   * So a declaration can place without opening. The panel appears where the template asked for it
+   * *if* the module opens it, and the template never reaches for the module's own verb.
+   */
+  open?: boolean;
 };
 
 export type TemplateMeta = {

@@ -233,9 +233,18 @@ export function TemplateLayout(
     const segments = stores.routeStore.segments();
     const view = stores.spaceStore.spaceViews().find((section) => segments.includes(section.segment))?.schema
       ?.meta?.panels;
-    if (!view?.length) return shell;
-    const overridden = new Set(shell.map((panel) => panel.id));
-    return [...view.filter((panel) => !overridden.has(panel.id)), ...shell];
+    const merged = (() => {
+      if (!view?.length) return shell;
+      const overridden = new Set(shell.map((panel) => panel.id));
+      return [...view.filter((panel) => !overridden.has(panel.id)), ...shell];
+    })();
+
+    /*
+      A declaration may scope itself to a route segment, which is how a shell that routes *itself*
+      varies its layout — every showcase template does, and has no sections to hang a declaration on.
+      Matched the same way the section above is, so the two agree about what "where you are" means.
+    */
+    return merged.filter((panel) => !panel.route || segments.includes(panel.route));
   });
 
   createEffect(() => setTemplatePanels(activePanels()));
