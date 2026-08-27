@@ -56,6 +56,9 @@ const moveMenu: SchemaNode = {
   type: 'DropdownMenu',
   props: {
     triggerIcon: 'arrows-left-right',
+    // Names the menu, since the glyph alone does not. Until icon-only triggers were inferred this
+    // read "Options" beside the arrows — the fallback label, which no caller here ever asked for.
+    triggerTitle: 'Move this task',
     size: 'xs',
     items: COLUMNS.map((spec) => ({
       id: spec.status,

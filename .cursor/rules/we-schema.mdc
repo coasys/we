@@ -1194,7 +1194,7 @@ when `relative` is enabled.
 - Combobox (DesignSystemElement)
   Props: options: string[] | ComboboxOption[], value?: string, placeholder?: string, size?: "xs" | "sm" | "md" | "lg" | "xl", onChange?: ((value: string) => void)
 - DropdownMenu — Flexible dropdown menu for actions, toggles, and grouped items. Use for context menus, settings panels, layer controls, and command palettes.
-  Props: styles?: Record<string, string | number>, class?: string, placement?: Placement, triggerLabel?: string, triggerIcon?: string, size?: "xs" | "sm" | "md" | "lg" | "xl", itemSize?: "xs" | "sm" | "md" | "lg" | "xl", items: SolidDropdownMenuEntry[]
+  Props: styles?: Record<string, string | number>, class?: string, placement?: Placement, triggerLabel?: string, triggerIcon?: string, triggerVariant?: "primary" | "danger" | "secondary" | "ghost" | "outline" | "bare", triggerTitle?: string, size?: "xs" | "sm" | "md" | "lg" | "xl", itemSize?: "xs" | "sm" | "md" | "lg" | "xl", items: SolidDropdownMenuEntry[]
 - EditableImage (DesignSystemElement)
   Props: src?: string, alt?: string, fit?: "cover" | "contain" | "none" | "fill" | "scale-down", placeholderIcon?: string, onImageChange?: ((file: File) => void), onImageRemove?: (() => void), uploadLabel?: string, editLabel?: string, class?: string, aspect?: number, maxSize?: number
 - FlipCard

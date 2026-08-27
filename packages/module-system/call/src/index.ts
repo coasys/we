@@ -1035,51 +1035,32 @@ const SOLO: CallToggle = {
  * One of the toggles above, as a line in the overflow menu rather than a square in the row.
  *
  * The same store key and the same action, so choosing it here is indistinguishable from pressing the
- * button it stands in for.
- *
- * Shaped like the design system's own toggle rows — `sm` metrics, `selected`, and a check on the
- * right — rather than merely resembling one, because this *is* a `we-menu` and a person who has
- * opened a menu elsewhere in the app already knows how to read it. That includes the part that is
- * easy to get wrong: a `we-menu-item` fires `select` (a custom event, so `onSelect` lands as a real
- * listener rather than through Solid's click delegation, which does not reliably cross into a
- * popover's top layer), and choosing a toggle deliberately leaves the menu **open** — which is what
- * `DropdownMenu` does too, and is right for a control somebody may want to flip twice.
+ * button it stands in for. Choosing a toggle deliberately leaves the menu **open**, which is right
+ * for a control somebody may want to flip twice.
  *
  * The icon is the "on" glyph in both states, which is exact rather than a shortcut: it is the
  * subject, and only the tick is allowed to say whether the subject is switched on.
  */
-function menuToggle(opts: CallToggle): SchemaNode {
+function menuToggle(opts: CallToggle) {
   return {
-    type: 'we-menu-item',
-    props: {
-      selected: { $store: opts.enabled },
-      onSelect: { $action: opts.action },
-      // The `sm` metrics from the design system's own dropdown, so this reads as one of its menus.
-      px: '300',
-      py: '100',
-      gap: '200',
-      fontSize: '200',
-    },
-    children: [
-      { type: 'we-icon', props: { name: opts.on, size: 'sm' } },
-      { type: 'we-text', props: { fontSize: '200' }, children: [opts.label] },
-      {
-        type: '$if',
-        props: {
-          condition: { $store: opts.enabled },
-          then: { type: 'we-icon', props: { name: 'check', size: 'xs', weight: 'bold', color: 'accent' } },
-        },
-      },
-    ],
+    id: opts.enabled,
+    type: 'toggle',
+    label: opts.label,
+    icon: opts.on,
+    checked: { $store: opts.enabled },
+    onToggle: { $action: opts.action },
   };
 }
 
 /**
  * Where the secondary controls go when the row is compact — see `COMPACT`.
  *
- * A popover with a ghost square for a trigger, rather than the design system's `DropdownMenu`,
- * because that component draws its own filled trigger and this has to sit in a row of ghost
- * squares as one of them. The menu inside is the same `we-menu` the dropdown uses.
+ * The design system's `DropdownMenu`, which this could not use until recently: it drew a filled pill
+ * for a trigger with no way to say otherwise, and this has to sit in a row of ghost squares as one
+ * of them. A hand-rolled `we-popover` around a ghost square stood in, repeating the dropdown's own
+ * item metrics and its check glyph by hand — three numbers and a colour that had to be kept in
+ * agreement with a component nothing linked them to. `triggerVariant` is the whole of what was
+ * missing, and `itemSize` says the rest: `sm` rows, which is what those hand-copied metrics were.
  *
  * Opens upward: the bar is on the bottom edge and there is nothing below it.
  *
@@ -1087,33 +1068,25 @@ function menuToggle(opts: CallToggle): SchemaNode {
  * three specs, so a toggle cannot be lost in the fold or appear twice. Mute, camera and hang-up
  * never fold: they are the call, and a menu between a person and their microphone is a step too
  * many at the moment they need it.
+ *
+ * Solo is only offered while something is focused. A `$if` with no `else` resolves to nothing, and
+ * the dropdown skips an entry that resolved to nothing — which is what makes a conditional line
+ * expressible here at all, and was the second reason this was hand-rolled.
  */
 const moreMenu: SchemaNode = {
-  type: 'we-popover',
-  props: { placement: 'top' },
-  children: [
-    {
-      type: 'we-tooltip',
-      slot: 'trigger',
-      props: { title: 'More controls', placement: 'bottom' },
-      children: [
-        {
-          type: 'we-button',
-          props: { square: true, variant: 'ghost' },
-          children: [{ type: 'we-icon', props: { name: 'dots-three' } }],
-        },
-      ],
-    },
-    {
-      type: 'we-menu',
-      slot: 'content',
-      children: [
-        menuToggle(SCREEN_SHARE),
-        menuToggle(STAGE),
-        { type: '$if', props: { condition: { $store: 'modules.call.focusedId' }, then: menuToggle(SOLO) } },
-      ],
-    },
-  ],
+  type: 'DropdownMenu',
+  props: {
+    triggerIcon: 'dots-three',
+    triggerVariant: 'ghost',
+    triggerTitle: 'More controls',
+    placement: 'top',
+    itemSize: 'sm',
+    items: [
+      menuToggle(SCREEN_SHARE),
+      menuToggle(STAGE),
+      { $if: { condition: { $store: 'modules.call.focusedId' }, then: menuToggle(SOLO) } },
+    ],
+  },
 };
 
 /**

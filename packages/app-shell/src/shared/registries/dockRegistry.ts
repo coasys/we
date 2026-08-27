@@ -586,9 +586,19 @@ function positionMenu(entry: DockEntry): SchemaNode {
     type: 'DropdownMenu',
     props: {
       triggerIcon: 'dots-three',
-      // Explicitly empty: the trigger is a 24px chip in a titlebar, and `DropdownMenu` otherwise
-      // falls back to the word "Options", which would be wider than the panel on a small float.
-      triggerLabel: '',
+      /*
+        One of the row, not the row's only filled thing.
+
+        The four controls beside it are `xs` ghost squares, and this drew `DropdownMenu`'s own
+        trigger: a filled pill, because without `square` the size's horizontal padding still
+        applies, and one that hovered to the accent, because the component overrode the fill of the
+        `primary` variant and not its hover. Asking for `ghost` is enough now — icon-only is
+        inferred from an icon with no label, and brings the square with it.
+      */
+      triggerVariant: 'ghost',
+      // The tooltip its four neighbours all have. A `dots-three` chip says nothing about its
+      // subject, and this one's subject is the whole of what the menu does.
+      triggerTitle: 'Position',
       size: 'xs',
       /*
         A size larger than the trigger, and the reason the two are separate props.

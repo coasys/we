@@ -128,7 +128,7 @@ describe('the bar keeps to the screen', () => {
 
 describe('the compact bar', () => {
   const COMPACT = { $eq: ['$surface.tier', 'base'] };
-  const inCall = (): SchemaNode => walk(slotNodes()).find((node) => node.type === 'we-popover') as SchemaNode;
+  const inCall = (): SchemaNode => walk(slotNodes()).find((node) => node.type === 'DropdownMenu') as SchemaNode;
 
   /** The `$if` gates above `target` that read the strip's tier, innermost last. */
   const tierGates = (target: SchemaNode): SchemaNode[] =>
@@ -148,9 +148,15 @@ describe('the compact bar', () => {
     const gates = tierGates(menu);
     expect(gates.map((gate) => props(gate).condition)).toEqual([COMPACT]);
 
-    const actions = walk(menu)
-      .filter((node) => node.type === 'we-menu-item')
-      .map((item) => (props(item).onSelect as { $action: string }).$action)
+    /*
+      The menu's lines are a prop rather than child nodes, so they are read rather than walked —
+      and one of them is wrapped in a `$if`, since solo is only offered while something is focused.
+      Unwrapping the branch is what keeps this an assertion about *which three toggles fold*, which
+      is the thing worth pinning, rather than about how one of them is gated.
+    */
+    const actions = (props(menu).items as unknown[])
+      .map((entry) => (entry as { $if?: { then: unknown } }).$if?.then ?? entry)
+      .map((item) => (item as { onToggle: { $action: string } }).onToggle.$action)
       .sort();
     expect(actions).toEqual(['modules.call.toggleScreenShare', 'modules.call.toggleSolo', 'modules.call.toggleStage']);
   });

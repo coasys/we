@@ -3083,6 +3083,16 @@
           "optional": true
         },
         {
+          "name": "triggerVariant",
+          "type": "\"primary\" | \"danger\" | \"secondary\" | \"ghost\" | \"outline\" | \"bare\"",
+          "optional": true
+        },
+        {
+          "name": "triggerTitle",
+          "type": "string",
+          "optional": true
+        },
+        {
           "name": "size",
           "type": "\"xs\" | \"sm\" | \"md\" | \"lg\" | \"xl\"",
           "optional": true

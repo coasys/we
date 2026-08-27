@@ -1115,6 +1115,12 @@ export const contextData: ContextData = {
         { name: 'placement', type: 'Placement', optional: true },
         { name: 'triggerLabel', type: 'string', optional: true },
         { name: 'triggerIcon', type: 'string', optional: true },
+        {
+          name: 'triggerVariant',
+          type: '"primary" | "danger" | "secondary" | "ghost" | "outline" | "bare"',
+          optional: true,
+        },
+        { name: 'triggerTitle', type: 'string', optional: true },
         { name: 'size', type: '"xs" | "sm" | "md" | "lg" | "xl"', optional: true },
         { name: 'itemSize', type: '"xs" | "sm" | "md" | "lg" | "xl"', optional: true },
         { name: 'items', type: 'SolidDropdownMenuEntry[]', optional: false },
