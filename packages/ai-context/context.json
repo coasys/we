@@ -6085,6 +6085,9 @@
         "isDevelopment": {
           "type": "boolean"
         },
+        "devTools": {
+          "type": "boolean"
+        },
         "ephemeralPort": {
           "type": "object"
         }

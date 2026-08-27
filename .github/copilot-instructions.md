@@ -2296,7 +2296,8 @@ SessionStore:
   - serverUrl: unknown
   - host: BackendHostInfo | undefined — the node this session runs against when it is somebody's hosting rather than this machine (id, name, description, imageUrl, location, url, computeSpecs, aiModels, rates). Undefined on desktop and on a local executor, so its presence is also the answer to "am I a guest here?" — gate any "connected to" UI on it. `aiModels` comes from the host directory and needs no capability, so it answers "can this node transcribe?" even where the executor refuses to list its models
   - hostAccount: BackendAccountInfo | undefined — this agent's account with that node (email, remainingCredits, walletAddress, freeAccess). Check freeAccess before showing a balance: on a free node the credit figure means nothing and "0" reads as an account that has run dry
-  - isDevelopment: unknown
+  - isDevelopment: boolean — whether this is a development build. A fact about the build. Do NOT gate developer-only UI on it; gate on devTools, which is the same answer plus a switch
+  - devTools: boolean — whether developer affordances should be VISIBLE. True in a development build unless a developer has thrown the switch (localStorage 'we.devTools' = 'off', then reload) to see what a shipped app looks like. Gate any developer-only control on this — a schema-test page, a fixture toggle — and wrap it in $if rather than hiding it, since a hidden row is still in the accessibility tree and still found by find-in-page. Never true in a production build, whatever the switch says
   - ephemeralPort: unknown
 - Actions:
   - login(password: string): unlocks the agent and loads user data

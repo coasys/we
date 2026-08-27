@@ -17,6 +17,7 @@ import type {
   DatasetLifecyclePort,
   EphemeralPort,
 } from '@we/backend-shared';
+import { devToolsEnabled } from '@we/module-shared';
 import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
 
 import type { BackendAccountInfo, BackendHostInfo } from '../../../shared/backend/types';
@@ -69,7 +70,19 @@ export interface SessionStore {
   host: Accessor<BackendHostInfo | undefined>;
   /** This agent's account with that node — credits, email — when it keeps one. */
   hostAccount: Accessor<BackendAccountInfo | undefined>;
+  /** Whether this is a development build. A fact about the build, and only that. */
   isDevelopment: Accessor<boolean>;
+  /**
+   * Whether developer affordances should be *visible* — which is a different question.
+   *
+   * A dev build with the switch thrown looks like a shipped one, so a developer can check what a
+   * user actually sees without building for production. See `devToolsEnabled`; it is
+   * `localStorage.setItem('we.devTools', 'off')` and a reload.
+   *
+   * Gate developer-only UI on this rather than on `isDevelopment`, which stays honest about the
+   * build and so cannot be overridden without lying.
+   */
+  devTools: Accessor<boolean>;
   /**
    * The ephemeral transport, as a single shared instance. One port for the whole app because it
    * refcounts scopes per dataset — two ports would mean two executor signal handlers on the same
@@ -440,6 +453,17 @@ export function SessionStoreProvider(props: ParentProps) {
     host,
     hostAccount,
     isDevelopment: () => platform.isDevelopment,
+    /*
+      Resolved once, at store creation, rather than per read.
+
+      The call module decides at *definition* time whether its dev controls exist at all, so its
+      half of this can never be reactive. A store value that updated live while that one did not
+      would be one switch with two answers. Read once here, and the whole app agrees after a reload.
+    */
+    devTools: (() => {
+      const enabled = devToolsEnabled(platform.isDevelopment);
+      return () => enabled;
+    })(),
     ephemeralPort,
 
     login,

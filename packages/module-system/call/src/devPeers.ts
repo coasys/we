@@ -31,10 +31,19 @@
  *
  * Two gates, and the second is the one doing the work. `import.meta.env.DEV` is `false` in a
  * production build, which a bundler may or may not use to drop the code entirely depending on how
- * it substitutes; the guarantee is the `localStorage` key, which nobody sets by accident and which
- * no build carries. Together: it is not in a shipped app's behaviour, and it is not in a
+ * it substitutes; the guarantee is the `localStorage` count key, which nobody sets by accident and
+ * which no build carries. Together: it is not in a shipped app's behaviour, and it is not in a
  * developer's either until they ask.
+ *
+ * ## Turning it off in a build that has it
+ *
+ * A third gate, and the only one that can be thrown deliberately: `devToolsEnabled` reads the shared
+ * `we.devTools` switch, so a developer checking what a *user* sees loses these controls along with
+ * every other developer affordance rather than having to remember this one separately. It is read
+ * here at module scope, which is why it takes a reload — see the note there.
  */
+
+import { devToolsEnabled } from '@we/module-shared';
 
 const STORAGE_KEY = 'we.call.fakePeers';
 
@@ -52,7 +61,7 @@ const MAX = 24;
  * dependency, since one may be loaded into a host that uses none. The cast is erased at compile
  * time and the emitted `import.meta.env?.DEV` is what a bundler sees.
  */
-export const devPeersAvailable = (import.meta as { env?: { DEV?: boolean } }).env?.DEV === true;
+export const devPeersAvailable = devToolsEnabled((import.meta as { env?: { DEV?: boolean } }).env?.DEV === true);
 
 /** Identity and media for one synthetic participant. The store turns these into tiles. */
 export interface DevPeer {

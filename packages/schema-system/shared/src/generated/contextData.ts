@@ -2416,6 +2416,7 @@ export const contextData: ContextData = {
         },
         hostAccount: { type: 'object', properties: ['email', 'remainingCredits', 'walletAddress', 'freeAccess'] },
         isDevelopment: { type: 'boolean' },
+        devTools: { type: 'boolean' },
         ephemeralPort: { type: 'object' },
       },
       actions: [

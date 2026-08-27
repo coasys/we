@@ -72,15 +72,32 @@ const rail: SchemaNode = railShell({
     type: 'Column',
     props: { width: '100%', gap: '200' },
     children: [
-      railItem({
-        icon: 'flask',
-        label: 'Schema Tests',
-        active: { $eq: [{ $store: 'shellStore.activeShellView' }, 'schema-tests'] },
-        onClick: [
-          { $action: 'appStore.deactivateApp' },
-          { $action: 'shellStore.openShellView', args: ['schema-tests'] },
-        ],
-      }),
+      /*
+        A developer's page, so it is in the rail only where developer affordances are.
+
+        `sessionStore.devTools` rather than `isDevelopment`: the first is "should this be visible",
+        which a developer may turn off to see what a user sees, and the second is a fact about the
+        build that nothing should be able to contradict. See `devToolsEnabled`.
+
+        `$if` rather than a hidden row, because a hidden one is still in the accessibility tree and
+        still found by find-in-page — and the rail is chrome, so an invisible entry in it is a
+        control somebody can reach by keyboard and cannot see.
+      */
+      {
+        type: '$if',
+        props: {
+          condition: { $store: 'sessionStore.devTools' },
+          then: railItem({
+            icon: 'flask',
+            label: 'Schema Tests',
+            active: { $eq: [{ $store: 'shellStore.activeShellView' }, 'schema-tests'] },
+            onClick: [
+              { $action: 'appStore.deactivateApp' },
+              { $action: 'shellStore.openShellView', args: ['schema-tests'] },
+            ],
+          }),
+        },
+      },
       railItem({
         icon: 'sign-out',
         label: 'Logout',
