@@ -56,7 +56,7 @@ export function createGuestConnector(hostUrl: string): BackendConnector {
         appInfo: {
           name: 'WE',
           description: 'Social media for the new internet',
-          url: 'ad4m.weco.io',
+          url: window.location.origin,
           iconPath: 'https://avatars.githubusercontent.com/u/34165012',
         },
         url: hostUrl,
