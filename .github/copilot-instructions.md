@@ -281,12 +281,15 @@ no error channel to probe), and `templateAcceptance.ts` refuses structurally bro
 while admitting-and-reporting references past the tier.
 
 **Every other surface ships by merging into this repo.** Feature modules are bundled rather than
-dynamically loaded — deliberately: a dynamically-loaded bundle carrying its own reactive runtime gets
-a *second* one, and reactivity silently stops crossing the boundary. Blocks and components have a
-design in `docs/internal/plans/module-marketplace.md` and no implementation.
+dynamically loaded, and the reason is trust, not reactivity: `createStore(deps)` already injects the
+reactive primitives, but a store factory is arbitrary code with the host's ports, and the capability
+model covers what a schema may *name*, not what code may *do*.
 
-Two of nineteen surfaces have an out-of-repo path. Do not describe the marketplace as though it
-covers the rest.
+Three of nineteen surfaces (templates, themes, views) have an out-of-repo path. Do not describe the
+marketplace as though it covers the rest. `docs/internal/plans/module-marketplace.md` places every
+surface on a **distribution ladder** — pure data, declared data + fragments, sandboxed embed,
+host-provided capability kernels, code — and says which rung each can reach. Nothing `import()`s a
+bundle from an expression, at any rung; a contribution that needs code merges here.
 
 The long-form guide — reference example per surface, the reasoning, the full distribution status —
 is `docs/contributing/surfaces.md`. `CONTRIBUTING.md` covers the workflow.

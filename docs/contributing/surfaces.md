@@ -400,21 +400,24 @@ as AD4M expressions, and they pass through a real trust boundary on the way in:
   but reported, because a quietly half-broken template looks exactly like one that is fine.
 
 **Everything else on this page ships by merging into this repository.** Feature modules are bundled
-rather than dynamically loaded — deliberately, because `import()` of a module carrying its own
-reactive runtime is the second-runtime problem above, and that is worth solving against a real module
-rather than speculatively. Blocks and components have a distribution design in
-[internal/plans/module-marketplace.md](../internal/plans/module-marketplace.md) and no implementation.
+rather than dynamically loaded. The reason used to be given as the second-runtime problem above; that
+is solved — `createStore(deps)` injects the reactivity primitives — and the reason that remains is
+trust: a store factory is arbitrary JavaScript with access to the ports the host hands it, and the
+capability model covers what a _schema_ may name, not what code may do.
 
-So: **two of nineteen surfaces have an out-of-repo path.** A module author must clone the monorepo.
-That is the real ceiling on outside contribution right now, and it is a code problem rather than a
-docs one — recorded here so nobody mistakes the marketplace design doc for a description of what
-exists.
+So: **three of nineteen surfaces have an out-of-repo path** (templates, themes, views), and a module
+author must clone the monorepo. That is the real ceiling on outside contribution right now, and it is
+a code problem rather than a docs one.
 
-That doc also predates most of this page. It names four types (components, blocks, templates,
-themes); this page lists nineteen surfaces, including views, fragments, feature modules, graph
-plugins and globe layers. **When the marketplace grows a type enum, it should be derived from this
-page's list**, so the slots people can contribute and the slots the marketplace distributes stay one
-list rather than two that drift.
+How it changes is the subject of
+[internal/plans/module-marketplace.md](../internal/plans/module-marketplace.md), which places every
+surface on this page on a **distribution ladder** — pure data, declared data + fragments, sandboxed
+embed, host-provided capability kernels, code — and says which rung each can reach and what moves
+it. The short version: sections, content types and (with research) modules can come down the ladder;
+primitives, components, plugins and stores are code and stay merge-only by decision. Nothing
+`import()`s a bundle from an expression, at any rung. **When the marketplace grows a type enum, it is
+derived from this page's list and carries the rung**, so the slots people can contribute, the slots
+the marketplace distributes, and what an install screen says is being trusted stay one list.
 
 ---
 
