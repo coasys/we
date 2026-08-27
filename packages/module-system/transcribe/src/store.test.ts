@@ -470,6 +470,199 @@ describe('continuing a call', () => {
   });
 });
 
+/**
+ * Being joined to a transcript somebody else started.
+ *
+ * The thing this replaces was a prompt, and the prompt was ignored — reliably enough that the
+ * ordinary outcome of a group call was a transcript containing one person, which is not a smaller
+ * record than the real one but a wrong one. So the default flipped, and everything worth testing
+ * here is about the ways it must *not* fire: over a decision somebody made, on a node that cannot
+ * transcribe, into a call nobody else is recording, and against silence.
+ */
+describe('joining a transcript somebody else started', () => {
+  /**
+   * The two deps auto-join checks that nothing else here does.
+   *
+   * `dataset` because there is no point recording into a space that is not open — and because the
+   * effect that enforces that switches recording off, so without one the two would take turns for
+   * the length of the run. The whole harness gets it, since every test in this block is about a call
+   * happening somewhere.
+   */
+  const IN_A_SPACE = { dataset: () => ({}) };
+
+  /** A node that can transcribe, so auto-join is not talked out of it before it starts. */
+  const CAN_TRANSCRIBE = {
+    available: () => true,
+    models: async () => [{ id: 'whisper', name: 'Whisper', ready: true, isDefault: true }],
+    // Opened, then unwound: `start` builds an AudioContext next, which Node does not have, so it
+    // throws into `start`'s own catch and closes this on the way out. Everything asserted here is
+    // decided before that point.
+    open: async () => ({ close: async () => {} }),
+  };
+
+  /** A node with the port but nothing installed to run — the silent-failure case. */
+  const NO_MODEL = { available: () => true, models: async () => [], open: async () => ({ close: async () => {} }) };
+
+  /** Somebody else in this call, recording. */
+  const THEIR_TRANSCRIPT = [
+    peer(ME, { type: 'call', id: 'space:uri' }),
+    peer(THEM, { type: 'call', id: 'space:uri' }, { type: TRANSCRIBE_ACTIVITY, id: 'space:uri', recording: true }),
+  ];
+
+  /** Let the microtasks `start` awaits on run out, so a silent give-up has happened by the assert. */
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  it('starts recording without being asked, when a peer already is', async () => {
+    const h = harness(THEIR_TRANSCRIPT, { ...IN_A_SPACE, transcription: CAN_TRANSCRIBE });
+
+    expect(h.store.enabled()).toBe(true);
+    expect(h.store.autoJoined()).toBe(true);
+  });
+
+  it('announces it immediately, so the election counts it rather than producing a second record', () => {
+    // The same reason the button press announces before a word is said: an agent that joins the
+    // election late has already lost it, and creates a duplicate of the record it should have found.
+    const h = harness(THEIR_TRANSCRIPT, { ...IN_A_SPACE, transcription: CAN_TRANSCRIBE });
+
+    expect(h.published).toContainEqual({ type: TRANSCRIBE_ACTIVITY, id: 'space:uri', recording: true });
+  });
+
+  it('does not open the panel, which nobody asked for', () => {
+    // `toggle` opens it, deliberately — a person who presses record wants to see what it produces.
+    // Recording that starts on its own has no such request behind it, and a panel appearing every
+    // time a call begins is chrome. This is why auto-join sets the signal rather than calling toggle.
+    const h = harness(THEIR_TRANSCRIPT, { ...IN_A_SPACE, transcription: CAN_TRANSCRIBE });
+
+    expect(h.store.enabled()).toBe(true);
+    expect(h.store.open()).toBe(false);
+  });
+
+  it('stays out once the agent has left, however many peers start afterwards', () => {
+    // The failure this guards is the one that would make the feature unusable: leaving sets nothing,
+    // the effect sees an agent not recording while a peer is, and switches them straight back on.
+    const h = harness(THEIR_TRANSCRIPT, { ...IN_A_SPACE, transcription: CAN_TRANSCRIBE });
+    expect(h.store.enabled()).toBe(true);
+
+    h.store.toggle();
+    expect(h.store.enabled()).toBe(false);
+
+    // A third person starts. Per-peer dismissal — what the old prompt used — would re-offer here,
+    // and auto-join would take the offer.
+    h.setPeers([
+      ...THEIR_TRANSCRIPT,
+      peer(
+        'did:key:third',
+        { type: 'call', id: 'space:uri' },
+        { type: TRANSCRIBE_ACTIVITY, id: 'space:uri', recording: true },
+      ),
+    ]);
+
+    expect(h.store.enabled()).toBe(false);
+    expect(h.store.autoJoined()).toBe(false);
+  });
+
+  it('treats a new call as a new decision', () => {
+    // Opting out is about the conversation, not about the room. Held any longer it would be a
+    // setting nobody chose and nothing on screen could explain.
+    const h = harness(THEIR_TRANSCRIPT, { ...IN_A_SPACE, transcription: CAN_TRANSCRIBE });
+    h.store.toggle();
+    expect(h.store.enabled()).toBe(false);
+
+    h.setPeers([peer(ME)]);
+    h.setPeers(THEIR_TRANSCRIPT);
+
+    expect(h.store.enabled()).toBe(true);
+  });
+
+  it('does not start recording a call nobody else is recording', () => {
+    // The whole scope of this. Being *first* to transcribe is a decision about the conversation, and
+    // it is not this effect's to take — it belongs to a space's settings.
+    const h = harness([peer(ME, { type: 'call', id: 'space:uri' }), peer(THEM, { type: 'call', id: 'space:uri' })], {
+      ...IN_A_SPACE,
+      transcription: CAN_TRANSCRIBE,
+    });
+
+    expect(h.store.enabled()).toBe(false);
+  });
+
+  it('does not start when there is nothing to listen to', () => {
+    const h = harness(THEIR_TRANSCRIPT, { ...IN_A_SPACE, transcription: CAN_TRANSCRIBE, audioInput: () => null });
+
+    expect(h.store.enabled()).toBe(false);
+  });
+
+  it('gives up quietly on a node with no model, rather than warning about something nobody asked for', async () => {
+    const h = harness(THEIR_TRANSCRIPT, { ...IN_A_SPACE, transcription: NO_MODEL });
+    await settle();
+
+    expect(h.store.enabled()).toBe(false);
+    expect(h.store.autoJoined()).toBe(false);
+    // The point of the whole path: `no-model` is an answer to a question, and nobody asked one.
+    expect(h.store.status()).toBe('idle');
+  });
+
+  it('stops trying after it has given up, rather than fighting `start` for the rest of the call', async () => {
+    const h = harness(THEIR_TRANSCRIPT, { ...IN_A_SPACE, transcription: NO_MODEL });
+    await settle();
+
+    h.setPeers(THEIR_TRANSCRIPT);
+    expect(h.store.enabled()).toBe(false);
+  });
+
+  it('still says `no-model` to somebody who pressed record', async () => {
+    // The other half of the bargain. Auto-join is allowed to fail silently *because* the explicit
+    // path still explains itself — losing that would leave no way to find out a model is missing.
+    const h = harness(THEIR_TRANSCRIPT, { ...IN_A_SPACE, transcription: NO_MODEL });
+    await settle();
+
+    h.store.toggle();
+    // The stand-in host re-runs effects on demand, the way a reactive one would when state moves.
+    h.setPeers(THEIR_TRANSCRIPT);
+    await settle();
+
+    expect(h.store.status()).toBe('no-model');
+  });
+});
+
+/**
+ * Saying how much of the call is actually in the record.
+ *
+ * Transcription is per microphone, so a partial transcript is an ordinary outcome and reads exactly
+ * like a whole one. These two numbers are what lets the panel say which it is.
+ */
+describe('coverage', () => {
+  it('counts who is transcribing against who is here', () => {
+    const h = harness([
+      peer(ME, { type: 'call', id: 'space:uri' }),
+      peer(THEM, { type: 'call', id: 'space:uri' }, { type: TRANSCRIBE_ACTIVITY, id: 'space:uri', recording: true }),
+      peer('did:key:third', { type: 'call', id: 'space:uri' }),
+    ]);
+
+    expect(h.store.callAgents()).toHaveLength(3);
+    expect(h.store.transcribers()).toEqual([THEM]);
+    expect(h.store.partialCoverage()).toBe(true);
+  });
+
+  it('counts this agent among the transcribers once it is recording', () => {
+    const h = harness([
+      peer(ME, { type: 'call', id: 'space:uri' }),
+      peer(THEM, { type: 'call', id: 'space:uri' }, { type: TRANSCRIBE_ACTIVITY, id: 'space:uri', recording: true }),
+    ]);
+    h.store.toggle();
+
+    expect(h.store.transcribers()).toEqual([ME, THEM].sort());
+    // Everyone in the call is recording, so there is no gap left to report.
+    expect(h.store.partialCoverage()).toBe(false);
+  });
+
+  it('has nothing to say outside a call', () => {
+    const h = harness([peer(ME)]);
+
+    expect(h.store.callAgents()).toEqual([]);
+    expect(h.store.partialCoverage()).toBe(false);
+  });
+});
+
 describe('stopping', () => {
   /**
    * `stop()` used to flush *before* tearing the audio graph down, which left `context` non-null

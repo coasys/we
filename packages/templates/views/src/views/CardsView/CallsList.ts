@@ -195,10 +195,13 @@ export const callsList: SchemaNode = {
                 /*
                     Who was in the call, alongside how much was said.
 
-                    Both, because the gap between them is the point: transcription is opt-in and
-                    captures only the speaker's own microphone, so a partial record is the *normal*
-                    outcome. A transcript that shows it is partial is worth far more than one that
-                    quietly is.
+                    Both, because the gap between them is the point: transcription captures only the
+                    speaker's own microphone, so a partial record is always reachable. Less common
+                    now that joining a transcript somebody else started happens on its own — the gap
+                    left is somebody who left it, or whose node has no speech model — but the reading
+                    matters more rather than less for being rarer, since a record nobody expects to
+                    be partial is one nobody checks. A transcript that shows it is partial is worth
+                    far more than one that quietly is.
                   */
                 {
                   type: 'Row',
@@ -216,9 +219,8 @@ export const callsList: SchemaNode = {
                         three extracted records read as "8 utterances". That is not a cosmetic
                         slip. This number exists to sit beside the faces and show *coverage* — the
                         gap between who was present and how much of them was captured, which is the
-                        normal outcome of opt-in transcription and the thing a partial transcript
-                        most needs to admit. Inflating it with machine-written records destroys
-                        exactly that reading.
+                        thing a partial transcript most needs to admit. Inflating it with
+                        machine-written records destroys exactly that reading.
 
                         A scoped drill-down rather than a filter over `children`, because children
                         arrive as bare ids: the ids alone cannot tell you which are utterances.
