@@ -28,3 +28,4 @@ export { settingsTemplate } from './Settings.schema';
 export { sidebar } from './Sidebar.schema';
 export { templateEditor } from './TemplateEditor.schema';
 export { createSpaceModal, createSpaceModalMount } from './CreateSpaceModal.ts';
+export { spaceSettingsPanel } from './spaces/SpaceSettingsPanel.schema';

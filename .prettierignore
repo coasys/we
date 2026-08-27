@@ -14,5 +14,6 @@ pnpm-lock.yaml
 # Auto-generated AI context files (packages/ai-context)
 .github/copilot-instructions.md
 CLAUDE.md
+AGENTS.md
 .cursor/rules/we-schema.mdc
 packages/ai-context/src/schemaContext.ts

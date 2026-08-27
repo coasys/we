@@ -1,4 +1,5 @@
-import { dirname, resolve } from 'node:path';
+import { existsSync, globSync, readFileSync } from 'node:fs';
+import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
@@ -8,6 +9,7 @@ import { extractPrimitives } from '../extractors/cem.js';
 import { extractModels } from '../extractors/models.js';
 import { extractTokens } from '../extractors/tokens.js';
 import { extractComponentProps } from '../extractors/typescript.js';
+import { contributionSurfaces } from '../fragments/contribution-surfaces.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '../../../..');
@@ -161,5 +163,85 @@ describe('assembleReference', () => {
     expect(reference).toContain('we-button');
     expect(reference).toContain('we-text');
     expect(reference).toContain('we-icon');
+  });
+});
+
+/**
+ * The contribution-surface guide and its router, held to the repository.
+ *
+ * Both are hand-authored lists of where things live, which is the kind of document that is correct
+ * on the day it is written and wrong two months later — a package moves, a conventions file is
+ * added, an example is renamed, and nothing says so. Every other hand-authored list in this pipeline
+ * is checked against its source (`mergeStoreEntries` fails the build on a stale store member,
+ * `templateSurface.test.ts` on an unclassified one), so these are too.
+ *
+ * What is deliberately NOT asserted is content. The guide is prose and should stay free to be
+ * rewritten; what has to hold is that the paths resolve and that no authoring-rules file is
+ * unreachable from it.
+ */
+describe('contribution surfaces', () => {
+  const guidePath = resolve(repoRoot, 'docs/contributing/surfaces.md');
+  const guide = readFileSync(guidePath, 'utf-8');
+
+  it('names every CONVENTIONS.md in the repo', () => {
+    /*
+      A CONVENTIONS.md is a surface's authoring rules, so one the guide never mentions is a surface a
+      contributor cannot route to — the whole failure the guide exists to fix, reappearing one
+      package at a time. This is not hypothetical: the check found `app-shell/CONVENTIONS.md`
+      unreferenced on its first run, because stores had been left off the guide entirely, and they
+      are the surface with the strictest registration on it.
+
+      Matched on the full path rather than the containing directory. A directory match passes on any
+      incidental mention of the word "models" anywhere in 400 lines of prose, which is the kind of
+      assertion that goes green forever and catches nothing.
+    */
+    const conventions = globSync('packages/**/CONVENTIONS.md', {
+      cwd: repoRoot,
+      exclude: (p) => p.includes('node_modules'),
+    });
+    expect(conventions.length).toBeGreaterThan(5);
+
+    const unreferenced = conventions.filter((rel) => !guide.includes(rel));
+    expect(unreferenced, 'link these from docs/contributing/surfaces.md by full path').toEqual([]);
+  });
+
+  it('only names paths that exist', () => {
+    /*
+      Every `packages/…` or `apps/…` path the guide quotes in backticks. A renamed reference example
+      is the likeliest drift here and the least visible: the prose still reads correctly, and the
+      contributor sent to copy it finds nothing.
+    */
+    const quoted = [...guide.matchAll(/`((?:packages|apps|docs)\/[A-Za-z0-9._/<>-]+)`/g)].map((m) => m[1]);
+    expect(quoted.length).toBeGreaterThan(20);
+
+    // `<name>` and `<id>` stand in for a directory the contributor is about to create.
+    const missing = [...new Set(quoted)]
+      .filter((p) => !p.includes('<'))
+      .filter((p) => !existsSync(resolve(repoRoot, p.replace(/\/$/, ''))));
+    expect(missing, 'these paths in docs/contributing/surfaces.md no longer exist').toEqual([]);
+  });
+
+  it('keeps the router and the guide agreeing about which surfaces exist', () => {
+    /*
+      The router in CLAUDE.md is the compressed copy, and a surface added to one and not the other is
+      how the two start describing different repositories. Section headings in the guide are the
+      source; the router must mention each by name.
+    */
+    const sections = [...guide.matchAll(/^### (.+)$/gm)]
+      .map((m) => m[1].trim())
+      .filter((h) => !h.startsWith('Currently'));
+    expect(sections.length).toBeGreaterThan(10);
+
+    const singular = (h: string) => h.replace(/s$/, '').toLowerCase();
+    const router = contributionSurfaces.toLowerCase();
+    const absent = sections.filter((h) => !router.includes(singular(h)));
+    expect(absent, 'add these to packages/ai-context/src/fragments/contribution-surfaces.ts').toEqual([]);
+  });
+
+  it('is reachable from the docs index and the contributing guide', () => {
+    const rel = relative(repoRoot, guidePath);
+    expect(readFileSync(resolve(repoRoot, 'docs/README.md'), 'utf-8')).toContain('contributing/surfaces.md');
+    expect(readFileSync(resolve(repoRoot, 'CONTRIBUTING.md'), 'utf-8')).toContain('contributing/surfaces.md');
+    expect(rel).toBe('docs/contributing/surfaces.md');
   });
 });

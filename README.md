@@ -18,6 +18,8 @@ pnpm dev:tauri     # Tauri app
 
 ## Documentation
 
+- **[Contributing](./CONTRIBUTING.md)** - The four contributor tracks, from reshaping your own space to adding to this repo
+- **[Contribution Surfaces](./docs/contributing/surfaces.md)** - Every slot WE accepts a contribution into, and which one your intent belongs in
 - **[Developer Setup](./docs/getting-started/developer-setup.md)** - Complete setup guide, commands, and workflows
 - **[Seed System](./docs/getting-started/seed-system.md)** - Seed file architecture, configuration, and examples
 - **[Codebase Map](./docs/architecture/codebase-map.md)** - Architecture: the stack, the seams, where things live
@@ -27,20 +29,20 @@ pnpm dev:tauri     # Tauri app
 
 ### Packages
 
-| Directory                                          | Packages                                                                                                            | What it is                                                                             |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| **[design-system/](./packages/design-system)**     | `@we/tokens` `@we/themes` `@we/primitives` `@we/components` `@we/widgets` `@we/design-types` `@we/design-utils`      | Tokens → Lit primitives → Solid components/widgets, plus the DS-props machinery         |
-| **[schema-system/](./packages/schema-system)**     | `@we/schema-shared` `@we/schema-solid`                                                                               | Schema semantics (framework-neutral) + the Solid renderer                               |
-| **[block-system/](./packages/block-system)**       | `@we/block-shared` `@we/block-solid`                                                                                 | Block-based content composition (Lexical editor + AD4M persistence)                     |
-| **[backend-system/](./packages/backend-system)**   | `@we/backend-shared` `@we/backend-ad4m` `@we/backend-inmemory`                                                       | The backend contract, its AD4M adapter, and the in-memory reference implementation      |
-| **[graph-system/](./packages/graph-system)**       | `@we/graph-protocol` `@we/graph-core` `@we/graph-expanders` `@we/graph-layouts` `@we/graph-solid`                    | The graph engine behind `GraphView`                                                    |
-| **[module-system/](./packages/module-system)**     | `@we/module-shared` `@we/module-call` `@we/module-notes` `@we/module-transcribe` `@we/module-graph` + globe family   | The feature-module contract and the bundled modules                                    |
-| **[templates/](./packages/templates)**             | `@we/template-kit` `@we/template-shell` `@we/template-default`                                                       | Reusable template fragments, the shell surfaces, and the built-in space templates      |
-| **[app-shell](./packages/app-shell)**              | `@we/app-shell`                                                                                                      | The application shell: stores, registries, boot, built-in schemas                       |
-| **[editor](./packages/editor)**                    | `@we/editor`                                                                                                         | The template/theme editing surface, embeddable via `EditorHost`                         |
-| **[models](./packages/models)**                    | `@we/models`                                                                                                         | WE's domain models (Space, blocks, …)                                                   |
-| **[ai-context](./packages/ai-context)**            | `@we/ai-context`                                                                                                     | Generates the AI/schema reference (`CLAUDE.md` et al.) from code + fragments            |
-| **[cli](./packages/cli)**                          | `@we/cli`                                                                                                            | `we-build` — the banner-and-timing wrapper every package's build runs through           |
+| Directory                                        | Packages                                                                                                           | What it is                                                                         |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| **[design-system/](./packages/design-system)**   | `@we/tokens` `@we/themes` `@we/primitives` `@we/components` `@we/widgets` `@we/design-types` `@we/design-utils`    | Tokens → Lit primitives → Solid components/widgets, plus the DS-props machinery    |
+| **[schema-system/](./packages/schema-system)**   | `@we/schema-shared` `@we/schema-solid`                                                                             | Schema semantics (framework-neutral) + the Solid renderer                          |
+| **[block-system/](./packages/block-system)**     | `@we/block-shared` `@we/block-solid`                                                                               | Block-based content composition (Lexical editor + AD4M persistence)                |
+| **[backend-system/](./packages/backend-system)** | `@we/backend-shared` `@we/backend-ad4m` `@we/backend-inmemory`                                                     | The backend contract, its AD4M adapter, and the in-memory reference implementation |
+| **[graph-system/](./packages/graph-system)**     | `@we/graph-protocol` `@we/graph-core` `@we/graph-expanders` `@we/graph-layouts` `@we/graph-solid`                  | The graph engine behind `GraphView`                                                |
+| **[module-system/](./packages/module-system)**   | `@we/module-shared` `@we/module-call` `@we/module-notes` `@we/module-transcribe` `@we/module-graph` + globe family | The feature-module contract and the bundled modules                                |
+| **[templates/](./packages/templates)**           | `@we/template-kit` `@we/template-shell` `@we/template-default`                                                     | Reusable template fragments, the shell surfaces, and the built-in space templates  |
+| **[app-shell](./packages/app-shell)**            | `@we/app-shell`                                                                                                    | The application shell: stores, registries, boot, built-in schemas                  |
+| **[editor](./packages/editor)**                  | `@we/editor`                                                                                                       | The template/theme editing surface, embeddable via `EditorHost`                    |
+| **[models](./packages/models)**                  | `@we/models`                                                                                                       | WE's domain models (Space, blocks, …)                                              |
+| **[ai-context](./packages/ai-context)**          | `@we/ai-context`                                                                                                   | Generates the AI/schema reference (`CLAUDE.md` et al.) from code + fragments       |
+| **[cli](./packages/cli)**                        | `@we/cli`                                                                                                          | `we-build` — the banner-and-timing wrapper every package's build runs through      |
 
 ### Apps
 

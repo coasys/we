@@ -42,8 +42,11 @@ import {
   dockRegistry,
   hostDockStores,
   onDockRegistryChanged,
+  registerHostDockStore,
+  unregisterHostDockStore,
 } from '@shared/registries/dockRegistry';
 import { moduleStores } from '@shared/registries/moduleRegistry';
+import { SHELL_DOCK_STORE_ID } from '@shared/registries/shellDocks';
 import type { ChromeReserve, DockAspect, DockEdge, DockSize } from '@we/module-shared';
 import {
   Accessor,
@@ -94,6 +97,25 @@ export interface ShellStore {
    */
   createSpaceOpen: Accessor<boolean>;
   setCreateSpaceOpen: (open: boolean) => void;
+  /**
+   * Whether the space-settings panel is open.
+   *
+   * Shell state for the same reason `createSpaceOpen` is: more than one control opens it — the
+   * chrome rail's gear and the About view's pencil — so it cannot belong to either, and two
+   * page-scoped flags could disagree about whether the one panel was up.
+   */
+  spaceSettingsOpen: Accessor<boolean>;
+  /**
+   * Where that panel would like to open, or null while it is closed — the key its dock names.
+   *
+   * `right` because that is the edge the rail's gear is on and the edge every other panel opens at.
+   * An opening bid only: the user drags it wherever they want and the host remembers.
+   */
+  spaceSettingsEdge: Accessor<DockEdge | null>;
+  /** Open or close the space-settings panel; the rail's gear toggles, the pencil opens. */
+  toggleSpaceSettings: () => void;
+  openSpaceSettings: () => void;
+  closeSpaceSettings: () => void;
   /** Smooth-scroll the element with the given DOM id into view. */
   scrollToId: (id: string) => void;
   /**
@@ -319,6 +341,7 @@ export function ShellStoreProvider(props: ParentProps) {
    */
   const lastShellPath: Record<string, string> = {};
   const [createSpaceOpen, setCreateSpaceOpen] = createSignal(false);
+  const [spaceSettingsOpen, setSpaceSettingsOpen] = createSignal(false);
 
   // Docks are sized against the window, so the window is state. Tracked here rather than in each
   // module because the whole point of the arrangement is that a module never does viewport maths.
@@ -678,6 +701,11 @@ export function ShellStoreProvider(props: ParentProps) {
     closeShellView: () => setActiveShellView(null),
     createSpaceOpen,
     setCreateSpaceOpen,
+    spaceSettingsOpen,
+    spaceSettingsEdge: () => (spaceSettingsOpen() ? 'right' : null),
+    toggleSpaceSettings: () => setSpaceSettingsOpen((open) => !open),
+    openSpaceSettings: () => setSpaceSettingsOpen(true),
+    closeSpaceSettings: () => setSpaceSettingsOpen(false),
     takePendingPath: () => {
       const path = pendingPath();
       setPendingPath(null);
@@ -1076,6 +1104,19 @@ export function ShellStoreProvider(props: ParentProps) {
       writePlacement(id, { ...placement, displace: !placement.displace });
     },
   };
+
+  /*
+    This store publishes a dock of its own — the space-settings panel — so it has to be findable by
+    the same lookup a module's store is. See `hostDockStores`, and `EditorStore` doing the same.
+
+    Safe despite this being the store that *resolves* docks: `dockRequests` reads the accessor and
+    the accessor writes nothing, so the dependency runs one way. It matters that the registration is
+    here, after `store` exists and after `onDockRegistryChanged` is subscribed above — announcing
+    into a listener that has not been added yet would leave the memo with nothing to re-run for,
+    which is the failure the registry's own docblock describes.
+  */
+  registerHostDockStore(SHELL_DOCK_STORE_ID, store as unknown as Record<string, unknown>);
+  onCleanup(() => unregisterHostDockStore(SHELL_DOCK_STORE_ID));
 
   return <ShellContext.Provider value={store}>{props.children}</ShellContext.Provider>;
 }

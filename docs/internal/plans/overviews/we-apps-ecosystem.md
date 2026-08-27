@@ -2,6 +2,14 @@
 
 > Consolidated plan for how users build, share, customise, and distribute WE apps (templates/experiences) and their constituent parts (blocks, components, themes). Supersedes previous experience-sharing system docs.
 
+> **Status (Aug 2026): design document, partly overtaken.** Its four marketplace tiers predate
+> views, template fragments, feature modules, graph plugins and globe layers — the current inventory
+> is [`docs/contributing/surfaces.md`](../../../contributing/surfaces.md), which lists nineteen
+> surfaces. `defineAppStore()` was never built; module stores are `createStore(deps)` published under
+> `modules.<id>.*` (`packages/module-system/shared/src/module.ts`). The `$query` layer and the
+> capability/trust model did ship — see `templateSurface.ts`. Several links point at per-PR plans
+> deleted as they landed. Read it for the distribution reasoning, not as a description of the code.
+
 ---
 
 ## Vision
