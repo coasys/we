@@ -247,8 +247,8 @@ export function TemplateLayout(
     return merged.filter((panel) => !panel.route || segments.includes(panel.route));
   });
 
-  createEffect(() => setTemplatePanels(activePanels()));
-  onCleanup(() => setTemplatePanels([]));
+  createEffect(() => setTemplatePanels(activePanels(), stores.templateStore.currentTemplate?.id ?? ''));
+  onCleanup(() => setTemplatePanels([], ''));
 
   createEffect(() => stores.routeStore.setNavigateFunction(() => navigate));
   createEffect(() => stores.routeStore.setCurrentPath(location.pathname));

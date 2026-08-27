@@ -19,6 +19,16 @@ import type { TemplatePanel } from '@we/schema-shared';
 
 let declared: readonly TemplatePanel[] = [];
 
+/**
+ * Which interface the current declaration belongs to — the scope a placement is remembered under.
+ *
+ * A drag is a fact about *this panel in this interface*, not about the panel everywhere. Without a
+ * scope the transcript dragged while trying out one template kept that position under every other
+ * one, and silently outranked whatever the next template declared for it — which reads as the
+ * declaration being ignored rather than as an older preference winning.
+ */
+let scope = '';
+
 const listeners = new Set<() => void>();
 
 /** Subscribe to declaration changes. Returns an unsubscribe. */
@@ -33,13 +43,19 @@ export function onTemplatePanelsChanged(listener: () => void): () => void {
  * Replaces wholesale rather than merging: the declaration *is* the list, so a template that drops a
  * panel has to be able to say so. Called with an empty array when nothing declares any.
  */
-export function setTemplatePanels(panels: readonly TemplatePanel[] | undefined): void {
+export function setTemplatePanels(panels: readonly TemplatePanel[] | undefined, from = ''): void {
   const next = panels ?? [];
   // A template re-rendering with the same declaration must not re-announce: every announcement
   // rebuilds dock entries, and rebuilding them mid-drag would drop the drag.
-  if (next.length === declared.length && next.every((panel, i) => panel === declared[i])) return;
+  if (from === scope && next.length === declared.length && next.every((panel, i) => panel === declared[i])) return;
   declared = next;
+  scope = from;
   for (const listener of listeners) listener();
+}
+
+/** The interface the declaration came from. See {@link scope}. */
+export function templatePanelScope(): string {
+  return scope;
 }
 
 /** What the interface on screen declares, in declaration order. */

@@ -326,14 +326,27 @@ const boardRoute: RouteSchema = {
       props: {
         condition: CALL,
         then: board,
-        // No collection means nothing has been said yet — the record is created on the first
-        // utterance, so its absence is exactly "this call has produced nothing".
-        else: gatePrompt({
-          icon: 'graph',
-          iconColor: 'text-faint',
-          title: 'Nothing to arrange yet',
-          body: 'Start a call and turn on recording. What the conversation produces appears here as cards you can move and join up.',
-        }),
+        /*
+          No collection means nothing has been said yet — the record is created on the first
+          utterance, so its absence is exactly "this call has produced nothing".
+
+          Padded clear of the switcher, where the board itself is not. A graph is *meant* to run under
+          the floating bar — that is what a full-bleed view with chrome over it looks like, and its
+          own controls sit at the other corners. Text centred in the same box is not: it reads as
+          content that has slid underneath something, because that is exactly what it is.
+        */
+        else: {
+          type: 'Column',
+          props: { width: '100%', height: '100%', pt: '900' },
+          children: [
+            gatePrompt({
+              icon: 'graph',
+              iconColor: 'text-faint',
+              title: 'Nothing to arrange yet',
+              body: 'Start a call and turn on recording. What the conversation produces appears here as cards you can move and join up.',
+            }),
+          ],
+        },
       },
     },
   ],

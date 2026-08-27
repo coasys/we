@@ -158,10 +158,35 @@ function resolveValue(value: unknown): unknown {
   return value;
 }
 
+/**
+ * Registration is observable, because chrome no longer all arrives before the first render.
+ *
+ * Modules register at boot, so `nodes()` read once was enough for years. A template declaring panels
+ * does not: its frames are registered reactively when a template says it has them, which is after
+ * the shell has been built. Without a channel to say so they were registered into a list nobody read
+ * again — the dock resolved geometry for a panel that never mounted, which looks exactly like the
+ * panel being broken rather than absent.
+ *
+ * Framework-neutral for the same reason `dockRegistry`'s is: this file is shared, so it publishes a
+ * subscription and lets the host turn it into whatever reactive primitive it uses.
+ */
+const listeners = new Set<() => void>();
+
+function announce(): void {
+  for (const listener of listeners) listener();
+}
+
+/** Subscribe to contribution changes. Returns an unsubscribe. */
+export function onSlotRegistryChanged(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
 export const slotRegistry = {
   /** Add a contribution. Replaces any entry with the same id, so re-registration is idempotent. */
   register(entry: SlotEntry): void {
     entries.set(entry.id, entry);
+    announce();
   },
 
   /**
@@ -170,12 +195,14 @@ export const slotRegistry = {
    */
   replace(id: string, node: SchemaNode): void {
     const existing = entries.get(id);
-    if (existing) entries.set(id, { ...existing, node });
+    if (!existing) return;
+    entries.set(id, { ...existing, node });
+    announce();
   },
 
   /** Remove a contribution — a module being disabled. */
   remove(id: string): void {
-    entries.delete(id);
+    if (entries.delete(id)) announce();
   },
 
   get(id: string): SlotEntry | undefined {

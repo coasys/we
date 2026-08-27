@@ -60,6 +60,7 @@ import {
   TEMPLATE_DOCK_STORE_ID,
   templatePanelDockId,
   templatePanels,
+  templatePanelScope,
 } from '@shared/registries/templatePanels';
 import type { ChromeReserve, DockAspect, DockEdge, DockSize } from '@we/module-shared';
 import type { SchemaNode, TemplatePanel } from '@we/schema-shared';
@@ -458,7 +459,7 @@ export function ShellStoreProvider(props: ParentProps) {
 
   const writePlacement = (id: string, next: FloatPlacement) => {
     setPlacements((prev) => {
-      const merged = { ...prev, [id]: next };
+      const merged = { ...prev, [placementKey(id)]: next };
       savePlacements(merged);
       return merged;
     });
@@ -484,7 +485,7 @@ export function ShellStoreProvider(props: ParentProps) {
    * overruled forever by one stray drag. The same shape `meta.themeId` follows for themes.
    */
   const placementOf = (request: DockRequest): FloatPlacement => {
-    const stored = placements()[request.id];
+    const stored = placements()[placementKey(request.id)];
     if (stored) return stored;
     const declared = declarationFor()[request.id];
     if (declared) return placementFromDeclaration(declared, viewport());
@@ -505,6 +506,23 @@ export function ShellStoreProvider(props: ParentProps) {
     panelsVersion();
     return templatePanels();
   });
+
+  /**
+   * Where a panel's placement is remembered — scoped to the interface that declared it.
+   *
+   * A drag is a fact about *this panel in this interface*, not about the panel everywhere. Keyed on
+   * the dock alone, a transcript dragged while trying out one template kept that position under
+   * every other one and silently outranked whatever the next template declared — which reads as the
+   * declaration being ignored rather than as an older preference winning.
+   *
+   * An interface that declares nothing shares the unscoped key, so a panel somebody positioned in an
+   * ordinary space stays where they put it: the scope exists to stop declarations being overruled by
+   * unrelated history, not to make every template forget.
+   */
+  const placementKey = (id: string): string => {
+    const scope = templatePanelScope();
+    return scope && declarationFor()[id] ? `${scope}::${id}` : id;
+  };
   const [closedPanels, setClosedPanels] = createSignal<Record<string, boolean>>({});
 
   /** A declaration by the dock id it resolves to, for the placement chain to consult. */
@@ -1435,15 +1453,16 @@ export function ShellStoreProvider(props: ParentProps) {
       Object.fromEntries(
         dockRequests().map((request) => [
           request.id,
-          Boolean(placements()[request.id]) && Boolean(declarationFor()[request.id]),
+          Boolean(placements()[placementKey(request.id)]) && Boolean(declarationFor()[request.id]),
         ]),
       ),
 
     resetDockToLayout: (id) => {
       setPlacements((prev) => {
-        if (!prev[id]) return prev;
+        const key = placementKey(id);
+        if (!prev[key]) return prev;
         const next = { ...prev };
-        delete next[id];
+        delete next[key];
         savePlacements(next);
         return next;
       });
