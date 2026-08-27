@@ -14,9 +14,12 @@ import { describe, expect, it } from 'vitest';
 import {
   BOTTOM_CHROME_PX,
   CHROME_RAIL_PX,
+  columnLayout,
+  columnMembers,
   type ContentInset,
   contentInset,
   displaces,
+  DOCK_GAP_PX,
   type DockRequest,
   dockThickness,
   edgeOfSnap,
@@ -994,5 +997,129 @@ describe('the band under the module rail', () => {
     // instead, which made it dead. A band that fired for any open panel moved the rail for a video
     // floating in the opposite corner.
     expect(railBand(desktop, inset({ right: 900 }), NO_TOP_CHROME)).toBe(0);
+  });
+});
+
+/**
+ * A column divides an edge between the floating panels sharing it.
+ *
+ * The arrangement the eight snaps could not express: two cards down the left, sharing the height,
+ * rather than two cards in two corners with a hole between them. Distinct from a *strip*, which is
+ * what displacing panels form and which stacks perpendicular to its edge instead.
+ */
+describe('a floating column', () => {
+  const float = (over: Partial<FloatPlacement> = {}): FloatPlacement =>
+    placement({ snap: 'left', displace: false, w: 320, h: 200, ...over });
+
+  it('stacks members down the edge instead of overlapping them', () => {
+    const boxes = columnLayout([float(), float()], 'left', desktop);
+
+    expect(boxes).toHaveLength(2);
+    // Same column, so the same x; different seats, so different y.
+    expect(boxes[0].x).toBe(boxes[1].x);
+    expect(boxes[1].y).toBeGreaterThan(boxes[0].y);
+    // And they do not overlap: the second starts below the first, with the gap between them.
+    expect(boxes[1].y).toBe(boxes[0].y + boxes[0].h + DOCK_GAP_PX);
+  });
+
+  it('divides the spare room evenly when nobody says otherwise', () => {
+    const [a, b] = columnLayout([float(), float()], 'left', desktop);
+
+    // Equal bases and an absent grow (which means 1) is an even split.
+    expect(a.h).toBeCloseTo(b.h, 5);
+  });
+
+  it('gives the slack to whoever asked for it', () => {
+    const [fixed, greedy] = columnLayout([float({ grow: 0 }), float({ grow: 1 })], 'left', desktop);
+
+    // grow: 0 keeps its own height; the other absorbs everything left over. This is what
+    // "the transcript takes most of the height, the panel under it does not" is made of.
+    expect(fixed.h).toBe(200);
+    expect(greedy.h).toBeGreaterThan(fixed.h);
+  });
+
+  it('closing a member gives its room to the neighbours and moves nothing else', () => {
+    const three = columnLayout([float(), float(), float()], 'left', desktop);
+    const two = columnLayout([float(), float()], 'left', desktop);
+
+    // The survivors grow. The point of base-plus-grow over proportions is that they grow *from their
+    // own base* rather than being re-proportioned against each other.
+    expect(two[0].h).toBeGreaterThan(three[0].h);
+    expect(two[0].y).toBe(three[0].y);
+  });
+
+  it('keeps each member its own width', () => {
+    const [a, b] = columnLayout([float({ w: 320 }), float({ w: 260 })], 'left', desktop);
+
+    // A shared width would mean resizing one resized all of them, which is not what a card does.
+    expect(a.w).toBe(320);
+    expect(b.w).toBe(260);
+  });
+
+  it('hangs a right-hand column off the right edge', () => {
+    const [left] = columnLayout([float()], 'left', desktop);
+    const [right] = columnLayout([float({ snap: 'right' })], 'right', desktop);
+
+    expect(right.x).toBeGreaterThan(left.x);
+  });
+
+  it('divides the width rather than the height on a top or bottom edge', () => {
+    const boxes = columnLayout([float({ snap: 'top' }), float({ snap: 'top' })], 'top', desktop);
+
+    // The axis flips with the edge: along the top, members share the width.
+    expect(boxes[0].y).toBe(boxes[1].y);
+    expect(boxes[1].x).toBe(boxes[0].x + boxes[0].w + DOCK_GAP_PX);
+  });
+
+  it('never shrinks a member below the point where it stops being a panel', () => {
+    const many = Array.from({ length: 12 }, () => float({ h: 400 }));
+    const boxes = columnLayout(many, 'left', desktop);
+
+    for (const box of boxes) expect(box.h).toBeGreaterThanOrEqual(MIN_FLOAT_PX);
+  });
+
+  it('gives every member the whole region on a narrow window', () => {
+    const boxes = columnLayout([float(), float()], 'left', laptop);
+
+    // Two 350px cards over content on a phone leave nothing of any of the three, so the arrangement
+    // changes its mind rather than shrinking: full-bleed sheets, last one on top.
+    expect(boxes[0]).toEqual(boxes[1]);
+    expect(boxes[0].w).toBeGreaterThan(laptop.width / 2);
+  });
+
+  it('is empty for an edge nobody is on', () => {
+    expect(columnLayout([], 'left', desktop)).toEqual([]);
+  });
+});
+
+describe('who is in a column', () => {
+  const member = (over: Partial<FloatPlacement> = {}) => ({
+    placement: placement({ snap: 'left', displace: false, ...over }),
+  });
+
+  it('is decided by the snap, not by a declaration', () => {
+    const panels = [member(), member({ snap: 'right' }), member()];
+
+    expect(columnMembers(panels, 'left')).toHaveLength(2);
+  });
+
+  it('leaves out panels that are not floating there', () => {
+    const panels = [member(), member({ displace: true }), member({ maximised: true })];
+
+    // A displacing panel is in a *strip*, and a maximised one is not on an edge at all.
+    expect(columnMembers(panels, 'left')).toHaveLength(1);
+  });
+
+  it('excludes corners, which are a place for one card', () => {
+    const panels = [member({ snap: 'top-left' }), member({ snap: 'bottom-left' })];
+
+    expect(columnMembers(panels, 'left')).toHaveLength(0);
+  });
+
+  it('orders members by the order a drop gave them', () => {
+    const first = member({ order: 1 });
+    const second = member({ order: 0 });
+
+    expect(columnMembers([first, second], 'left')).toEqual([second, first]);
   });
 });

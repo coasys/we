@@ -9,6 +9,8 @@
  */
 import {
   CHROME_RAIL_PX,
+  columnLayout,
+  columnMembers,
   type ContentInset,
   contentInset,
   displaces,
@@ -603,11 +605,55 @@ export function ShellStoreProvider(props: ParentProps) {
    * and a floating one has to clear both. The order is `dockRegistry.ordered()`, so it is the declared
    * `order` then the module id — stable, and never "whichever module registered first".
    */
+  /**
+   * Where each floating panel sits when it shares its edge with others, by dock id.
+   *
+   * Worked out per edge rather than per panel, because a seat depends on the neighbours — how many
+   * there are, how tall each asked to be, which of them wants the slack. `resolveDock` is about one
+   * panel and cannot see that, so the answer is computed here and handed to it, exactly as
+   * `occupied` already is.
+   *
+   * Every floating panel clears the same things (`occupiedFor` only ever counts panels that
+   * *displace*, and a float is not one), so one member's `occupied` serves the whole column.
+   */
+  const columnSeats = createMemo(() => {
+    const requests = dockRequests();
+    const panels = requests
+      .map((request, index) => ({ id: request.id, index, placement: placementOf(request) }))
+      .filter((panel) => requests[panel.index].edge);
+
+    const seats: Record<string, Rect> = {};
+    for (const edge of ['left', 'right', 'top', 'bottom'] as const) {
+      const members = columnMembers(panels, edge);
+      // One panel on an edge is not a column — it keeps the snap position it has always had.
+      if (members.length < 2) continue;
+      const occupied = occupiedOf(members[0].index, requests);
+      const boxes = columnLayout(
+        members.map((member) => member.placement),
+        edge,
+        viewport(),
+        occupied,
+        floatChrome(),
+      );
+      members.forEach((member, i) => {
+        seats[member.id] = boxes[i];
+      });
+    }
+    return seats;
+  });
+
   const dockGeometry = createMemo(() => {
     const requests = dockRequests();
+    const seats = columnSeats();
     const resolved: Record<string, DockGeometry> = {};
     requests.forEach((request, index) => {
-      resolved[request.id] = resolveDock(request, viewport(), occupiedOf(index, requests), floatChrome());
+      resolved[request.id] = resolveDock(
+        request,
+        viewport(),
+        occupiedOf(index, requests),
+        floatChrome(),
+        seats[request.id],
+      );
     });
     return resolved;
   });
