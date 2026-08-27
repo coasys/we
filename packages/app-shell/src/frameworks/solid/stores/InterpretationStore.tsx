@@ -31,6 +31,7 @@ import type { InterpretationActivity, InterpretationPhase, InterpretationRelay }
 import {
   byActivityInterest,
   createInterpretationRelay,
+  displayName,
   INTERPRETATION_ACTIVITY_CHANNEL,
   isSettled,
 } from '@we/backend-shared';
@@ -164,8 +165,10 @@ function labelFor(phase: InterpretationPhase, name: string, mine: boolean, count
     // "Running interpretation" tells somebody staring at it nothing they can act on.
     case 'thinking':
       return `${who} waiting on the model`;
+    // Second person for one's own pass, and "they" for anyone else's: the subject of the sentence
+    // is the runner, and "what it found" read as though a machine had run off with the work.
     case 'writing':
-      return `${who} writing what it found`;
+      return `${who} writing what ${mine ? 'you' : 'they'} found`;
     case 'done':
       // "Nothing to add" rather than "0 records": a pass over a conversation with no commitments in
       // it succeeded, and a zero reads as a failure.
@@ -351,7 +354,11 @@ export function InterpretationStoreProvider(props: ParentProps) {
         const running = !isSettled(row.phase);
         const mine = row.mine || (!!me && row.runner === me);
         const profile = row.runner ? profileStore.profiles().find((p) => p.did === row.runner) : undefined;
-        const name = [profile?.firstName, profile?.lastName].filter(Boolean).join(' ') || profile?.handle || 'Someone';
+        // `displayName` rather than the concatenation this used to inline — the same rule as every
+        // byline, so one person is not "Anonymous" on their post and something else in this bar.
+        // 'Someone' survives as the fallback for a *missing* profile, which is a different fact
+        // from a profile that is present and unnamed, and reads better in the labels below.
+        const name = profile ? displayName(profile) : 'Someone';
         const count = row.ids?.length ?? 0;
 
         return {
@@ -397,6 +404,15 @@ export function InterpretationStoreProvider(props: ParentProps) {
   provideModuleHostServices({
     interpretationAvailable: () => capable(),
     interpretationActivity: () => activity(),
+    /*
+      The space's sharing decision, for a module explaining why a peer's row will not open.
+
+      Published rather than left for the module to infer from `hasDetail`: a row can lack detail
+      for reasons that have nothing to do with the setting — a peer's pass that has not reached the
+      model yet, a skipped pass that never had an exchange, a row broadcast before the setting
+      synced — and gating an explanation of the *setting* on those showed it with sharing on.
+    */
+    interpretationDetailShared: () => shareDetail(),
   });
 
   const store: InterpretationStore = {

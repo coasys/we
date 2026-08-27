@@ -134,7 +134,7 @@ function nameDialog(opts: {
       condition: opts.open,
       then: {
         type: 'we-modal',
-        props: { close: opts.close },
+        props: { size: 'sm', close: opts.close },
         $localState: {
           name: { type: 'string', initial: opts.initialName },
           icon: { type: 'string', initial: opts.initialIcon },
@@ -240,16 +240,30 @@ export function templatePicker(): SchemaNode {
                     {
                       icon: 'pencil-simple',
                       tooltip: 'Edit this template',
-                      // Only the template actually on screen, and only where the session says it can be
-                      // edited — `enterTemplateEditing` has no guard of its own, so offering this on a
-                      // built-in would open an editing session over something that cannot be saved.
-                      when: {
-                        $and: [
-                          { $eq: ['$template.id', { $store: 'templateStore.currentSwitcherId' }] },
-                          { $not: { $store: 'editorStore.isReadOnly' } },
-                        ],
-                      },
-                      onClick: [{ $action: 'editorStore.enterTemplateEditing', args: ['edit'] }, closeTemplatePicker],
+                      /*
+                        Any row that can be edited, not just the one already on screen.
+
+                        This used to also require `$template.id` to be the current one, which made
+                        editing anything else a three-step gesture: pick it, watch the menu close,
+                        open the menu again, edit. The row's own pencil was right there on the first
+                        pass and did nothing, which reads as the control being broken rather than as
+                        a step being missing.
+
+                        `editable` rather than `editorStore.isReadOnly`, because that answers for
+                        whatever is currently rendered and every row would have got the same answer.
+                        The guard is still needed — `enterTemplateEditing` has none of its own, so
+                        offering this on a built-in opens a session over something that cannot be
+                        saved.
+                      */
+                      when: '$template.editable',
+                      // Switch first, exactly as forking does below: an editing session is opened
+                      // over whatever is current, so editing a row you are not on has to make it
+                      // current before entering.
+                      onClick: [
+                        { $action: 'templateStore.switchTemplate', args: ['$template.id'] },
+                        { $action: 'editorStore.enterTemplateEditing', args: ['edit'] },
+                        closeTemplatePicker,
+                      ],
                     },
                     {
                       icon: 'git-fork',

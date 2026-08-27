@@ -49,14 +49,16 @@ export function EditableImage(allProps: EditableImageProps) {
   /** What the hover overlay says, and what its icon promises. */
   const label = () => (props.src ? (props.editLabel ?? 'Edit image') : (props.uploadLabel ?? 'Upload image'));
 
-  // Derive a sensible modal width from the crop aspect ratio so wide images
-  // get enough horizontal space to show a usable crop zone.
-  const modalMinWidth = createMemo(() => {
-    const a = props.aspect ?? 1;
-    const cropH = Math.max(120, Math.min(340, 680 / Math.max(a, 0.25))) * 0.85;
-    const needed = Math.round(cropH * a + 120);
-    return `${Math.max(520, Math.min(1100, needed))}px`;
-  });
+  /*
+    A wide crop zone needs a wide sheet, so the aspect picks the modal's size.
+
+    This was a `minWidth` on the Column *inside* the modal, solving for a pixel figure between 520
+    and 1100 — which worked only because the modal had no width of its own and grew to whatever it
+    was given. Pushing a sheet wider from the inside has no answer for the viewport: at aspect 3 on
+    a laptop it computed 1100px and simply overflowed. Asking for a size instead means the modal
+    clamps to the screen the way every other modal does.
+  */
+  const modalSize = () => ((props.aspect ?? 1) > 1.5 ? 'lg' : 'md');
 
   // Imperative handle to ImageCrop — set once the crop component reports ready
   let cropRef: ImageCropRef | undefined;
@@ -241,8 +243,8 @@ export function EditableImage(allProps: EditableImageProps) {
 
       {/* Crop — the only step left in the modal. */}
       <Show when={modalOpen()}>
-        <we-modal close={closeModal}>
-          <Column minWidth={modalMinWidth()} ax="center" gap="500">
+        <we-modal close={closeModal} size={modalSize()}>
+          <Column width="100%" ax="center" gap="500">
             <we-text variant="heading-md">Crop image</we-text>
             <ImageCrop
               src={rawUrl()!}

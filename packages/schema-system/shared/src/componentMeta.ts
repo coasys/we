@@ -99,6 +99,8 @@ const DS_PROP_OPTIONS: Record<string, string[]> = {
   textAlign: ['left', 'center', 'right', 'justify'],
   textDecoration: ['underline', 'line-through', 'overline', 'none'],
   textTransform: ['uppercase', 'lowercase', 'capitalize', 'none'],
+  whiteSpace: ['normal', 'nowrap', 'pre', 'pre-wrap', 'pre-line', 'break-spaces'],
+  overflowWrap: ['normal', 'break-word', 'anywhere'],
   cursor: ['pointer', 'default', 'text', 'not-allowed'],
   pointerEvents: ['none', 'auto'],
   visibility: ['visible', 'hidden', 'collapse'],
@@ -173,6 +175,9 @@ const EDITOR_LAYER_FOR_KEY: Record<string, PropLayer> = {
   maxHeight: 'size',
   display: 'size',
   flex: 'size',
+  // Present in `layoutKeys` and computed by @we/design-utils, so it has always worked in a schema —
+  // it was just missing from this index, which is what decides whether the inspector offers it.
+  flexShrink: 'size',
   alignSelf: 'size',
   overflow: 'size',
   overflowX: 'size',
@@ -248,6 +253,8 @@ const EDITOR_LAYER_FOR_KEY: Record<string, PropLayer> = {
   letterSpacing: 'typography',
   textDecoration: 'typography',
   textTransform: 'typography',
+  whiteSpace: 'typography',
+  overflowWrap: 'typography',
 };
 
 // ── Skip filter ─────────────────────────────────────────────────────────────

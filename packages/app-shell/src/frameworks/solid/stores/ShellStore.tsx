@@ -14,6 +14,7 @@ import {
   displaces,
   type DockGeometry,
   type DockRequest,
+  dockThickness,
   edgeOfSnap,
   fitPlacement,
   type FloatPlacement,
@@ -305,12 +306,39 @@ function measureDockChrome(id: string): { x: number; y: number } | undefined {
   return x >= 0 && y >= 0 && x < outer.width && y < outer.height ? { x, y } : undefined;
 }
 
+/**
+ * Drop a stored `thickness`, which no longer means anything.
+ *
+ * It was one number for both axes, so a width solved for a side edge became a height on a top one,
+ * and — until `fitPlacement` learned to decline — it could hold a value larger than any screen. Both
+ * are fixed at the writing end, and neither fix reaches a number already in someone's browser: the
+ * field is persisted, invisible while the panel floats, and applied the instant it docks again.
+ *
+ * Dropped rather than migrated onto an axis, because the two things a migration would have to know
+ * are exactly the two that made it wrong. Which axis it was solved for is not recorded, and whether
+ * the value is sane cannot be told from the number — the case that prompted this was 2378px, well
+ * inside a 4K region and absurd on any edge. Falling back to the card is the documented behaviour and
+ * the one people expect: a panel dragged to an edge keeps the width it had and gains the height.
+ *
+ * Costs a deliberately-resized dock its width, once. The field is a week old, one drag restores it,
+ * and the alternative is carrying a number nothing can validate for as long as the browser keeps it.
+ */
+function stripLegacyThickness(placements: Record<string, FloatPlacement>): Record<string, FloatPlacement> {
+  return Object.fromEntries(
+    Object.entries(placements).map(([id, placement]) => {
+      if (!placement || typeof placement !== 'object' || !('thickness' in placement)) return [id, placement];
+      const { thickness: _legacy, ...rest } = placement as FloatPlacement & { thickness?: number };
+      return [id, rest as FloatPlacement];
+    }),
+  );
+}
+
 function loadPlacements(): Record<string, FloatPlacement> {
   if (typeof localStorage === 'undefined') return {};
   try {
     const raw = localStorage.getItem(PLACEMENTS_KEY);
     const parsed = raw ? (JSON.parse(raw) as Record<string, FloatPlacement>) : {};
-    return parsed && typeof parsed === 'object' ? parsed : {};
+    return parsed && typeof parsed === 'object' ? stripLegacyThickness(parsed) : {};
   } catch {
     return {};
   }
@@ -631,6 +659,24 @@ export function ShellStoreProvider(props: ParentProps) {
       number so there is one subtraction in the codebase instead of one per centred bar.
     */
     root.setProperty('--we-chrome-center-x', 'calc((var(--we-chrome-left, 0px) - var(--we-chrome-right, 0px)) / 2)');
+    /*
+      Which way centred chrome spills when the content is narrower than it is.
+
+      A bar centred on the content and wider than it overhangs both sides equally, and the half that
+      crosses the sidebar leaves the window — which is what happened to the call controls whenever a
+      panel took enough of the right. The bars clamp to the content's edge now (a flex strip with
+      `justify-content: safe center`, which centres while the child fits and pins it to the strip's
+      start when it does not), so the only question left is which end is the start: a bar that
+      cannot fit has to cover *something*, and the least bad thing is the dock that squeezed it —
+      a panel's controls are all in its titlebar, so an overlap along its bottom covers content
+      rather than the way out. The sidebar is never the answer, being navigation and 80px wide.
+
+      Published as the `flex-direction` the strip should use, because that is the one property CSS
+      can switch a start edge with — a keyword like `left` would leave every consumer needing a
+      comparison CSS cannot make. The strip has a single child, so reversing it reorders nothing.
+      Ties go right, which is where panels open by default.
+    */
+    root.setProperty('--we-chrome-give', edges.left > edges.right ? 'row-reverse' : 'row');
   });
 
   /**
@@ -770,6 +816,16 @@ export function ShellStoreProvider(props: ParentProps) {
     resizeDock: (id, side, dx, dy) => {
       const request = dockRequests().find((entry) => entry.id === id);
       if (!request?.edge || !dragOrigin) return;
+      /*
+        A maximised panel has no size to change, and a drag that reached here would not be harmless.
+
+        `dragOrigin` is the box on screen, which while maximised is the whole window — so the write
+        below stamped that over the card, and the panel silently lost both the size it restores to and
+        (where a dock's thickness falls back to the card) the size it docks at. `grips` no longer draws
+        anything to start such a drag; this is the same answer at the end that owns the data, since a
+        handle is not the only way to call a store action.
+      */
+      if (dockGeometry()[id]?.maximised) return;
 
       const start = dragOrigin;
       const spanning = !dockGeometry()[id]?.floating;
@@ -814,10 +870,11 @@ export function ShellStoreProvider(props: ParentProps) {
         drag actually changed is kept.
       */
       const stored = placementOf(request);
+      const vertical = edgeOfSnap(stored.snap) === 'left' || edgeOfSnap(stored.snap) === 'right';
       writePlacement(
         id,
         spanning
-          ? { ...stored, thickness: edgeOfSnap(stored.snap) === 'left' || edgeOfSnap(stored.snap) === 'right' ? w : h }
+          ? { ...stored, ...(vertical ? { thicknessX: w } : { thicknessY: h }) }
           : { ...stored, snap: null, x, y, w, h },
       );
     },
@@ -838,17 +895,30 @@ export function ShellStoreProvider(props: ParentProps) {
       // stores a thickness and a card, and only the box on screen says which is currently the shape.
       const measured = resolvedPlacement(id, placementOf(request));
       const spanning = !dockGeometry()[id]?.floating;
+      const edge = edgeOfSnap(measured.snap);
       const fitted = fitPlacement(measured, aspect, {
         spanning,
-        edge: edgeOfSnap(measured.snap),
+        edge,
         chrome: measureDockChrome(id),
+        /*
+          The most a fit may take, so one that cannot be honoured declines rather than writing a
+          number the paint step then clamps.
+
+          `lg` rather than `full`: the largest size a dock is ever *asked* for, viewport-aware
+          already, and computed by the same function that answers every other thickness question.
+          Bounding at the whole region is barely a bound — on a 4K side edge it still allowed one
+          16:9 tile to take 92% of the screen.
+        */
+        maxThickness: edge ? dockThickness(edge, 'lg', viewport(), undefined, occupiedForId(id)) : undefined,
       });
       // Measured from the box on screen, written onto the stored placement — so fitting a docked panel
       // sets its thickness without stamping the edge's full height over the card it returns to.
       const stored = placementOf(request);
       writePlacement(
         id,
-        spanning ? { ...stored, thickness: fitted.thickness } : { ...stored, w: fitted.w, h: fitted.h },
+        spanning
+          ? { ...stored, thicknessX: fitted.thicknessX, thicknessY: fitted.thicknessY }
+          : { ...stored, w: fitted.w, h: fitted.h },
       );
     },
 

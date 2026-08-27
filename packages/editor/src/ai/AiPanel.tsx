@@ -223,7 +223,6 @@ function MessageBubble(props: { message: ChatMessage; isStreaming?: boolean; str
       bg={isUser() ? 'primary-200' : 'neutral-25'}
       maxWidth={isUser() ? '90%' : '100%'}
       alignSelf={isUser() ? 'flex-end' : 'flex-start'}
-      styles={{ 'word-break': 'break-word' }}
     >
       <Show when={displayContent()}>
         <we-markdown content={displayContent()} markdownGap="400" />

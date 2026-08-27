@@ -938,7 +938,7 @@ Most @we/primitives also accept Design System Props (see next section for detail
 - we-audio (LayoutVisualElement)
   Props: src: string = '', controls: boolean = false, preload: 'none' | 'metadata' | 'auto' = 'metadata', autoplay: boolean = false, loop: boolean = false, muted: boolean = false, stream?: MediaStream | null | undefined
 - we-avatar (LayoutVisualElement)
-  Props: image: string = '', hash: string = '', selected: boolean = false, online: boolean = false, initials: string = '', icon: string = '', size?: 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '{css-length}' | undefined, clickable: boolean = false
+  Props: image: string = '', hash: string = '', initials: string = '', icon: string = '', size?: 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '{css-length}' | undefined, clickable: boolean = false
 - we-badge (DesignSystemElement)
   Props: variant: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' = 'neutral', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-blockquote (DesignSystemElement)
@@ -990,7 +990,7 @@ Not a standalone selector — wrap in we-popover for dropdown behavior.
 Supports selected, active, and danger states.
   Props: selected: boolean = false, active: boolean = false, variant: 'default' | 'danger' = 'default', label: unknown, value: unknown
 - we-modal (OverlayElement)
-  Props: hideclosebutton: boolean = false, close: () => void
+  Props: size: 'sm' | 'md' | 'lg' | 'fullscreen' = 'md', hideclosebutton: boolean = false, close: () => void
 - we-move-handle (LayoutElement)
   Props: step: number = 24, dragging: boolean = false, label: string = 'Move'
 - we-number (DesignSystemElement) — Displays a number, optionally abbreviated (1 200 → 1.2K, 1 500 000 → 1.5M).
@@ -1120,7 +1120,7 @@ when `relative` is enabled.
 - AudioInput
   Props: title: string | undefined, artist: string | undefined, audioUrl: string | FileData | undefined, duration: number | undefined, albumArt: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - BlockComposer (DesignSystemElement)
-  Props: editorState?: SerializedBlockNode, perspective?: unknown, onSave?: ((json: SerializedBlockNode) => void), onReady?: ((api: { save: () => void; }) => void)
+  Props: editorState?: SerializedBlockNode, perspective?: unknown, onSave?: ((json: SerializedBlockNode) => void), onReady?: ((api: { save: () => void; }) => void), onDirtyChange?: ((dirty: boolean) => void)
 - BlockPlaceholder
   Props: icon: string, label: string, hint?: string, accept?: string, onFileDrop?: ((file: File) => void), onClick?: (() => void)
 - BlockRenderer (DesignSystemElement)
@@ -1194,7 +1194,7 @@ when `relative` is enabled.
 - Combobox (DesignSystemElement)
   Props: options: string[] | ComboboxOption[], value?: string, placeholder?: string, size?: "xs" | "sm" | "md" | "lg" | "xl", onChange?: ((value: string) => void)
 - DropdownMenu — Flexible dropdown menu for actions, toggles, and grouped items. Use for context menus, settings panels, layer controls, and command palettes.
-  Props: styles?: Record<string, string | number>, class?: string, placement?: Placement, triggerLabel?: string, triggerIcon?: string, size?: "xs" | "sm" | "md" | "lg" | "xl", itemSize?: "xs" | "sm" | "md" | "lg" | "xl", items: SolidDropdownMenuEntry[]
+  Props: styles?: Record<string, string | number>, class?: string, placement?: Placement, triggerLabel?: string, triggerIcon?: string, triggerVariant?: "primary" | "danger" | "secondary" | "ghost" | "outline" | "bare", triggerTitle?: string, size?: "xs" | "sm" | "md" | "lg" | "xl", itemSize?: "xs" | "sm" | "md" | "lg" | "xl", items: SolidDropdownMenuEntry[]
 - EditableImage (DesignSystemElement)
   Props: src?: string, alt?: string, fit?: "cover" | "contain" | "none" | "fill" | "scale-down", placeholderIcon?: string, onImageChange?: ((file: File) => void), onImageRemove?: (() => void), uploadLabel?: string, editLabel?: string, class?: string, aspect?: number, maxSize?: number
 - FlipCard
@@ -1471,8 +1471,13 @@ we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
 | zIndex | number | Stack order |
 | display | "flex" \| "block" \| "inline" \| "inline-block" \| "grid" \| "inline-flex" | Display mode |
 | flex | string | Flex shorthand (e.g. "1", "0 0 auto", "none") — controls grow/shrink/basis |
+| flexShrink | number \| string | `flex-shrink` alone, for the common "just don't let it shrink" case (`0`) without committing to a grow and a basis |
 | alignSelf | string | Override parent cross-axis alignment for this child |
-| overflow | "hidden" \| "auto" | Overflow behavior |
+| overflow | "hidden" \| "auto" \| "overlay" | Overflow behavior, both axes |
+| overflowX | "hidden" \| "auto" \| "overlay" | Horizontal overflow alone — a nav strip or tab bar that scrolls sideways instead of pushing the page wide |
+| overflowY | "hidden" \| "auto" \| "overlay" | Vertical overflow alone |
+| scrollbarWidth | "auto" \| "thin" \| "none" | How much room the scrollbar takes. `none` for a strip in fixed-height chrome, where a gutter would not fit |
+| scrollbarGutter | "auto" \| "stable" \| "stable both-edges" | Reserve the gutter whether or not it scrolls, so content does not shift when a scrollbar appears |
 | m | SpaceValue | Margin (all sides) |
 | mx | SpaceValue | Margin left + right |
 | my | SpaceValue | Margin top + bottom |
@@ -1480,6 +1485,27 @@ we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
 | mr | SpaceValue | Margin right |
 | mb | SpaceValue | Margin bottom |
 | ml | SpaceValue | Margin left |
+
+**A row that overflows is a row where nobody said who gives up space.** Inside a `Row`, a child's
+`maxWidth` is not a promise: a flex item's automatic minimum size is its *content*, so an item whose
+content cannot narrow — a strip of `we-button`s, which set `white-space: nowrap` — refuses every
+request to compress. Flexbox then takes the whole deficit out of whichever sibling *can* shrink
+(usually a run of text, which folds onto two lines) and pushes the rest past the container. Where a
+template is mounted in a scrolling box, that reads as the entire page sliding sideways.
+
+Say who does what, and the row cannot overflow:
+
+```json
+{ "type": "Row", "props": { "ay": "center" }, "children": [
+  { "type": "Row", "props": { "flex": "1 1 auto", "minWidth": "0", "overflowX": "auto", "scrollbarWidth": "none" },
+    "children": ["…the strip that gives up space and scrolls instead…"] },
+  { "type": "Row", "props": { "flex": "0 0 auto" },
+    "children": ["…the ornament that never absorbs somebody else's overflow…"] }
+]}
+```
+
+`minWidth: '0'` is the half that gets forgotten. Without it `overflowX` has nothing to do, because
+the item is never asked to be narrower than its content in the first place.
 
 ### Visual
 
@@ -1544,6 +1570,18 @@ we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
 | letterSpacing | "tighter" \| "tight" \| "normal" \| "wide" \| "wider" \| "widest" | Letter spacing token |
 | textDecoration | "underline" \| "line-through" \| "overline" \| "none" | Text decoration |
 | textTransform | "uppercase" \| "lowercase" \| "capitalize" \| "none" | Text transform |
+| whiteSpace | "normal" \| "nowrap" \| "pre" \| "pre-wrap" \| "pre-line" \| "break-spaces" | How whitespace and line breaks in the source text are treated |
+| overflowWrap | "normal" \| "break-word" \| "anywhere" | Where a line may break inside a word too long to fit. **Defaults to `anywhere`** — see below |
+
+**Text that cannot break is text that breaks the page.** `overflowWrap` defaults to `anywhere` on
+every typography component and on `Column`/`Row`/`Grid`/`Card`, so a URL, a DID, or a transcriber's
+run-together output wraps instead of stretching its card off the screen. **Do not set it, and do not
+reach for `styles: { 'word-break': ... }` — that is the patch this default replaced.**
+
+Set `overflowWrap: 'normal'` only to deliberately opt a box *out* of breaking. Note `'break-word'` is
+the value that looks right and is not: it breaks in the same places as `anywhere` but does not
+reduce the element's min-content width, and a flex item and a `1fr` grid track are both sized by
+min-content — so under it the long string still pushes its container wider than the viewport.
 
 **Typography defaults:** fontSize and fontWeight have **no built-in defaults** — omitting them inherits from parent elements (browser default is ~16px / normal weight). Do not set fontSize or fontWeight unless you need a non-default value. For example, `fontSize: '300'` (16px) and `fontWeight: '500'` (normal) are the inherited defaults — omit them.
 
@@ -2163,10 +2201,14 @@ PresenceStore:
 ProfileStore:
 - State:
   - profiles: AgentProfileSummary[] — cache of all fetched profiles (did, firstName, lastName, handle, bio, avatar, coverImage, location)
-  - ownProfile: AgentProfileSummary | undefined — reactive accessor for the current user's own profile (derived from the cache)
+  - ownProfile: AgentProfileSummary | undefined — reactive accessor for the current user's own profile (derived from the cache). Note `name` is assembled for display and falls back to "Anonymous", so it is never empty — test firstName/lastName/handle to ask whether somebody has a name
+  - ownProfileLoaded: boolean — the own-profile fetch has answered. An empty profile is otherwise indistinguishable from an unfetched one, so anything asking "has this person set a name?" reads every boot frame as "no". Same reason as datasetStore.datasetsLoaded
+  - needsName: boolean — this agent has no name of any kind and has not waved the question away this session, as a settled fact (false until the app is ready and the profile fetch has answered). What the name prompt mounts on; also the right gate for any "finish setting up" nudge of your own
   - pendingAvatar: unknown
 - Actions:
   - setPendingAvatar(file: File): holds a picture chosen before an agent exists; uploaded by completeAccountSetup
+  - saveNameFromPrompt(name: string): sets the name and stops asking. Dismisses before publishing, so a failed write cannot re-raise the prompt on top of the toast explaining it — which is why this exists rather than calling updateOwnProfile from the schema
+  - dismissNamePrompt(): stops asking for a name until the next launch. Not persisted: a nameless agent degrades every other member's experience, so the only permanent exit is setting a name
   - completeAccountSetup(name: string, password: string): the whole of first-run setup — creates the agent, then publishes the name and picture, then lets the app appear
   - fetchProfile(did: string): fetches and caches an agent's profile from their public dataset
   - updateOwnProfile(fields: { firstName?, lastName?, handle?, bio? }): updates own profile text fields and publishes to the public dataset
@@ -2178,6 +2220,7 @@ RecordStore:
 - State:
   - creatableEntities: { label, value, icon, group }[] — models a person can create an instance of here, ready for a we-select: this space's own models first, then WE's built-in content types. A model appears here by declaring `authoring` in the manifest, or by being a shape this community defined
   - recordDraft: the open form's draft ({ entity, label, icon, fields[] }) or null while closed — its non-nullness is what mounts the modal. Each field is { name, label, control, required, options, placeholder, value }, derived from the model's own declaration, so a form exists for a model nobody wrote a form for
+  - recordDraftDirty: boolean — the open form holds something worth keeping. What a discard guard reads: the fields come from the model, so a shape this community defined has properties no schema was written against and there is no set of $local names an expression could test. Pass it to discardGuard's `dirty`
   - recordErrors: string[] — validation errors from the last save attempt, plus any backend failure
   - savingRecord: boolean — a create is in flight
   - lastCreatedId: string — the id of the last record created, empty before the first. Read it to act on what was just made; kept in the store because an $action's onSuccess can read a store and cannot hold a value
@@ -2228,6 +2271,7 @@ RuntimeStore:
   - aiForm: AiModelForm | null — the model form while it is open, null when closed. One flat field per input; read with runtimeStore.aiForm.<field>
   - aiPresetOptions: { label, value }[] — model names the backend can fetch itself, for the open form kind
   - aiFormComplete: boolean — the open form has every field its chosen source needs
+  - aiFormDirty: boolean — the open form has been edited since it opened. What a discard guard reads; compared against a snapshot taken on open, so looking at a model's settings and closing again asks nothing
   - languages: InstalledLanguage[] — language plugins installed in this backend (address, name, system). Empty until loadLanguages() runs
   - trustedAgents: string[] — trusted peer ids. Empty until loadTrustedAgents() runs
   - authorizedApps: AuthorizedApp[] — external apps holding credentials (id, name, description, url, iconUrl, capabilities, revoked). Empty until loadAuthorizedApps() runs
@@ -2296,9 +2340,11 @@ SessionStore:
   - serverUrl: unknown
   - host: BackendHostInfo | undefined — the node this session runs against when it is somebody's hosting rather than this machine (id, name, description, imageUrl, location, url, computeSpecs, aiModels, rates). Undefined on desktop and on a local executor, so its presence is also the answer to "am I a guest here?" — gate any "connected to" UI on it. `aiModels` comes from the host directory and needs no capability, so it answers "can this node transcribe?" even where the executor refuses to list its models
   - hostAccount: BackendAccountInfo | undefined — this agent's account with that node (email, remainingCredits, walletAddress, freeAccess). Check freeAccess before showing a balance: on a free node the credit figure means nothing and "0" reads as an account that has run dry
-  - isDevelopment: unknown
+  - isDevelopment: boolean — whether this is a development build. A fact about the build. Do NOT gate developer-only UI on it; gate on devTools, which is the same answer plus a switch
+  - devTools: boolean — whether developer affordances should be VISIBLE. True in a development build unless a developer has thrown the Settings → Developer switch to see what a shipped app looks like. Reactive, so a control gated on it appears and disappears on the press. Gate any developer-only control on this — a schema-test page, a fixture toggle — and wrap it in $if rather than hiding it, since a hidden row is still in the accessibility tree and still found by find-in-page. Never true in a production build, whatever the switch says
   - ephemeralPort: unknown
 - Actions:
+  - setDevTools(): unknown
   - login(password: string): unlocks the agent and loads user data
   - createAgent(password: string): creates the agent, loads user data, and lands on the 'finishing' boot state (not 'ready')
   - clearPasswordError(): clears the failed-unlock flag. Chain it after the password field's $setLocal — the verdict was on the submitted password, so editing that password retracts it and a stale "Incorrect password" should not sit over the correction
@@ -2483,7 +2529,7 @@ TemplateStore:
   - myTemplates: array of TemplateSchema objects — user's installed custom templates only (excludes built-in and space templates)
   - allTemplates: array of TemplateSchema objects — union of built-in + personal + space templates
   - templateManagementList: TemplateManagementItem[] — flat list of all templates with management metadata (id, name, icon, description, isBuiltIn, isInstalled, isDefault)
-  - switcherGroups: TemplateSwitcherGroup[] — pre-grouped flat items for the template switcher UI; each group has { label: string, items: { id, name, icon }[] }. Groups: "Space templates", "My templates", "Built-in". Use $filter where: { name: { contains: ... } } for search since items have a flat name field.
+  - switcherGroups: TemplateSwitcherGroup[] — pre-grouped flat items for the template switcher UI; each group has { label: string, items: { id, name, icon, editable }[] }. Groups: "Space templates", "My templates", "Built-in". Use $filter where: { name: { contains: ... } } for search since items have a flat name field. `editable` says whether editing THAT row would open a session that can be saved — gate a per-row edit control on it rather than on editorStore.isReadOnly, which answers for whichever template is currently rendered and so gives every row the same verdict.
   - currentSwitcherId: unknown
   - currentTemplate: TemplateSchema (the active template)
   - loading: unknown
@@ -3036,53 +3082,133 @@ what a theme *decides* a faint foreground is, and the contrast corrections at ap
 entirely, so nothing ever measures it against what is behind it. Guidance that names a step
 reproduces that in every template written from it.
 
+### How wide is a modal — always `size`, never a pixel width
+
+`we-modal` sizes itself from a `size` prop, and **every modal should set one**:
+
+| `size` | Measure | For |
+|---|---|---|
+| `sm` | 420px | A confirmation, or one or two fields. |
+| `md` | 640px | **The default.** A form. |
+| `lg` | 900px | A workspace — a composer, a wizard, a card opened out to be read. |
+| `fullscreen` | The viewport, less a gutter | A lightbox, where the content is the size. |
+
+Each keeps a gutter between itself and the edge of the screen, so a modal on a phone is never
+edge-to-edge. Do **not** write `"width": "100%"` beside a `"maxWidth"` — that is what `size`
+replaced, and `100%` of a viewport-wide host is the viewport.
+
+Without a size, `[part='base']` shrink-wraps to its widest line of text: a short confirmation comes
+out too narrow to read and a wordy one too wide, from the same rule. `width`/`maxWidth` still
+override `size` for the rare modal that genuinely needs its own number.
+
 ### Confirm dialog
 
-```json
-{
-  "type": "$if",
-  "props": {
-    "condition": { "$local": "confirmDeleteOpen" },
-    "then": {
-      "type": "we-modal",
-      "props": { "close": { "$setLocal": "confirmDeleteOpen", "value": false } },
-      "children": [
-        { "type": "we-text", "props": { "fontWeight": "semibold" }, "children": ["Delete post?"] },
-        { "type": "we-text", "children": ["This cannot be undone."] },
-        {
-          "type": "Row",
-          "props": { "ax": "end", "gap": "200" },
-          "children": [
-            { "type": "we-button", "props": { "variant": "ghost", "onClick": { "$setLocal": "confirmDeleteOpen", "value": false } }, "children": ["Cancel"] },
-            {
-              "type": "we-button",
-              "props": {
-                "variant": "danger",
-                "onClick": { "$action": "spaceStore.deleteCollection", "args": ["$post.id"],
-                             "onSuccess": [{ "$setLocal": "confirmDeleteOpen", "value": false }] }
-              },
-              "children": ["Delete"]
-            }
-          ]
-        }
-      ]
-    }
-  }
-}
+**Use `confirmModal` from `@we/template-kit`.** Every "are you sure?" in WE goes through it, so
+they share an icon, a heading, a width and a button row:
+
+```ts
+confirmModal({
+  open: { $local: 'confirmDeleteOpen' },
+  close: { $setLocal: 'confirmDeleteOpen', value: false },
+  title: 'Delete post?',
+  body: 'This will permanently delete the post and everything inside it. This cannot be undone.',
+  confirmLabel: 'Delete',
+  confirm: { $action: 'spaceStore.deleteCollection', args: ['$post.id'] },
+})
 ```
+
+It returns the `$if` as well as the modal, and clears `open` from all three exits — the backdrop,
+Cancel, and the action's `onSuccess`.
+
+- `open` and `close` are **expressions**, so a dialog gated on a store flag
+  (`{ $store: 'shapeStore.confirmDiscard' }`) or on a string id works the same way.
+- `cancel` for a cancel button that does more than close — "Keep editing" dismisses the question
+  and leaves the wizard behind it open.
+- `tone: 'primary'` for a question with no casualty; the default `danger` picks a warning icon and
+  a danger confirm button.
+- `detail` for a quieter second line, `children` for a `we-alert` naming a surprising consequence.
+- `busyLocal` if the action is not instant — a recursive delete walks its whole collection, and
+  without a spinner the button absorbs the click and invites a second one. `busy` instead when a
+  store already owns the flag.
 
 The flag must be declared by an ancestor of **the button that opens it**, not merely of the modal.
 Undeclared, `$setLocal` warns and no-ops: the button renders, takes the click, and does nothing.
 
-If the action is slow (a recursive delete walks its whole collection), add a `busy` boolean set
-before it and cleared in `onFinally`, and bind the confirm button's `loading` and `disabled` to it.
+### A form in a modal
+
+**Use `formModal` from `@we/template-kit`** — title, fields, Cancel and Save:
+
+```ts
+formModal({
+  open: { $local: 'composerOpen' },
+  close: { $setLocal: 'composerOpen', value: false },
+  title: 'New task',
+  size: 'sm',
+  localState: { draftTitle: { type: 'string', initial: '' } },
+  children: [field({ name: 'draftTitle', label: 'What needs doing?', placeholder: 'Ship the docs' })],
+  disabled: { $not: { $local: 'draftTitle' } },
+  submitLabel: 'Add task',
+  submit: { $action: 'model.create', args: ['TaskBlock', { title: { $local: 'draftTitle' } }] },
+})
+```
+
+- **Declare the draft in `localState`, not on the page.** The modal is mounted only while open, so
+  the draft resets when it closes — for free. A draft declared higher up has to be cleared by hand
+  in `onSuccess`, and the field somebody forgets is the one that re-opens holding last time's value.
+- `disabled` is the **precondition** only ("a task needs a title"); the in-flight flag is `$or`-ed
+  in for you, so the Save button cannot start a second save.
+- It uses the header and footer slots, so a long form scrolls its fields and never its Save button.
+
+Reach past it only for a form with real `validate` rules and a `{ "$touch": "$all" }` submit guard
+— that shape deliberately keeps the button clickable, and is written out by hand.
+
+### Don't lose what somebody typed — the discard guard
+
+A modal closes on a backdrop click and on Escape. Both are easy to hit by accident, and neither is
+recoverable: the modal is `$if`-mounted, so closing unmounts the draft with it. **Any modal a
+person can type into must ask before throwing that away.**
+
+| Writing | How |
+|---|---|
+| `formModal` | `discardWhen: <expression>` |
+| `composerModal` | Nothing — on by default (`guardDraft: false` turns it off) |
+| A hand-written `we-modal` | `discardGuard({ dirty, close })` |
+
+`discardGuard` returns three pieces, because a modal cannot be guarded from outside it:
+
+```ts
+const guard = discardGuard({
+  dirty: { $or: [{ $local: 'name' }, { $local: 'description' }] },
+  close: { $action: 'shellStore.setCreateSpaceOpen', args: [false] },
+  title: 'Discard this space?',
+  body: 'The name, description and images you have entered will be lost.',
+});
+
+{ type: 'we-modal',
+  props: { size: 'md', close: guard.close },
+  $localState: { ...myFields, ...guard.localState },
+  children: [ …the form…, guard.node ] }
+```
+
+Wire the Cancel button to `guard.close` as well — one way out of a modal, not two that disagree.
+
+**Writing `dirty` is the part that goes wrong**, and always in one direction: a guard that fires
+when there is nothing to lose. A dialog people learn to click through is worse than no dialog.
+
+- **Test only what the person typed.** A field with a default and a picker — a status, a mode, a
+  colour — is set from the first frame, so including it makes the guard fire on an untouched form.
+- **A form seeded from a record asks whether it _changed_**, not whether it is filled in:
+  `{ $ne: [{ "$local": "titleDraft" }, "$call.title"] }`, not `{ "$local": "titleDraft" }`.
+- **Where the fields are not known in advance, a store answers** — `recordStore.recordDraftDirty`,
+  `runtimeStore.aiFormDirty`.
+- **Leave it off a single-field form** ("name this board"). The guard costs more attention than one
+  word is worth.
 
 **Tall modals — pin the title and buttons.** A modal whose content can outgrow the viewport (a
 long form, a settings editor) scrolls its *content*, never its own title or its action buttons.
 Give the title node `"slot": "header"` and the button row `"slot": "footer"`: both are pinned
 outside the scroll region, sharing the modal's padding and gap, while the default slot scrolls.
-Put a `width` on the `we-modal` itself when using these slots — no single child spans it any
-more. A short confirm dialog like the one above needs none of this; the default slot alone is right.
+`confirmModal` and `formModal` already do this; write it out only for a modal that is neither.
 
 ### Composing a post — the BlockComposer save handshake
 
@@ -3095,7 +3221,7 @@ through `onReady`. So the sequence is: `onReady` stores that function in a **`fu
 ```json
 {
   "type": "we-modal",
-  "props": { "close": { "$setLocal": "composeOpen", "value": false } },
+  "props": { "size": "lg", "close": { "$setLocal": "composeOpen", "value": false } },
   "$localState": {
     "savePost": { "type": "function", "initial": null },
     "submitting": { "type": "boolean", "initial": false }
@@ -3188,9 +3314,16 @@ with the value itself as `$arg`.
 }
 ```
 
-Always set `hash` as well as `image`, never as a fallback for it: `hash` seeds a generated avatar
-that is stable per agent, so somebody whose profile has not arrived is still visually distinct from
-everybody else whose profile has not arrived. A real picture wins where there is one.
+Always set `hash` as well as `image`, never as a fallback for it — and seed it with an **id**, never
+a name. `hash` is the stable thing a row *is*: a DID for a person, a uuid for a space. It does two
+jobs. It colours the generated initials, so the colour survives a rename; and it draws an identicon
+when there are no initials to draw, which is the case it exists for — somebody whose profile has not
+arrived has no name yet, and two unresolved peers must not be two identical blank discs.
+
+What `we-avatar` draws, in order: **a picture, else letters, else a generated pattern, else a
+glyph.** Letters outrank the pattern, so a row that has both shows its initials on a colour seeded
+from the hash. Seeding `hash` with a *name* is the mistake to avoid: it makes the colour change when
+somebody renames the thing, which is identity art contradicting the identity.
 
 ### A group of faces with a count
 

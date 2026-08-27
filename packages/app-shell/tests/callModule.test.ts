@@ -78,12 +78,37 @@ describe('call module — contributions', () => {
     expect(callModule.launcher).toEqual({
       icon: 'phone-call',
       label: 'Start call',
-      action: 'joinSpaceCall',
+      activeLabel: 'Go to the call',
+      action: 'goToCall',
+      activeWhen: 'active',
       availableWhen: 'canCall',
     });
   });
 
-  it('names a launcher action its own store actually has', () => {
+  it('never points the rail at an action that could end a call', () => {
+    /*
+      The reason `goToCall` exists rather than the rail calling `joinSpaceCall` directly. `join`
+      returns early on a matching id and tears the current call down on any other, so wiring the rail
+      to it made one button silently dead in the space call and a silent hang-up in every other —
+      including a call running in a different space, reached by a button the user pressed to *look*
+      at it.
+
+      Asserted on the declaration because that is the whole of the coupling: it is a string, and
+      nothing else would notice it being changed back.
+    */
+    expect(callModule.launcher!.action).not.toBe('joinSpaceCall');
+    expect(callModule.launcher!.action).not.toBe('joinAnchoredCall');
+  });
+
+  it('lights the rail while a call is running, and renames itself when it does', () => {
+    // The rail is the only chrome that is always on screen, so it is where "am I in a call" belongs.
+    // `activeLabel` goes with it: the tooltip is the button's only name, and "Start call" on a button
+    // that no longer starts one is worse than no tooltip.
+    expect(callModule.launcher!.activeWhen).toBe('active');
+    expect(callModule.launcher!.activeLabel).toBeTruthy();
+  });
+
+  it('names launcher store keys its own store actually has', () => {
     // The declaration is a string, so nothing but a test connects it to the method. Getting it wrong
     // would produce a rail tab that silently does nothing — the `$action` depth bug again, one layer up.
     moduleRegistry.register(callModule, host, storeDeps);
@@ -91,6 +116,9 @@ describe('call module — contributions', () => {
 
     expect(typeof store[callModule.launcher!.action]).toBe('function');
     expect(typeof store[callModule.launcher!.availableWhen!]).toBe('function');
+    // `activeWhen` is read the same way, and a rename here fails silently in the same direction: the
+    // tab simply never lights, which looks exactly like not being in a call.
+    expect(typeof store[callModule.launcher!.activeWhen!]).toBe('function');
   });
 
   it('reports the band its bar occupies, so panels can keep clear of it', () => {

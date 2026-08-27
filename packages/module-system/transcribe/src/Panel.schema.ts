@@ -153,6 +153,90 @@ const meter: SchemaNode = {
 };
 
 /**
+ * How much of this call is actually being written down.
+ *
+ * The one number a transcript most needs to admit, and until now it was computed and shown nowhere.
+ * Transcription is per microphone: every agent records their own and appends to one shared record,
+ * so a call where two of five people are transcribing produces a transcript **of two people** that
+ * reads exactly like a transcript of the call. Nothing downstream can tell the difference — the
+ * extraction pass proposes tasks and events from one side of a conversation as readily as from all
+ * of it — and neither can whoever opens the record next week.
+ *
+ * Here rather than only on the finished record because here it is still actionable. The calls list
+ * pairs the faces with an utterance count for the same reason, but it says so afterwards, when the
+ * only remaining response is to distrust what you are reading. This says it while the meeting is
+ * happening and somebody can still press record.
+ *
+ * Modelled on the meter above it — a label, and the state on the right — so the panel reads as one
+ * set of readouts rather than a meter and then a warning. It states the count either way and only
+ * changes *colour* when there is a gap: a number that appears when something is wrong is a number
+ * nobody learns to read, and "4 of 4" is worth seeing precisely because it means the record is whole.
+ *
+ * Absent outside a call, where `callAgents` is empty. There is no coverage question about a
+ * transcript with no other participants, and "1 of 1" would be noise on every solo recording.
+ */
+const coverage: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $count: { items: { $store: 'modules.transcribe.callAgents' } } },
+    then: {
+      type: 'Column',
+      props: { gap: '150' },
+      children: [
+        {
+          type: 'Row',
+          props: { ax: 'between', ay: 'center', gap: '300' },
+          children: [
+            { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: ['Coverage'] },
+            {
+              type: 'we-text',
+              props: {
+                variant: 'footnote',
+                color: {
+                  $if: {
+                    condition: { $store: 'modules.transcribe.partialCoverage' },
+                    then: 'warning-text',
+                    else: 'success-text',
+                  },
+                },
+              },
+              children: [
+                {
+                  $concat: [
+                    { $count: { items: { $store: 'modules.transcribe.transcribers' } } },
+                    ' of ',
+                    { $count: { items: { $store: 'modules.transcribe.callAgents' } } },
+                    ' transcribing',
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        {
+          /*
+            What the gap means, in the words somebody would need to act on it.
+
+            Only when there is a gap — the whole-coverage case is already fully said by the count, and
+            a permanent second line explaining a number that is currently fine is the kind of chrome
+            people stop reading before the day it matters.
+          */
+          type: '$if',
+          props: {
+            condition: { $store: 'modules.transcribe.partialCoverage' },
+            then: {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-faint' },
+              children: ['Only what those microphones hear reaches this record.'],
+            },
+          },
+        },
+      ],
+    },
+  },
+};
+
+/**
  * Suggestions the backend staged instead of writing, and the two buttons that resolve them.
  *
  * Only appears when there are any, which is *not* the common case: a value is staged only where a
@@ -464,6 +548,9 @@ export const panel: SchemaNode = {
 
         // ── Is it hearing me? ────────────────────────────────────────────────
         meter,
+
+        // ── Is it hearing everyone else? ─────────────────────────────────────
+        coverage,
 
         // ── Why nothing is happening, when nothing is ────────────────────────
         {

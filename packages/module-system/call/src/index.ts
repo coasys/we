@@ -71,6 +71,102 @@ export { type CallDockEdge, type CallTile, type CallTileState, createCallStore }
 const CALL_BAR_INSET = '10px';
 
 /**
+ * A strip across one edge of the content, for chrome that is centred on it rather than pinned to a
+ * corner. The bar, the join prompt and the problem alert all sit in one.
+ *
+ * ## Why a strip, and not a centred box
+ *
+ * The bars used to centre themselves — `left: 50% + --we-chrome-center-x`, `translateX(-50%)` —
+ * which is right for as long as the content is wider than the bar and wrong the moment it is not:
+ * a box centred on a space too narrow for it overhangs both sides equally, and the half that
+ * crosses the sidebar leaves the window. That is what a panel taking enough of the right did to
+ * the call controls, hang-up button first.
+ *
+ * A strip spanning the content's edges, with the bar as its one flex child under `justify-content:
+ * safe center`, is the same centring while the bar fits and a clamp when it does not — `safe`
+ * means "centre, unless that would overflow, in which case align to start". No measurement, no
+ * second position to keep in step with the first, and the strip's edges are the same four numbers
+ * the content is laid out from, so it slides with a dock exactly as the centred box did.
+ *
+ * Which end is the start is the host's call, published as `--we-chrome-give`: the side with the
+ * deeper dock, so a bar that cannot fit covers the panel that squeezed it rather than the sidebar
+ * or the window's edge. See the shell store for the reasoning.
+ *
+ * ## What the strip clears
+ *
+ * `--we-chrome-<edge>` is where the host says the content's edge is, so this clears a docked
+ * panel along that edge as it clears a docked call stage. A panel that merely *floats* there is
+ * deliberately not dodged: it takes no room, the user put it there by hand, and moving out of its
+ * way would be chrome running from a decision somebody just made — worse than an overlap they can
+ * see and undo. The asymmetry that makes that safe at the bottom would not hold at the top: a
+ * panel's controls are all in its titlebar, so an overlap at the bottom covers content rather than
+ * the way out.
+ *
+ * ## Why the strip is a `$surface`
+ *
+ * The strip's width is the content's width, which is exactly the number the bar needs in order to
+ * decide how much of itself to show — see `COMPACT`. A surface is the one mechanism the system has
+ * for a schema to read its own room, and it needs a box whose inline size is decided from outside,
+ * which a strip pinned at both ends is and a shrink-to-fit bar is not.
+ *
+ * The strip passes pointer events through, since it spans the whole edge and would otherwise
+ * swallow every click along the bottom of the content; the child has to switch them back on.
+ */
+function contentCentred(edge: 'top' | 'bottom', child: SchemaNode): SchemaNode {
+  const ease = (property: string) => `${property} var(--we-chrome-transition, 300ms) ease`;
+  return {
+    type: 'Column',
+    props: {
+      position: 'fixed',
+      left: 'var(--we-chrome-left, 0px)',
+      right: 'var(--we-chrome-right, 0px)',
+      [edge]: `calc(${CALL_BAR_INSET} + var(--we-chrome-${edge}, 0px))`,
+      transition: [ease('left'), ease('right'), ease(edge)].join(', '),
+      zIndex: 'sticky',
+      pointerEvents: 'none',
+    },
+    children: [
+      {
+        type: '$surface',
+        props: {
+          // The surface fills a column by default; this one is a row that hugs its edge.
+          styles: {
+            height: 'auto',
+            'flex-direction': 'var(--we-chrome-give, row)',
+            'justify-content': 'safe center',
+          },
+        },
+        children: [child],
+      },
+    ],
+  };
+}
+
+/**
+ * When the bar folds its secondary controls away.
+ *
+ * `base` is the strip's tier below 640px of content — a phone, or a desktop with enough docked
+ * beside the space that the full row would not fit. The full bar runs to six hundred pixels with
+ * a contributed control or two; below that width the strip above keeps it on screen by letting it
+ * overlap the dock, which is survivable and not good. Compact, it is about half as wide: the
+ * readout keeps its faces and loses its sentence, and everything that is not mute, camera, or
+ * hang-up moves into one menu.
+ *
+ * One tier rather than a gradual collapse, because a control that moves at 700 and another at 500
+ * is a bar nobody can learn. The rule is: below `base` it is the small bar, otherwise the whole
+ * one, and both are one schema with these two gates in it rather than two schemas that drift.
+ *
+ * The same question the mobile plan asks, answered once — a narrow window and a narrow content
+ * box are the same problem to a bar, and the surface reports them as one number.
+ */
+const COMPACT = { $eq: ['$surface.tier', 'base'] };
+const whenRoomy = (node: SchemaNode): SchemaNode => ({
+  type: '$if',
+  props: { condition: { $not: COMPACT }, then: node },
+});
+const whenCompact = (node: SchemaNode): SchemaNode => ({ type: '$if', props: { condition: COMPACT, then: node } });
+
+/**
  * The bar's own corners, following the theme's **control** radius.
  *
  * It was a flat `pill`, so a theme set to Sharp drew a fully rounded bar around square-cornered
@@ -824,22 +920,27 @@ const participants: SchemaNode = peopleTooltip({
             ring: '0 0 0 2px var(--we-ring-color)',
           },
         },
-        {
+        /*
+          The sentence is the first thing to go when the bar is short of room — see `COMPACT`. The
+          faces stay, and the stack's own "+N" carries the count past three; the roster on hover is
+          unchanged, so nothing is lost that was not already a hover away.
+        */
+        whenRoomy({
           type: 'we-text',
           props: {
             color: 'text-muted',
             /*
             One line, whatever the window does to the bar.
 
-            The bar is centred and shrink-to-fit, so a narrow window squeezes it — and this readout is
-            the only thing in it that can give, every other child being a fixed-size button. Left to
-            wrap, "11 in the call" broke between the number and the words and made the whole bar a row
-            taller, which moves every control in it.
+            The bar is shrink-to-fit, so a narrow content box squeezes it — and this readout is the
+            only thing in it that can give, every other child being a fixed-size button. Left to
+            wrap, "11 in the call" broke between the number and the words and made the whole bar a
+            row taller, which moves every control in it.
 
             Not a design-system prop, and `truncate` is the wrong one: that clips with an ellipsis,
-            where the honest behaviour for a bar too narrow for its contents is to overflow and let
-            the window be the thing that is too small. Making the bar itself work at phone widths is
-            the chrome work, not this.
+            where the honest behaviour for a bar too narrow for its contents is to overflow. Below
+            the compact tier this text is not rendered at all, which is the answer for the widths
+            where it actually happened.
           */
             styles: { whiteSpace: 'nowrap' },
           },
@@ -847,11 +948,48 @@ const participants: SchemaNode = peopleTooltip({
             { type: 'we-number', props: { value: { $count: { items: { $store: 'modules.call.tiles' } } } } },
             ' in the call',
           ],
-        },
+        }),
       ],
     },
   ],
 });
+
+/**
+ * The three toggles that leave the row when it is short of room — declared once, so the square in
+ * the bar and the line in the overflow menu are built from the same facts and cannot come to
+ * disagree about what a control does or which way round it reads.
+ *
+ * Each carries two vocabularies, and the split is the point. `tip` is what the *action* would do
+ * ("Stop sharing your screen"), which is what a tooltip on a live button should say. `label` is what
+ * the control is *about* ("Screen share"), which is what a menu line should say, because a menu
+ * carries its state in the tick beside it — a line reading "Stop sharing" with a tick next to it
+ * states the same fact twice and in two different grammars.
+ *
+ * Screen share keeps the same glyph in both states, unlike the mute and camera buttons beside it.
+ * `monitor-arrow-up` is a *subject*, not a state: it is your screen, going out. Dropping the arrow
+ * while sharing read as the screen leaving — backwards, at the one moment the button has something
+ * to report. So the variant carries the state, exactly as it does for the show/hide toggle, and the
+ * glyph says what the button is about. Sharing is also the one toggle here with no honest "off"
+ * icon: you are either sending a screen or sending nothing, so a slash would be describing a state
+ * that does not exist.
+ */
+interface CallToggle {
+  on: string;
+  off: string;
+  label: string;
+  enabled: string;
+  action: string;
+  tip: { on: string; off: string };
+}
+
+const SCREEN_SHARE: CallToggle = {
+  on: 'monitor-arrow-up',
+  off: 'monitor-arrow-up',
+  label: 'Screen share',
+  enabled: 'modules.call.media.screenShareEnabled',
+  action: 'modules.call.toggleScreenShare',
+  tip: { on: 'Stop sharing your screen', off: 'Share your screen' },
+};
 
 /**
  * Show the video, or put it away.
@@ -860,45 +998,95 @@ const participants: SchemaNode = peopleTooltip({
  * clear icon: it was cycling visibility, placement and size together, so a caret pointed in a
  * direction that meant nothing once the panel was docked to the right.
  *
- * Follows the same active-variant convention as the mute and camera toggles beside it, so the bar
- * has one idea of what "on" looks like.
+ * One glyph rather than a pair, like screen share above: `secondary` versus `ghost` says whether the
+ * video is showing, which is the same answer every other toggle here gives, and the tooltip names
+ * the move. It was `arrows-out`/`arrows-in` — the action rather than the subject — on the grounds
+ * that the count beside it named what the button was about. The count is its own readout now, so the
+ * arrows were left saying "expand" with no stated object, in a bar where two other buttons also open
+ * things.
  */
-const participantsToggle: SchemaNode = {
-  type: 'we-tooltip',
+const STAGE: CallToggle = {
+  on: 'video-conference',
+  off: 'video-conference',
+  label: 'Video',
+  enabled: 'modules.call.stageOpen',
+  action: 'modules.call.toggleStage',
+  tip: { on: 'Hide video', off: 'Show video' },
+};
+
+/**
+ * Solo — the spotlight with the stage to itself.
+ *
+ * Only offered while something is focused, which is also the affordance: giving somebody the stage
+ * reveals the option to give them all of it. A toggle rather than a third click on the tile,
+ * because a three-state cycle on one gesture cannot say which state it is in — see `solo` in the
+ * store.
+ */
+const SOLO: CallToggle = {
+  on: 'user',
+  off: 'users-three',
+  label: 'Spotlight only',
+  enabled: 'modules.call.solo',
+  action: 'modules.call.toggleSolo',
+  tip: { on: 'Show everyone', off: 'Hide the others' },
+};
+
+/**
+ * One of the toggles above, as a line in the overflow menu rather than a square in the row.
+ *
+ * The same store key and the same action, so choosing it here is indistinguishable from pressing the
+ * button it stands in for. Choosing a toggle deliberately leaves the menu **open**, which is right
+ * for a control somebody may want to flip twice.
+ *
+ * The icon is the "on" glyph in both states, which is exact rather than a shortcut: it is the
+ * subject, and only the tick is allowed to say whether the subject is switched on.
+ */
+function menuToggle(opts: CallToggle) {
+  return {
+    id: opts.enabled,
+    type: 'toggle',
+    label: opts.label,
+    icon: opts.on,
+    checked: { $store: opts.enabled },
+    onToggle: { $action: opts.action },
+  };
+}
+
+/**
+ * Where the secondary controls go when the row is compact — see `COMPACT`.
+ *
+ * The design system's `DropdownMenu`, which this could not use until recently: it drew a filled pill
+ * for a trigger with no way to say otherwise, and this has to sit in a row of ghost squares as one
+ * of them. A hand-rolled `we-popover` around a ghost square stood in, repeating the dropdown's own
+ * item metrics and its check glyph by hand — three numbers and a colour that had to be kept in
+ * agreement with a component nothing linked them to. `triggerVariant` is the whole of what was
+ * missing, and `itemSize` says the rest: `sm` rows, which is what those hand-copied metrics were.
+ *
+ * Opens upward: the bar is on the bottom edge and there is nothing below it.
+ *
+ * What is in here is exactly what `whenRoomy` takes out of the row, and it is built from the same
+ * three specs, so a toggle cannot be lost in the fold or appear twice. Mute, camera and hang-up
+ * never fold: they are the call, and a menu between a person and their microphone is a step too
+ * many at the moment they need it.
+ *
+ * Solo is only offered while something is focused. A `$if` with no `else` resolves to nothing, and
+ * the dropdown skips an entry that resolved to nothing — which is what makes a conditional line
+ * expressible here at all, and was the second reason this was hand-rolled.
+ */
+const moreMenu: SchemaNode = {
+  type: 'DropdownMenu',
   props: {
-    title: { $if: { condition: { $store: 'modules.call.stageOpen' }, then: 'Hide video', else: 'Show video' } },
-    placement: 'bottom',
+    triggerIcon: 'dots-three',
+    triggerVariant: 'ghost',
+    triggerTitle: 'More controls',
+    placement: 'top',
+    itemSize: 'sm',
+    items: [
+      menuToggle(SCREEN_SHARE),
+      menuToggle(STAGE),
+      { $if: { condition: { $store: 'modules.call.focusedId' }, then: menuToggle(SOLO) } },
+    ],
   },
-  children: [
-    {
-      type: 'we-button',
-      props: {
-        square: true,
-        variant: { $if: { condition: { $store: 'modules.call.stageOpen' }, then: 'secondary', else: 'ghost' } },
-        onClick: { $action: 'modules.call.toggleStage' },
-      },
-      children: [
-        {
-          type: 'we-icon',
-          props: {
-            /**
-             * The subject, with the state carried by the variant.
-             *
-             * This was `arrows-out`/`arrows-in` — the action rather than the subject — on the
-             * grounds that the count beside it already named what the button was about. The count
-             * is its own readout now, so the arrows were left saying "expand" with no stated object
-             * in a bar where two other buttons also open things.
-             *
-             * One glyph rather than a pair, like the screen-share button: `secondary` versus `ghost`
-             * says whether the video is showing, which is the same answer every other toggle here
-             * gives, and the tooltip names the move.
-             */
-            name: 'video-conference',
-          },
-        },
-      ],
-    },
-  ],
 };
 
 /**
@@ -974,18 +1162,13 @@ const bar: SchemaNode = {
       type: '$if',
       props: {
         condition: { $count: { items: { $store: 'modules.call.ongoing' } } },
-        then: {
+        then: contentCentred('bottom', {
           type: 'Row',
           props: {
-            position: 'fixed',
-            // The same two corrections the in-call bar makes, and for the same reasons — this is the
-            // bar that replaces it, in the same place. It made neither until the host started
-            // publishing the content box: pinned to the middle of the *window*, it sat off-centre
-            // whenever anything was docked and slid under a panel that took the bottom edge.
-            bottom: `calc(${CALL_BAR_INSET} + var(--we-chrome-bottom, 0px))`,
-            left: 'calc(50% + var(--we-chrome-center-x, 0px))',
-            transform: 'translateX(-50%)',
-            transition: 'left var(--we-chrome-transition, 300ms) ease, bottom var(--we-chrome-transition, 300ms) ease',
+            // The same strip the in-call bar sits in — this is the bar that replaces it, in the
+            // same place, and it keeps to the screen by the same rule. It used to position itself,
+            // and made neither of the bar's corrections until the host published the content box.
+            pointerEvents: 'auto',
             ...BAR_SURFACE,
             r: BAR_RADIUS,
             p: '200',
@@ -1016,7 +1199,7 @@ const bar: SchemaNode = {
               children: ['Join'],
             },
           ],
-        },
+        }),
       },
     },
 
@@ -1024,56 +1207,30 @@ const bar: SchemaNode = {
     /*
       A column holding the bar, rather than the bar itself.
 
-      Everything about *where* this floats — the top offset, the dock-aware centring, the transition
-      between them — moved up here, and the bar keeps only what it looks like. That split is what
-      lets `call-status` sit directly beneath it: a second fixed element would have to compute its
-      own top from this one's height, which depends on the controls in it and on whatever a theme
-      does to a button, so it would be a number that is wrong the first time anything changes.
+      The column is what lets `call-status` sit directly above the controls: a second positioned
+      element would have to compute its own offset from this one's height, which depends on the
+      controls in it and on whatever a theme does to a button, so it would be a number that is wrong
+      the first time anything changes.
+
+      Everything about *where* the column floats has moved out again, into `contentCentred` — the
+      offset, the dock-aware centring, the clamp that keeps it on screen, the transitions. Those
+      belong to the strip because all three of this module's floating pieces want them and the two
+      smaller ones used to each guess separately. What is left here is what the column looks like,
+      plus the one thing the strip cannot decide for it: that it takes clicks again, since the strip
+      spans the whole edge and passes them through.
 
       `ax: 'center'` because a status row is narrower or wider than the bar and should be centred on
-      it either way. The column paints nothing and takes no room beyond its children, so with
-      nothing contributed this renders exactly as the bar alone did.
+      it either way. The column paints nothing and takes no room beyond its children.
     */
-    then: {
+    then: contentCentred('bottom', {
       type: 'Column',
       props: {
-        position: 'fixed',
-        /*
-          The bottom, pushed up by whatever has taken the bottom edge.
-
-          It used to swap ends when the stage was docked along the same edge, since both wanted that
-          corner and the small one should give. That was this module reasoning about its own panel,
-          which it can no longer see — but it does not need to: `--we-chrome-bottom` is where the
-          host says the content's bottom edge is, so this clears a docked notes panel exactly as it
-          clears a call stage, and reads the same way the horizontal term below already does.
-
-          A panel that merely floats over the bottom is deliberately not dodged. It takes no room,
-          the user put it there by hand, and moving out of its way would be chrome running from a
-          decision somebody just made — worse than an overlap they can see and undo. Note the
-          asymmetry that makes this safe at the bottom and would not at the top: a panel's controls
-          are all in its titlebar, so an overlap here covers content rather than the way out.
-        */
-        bottom: `calc(${CALL_BAR_INSET} + var(--we-chrome-bottom, 0px))`,
-        /**
-         * Centred on the content, not the window.
-         *
-         * Every other piece of floating chrome moves when a dock takes an edge — the module rail,
-         * the editor's rails and its toolbar all slide inwards. A bar pinned to the middle of the
-         * *window* stays put while they move, so docking on the right walked the editor's controls
-         * straight into it. `--we-chrome-center-x` is how far the content's centre has moved from
-         * the window's, which is exactly the correction, and is the host's to compute: this module
-         * used to sum the sidebar and both insets itself, and the two smaller bars below it — which
-         * want the identical correction — did not.
-         */
-        left: 'calc(50% + var(--we-chrome-center-x, 0px))',
-        transform: 'translateX(-50%)',
-        transition: 'left var(--we-chrome-transition, 300ms) ease, bottom var(--we-chrome-transition, 300ms) ease',
+        pointerEvents: 'auto',
         // One step of the spacing scale, which is the nearest thing to the ~10px this wants and is
         // the only sort of value that follows a theme's density. Wide enough that the status row
         // reads as a separate object rather than as a second tier of the bar.
         gap: '300',
         ax: 'center',
-        zIndex: 'sticky',
       },
       children: [
         {
@@ -1115,24 +1272,9 @@ const bar: SchemaNode = {
               action: 'modules.call.toggleVideo',
               tip: { on: 'Turn camera off', off: 'Turn camera on' },
             }),
-            mediaToggle({
-              /*
-            The same glyph in both states, unlike the mute and camera buttons beside it.
-
-            `monitor-arrow-up` is a *subject*, not a state: it is your screen, going out. Dropping the
-            arrow while sharing read as the screen leaving — backwards, at the one moment the button
-            has something to report. So the variant carries the state, exactly as it does for the
-            show/hide toggle, and the glyph says what the button is about.
-
-            Sharing is also the one toggle here with no honest "off" icon: you are either sending a
-            screen or sending nothing, so a slash would be describing a state that does not exist.
-          */
-              on: 'monitor-arrow-up',
-              off: 'monitor-arrow-up',
-              enabled: 'modules.call.media.screenShareEnabled',
-              action: 'modules.call.toggleScreenShare',
-              tip: { on: 'Stop sharing your screen', off: 'Share your screen' },
-            }),
+            // From here to the divider, everything but the contributed controls folds into `moreMenu`
+            // when the row is compact — see `COMPACT`. The glyph is explained on `SCREEN_SHARE`.
+            whenRoomy(mediaToggle(SCREEN_SHARE)),
             {
               // Where other modules put their call controls — see `anchors` below. The marker is replaced
               // by whatever is contributed, or by nothing at all, so the bar has no gap when no module
@@ -1140,6 +1282,16 @@ const bar: SchemaNode = {
               type: '$slot',
               props: { anchor: CALL_CONTROLS_ANCHOR },
             },
+            /*
+              Contributed controls stay in the row at every width, and the fold sits after them.
+
+              This module cannot put another module's chrome in its menu — it does not know what
+              that chrome is, and a contributed square may be the loudest thing in the bar (a red
+              "recording" button, say) precisely because it has to be seen. So the menu holds only
+              what this module owns, and sits where the folded buttons were, so the row reads the
+              same in either state: your devices, then the rest.
+            */
+            whenCompact(moreMenu),
             /*
           Show/hide sits with the devices, not with the call.
 
@@ -1154,8 +1306,20 @@ const bar: SchemaNode = {
               `devPeerControls`. Placed with the things you do to your own machine rather than with
               the call itself, which is what the divider below separates: how many fake participants
               you are looking at is a property of your session, not of the call.
+
+              Two gates, doing different jobs. `devPeersAvailable` is the build, so a shipped app
+              carries no node at all. The `$if` is the `we.devTools` switch, which is live — a
+              developer looking at what a user sees loses these on the press rather than on the next
+              reload, and gets them back the same way.
             */
-            ...(devPeersAvailable ? [devPeerControls] : []),
+            ...(devPeersAvailable
+              ? [
+                  {
+                    type: '$if',
+                    props: { condition: { $store: 'sessionStore.devTools' }, then: devPeerControls },
+                  },
+                ]
+              : []),
             /*
               Solo — the spotlight with the stage to itself.
 
@@ -1164,20 +1328,11 @@ const bar: SchemaNode = {
               the tile, because a three-state cycle on one gesture cannot say which state it is in —
               see `solo` in the store.
             */
-            {
+            whenRoomy({
               type: '$if',
-              props: {
-                condition: { $store: 'modules.call.focusedId' },
-                then: mediaToggle({
-                  on: 'user',
-                  off: 'users-three',
-                  enabled: 'modules.call.solo',
-                  action: 'modules.call.toggleSolo',
-                  tip: { on: 'Show everyone', off: 'Hide the others' },
-                }),
-              },
-            },
-            participantsToggle,
+              props: { condition: { $store: 'modules.call.focusedId' }, then: mediaToggle(SOLO) },
+            }),
+            whenRoomy(mediaToggle(STAGE)),
             // Two thirds of a control's height, so it reads as a separator between groups rather than as
             // a rule drawn down the whole bar. It moved with the buttons: at 20px against `sm` it was
             // that already, and left alone against `md` it would have been half.
@@ -1198,7 +1353,7 @@ const bar: SchemaNode = {
           ],
         },
       ],
-    },
+    }),
   },
 };
 
@@ -1253,31 +1408,22 @@ const problem: SchemaNode = {
   type: '$if',
   props: {
     condition: { $store: 'modules.call.problem' },
-    then: {
+    /*
+      The end the call bar is not at — which is the top now that the bar has taken the bottom.
+
+      Both were pinned to the same offset once, so the alert opened underneath the controls —
+      mostly hidden, and with its dismiss button unreachable, which is a poor showing for the one
+      piece of UI whose entire job is to be read. It has swapped ends with the bar rather than
+      gaining a rule: "the other end from the controls" is the whole of the requirement.
+
+      In the same kind of strip as the bar, so it clears a panel docked along its edge, centres on
+      the content, and stays on screen when the content is narrower than it. It had none of the
+      three once, on the reasoning that the bar no longer moves so nor does this — true of the bar
+      and irrelevant to the window, which is what both were actually pinned to.
+    */
+    then: contentCentred('top', {
       type: 'Row',
-      props: {
-        position: 'fixed',
-        /*
-          The end the call bar is not at — which is the top now that the bar has taken the bottom.
-
-          Both were pinned to the same offset once, so the alert opened underneath the controls —
-          mostly hidden, and with its dismiss button unreachable, which is a poor showing for the one
-          piece of UI whose entire job is to be read. It has swapped ends with the bar rather than
-          gaining a rule: "the other end from the controls" is the whole of the requirement.
-
-          Clear of the content's edge and centred on the content, as the bar is on its own two. This
-          had neither, on the reasoning that the bar no longer moves so nor does this — true of the
-          bar and irrelevant to the window, which is what both were actually pinned to. A panel
-          docked along that edge covered it, and the one piece of UI whose entire job is to be read
-          was unreadable again by a different route.
-        */
-        top: `calc(${CALL_BAR_INSET} + var(--we-chrome-top, 0px))`,
-        left: 'calc(50% + var(--we-chrome-center-x, 0px))',
-        transform: 'translateX(-50%)',
-        transition: 'left var(--we-chrome-transition, 300ms) ease, top var(--we-chrome-transition, 300ms) ease',
-        zIndex: 'sticky',
-        maxWidth: '420px',
-      },
+      props: { pointerEvents: 'auto', maxWidth: '420px' },
       children: [
         {
           type: 'we-alert',
@@ -1285,7 +1431,7 @@ const problem: SchemaNode = {
           children: [{ $store: 'modules.call.problem' }],
         },
       ],
-    },
+    }),
   },
 };
 
@@ -1336,10 +1482,32 @@ export const callModule = defineModule({
   // anchor nobody provides, which otherwise renders nowhere and looks like a module switched off.
   anchors: [CALL_CONTROLS_ANCHOR, CALL_STATUS_ANCHOR],
 
-  // Drawn by the host's module rail. No `activeWhen`: this starts a call rather than toggling a
-  // panel, and once you are in one the call bar is the thing that shows it — a highlighted rail tab
-  // as well would be saying it twice.
-  launcher: { icon: 'phone-call', label: 'Start call', action: 'joinSpaceCall', availableWhen: 'canCall' },
+  /*
+    Drawn by the host's module rail.
+
+    `activeWhen` used to be omitted, on the grounds that this starts a call rather than toggling a
+    panel and the call bar already says one is running — a highlighted rail tab would be saying it
+    twice. Two things were wrong with that.
+
+    The rail is the surface people scan for "where am I", and it is the only chrome that is always
+    there: the bar is a strip at the bottom centre, this is a column at the right edge, and they are
+    not read at the same moment. Being in a call is the most stateful thing this app does, and it was
+    the one row of that rail that could never show it.
+
+    Worse, a launcher with no state is a launcher whose click has to mean one thing, and this one's
+    meant three — dead in the space call, and a silent teardown of any other. `goToCall` is the
+    reading that survives every state, so the button lights up and stays useful rather than becoming
+    an unlabelled hazard. `activeLabel` is what stops the tooltip describing the act it no longer
+    performs; see the store.
+  */
+  launcher: {
+    icon: 'phone-call',
+    label: 'Start call',
+    activeLabel: 'Go to the call',
+    action: 'goToCall',
+    activeWhen: 'active',
+    availableWhen: 'canCall',
+  },
 
   /*
     A call in progress keeps its chrome wherever you go.

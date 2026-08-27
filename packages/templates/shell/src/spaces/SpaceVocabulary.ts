@@ -82,10 +82,8 @@ const signalTypesSection: SchemaNode = sectionCard({
       props: { items: { $query: { entity: 'SignalType', subscribe: true } }, as: 'signalType' },
       children: [signalTypeCard],
     },
-    {
-      type: '$if',
-      props: { condition: { $local: 'createSignalTypeOpen' }, then: createSignalTypeModal },
-    },
+    // Carries its own `$if` — see `formModal`.
+    createSignalTypeModal,
   ],
 });
 

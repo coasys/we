@@ -1,3 +1,4 @@
+import { discardGuard } from '@we/schema-kit';
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
 /**
@@ -95,6 +96,19 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
     ...(opts.onCreated?.length ? { onSuccess: opts.onCreated } : {}),
   };
 
+  /*
+    The guard reads a *store* flag rather than a `$local` expression, uniquely among the forms in
+    the kit. The fields here are derived from whichever model is being created — a shape a community
+    defined this morning has properties no schema was written against — so there is no set of names
+    for an expression to test. `recordStore.recordDraftDirty` is the only thing that can see them.
+  */
+  const guard = discardGuard({
+    dirty: { $store: 'recordStore.recordDraftDirty' },
+    close: { $action: 'recordStore.cancelRecordForm' },
+    title: 'Discard this entry?',
+    body: 'What you have filled in will be lost. Nothing has been saved to the space yet.',
+  });
+
   return {
     // Mounted only while a draft exists, which is also what makes the draft's non-nullness the one
     // source of "is the form open" — a separate boolean would be a second answer able to disagree.
@@ -103,11 +117,7 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
       condition: { $store: 'recordStore.recordDraft' },
       then: {
         type: 'we-modal',
-        props: {
-          close: { $action: 'recordStore.cancelRecordForm' },
-          maxWidth: 'var(--we-layout-sm)',
-          width: '100%',
-        },
+        props: { size: 'md', close: guard.close },
         /*
           The kinds of connection this community has named.
 
@@ -116,6 +126,8 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
           a kind named in another window appears here without a reload.
         */
         $queries: { relationshipKinds: { entity: 'RelationshipType', order: { name: 'asc' } } },
+        // The guard's flag has to live on the modal so it is destroyed with the draft it guards.
+        $localState: guard.localState,
         children: [
           {
             type: 'Row',
@@ -305,7 +317,8 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
             children: [
               {
                 type: 'we-button',
-                props: { variant: 'ghost', onClick: { $action: 'recordStore.cancelRecordForm' } },
+                // Guarded like the backdrop — one way out of the modal.
+                props: { variant: 'ghost', onClick: guard.close },
                 children: ['Cancel'],
               },
               {
@@ -323,6 +336,7 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
               },
             ],
           },
+          guard.node,
         ],
       },
     },

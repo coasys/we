@@ -550,6 +550,77 @@ describe('warnings', () => {
   });
 });
 
+describe('how much of the graph a load covers', () => {
+  /** Every status the engine published while `run` was in flight, in order. */
+  async function statusesDuring(engine: GraphEngine, run: () => Promise<void>) {
+    const seen: { loading: boolean; reloading: boolean }[] = [];
+    const stop = engine.subscribe((reason) => {
+      if (reason !== 'status') return;
+      const { loading, reloading } = engine.getStatus();
+      seen.push({ loading, reloading });
+    });
+    await run();
+    stop();
+    return seen;
+  }
+
+  it('reports a start as a reload, and clears both flags when it settles', async () => {
+    const registry = new PluginRegistry({ seeds: [seedOf(1)], expanders: [fanoutExpander(2)], layouts });
+    const engine = engineWith(
+      { seeds: { source: 'test' }, layout: { type: 'grid' }, expansion: { defaultDepth: 1 } },
+      registry,
+    );
+
+    const seen = await statusesDuring(engine, () => engine.start());
+
+    expect(seen.some((s) => s.reloading)).toBe(true);
+    expect(engine.getStatus()).toMatchObject({ loading: false, reloading: false });
+  });
+
+  it('holds the reload flag across the whole start, not just the seed load', async () => {
+    // The gap this pins: seeds and auto-expansion are two loads, and the count released between them
+    // published a settled frame in the middle of a start. A renderer reading that puts its "nothing
+    // to show" state up over a graph that is still arriving.
+    const registry = new PluginRegistry({ seeds: [seedOf(1)], expanders: [fanoutExpander(2)], layouts });
+    const engine = engineWith(
+      { seeds: { source: 'test' }, layout: { type: 'grid' }, expansion: { defaultDepth: 2 } },
+      registry,
+    );
+
+    const seen = await statusesDuring(engine, () => engine.start());
+
+    // Settling happens once, at the end — nowhere in the middle.
+    expect(seen.filter((s) => !s.loading)).toHaveLength(1);
+    expect(seen.at(-1)).toEqual({ loading: false, reloading: false });
+  });
+
+  it('reports an expansion as loading but not as a reload', async () => {
+    // An expansion lands beside a graph that stays on screen and stays usable, which is the whole
+    // distinction: nothing already drawn is being replaced, so it must not read as a reload.
+    const registry = new PluginRegistry({ seeds: [seedOf(1)], expanders: [fanoutExpander(2)], layouts });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+    await engine.start();
+
+    const seen = await statusesDuring(engine, () => engine.expand('seed-0'));
+
+    expect(seen.some((s) => s.loading)).toBe(true);
+    expect(seen.some((s) => s.reloading)).toBe(false);
+  });
+
+  it('reports a refresh as loading but not as a reload', async () => {
+    // Same reasoning, and it matters more here: a refresh can arrive from a subscription while
+    // somebody is reading, and treating that as a reload would dim the graph under them.
+    const registry = new PluginRegistry({ seeds: [seedOf(2)], layouts });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+    await engine.start();
+
+    const seen = await statusesDuring(engine, () => engine.refresh());
+
+    expect(seen.some((s) => s.loading)).toBe(true);
+    expect(seen.some((s) => s.reloading)).toBe(false);
+  });
+});
+
 describe('the scene stays consistent with what is drawn', () => {
   it('re-indexes after a pin, so a dragged node is hittable where it was dropped', async () => {
     // The bug this pins down: `pin` moved the node visually and left the spatial index holding its

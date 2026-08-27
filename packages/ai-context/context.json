@@ -85,18 +85,6 @@
           "default": "''"
         },
         {
-          "name": "selected",
-          "type": "boolean",
-          "optional": false,
-          "default": "false"
-        },
-        {
-          "name": "online",
-          "type": "boolean",
-          "optional": false,
-          "default": "false"
-        },
-        {
           "name": "initials",
           "type": "string",
           "optional": false,
@@ -884,6 +872,12 @@
       "className": "Modal",
       "superclass": "OverlayElement",
       "ownProps": [
+        {
+          "name": "size",
+          "type": "'sm' | 'md' | 'lg' | 'fullscreen'",
+          "optional": false,
+          "default": "'md'"
+        },
         {
           "name": "hideclosebutton",
           "type": "boolean",
@@ -1940,6 +1934,11 @@
         {
           "name": "onReady",
           "type": "((api: { save: () => void; }) => void)",
+          "optional": true
+        },
+        {
+          "name": "onDirtyChange",
+          "type": "((dirty: boolean) => void)",
           "optional": true
         }
       ],
@@ -3080,6 +3079,16 @@
         },
         {
           "name": "triggerIcon",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "triggerVariant",
+          "type": "\"primary\" | \"danger\" | \"secondary\" | \"ghost\" | \"outline\" | \"bare\"",
+          "optional": true
+        },
+        {
+          "name": "triggerTitle",
           "type": "string",
           "optional": true
         },
@@ -5794,12 +5803,20 @@
           "type": "object",
           "properties": ["did", "firstName", "lastName", "handle", "bio", "avatar", "coverImage", "location"]
         },
+        "ownProfileLoaded": {
+          "type": "boolean"
+        },
+        "needsName": {
+          "type": "boolean"
+        },
         "pendingAvatar": {
           "type": "string"
         }
       },
       "actions": [
         "setPendingAvatar",
+        "saveNameFromPrompt",
+        "dismissNamePrompt",
         "completeAccountSetup",
         "fetchProfile",
         "updateOwnProfile",
@@ -5816,6 +5833,9 @@
         },
         "recordDraft": {
           "type": "object"
+        },
+        "recordDraftDirty": {
+          "type": "boolean"
         },
         "recordErrors": {
           "type": "array"
@@ -5942,6 +5962,9 @@
           "properties": ["label", "value"]
         },
         "aiFormComplete": {
+          "type": "boolean"
+        },
+        "aiFormDirty": {
           "type": "boolean"
         },
         "languages": {
@@ -6097,11 +6120,15 @@
         "isDevelopment": {
           "type": "boolean"
         },
+        "devTools": {
+          "type": "boolean"
+        },
         "ephemeralPort": {
           "type": "object"
         }
       },
       "actions": [
+        "setDevTools",
         "login",
         "createAgent",
         "clearPasswordError",

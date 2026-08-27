@@ -342,8 +342,34 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * a speaker waiting forever.
    */
   let deferredSince: number | null = null;
-  /** Peers this agent has already been offered, so a dismissed prompt stays dismissed. */
-  const [dismissedInvites, setDismissedInvites] = signal<string[]>([]);
+  /**
+   * This agent has taken itself out of this call's transcript.
+   *
+   * Per *call*, where the old dismissal was per peer. That granularity was right while the prompt
+   * was an offer — someone else starting later was a new thing to be told about. It is wrong now
+   * that recording starts on its own: leaving is a decision about this agent's own microphone for
+   * this conversation, and a second peer starting is not a reason to revisit it. Per peer, the
+   * agent who pressed Leave would be switched back on by the next person to press record.
+   *
+   * Also what stops the auto-join effect fighting the record button: turning recording off by hand
+   * sets this, so the effect sees a decision rather than an agent who is merely not recording yet.
+   */
+  const [optedOut, setOptedOut] = signal(false);
+  /**
+   * Recording is running because a peer was already transcribing, not because this agent said so.
+   *
+   * Kept because the two are the same state to everything downstream and different things to say:
+   * one is a thing you did, the other is a thing that happened to you and has to be declared. It is
+   * what the call bar reads to say so, and what `start` reads to fail quietly — see `giveUpAutoJoin`.
+   */
+  const [autoJoined, setAutoJoined] = signal(false);
+  /**
+   * Auto-join has given up on this call, because this node turned out not to be able to transcribe.
+   *
+   * Without it the effect would re-arm the moment `start` switched recording back off, and the two
+   * would spin against each other for the length of the call.
+   */
+  const [autoJoinFailed, setAutoJoinFailed] = signal(false);
   /**
    * A record this agent has been asked to continue, held until there is a call to continue it in.
    *
@@ -405,24 +431,46 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   }
 
   /**
+   * Everyone *else* recording this call right now, sorted.
+   *
+   * Split out from `recordersOf` because most of the questions asked here are about the others: who
+   * to name in the notice, and whether there is a transcript worth joining at all. Folding this
+   * agent into that list means the notice can end up naming the reader to themselves, which is what
+   * happened the moment the prompt stopped being conditional on *not* recording.
+   */
+  function peerRecordersOf(callId: string): string[] {
+    const me = selfId?.() ?? null;
+    if (!presence) return [];
+    return activitiesOfType(presence.peers(), TRANSCRIBE_ACTIVITY)
+      .filter(
+        ({ peer, activity }) =>
+          peer.agentId !== me &&
+          (activity as { id?: string }).id === callId &&
+          (activity as { recording?: boolean }).recording === true,
+      )
+      .map(({ peer }) => peer.agentId)
+      .sort();
+  }
+
+  /**
    * Everyone recording this call right now, this agent included, sorted.
    *
-   * The basis for two things: the prompt shown to agents who are not recording, and the election
-   * that decides which of those who are gets to create the record.
+   * The election's list: whichever of them sorts first creates the record. Coverage reads it too —
+   * it is the numerator in "2 of 4", where the whole point is that this agent counts as one of them.
    */
   function recordersOf(callId: string): string[] {
     const me = selfId?.() ?? null;
-    const peers = presence
-      ? activitiesOfType(presence.peers(), TRANSCRIBE_ACTIVITY)
-          .filter(
-            ({ peer, activity }) =>
-              peer.agentId !== me &&
-              (activity as { id?: string }).id === callId &&
-              (activity as { recording?: boolean }).recording === true,
-          )
-          .map(({ peer }) => peer.agentId)
-      : [];
+    const peers = peerRecordersOf(callId);
     return (enabled() && me ? [me, ...peers] : peers).sort();
+  }
+
+  /** Everyone in this call, recording or not — the denominator coverage is measured against. */
+  function agentsInCall(callId: string): string[] {
+    if (!presence) return [];
+    return activitiesOfType(presence.peers(), 'call')
+      .filter(({ activity }) => activity.id === callId)
+      .map(({ peer }) => peer.agentId)
+      .sort();
   }
 
   /**
@@ -691,6 +739,28 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   }
 
   /**
+   * Undo an automatic start on a node that cannot transcribe, and say nothing about it.
+   *
+   * The counterpart to the promise auto-join makes. Recording that starts on its own is allowed to
+   * be silent, so it has to be silent when it fails too: a node with no speech model would
+   * otherwise open every call with a warning about something nobody asked for, and the one state
+   * that warning exists to report — a person pressing record and finding nothing installed — would
+   * be lost in the noise of it. Pressing record still says `no-model`, because then it is an answer.
+   *
+   * Logged rather than discarded: this is the one path where the app knows something the user does
+   * not, and a developer looking for why a call is not being transcribed deserves the sentence.
+   */
+  function giveUpAutoJoin(reason: TranscribeStatus): void {
+    console.info(`[transcribe] not joining this call automatically: ${reason}`);
+    setAutoJoinFailed(true);
+    setAutoJoined(false);
+    setEnabled(false);
+    setStatus('idle');
+    const call = myCall();
+    if (call) announce(call.id, false);
+  }
+
+  /**
    * Build the session into locals, and publish it only once it is whole.
    *
    * Nothing is assigned to the module-level handles until every await has resolved and the run is
@@ -703,6 +773,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     // backend has bound, so `transcription` is an object either way and only it knows whether there
     // is a port behind it yet.
     if (!transcription || transcription.available?.() === false) {
+      if (autoJoined()) return giveUpAutoJoin('no-backend');
       setStatus('no-backend');
       return;
     }
@@ -727,6 +798,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       // was installed but reported not-ready, which told the user to go and install the thing they
       // had already installed.
       if (models.length === 0) {
+        if (autoJoined()) return giveUpAutoJoin('no-model');
         // Distinguished from a silent failure on purpose: no model and nobody talking look identical
         // from here, and only one of them is something the user can act on.
         setStatus('no-model');
@@ -990,10 +1062,80 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     presence?.clearActivity(TRANSCRIBE_ACTIVITY);
     useCollection(null);
     collectionCallId = null;
-    // Both belong to the call that just ended: an election deferred in it must not bound the wait in
-    // the next one, and a prompt dismissed in it should not silence the next call's.
+    // Belongs to the call that just ended: an election deferred in it must not bound the wait in
+    // the next one.
     deferredSince = null;
-    setDismissedInvites([]);
+  });
+
+  /**
+   * A new call is a new decision.
+   *
+   * Keyed on the call this agent is in rather than on the record, which is what the effect above is
+   * keyed on. The difference matters: the record is only created once somebody speaks, so an agent
+   * who left a silent call and joined another would have carried their refusal into it — and would
+   * then never be joined to anything, for a reason nothing on screen could explain.
+   *
+   * Leaving a call clears it too, by way of the same transition through no-call. That is right even
+   * for a space-wide call, whose id is derived from the space and so is the same id every time:
+   * "not now" is about the conversation happening, not about the room it happens in.
+   */
+  let decidedForCall: string | null = null;
+  effect?.(() => {
+    const current = myCall()?.id ?? null;
+    if (current === decidedForCall) return;
+    decidedForCall = current;
+    setOptedOut(false);
+    setAutoJoined(false);
+    setAutoJoinFailed(false);
+  });
+
+  /**
+   * Join a transcript somebody else has already started.
+   *
+   * The module's one piece of policy, and the reasoning is narrower than "transcription should be
+   * on". Nothing here decides to record a call that nobody is recording — that is a decision about
+   * the conversation, it belongs to a space's settings rather than to this effect, and this does not
+   * make it. All this answers is what happens once a peer has *already* made it.
+   *
+   * Declining that used to be the default, by way of a prompt people did not answer. It reads like a
+   * privacy decision and is not one: the call is being transcribed either way, so the only thing a
+   * refusal changes is whether this agent's own words are in the record of a conversation they are
+   * part of. What that produced was a transcript of a five-person meeting containing one person,
+   * which is not a smaller record than the real one — it is a wrong one, and nothing about it says
+   * so to whoever reads it later.
+   *
+   * So the default flips, and the notice changes job with it: the prompt asked, and this tells. What
+   * survives is the way out — `optedOut` is checked first here, and pressing Leave or stopping
+   * recording by hand sets it for the rest of the call.
+   *
+   * Four guards before it fires, and each of them is a case where starting would be wrong rather
+   * than merely unhelpful:
+   * - no dataset: there is nowhere for the words to go. Also the one that must be tested rather than
+   *   left to the teardown effect below, which switches recording off whenever the space is gone:
+   *   that effect and this one would take turns for as long as no dataset was bound.
+   * - no audio: there is nothing to record, and `enabled` would sit true against silence.
+   * - a backend that cannot transcribe: caught here because `available` is answerable synchronously.
+   *   Having no *model* is not, so that one is caught in `start` — see `giveUpAutoJoin`.
+   * - no peer recording: the whole condition. Being first to record is not this effect's decision.
+   *
+   * Deliberately not routed through `toggle`, which opens the panel: a person pressing record wants
+   * to see what it produces, and a call that opens a panel on its own every time is chrome nobody
+   * asked for. The notice in the call bar is what announces this instead.
+   */
+  effect?.(() => {
+    if (enabled() || optedOut() || autoJoinFailed()) return;
+    if (!dataset?.()) return;
+    const call = myCall();
+    if (!call) return;
+    if ((audioInput?.() ?? null) === null) return;
+    if (transcription?.available?.() === false) return;
+    if (peerRecordersOf(call.id).length === 0) return;
+
+    setAutoJoined(true);
+    setEnabled(true);
+    // Published straight away, exactly as the button press is, so this agent takes part in the
+    // election rather than arriving to it late and creating a second record for the same call.
+    announce(call.id, true);
   });
 
   /**
@@ -1026,6 +1168,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    */
   onDispose?.(() => {
     setEnabled(false);
+    setAutoJoined(false);
     void stop();
   });
 
@@ -1034,6 +1177,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   effect?.(() => {
     if (!dataset?.()) {
       setEnabled(false);
+      setAutoJoined(false);
       if (context) void stop();
       // A Continue that never reached a call goes with the space it was pressed in. Held, it would
       // wait indefinitely and then attach that space's old transcript to whatever call happened to
@@ -1080,40 +1224,67 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     listening: () => status() === 'listening',
 
     /**
-     * Whether somebody else in this call is recording and this agent is not — the prompt's condition.
+     * Recording was started by a peer's transcript rather than by this agent — see the auto-join
+     * effect. What the call bar reads to announce it, since being switched on by somebody else is
+     * not something an agent should have to notice for themselves.
+     */
+    autoJoined,
+    /**
+     * Whether somebody else in this call is recording and this agent is not — the offer's condition.
      *
-     * A prompt rather than starting on their behalf, and that is the whole point of it. Transcription
-     * turns this agent's microphone into durable text in a space other people read; starting that
-     * because a third party pressed a button somewhere else takes a decision that is theirs to make.
-     * The module declares a `microphone` capability for the same reason.
+     * Rare now, and that is the point: the ordinary path is that this agent has already been joined
+     * to their transcript by the effect above. What is left is the cases where joining could not
+     * happen and a person could still fix it — chiefly a node with no speech model, where the offer
+     * is worth making precisely because pressing it produces the explanation that auto-join swallows.
      *
-     * False once dismissed, and false while already recording — there is nothing to offer someone who
-     * has already said yes.
+     * False once this agent has opted out, and false while already recording — there is nothing to
+     * offer someone who is already in.
      */
     invited: () => {
       const call = myCall();
-      if (!call || enabled()) return false;
-      const dismissed = new Set(dismissedInvites());
-      return recordersOf(call.id).some((did) => !dismissed.has(did));
+      if (!call || enabled() || optedOut()) return false;
+      return peerRecordersOf(call.id).length > 0;
     },
     /**
-     * Who to name in that prompt.
+     * Who to name in the notice, joined or merely offered.
      *
-     * One agent rather than the list: the prompt is a single line in a call bar, and "Ana started
-     * transcribing" is the part that makes it act-on-able. Their DID rather than their name, because
-     * this module holds no profiles — the fragment resolves it with `$agent`, the same way the calls
-     * list puts a face on an utterance.
+     * One agent rather than the list: it is a single line in a call bar, and "Ana is transcribing" is
+     * the part that makes it mean something. Their DID rather than their name, because this module
+     * holds no profiles — the fragment resolves it with `$agent`, the same way the calls list puts a
+     * face on an utterance.
+     *
+     * Empty once no peer is recording any more, which the call bar tests before drawing the notice:
+     * this agent may still be recording after the peer who started it stopped, and a chip reading
+     * " is transcribing" is worse than no chip.
      */
     invitedBy: () => {
       const call = myCall();
       if (!call) return '';
-      const dismissed = new Set(dismissedInvites());
-      return recordersOf(call.id).find((did) => !dismissed.has(did)) ?? '';
+      return peerRecordersOf(call.id)[0] ?? '';
     },
-    /** Everyone recording this call, this agent included — coverage, for the panel to show. */
+    /**
+     * Everyone recording this call, this agent included — the numerator of coverage.
+     *
+     * Transcription is per microphone: each agent records their own and writes into the shared
+     * record, so a call where two of five are recording produces a transcript of two people that
+     * reads exactly like a transcript of the call. Published so the panel can say which it is, while
+     * the meeting is still happening and somebody can still do something about it.
+     */
     transcribers: () => {
       const call = myCall();
       return call ? recordersOf(call.id) : [];
+    },
+    /** Everyone in this call — the denominator. Empty outside a call, which is what hides coverage. */
+    callAgents: () => {
+      const call = myCall();
+      return call ? agentsInCall(call.id) : [];
+    },
+    /** Someone in this call is not being transcribed. The gap coverage exists to report. */
+    partialCoverage: () => {
+      const call = myCall();
+      if (!call) return false;
+      const present = agentsInCall(call.id).length;
+      return present > 0 && recordersOf(call.id).length < present;
     },
     /** There is audio to listen to. Without it, offering to record is offering nothing. */
     available: () => (audioInput?.() ?? null) !== null,
@@ -1135,6 +1306,20 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     canExtract: () => Boolean(collectionId()) && (interpretation?.available() ?? false),
     /** True when the backend could interpret but there is no transcript yet — a waiting state. */
     extractable: () => interpretation?.available() ?? false,
+    /**
+     * The record the call this agent is in is writing into — the id, so a list can pick it out.
+     *
+     * Exists so a card can ask "is this one live?" and answer it without knowing anything about
+     * transcription. A calls list otherwise cannot tell the conversation happening right now from
+     * one that finished last month, which is the difference that decides what its own Continue
+     * button should offer — and without it, that button had to treat both the same and got the live
+     * case badly wrong.
+     *
+     * `''` rather than `null` when there is nothing, because the only thing a template does with
+     * this is `$eq` it against a record id: an empty string can never match one, where `null` and a
+     * missing field are the same falsy value and would make an unrelated absent id look live.
+     */
+    liveCollectionId: () => collectionId() ?? '',
     /** Suggestions staged for review. Empty is the ordinary case — see `refreshProposals`. */
     proposals,
     /**
@@ -1174,14 +1359,21 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     activityCount: () => (interpretation?.activity() ?? []).filter((pass) => pass.running).length,
     settledCount: () => (interpretation?.activity() ?? []).filter((pass) => !pass.running).length,
     /**
-     * Whether any row on show belongs to somebody else and has nothing to open.
+     * Whether a peer's row is on show and the space has chosen not to share what is behind it.
      *
      * What the bar's one footnote is gated on. The explanation used to be a tooltip on every row,
      * which put it where nobody reads and repeated it per pass; the fact it conveys — a peer's
      * exchange never left their machine, and a space can choose otherwise — is worth saying exactly
-     * once, and only when there is a locked row to explain.
+     * once, and only while that choice is the reason.
+     *
+     * The *setting*, deliberately, rather than "a peer row with nothing to open". The latter is
+     * what this used to test, and it is true for reasons the footnote does not explain: a peer's
+     * pass that has not reached the model yet, a skipped pass that never had an exchange, a row
+     * broadcast before the switch synced to its runner. Every one of those kept the note on screen
+     * after somebody had turned sharing on — which is the one moment it is plainly wrong.
      */
-    hasLockedPass: () => (interpretation?.activity() ?? []).some((pass) => !pass.mine && !pass.hasDetail),
+    detailWithheld: () =>
+      !(interpretation?.detailShared?.() ?? false) && (interpretation?.activity() ?? []).some((pass) => !pass.mine),
     /**
      * Whether the status bar should exist at all.
      *
@@ -1221,11 +1413,19 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * stopped recording, which is exactly when you want to read it.
      *
      * Turning it on opens the panel too, the once: starting something invisible and saying nothing
-     * about it is how a feature comes to look broken.
+     * about it is how a feature comes to look broken. Auto-join deliberately does not go through
+     * here for that reason — a panel this agent did not ask for is chrome, not feedback.
+     *
+     * Either direction is a decision, and both are recorded as one. Turning it *off* is what the
+     * Leave button calls, and it has to stick: without `optedOut` the auto-join effect would see an
+     * agent who is simply not recording while a peer is, and switch them straight back on. Turning
+     * it *on* clears the same flag, because pressing record is unambiguous about wanting to be in.
      */
     toggle: () => {
       const next = !enabled();
       setEnabled(next);
+      setAutoJoined(false);
+      setOptedOut(!next);
       if (next) setOpen(true);
       /*
         Publish the decision immediately, before a word has been said.
@@ -1242,12 +1442,6 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       if (call) announce(call.id, next);
     },
     /**
-     * Stop offering to join the transcript this peer started.
-     *
-     * Per peer rather than per call: someone else starting later is a new thing to be told about,
-     * and a single dismissal should not silence the rest of the call.
-     */
-    /**
      * Continue an existing call's transcript rather than starting a new one.
      *
      * Takes the record's own id, not a call id: the call id a space-wide call publishes is derived
@@ -1257,11 +1451,15 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * Applied when there is a call to apply it to — see the effect that consumes it.
      */
     resume: (collection: string) => setPendingResume(collection ?? ''),
-    dismissInvite: () => {
-      const call = myCall();
-      if (!call) return;
-      setDismissedInvites([...new Set([...dismissedInvites(), ...recordersOf(call.id)])]);
-    },
+    /*
+      There is no `dismissInvite` any more, and nothing replaced it.
+
+      It existed to close an offer without answering it, which was a third state worth having while
+      the notice was a question. It is not one now: the notice reports that recording is already
+      running, so the only answer to it is to stop — which is `toggle`, doing exactly what the record
+      button beside it does. A separate action would have been the same three writes under a second
+      name, and a way to hide the notice while still being recorded.
+    */
     togglePanel: () => setOpen(!open()),
     closePanel: () => setOpen(false),
     /**

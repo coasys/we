@@ -92,6 +92,52 @@ A fragment taking a colour as an **option** should let the caller pass a role an
 category is choosing from a scale on purpose, and a theme should not recolour a category into a
 status.
 
+## Modals that hold typed content need a discard guard
+
+`we-modal` closes on a backdrop click and on Escape. Both are easy to hit by accident — the backdrop
+is every pixel that is not the sheet — and neither is recoverable, because a modal is `$if`-mounted
+and closing unmounts the draft with it. **A modal a person can type into must ask before throwing
+that away.**
+
+Reach for it by the shape of the modal:
+
+| Writing                   | How                                                                     |
+| ------------------------- | ----------------------------------------------------------------------- |
+| `formModal`               | `discardWhen: <expression>`                                             |
+| `composerModal`           | Nothing — it is on by default; pass `guardDraft: false` to turn it off  |
+| A hand-written `we-modal` | `discardGuard({ dirty, close })`, then use all three of what it returns |
+
+`discardGuard` returns three pieces because a modal cannot be guarded from outside it: the flag has
+to be declared **on** the modal (so it dies with the draft), the confirmation has to be **inside**
+it (so it can read that flag), and `close` has to be **replaced** (so the backdrop asks). Wire the
+Cancel button to the same guarded close — one way out of a modal, not two that disagree.
+
+### Writing the `dirty` expression
+
+This is the part that goes wrong, and it goes wrong in one direction: a guard that fires when there
+is nothing to lose. **A dialog people learn to click through is worse than no dialog**, because it
+costs them the one time it was about something real.
+
+- **Only test what the person typed.** A field with a default and a picker — a status, a mode, a
+  colour, an access level — is set from the first frame, so including it makes the guard fire on an
+  untouched form. Every guard in the codebase excludes them, and each says so at the call site.
+- **A form seeded from a record asks whether it _changed_, not whether it is _filled in_.** The
+  blank forms use `{ $or: [{ $local: 'name' }, …] }`; an edit form uses
+  `{ $ne: [{ $local: 'titleDraft' }, '$call.title'] }`. Getting this backwards means an edit modal
+  reports unsaved work before anybody has touched it.
+- **Where the fields are not known in advance, the store answers.** A record form's fields come from
+  the model, so no set of `$local` names exists to test — `recordStore.recordDraftDirty` and
+  `runtimeStore.aiFormDirty` are the two of these, and both are derived, not stored.
+- **Content inside a component is the component's to report.** A `BlockComposer`'s document lives in
+  Lexical and no `$local` can see it; it pushes `onDirtyChange` instead. Any component that owns
+  editable content and can appear in a modal owes the same.
+
+### When to leave it off
+
+A single-field form — "name this board", "name this channel". The guard costs more attention than
+one word is worth, and adding it everywhere is how the dialog stops being read. Say so at the call
+site so the omission reads as a decision rather than an oversight.
+
 ## Ambient scope
 
 Fragments may read `$local` from ancestors and write results into `$local` — that is what makes

@@ -13,6 +13,19 @@ import { createMemo, type JSX, splitProps } from 'solid-js';
  * disabled state wiring — is this shared scaffold, so a state-handling fix
  * lands in all four at once.
  */
+/**
+ * Defaults every layout component gets, beneath its own.
+ *
+ * `overflowWrap` is here rather than in each of the four configs because it is not a fact about
+ * Column as opposed to Grid — it is the design system's answer to a string with nowhere to break,
+ * the same answer the typography primitives give (see `BASE_TYPOGRAPHY_SPECS`). It inherits, so
+ * setting it on the box also covers text these components hold directly: a bare string child, a
+ * native `<p>` or `<span>` in a template, rendered block content. Without it, only text that
+ * happened to be wrapped in `we-text` would break, which is the sort of half-fix that reads as
+ * inconsistent styling rather than as a rule.
+ */
+const LAYOUT_DEFAULTS: Partial<LayoutProps> = { overflowWrap: 'anywhere' };
+
 export interface LayoutComponentConfig<P extends LayoutProps> {
   /** DS-prop defaults merged beneath the caller's props. */
   defaults?: Partial<P>;
@@ -49,7 +62,7 @@ export function createLayoutComponent<P extends LayoutProps>(
 
     const baseStyle = createMemo(() => {
       const usedProps = filterProps(designSystemProps as Record<string, unknown>, styleKeys);
-      const merged = mergeProps(usedProps, config.defaults ?? {}) as P;
+      const merged = mergeProps(usedProps, { ...LAYOUT_DEFAULTS, ...config.defaults }) as P;
       const style = buildLayoutStyles(merged, direction());
       return config.finalizeStyle ? config.finalizeStyle(style, designSystemProps as P) : style;
     });

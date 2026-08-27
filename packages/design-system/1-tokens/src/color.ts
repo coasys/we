@@ -279,3 +279,34 @@ export const color = {
   warning: colorWarning,
   danger: colorDanger,
 };
+
+/**
+ * The tones a mark on a face may take — a ring around an avatar, or the disc of a badge on one.
+ *
+ * The five hue families, and deliberately *scale positions* rather than roles. A tone labels a
+ * person or a place by a category the caller assigns — available, away, busy, in a call — and a
+ * theme pinning `dangerText` is saying "make my error text this", not "recolour whoever is marked
+ * busy". They still follow the hue and saturation parameters, so a retinted theme carries them
+ * along; what they do not follow is a decision the theme made about something else.
+ *
+ * One vocabulary, two grammars: a component imports {@link avatarToneRing}, a schema names the tone
+ * and lets the same `-500` step answer. It replaces two hand-written maps that had already drifted
+ * apart — one on `AvatarStack` in scale positions, one in the rail's live ring in role names — plus
+ * a third ring baked into `we-avatar` as a `selected` boolean that nothing ever set.
+ */
+export type AvatarTone = 'success' | 'warning' | 'danger' | 'primary' | 'neutral';
+
+export const AVATAR_TONES = ['success', 'warning', 'danger', 'primary', 'neutral'] as const;
+
+/** The tone's colour, as a CSS value either grammar can use. */
+export const avatarToneColor = (tone: AvatarTone): string => `var(--we-color-${tone}-500)`;
+
+/**
+ * The tone as a ring.
+ *
+ * A `box-shadow` rather than a border, which is the whole reason a ring is safe to add to anything:
+ * it is painted outside the border box and takes no part in layout, so ringing a face never moves
+ * the row it sits in. The rail's live ring was a border and grew its row by the ring's width every
+ * time a call started.
+ */
+export const avatarToneRing = (tone: AvatarTone, width = '2px'): string => `0 0 0 ${width} ${avatarToneColor(tone)}`;

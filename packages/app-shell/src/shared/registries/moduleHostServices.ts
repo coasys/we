@@ -76,6 +76,14 @@ export interface ModuleHostServices {
    * never re-read.
    */
   interpretationAvailable?: () => boolean;
+  /**
+   * Whether this space shares the model exchange between peers — the space setting, reactive.
+   *
+   * What a module reads to explain a peer's row that cannot be opened. Separate from the rows
+   * themselves because a row without detail is not evidence about the setting: see
+   * `InterpretationStore` on why the two were conflated and what that showed.
+   */
+  interpretationDetailShared?: () => boolean;
   /** The profile cache, so a module can put a face to an agent id. See `ModuleIdentityAccess`. */
   identities?: ModuleIdentityAccess;
   /** Naming and reaching spaces, for a module whose state can outlive the space on screen. */
@@ -209,6 +217,9 @@ export function createModuleStoreDeps(framework: {
         neither is a state worth a module branching on.
       */
       activity: () => services.interpretationActivity?.() ?? [],
+      // False until the store publishes, which reads as "not shared" — the conservative answer,
+      // and the one the footnote it gates should give while the setting is still unknown.
+      detailShared: () => services.interpretationDetailShared?.() ?? false,
       proposals: async () => {
         const dataset = services.dataset?.();
         if (!dataset || !services.interpretation) return [];

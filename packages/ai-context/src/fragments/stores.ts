@@ -116,6 +116,7 @@ export const storeEntries: StoreEntry[] = [
       },
       aiPresetOptions: { type: 'array', properties: ['label', 'value'] },
       aiFormComplete: { type: 'boolean' },
+      aiFormDirty: { type: 'boolean' },
       languages: { type: 'array', properties: ['address', 'name', 'system'] },
       trustedAgents: { type: 'array' },
       authorizedApps: {
@@ -202,6 +203,8 @@ export const storeEntries: StoreEntry[] = [
         type: 'object',
         properties: ['did', 'firstName', 'lastName', 'handle', 'bio', 'avatar', 'coverImage', 'location'],
       },
+      ownProfileLoaded: { type: 'boolean' },
+      needsName: { type: 'boolean' },
     },
     actions: [
       'fetchProfile',
@@ -210,6 +213,8 @@ export const storeEntries: StoreEntry[] = [
       'clearProfileImage',
       'updateOwnLocation',
       'setPendingAvatar',
+      'saveNameFromPrompt',
+      'dismissNamePrompt',
       'completeAccountSetup',
     ],
   },
@@ -537,6 +542,12 @@ export function generateStoresText(entries: StoreEntry[]): string {
         host: 'BackendHostInfo | undefined — the node this session runs against when it is somebody\'s hosting rather than this machine (id, name, description, imageUrl, location, url, computeSpecs, aiModels, rates). Undefined on desktop and on a local executor, so its presence is also the answer to "am I a guest here?" — gate any "connected to" UI on it. `aiModels` comes from the host directory and needs no capability, so it answers "can this node transcribe?" even where the executor refuses to list its models',
         hostAccount:
           'BackendAccountInfo | undefined — this agent\'s account with that node (email, remainingCredits, walletAddress, freeAccess). Check freeAccess before showing a balance: on a free node the credit figure means nothing and "0" reads as an account that has run dry',
+        isDevelopment:
+          'boolean — whether this is a development build. A fact about the build. Do NOT gate developer-only UI on it; gate on devTools, which is the same answer plus a switch',
+        devTools:
+          'boolean — whether developer affordances should be VISIBLE. True in a development build unless a developer has thrown the Settings → Developer switch to see what a shipped app looks like. Reactive, so a control gated on it appears and disappears on the press. Gate any developer-only control on this — a schema-test page, a fixture toggle — and wrap it in $if rather than hiding it, since a hidden row is still in the accessibility tree and still found by find-in-page. Never true in a production build, whatever the switch says',
+        setDevTools:
+          'shows or hides developer affordances for this device. Takes the value a switch emits, so pass "$event.detail" bare — an operator such as $not around it would resolve at render time and send a constant. Cannot turn them ON in a production build; the build is the ceiling. Gate the control that calls this on isDevelopment, NOT on devTools — gating the way to the switch on the switch makes turning it off a one-way door',
       },
       actions: {
         login: '(password: string): unlocks the agent and loads user data',
@@ -610,6 +621,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           'AiModelForm | null — the model form while it is open, null when closed. One flat field per input; read with runtimeStore.aiForm.<field>',
         aiPresetOptions: '{ label, value }[] — model names the backend can fetch itself, for the open form kind',
         aiFormComplete: 'boolean — the open form has every field its chosen source needs',
+        aiFormDirty:
+          "boolean — the open form has been edited since it opened. What a discard guard reads; compared against a snapshot taken on open, so looking at a model's settings and closing again asks nothing",
         languages:
           'InstalledLanguage[] — language plugins installed in this backend (address, name, system). Empty until loadLanguages() runs',
         trustedAgents: 'string[] — trusted peer ids. Empty until loadTrustedAgents() runs',
@@ -698,11 +711,19 @@ export function generateStoresText(entries: StoreEntry[]): string {
         profiles:
           'AgentProfileSummary[] — cache of all fetched profiles (did, firstName, lastName, handle, bio, avatar, coverImage, location)',
         ownProfile:
-          "AgentProfileSummary | undefined — reactive accessor for the current user's own profile (derived from the cache)",
+          'AgentProfileSummary | undefined — reactive accessor for the current user\'s own profile (derived from the cache). Note `name` is assembled for display and falls back to "Anonymous", so it is never empty — test firstName/lastName/handle to ask whether somebody has a name',
+        ownProfileLoaded:
+          'boolean — the own-profile fetch has answered. An empty profile is otherwise indistinguishable from an unfetched one, so anything asking "has this person set a name?" reads every boot frame as "no". Same reason as datasetStore.datasetsLoaded',
+        needsName:
+          'boolean — this agent has no name of any kind and has not waved the question away this session, as a settled fact (false until the app is ready and the profile fetch has answered). What the name prompt mounts on; also the right gate for any "finish setting up" nudge of your own',
       },
       actions: {
         setPendingAvatar:
           '(file: File): holds a picture chosen before an agent exists; uploaded by completeAccountSetup',
+        saveNameFromPrompt:
+          '(name: string): sets the name and stops asking. Dismisses before publishing, so a failed write cannot re-raise the prompt on top of the toast explaining it — which is why this exists rather than calling updateOwnProfile from the schema',
+        dismissNamePrompt:
+          "(): stops asking for a name until the next launch. Not persisted: a nameless agent degrades every other member's experience, so the only permanent exit is setting a name",
         completeAccountSetup:
           '(name: string, password: string): the whole of first-run setup — creates the agent, then publishes the name and picture, then lets the app appear',
         fetchProfile: "(did: string): fetches and caches an agent's profile from their public dataset",
@@ -785,7 +806,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         templateManagementList:
           'TemplateManagementItem[] — flat list of all templates with management metadata (id, name, icon, description, isBuiltIn, isInstalled, isDefault)',
         switcherGroups:
-          'TemplateSwitcherGroup[] — pre-grouped flat items for the template switcher UI; each group has { label: string, items: { id, name, icon }[] }. Groups: "Space templates", "My templates", "Built-in". Use $filter where: { name: { contains: ... } } for search since items have a flat name field.',
+          'TemplateSwitcherGroup[] — pre-grouped flat items for the template switcher UI; each group has { label: string, items: { id, name, icon, editable }[] }. Groups: "Space templates", "My templates", "Built-in". Use $filter where: { name: { contains: ... } } for search since items have a flat name field. `editable` says whether editing THAT row would open a session that can be saved — gate a per-row edit control on it rather than on editorStore.isReadOnly, which answers for whichever template is currently rendered and so gives every row the same verdict.',
       },
       actions: {
         updateTemplate: '(newTemplate: TemplateSchema): updates the current template',
@@ -909,6 +930,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           "{ label, value, icon, group }[] — models a person can create an instance of here, ready for a we-select: this space's own models first, then WE's built-in content types. A model appears here by declaring `authoring` in the manifest, or by being a shape this community defined",
         recordDraft:
           "the open form's draft ({ entity, label, icon, fields[] }) or null while closed — its non-nullness is what mounts the modal. Each field is { name, label, control, required, options, placeholder, value }, derived from the model's own declaration, so a form exists for a model nobody wrote a form for",
+        recordDraftDirty:
+          "boolean — the open form holds something worth keeping. What a discard guard reads: the fields come from the model, so a shape this community defined has properties no schema was written against and there is no set of $local names an expression could test. Pass it to discardGuard's `dirty`",
         recordErrors: 'string[] — validation errors from the last save attempt, plus any backend failure',
         savingRecord: 'boolean — a create is in flight',
         lastCreatedId:

@@ -104,8 +104,13 @@ we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
 | zIndex | number | Stack order |
 | display | "flex" \\| "block" \\| "inline" \\| "inline-block" \\| "grid" \\| "inline-flex" | Display mode |
 | flex | string | Flex shorthand (e.g. "1", "0 0 auto", "none") — controls grow/shrink/basis |
+| flexShrink | number \\| string | \`flex-shrink\` alone, for the common "just don't let it shrink" case (\`0\`) without committing to a grow and a basis |
 | alignSelf | string | Override parent cross-axis alignment for this child |
-| overflow | "hidden" \\| "auto" | Overflow behavior |
+| overflow | "hidden" \\| "auto" \\| "overlay" | Overflow behavior, both axes |
+| overflowX | "hidden" \\| "auto" \\| "overlay" | Horizontal overflow alone — a nav strip or tab bar that scrolls sideways instead of pushing the page wide |
+| overflowY | "hidden" \\| "auto" \\| "overlay" | Vertical overflow alone |
+| scrollbarWidth | "auto" \\| "thin" \\| "none" | How much room the scrollbar takes. \`none\` for a strip in fixed-height chrome, where a gutter would not fit |
+| scrollbarGutter | "auto" \\| "stable" \\| "stable both-edges" | Reserve the gutter whether or not it scrolls, so content does not shift when a scrollbar appears |
 | m | SpaceValue | Margin (all sides) |
 | mx | SpaceValue | Margin left + right |
 | my | SpaceValue | Margin top + bottom |
@@ -113,6 +118,27 @@ we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
 | mr | SpaceValue | Margin right |
 | mb | SpaceValue | Margin bottom |
 | ml | SpaceValue | Margin left |
+
+**A row that overflows is a row where nobody said who gives up space.** Inside a \`Row\`, a child's
+\`maxWidth\` is not a promise: a flex item's automatic minimum size is its *content*, so an item whose
+content cannot narrow — a strip of \`we-button\`s, which set \`white-space: nowrap\` — refuses every
+request to compress. Flexbox then takes the whole deficit out of whichever sibling *can* shrink
+(usually a run of text, which folds onto two lines) and pushes the rest past the container. Where a
+template is mounted in a scrolling box, that reads as the entire page sliding sideways.
+
+Say who does what, and the row cannot overflow:
+
+\`\`\`json
+{ "type": "Row", "props": { "ay": "center" }, "children": [
+  { "type": "Row", "props": { "flex": "1 1 auto", "minWidth": "0", "overflowX": "auto", "scrollbarWidth": "none" },
+    "children": ["…the strip that gives up space and scrolls instead…"] },
+  { "type": "Row", "props": { "flex": "0 0 auto" },
+    "children": ["…the ornament that never absorbs somebody else's overflow…"] }
+]}
+\`\`\`
+
+\`minWidth: '0'\` is the half that gets forgotten. Without it \`overflowX\` has nothing to do, because
+the item is never asked to be narrower than its content in the first place.
 
 ### Visual
 
@@ -177,6 +203,18 @@ we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
 | letterSpacing | "tighter" \\| "tight" \\| "normal" \\| "wide" \\| "wider" \\| "widest" | Letter spacing token |
 | textDecoration | "underline" \\| "line-through" \\| "overline" \\| "none" | Text decoration |
 | textTransform | "uppercase" \\| "lowercase" \\| "capitalize" \\| "none" | Text transform |
+| whiteSpace | "normal" \\| "nowrap" \\| "pre" \\| "pre-wrap" \\| "pre-line" \\| "break-spaces" | How whitespace and line breaks in the source text are treated |
+| overflowWrap | "normal" \\| "break-word" \\| "anywhere" | Where a line may break inside a word too long to fit. **Defaults to \`anywhere\`** — see below |
+
+**Text that cannot break is text that breaks the page.** \`overflowWrap\` defaults to \`anywhere\` on
+every typography component and on \`Column\`/\`Row\`/\`Grid\`/\`Card\`, so a URL, a DID, or a transcriber's
+run-together output wraps instead of stretching its card off the screen. **Do not set it, and do not
+reach for \`styles: { 'word-break': ... }\` — that is the patch this default replaced.**
+
+Set \`overflowWrap: 'normal'\` only to deliberately opt a box *out* of breaking. Note \`'break-word'\` is
+the value that looks right and is not: it breaks in the same places as \`anywhere\` but does not
+reduce the element's min-content width, and a flex item and a \`1fr\` grid track are both sized by
+min-content — so under it the long string still pushes its container wider than the viewport.
 
 **Typography defaults:** fontSize and fontWeight have **no built-in defaults** — omitting them inherits from parent elements (browser default is ~16px / normal weight). Do not set fontSize or fontWeight unless you need a non-default value. For example, \`fontSize: '300'\` (16px) and \`fontWeight: '500'\` (normal) are the inherited defaults — omit them.
 

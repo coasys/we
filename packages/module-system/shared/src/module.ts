@@ -685,15 +685,36 @@ export interface ModuleLauncher {
   /** Shown on hover, and read by assistive tech — the rail itself is icon-only. */
   label: string;
   /**
+   * What the launcher says while `activeWhen` is true. Falls back to {@link label}.
+   *
+   * Most launchers need nothing here: "Notes" names a panel, and a panel is called the same thing
+   * open or shut. It exists for the launcher whose two states are genuinely different acts — a call
+   * button means "start a call" before there is one and "go to the call" after — where one label
+   * has to be wrong half the time, and the half it is wrong in is the half where a stale tooltip
+   * describes an action the button no longer performs.
+   *
+   * Pointless without `activeWhen`, which is the only thing that decides when it applies.
+   */
+  activeLabel?: string;
+  /**
    * The method on this module's own store to call, named without the `modules.<id>.` prefix.
    *
    * A bare method name rather than a full `$action` path because the host invokes it: `$action` takes
    * a literal string, so a rail iterating over modules could not build one per entry.
+   *
+   * One method for every state the launcher has. A module whose button means different things before
+   * and after something starts resolves that inside the method — see the call module's `goToCall` —
+   * rather than by declaring two, because only the store can ask "which state am I in" at the moment
+   * of the click.
    */
   action: string;
   /**
-   * A store key the host reads to show the launcher as active. Optional — a module whose launcher
-   * starts something (a call) rather than toggling something (a panel) has no such state.
+   * A store key the host reads to show the launcher as active.
+   *
+   * Usually "is my panel open", which is what makes a rail of these read as tabs. It does not have
+   * to be: the call module lights on *being in a call*, because that is the fact worth carrying in
+   * permanent chrome, and its panel is the lesser question. The rule is only that the key names
+   * something the button is about.
    */
   activeWhen?: string;
 
@@ -783,6 +804,15 @@ export interface ModuleInterpretationAccess {
    * started a pass, so its lifetime is the host's. What a module has is a place to render it.
    */
   activity: () => InterpretationActivitySummary[];
+  /**
+   * Whether this space shares each pass's model exchange with every member.
+   *
+   * A space setting, read-only and reactive. It exists beside {@link activity} because a row's
+   * `hasDetail` is not a proxy for it: a peer's pass has no prompt until it reaches the model, a
+   * skipped pass never has one, and a row broadcast before the setting synced carries none — so a
+   * module explaining "why can't I open this" must ask about the setting, not about the row.
+   */
+  detailShared: () => boolean;
 
   /** Suggestions staged in this dataset, awaiting a human. */
   proposals: () => Promise<InterpretationProposal[]>;

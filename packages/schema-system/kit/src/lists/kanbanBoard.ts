@@ -148,6 +148,9 @@ export function moveCardMenu(cardRef: string, columnRef: string): SchemaNode {
     type: 'DropdownMenu',
     props: {
       triggerIcon: 'arrows-left-right',
+      // Names the menu, since the glyph alone does not. Until icon-only triggers were inferred this
+      // read "Options" beside the arrows — the fallback label, which no caller here ever asked for.
+      triggerTitle: 'Move this card',
       size: 'xs',
       items: {
         $map: {

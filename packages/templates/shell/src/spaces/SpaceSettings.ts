@@ -507,7 +507,6 @@ const shareSection: SchemaNode = {
                 p: '200',
                 bg: 'surface-sunken',
                 r: '200',
-                styles: { 'word-break': 'break-all' },
               },
               children: ['$space.shareLink'],
             },
@@ -953,8 +952,12 @@ export function spaceSettingsBody(uuid: SchemaProp, chrome: SchemaNode[], fill?:
                       // the other tabs, so it is the last thing that should give up height.
                       flex: '0 0 auto',
                       // Dragged narrow, four tabs do not fit — and a panel clips rather than
-                      // scrolling, so without this the last tab is simply unreachable.
-                      styles: { 'overflow-x': 'auto' },
+                      // scrolling, so without these the last tab is simply unreachable.
+                      // `minWidth` releases the flex item's automatic minimum size, which is
+                      // otherwise the tabs' own content width — so the strip would refuse to
+                      // narrow and overflow the panel instead of scrolling inside it.
+                      minWidth: '0',
+                      overflowX: 'auto',
                     },
                     children: TABS.map((tab) => ({
                       type: 'we-tab',

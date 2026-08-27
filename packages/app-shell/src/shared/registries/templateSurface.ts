@@ -180,6 +180,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     host: state('session'),
     hostAccount: state('session'),
     isDevelopment: state('session'),
+    devTools: state('session'),
+    setDevTools: action('session'),
     login: action('session'),
     createAgent: action('session'),
     clearPasswordError: action('session'),
@@ -242,6 +244,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     aiForm: state('runtime-admin'),
     aiPresetOptions: state('runtime-admin'),
     aiFormComplete: state('runtime-admin'),
+    aiFormDirty: state('runtime-admin'),
     languages: state('runtime-admin'),
     trustedAgents: state('runtime-admin'),
     authorizedApps: state('runtime-admin'),
@@ -350,9 +353,16 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
   profileStore: {
     profiles: state('identity'),
     ownProfile: state('identity'),
+    ownProfileLoaded: state('identity'),
     fetchProfile: action('identity'),
     pendingAvatar: state('agent'),
     setPendingAvatar: action('agent'),
+    // 'agent' rather than 'identity': needsName reports something about the viewer's own account
+    // and its two actions write to it, which is the agent group's whole distinction from reading
+    // the directory. A template that merely paints has no business asking whether you are unnamed.
+    needsName: state('agent'),
+    saveNameFromPrompt: action('agent'),
+    dismissNamePrompt: action('agent'),
     updateOwnProfile: action('agent'),
     updateProfileImage: action('agent'),
     clearProfileImage: action('agent'),
@@ -558,6 +568,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // in the tier every template can reach, beside `spaceStore.createPost`.
     creatableEntities: state('content'),
     recordDraft: state('content'),
+    recordDraftDirty: state('content'),
     recordErrors: state('content'),
     savingRecord: state('content'),
     lastCreatedId: state('content'),

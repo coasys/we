@@ -15,6 +15,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   BASE_LAYOUT_SPECS,
+  BASE_TYPOGRAPHY_SPECS,
   buildLayoutStyles,
   declCSS,
   designSystemKeys,
@@ -166,6 +167,40 @@ describe('buildLayoutStyles', () => {
 
   it('reverse flips the direction', () => {
     expect(buildLayoutStyles({ reverse: true }, 'row')['flex-direction']).toBe('row-reverse');
+  });
+
+  it('emits overflow-wrap only when asked — the default is the layout components’', () => {
+    // Unconditional here would leak into every hover/active fragment, which
+    // buildStateFragmentStyles builds from this same function and then prunes
+    // by name. The default lives in createLayoutComponent's LAYOUT_DEFAULTS.
+    expect(buildLayoutStyles({}, 'column')['overflow-wrap']).toBeUndefined();
+    expect(buildLayoutStyles({ overflowWrap: 'anywhere' }, 'column')['overflow-wrap']).toBe('anywhere');
+    expect(buildLayoutStyles({ overflowWrap: 'normal' }, 'column')['overflow-wrap']).toBe('normal');
+  });
+});
+
+describe('overflow-wrap default', () => {
+  /**
+   * The bug this exists for: a transcriber emitted one 200-character "word" into a call card, and
+   * the card — and the route holding it — stretched off the screen. A flex item and a `1fr` grid
+   * track are both sized by min-content, so an unbreakable string propagates its width all the way
+   * out. Every typography component now declares a break, with the value that actually shrinks
+   * min-content.
+   */
+  it('every typography component gets a breakable default it can still override', () => {
+    const spec = BASE_TYPOGRAPHY_SPECS.find(([cssProp]) => cssProp === 'overflow-wrap');
+    expect(spec).toBeDefined();
+    // The fallback is what makes it a default: the DS stylesheet is adopted last, so a var() with
+    // no fallback would resolve invalid-at-computed-value-time and clobber any earlier rule.
+    expect(declCSS('--we-text-', spec!)).toBe('overflow-wrap: var(--we-text-overflow-wrap, anywhere);');
+  });
+
+  it('is anywhere, not break-word', () => {
+    // `break-word` breaks in the same places and does NOT reduce min-content width, so under it the
+    // long string still pushes its container wider than the viewport. It is the value that looks
+    // right and does not fix the bug; pinning it here so nobody "simplifies" it back.
+    const [, , fallback] = BASE_TYPOGRAPHY_SPECS.find(([cssProp]) => cssProp === 'overflow-wrap')!;
+    expect(fallback).toBe('anywhere');
   });
 });
 

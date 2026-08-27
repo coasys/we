@@ -1,5 +1,5 @@
 import { templateRegistry } from '@shared/registries/templateRegistry';
-import { profileTemplate, schemaTestsTemplate, settingsTemplate } from '@shared/schemas';
+import { profileTemplate, settingsTemplate } from '@shared/schemas';
 import { deepClone } from '@shared/utils';
 import { toastService } from '@we/components/solid';
 import type { FileData } from '@we/models';
@@ -39,7 +39,25 @@ export type TemplateManagementItem = {
   isDefault: boolean;
 };
 
-export type TemplateSwitcherItem = { id: string; name: string; icon: string };
+export type TemplateSwitcherItem = {
+  id: string;
+  name: string;
+  icon: string;
+  /**
+   * Whether editing *this* row would open a session that can be saved.
+   *
+   * Per row, and that is the whole point of it being here. `editorStore.isReadOnly` answers the same
+   * question about whatever is currently on screen, so a picker gating its edit control on that can
+   * only ever offer it for the active row — which is why editing a template you were not already
+   * using took two extra clicks: switch, reopen the menu, then edit.
+   *
+   * Derived exactly as `isReadOnly` is, through `isBuiltInTemplate` rather than the bare id
+   * predicate the "Built-in" *group* is filtered by. The two differ, and this is the one that
+   * matters: a built-in you have saved over has stored overrides, so it is editable while still
+   * belonging to that group.
+   */
+  editable: boolean;
+};
 export type TemplateSwitcherGroup = { label: string; items: TemplateSwitcherItem[] };
 
 /** The slice of a Space model this store needs to resolve default templates. */
@@ -147,10 +165,18 @@ export function TemplateStoreProvider(props: ParentProps) {
   const shellTemplates: TemplateSchema[] = [
     { ...deepClone(profileTemplate), id: 'profile' },
     { ...deepClone(settingsTemplate), id: 'settings' },
-    // The schema test harness is a developer tool — 3k LOC of test schemas that
-    // have no business in a production bundle. The DEV-gated branch lets the
-    // app build drop both the registration and (via tree-shaking) the schemas.
-    ...(import.meta.env.DEV ? [{ ...deepClone(schemaTestsTemplate), id: 'schema-tests' }] : []),
+    /*
+      The schema-test harness is deliberately absent, and was dead weight here rather than a feature.
+
+      This list is a fallback for resolving a *template* — a persisted `defaultTemplateId` on boot,
+      or a `switchTemplate` id. The harness is neither: it is only ever reached through
+      `openShellView('schema-tests')`, which goes to the shell-view registry and never looks here. It
+      is not in `templateManagementList` either, so it could not be made anyone's default.
+
+      Its entry was therefore unreachable, and its cost was a static import of ~97KB of test schemas
+      that a production build shipped. See `schemaTestsView` for where it lives now and why that
+      shape is the thing keeping it out of the bundle.
+    */
   ];
 
   /*
@@ -198,7 +224,14 @@ export function TemplateStoreProvider(props: ParentProps) {
   };
 
   const toSwitcherItems = (templates: TemplateSchema[], prefix = ''): TemplateSwitcherItem[] =>
-    templates.map((t) => ({ id: prefix + (t.id || ''), name: t.meta?.name || '', icon: t.meta?.icon || '' }));
+    templates.map((t) => ({
+      id: prefix + (t.id || ''),
+      name: t.meta?.name || '',
+      icon: t.meta?.icon || '',
+      // From the unprefixed id: the prefix distinguishes a space's copy from your own for keying
+      // rows, and is not part of any identity the template registry knows about.
+      editable: !isBuiltInTemplate(t.id || ''),
+    }));
 
   // Grouped template data for the template switcher UI — flat name/icon fields allow $filter in schemas
   const switcherGroups = (): TemplateSwitcherGroup[] => [

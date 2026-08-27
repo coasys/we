@@ -1,5 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { sectionCard } from '@we/template-kit';
+import { confirmModal, sectionCard } from '@we/template-kit';
 
 /**
  * The Models section of space settings: the content models this space defines, the wizard that
@@ -599,12 +599,11 @@ const shapeWizardModal: SchemaNode = {
   type: 'we-modal',
   // Backdrop and close button both route through the guard — that click was the way a half-written
   // model got thrown away.
-  // Width on the modal itself rather than an inner Column: the title and buttons are slotted out
-  // of the scroll region (a long draft scrolls its members, not its own name or its Save button),
-  // so no single child spans the modal any more. Wider than the Column's old 720px by the modal's
-  // own padding (space-900 each side), since this width now includes it — at 720px total the
-  // member rows lost 128px of room and wrapped.
-  props: { close: { $action: 'shapeStore.requestCloseWizard' }, width: 'min(850px, 92vw)' },
+  // `lg` because a member row is a form in itself and the rows wrapped at anything narrower. The
+  // hand-written `min(850px, 92vw)` this replaced was the modal reinventing its own gutter, which
+  // `size` now carries for every modal — and the 850 included the padding, which is why it looked
+  // like a number nobody could have guessed.
+  props: { size: 'lg', close: { $action: 'shapeStore.requestCloseWizard' } },
   children: [
     {
       type: 'we-text',
@@ -899,10 +898,10 @@ const shapeWizardModal: SchemaNode = {
 /** Per-space hint tuning for one entity. Mounted while `shapeStore.hintEditor` is non-null. */
 const hintEditorModal: SchemaNode = {
   type: 'we-modal',
-  // Width on the modal, title and actions slotted: a model with many properties scrolls its hint
-  // rows, never the heading that says whose hints these are or the buttons that save them.
-  // 640px of content plus the modal's own padding — see the wizard modal above.
-  props: { close: { $action: 'shapeStore.closeHintEditor' }, width: 'min(770px, 92vw)' },
+  // Title and actions slotted: a model with many properties scrolls its hint rows, never the
+  // heading that says whose hints these are or the buttons that save them. `lg` for the same
+  // reason as the wizard — a hint row is a label over a full-width field.
+  props: { size: 'lg', close: { $action: 'shapeStore.closeHintEditor' } },
   children: [
     {
       type: 'Row',
@@ -1168,45 +1167,15 @@ const hintEntityRow: SchemaNode = {
  * Mounted beside the wizard rather than inside it, so it survives the modal it is asking about and
  * is not itself dismissed by the backdrop click that raised the question.
  */
-const discardConfirmModal: SchemaNode = {
-  type: '$if',
-  props: {
-    condition: { $store: 'shapeStore.confirmDiscard' },
-    then: {
-      type: 'we-modal',
-      props: { close: { $action: 'shapeStore.cancelDiscard' } },
-      children: [
-        {
-          type: 'Column',
-          props: { gap: '300', maxWidth: '380px' },
-          children: [
-            { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Discard this model?'] },
-            {
-              type: 'we-text',
-              children: ['What you have filled in will be lost. Nothing has been saved to the space yet.'],
-            },
-            {
-              type: 'Row',
-              props: { ax: 'end', gap: '200' },
-              children: [
-                {
-                  type: 'we-button',
-                  props: { variant: 'ghost', onClick: { $action: 'shapeStore.cancelDiscard' } },
-                  children: ['Keep editing'],
-                },
-                {
-                  type: 'we-button',
-                  props: { variant: 'danger', onClick: { $action: 'shapeStore.cancelShapeWizard' } },
-                  children: ['Discard'],
-                },
-              ],
-            },
-          ],
-        },
-      ],
-    },
-  },
-};
+const discardConfirmModal: SchemaNode = confirmModal({
+  open: { $store: 'shapeStore.confirmDiscard' },
+  close: { $action: 'shapeStore.cancelDiscard' },
+  title: 'Discard this model?',
+  body: 'What you have filled in will be lost. Nothing has been saved to the space yet.',
+  cancelLabel: 'Keep editing',
+  confirmLabel: 'Discard',
+  confirm: { $action: 'shapeStore.cancelShapeWizard' },
+});
 
 /**
  * "Replace these?" — the guard on regenerating over fields somebody wrote.
@@ -1215,96 +1184,29 @@ const discardConfirmModal: SchemaNode = {
  * dialog asking to discard a proposal nobody wrote is a dialog that teaches people to dismiss
  * dialogs. Beside the wizard rather than inside it, like the discard confirmation.
  */
-const replaceFieldsConfirmModal: SchemaNode = {
-  type: '$if',
-  props: {
-    condition: { $store: 'shapeStore.confirmReplaceFields' },
-    then: {
-      type: 'we-modal',
-      props: { close: { $action: 'shapeStore.cancelReplaceFields' } },
-      children: [
-        {
-          type: 'Column',
-          props: { gap: '300', maxWidth: '380px' },
-          children: [
-            { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Replace the fields below?'] },
-            {
-              type: 'we-text',
-              children: [
-                'Generating starts the field list again from the name, description and AI hint. The fields you have written will be replaced.',
-              ],
-            },
-            {
-              type: 'Row',
-              props: { ax: 'end', gap: '200' },
-              children: [
-                {
-                  type: 'we-button',
-                  props: { variant: 'ghost', onClick: { $action: 'shapeStore.cancelReplaceFields' } },
-                  children: ['Keep them'],
-                },
-                {
-                  type: 'we-button',
-                  props: { variant: 'danger', onClick: { $action: 'shapeStore.generateShapeFields' } },
-                  children: ['Replace'],
-                },
-              ],
-            },
-          ],
-        },
-      ],
-    },
-  },
-};
+const replaceFieldsConfirmModal: SchemaNode = confirmModal({
+  open: { $store: 'shapeStore.confirmReplaceFields' },
+  close: { $action: 'shapeStore.cancelReplaceFields' },
+  title: 'Replace the fields below?',
+  body: 'Generating starts the field list again from the name, description and AI hint. The fields you have written will be replaced.',
+  cancelLabel: 'Keep them',
+  confirmLabel: 'Replace',
+  confirm: { $action: 'shapeStore.generateShapeFields' },
+});
 
-const deleteConfirmModal: SchemaNode = {
-  type: '$if',
-  props: {
-    condition: { $local: 'confirmDeleteShapeId' },
-    then: {
-      type: 'we-modal',
-      props: { close: { $setLocal: 'confirmDeleteShapeId', value: '' } },
-      children: [
-        {
-          type: 'Column',
-          props: { gap: '300' },
-          children: [
-            { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Remove this model?'] },
-            {
-              type: 'we-text',
-              children: [
-                'Entries already created with it keep their data, and other members keep seeing them — only the definition is removed from this space.',
-              ],
-            },
-            {
-              type: 'Row',
-              props: { ax: 'end', gap: '200' },
-              children: [
-                {
-                  type: 'we-button',
-                  props: { variant: 'ghost', onClick: { $setLocal: 'confirmDeleteShapeId', value: '' } },
-                  children: ['Cancel'],
-                },
-                {
-                  type: 'we-button',
-                  props: {
-                    variant: 'danger',
-                    onClick: {
-                      $action: 'shapeStore.deleteShape',
-                      args: [{ $local: 'confirmDeleteShapeId' }],
-                      onSuccess: [{ $setLocal: 'confirmDeleteShapeId', value: '' }],
-                    },
-                  },
-                  children: ['Remove'],
-                },
-              ],
-            },
-          ],
-        },
-      ],
-    },
-  },
-};
+/*
+  Gated on the id rather than a boolean — the list has a row per model and the flag has to say
+  *which* — so closing means clearing the string, not setting a flag false. Which is one of the two
+  shapes the old `openLocal` option could not express.
+*/
+const deleteConfirmModal: SchemaNode = confirmModal({
+  open: { $local: 'confirmDeleteShapeId' },
+  close: { $setLocal: 'confirmDeleteShapeId', value: '' },
+  title: 'Remove this model?',
+  body: 'Entries already created with it keep their data, and other members keep seeing them — only the definition is removed from this space.',
+  confirmLabel: 'Remove',
+  confirm: { $action: 'shapeStore.deleteShape', args: [{ $local: 'confirmDeleteShapeId' }] },
+});
 
 export const modelsSection: SchemaNode = {
   ...sectionCard({

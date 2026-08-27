@@ -190,7 +190,7 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
     return <we-divider />;
   };
 
-  const renderEntry = (getEntry: () => SolidDropdownMenuEntry) => {
+  const renderBody = (getEntry: () => SolidDropdownMenuEntry) => {
     const entry = getEntry();
 
     if (entry.type === 'divider') {
@@ -209,6 +209,82 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
     return renderActionItem(getEntry as () => DropdownMenuAction);
   };
 
+  /**
+   * An entry that is currently nothing renders nothing — and starts rendering when it stops being
+   * nothing.
+   *
+   * This is what makes a *conditional* item expressible from a schema. `items` is a prop, so an
+   * entry can be a `$if`, and a `$if` with no `else` resolves to `undefined` — which arrives here
+   * as a hole in the array. Reading `.type` off it threw, so the only way to vary a menu's contents
+   * was to abandon the component and hand-roll a `we-menu`, which is what the call bar did for its
+   * one conditional toggle.
+   *
+   * The hole is left **in place** rather than filtered out, and the check is a memo rather than the
+   * obvious early `return null`. Both are about `Index`, which keys by position: filtering would
+   * shift every later entry into a row built for a different item, and a snapshot taken once at
+   * creation would never see the condition change, so the entry would be right at mount and frozen
+   * afterwards. A hole holds its index, and the memo re-reads it.
+   */
+  const renderEntry = (getEntry: () => SolidDropdownMenuEntry) => {
+    const present = createMemo(() => Boolean(getEntry()));
+    return <Show when={present()}>{renderBody(getEntry)}</Show>;
+  };
+
+  /*
+    What is written on the trigger.
+
+    The "Options" fallback applies only where there is no glyph either — a trigger with *nothing* on
+    it is unusable, so something has to be written. Where an icon was given, an absent label means
+    icon-only: it used to mean "icon, followed by the word Options", which is the least informative
+    word available for a menu that always has a subject, and every icon-only caller in the repo was
+    silently rendering it. An explicit '' still reads as icon-only, as it always did.
+  */
+  const label = () => (props.triggerIcon ? (props.triggerLabel ?? '') : (props.triggerLabel ?? 'Options'));
+
+  /**
+   * A glyph and nothing else — so the trigger is a square, not a pill.
+   *
+   * Inferred rather than asked for, because the two always travel together: without `square` the
+   * size's horizontal padding still applies, and an icon-only trigger comes out wider than it is
+   * tall beside every hand-written icon button in the app, all of which pass `square`. There is no
+   * caller who wants one glyph in a rounded rectangle.
+   */
+  const iconOnly = () => Boolean(props.triggerIcon) && !label();
+
+  /*
+    The trigger is `we-button`'s own `secondary` — a filled neutral control — rather than the
+    hardcoded `bg="surface-active" color="text"` this used to carry over the default `primary`.
+
+    Identical at rest: `controlSurface` was added for exactly this family of things (a secondary
+    button, a slider track, a count chip), all of which were borrowing `surfaceActive`, and it was
+    given that same value so nothing moved. What changes is the part the override never reached.
+    `bg` and `color` were overridden; `hoverProps` and `activeProps` were not, so `primary`'s
+    survived the merge and the trigger hovered to the *accent* — beside neighbours going to
+    `surfaceHover`, and in a theme where the accent is loud, alarmingly.
+  */
+  const trigger = (slot: string) => (
+    <we-button
+      /*
+        Required, and `''` rather than omitted where the button is nested inside the tooltip.
+
+        Solid assigns *properties* on a custom element rather than attributes, and `HTMLElement.slot`
+        is a non-nullable DOMString: an optional parameter left off writes the string "undefined",
+        which names a slot nothing declares, and the trigger silently renders nowhere. `''` is the
+        spelling for "the default slot", which is what an omitted `slot` attribute already means.
+      */
+      slot={slot}
+      size={props.size}
+      variant={props.triggerVariant ?? 'secondary'}
+      square={iconOnly()}
+      aria-label={iconOnly() ? (props.triggerTitle ?? 'Options') : undefined}
+    >
+      <Show when={props.triggerIcon}>
+        <we-icon name={props.triggerIcon!} />
+      </Show>
+      {label()}
+    </we-button>
+  );
+
   return (
     <we-popover
       ref={popoverRef}
@@ -217,18 +293,16 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
       placement={props.placement || 'bottom'}
       data-we-menu
     >
-      <we-button slot="trigger" size={props.size} bg="surface-active" color="text">
-        <Show when={props.triggerIcon}>
-          <we-icon name={props.triggerIcon!} />
-        </Show>
-        {/*
-          `??` rather than `||`, so an explicit empty label means "icon only" instead of falling back
-          to the default. It could not be suppressed before: any icon-only trigger silently read
-          "Options", which is the least informative word available for a menu that always has a
-          subject — and callers had no way to say otherwise.
-        */}
-        {props.triggerLabel ?? 'Options'}
-      </we-button>
+      {/*
+        The tooltip takes the trigger slot and the button sits inside it, rather than the other way
+        round: slot assignment considers a shadow host's *direct* children, so whichever element is
+        outermost is the one that has to carry `slot`.
+      */}
+      <Show when={props.triggerTitle} fallback={trigger('trigger')}>
+        <we-tooltip slot="trigger" title={props.triggerTitle!} placement="bottom">
+          {trigger('')}
+        </we-tooltip>
+      </Show>
 
       <we-menu slot="content">
         <Index each={props.items}>{(getEntry) => renderEntry(getEntry)}</Index>

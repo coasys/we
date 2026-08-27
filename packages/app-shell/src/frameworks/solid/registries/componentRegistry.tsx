@@ -145,9 +145,18 @@ export const componentRegistry: ComponentRegistry = {
   // Shell
   EditingBar,
 
-  // Testing
-  // A perf debugging tool — logging on every mount is its purpose, which is
-  // exactly why production templates should not be able to reach it.
+  /*
+    Testing.
+
+    A perf debugging tool — logging on every mount is its purpose, which is exactly why production
+    templates should not be able to reach it.
+
+    Build-gated rather than gated on `sessionStore.devTools`, and deliberately not moved onto that
+    switch with the rest of the developer affordances. The switch governs what *chrome* shows; this
+    is a word in the vocabulary a template is rendered against, and the registry is built once. A
+    template naming an unregistered component renders nothing and warns, which is the right answer
+    for a production build and the wrong one for a developer who has merely muted their own tools.
+  */
   ...(import.meta.env.DEV ? { RerenderLog } : {}),
 
   // 3D

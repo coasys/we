@@ -62,7 +62,15 @@ export type InterpretationPhase =
    * going" and "stuck", and it is where an elapsed timer earns its place.
    */
   | 'thinking'
-  /** The response arrived and is being planned and written. Brief. */
+  /**
+   * The response arrived and is being planned and written.
+   *
+   * Usually brief, and not reliably so: on AD4M this spans dedup resolution, planning, a subject
+   * write per instance, several batch commits and the provenance overlay, none of which reports
+   * progress and all of which contend with whatever else is writing to the perspective — a live
+   * transcription, say. A pass has sat here for minutes. A UI should keep the elapsed clock running
+   * through it rather than treating it as the last frame before `done`.
+   */
   | 'writing'
   /** Finished, and {@link InterpretationActivity.ids} says what it wrote. May be empty — a
    *  conversation with nothing extractable in it is an ordinary outcome, not a failure. */

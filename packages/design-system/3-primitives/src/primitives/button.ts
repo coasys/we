@@ -78,6 +78,22 @@ const VARIANT_DEFAULTS: Record<ButtonVariant, Partial<DesignSystemProps>> = {
     border: '1px solid var(--we-role-border)',
     hoverProps: { bg: 'surface-hover', color: 'text', border: '1px solid var(--we-role-border-strong)' },
     activeProps: { bg: 'control-surface', color: 'text', border: '1px solid var(--we-role-border-strong)' },
+    /*
+      The only variant with an outline of its own, and so the only one whose focus ring would
+      otherwise be a second line rather than the same one thickened. It takes `we-input`'s
+      treatment — border recoloured to the ring, one pixel of ring outside it, one 2px perimeter —
+      because a Select trigger and a field sit in the same row and must answer focus the same way.
+      The filled variants keep the shared 2px ring: with no outline to recolour there is nothing to
+      double up on, and both spellings land on 2px of accent.
+
+      The ring is restated rather than inherited: `mergeProps` is a shallow spread, so a variant's
+      `focusProps` *replaces* the one on DEFAULT_PROPS. Omitting it here would not add a border to
+      the shared ring, it would trade the ring for a border.
+    */
+    focusProps: {
+      border: '1px solid var(--we-ring-color)',
+      ring: '0 0 0 1px var(--we-ring-color)',
+    },
   },
   // The appearance-free member of the scale: button semantics, no chrome. For wrapping arbitrary
   // content in a real <button> — the styling then lives on the wrapped Column/Card, which is

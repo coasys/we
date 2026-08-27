@@ -40,7 +40,7 @@ const languageRow: SchemaNode = {
         // install the same one elsewhere — so it is shown in full and selectable, not truncated.
         {
           type: 'we-code',
-          props: { block: true, styles: { 'word-break': 'break-all' } },
+          props: { block: true },
           children: ['$language.address'],
         },
       ],

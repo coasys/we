@@ -465,6 +465,23 @@ export function createCallStore(deps: CallStoreDeps) {
    */
   let anchor: Focus | undefined;
 
+  /**
+   * Whether the call this agent is in belongs to a space other than the one on screen.
+   *
+   * A function rather than an inline comparison because two things ask it — the bar's way back, and
+   * the rail's launcher — and they have to agree. The bar showing "back to the call" while the rail
+   * thought it was already there would be one of the two doing nothing.
+   */
+  function callIsElsewhere(): boolean {
+    return callId() !== null && !!anchor?.datasetUri && anchor.datasetUri !== (datasetUri?.() ?? null);
+  }
+
+  /** Go back to the space the call is in. No-op outside a call. */
+  function returnToCall() {
+    const uri = anchor?.datasetUri;
+    if (callId() && uri) datasets?.open(uri);
+  }
+
   /** Republish the call activity so peers see mute/camera/screen changes. */
   function publishActivity() {
     const id = callId();
@@ -1018,7 +1035,7 @@ export function createCallStore(deps: CallStoreDeps) {
      * can leave the call's space and come back to it, and the affordance has to disappear again when
      * you do. `anchor.datasetUri` is set for every call — see `join`.
      */
-    elsewhere: () => callId() !== null && !!anchor?.datasetUri && anchor.datasetUri !== (datasetUri?.() ?? null),
+    elsewhere: callIsElsewhere,
 
     /**
      * The space this call is in, named — or `null` when there is no call.
@@ -1036,10 +1053,7 @@ export function createCallStore(deps: CallStoreDeps) {
     },
 
     /** Go back to the space the call is in. No-op outside a call. */
-    returnToCall: () => {
-      const uri = anchor?.datasetUri;
-      if (callId() && uri) datasets?.open(uri);
-    },
+    returnToCall,
 
     /**
      * The band this module's fixed chrome occupies, for panels to keep clear of.
@@ -1082,6 +1096,63 @@ export function createCallStore(deps: CallStoreDeps) {
     ongoing: ongoingPeers,
 
     // ── Actions ──────────────────────────────────────────────────────────────
+
+    /**
+     * The rail's call button, in every state it can be pressed in. One promise: *go to the call.*
+     *
+     * The launcher used to be `joinSpaceCall` outright, which made it three different things
+     * depending on what you were already doing, two of them wrong:
+     *
+     * - In this space's call, `join` returns early on the matching id — so the button was silently
+     *   dead. Nothing in permanent chrome should absorb a click and do nothing.
+     * - In an anchored call, or a call in another space, the ids differ — so it **tore that call
+     *   down** and started a new one, with no confirmation. A rail button is pressed by accident;
+     *   ending a live conversation is not something it should be able to do.
+     *
+     * So this never calls `join` while a call is running. What is left is the reading that holds in
+     * all three states — bring me to the call — and it costs nothing when there is no call, because
+     * starting one is how you get to it.
+     *
+     * Switching between calls is still expressible; it just is not this button. `joinSpaceCall` and
+     * `joinAnchoredCall` keep their replace-the-current-call semantics for the template controls that
+     * mean it — a card's Continue, a post's call button — where the target is named and the intent
+     * is explicit.
+     *
+     * ## It shows, and never hides
+     *
+     * This toggled the stage once, on the reasoning that a rail button is a tab and a tab's second
+     * press closes what the first opened. It made a liar of every control that calls it: the button
+     * says *go to the call* and hiding the video is the opposite of going to it, so pressing the lit
+     * rail tab — or a card's button — put the call away. Reported within a day of shipping, from a
+     * calls list, which is exactly where it reads worst.
+     *
+     * "Go to" is a direction, so this is idempotent the way every other navigation is: pressing Home
+     * while on Home does nothing and surprises nobody. Putting the video away is a real thing to
+     * want and has two controls of its own — the panel's close button, and Video in the call bar —
+     * neither of which is named after going somewhere.
+     */
+    goToCall: () => {
+      if (!callId()) {
+        const uri = datasetUri?.() ?? null;
+        if (!uri) {
+          setProblem('A call needs a space.');
+          return;
+        }
+        void join(spaceCallId(uri));
+        return;
+      }
+      // The call is somewhere else: take the user to it, and show it when they land. `returnToCall`
+      // is left alone to be pure navigation — it is the bar's button, and the bar is already in the
+      // call, so it has no business deciding whether the video is up.
+      if (callIsElsewhere()) {
+        setVisible(true);
+        returnToCall();
+        return;
+      }
+      // In the call, here. Nowhere to travel to, so the whole of "go to it" is having it on screen.
+      setVisible(true);
+    },
+
     joinSpaceCall: () => {
       const uri = datasetUri?.() ?? null;
       if (!uri) {

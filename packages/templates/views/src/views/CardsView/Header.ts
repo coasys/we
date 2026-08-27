@@ -13,6 +13,19 @@ import type { SchemaNode } from '@we/schema-shared';
  *
  * `resume` rather than a second create: pinning is the same operation Continue performs, and going
  * through it means the peers who join adopt this record instead of making their own.
+ *
+ * ## Once a call is running, this stops being a create
+ *
+ * Creating the record *up front* is what made this worth guarding. The create fired on the click
+ * and the join afterwards, so pressing it while already in this space's call wrote an empty
+ * `CollectionBlock` and then no-opped the join it was created for — an orphaned card on this very
+ * list, from a button that appeared to do nothing. In any other call it was worse: the join tore
+ * that call down.
+ *
+ * So mid-call it says what it now does, and does it. Same promise as the module rail and the cards
+ * below: go to the call you are in. Starting a second call from here is not something to make
+ * easier — there is one call at a time by construction, so it could only ever mean ending the
+ * first.
  */
 const startCallButton: SchemaNode = {
   type: '$if',
@@ -21,16 +34,35 @@ const startCallButton: SchemaNode = {
     then: {
       type: 'we-button',
       props: {
-        text: 'Call',
+        text: { $if: { condition: { $store: 'modules.call.active' }, then: 'Go to call', else: 'Call' } },
         variant: 'primary',
-        onClick: {
-          $action: 'model.create',
-          args: ['CollectionBlock', { kind: 'call', type: 'collection' }],
-          onSuccess: [
-            { $action: 'modules.call.joinSpaceCall' },
-            { $action: 'modules.transcribe.resume', args: ['$result.id'] },
-          ],
-        },
+        /*
+          A handler array so the branch is taken at click time. Written as a single `$action` with a
+          `$if` in its args it would resolve when the header painted and freeze whichever answer was
+          true then — the trap named in the schema docs, and the reason the two states are two
+          entries rather than one conditional action.
+        */
+        onClick: [
+          {
+            $if: {
+              condition: { $store: 'modules.call.active' },
+              then: { $action: 'modules.call.goToCall' },
+            },
+          },
+          {
+            $if: {
+              condition: { $not: { $store: 'modules.call.active' } },
+              then: {
+                $action: 'model.create',
+                args: ['CollectionBlock', { kind: 'call', type: 'collection' }],
+                onSuccess: [
+                  { $action: 'modules.call.joinSpaceCall' },
+                  { $action: 'modules.transcribe.resume', args: ['$result.id'] },
+                ],
+              },
+            },
+          },
+        ],
       },
     },
   },

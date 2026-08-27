@@ -45,16 +45,49 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   */
   hoverProps: { bg: 'surface-hover', border: '1px solid border-strong' },
   activeProps: { bg: 'surface-hover', border: '1px solid border-strong' },
-  focusProps: { bg: 'surface-hover', ring: '0 0 0 2px var(--we-ring-color)' },
   /*
-    `ring` and `shadow` compose into one `box-shadow`, so that is the property to ease — and the
-    fill and the edge have to travel with it, or the ring fades in over a background and an outline
-    that have already snapped.
+    Focused, the outline *becomes* the ring's inner pixel rather than sitting inside it.
 
-    Durations are tokens, not `150ms`: `--we-transition-*` is what a theme's `animationSpeed`
-    preset overrides, so a token honours a reduced-motion choice where a literal overrides it.
+    Two things are going on here and they are easy to conflate.
+
+    **Why focus mentions the border at all.** A state rule declares every property in the set and
+    falls back to the *base* value for whatever the state does not set, so a property hover lifted
+    is put back down by any state that outranks hover and stays quiet about it — and focus outranks
+    hover. Silence here did not mean "keep what hover did", it meant "return to rest", and the field
+    faded back to its dim resting outline at the moment the ring arrived.
+
+    **Why it takes the ring's colour, and why the ring is 1px.** Restating `border-strong` fixed the
+    dimming and left a worse artefact: a grey line inside a blue one, two indicators where there is
+    one thing to say. Painting the border in the ring colour and adding a single pixel outside it
+    reads as *one* 2px perimeter — the resting line thickened and recoloured, which is what a field
+    gaining focus actually does.
+
+    The growth has to come from the ring, not from the border. `border-width` is inside the border
+    box, so animating 1px → 2px shrinks the content box and nudges the text sideways mid-transition.
+    A `box-shadow` is outside layout entirely, and interpolating it from `none` pads with a
+    transparent zero-spread shadow, so the second pixel grows outward instead of appearing.
+
+    Both halves travel together for free: `border-color` and `box-shadow` are in the same
+    `ANIMATABLE_STATE_PROPS` list on one duration and easing.
   */
-  transition: 'box-shadow 200 ease, background-color 200 ease, border-color 200 ease',
+  focusProps: {
+    bg: 'surface-hover',
+    border: '1px solid var(--we-ring-color)',
+    ring: '0 0 0 1px var(--we-ring-color)',
+  },
+  /*
+    No `transition` of its own, deliberately — do not put one back.
+
+    This carried `box-shadow 200 ease, background-color 200 ease, border-color 200 ease` so the ring,
+    the fill and the edge would travel together. They already do: the default arrival eases all three
+    and `outline-color` besides. What the override actually bought was four times the duration, and
+    it charged for it on the way out — one `transition` prop feeds the state rules *and* the base
+    rule, so a 200ms arrival is also a 200ms departure, and departures are meant to snap.
+
+    See the STATE_TRANSITION / REST_TRANSITION note in `shared/helpers.ts` for the measurement behind
+    that: a hover indicator that keeps painting after the pointer has gone is asserting something
+    false about somewhere it isn't.
+  */
 };
 
 const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
