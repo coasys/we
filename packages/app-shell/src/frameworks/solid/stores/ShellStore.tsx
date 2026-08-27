@@ -52,7 +52,7 @@ import {
   registerHostDockStore,
   unregisterHostDockStore,
 } from '@shared/registries/dockRegistry';
-import { moduleStores } from '@shared/registries/moduleRegistry';
+import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry';
 import { SHELL_DOCK_STORE_ID } from '@shared/registries/shellDocks';
 import { slotRegistry } from '@shared/registries/slotRegistry';
 import {
@@ -919,6 +919,54 @@ export function ShellStoreProvider(props: ParentProps) {
       slotRegistry.remove(`dock:${dockId}`);
     }
     unregisterHostDockStore(TEMPLATE_DOCK_STORE_ID);
+  });
+
+  /*
+    Open the module panels the interface asked for, and put them back when it stops asking.
+
+    A declaration places a panel; it does not open one, because whether a module's panel is open is
+    the module's own state and the host has no business writing it. So the host asks the module,
+    through the two keys the launcher already declares: read `activeWhen`, and fire `action` only if
+    it is false. That matters rather than being fastidious — transcribe's action is `togglePanel`,
+    so firing it blindly at an open panel would *close* the thing the template asked for.
+
+    ## Provenance, which is the whole reason this keeps a set
+
+    A panel opened by a layout is the layout's, and is withdrawn when the layout stops naming it. A
+    panel somebody opened themselves is theirs and survives navigating between views. Without the
+    distinction a per-view layout either accumulates every panel you have walked past, or closes one
+    holding live state — leaving the graph view would stop a recording.
+  */
+  const layoutOpened = new Set<string>();
+  const toggleModulePanel = (moduleId: string, wantOpen: boolean): void => {
+    const launcher = moduleRegistry.get(moduleId)?.definition.launcher;
+    if (!launcher?.action) return;
+    const store = moduleStores[moduleId] as Record<string, unknown> | undefined;
+    const active = launcher.activeWhen ? readModuleKey(moduleId, launcher.activeWhen) : undefined;
+    // Nothing to do if it is already how the layout wants it. A module with no `activeWhen` cannot
+    // be asked, so it is opened once and never toggled back — an unanswerable question is better
+    // left alone than guessed at.
+    if (Boolean(active) === wantOpen) return;
+    if (!wantOpen && launcher.activeWhen === undefined) return;
+    const fn = store?.[launcher.action];
+    if (typeof fn === 'function') (fn as () => void)();
+  };
+
+  createEffect(() => {
+    const wanted = declaredPanels()
+      .filter((panel) => panel.module)
+      .map((panel) => panel.module as string);
+
+    for (const moduleId of wanted) {
+      if (layoutOpened.has(moduleId)) continue;
+      layoutOpened.add(moduleId);
+      toggleModulePanel(moduleId, true);
+    }
+    for (const moduleId of [...layoutOpened]) {
+      if (wanted.includes(moduleId)) continue;
+      layoutOpened.delete(moduleId);
+      toggleModulePanel(moduleId, false);
+    }
   });
 
   const store: ShellStore = {

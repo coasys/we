@@ -215,7 +215,30 @@ export function TemplateLayout(
     and whatever the reader has dragged outranks it. Published from here because a template is data
     and has nothing to publish from.
   */
-  createEffect(() => setTemplatePanels(stores.templateStore.currentTemplate?.meta?.panels));
+  /**
+   * The layout for where the reader actually is: the section's own suggestion, with the shell's
+   * having the last word.
+   *
+   * Per view rather than per template because that is the unit a layout is *about* — a graph wants a
+   * transcript beside it and an inbox does not, and both are sections of one interface. The active
+   * one is derived rather than stored: the shell's routes are built from these same sections, so the
+   * segment under the space in the URL is the section on screen.
+   *
+   * The shell wins on a collision. A section is portable — it renders inside interfaces it knows
+   * nothing about — so what it says about the screen is a suggestion, and the interface that owns
+   * the screen is the one that gets to overrule it.
+   */
+  const activePanels = createMemo(() => {
+    const shell = stores.templateStore.currentTemplate?.meta?.panels ?? [];
+    const segments = stores.routeStore.segments();
+    const view = stores.spaceStore.spaceViews().find((section) => segments.includes(section.segment))?.schema
+      ?.meta?.panels;
+    if (!view?.length) return shell;
+    const overridden = new Set(shell.map((panel) => panel.id));
+    return [...view.filter((panel) => !overridden.has(panel.id)), ...shell];
+  });
+
+  createEffect(() => setTemplatePanels(activePanels()));
   onCleanup(() => setTemplatePanels([]));
 
   createEffect(() => stores.routeStore.setNavigateFunction(() => navigate));
