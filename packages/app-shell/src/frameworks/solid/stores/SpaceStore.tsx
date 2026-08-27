@@ -1094,7 +1094,13 @@ export function SpaceStoreProvider(props: ParentProps) {
       // (the dataset handle's own sharedUrl is not updated in-place).
       if (access === 'shared') {
         if (!lifecycle.publish) throw new Error('This backend cannot publish shared datasets.');
-        publishedSharedId = (await lifecycle.publish(spaceRef.id)).sharedId;
+        const published = await lifecycle.publish(spaceRef.id);
+        publishedSharedId = published.sharedId;
+        // Patch the ref so trackDataset sees the sharedId — the proxy's sharedUrl is not
+        // updated in-place by publish, so the ref captured at create time would otherwise
+        // stay empty and shareLinkFor / guestLinkFor would return ''.
+        spaceRef.sharedId = published.sharedId;
+        spaceRef.sharedUri = published.uri;
       }
 
       // Process avatar image if provided

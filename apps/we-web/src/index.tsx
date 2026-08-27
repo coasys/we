@@ -1,4 +1,20 @@
 /* @refresh reload */
+
+// Polyfill crypto.randomUUID for non-secure contexts (plain HTTP over LAN/Tailscale).
+// crypto.getRandomValues works everywhere; only the randomUUID convenience method
+// requires a secure context.
+if (typeof crypto !== 'undefined' && !crypto.randomUUID) {
+  crypto.randomUUID = () => {
+    const buf = new Uint8Array(16);
+    crypto.getRandomValues(buf);
+    // Set version (4) and variant (RFC 4122) bits
+    buf[6] = (buf[6] & 0x0f) | 0x40;
+    buf[8] = (buf[8] & 0x3f) | 0x80;
+    const hex = [...buf].map((b) => b.toString(16).padStart(2, '0')).join('');
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  };
+}
+
 // Import global styles from app-shell
 import '@we/app-shell/shared/index.scss';
 
