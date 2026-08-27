@@ -6,7 +6,7 @@ import { decodeEditorState, resolveExpressionAddresses } from '@we/block-shared'
 import { registerCoreBlocks } from '@we/block-shared';
 import type { ColumnProps } from '@we/components/solid';
 import { Column, Row } from '@we/components/solid';
-import { $getRoot } from 'lexical';
+import { $getRoot, type LexicalEditor } from 'lexical';
 import {
   ContentEditable,
   HistoryPlugin,
@@ -109,6 +109,22 @@ function LoadEditorState({
 }
 
 /**
+ * Whether the document holds nothing an author would mind losing.
+ *
+ * "Nothing" is not the same as "no nodes": Lexical scaffolds a single empty paragraph for the
+ * cursor to sit in, and a composer that has only that has not been written in. Anything else counts
+ * — a second paragraph is a pressed Return, and a lone image node has no text but is certainly work.
+ */
+function isEmptyDocument(editor: LexicalEditor): boolean {
+  return editor.getEditorState().read(() => {
+    const root = $getRoot();
+    if (root.getTextContent().trim() !== '') return false;
+    const children = root.getChildren();
+    return children.length === 0 || (children.length === 1 && children[0].getType() === 'paragraph');
+  });
+}
+
+/**
  * Reports when the editor's content stops matching what it started from.
  *
  * ## Why a baseline comparison rather than Lexical's dirty flags
@@ -118,6 +134,15 @@ function LoadEditorState({
  * modal would report unsaved work before the author had touched anything. The baseline is taken
  * *after* that load — which is what `onLoaded` above exists to signal — so what is measured is the
  * author's own changes.
+ *
+ * ## Why a blank composer has no baseline at all
+ *
+ * Because there is no moment to take one. A snapshot at mount races Lexical's own initialisation:
+ * the empty paragraph is inserted in an `editor.update()`, which is batched to a microtask, so
+ * whether it lands before or after this plugin's `onMount` is an ordering accident — and on the
+ * losing side the composer reports unsaved work the instant it opens, which is precisely the guard
+ * firing when there is nothing to lose. So until something is *loaded*, "unchanged" means "still
+ * empty", which no ordering can get wrong.
  *
  * ## Why it latches
  *
@@ -130,8 +155,11 @@ function DirtyPlugin({ loadSeq, onDirtyChange }: { loadSeq: () => number; onDirt
   const [editor] = useLexicalComposerContext();
   const snapshot = () => JSON.stringify(editor.getEditorState().toJSON().root);
 
-  let baseline = '';
+  /** What the content was when it arrived. Null until something has been loaded — see above. */
+  let baseline: string | null = null;
   let dirty = false;
+
+  const changed = () => (baseline === null ? !isEmptyDocument(editor) : snapshot() !== baseline);
 
   const rebase = () => {
     baseline = snapshot();
@@ -141,19 +169,17 @@ function DirtyPlugin({ loadSeq, onDirtyChange }: { loadSeq: () => number; onDirt
     }
   };
 
-  onMount(() => {
-    // A blank composer never loads anything, so its baseline is the empty root it mounts with.
-    rebase();
+  onMount(() =>
     onCleanup(
       editor.registerUpdateListener(() => {
-        if (dirty || snapshot() === baseline) return;
+        if (dirty || !changed()) return;
         dirty = true;
         onDirtyChange(true);
       }),
-    );
-  });
+    ),
+  );
 
-  // Re-taken after each programmatic load. The load's own update fires before this runs, so a brief
+  // Taken after each programmatic load. The load's own update fires before this runs, so a brief
   // dirty is possible and self-corrects here — it happens while the modal is opening, before there
   // is anything for the author to click.
   createEffect(on(loadSeq, rebase, { defer: true }));

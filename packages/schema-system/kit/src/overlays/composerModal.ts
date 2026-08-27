@@ -162,6 +162,14 @@ export function composerModal(opts: ComposerModalOptions): SchemaNode {
               },
             ],
           },
+          /*
+            The question itself. Omitting this while still taking the guard's `close` is a modal
+            with no way out: the backdrop raises a flag, and nothing in the tree reads it. That is
+            not a hypothetical — it shipped, and it made "New post" inescapable the moment anything
+            was typed. `kit.test.ts` now fails any guarded fragment that raises the flag without
+            mounting something that reads it.
+          */
+          ...(guard ? [guard.node] : []),
         ],
       },
     },

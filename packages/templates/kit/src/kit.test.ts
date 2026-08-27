@@ -10,6 +10,7 @@ import {
   attributeRow,
   cardList,
   cardShell,
+  composerModal,
   confirmModal,
   emptyNote,
   emptyState,
@@ -85,6 +86,17 @@ const portable: Record<string, SchemaNode> = {
     confirmLabel: 'Delete',
     confirm: { $action: 'spaceStore.deleteCollection', args: ['$post.id'] },
     busyLocal: 'deleting',
+  }),
+  composerModal: composerModal({
+    openLocal: 'composeOpen',
+    title: 'New post',
+    saveAction: { $action: 'spaceStore.createPost', args: ['$arg'] },
+  }),
+  'composerModal (unguarded)': composerModal({
+    openLocal: 'composeOpen',
+    title: 'New post',
+    guardDraft: false,
+    saveAction: { $action: 'spaceStore.createPost', args: ['$arg'] },
   }),
   'formModal (guarded)': formModal({
     open: { $local: 'formOpen' },
@@ -191,12 +203,20 @@ const withAmbientScope = (node: SchemaNode): SchemaNode => ({
   $localState: {
     displayMode: { type: 'string', initial: 'expanded' },
     formOpen: { type: 'boolean', initial: false },
+    composeOpen: { type: 'boolean', initial: false },
   },
   children: [node],
 });
 
 describe('every expansion is a valid schema fragment', () => {
-  const needsAmbient = new Set(['cardShell', 'cardList (query)', 'formModal', 'formModal (guarded)']);
+  const needsAmbient = new Set([
+    'cardShell',
+    'cardList (query)',
+    'formModal',
+    'formModal (guarded)',
+    'composerModal',
+    'composerModal (unguarded)',
+  ]);
   for (const [name, node] of Object.entries({ ...portable, ...weDomain })) {
     it(name, () => {
       const result = validateSemantic(needsAmbient.has(name) ? withAmbientScope(node) : node, context);
@@ -318,6 +338,40 @@ describe('contracts call sites depend on', () => {
       { $setLocal: 'formOpen', value: false },
       { $setLocal: 'confirmDiscardOpen', value: false },
     ]);
+  });
+
+  /*
+    The bug this exists for: `composerModal` took the guard's `close` and its `$localState` and never
+    mounted the confirmation. So the backdrop raised a flag nothing read, and "New post" could not be
+    closed at all once anything had been typed — the worst shape a modal can have, reached by
+    forgetting one line. Asserted over every fixture rather than at the one call site, because the
+    three pieces `discardGuard` hands back go in three different places and any of them can be missed.
+  */
+  it('every fragment that raises the discard flag also mounts something that reads it', () => {
+    for (const [name, node] of Object.entries({ ...portable, ...weDomain })) {
+      let writes = 0;
+      let reads = 0;
+      walk(node, (n) => {
+        if (n.$setLocal === 'confirmDiscardOpen') writes += 1;
+        if (n.$local === 'confirmDiscardOpen') reads += 1;
+      });
+      if (writes === 0 && reads === 0) continue;
+      expect(writes, `${name} reads the discard flag but never raises it`).toBeGreaterThan(0);
+      expect(reads, `${name} raises the discard flag but nothing reads it`).toBeGreaterThan(0);
+    }
+  });
+
+  it('the composer guards its draft by default, and lets a caller turn it off', () => {
+    const flagOf = (node: SchemaNode) => {
+      const modal = (node.props as { then: SchemaNode }).then;
+      return (modal.$localState as Record<string, unknown> | undefined)?.confirmDiscardOpen;
+    };
+    expect(flagOf(portable.composerModal)).toBeDefined();
+    expect(flagOf(portable['composerModal (unguarded)'])).toBeUndefined();
+
+    // Unguarded, the backdrop closes outright rather than through a condition.
+    const bare = (portable['composerModal (unguarded)'].props as { then: SchemaNode }).then;
+    expect((bare.props as Record<string, unknown>).close).toEqual({ $setLocal: 'composeOpen', value: false });
   });
 
   it('an unguarded form closes outright — the guard is opt-in, not the default', () => {
