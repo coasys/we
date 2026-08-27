@@ -31,6 +31,7 @@ import { architecture } from './fragments/architecture.js';
 import { contributionSurfaces } from './fragments/contribution-surfaces.js';
 import { designSystemProps } from './fragments/design-system-props.js';
 import { devPatterns } from './fragments/dev-patterns.js';
+import { panels } from './fragments/panels.js';
 import { patterns } from './fragments/patterns.js';
 import { routing } from './fragments/routing.js';
 import { rules } from './fragments/rules.js';
@@ -233,6 +234,7 @@ async function main() {
       schemaOperators,
       designSystemProps,
       routing,
+      panels,
       // Rebuilt from the merged entries rather than reusing the fragment's own text, so the prose in
       // the reference lists exactly the members the validator accepts.
       stores: generateStoresText(contextData.storeEntries ?? []),

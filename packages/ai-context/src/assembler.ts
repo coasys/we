@@ -55,6 +55,10 @@ export function assembleReference(ctx: AssembledContext): string {
   // Routing
   sections.push(context.fragments.routing.trim());
 
+  // Panels. After routing, because a section's own layout is read against the routes it renders at,
+  // and before the rules — the panel-versus-flow test is guidance rather than a prohibition.
+  sections.push(context.fragments.panels.trim());
+
   // Rules
   sections.push(context.fragments.rules.trim());
 
