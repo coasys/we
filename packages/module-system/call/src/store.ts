@@ -1117,6 +1117,19 @@ export function createCallStore(deps: CallStoreDeps) {
      * `joinAnchoredCall` keep their replace-the-current-call semantics for the template controls that
      * mean it — a card's Continue, a post's call button — where the target is named and the intent
      * is explicit.
+     *
+     * ## It shows, and never hides
+     *
+     * This toggled the stage once, on the reasoning that a rail button is a tab and a tab's second
+     * press closes what the first opened. It made a liar of every control that calls it: the button
+     * says *go to the call* and hiding the video is the opposite of going to it, so pressing the lit
+     * rail tab — or a card's button — put the call away. Reported within a day of shipping, from a
+     * calls list, which is exactly where it reads worst.
+     *
+     * "Go to" is a direction, so this is idempotent the way every other navigation is: pressing Home
+     * while on Home does nothing and surprises nobody. Putting the video away is a real thing to
+     * want and has two controls of its own — the panel's close button, and Video in the call bar —
+     * neither of which is named after going somewhere.
      */
     goToCall: () => {
       if (!callId()) {
@@ -1136,10 +1149,8 @@ export function createCallStore(deps: CallStoreDeps) {
         returnToCall();
         return;
       }
-      // In the call, here. The only thing left to go to is the video, so this is the same toggle
-      // every other rail button is — with the difference that the lit state tracks being in a call
-      // rather than the panel. Being in one is the fact worth carrying in chrome; see `activeWhen`.
-      setVisible(!visible());
+      // In the call, here. Nowhere to travel to, so the whole of "go to it" is having it on screen.
+      setVisible(true);
     },
 
     joinSpaceCall: () => {

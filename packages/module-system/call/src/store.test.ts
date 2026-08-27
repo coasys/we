@@ -426,9 +426,16 @@ describe('going to the call', () => {
     expect(store.stageOpen()).toBe(true);
   });
 
-  it('shows and hides the video once you are in the call, here', async () => {
-    // The only thing left to "go to" when you are already standing in the call. Same toggle every
-    // other rail button is.
+  it('shows the video once you are in the call, and never hides it', async () => {
+    /*
+      This toggled once, on the reasoning that a rail button is a tab. It made a liar of every
+      control that calls it — the button says *go to the call*, and putting the video away is the
+      opposite of going to it. Reported from a calls list, where a phone icon beside a finished
+      meeting hid the call the user was in.
+
+      Idempotent instead, the way navigation is: pressing Home while on Home does nothing. Hiding
+      the video has two controls of its own, neither named after going somewhere.
+    */
     const { store } = railable();
 
     store.goToCall();
@@ -436,10 +443,14 @@ describe('going to the call', () => {
     expect(store.stageOpen()).toBe(true);
 
     store.goToCall();
+    expect(store.stageOpen()).toBe(true);
+    // The controls that *are* for putting it away still do.
+    store.closeStage();
     expect(store.stageOpen()).toBe(false);
+    // And going back to it brings it up rather than flipping it away again.
     store.goToCall();
     expect(store.stageOpen()).toBe(true);
-    // And never at the cost of the call itself.
+    // None of it at the cost of the call itself.
     expect(store.active()).toBe(true);
   });
 

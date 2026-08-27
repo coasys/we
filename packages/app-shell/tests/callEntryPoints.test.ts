@@ -42,6 +42,29 @@ const storeDeps = {
   effect: (fn: () => void) => fn(),
 };
 
+/**
+ * The conditions of every `$if` whose `then` contains this text — what gates a given control.
+ *
+ * Structural rather than a substring of the whole tree, and that is not fussiness: the first attempt
+ * asserted that `liveCollectionId` appeared *somewhere before* the tooltip and passed against the
+ * unfixed template, because the Live badge above already mentions it. A gate has to be read as a
+ * gate.
+ */
+function guardsAround(needle: string): string[] {
+  const guards: string[] = [];
+  const walk = (value: unknown) => {
+    if (Array.isArray(value)) return value.forEach(walk);
+    if (!value || typeof value !== 'object') return;
+    const node = value as { type?: string; props?: Record<string, unknown> };
+    if (node.type === '$if' && node.props && JSON.stringify(node.props.then ?? null).includes(needle)) {
+      guards.push(JSON.stringify(node.props.condition ?? null));
+    }
+    Object.values(value as Record<string, unknown>).forEach(walk);
+  };
+  walk(cardsView);
+  return guards;
+}
+
 /** Every action token a fragment fires, in order, so a pair can be asserted as a pair. */
 function actionsIn(node: unknown): string[] {
   const found: string[] = [];
@@ -118,6 +141,24 @@ describe('the Continue button on a call card', () => {
     expect(view).toContain('Go to the call');
     // And keeps naming the other case, so the tooltip is not one label doing two jobs.
     expect(view).toContain('Continue this call');
+  });
+
+  it('offers nothing at all on a card that is not the running call', () => {
+    /*
+      The first version of this fix made every card say "Go to the call" mid-call, and it was wrong
+      for a reason only a list shows: the button sits beside one particular conversation, so "the
+      call" reads as *this* card's. A row of finished meetings each offering to take you to a call
+      that is none of them is worse than no button.
+
+      So the control is gated on having an unambiguous subject — no call running, or this card being
+      the running one. Asserted as "some `$if` gating this control tests the live record", because
+      the spellings of that condition are many and the absence of any of them is the bug.
+    */
+    const guards = guardsAround('Continue this call');
+    expect(guards.length).toBeGreaterThan(0);
+    expect(guards.some((guard) => guard.includes('modules.transcribe.liveCollectionId'))).toBe(true);
+    // And still gated on the space being able to hold a call at all — the older guard, still needed.
+    expect(guards.some((guard) => guard.includes('modules.call.canCall'))).toBe(true);
   });
 
   it('marks the card that is the running call', () => {

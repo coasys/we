@@ -359,21 +359,50 @@ export const callsList: SchemaNode = {
                         stray click on last month's card moved everybody's live transcript into last
                         month's meeting.
 
-                        So while a call is running this is the same promise the rail makes — go to
-                        the call — and nothing on a card can reassign a transcript out from under
-                        the people writing it. Continuing a *finished* call is unchanged, which is
-                        the case the button exists for.
+                        ## Why a card that is not the live one offers nothing at all
 
-                        Not disabled, deliberately. A disabled `we-button` sets the native attribute,
-                        and a disabled control does not reliably deliver hover to the tooltip that
-                        would explain it — so the explanation would be the part that went missing.
-                        A button that always works and says what it will do beats one that is inert
-                        and cannot say why.
+                        The first fix was to make every card say "Go to the call" mid-call, and it
+                        was wrong for a reason that only shows up on a list: this button sits beside
+                        one particular conversation, so "the call" reads as *this* card's call. A
+                        row of finished meetings all offering to take you to a call, none of them
+                        the call in question, is a worse answer than no button.
+
+                        So the control is offered in exactly the two states where it has an
+                        unambiguous subject: no call running, where it continues this one; and this
+                        card *being* the running call, where "go to the call" can only mean the one
+                        it is attached to. Anything else is absent.
+
+                        Absent rather than disabled. A disabled `we-button` sets the native
+                        attribute, and a disabled control does not reliably deliver hover to the
+                        tooltip that would explain it — so the explanation is the part that goes
+                        missing, leaving an inert button that cannot say why. There is nothing to
+                        explain here anyway: the call bar is on screen and the rail tab is lit, so
+                        "you are in a call" is already said twice.
                       */
                     {
                       type: '$if',
                       props: {
-                        condition: { $store: 'modules.call.canCall' },
+                        condition: {
+                          $and: [
+                            { $store: 'modules.call.canCall' },
+                            /*
+                              Not in a call, or this is the one. Note the second test is against the
+                              live *record* rather than against `active`: a space-wide call publishes
+                              one id derived from the space, so `active` cannot tell this morning's
+                              meeting from this afternoon's and every card would claim to be live.
+
+                              It is also empty for a call nobody has transcribed yet, which is right
+                              — there is no record, so no card on this list is that call, and none of
+                              them should offer to take you to it.
+                            */
+                            {
+                              $or: [
+                                { $not: { $store: 'modules.call.active' } },
+                                { $eq: ['$call.id', { $store: 'modules.transcribe.liveCollectionId' }] },
+                              ],
+                            },
+                          ],
+                        },
                         // A real tooltip rather than the button's `title`, which the browser draws
                         // itself: unthemed, after its own delay, and never on a keyboard focus.
                         // Rejoining a call from a card is the one control here whose effect is not
