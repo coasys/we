@@ -19,6 +19,7 @@
  * The shell overlay uses ShellRouteStoreProvider + <MemoryRouter> so shell schema
  * $routes outlets work with a real router context, without touching the browser URL.
  */
+import { registerHostChromeReserve } from '@shared/registries/dockRegistry';
 import { buildTemplateBag, CHROME_TIER } from '@shared/registries/templateSurface';
 import { isValidThemeKey } from '@shared/registries/themeRegistry';
 import { TemplateBoundary } from '@solid/components/TemplateBoundary';
@@ -35,7 +36,7 @@ import { lazy } from 'solid-js';
 const EditorOverlay = lazy(() => import('@we/editor').then((m) => ({ default: m.EditorOverlay })));
 import { createSurface, RenderSchema } from '@we/schema-solid';
 import type { ParentProps } from 'solid-js';
-import { createEffect, createMemo, Show } from 'solid-js';
+import { createEffect, createMemo, onCleanup, Show } from 'solid-js';
 
 import { buildRoutes } from '../utils/buildRoutes';
 import { resolveShellView, type ShellViewEntry } from './shellViews';
@@ -191,6 +192,21 @@ export function TemplateLayout(
   // Wire useNavigate/useLocation (available here because we're inside <Router>) into routeStore
   const navigate = useNavigate();
   const location = useLocation();
+  /*
+    What the shell template is painting over the content, so floating panels clear it.
+
+    Registered from here rather than published by the template, because a template is data and has
+    no store to publish from. The host reads the declaration and folds it into the same sum a
+    module's `chromeReserve` lands in — see `moduleChrome` in ShellStore.
+
+    Keyed on the template, and withdrawn on unmount: a shell that stops declaring a bar must stop
+    reserving the band, or every panel keeps dodging chrome that is not there any more.
+  */
+  createEffect(() => {
+    registerHostChromeReserve('template', stores.templateStore.currentTemplate?.meta?.chromeReserve);
+  });
+  onCleanup(() => registerHostChromeReserve('template', undefined));
+
   createEffect(() => stores.routeStore.setNavigateFunction(() => navigate));
   createEffect(() => stores.routeStore.setCurrentPath(location.pathname));
 

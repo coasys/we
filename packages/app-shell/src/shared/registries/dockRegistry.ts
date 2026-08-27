@@ -61,6 +61,29 @@ export interface DockEntry extends DockContribution {
  */
 export const hostDockStores: Record<string, Record<string, unknown>> = {};
 
+/**
+ * Fixed chrome the host or a template is painting, that floating panels must clear.
+ *
+ * The sibling of `hostDockStores`, and it exists for the same reason: `moduleChrome` sums
+ * `chromeReserve` off every module store, and the app's own chrome is not a module. A shell template
+ * pinning a nav strip has exactly the problem the call bar has — a panel snapped to that corner
+ * opens underneath it — and no store to publish from, because a template is data.
+ *
+ * Keyed so a re-register replaces rather than accumulates: the same template re-rendering must not
+ * reserve its band twice.
+ */
+export const hostChromeReserves: Record<string, { top?: number; bottom?: number; width?: number }> = {};
+
+/** Publish fixed chrome for panels to clear. Pass `undefined` to withdraw it. */
+export function registerHostChromeReserve(
+  id: string,
+  reserve: { top?: number; bottom?: number; width?: number } | undefined,
+): void {
+  if (reserve) hostChromeReserves[id] = reserve;
+  else delete hostChromeReserves[id];
+  announce();
+}
+
 const entries = new Map<string, DockEntry>();
 
 /**

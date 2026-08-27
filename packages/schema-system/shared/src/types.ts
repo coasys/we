@@ -61,6 +61,22 @@ export type TemplateMeta = {
    * subscriptions open for as long as the space is, which is the cost that buys the instant return.
    */
   keepAlive?: boolean;
+  /**
+   * Fixed chrome this shell paints over the content, for floating panels to keep clear of.
+   *
+   * A template that pins a nav strip or a toolbar has the same problem a module's call bar does: a
+   * panel snapped to that corner opens underneath it. Modules answer it with `chromeReserve` on
+   * their store; a template is data and has no store, so it declares the box here and the host folds
+   * it into the same sum.
+   *
+   * Report the height it has when **collapsed**, exactly as a module must. Chrome that grows as
+   * somebody opens a disclosure would otherwise shove a floating panel down the screen mid-read.
+   *
+   * Structurally the same shape as `ChromeReserve` in `@we/module-shared`, restated rather than
+   * imported: schema types are the layer modules point *at*, so naming a module type here would be
+   * an edge pointing the wrong way.
+   */
+  chromeReserve?: { top?: number; bottom?: number; width?: number };
   stores?: string[] | StoreDeclaration;
   components?: string[];
 };

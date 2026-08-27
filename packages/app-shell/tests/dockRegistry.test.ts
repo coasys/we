@@ -3,8 +3,10 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { bundledModules } from '../src/shared/registries/bundledModules';
 import {
   dockRegistry,
+  hostChromeReserves,
   hostDockStores,
   onDockRegistryChanged,
+  registerHostChromeReserve,
   registerHostDockStore,
   unregisterHostDockStore,
 } from '../src/shared/registries/dockRegistry';
@@ -140,5 +142,55 @@ describe('a panel declares how it closes', () => {
       expect(entry.close, `${entry.id} has no close`).toBeTruthy();
       expect(TEMPLATE_SURFACE.editorStore?.[entry.close!], `editorStore.${entry.close}`).toBeDefined();
     }
+  });
+});
+
+/**
+ * Chrome the host or a template paints, which floating panels have to clear.
+ *
+ * The sibling of `hostDockStores`: `moduleChrome` sums `chromeReserve` off every module store, and
+ * a shell template pinning a nav strip has the same problem the call bar has and no store to
+ * publish from.
+ */
+describe('chrome that is not a module’s', () => {
+  beforeEach(() => {
+    for (const key of Object.keys(hostChromeReserves)) delete hostChromeReserves[key];
+  });
+
+  it('publishes a reserve under its own key', () => {
+    registerHostChromeReserve('template', { top: 48, width: 300 });
+
+    expect(hostChromeReserves.template).toEqual({ top: 48, width: 300 });
+  });
+
+  it('replaces rather than accumulates when the same source re-registers', () => {
+    registerHostChromeReserve('template', { top: 48 });
+    registerHostChromeReserve('template', { top: 72 });
+
+    // A template re-rendering must not reserve its band twice.
+    expect(Object.keys(hostChromeReserves)).toHaveLength(1);
+    expect(hostChromeReserves.template).toEqual({ top: 72 });
+  });
+
+  it('withdraws on undefined', () => {
+    registerHostChromeReserve('template', { top: 48 });
+    registerHostChromeReserve('template', undefined);
+
+    // A shell that stops declaring a bar must stop reserving the band, or every panel keeps dodging
+    // chrome that is not there any more.
+    expect(hostChromeReserves.template).toBeUndefined();
+  });
+
+  it('announces, so the geometry memo re-runs', () => {
+    let announced = 0;
+    const stop = onDockRegistryChanged(() => (announced += 1));
+
+    registerHostChromeReserve('template', { top: 48 });
+    registerHostChromeReserve('template', undefined);
+    stop();
+
+    // Same reason registration is observable at all: a plain object cannot be depended on, and a
+    // memo that never read the value has nothing to re-run for.
+    expect(announced).toBe(2);
   });
 });

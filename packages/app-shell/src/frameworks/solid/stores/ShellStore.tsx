@@ -44,6 +44,7 @@ import {
   DOCK_CONTENT_ATTR,
   DOCK_FRAME_ATTR,
   dockRegistry,
+  hostChromeReserves,
   hostDockStores,
   onDockRegistryChanged,
   registerHostDockStore,
@@ -507,15 +508,26 @@ export function ShellStoreProvider(props: ParentProps) {
     let top = 0;
     let bottom = 0;
     let width = 0;
-    for (const store of Object.values(moduleStores)) {
-      const reserve = (store as Record<string, unknown> | undefined)?.chromeReserve;
-      const value = typeof reserve === 'function' ? (reserve as () => unknown)() : reserve;
-      const box = value as ChromeReserve | undefined;
+    const add = (box: ChromeReserve | undefined) => {
       // Heights stack, widths do not: contributions to one anchor are a column.
       top += box?.top ?? 0;
       bottom += box?.bottom ?? 0;
       width = Math.max(width, box?.width ?? 0);
+    };
+    for (const store of Object.values(moduleStores)) {
+      const reserve = (store as Record<string, unknown> | undefined)?.chromeReserve;
+      const value = typeof reserve === 'function' ? (reserve as () => unknown)() : reserve;
+      add(value as ChromeReserve | undefined);
     }
+    /*
+      And the chrome that is not a module's — a shell template's pinned nav strip, say.
+
+      Summed here rather than in a second place for the reason the four `--we-chrome-*` properties
+      are composed here: `DEFAULT_FLOAT_CHROME` was a constant sized for the call bar, the call bar
+      stopped being alone, and a panel snapped to that corner landed under whatever had joined it.
+      A template pinning its own bar is the same failure with a different author.
+    */
+    for (const reserve of Object.values(hostChromeReserves)) add(reserve);
     return { top, bottom, width };
   });
 
