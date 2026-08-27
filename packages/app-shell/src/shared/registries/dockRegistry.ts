@@ -633,6 +633,26 @@ function positionMenu(entry: DockEntry): SchemaNode {
       itemSize: 'sm',
       placement: 'bottom-end',
       items: [
+        /*
+          The way back to the arrangement the interface designed.
+
+          Only when there is one to go back to and the panel has actually been moved away from it —
+          `layoutPinned` is both of those. Otherwise this is a control that would do nothing, which
+          is what `fitButton` is absent for on a module publishing no aspect.
+
+          First in the list, and separated: it undoes a position rather than choosing one, so
+          grouping it with the eight would read as a ninth place to put the panel.
+        */
+        {
+          id: 'reset',
+          label: 'Reset to layout',
+          icon: 'arrow-counter-clockwise',
+          // Disabled rather than hidden, for the reason `displaceButton` is: a control that vanishes
+          // when you move a panel is one you stop looking for, and the disabled state carries the
+          // actual rule — there is a layout to go back to, and you are not on it.
+          disabled: { $not: { $store: `shellStore.layoutPinned.${id}` } },
+          onAction: { $action: 'shellStore.resetDockToLayout', args: [id] },
+        },
         at({ snap: 'top-left', label: 'Top left', icon: 'arrow-up-left' }),
         at({ snap: 'top', label: 'Top', icon: 'arrow-line-up' }),
         at({ snap: 'top-right', label: 'Top right', icon: 'arrow-up-right' }),

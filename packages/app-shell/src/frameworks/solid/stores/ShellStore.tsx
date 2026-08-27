@@ -225,6 +225,24 @@ export interface ShellStore {
   >;
   /** The slot a drop would take right now, as `<edge>:<index>`, or null. */
   activeInsert: Accessor<string | null>;
+  /**
+   * Whether a panel has been moved away from what the interface declared for it, by dock id.
+   *
+   * What a "reset to layout" control is gated on. The three-rung chain is otherwise one-way: a drag
+   * wins for good and there is no way back to the arrangement the template designed, so an author
+   * improving a layout would be overruled forever by one stray drag. Same pairing as
+   * `spaceThemePinned` and `clearSpaceThemePin`.
+   *
+   * False for a panel the interface says nothing about — there is no layout to go back to.
+   */
+  layoutPinned: Accessor<Record<string, boolean>>;
+  /**
+   * Put a panel back where the interface asked for it, forgetting where it was dragged.
+   *
+   * Deletes the stored placement rather than writing the declared one, so the panel keeps following
+   * the layout afterwards — including when the template changes it.
+   */
+  resetDockToLayout: (id: string) => void;
   /** Park a panel at one of the eight, from the position menu — the keyboard's way to move it. */
   snapDock: (id: string, snap: SnapPoint) => void;
   /**
@@ -1408,6 +1426,24 @@ export function ShellStoreProvider(props: ParentProps) {
       if (!request?.edge) return;
       const placement = placementOf(request);
       writePlacement(id, { ...placement, maximised: !placement.maximised });
+    },
+
+    layoutPinned: () =>
+      Object.fromEntries(
+        dockRequests().map((request) => [
+          request.id,
+          Boolean(placements()[request.id]) && Boolean(declarationFor()[request.id]),
+        ]),
+      ),
+
+    resetDockToLayout: (id) => {
+      setPlacements((prev) => {
+        if (!prev[id]) return prev;
+        const next = { ...prev };
+        delete next[id];
+        savePlacements(next);
+        return next;
+      });
     },
 
     snapDock: (id, snap) => {

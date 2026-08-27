@@ -96,3 +96,46 @@ describe('a panel’s titlebar in full screen', () => {
     expect(hiddenInFullScreen(frame, 'Close')).toBe(false);
   });
 });
+
+/** Every menu item in the tree, whatever depth the position menu ended up at. */
+function menuItems(node: unknown, found: Record<string, unknown>[] = []): Record<string, unknown>[] {
+  if (Array.isArray(node)) {
+    for (const item of node) menuItems(item, found);
+    return found;
+  }
+  if (!node || typeof node !== 'object') return found;
+  const record = node as Record<string, unknown>;
+  const props = record.props as Record<string, unknown> | undefined;
+  if (Array.isArray(props?.items)) found.push(...(props.items as Record<string, unknown>[]));
+  for (const value of Object.values(record)) if (value && typeof value === 'object') menuItems(value, found);
+  return found;
+}
+
+describe('the way back to the layout an interface declared', () => {
+  const items = menuItems(dockFrame(entry as DockEntry, { type: 'Column' }));
+  const reset = items.find((item) => item.label === 'Reset to layout');
+
+  it('is offered on the panel’s own menu', () => {
+    // Without it the three-rung chain is one-way: a drag wins for good, and an author improving a
+    // layout is overruled forever by one stray drag.
+    expect(reset).toBeDefined();
+  });
+
+  it('is disabled rather than absent when there is nothing to go back to', () => {
+    // The same choice displaceButton makes: a control that vanishes when you move a panel is one you
+    // stop looking for, and the disabled state carries the actual rule.
+    expect(reset?.disabled).toEqual({ $not: { $store: `shellStore.layoutPinned.${entry.id}` } });
+  });
+
+  it('forgets the stored placement rather than writing the declared one', () => {
+    // Deleting is what keeps the panel following the layout afterwards, including when the template
+    // changes it. Writing the declared placement would pin it to today's version for ever.
+    expect(reset?.onAction).toEqual({ $action: 'shellStore.resetDockToLayout', args: [entry.id] });
+  });
+
+  it('comes before the eight positions, not among them', () => {
+    // It undoes a position rather than choosing one; listed among the eight it would read as a ninth
+    // place to put the panel.
+    expect(items[0]?.label).toBe('Reset to layout');
+  });
+});
