@@ -457,6 +457,7 @@ export const contextData: ContextData = {
       ownProps: [
         { name: 'maxHeight', type: 'string', optional: false, default: "''" },
         { name: 'maxWidth', type: 'string', optional: false, default: "''" },
+        { name: 'pin', type: "'' | 'end'", optional: false, default: "''" },
       ],
     },
     {

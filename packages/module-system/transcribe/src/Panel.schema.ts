@@ -570,12 +570,17 @@ export const panel: SchemaNode = {
         {
           // The panel opened, nothing recorded yet, nothing wrong. Without this the box is empty and
           // reads as broken rather than as waiting.
+          //
+          // Gated on there being no *record*, not on a session buffer being empty. The buffer was
+          // session-local, so re-opening the panel on a call that had already been transcribed
+          // offered to start recording as though nothing had ever been said. A collection is created
+          // on the first utterance, so its absence is exactly "nothing has been said here".
           type: '$if',
           props: {
             condition: {
               $and: [
                 { $not: { $store: 'modules.transcribe.enabled' } },
-                { $not: { $count: { items: { $store: 'modules.transcribe.recent' } } } },
+                { $not: { $store: 'modules.transcribe.collectionId' } },
               ],
             },
             then: {
@@ -671,27 +676,110 @@ export const panel: SchemaNode = {
             },
           },
         },
+        /*
+          The transcript, read from the record rather than from this session.
+
+          It used to render a session-local buffer of the last twenty blocks *this* agent wrote,
+          on the reasoning that a panel for watching a transcript being made is a different thing
+          from one for reading it. People who used it disagreed on every count: they wanted
+          everyone's utterances, and they wanted them to still be there after the call restarted.
+
+          All three complaints were one cause. The shared record already holds every agent's lines,
+          each carrying its author and the moment it was said, and it already outlives the session —
+          `spaceStore.exportCallTranscript` has been reading exactly this to write a text file with
+          real names in it. The panel was the only thing not looking at it.
+
+          Drilled down from the collection rather than hydrated with `include`, because
+          `CollectionBlock.children` is an untyped to-many: the ids arrive but cannot render
+          themselves. The same query the calls list already uses for a finished meeting.
+        */
         {
           type: 'we-scroll-area',
+          // Follows the tail while somebody is at the tail, and holds still while they read further
+          // up. A live transcript is the case this exists for.
+          props: { pin: 'end', flex: '1', minHeight: '0' },
           children: [
             {
               type: 'Column',
               props: { gap: '300' },
               children: [
                 {
-                  // Session-local, not a `$query` — these are the blocks *this* run wrote, shown as
-                  // confirmation that speech is reaching the space. Querying every transcript block
-                  // would be a different feature (reading the record) in a panel meant for watching
-                  // it being made.
-                  type: '$each',
-                  props: { items: { $store: 'modules.transcribe.recent' }, as: 'line' },
-                  children: [
-                    {
-                      type: 'Column',
-                      props: { bg: 'surface-sunken', r: '300', p: '300' },
-                      children: [{ type: 'we-text', children: ['$line'] }],
+                  type: '$if',
+                  props: {
+                    condition: { $store: 'modules.transcribe.collectionId' },
+                    then: {
+                      type: '$each',
+                      props: {
+                        items: {
+                          $query: {
+                            entity: 'TextBlock',
+                            scope: {
+                              anchor: 'CollectionBlock',
+                              via: 'children',
+                              anchorId: { $store: 'modules.transcribe.collectionId' },
+                            },
+                            // Oldest first, because a transcript read backwards is not a transcript.
+                            order: { createdAt: 'asc' },
+                          },
+                        },
+                        as: 'utterance',
+                      },
+                      children: [
+                        /*
+                          Attribution needs no diarization: each agent transcribes only their own
+                          microphone, so the block's author *is* the speaker. `$agent` turns that DID
+                          into a profile and demand-fetches it, so a peer gets a real name and face
+                          rather than a generated blob — and it reaches anyone, not only this space's
+                          members.
+                        */
+                        {
+                          type: '$agent',
+                          props: { did: '$utterance.author', as: 'speaker' },
+                          children: [
+                            {
+                              type: 'Column',
+                              props: { bg: 'surface-sunken', r: '300', p: '300', gap: '100' },
+                              children: [
+                                {
+                                  type: 'Row',
+                                  props: { gap: '200', ay: 'center' },
+                                  children: [
+                                    {
+                                      type: 'we-avatar',
+                                      props: {
+                                        size: 'xxs',
+                                        image: '$speaker.avatar',
+                                        // Always alongside `image`, never instead of it: a stable
+                                        // generated avatar keeps somebody whose profile has not
+                                        // arrived visually distinct from everybody else whose
+                                        // profile has not arrived.
+                                        hash: '$utterance.author',
+                                      },
+                                    },
+                                    {
+                                      type: 'we-text',
+                                      props: { variant: 'footnote', color: 'text-muted', truncate: true },
+                                      children: ['$speaker.name'],
+                                    },
+                                    {
+                                      type: 'we-timestamp',
+                                      props: {
+                                        value: '$utterance.createdAt',
+                                        relative: true,
+                                        fontSize: '100',
+                                        color: 'text-faint',
+                                      },
+                                    },
+                                  ],
+                                },
+                                { type: 'we-text', props: { color: 'text' }, children: ['$utterance.text'] },
+                              ],
+                            },
+                          ],
+                        },
+                      ],
                     },
-                  ],
+                  },
                 },
               ],
             },
