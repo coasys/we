@@ -67,9 +67,10 @@ export function BootController() {
       } catch (err) {
         console.error('BootController: guest join failed', err);
       }
-      // Clear the /join/ path from the URL so a reload does not re-run the join flow.
-      // The space is already joined — subsequent visits go through the normal boot.
-      window.history.replaceState(null, '', '/');
+      // Navigate directly into the joined space. The `/space/<id>` route works with both
+      // a local uuid and a neighbourhood CID — the router resolves either through the
+      // dataset list. This replaces the /join/ URL so a reload does not re-trigger the flow.
+      routeStore.navigate(`/space/${guestJoinTarget}`);
       return;
     }
 
