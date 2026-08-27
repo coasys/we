@@ -19,6 +19,8 @@
  * The shell overlay uses ShellRouteStoreProvider + <MemoryRouter> so shell schema
  * $routes outlets work with a real router context, without touching the browser URL.
  */
+import { registerHostChromeReserve } from '@shared/registries/dockRegistry';
+import { setTemplatePanels } from '@shared/registries/templatePanels';
 import { buildTemplateBag, CHROME_TIER } from '@shared/registries/templateSurface';
 import { isValidThemeKey } from '@shared/registries/themeRegistry';
 import { TemplateBoundary } from '@solid/components/TemplateBoundary';
@@ -35,7 +37,7 @@ import { lazy } from 'solid-js';
 const EditorOverlay = lazy(() => import('@we/editor').then((m) => ({ default: m.EditorOverlay })));
 import { createSurface, RenderSchema } from '@we/schema-solid';
 import type { ParentProps } from 'solid-js';
-import { createEffect, createMemo, Show } from 'solid-js';
+import { createEffect, createMemo, onCleanup, Show } from 'solid-js';
 
 import { buildRoutes } from '../utils/buildRoutes';
 import { resolveShellView, type ShellViewEntry } from './shellViews';
@@ -191,6 +193,54 @@ export function TemplateLayout(
   // Wire useNavigate/useLocation (available here because we're inside <Router>) into routeStore
   const navigate = useNavigate();
   const location = useLocation();
+  /*
+    What the shell template is painting over the content, so floating panels clear it.
+
+    Registered from here rather than published by the template, because a template is data and has
+    no store to publish from. The host reads the declaration and folds it into the same sum a
+    module's `chromeReserve` lands in — see `moduleChrome` in ShellStore.
+
+    Keyed on the template, and withdrawn on unmount: a shell that stops declaring a bar must stop
+    reserving the band, or every panel keeps dodging chrome that is not there any more.
+  */
+  createEffect(() => {
+    registerHostChromeReserve('template', stores.templateStore.currentTemplate?.meta?.chromeReserve);
+  });
+  onCleanup(() => registerHostChromeReserve('template', undefined));
+
+  /*
+    What panels this interface says it has, handed to the shell to place.
+
+    A declaration only — the shell decides what it means against a viewport the template cannot see,
+    and whatever the reader has dragged outranks it. Published from here because a template is data
+    and has nothing to publish from.
+  */
+  /**
+   * The layout for where the reader actually is: the section's own suggestion, with the shell's
+   * having the last word.
+   *
+   * Per view rather than per template because that is the unit a layout is *about* — a graph wants a
+   * transcript beside it and an inbox does not, and both are sections of one interface. The active
+   * one is derived rather than stored: the shell's routes are built from these same sections, so the
+   * segment under the space in the URL is the section on screen.
+   *
+   * The shell wins on a collision. A section is portable — it renders inside interfaces it knows
+   * nothing about — so what it says about the screen is a suggestion, and the interface that owns
+   * the screen is the one that gets to overrule it.
+   */
+  const activePanels = createMemo(() => {
+    const shell = stores.templateStore.currentTemplate?.meta?.panels ?? [];
+    const segments = stores.routeStore.segments();
+    const view = stores.spaceStore.spaceViews().find((section) => segments.includes(section.segment))?.schema
+      ?.meta?.panels;
+    if (!view?.length) return shell;
+    const overridden = new Set(shell.map((panel) => panel.id));
+    return [...view.filter((panel) => !overridden.has(panel.id)), ...shell];
+  });
+
+  createEffect(() => setTemplatePanels(activePanels()));
+  onCleanup(() => setTemplatePanels([]));
+
   createEffect(() => stores.routeStore.setNavigateFunction(() => navigate));
   createEffect(() => stores.routeStore.setCurrentPath(location.pathname));
 

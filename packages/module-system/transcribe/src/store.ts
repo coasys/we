@@ -28,6 +28,10 @@ const FLUSH_AFTER_MS = 3_000;
 /**
  * The `CollectionBlock.kind` marking a collection as one call's record.
  *
+ * **The whole shape is written down in `docs/architecture/transcripts.md`**, along with the four
+ * readers that spell `'call'` themselves because no dependency edge lets them import this. Change
+ * the shape and every one of them has to change with it.
+ *
  * Replaces the old `TRANSCRIPT_TAG`, which wrote `'transcript'` into `TextBlock.tag` — a field that
  * carries the *Lexical* tag (`ul`, `h1`). Two things were wrong with that beyond the collision: the
  * value was written and never read back, and the blocks stayed loose in the space, so transcripts
@@ -254,8 +258,6 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   const [error, setError] = signal<string>('');
   /** What has been heard but not yet written — shown live, so the user can see it working. */
   const [pending, setPending] = signal<string>('');
-  /** The most recent blocks written this session, newest first. Display only. */
-  const [recent, setRecent] = signal<string[]>([]);
   /**
    * Microphone loudness as the VAD measures it, 0–1, and whether it currently counts as speech.
    *
@@ -714,10 +716,6 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       }
 
       await createEntity?.('TextBlock', { text }, { parent: { id: slot.id, predicate: CHILDREN_PREDICATE } });
-      // After the write, not before. `recent` says these are the blocks written this session, and a
-      // deferred utterance passes through here more than once — listed on the way in, it would show
-      // up once per attempt.
-      setRecent([text, ...recent()].slice(0, 20));
       await recordSelfParticipation(slot.id);
     } catch (cause) {
       // Reported but not surfaced as a failed state: the transcript continues, and losing one block
@@ -905,8 +903,8 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     // id would give that meeting two transcripts. The claim stays published for the same reason: a
     // peer who starts recording later must adopt this record rather than create a second one.
     //
-    // Releasing is the call ending's business, and the effect below owns it. `recent` stays either
-    // way, so a session can be read after it stops.
+    // Releasing is the call ending's business, and the effect below owns it. The panel reads the
+    // record rather than this session, so a transcript stays readable after recording stops.
     // Only if nothing started in the meantime. Releasing the graph early is what makes a restart
     // during this window possible at all, and a late `setStatus('idle')` would then describe the
     // session that replaced this one.
@@ -1191,9 +1189,24 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     status,
     error,
     pending,
-    recent,
     enabled,
     open,
+    /**
+     * The record this call's transcript lives in, or `null` when there is not one yet.
+     *
+     * Published so the panel can *read the transcript* rather than a list of what this session
+     * happened to write. Everything a reader wants is in that record already — every agent's
+     * utterances, not only this one's, each carrying its author and the moment it was said — and it
+     * outlives the session, the call and the app being closed. `spaceStore.exportCallTranscript`
+     * has been reading it all along.
+     *
+     * Null is also the honest answer to "has anything been said": the collection is created on the
+     * first utterance, so no collection means no transcript, and the panel can say so without
+     * guessing. That is a better test than the one it replaced — a session-local buffer read as
+     * empty after a reload, so re-opening the panel on a finished call offered to start recording
+     * as though nothing had ever happened.
+     */
+    collectionId,
 
     /**
      * Where the host should put this panel — see `docks` in the module definition.

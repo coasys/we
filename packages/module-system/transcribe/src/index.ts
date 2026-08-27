@@ -33,7 +33,9 @@
  * next to authored prose.
  *
  * The record is created on the first thing said, not on the button press, so a call nobody speaks in
- * leaves no trace. See `store.ts` for the convergence rule when several agents record at once.
+ * leaves no trace. See `store.ts` for the convergence rule when several agents record at once, and
+ * `docs/architecture/transcripts.md` for the shape as a contract — four things read it now, and
+ * nothing enforces it.
  *
  * ## Who decides that it runs
  *
@@ -59,12 +61,12 @@ import { defineModule, type ModuleStoreDeps } from '@we/module-shared';
 
 import { CALL_CONTROLS_ANCHOR, callControl } from './CallControl.schema';
 import { CALL_STATUS_ANCHOR, extractionStatus } from './ExtractionStatus.schema';
-import { panel } from './Panel.schema';
+import { panel, transcriptFeed } from './Panel.schema';
 import { createTranscribeStore } from './store';
 
 export { CALL_CONTROLS_ANCHOR, callControl } from './CallControl.schema';
 export { CALL_STATUS_ANCHOR, extractionStatus } from './ExtractionStatus.schema';
-export { panel } from './Panel.schema';
+export { panel, transcriptFeed } from './Panel.schema';
 export { CALL_KIND, CALL_PREDICATE, createTranscribeStore, TRANSCRIBE_ACTIVITY, type TranscribeStatus } from './store';
 export { WORKLET_NAME, WORKLET_SOURCE } from './workletSource';
 
@@ -81,6 +83,18 @@ export const transcribeModule = defineModule({
 
   // No `backends`: transcription goes through the port, so this runs on any backend that implements
   // one — and degrades to a stated reason on any that does not. No `frameworks`: fragments only.
+
+  /**
+   * Named fragments a template can place itself.
+   *
+   * `transcriptFeed` is the utterances and nothing else — no capture controls, no status notes. A
+   * template that wants a transcript beside a graph, or inside a panel of its own, places this
+   * rather than the whole panel, and gets the live record with speaker attribution for free.
+   *
+   * Only the feed, deliberately. The rest of the panel has no second caller, and a fragment nobody
+   * else places is an extraction waiting to be got wrong.
+   */
+  schemas: { transcriptFeed },
 
   slots: [
     // Into the call module's own bar. It declares the anchor; we never name the module.

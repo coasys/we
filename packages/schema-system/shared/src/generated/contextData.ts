@@ -457,6 +457,7 @@ export const contextData: ContextData = {
       ownProps: [
         { name: 'maxHeight', type: 'string', optional: false, default: "''" },
         { name: 'maxWidth', type: 'string', optional: false, default: "''" },
+        { name: 'pin', type: "'' | 'end'", optional: false, default: "''" },
       ],
     },
     {
@@ -2531,6 +2532,7 @@ export const contextData: ContextData = {
         snapTargets: { type: 'array' },
         insertSlots: { type: 'array' },
         activeInsert: { type: 'string' },
+        layoutPinned: { type: 'object' },
       },
       actions: [
         'openShellView',
@@ -2548,6 +2550,7 @@ export const contextData: ContextData = {
         'beginDockMove',
         'moveDock',
         'endDockMove',
+        'resetDockToLayout',
         'snapDock',
         'insertDock',
         'toggleMaximiseDock',

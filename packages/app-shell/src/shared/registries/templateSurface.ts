@@ -829,6 +829,9 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     toggleMaximiseDock: action('host-layout'),
     fitDock: action('host-layout'),
     toggleDockDisplace: action('host-layout'),
+    // Whether a panel has been dragged away from what the interface declared, and the way back.
+    layoutPinned: state('host-layout'),
+    resetDockToLayout: action('host-layout'),
   },
 
   presenceStore: {

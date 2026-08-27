@@ -17,6 +17,9 @@ import {
  * roster is `participants`, and it hangs off whatever node the call was about via `WeNode.calls`.
  * So this is an ordinary entity list like every other section here; no new machinery.
  *
+ * The shape is `docs/architecture/transcripts.md`. `'call'` is spelled here rather than imported
+ * because `templates → modules` is a sideways edge; that page lists everyone else who spells it.
+ *
  * **A record exists if and only if somebody spoke while transcription was on.** It is created on the
  * first utterance rather than when a call starts, so this list is not call history — a call nobody
  * recorded leaves nothing, by design. Call history for every call is a separate feature with a

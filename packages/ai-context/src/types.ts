@@ -25,6 +25,7 @@ export interface AssembledContext extends ContextData {
     schemaOperators: string;
     designSystemProps: string;
     routing: string;
+    panels: string;
     stores: string;
     storePatterns: string;
     /** Ready-made JSON shapes to copy — the recipes behind `@we/template-kit`. */

@@ -61,6 +61,29 @@ export interface DockEntry extends DockContribution {
  */
 export const hostDockStores: Record<string, Record<string, unknown>> = {};
 
+/**
+ * Fixed chrome the host or a template is painting, that floating panels must clear.
+ *
+ * The sibling of `hostDockStores`, and it exists for the same reason: `moduleChrome` sums
+ * `chromeReserve` off every module store, and the app's own chrome is not a module. A shell template
+ * pinning a nav strip has exactly the problem the call bar has — a panel snapped to that corner
+ * opens underneath it — and no store to publish from, because a template is data.
+ *
+ * Keyed so a re-register replaces rather than accumulates: the same template re-rendering must not
+ * reserve its band twice.
+ */
+export const hostChromeReserves: Record<string, { top?: number; bottom?: number; width?: number }> = {};
+
+/** Publish fixed chrome for panels to clear. Pass `undefined` to withdraw it. */
+export function registerHostChromeReserve(
+  id: string,
+  reserve: { top?: number; bottom?: number; width?: number } | undefined,
+): void {
+  if (reserve) hostChromeReserves[id] = reserve;
+  else delete hostChromeReserves[id];
+  announce();
+}
+
 const entries = new Map<string, DockEntry>();
 
 /**
@@ -610,6 +633,26 @@ function positionMenu(entry: DockEntry): SchemaNode {
       itemSize: 'sm',
       placement: 'bottom-end',
       items: [
+        /*
+          The way back to the arrangement the interface designed.
+
+          Only when there is one to go back to and the panel has actually been moved away from it —
+          `layoutPinned` is both of those. Otherwise this is a control that would do nothing, which
+          is what `fitButton` is absent for on a module publishing no aspect.
+
+          First in the list, and separated: it undoes a position rather than choosing one, so
+          grouping it with the eight would read as a ninth place to put the panel.
+        */
+        {
+          id: 'reset',
+          label: 'Reset to layout',
+          icon: 'arrow-counter-clockwise',
+          // Disabled rather than hidden, for the reason `displaceButton` is: a control that vanishes
+          // when you move a panel is one you stop looking for, and the disabled state carries the
+          // actual rule — there is a layout to go back to, and you are not on it.
+          disabled: { $not: { $store: `shellStore.layoutPinned.${id}` } },
+          onAction: { $action: 'shellStore.resetDockToLayout', args: [id] },
+        },
         at({ snap: 'top-left', label: 'Top left', icon: 'arrow-up-left' }),
         at({ snap: 'top', label: 'Top', icon: 'arrow-line-up' }),
         at({ snap: 'top-right', label: 'Top right', icon: 'arrow-up-right' }),
@@ -666,7 +709,10 @@ function insertLines(id: string): SchemaNode {
               bg: {
                 $if: {
                   condition: {
-                    $eq: [{ $store: 'shellStore.activeInsert' }, { $concat: ['$slot.edge', ':', '$slot.index'] }],
+                    $eq: [
+                      { $store: 'shellStore.activeInsert' },
+                      { $concat: ['$slot.mode', ':', '$slot.edge', ':', '$slot.index'] },
+                    ],
                   },
                   then: 'accent',
                   else: 'surface-active',
@@ -675,7 +721,10 @@ function insertLines(id: string): SchemaNode {
               opacity: {
                 $if: {
                   condition: {
-                    $eq: [{ $store: 'shellStore.activeInsert' }, { $concat: ['$slot.edge', ':', '$slot.index'] }],
+                    $eq: [
+                      { $store: 'shellStore.activeInsert' },
+                      { $concat: ['$slot.mode', ':', '$slot.edge', ':', '$slot.index'] },
+                    ],
                   },
                   then: 1,
                   else: 0.4,

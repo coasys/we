@@ -227,6 +227,20 @@ export interface FloatPlacement {
    */
   order?: number;
   /**
+   * This panel's share of the *spare* room in a floating column, relative to its neighbours.
+   *
+   * Flexbox's `flex-grow`, and the reason a column divides by base-plus-grow rather than by
+   * proportions. Three panels at 2/1/1 that lose the middle one leave the survivors at 2/1 of the
+   * whole, so the top one grows for a reason nobody can see. What people expect is that a closed
+   * panel's room goes to its neighbours while everything else holds still — and only base-plus-grow
+   * gives that, because the base is `h` (or `w`), which nothing about a neighbour changes.
+   *
+   * Absent means 1, so a column with nothing declared divides its spare room evenly and no member is
+   * left undefined. Zero pins a panel to its own height while the others absorb the slack, which is
+   * the fixed-size second panel in a left-hand column.
+   */
+  grow?: number;
+  /**
    * How wide the panel is while it displaces a *side* edge, and how tall while it displaces a top or
    * bottom one.
    *
@@ -479,6 +493,62 @@ export function seedPlacement(
   }
 
   return { ...card, snap: 'bottom-right', displace: false };
+}
+
+/**
+ * What a *template's* declaration becomes, the first time the host has to place that panel.
+ *
+ * The middle rung of three. A panel is placed by whatever the user last dragged it to; failing that
+ * by what the interface asked for, which is this; and failing that by the module's own opening bid
+ * (`seedPlacement`). Resolved live and never written, so switching template or view is
+ * non-destructive and switching back restores what was there — the same shape `meta.themeId`
+ * already follows for themes.
+ *
+ * Everything the declaration carries is a *name* — a snap, a `DockSize`, a grow ratio. The pixels
+ * are worked out here, against the viewport the template cannot see, exactly as a module's `md`
+ * becomes 440.
+ */
+export function placementFromDeclaration(
+  declared: {
+    snap?: SnapPoint;
+    order?: number;
+    grow?: number;
+    displace?: boolean;
+    size?: DockSize;
+  },
+  viewport: Viewport,
+  occupied: ContentInset = NO_INSET,
+): FloatPlacement {
+  const snap = declared.snap ?? 'bottom-right';
+  const edge = edgeOfSnap(snap);
+  const region = contentRegion(viewport, occupied);
+
+  /*
+    The card's width comes from the same table a docked panel's thickness does, so `md` means the
+    same 440 wherever it is written. Its height follows the 16:9 the float seed already uses — a
+    number that only matters until the panel joins a column, where `grow` takes over and the height
+    is a share of the edge rather than a card dimension.
+  */
+  const w = clamp(
+    dockThickness(edge ?? 'right', declared.size ?? 'md', viewport, undefined, occupied),
+    MIN_FLOAT_PX,
+    Math.max(MIN_FLOAT_PX, region.width - DOCK_GAP_PX * 2),
+  );
+  const h = clamp(Math.round((w * 9) / 16), MIN_FLOAT_PX, Math.max(MIN_FLOAT_PX, region.height - DOCK_GAP_PX * 2));
+
+  return {
+    snap,
+    x: 0,
+    y: 0,
+    w,
+    h,
+    // Refused on a corner, where pushing content aside has no coherent meaning — the same rule the
+    // displace toggle enforces, applied to a declaration so a template cannot ask for the one
+    // arrangement the layout cannot honour.
+    displace: Boolean(declared.displace) && edge !== null,
+    ...(declared.order !== undefined ? { order: declared.order } : {}),
+    ...(declared.grow !== undefined ? { grow: declared.grow } : {}),
+  };
 }
 
 /** How thick a displacing panel is, falling back to the card's matching dimension. */
@@ -747,6 +817,179 @@ export function rectOf(box: DockGeometry | undefined, viewport: Viewport, fallba
 }
 
 /**
+ * The floating panels sharing one edge, in the order they sit along it.
+ *
+ * Membership is implied by the snap rather than declared, exactly as a displacing strip's is: two
+ * panels snapped `left` are a column, and nothing else has to say so. Corners are deliberately not
+ * columns — `top-left` is a place for one card, and a corner that divided itself would have no edge
+ * to divide along.
+ */
+export function columnMembers<T extends { placement: FloatPlacement }>(
+  panels: T[],
+  edge: Exclude<DockEdge, null>,
+): T[] {
+  return panels
+    .filter(
+      (panel) => edgeOfSnap(panel.placement.snap) === edge && !panel.placement.displace && !panel.placement.maximised,
+    )
+    .sort((a, b) => (a.placement.order ?? Number.POSITIVE_INFINITY) - (b.placement.order ?? Number.POSITIVE_INFINITY));
+}
+
+/**
+ * Divide an edge between the floating panels sharing it.
+ *
+ * ## Why this is not the strip the displacing panels already have
+ *
+ * A **strip** stacks *perpendicular* to its edge: two panels displacing the left both span the full
+ * height and the second sits inboard of the first, which is what `occupiedFor` and `insertionSlots`
+ * already do and is right for panels that take room. A **column** divides *along* the edge —
+ * horizontal boundaries down the left-hand side, panels sharing the height. They are different
+ * arrangements on different axes and both are wanted; this is the second.
+ *
+ * ## The division
+ *
+ * Flexbox, computed rather than delegated. Each member has a base — its own `h` on a side edge, its
+ * own `w` on a top or bottom one — and a `grow`. Spare room after the bases is handed out by grow
+ * ratio; a shortfall shrinks the bases proportionally and floors each at `MIN_FLOAT_PX`.
+ *
+ * Delegating to real CSS flex was the tempting alternative and is not available: making a column a
+ * flex container means reparenting panels out of fixed positioning, which remounts their subtrees —
+ * the hazard `dockFrame` exists to avoid, and it would drop a call's live video streams.
+ *
+ * ## On a narrow window, every member takes the whole region
+ *
+ * Two 350px cards floating over content on a 400px viewport leave nothing of any of the three. Below
+ * `NARROW_VIEWPORT_PX` each member gets the full free box instead, so they stack as full-bleed
+ * sheets and the last one is the one you see — closing it reveals the one beneath, which is what the
+ * module rail's launchers already drive. The same threshold that switches displacing off, and for
+ * the same reason: under it the app changes its mind about the arrangement rather than shrinking it.
+ *
+ * Returns one box per member, in the order given.
+ */
+export function columnLayout(
+  members: FloatPlacement[],
+  edge: Exclude<DockEdge, null>,
+  viewport: Viewport,
+  occupied: ContentInset = NO_INSET,
+  chrome: ContentInset = DEFAULT_FLOAT_CHROME,
+): Rect[] {
+  const region = contentRegion(viewport, occupied);
+  const free = {
+    left: region.left + chrome.left,
+    top: region.top + chrome.top,
+    width: Math.max(0, region.width - chrome.left - chrome.right),
+    height: Math.max(0, region.height - chrome.top - chrome.bottom),
+  };
+
+  if (members.length === 0) return [];
+
+  // Full-bleed sheets rather than a column nobody can read. See the note above.
+  if (viewport.width < NARROW_VIEWPORT_PX) {
+    const box = {
+      x: free.left + DOCK_GAP_PX,
+      y: free.top + DOCK_GAP_PX,
+      w: Math.max(MIN_FLOAT_PX, free.width - DOCK_GAP_PX * 2),
+      h: Math.max(MIN_FLOAT_PX, free.height - DOCK_GAP_PX * 2),
+    };
+    return members.map(() => ({ ...box }));
+  }
+
+  const vertical = edge === 'left' || edge === 'right';
+  // One gap at each end and one between every pair, so the members sit inside the same margin a
+  // single snapped card keeps from the edge.
+  const span = (vertical ? free.height : free.width) - DOCK_GAP_PX * (members.length + 1);
+  const available = Math.max(MIN_FLOAT_PX * members.length, span);
+
+  const bases = members.map((m) => Math.max(MIN_FLOAT_PX, vertical ? m.h : m.w));
+  const grows = members.map((m) => Math.max(0, m.grow ?? 1));
+  const sumBase = bases.reduce((total, base) => total + base, 0);
+  const sumGrow = grows.reduce((total, grow) => total + grow, 0);
+  const slack = available - sumBase;
+
+  const extents =
+    slack >= 0
+      ? // Spare room goes out by grow ratio. With every grow at zero nobody wants it, and the column
+        // simply sits shorter than the edge rather than stretching somebody who asked not to be.
+        bases.map((base, i) => (sumGrow > 0 ? base + (slack * grows[i]) / sumGrow : base))
+      : // Over-subscribed: shrink proportionally, but never past the point where a panel stops being
+        // one. A column of many can still overflow the region, and the clamp in `resolveDock`
+        // catches what is left.
+        bases.map((base) => Math.max(MIN_FLOAT_PX, (base * available) / sumBase));
+
+  const boxes: Rect[] = [];
+  let cursor = (vertical ? free.top : free.left) + DOCK_GAP_PX;
+  members.forEach((member, i) => {
+    const extent = extents[i];
+    if (vertical) {
+      const w = clamp(member.w, MIN_FLOAT_PX, Math.max(MIN_FLOAT_PX, free.width - DOCK_GAP_PX * 2));
+      boxes.push({
+        // Flush to its own edge, each member keeping the width it was given. A shared width would
+        // make resizing one resize all of them, which is not what a card does.
+        x: edge === 'left' ? free.left + DOCK_GAP_PX : free.left + free.width - w - DOCK_GAP_PX,
+        y: cursor,
+        w,
+        h: extent,
+      });
+    } else {
+      const h = clamp(member.h, MIN_FLOAT_PX, Math.max(MIN_FLOAT_PX, free.height - DOCK_GAP_PX * 2));
+      boxes.push({
+        x: cursor,
+        y: edge === 'top' ? free.top + DOCK_GAP_PX : free.top + free.height - h - DOCK_GAP_PX,
+        w: extent,
+        h,
+      });
+    }
+    cursor += extent + DOCK_GAP_PX;
+  });
+
+  return boxes;
+}
+
+/**
+ * The seams in a floating column, drawn as lines while a panel is over them.
+ *
+ * `insertionSlots`' sibling, and the axis is the whole difference between them: a strip's lines run
+ * *across* the region because its members stack inward from the edge, and a column's run *along* it
+ * because its members share the edge. Same convention, same reason — a drop that could only report
+ * an edge can only ever append, so the gaps become targets and the drop reports an index.
+ *
+ * An empty edge gets nothing. A column is started by snapping to the edge, which the eight targets
+ * already offer; there is no seam to draw until there is something to sit beside.
+ */
+export function columnSlots(edge: Exclude<DockEdge, null>, boxes: Rect[]): { index: number; hit: Rect; line: Rect }[] {
+  if (boxes.length === 0) return [];
+
+  const vertical = edge === 'left' || edge === 'right';
+  const sorted = [...boxes].sort((a, b) => (vertical ? a.y - b.y : a.x - b.x));
+
+  // Spanning the column itself rather than the region: a line the width of the screen would be
+  // describing a boundary that is not there, and the column is where the panel is going.
+  const near = Math.min(...sorted.map((box) => (vertical ? box.x : box.y)));
+  const far = Math.max(...sorted.map((box) => (vertical ? box.x + box.w : box.y + box.h)));
+
+  const GAP_TARGET = 16;
+  const LINE = 3;
+
+  const box = (position: number, thickness: number): Rect =>
+    vertical
+      ? { x: near, y: position - thickness / 2, w: far - near, h: thickness }
+      : { x: position - thickness / 2, y: near, w: thickness, h: far - near };
+
+  const at = (position: number, index: number) => ({
+    index,
+    hit: box(position, GAP_TARGET),
+    line: box(position, LINE),
+  });
+
+  const start = vertical ? sorted[0].y : sorted[0].x;
+  // One before the first member, then one after each — n + 1 seats for n members.
+  return [
+    at(start - DOCK_GAP_PX / 2, 0),
+    ...sorted.map((rect, index) => at((vertical ? rect.y + rect.h : rect.x + rect.w) + DOCK_GAP_PX / 2, index + 1)),
+  ];
+}
+
+/**
  * Resolve one panel into a box.
  *
  * Three shapes, and which one you get is decided by the placement rather than by a mode the module
@@ -767,6 +1010,15 @@ export function resolveDock(
   viewport: Viewport,
   occupied: ContentInset = NO_INSET,
   chrome: ContentInset = DEFAULT_FLOAT_CHROME,
+  /**
+   * This panel's seat in a floating column, when it shares its edge with others.
+   *
+   * Passed in rather than computed here because a seat depends on the *siblings* — their heights,
+   * their grows, how many there are — and this function is deliberately about one panel. The same
+   * reason `occupied` is a parameter: only the caller can see the whole set. Absent for a panel that
+   * has its edge to itself, which then places exactly as it always did.
+   */
+  seat?: Rect,
 ): DockGeometry {
   const { edge } = request;
   if (!edge) return { edge: null, floating: true };
@@ -872,11 +1124,17 @@ export function resolveDock(
     height: region.height - chrome.bottom,
   };
 
-  const w = clamp(placement.w, MIN_FLOAT_PX, Math.max(MIN_FLOAT_PX, free.width - DOCK_GAP_PX * 2));
-  const h = clamp(placement.h, MIN_FLOAT_PX, Math.max(MIN_FLOAT_PX, region.height - chrome.top - DOCK_GAP_PX * 2));
-  const origin = placement.snap
-    ? snapOrigin(placement.snap, w, h, viewport, occupied, chrome)
-    : { x: placement.x, y: placement.y };
+  // A seat wins over the snap: it *is* the snap, worked out against the neighbours sharing the edge
+  // rather than against an empty one. Without siblings there is no seat and nothing changes.
+  const w = seat ? seat.w : clamp(placement.w, MIN_FLOAT_PX, Math.max(MIN_FLOAT_PX, free.width - DOCK_GAP_PX * 2));
+  const h = seat
+    ? seat.h
+    : clamp(placement.h, MIN_FLOAT_PX, Math.max(MIN_FLOAT_PX, region.height - chrome.top - DOCK_GAP_PX * 2));
+  const origin = seat
+    ? { x: seat.x, y: seat.y }
+    : placement.snap
+      ? snapOrigin(placement.snap, w, h, viewport, occupied, chrome)
+      : { x: placement.x, y: placement.y };
 
   /*
     Clamped into the region on both axes, always — a window that shrank, a display that changed, or a

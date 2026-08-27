@@ -9,6 +9,9 @@
  */
 import {
   CHROME_RAIL_PX,
+  columnLayout,
+  columnMembers,
+  columnSlots,
   type ContentInset,
   contentInset,
   displaces,
@@ -23,6 +26,7 @@ import {
   MIN_FLOAT_PX,
   NO_INSET,
   occupiedFor,
+  placementFromDeclaration,
   railBand,
   type Rect,
   rectOf,
@@ -40,15 +44,25 @@ import {
 import {
   DOCK_CONTENT_ATTR,
   DOCK_FRAME_ATTR,
+  dockFrame,
   dockRegistry,
+  hostChromeReserves,
   hostDockStores,
   onDockRegistryChanged,
   registerHostDockStore,
   unregisterHostDockStore,
 } from '@shared/registries/dockRegistry';
-import { moduleStores } from '@shared/registries/moduleRegistry';
+import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry';
 import { SHELL_DOCK_STORE_ID } from '@shared/registries/shellDocks';
+import { slotRegistry } from '@shared/registries/slotRegistry';
+import {
+  onTemplatePanelsChanged,
+  TEMPLATE_DOCK_STORE_ID,
+  templatePanelDockId,
+  templatePanels,
+} from '@shared/registries/templatePanels';
 import type { ChromeReserve, DockAspect, DockEdge, DockSize } from '@we/module-shared';
+import type { SchemaNode, TemplatePanel } from '@we/schema-shared';
 import {
   Accessor,
   createContext,
@@ -198,10 +212,37 @@ export interface ShellStore {
    * Empty unless a panel is being dragged and a strip exists to join.
    */
   insertSlots: Accessor<
-    { index: number; edge: string; top: string; left: string; width: string; height: string; hit: Rect }[]
+    {
+      index: number;
+      edge: string;
+      mode: 'strip' | 'column';
+      top: string;
+      left: string;
+      width: string;
+      height: string;
+      hit: Rect;
+    }[]
   >;
   /** The slot a drop would take right now, as `<edge>:<index>`, or null. */
   activeInsert: Accessor<string | null>;
+  /**
+   * Whether a panel has been moved away from what the interface declared for it, by dock id.
+   *
+   * What a "reset to layout" control is gated on. The three-rung chain is otherwise one-way: a drag
+   * wins for good and there is no way back to the arrangement the template designed, so an author
+   * improving a layout would be overruled forever by one stray drag. Same pairing as
+   * `spaceThemePinned` and `clearSpaceThemePin`.
+   *
+   * False for a panel the interface says nothing about — there is no layout to go back to.
+   */
+  layoutPinned: Accessor<Record<string, boolean>>;
+  /**
+   * Put a panel back where the interface asked for it, forgetting where it was dragged.
+   *
+   * Deletes the stored placement rather than writing the declared one, so the panel keeps following
+   * the layout afterwards — including when the template changes it.
+   */
+  resetDockToLayout: (id: string) => void;
   /** Park a panel at one of the eight, from the position menu — the keyboard's way to move it. */
   snapDock: (id: string, snap: SnapPoint) => void;
   /**
@@ -210,7 +251,7 @@ export interface ShellStore {
    * The stacking order used to be the registry's, so a panel dragged out of a strip returned to the
    * slot it left however far along the edge it was dropped. This is the answer a drop can give.
    */
-  insertDock: (id: string, edge: Exclude<DockEdge, null>, position: number) => void;
+  insertDock: (id: string, edge: Exclude<DockEdge, null>, position: number, mode?: 'strip' | 'column') => void;
   /**
    * Cover the content region, or go back to being a card.
    *
@@ -434,9 +475,47 @@ export function ShellStoreProvider(props: ParentProps) {
     ...rectOf(dockGeometry()[id], viewport(), placement),
   });
 
-  /** A panel's placement: what the user chose, or what the module's bid seeds it as. */
-  const placementOf = (request: DockRequest): FloatPlacement =>
-    placements()[request.id] ?? seedPlacement(request, viewport());
+  /**
+   * A panel's placement, in three rungs: what the user last dragged it to, then what the interface
+   * asked for, then the module's own opening bid.
+   *
+   * The middle rung is resolved live and never written — so switching template or view is
+   * non-destructive, switching back restores what was there, and an author improving a layout is not
+   * overruled forever by one stray drag. The same shape `meta.themeId` follows for themes.
+   */
+  const placementOf = (request: DockRequest): FloatPlacement => {
+    const stored = placements()[request.id];
+    if (stored) return stored;
+    const declared = declarationFor()[request.id];
+    if (declared) return placementFromDeclaration(declared, viewport());
+    return seedPlacement(request, viewport());
+  };
+
+  /**
+   * The panels the interface on screen declares, and which of them the reader has closed.
+   *
+   * A declaration is a *suggestion* — the middle rung of three, under whatever the user last
+   * dragged and over the module's own opening bid. Closing one is remembered by panel id rather
+   * than written back into the template, so a template can go on improving its layout without
+   * arguing with a dismissal.
+   */
+  const [panelsVersion, setPanelsVersion] = createSignal(0);
+  onCleanup(onTemplatePanelsChanged(() => setPanelsVersion((v) => v + 1)));
+  const declaredPanels = createMemo<readonly TemplatePanel[]>(() => {
+    panelsVersion();
+    return templatePanels();
+  });
+  const [closedPanels, setClosedPanels] = createSignal<Record<string, boolean>>({});
+
+  /** A declaration by the dock id it resolves to, for the placement chain to consult. */
+  const declarationFor = createMemo(() => {
+    const byDock: Record<string, TemplatePanel> = {};
+    for (const panel of declaredPanels()) {
+      // A template either places somebody else's panel or supplies its own; the dock id differs.
+      byDock[panel.module ? `${panel.module}:0` : templatePanelDockId(panel.id)] = panel;
+    }
+    return byDock;
+  });
 
   /*
     A dependency on *registration itself*, so a store that arrives late is picked up.
@@ -495,15 +574,26 @@ export function ShellStoreProvider(props: ParentProps) {
     let top = 0;
     let bottom = 0;
     let width = 0;
-    for (const store of Object.values(moduleStores)) {
-      const reserve = (store as Record<string, unknown> | undefined)?.chromeReserve;
-      const value = typeof reserve === 'function' ? (reserve as () => unknown)() : reserve;
-      const box = value as ChromeReserve | undefined;
+    const add = (box: ChromeReserve | undefined) => {
       // Heights stack, widths do not: contributions to one anchor are a column.
       top += box?.top ?? 0;
       bottom += box?.bottom ?? 0;
       width = Math.max(width, box?.width ?? 0);
+    };
+    for (const store of Object.values(moduleStores)) {
+      const reserve = (store as Record<string, unknown> | undefined)?.chromeReserve;
+      const value = typeof reserve === 'function' ? (reserve as () => unknown)() : reserve;
+      add(value as ChromeReserve | undefined);
     }
+    /*
+      And the chrome that is not a module's — a shell template's pinned nav strip, say.
+
+      Summed here rather than in a second place for the reason the four `--we-chrome-*` properties
+      are composed here: `DEFAULT_FLOAT_CHROME` was a constant sized for the call bar, the call bar
+      stopped being alone, and a panel snapped to that corner landed under whatever had joined it.
+      A template pinning its own bar is the same failure with a different author.
+    */
+    for (const reserve of Object.values(hostChromeReserves)) add(reserve);
     return { top, bottom, width };
   });
 
@@ -603,11 +693,55 @@ export function ShellStoreProvider(props: ParentProps) {
    * and a floating one has to clear both. The order is `dockRegistry.ordered()`, so it is the declared
    * `order` then the module id — stable, and never "whichever module registered first".
    */
+  /**
+   * Where each floating panel sits when it shares its edge with others, by dock id.
+   *
+   * Worked out per edge rather than per panel, because a seat depends on the neighbours — how many
+   * there are, how tall each asked to be, which of them wants the slack. `resolveDock` is about one
+   * panel and cannot see that, so the answer is computed here and handed to it, exactly as
+   * `occupied` already is.
+   *
+   * Every floating panel clears the same things (`occupiedFor` only ever counts panels that
+   * *displace*, and a float is not one), so one member's `occupied` serves the whole column.
+   */
+  const columnSeats = createMemo(() => {
+    const requests = dockRequests();
+    const panels = requests
+      .map((request, index) => ({ id: request.id, index, placement: placementOf(request) }))
+      .filter((panel) => requests[panel.index].edge);
+
+    const seats: Record<string, Rect> = {};
+    for (const edge of ['left', 'right', 'top', 'bottom'] as const) {
+      const members = columnMembers(panels, edge);
+      // One panel on an edge is not a column — it keeps the snap position it has always had.
+      if (members.length < 2) continue;
+      const occupied = occupiedOf(members[0].index, requests);
+      const boxes = columnLayout(
+        members.map((member) => member.placement),
+        edge,
+        viewport(),
+        occupied,
+        floatChrome(),
+      );
+      members.forEach((member, i) => {
+        seats[member.id] = boxes[i];
+      });
+    }
+    return seats;
+  });
+
   const dockGeometry = createMemo(() => {
     const requests = dockRequests();
+    const seats = columnSeats();
     const resolved: Record<string, DockGeometry> = {};
     requests.forEach((request, index) => {
-      resolved[request.id] = resolveDock(request, viewport(), occupiedOf(index, requests), floatChrome());
+      resolved[request.id] = resolveDock(
+        request,
+        viewport(),
+        occupiedOf(index, requests),
+        floatChrome(),
+        seats[request.id],
+      );
     });
     return resolved;
   });
@@ -734,6 +868,123 @@ export function ShellStoreProvider(props: ParentProps) {
   createEffect(() => {
     if (typeof document === 'undefined') return;
     document.documentElement.style.setProperty('--we-chrome-transition', dockResizing() ? '0s' : '300ms');
+  });
+
+  /*
+    Turn the declarations that carry their own content into real docks.
+
+    A template panel is a dock whose node came from a template and whose open flag the *shell* owns,
+    because there is no module to own it — the arrangement `shellDocks.ts` already uses for space
+    settings, one level more dynamic. The keys are per panel (`edge:<id>`) because `DockEntry` names
+    its keys as strings and the set of panels is not known until a template says so.
+
+    Diffed rather than cleared and rebuilt: `dockRegistry.register` announces, the geometry memo
+    re-runs on every announcement, and a template being edited re-declares on every keystroke. A
+    rebuild would drop and recreate every frame under the editor's cursor.
+  */
+  let registeredPanels: string[] = [];
+  createEffect(() => {
+    const authored = declaredPanels().filter((panel) => panel.node && !panel.module);
+
+    const keys: Record<string, unknown> = {};
+    for (const panel of authored) {
+      const dockId = templatePanelDockId(panel.id);
+      // One key answering both "where" and "whether", exactly as a module's does: closed is null.
+      keys[`edge:${panel.id}`] = () => (closedPanels()[panel.id] ? null : (edgeOfSnap(panel.snap ?? null) ?? 'right'));
+      keys[`size:${panel.id}`] = () => panel.size ?? 'md';
+      keys[`float:${panel.id}`] = () => !panel.displace;
+      keys[`close:${panel.id}`] = () => setClosedPanels((prev) => ({ ...prev, [panel.id]: true }));
+
+      if (!registeredPanels.includes(dockId)) {
+        const entry = {
+          id: dockId,
+          moduleId: TEMPLATE_DOCK_STORE_ID,
+          edge: `edge:${panel.id}`,
+          size: `size:${panel.id}`,
+          float: `float:${panel.id}`,
+          close: `close:${panel.id}`,
+          // Named outright rather than through `modules.<id>`, the way the editor's and the shell's
+          // own docks are — this store is the host's, not an installable module's.
+          storeRef: 'shellStore',
+          node: panel.node as SchemaNode,
+          order: panel.order,
+        };
+        dockRegistry.register(entry);
+        slotRegistry.register({
+          anchor: 'dock-right',
+          order: panel.order,
+          id: `dock:${dockId}`,
+          node: dockFrame(entry, panel.node as SchemaNode),
+        });
+      }
+    }
+
+    // Withdraw anything the interface has stopped declaring, or the panel outlives the template.
+    const live = authored.map((panel) => templatePanelDockId(panel.id));
+    for (const dockId of registeredPanels) {
+      if (live.includes(dockId)) continue;
+      dockRegistry.remove(dockId);
+      slotRegistry.remove(`dock:${dockId}`);
+    }
+    registeredPanels = live;
+
+    registerHostDockStore(TEMPLATE_DOCK_STORE_ID, keys);
+  });
+
+  onCleanup(() => {
+    for (const dockId of registeredPanels) {
+      dockRegistry.remove(dockId);
+      slotRegistry.remove(`dock:${dockId}`);
+    }
+    unregisterHostDockStore(TEMPLATE_DOCK_STORE_ID);
+  });
+
+  /*
+    Open the module panels the interface asked for, and put them back when it stops asking.
+
+    A declaration places a panel; it does not open one, because whether a module's panel is open is
+    the module's own state and the host has no business writing it. So the host asks the module,
+    through the two keys the launcher already declares: read `activeWhen`, and fire `action` only if
+    it is false. That matters rather than being fastidious — transcribe's action is `togglePanel`,
+    so firing it blindly at an open panel would *close* the thing the template asked for.
+
+    ## Provenance, which is the whole reason this keeps a set
+
+    A panel opened by a layout is the layout's, and is withdrawn when the layout stops naming it. A
+    panel somebody opened themselves is theirs and survives navigating between views. Without the
+    distinction a per-view layout either accumulates every panel you have walked past, or closes one
+    holding live state — leaving the graph view would stop a recording.
+  */
+  const layoutOpened = new Set<string>();
+  const toggleModulePanel = (moduleId: string, wantOpen: boolean): void => {
+    const launcher = moduleRegistry.get(moduleId)?.definition.launcher;
+    if (!launcher?.action) return;
+    const store = moduleStores[moduleId] as Record<string, unknown> | undefined;
+    const active = launcher.activeWhen ? readModuleKey(moduleId, launcher.activeWhen) : undefined;
+    // Nothing to do if it is already how the layout wants it. A module with no `activeWhen` cannot
+    // be asked, so it is opened once and never toggled back — an unanswerable question is better
+    // left alone than guessed at.
+    if (Boolean(active) === wantOpen) return;
+    if (!wantOpen && launcher.activeWhen === undefined) return;
+    const fn = store?.[launcher.action];
+    if (typeof fn === 'function') (fn as () => void)();
+  };
+
+  createEffect(() => {
+    const wanted = declaredPanels()
+      .filter((panel) => panel.module)
+      .map((panel) => panel.module as string);
+
+    for (const moduleId of wanted) {
+      if (layoutOpened.has(moduleId)) continue;
+      layoutOpened.add(moduleId);
+      toggleModulePanel(moduleId, true);
+    }
+    for (const moduleId of [...layoutOpened]) {
+      if (wanted.includes(moduleId)) continue;
+      layoutOpened.delete(moduleId);
+      toggleModulePanel(moduleId, false);
+    }
   });
 
   const store: ShellStore = {
@@ -1007,7 +1258,7 @@ export function ShellStoreProvider(props: ParentProps) {
         .map((candidate) => ({ candidate, area: overlapArea(next, candidate.hit) }))
         .filter((entry) => entry.area > 0)
         .sort((a, b) => b.area - a.area)[0]?.candidate;
-      setActiveInsert(slot ? `${slot.edge}:${slot.index}` : null);
+      setActiveInsert(slot ? `${slot.mode}:${slot.edge}:${slot.index}` : null);
       setActiveSnap(slot ? null : snapCandidate(next, viewport(), occupiedForId(id), floatChrome()));
       writePlacement(id, next);
     },
@@ -1029,8 +1280,8 @@ export function ShellStoreProvider(props: ParentProps) {
       const current = placements()[id] ?? dragOrigin;
 
       if (dragOrigin && current && insert) {
-        const [edge, position] = insert.split(':');
-        store.insertDock(id, edge as Exclude<DockEdge, null>, Number(position));
+        const [mode, edge, position] = insert.split(':');
+        store.insertDock(id, edge as Exclude<DockEdge, null>, Number(position), mode as 'strip' | 'column');
       } else if (dragOrigin && current && snap) {
         writePlacement(id, { ...current, snap, displace: false });
       }
@@ -1053,17 +1304,23 @@ export function ShellStoreProvider(props: ParentProps) {
      * The panel keeps whatever thickness it had. Its card size is untouched too, so pulling it back
      * out returns it to the shape it was before it ever joined.
      */
-    insertDock: (id, edge, position) => {
+    insertDock: (id, edge, position, mode = 'strip') => {
       const requests = dockRequests();
       const request = requests.find((entry) => entry.id === id);
       if (!request?.edge) return;
 
-      const strip = requests
-        .filter((entry) => entry.id !== id && entry.edge && !dockGeometry()[entry.id]?.floating)
+      /*
+        A strip is the panels *displacing* this edge; a column is the ones *floating* on it. Same
+        renumbering either way — the difference is only which set the dropped panel joins, and
+        whether landing there means taking room.
+      */
+      const neighbours = requests
+        .filter((entry) => entry.id !== id && entry.edge && !placementOf(entry).maximised)
+        .filter((entry) => (dockGeometry()[entry.id]?.floating ?? true) === (mode === 'column'))
         .filter((entry) => edgeOfSnap(placementOf(entry).snap) === edge)
         .sort((a, b) => (placementOf(a).order ?? 0) - (placementOf(b).order ?? 0));
 
-      const ids = strip.map((entry) => entry.id);
+      const ids = neighbours.map((entry) => entry.id);
       ids.splice(Math.max(0, Math.min(position, ids.length)), 0, id);
 
       ids.forEach((entryId, order) => {
@@ -1073,7 +1330,7 @@ export function ShellStoreProvider(props: ParentProps) {
         writePlacement(entryId, {
           ...placement,
           order,
-          ...(entryId === id ? { snap: edge, displace: true, maximised: false } : {}),
+          ...(entryId === id ? { snap: edge, displace: mode === 'strip', maximised: false } : {}),
         });
       });
     },
@@ -1119,11 +1376,20 @@ export function ShellStoreProvider(props: ParentProps) {
           .filter((request) => edgeOfSnap(placementOf(request).snap) === edge)
           .map((request) => rectOf(boxes[request.id], viewport(), placementOf(request)));
 
-        // An empty edge still offers its one slot — that is how a strip gets started. It used to
-        // return nothing here, so an edge with no panels on it could only ever be *floated* against.
-        return insertionSlots(edge, inStrip, viewport(), occupied).map((slot) => ({
+        /*
+          The floats already sharing this edge — a *column*, whose seams run along the edge rather
+          than across it. Read from the resolved boxes, so the lines land on the seats the column
+          actually has rather than on the sizes the placements asked for.
+        */
+        const inColumn = dockRequests()
+          .filter((request) => request.id !== moving && request.edge && dockGeometry()[request.id]?.floating)
+          .filter((request) => edgeOfSnap(placementOf(request).snap) === edge && !placementOf(request).maximised)
+          .map((request) => rectOf(boxes[request.id], viewport(), placementOf(request)));
+
+        const draw = (mode: 'strip' | 'column', slot: { index: number; hit: Rect; line: Rect }) => ({
           index: slot.index,
           edge,
+          mode,
           // The line, not the target: the frame draws what these describe, and the hit box it is
           // measured against stays here. Drawing the target put a 10px bar a dozen pixels off the
           // boundary it was describing.
@@ -1132,7 +1398,15 @@ export function ShellStoreProvider(props: ParentProps) {
           width: `${slot.line.w}px`,
           height: `${slot.line.h}px`,
           hit: slot.hit,
-        }));
+        });
+
+        // An empty edge still offers its one strip slot — that is how a strip gets started. It used
+        // to return nothing here, so an edge with no panels on it could only ever be *floated*
+        // against. A column needs no such slot: snapping to the edge starts one.
+        return [
+          ...insertionSlots(edge, inStrip, viewport(), occupied).map((slot) => draw('strip', slot)),
+          ...columnSlots(edge, inColumn).map((slot) => draw('column', slot)),
+        ];
       });
     },
 
@@ -1152,6 +1426,24 @@ export function ShellStoreProvider(props: ParentProps) {
       if (!request?.edge) return;
       const placement = placementOf(request);
       writePlacement(id, { ...placement, maximised: !placement.maximised });
+    },
+
+    layoutPinned: () =>
+      Object.fromEntries(
+        dockRequests().map((request) => [
+          request.id,
+          Boolean(placements()[request.id]) && Boolean(declarationFor()[request.id]),
+        ]),
+      ),
+
+    resetDockToLayout: (id) => {
+      setPlacements((prev) => {
+        if (!prev[id]) return prev;
+        const next = { ...prev };
+        delete next[id];
+        savePlacements(next);
+        return next;
+      });
     },
 
     snapDock: (id, snap) => {
