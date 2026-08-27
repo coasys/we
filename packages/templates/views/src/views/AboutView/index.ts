@@ -26,18 +26,22 @@ export const aboutView: TemplateSchema = {
 
           These fields had two renderings — read-only here and as inputs on a sibling Settings tab —
           which meant one form to keep in step with another and a space's name spelled twice in the
-          UI. Only the settings page writes now, and this leads there: the same pattern as a profile
-          page and its edit screen, and the reason there is exactly one set of inputs.
+          UI. Only the settings surface writes now, and this leads there: the same pattern as a
+          profile page and its edit screen, and the reason there is exactly one set of inputs.
 
-          Shown to everyone rather than gated on `canAdministerSpace`: the page it opens shows what
-          the space is configured as either way, and a control that vanishes for most members makes
-          "where do I see this" depend on who is asking. The page itself decides what is editable.
+          Shown to everyone rather than gated on `canAdministerSpace`: what it opens shows what the
+          space is configured as either way, and a control that vanishes for most members makes
+          "where do I see this" depend on who is asking. The settings themselves decide what is
+          editable.
 
-          The **dataset id**, not the route's space segment. `/space/:spaceId` carries whatever
-          `navigateToSpace` was given, which for a shared space is its neighbourhood CID — while the
-          settings page keys off `spaceList[].uuid`, which is always the dataset id. Passing the
-          segment matched no row and opened an empty page, and only for shared spaces, where the two
-          ids diverge.
+          Opens rather than toggles, unlike the rail's gear. A pencil sitting on the very fields it
+          leads to is a promise to show them, and a second press landing on a closed panel would
+          break that promise for anyone who had the panel open already and came here to find it.
+
+          It no longer passes an id: the panel is always about the open space, and this is only ever
+          rendered inside one. That retires a real trap — `/space/:spaceId` carries a neighbourhood
+          CID for a shared space while the settings page keys off the dataset id, so the obvious
+          spelling opened an empty page, and only for shared spaces.
         */
         aside: {
           type: 'we-button',
@@ -46,10 +50,7 @@ export const aboutView: TemplateSchema = {
             size: 'sm',
             square: true,
             title: 'Space settings',
-            onClick: {
-              $action: 'shellStore.openShellView',
-              args: ['settings', { $concat: ['/spaces/', { $store: 'datasetStore.currentDataset.id' }] }],
-            },
+            onClick: { $action: 'shellStore.openSpaceSettings' },
           },
           children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],
         },

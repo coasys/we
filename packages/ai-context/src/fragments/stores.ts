@@ -1018,6 +1018,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
       state: {
         activeShellView:
           "string | null — id of the currently open shell overlay ('profile' | 'settings' | 'schema-tests' | 'landing-page'), or null",
+        spaceSettingsOpen:
+          'boolean — the space-settings panel is open. It configures whichever space is open, so it needs no id; bind a launcher\u2019s active state to this',
       },
       actions: {
         openShellView:
@@ -1025,6 +1027,11 @@ export function generateStoresText(entries: StoreEntry[]): string {
         setCreateSpaceOpen:
           '(open: boolean): opens or closes the create-space modal. Shell state rather than a page\u2019s $localState because more than one place opens it — the settings page and the sidebar\u2019s spaces group — and a page-scoped flag could only be set from inside that page',
         closeShellView: '(): closes the currently open shell overlay',
+        toggleSpaceSettings:
+          '(): opens or closes the settings panel for the space on screen. What a gear in chrome should call \u2014 a control that is always present toggles, so a second press puts back what the first press changed',
+        openSpaceSettings:
+          '(): opens that panel without closing it again. For a control that sits on the very fields it leads to (the About view\u2019s pencil), where a toggle would break the promise to show them',
+        closeSpaceSettings: '(): closes the space-settings panel',
         scrollToId: '(id: string): smooth-scrolls the element with that DOM id into view',
       },
     },

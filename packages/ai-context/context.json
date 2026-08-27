@@ -6228,6 +6228,12 @@
         "createSpaceOpen": {
           "type": "boolean"
         },
+        "spaceSettingsOpen": {
+          "type": "boolean"
+        },
+        "spaceSettingsEdge": {
+          "type": "object"
+        },
         "dockGeometry": {
           "type": "object"
         },
@@ -6264,6 +6270,9 @@
         "closeShellView",
         "rememberShellPath",
         "setCreateSpaceOpen",
+        "toggleSpaceSettings",
+        "openSpaceSettings",
+        "closeSpaceSettings",
         "scrollToId",
         "beginDockResize",
         "resizeDock",

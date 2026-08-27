@@ -2361,6 +2361,8 @@ ShellStore:
   - activeShellView: string | null — id of the currently open shell overlay ('profile' | 'settings' | 'schema-tests' | 'landing-page'), or null
   - takePendingPath: unknown
   - createSpaceOpen: unknown
+  - spaceSettingsOpen: boolean — the space-settings panel is open. It configures whichever space is open, so it needs no id; bind a launcher’s active state to this
+  - spaceSettingsEdge: unknown
   - dockGeometry: unknown
   - contentInset: unknown
   - dockResizing: unknown
@@ -2376,6 +2378,9 @@ ShellStore:
   - closeShellView(): closes the currently open shell overlay
   - rememberShellPath(): unknown
   - setCreateSpaceOpen(open: boolean): opens or closes the create-space modal. Shell state rather than a page’s $localState because more than one place opens it — the settings page and the sidebar’s spaces group — and a page-scoped flag could only be set from inside that page
+  - toggleSpaceSettings(): opens or closes the settings panel for the space on screen. What a gear in chrome should call — a control that is always present toggles, so a second press puts back what the first press changed
+  - openSpaceSettings(): opens that panel without closing it again. For a control that sits on the very fields it leads to (the About view’s pencil), where a toggle would break the promise to show them
+  - closeSpaceSettings(): closes the space-settings panel
   - scrollToId(id: string): smooth-scrolls the element with that DOM id into view
   - beginDockResize(): unknown
   - resizeDock(): unknown

@@ -746,6 +746,25 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       user's behalf.
     */
     setCreateSpaceOpen: action('navigation'),
+    /*
+      The space-settings panel — which host surface is open, and asking for it.
+
+      `navigation`, on exactly the reasoning above and the reasoning behind `activeShellView`: these
+      say "show me the app's own settings for this space" and nothing more. What that panel then
+      permits is decided inside it, by `canAdminister`, not by whoever opened it — so a template
+      offering the button is offering a destination, not a capability.
+
+      That it is space-tier is load-bearing rather than incidental: the About *view* carries a pencil
+      that opens this, and a view renders at `SPACE_TIER`. Chrome-tiering it would leave that pencil
+      pointing at something it is not allowed to call.
+    */
+    spaceSettingsOpen: state('navigation'),
+    openSpaceSettings: action('navigation'),
+    closeSpaceSettings: action('navigation'),
+    toggleSpaceSettings: action('navigation'),
+    // Where the host should put that panel — read by the dock resolver in TypeScript, never by a
+    // schema, which addresses a dock through `shellStore.dockGeometry` instead.
+    spaceSettingsEdge: WIRING,
     scrollToId: action('view-state'),
 
     takePendingPath: WIRING,
