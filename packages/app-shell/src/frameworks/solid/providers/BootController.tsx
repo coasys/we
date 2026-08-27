@@ -8,25 +8,13 @@
  *
  * Renders nothing.
  */
+import { consumeGuestBootTarget } from '@shared/guestLink';
+
 import { useDatasetStore } from '../stores/DatasetStore';
 import { useProfileStore } from '../stores/ProfileStore';
 import { useRouteStore } from '../stores/RouteStore';
 import { useSessionStore } from '../stores/SessionStore';
 import { useSpaceStore } from '../stores/SpaceStore';
-
-/**
- * Read the guest join target set by the entry point, if present.
- *
- * The entry point writes `__weGuestJoinTarget` on `window` when the URL matches `/join/<id>`.
- * Read once, consumed once — after the join the property stays inert and the user navigates
- * normally inside the space.
- */
-function consumeGuestJoinTarget(): string | null {
-  const w = window as unknown as { __weGuestJoinTarget?: string };
-  const target = w.__weGuestJoinTarget ?? null;
-  delete w.__weGuestJoinTarget;
-  return target;
-}
 
 export function BootController() {
   const session = useSessionStore();
@@ -39,8 +27,9 @@ export function BootController() {
   // Used to restore deep links after auth completes (e.g. refresh on /space/uuid/flux).
   const initialPath = window.location.pathname;
 
-  // Read the guest target before any async work — the entry point sets it synchronously.
-  const guestJoinTarget = consumeGuestJoinTarget();
+  // Read the guest target before any async work — the entry point sets it synchronously, and
+  // reading it removes it, so a remount cannot join a second time.
+  const guestBoot = consumeGuestBootTarget();
 
   session.onSessionUnlocked(async () => {
     if (!session.lifecycle()) return;
@@ -58,19 +47,29 @@ export function BootController() {
     const ownDid = session.me()?.did;
     if (ownDid) profileStore.fetchProfile(ownDid);
 
-    // Guest mode: join the target space and navigate into it.
-    // The join call handles dedup (already-joined spaces just get focused), SDNA install, and
-    // dataset tracking. `focus: true` switches the active dataset so the user sees the space.
-    if (guestJoinTarget) {
-      try {
-        await spaceStore.joinSpace(guestJoinTarget, true);
-      } catch (err) {
-        console.error('BootController: guest join failed', err);
+    /*
+      Somebody arrived on a guest invite link.
+
+      Only a session this link created joins on its own — see `GuestBootTarget.autoJoin`. Anybody
+      who already had an identity is taken to the space's own join gate, which is what the ordinary
+      share link does and what the invite copy promises.
+
+      The navigation happens either way, including after a failure: `/space/<id>` IS the join gate,
+      and it states the reason (`joinError`, matched against this route segment) beside a Join
+      button. Landing there is how a guest whose join did not complete finds out and retries;
+      nothing else on the page could have told them. `/space/<id>` accepts a local uuid and a
+      neighbourhood CID alike, so the shared id the link carries resolves.
+
+      `replace`, not push: `/join/<id>` must not stay in the history. Backing onto it puts the app
+      on a path no route claims, and reloading there re-runs the whole guest flow.
+    */
+    if (guestBoot) {
+      if (guestBoot.autoJoin) {
+        await spaceStore.joinSpace(guestBoot.spaceId).catch((err) => {
+          console.error('BootController: guest join failed', err);
+        });
       }
-      // Navigate directly into the joined space. The `/space/<id>` route works with both
-      // a local uuid and a neighbourhood CID — the router resolves either through the
-      // dataset list. This replaces the /join/ URL so a reload does not re-trigger the flow.
-      routeStore.navigate(`/space/${guestJoinTarget}`);
+      routeStore.navigate(`/space/${guestBoot.spaceId}`, { replace: true });
       return;
     }
 
