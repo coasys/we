@@ -130,7 +130,9 @@ const rail: SchemaNode = railShell({
           children: [
             railItem({
               id: '$space.uuid',
-              avatar: { src: '$space.avatar', name: '$space.name' },
+              // Seeded by uuid, not name: the generated colour is this space's identity, so it
+              // must not change when somebody renames it.
+              avatar: { src: '$space.avatar', name: '$space.name', hash: '$space.uuid' },
               label: '$space.name',
               active: { $eq: ['$space.spaceId', { $store: 'routeStore.segments.1' }] },
               onClick: { $action: 'spaceStore.navigateToSpace', args: ['$space.spaceId'] },
@@ -177,7 +179,7 @@ const rail: SchemaNode = railShell({
           props: { items: { $store: 'appStore.appsWithWe' }, as: 'app' },
           children: [
             railItem({
-              avatar: { src: '$app.image', name: '$app.name' },
+              avatar: { src: '$app.image', name: '$app.name', hash: '$app.id' },
               label: '$app.name',
               active: {
                 $if: {

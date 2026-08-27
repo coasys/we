@@ -35,8 +35,15 @@ import { avatarSize, type AvatarTone, avatarToneColor, avatarToneRing } from '@w
  * silently, with nothing to say so.
  */
 export interface BadgedAvatarOptions {
-  /** What the face is built from. `name` seeds both the initials and the generated identicon. */
-  avatar: { src?: SchemaProp; name?: SchemaProp; icon?: SchemaProp };
+  /**
+   * What the face is built from.
+   *
+   * `hash` is the stable thing this *is* — a DID, a uuid — and it seeds the generated colour under
+   * the initials, plus the identicon on the rows that have no initials to show. Give it an id, never
+   * a name: a name-seeded avatar changes its colour when somebody renames the thing, which is
+   * identity art contradicting the identity. It was `name` here, which is exactly what went wrong.
+   */
+  avatar: { src?: SchemaProp; name?: SchemaProp; hash?: SchemaProp; icon?: SchemaProp };
   /** Avatar size — a token, or any CSS length. Everything else here is derived from it. */
   size?: string;
   /** Ring the face in a tone. Omitted, there is no ring. */
@@ -75,7 +82,8 @@ export function badgedAvatar(opts: BadgedAvatarOptions): SchemaNode {
     type: 'we-avatar',
     props: {
       ...(opts.avatar.src !== undefined && { image: opts.avatar.src }),
-      ...(opts.avatar.name !== undefined && { initials: opts.avatar.name, hash: opts.avatar.name }),
+      ...(opts.avatar.name !== undefined && { initials: opts.avatar.name }),
+      ...(opts.avatar.hash !== undefined && { hash: opts.avatar.hash }),
       ...(opts.avatar.icon !== undefined && { icon: opts.avatar.icon }),
       size,
       ...(opts.ring && { ring: avatarToneRing(opts.ring) }),

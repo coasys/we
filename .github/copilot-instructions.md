@@ -3188,9 +3188,16 @@ with the value itself as `$arg`.
 }
 ```
 
-Always set `hash` as well as `image`, never as a fallback for it: `hash` seeds a generated avatar
-that is stable per agent, so somebody whose profile has not arrived is still visually distinct from
-everybody else whose profile has not arrived. A real picture wins where there is one.
+Always set `hash` as well as `image`, never as a fallback for it — and seed it with an **id**, never
+a name. `hash` is the stable thing a row *is*: a DID for a person, a uuid for a space. It does two
+jobs. It colours the generated initials, so the colour survives a rename; and it draws an identicon
+when there are no initials to draw, which is the case it exists for — somebody whose profile has not
+arrived has no name yet, and two unresolved peers must not be two identical blank discs.
+
+What `we-avatar` draws, in order: **a picture, else letters, else a generated pattern, else a
+glyph.** Letters outrank the pattern, so a row that has both shows its initials on a colour seeded
+from the hash. Seeding `hash` with a *name* is the mistake to avoid: it makes the colour change when
+somebody renames the thing, which is identity art contradicting the identity.
 
 ### A group of faces with a count
 

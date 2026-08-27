@@ -244,8 +244,14 @@ export interface RailItemOptions {
   label: Content;
   /** Phosphor icon name. Ignored when `avatar` is given. */
   icon?: SchemaProp;
-  /** `{ src, name }` — a space or a person, rather than a destination. */
-  avatar?: { src: SchemaProp; name: SchemaProp };
+  /**
+   * A space or a person, rather than a destination.
+   *
+   * `hash` is optional and is the stable id — a uuid, a DID. It seeds the generated colour behind
+   * the initials, so the colour survives a rename; pass a name and it does not. A row without one
+   * still gets a colour, seeded from the name it has.
+   */
+  avatar?: { src: SchemaProp; name: SchemaProp; hash?: SchemaProp };
   /** A count beside the label. Only visible while the rail is open. */
   badge?: Content;
   /** Highlights the row. Usually a `$eq` against a route segment or a store's active id. */
@@ -290,7 +296,7 @@ export function railItem(opts: RailItemOptions): SchemaNode {
 
   const avatar = opts.avatar;
   const face: SchemaNode = avatar
-    ? badgedAvatar({ avatar: { src: avatar.src, name: avatar.name }, size: 'sm' })
+    ? badgedAvatar({ avatar: { src: avatar.src, name: avatar.name, hash: avatar.hash }, size: 'sm' })
     : { type: 'we-icon', props: { name: opts.icon ?? '' } };
 
   /*
@@ -311,7 +317,7 @@ export function railItem(opts: RailItemOptions): SchemaNode {
           props: {
             condition: live.when,
             then: badgedAvatar({
-              avatar: { src: avatar.src, name: avatar.name },
+              avatar: { src: avatar.src, name: avatar.name, hash: avatar.hash },
               size: 'sm',
               ring: tone,
               badge: { icon: live.icon, tone },
