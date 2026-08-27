@@ -1,5 +1,5 @@
 import { templateRegistry } from '@shared/registries/templateRegistry';
-import { profileTemplate, schemaTestsTemplate, settingsTemplate } from '@shared/schemas';
+import { profileTemplate, settingsTemplate } from '@shared/schemas';
 import { deepClone } from '@shared/utils';
 import { toastService } from '@we/components/solid';
 import type { FileData } from '@we/models';
@@ -166,13 +166,17 @@ export function TemplateStoreProvider(props: ParentProps) {
     { ...deepClone(profileTemplate), id: 'profile' },
     { ...deepClone(settingsTemplate), id: 'settings' },
     /*
-      The schema test harness is a developer tool — ~97KB of test schemas that have no business in a
-      production bundle. This branch drops the *registration*; it does not drop the schemas, and the
-      comment here used to claim it did. It cannot: the module imports `schemaTestsTemplate` at the
-      top level, so the import keeps it reachable however the branch folds, and the strings are in
-      `apps/we-web/dist` today. Exclusion needs an `import()` boundary, which is a separate change.
+      The schema-test harness is deliberately absent, and was dead weight here rather than a feature.
+
+      This list is a fallback for resolving a *template* — a persisted `defaultTemplateId` on boot,
+      or a `switchTemplate` id. The harness is neither: it is only ever reached through
+      `openShellView('schema-tests')`, which goes to the shell-view registry and never looks here. It
+      is not in `templateManagementList` either, so it could not be made anyone's default.
+
+      Its entry was therefore unreachable, and its cost was a static import of ~97KB of test schemas
+      that a production build shipped. See `schemaTestsView` for where it lives now and why that
+      shape is the thing keeping it out of the bundle.
     */
-    ...(import.meta.env.DEV ? [{ ...deepClone(schemaTestsTemplate), id: 'schema-tests' }] : []),
   ];
 
   /*
