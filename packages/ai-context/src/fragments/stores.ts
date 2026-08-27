@@ -11,7 +11,6 @@ export const storeEntries: StoreEntry[] = [
   {
     name: 'sessionStore',
     state: {
-      client: { type: 'object' },
       me: { type: 'object', properties: ['did', 'perspective', 'directMessageLanguage'] },
       bootState: { type: 'string' },
       bootError: { type: 'string' },
@@ -52,7 +51,6 @@ export const storeEntries: StoreEntry[] = [
     actions: [
       'refresh',
       'createAccount',
-      'syncDisplay',
       'switchAccount',
       'removeAccount',
       'requestRemoval',
@@ -190,7 +188,7 @@ export const storeEntries: StoreEntry[] = [
       marketplaceConfigured: { type: 'boolean' },
       marketplaceJoined: { type: 'boolean' },
     },
-    actions: ['switchDataset', 'reorderDatasets', 'updateAgentSettings', 'cleanupSpaceSdna'],
+    actions: ['switchDataset', 'reorderDatasets', 'cleanupSpaceSdna'],
   },
   {
     name: 'profileStore',
@@ -277,7 +275,6 @@ export const storeEntries: StoreEntry[] = [
       switcherGroups: { type: 'array', properties: ['label', 'items'] },
     },
     actions: [
-      'updateTemplate',
       'switchTemplate',
       'removeTemplate',
       'saveTemplate',
@@ -479,7 +476,6 @@ export const storeEntries: StoreEntry[] = [
       'sendMessage',
       'close',
       'toggle',
-      'setApiKey',
       'startFork',
       'startFresh',
       'confirmPicker',
@@ -487,7 +483,6 @@ export const storeEntries: StoreEntry[] = [
       'newChat',
       'switchSession',
       'deleteSession',
-      'onSchemaEdit',
       'undo',
       'redo',
     ],
@@ -564,6 +559,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(): starts the whole boot again from the failure screen, by reloading. A failed boot can have got anywhere before it threw, so retrying in place would race the remains of the first attempt',
         finishSetup: "(): leaves 'finishing' for the running app — sets bootState to 'ready'",
         logout: '(): locks the agent and returns to the login screen',
+        setDevTools:
+          '(on: boolean): shows or hides developer affordances for this session. Takes the value the control shows, so a we-switch can pass $event.detail bare. Cannot turn developer UI on in a production build',
       },
     },
     accountStore: {
@@ -589,8 +586,6 @@ export function generateStoresText(entries: StoreEntry[]): string {
         refresh: '(): re-reads the account list from the host',
         createAccount:
           '(): creates an account under a provisional name and switches into it — the setup screen names it. Does not return on success',
-        syncDisplay:
-          '({ name?, avatar? }): mirrors the profile onto the running account, so the locked sign-in screen has a name and picture. Never throws',
         switchAccount: '(id: string): switches to another account. Does not return on success',
         removeAccount: '(id: string): deletes an account and its data. Refuses the active one',
         requestRemoval: '(id: string): opens the removal confirmation for that account',
@@ -701,12 +696,17 @@ export function generateStoresText(entries: StoreEntry[]): string {
         globalSpaceConfigured: 'boolean — the seed declares a global space',
         marketplaceConfigured: 'boolean — the seed declares a marketplace',
         marketplaceJoined: 'boolean — the marketplace dataset is joined locally',
+        currentDatasetUri:
+          'string | undefined — the shared URL of the current dataset with its scheme (neighbourhood://…), or undefined for a personal one. Prefer currentDatasetCid for comparisons; this is the form a share link carries',
+        marketplaceId:
+          'string | null — the dataset id of the seed-configured marketplace, or null when it is not configured or not joined. The marketplace counterpart of globalSpaceId',
       },
       actions: {
+        removeDataset:
+          '(uuid: string): removes a dataset from the backend and from local state. The low-level half of spaceStore.removeSpace, which also clears the global-discovery listing — call that from a template, and this only for a dataset that is not a space',
         switchDataset:
           '(uuid: string): switches to a dataset by UUID, registers its SHACL models as dynamic model classes, and populates currentDatasetModels',
         reorderDatasets: '(newOrder: string[]): reorders the sidebar items by UUID array',
-        updateAgentSettings: '(updates: Partial<AgentSettings>): merges and persists root-dataset agent settings',
         cleanupSpaceSdna:
           '(uuid?: string): one-time remediation for a space that accumulated duplicate SDNA installs — removes the redundant duplicate link copies. Defaults to the current dataset. Returns a display-ready summary string naming how many links were removed and the DIDs that authored them (your own DID annotated with "(you)"), or an empty string if nothing needed cleaning up',
       },
@@ -721,6 +721,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           'boolean — the own-profile fetch has answered. An empty profile is otherwise indistinguishable from an unfetched one, so anything asking "has this person set a name?" reads every boot frame as "no". Same reason as datasetStore.datasetsLoaded',
         needsName:
           'boolean — this agent has no name of any kind and has not waved the question away this session, as a settled fact (false until the app is ready and the profile fetch has answered). What the name prompt mounts on; also the right gate for any "finish setting up" nudge of your own',
+        pendingAvatar:
+          'File | null — a picture chosen before the agent exists, held until completeAccountSetup uploads it. Read it to preview the choice on the setup screen; null once uploaded or when nothing was picked',
       },
       actions: {
         setPendingAvatar:
@@ -773,15 +775,62 @@ export function generateStoresText(entries: StoreEntry[]): string {
           "string | null — the id of the theme operation currently in flight, namespaced by kind (e.g. 'marketplace-install:<themeId>'), or null when idle. A key rather than a boolean so one row's spinner does not appear on every row — compare it against the row you are rendering",
         themeManagementList:
           'ThemeManagementItem[] — flat list of all themes (built-in + all custom) with management metadata (id, name, icon, isBuiltIn, isInstalled, isDefault)',
-      },
-      actions: {
-        setCurrentTheme: '(themeId: string): sets and persists the active theme',
         themeScope:
           "'global' | 'scoped' — what actually applies right now: the theme editor's session preview if one is active, else the agent's preference",
         themeScopePreference: "'global' | 'scoped' — the agent's persisted choice",
         themeScopeGlobal: 'boolean — the preference as a boolean, for a switch to bind to',
         themeScopePreviewing:
           'boolean — a theme being edited is previewing a different scope, so the preference is temporarily masked. Worth saying so beside the setting',
+        editingTheme:
+          'EditingTheme | null — the theme being edited (id, name, icon, overrides, css, basePreset) or null when no theme editing session is open. Its non-nullness is what mounts the theme editor',
+        focusedRole:
+          "string — the kebab-case role the theme editor should scroll to ('surface-sunken'), or empty. Set by whatever sent somebody to the panel — the inspector's role readout — and re-announced on every set, so pressing the same chip twice scrolls twice",
+        systemThemes:
+          "{ light, dark, resolved } — which two themes 'Follow system' chooses between. light/dark are the ids as chosen, empty for a side left at the built-in; resolved is 'light' | 'dark', whichever the OS is asking for now",
+        systemThemeOptions:
+          '{ label, value }[] — options for either side of the Follow-system pair, with a "Built-in" entry a schema could not prepend itself',
+        templateThemePending:
+          "boolean — the template's suggested theme cannot be resolved yet and might still arrive. Hold what is on screen rather than painting a fallback while it is true",
+        useTemplateTheme:
+          'boolean — whether a template may bring the theme it was designed for (meta.themeId). Defaults on; one condition in the resolver rather than a setting to unwind, so turning it off restores whatever would otherwise apply immediately',
+        activeTemplateTheme:
+          "ThemeData | null — the theme the scoped template wrapper renders: the theme being edited if there is one, else the space's. Null in global mode, where the template inherits the document's theme",
+      },
+      actions: {
+        setCurrentTheme: '(themeId: string): sets and persists the active theme',
+        focusRole:
+          '(role: string): asks the theme editor to reveal a role, kebab-case as a schema spells it. Pair with editorStore.openThemePanel so there is a panel to scroll',
+        setSystemTheme:
+          "(polarity: 'light' | 'dark', themeId: string): sets one side of the Follow-system pair. An empty id returns that side to the built-in",
+        setUseTemplateTheme:
+          '(enabled: boolean): persists whether templates may bring their own theme. Boolean, so a switch can pass $event.detail bare',
+        restorePersonalTheme:
+          "(): puts back the agent's persisted personal theme — what leaving a space with a default theme does. Rarely a template's to call; applyTheme and clearSpaceThemePin cover the picker cases",
+        clearSpaceTheme:
+          '(): drops the scoped space theme without restoring the personal one — what entering a space with no default theme does. Host-facing; prefer spaceStore.clearSpaceThemePin from a picker',
+        startEditing:
+          '(themeId?: string): opens a theme editing session on that theme, or on the current one. Prefer editorStore.enterThemeEditing, which also opens the panel',
+        changeBasePreset:
+          "(preset: string | undefined): while editing, swaps the base preset the theme builds on — takes its polarity and lightness range and repopulates the controls from the preset's computed CSS",
+        updateEditingOverrides:
+          '(overrides: Partial<ThemeOverrides>): while editing, merges parameter changes (hues, saturation, lightness range, role pins) into the draft. Applied live',
+        updateEditingCss: '(css: string): while editing, replaces the draft’s raw CSS layer. Applied live',
+        updateEditingMeta: '(fields: { name?, icon? }): while editing, renames or re-icons the draft',
+        cancelEditing: '(): ends the editing session and discards the draft, restoring what was applied before',
+        createAndStartEditing:
+          "(name: string, icon: string, sourceId?: string, destination?: 'personal' | 'space'): creates a new theme — copied from sourceId when given — and opens an editing session on it. Resolves true on success",
+        saveEditingTheme:
+          '(): writes the draft over the theme being edited and keeps editing. Resolves to the saved theme, or null when nothing was being edited',
+        saveEditingThemeAs:
+          '(name: string, icon: string): writes the draft as a new theme under that name, leaving the original untouched',
+        deleteMarketplaceTheme:
+          '(themeId: string): removes a theme this agent published from the marketplace. Only its author may',
+        publishToMarketplace:
+          '(options: { name, description, icon?, slug?, screenshots: File[] }): publishes the current theme to the marketplace under those details. Resolves true on success',
+        publishToSpace:
+          '(perspectiveUuid: string, spaceName: string): copies the current theme into that space, so its members get it. Resolves true on success',
+        refreshSpaceThemes:
+          "(): re-reads the current space's themes. The list follows the space on its own; call this after a publish the subscription might have missed",
         setDefaultTheme:
           '(themeId: string): sets the preferred default theme (persists to AgentSettings.defaultThemeId)',
         setThemeScopeGlobal:
@@ -812,9 +861,39 @@ export function generateStoresText(entries: StoreEntry[]): string {
           'TemplateManagementItem[] — flat list of all templates with management metadata (id, name, icon, description, isBuiltIn, isInstalled, isDefault)',
         switcherGroups:
           'TemplateSwitcherGroup[] — pre-grouped flat items for the template switcher UI; each group has { label: string, items: { id, name, icon, editable }[] }. Groups: "Space templates", "My templates", "Built-in". Use $filter where: { name: { contains: ... } } for search since items have a flat name field. `editable` says whether editing THAT row would open a session that can be saved — gate a per-row edit control on it rather than on editorStore.isReadOnly, which answers for whichever template is currently rendered and so gives every row the same verdict.',
+        currentSwitcherId:
+          "string — the id the template switcher should show as selected. The switcher's own spelling of the current template: it differs from currentTemplate.id while a space override or a preview is in effect",
+        loading: 'boolean — the template lists are still being read. Gate empty states on it',
+        defaultTemplateId:
+          "string — id of the agent's preferred default template, used where no space or override decides. Persisted to AgentSettings.defaultTemplateId",
+        operationLoading:
+          "string | null — the id of the template operation in flight, namespaced by kind ('marketplace-install:<id>', 'space-install:<id>'), or null. A key rather than a boolean so one row's spinner does not appear on every row",
       },
       actions: {
-        updateTemplate: '(newTemplate: TemplateSchema): updates the current template',
+        deleteTemplate: '(templateId: string): permanently deletes a custom template from the library',
+        installTemplate: '(templateId: string): marks an installed custom template visible in the pickers',
+        uninstallTemplate:
+          '(templateId: string): hides a custom template from the pickers without deleting it. The counterpart of installTemplate',
+        installFromMarketplace:
+          '(marketplaceTemplateId: string): copies a marketplace template into your own library. A personal act — use installToSpace to give the community a template',
+        toggleInstalled:
+          '(templateId: string): installs or uninstalls by id — what the settings list’s switch calls. Prefer installTemplate/uninstallTemplate where the switch can pass its value',
+        setDefaultTemplate:
+          "(templateId: string): sets the agent's preferred default template (persists to AgentSettings.defaultTemplateId)",
+        saveTemplateAs:
+          "(schema: TemplateSchema, destination?: 'root' | 'space'): saves a schema as a new template in your library or in the current space. Resolves true on success. The editor's fork path; prefer editorStore.startFork from chrome",
+        publishToSpace:
+          '(perspectiveUuid: string, spaceName: string): copies the current template into that space, so its members get it. Resolves true on success',
+        deleteMarketplaceTemplate:
+          '(templateId: string): removes a template this agent published from the marketplace. Only its author may',
+        publishToMarketplace:
+          '(options: { name, description, icon?, themeId?, slug?, screenshots: File[] }): publishes the current template to the marketplace under those details. Resolves true on success',
+        refreshSpaceTemplates:
+          "(): re-reads the current space's templates. The list follows the space on its own; call this after a publish the subscription might have missed",
+        isBuiltInTemplate:
+          '(templateId: string): whether that id is a built-in. Answers synchronously, but $action cannot read a return value — prefer the isBuiltIn flag on templateManagementList rows',
+        isInstalled:
+          '(templateId: string): whether that custom template is visible in the pickers. Same caveat as isBuiltInTemplate — read isInstalled off templateManagementList instead',
         switchTemplate: '(newTemplateId: string): switches to another template',
         removeTemplate: '(): removes the current template',
         saveTemplate: '(name: string): saves the current template',
@@ -825,6 +904,28 @@ export function generateStoresText(entries: StoreEntry[]): string {
     spaceStore: {
       state: {
         mySpaces: 'array of Space objects — every space the agent holds, across all joined datasets',
+        spaceViews:
+          "ResolvedView[] — this space's sections resolved: which view renders at which segment, in the space's order, each carrying its schema. The host builds the route tree from it; a nav strip reads viewNav, which is this without the payload",
+        routableViews:
+          'ResolvedView[] — every view that could render here, at its permanent segment — what routes are built from. Separate from spaceViews because it changes when a view is installed, not when a switch is flicked',
+        enabledViewIds:
+          "string[] — ids of the sections the community has turned on here. What a route body is gated on; not the nav list, which also drops this agent's hidden ones — hiding a section for yourself must not make its URL refuse you",
+        viewNav:
+          '{ id, segment, label, icon, path }[] — the sections as a nav strip reads them: enabled by the community, minus those this agent hid, in order. One source with the routes, so nav and routes cannot disagree',
+        mutedDids:
+          "string[] — DIDs this agent has muted, everywhere. Private, held in the root dataset. A feed filters on it before rendering: { $not: { $in: ['$post.author', { $store: 'spaceStore.mutedDids' }] } }. Hides on this screen only — a neighbourhood is writable by every member, so nothing here removes anything for anyone else",
+        mutedAgents:
+          'MutedAgent[] — the full mute records (did, description), for a settings list that wants the note as well as the DID',
+        readMarkers:
+          '{ nodeId, lastReadAt }[] — when this agent last read each node. No row means never read, so everything is unread. Read with $find on nodeId; a schema cannot index a keyed map by a context ref',
+        unreadNodeIds:
+          "string[] — ids of the containers in this space holding something newer than this agent's marker for them, or never read. What an unread dot reads: { $in: ['$channel.id', { $store: 'spaceStore.unreadNodeIds' }] }. Ids rather than counts, since a count needs every child's timestamp",
+        myMentions:
+          '{ id, author, createdAt }[] — nodes in this space that mention this agent, newest first. createdAt is the backend’s comparable timestamp. Filtered client-side, so right for a space and wrong for an inbox across many',
+        autoInterpret:
+          'boolean — whether this space has calls interpreted (extracted into records) as they happen. A community decision, off by default. Readable by every member; writing it is space-settings',
+        shareExtractionDetail:
+          'boolean — whether extraction passes in this space broadcast their prompt and response to every member, so interpretationStore.activity rows carry detail for everyone. A community decision, off by default',
         personalSpaces: 'array of Space objects (local/personal spaces; all Space fields)',
         sharedSpaces: 'array of Space objects (shared/neighbourhood spaces; all Space fields)',
         routeSpaceUnjoined:
@@ -871,6 +972,28 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '{ id, icon, label, active }[] — launchers for the modules enabled here and available in this space; what the host module rail renders. Pair with { $action: "spaceStore.launchModule", args: ["$mod.id"] }',
       },
       actions: {
+        moveChild:
+          '(childId: string, fromId: string, toId: string): moves a child between two collections — a card between kanban columns. Relinks the two children edges; the child itself is untouched',
+        setAttending:
+          "(nodeId: string, attending: boolean): joins or leaves a node's participant roster — an RSVP. Writes only this agent's own entry, so the roster stays conflict-free. Boolean, so a switch can pass $event.detail bare",
+        setAgentMuted:
+          '(did: string, muted: boolean, description?: string): mutes or unmutes an agent for this agent everywhere, with an optional note. Positively phrased so a switch can pass $event.detail bare',
+        markRead:
+          '(nodeId: string, spaceUuid?): marks a node read as of now, so it leaves unreadNodeIds. Silent on failure — a lost marker is a stale dot, not an error',
+        setAutoInterpret:
+          '(enabled: boolean, spaceUuid?): turns automatic call interpretation on or off for a space. Omit spaceUuid for the space on screen',
+        setShareExtractionDetail:
+          '(enabled: boolean, spaceUuid?): turns broadcasting of extraction prompts and responses on or off for a space. Omit spaceUuid for the space on screen',
+        setViewEnabled:
+          '(viewId: string, enabled: boolean, spaceUuid?): adds or removes a section from a space. The community’s decision — every member sees it. Omit spaceUuid for the space on screen',
+        reorderViews:
+          "(viewIds: string[], spaceUuid?): sets the whole section order at once — what a drag-reorder writes. Pair with we-sortable's onReorder",
+        setViewVisible:
+          '(viewId: string, visible: boolean, spaceUuid?): shows or hides a section for this agent in one space, without changing what the community has. Private. Positively phrased so a switch can pass $event.detail bare',
+        createRelationshipType:
+          '(config: Partial<RelationshipType>): names a kind of connection this community makes — "contradicts", "came out of". The counterpart to createSignalType; slug derived from name if blank',
+        removeSpaceFromGlobal:
+          "(spaceUuid: string): withdraws a space's listing from the global discovery space, leaving the space itself alone. Only its author may; removeSpace does this for you",
         createSpace:
           "(name, description, access: 'personal' | 'shared', discovery: 'hidden' | 'listed', avatarFile?, coverImageFile?, location?): creates a new space with full setup",
         joinSpace:
@@ -945,8 +1068,27 @@ export function generateStoresText(entries: StoreEntry[]): string {
           "string — the id of the last record created, empty before the first. Read it to act on what was just made; kept in the store because an $action's onSuccess can read a store and cannot hold a value",
         pendingLink:
           'the two records a pending connection joins ({ sourceId, sourceType, sourceLabel, targetId, targetType, targetLabel }), or null when the open form is an ordinary one. Read it to name what is being connected',
+        relationshipKind:
+          'string — which named RelationshipType the pending connection is, or empty for one carrying only a label. Held beside the draft because the kinds are a list to pick from, which a generated form cannot render',
       },
       actions: {
+        setRelationshipKind: '(id): sets which named kind the pending connection is; an empty value clears it',
+        placeOnBoard:
+          '(board: string, nodeId: string, nodeType: string, x: number, y: number): puts a record at a position on a board, or moves one already there. An upsert, so dragging twice leaves one coordinate. Pair with the graph’s onNodeDragEnd',
+        removeFromBoard:
+          '(board: string, nodeId: string): takes a record off a board, leaving the record itself alone. A card the board owns survives as an unplaced one in the tray',
+        resizeOnBoard:
+          "(board: string, payload): resizes a card on a board. Takes the graph's onNodeResize payload as it arrives; the size lives on the placement, so the same post on another board is unaffected",
+        setCardStyle:
+          "(board: string, nodeId: string, field: string, value): sets one presentation property of one card on one board — 'color', 'cardShape', 'contentScale'. Takes the field name so one action serves a swatch, a picker and a slider. Undone by taking the card off the board",
+        previewCardStyle:
+          '(nodeId: string, field: string, value): shows a presentation change without writing it — for a slider that reports while it moves. Pair with setCardStyle on release; both go through the same pending map so the card never jumps',
+        setTypeColor:
+          "(board: string, nodeType: string, color): sets the colour every card of one type is drawn in, on one board — the board's key, made writable. An empty colour clears it",
+        createOnBoard:
+          '(board: string, x?: number, y?: number): opens the create form and places whatever it makes onto that board, at the point given. Pair with the graph’s onCanvasDoubleClick',
+        createCardOnBoard:
+          "(editorState, { board, at? }): composes a card onto a board and records where it sits, as one write. Without `at` the card lands in the board's tray. The composer's counterpart to createOnBoard",
         openRecordForm:
           '(entity?): opens the create form — on that model, or on the first offered one. Clears any pending connection',
         connectNodes:
@@ -1037,11 +1179,75 @@ export function generateStoresText(entries: StoreEntry[]): string {
       state: {
         canUndo: 'boolean (true when there are schema edits that can be undone)',
         canRedo: 'boolean (true when there are undone schema edits that can be redone)',
+        messages:
+          "ChatMessage[] — the active AI session's messages (id, role: 'user' | 'assistant' | 'system', content, createdAt, status). Empty for a new chat",
+        isOpen: 'boolean — the AI chat panel is open',
+        isStreaming: 'boolean — an assistant reply is arriving; streamingContent holds what has arrived so far',
+        streamingContent: 'string — the partial assistant reply while isStreaming, empty otherwise',
+        apiKeyConfigured:
+          'boolean — the agent has an API key set, so sendMessage can work. Gate the composer on it and say what is missing rather than hiding it',
+        templateName: 'string — the name of the template being edited, for the editor’s own header',
+        templateIcon: 'string — its icon',
+        isReadOnly:
+          "boolean — the template on screen cannot be saved in place (a built-in, or somebody else's). Edits buffer as pending changes; offer Fork rather than Save. Answers for the template rendered, so do not use it to gate per-row controls in a list — switcherGroups carries `editable` per row",
+        hasPendingChanges: 'boolean — buffered edits exist against a read-only template, waiting for a fork to land in',
+        pickerOpen: 'boolean — the fork/fresh naming dialog is showing',
+        pickerAction: "'fork' | 'fresh' — which the open picker is for",
+        pickerDefaultName: 'string — what the picker’s name field starts with',
+        pickerDefaultIcon: 'string — what its icon field starts with',
+        pickerShowDestination:
+          'boolean — the picker offers a personal-or-space destination, which it can only do while a space is open to save into',
+        sessions: "ChatSession[] — this template's saved AI sessions (id, name, templateId), newest first",
+        activeSessionId: 'string | null — the session whose messages are shown',
+        contentMode:
+          "'preview' | 'visual' — whether the editor shows the rendered template or the visual editing surface",
+        schemaJson: 'string — the template being edited, serialised — what the code panel shows and edits',
+        isEditingTemplate: 'boolean — a template editing session is open',
+        editAction: "'edit' | 'fork' | 'fresh' | null — how the current template session began, null outside one",
+        codePanelOpen: 'boolean — the code panel is open',
+        themePanelOpen: 'boolean — the theme panel is open',
+        visualPanelOpen: 'boolean — the visual properties panel is open',
+        isEditingTheme: 'boolean — a theme editing session is open, independently of template editing',
+        aiDockEdge:
+          "DockEdge — where the AI panel opens ('left' | 'right' | 'top' | 'bottom'), or null while it is closed. An opening bid: the shell remembers wherever the user drags it",
+        codeDockEdge: 'DockEdge — the same, for the code panel',
+        themeDockEdge: 'DockEdge — the same, for the theme panel',
+        visualDockEdge: 'DockEdge — the same, for the visual panel',
+        editorDockSize: "DockSize — the opening size every editor panel shares ('sm' | 'md' | 'lg' | 'full')",
+        editorDockFloat: 'boolean — editor panels open floating over the content rather than pushing it aside',
       },
       actions: {
         toggle: '(): toggles the AI chat panel open/closed',
         undo: '(): undoes the last schema edit',
         redo: '(): redoes the last undone schema edit',
+        open: '(): opens the AI chat panel',
+        close: '(): closes it',
+        newChat: '(): starts a new AI session for this template and switches to it',
+        switchSession: '(sessionId: string): shows another saved session',
+        deleteSession: '(sessionId: string): deletes a saved session and its messages',
+        setContentMode:
+          "(mode: 'preview' | 'visual'): switches the editor between the rendered preview and the visual editing surface",
+        startFork: '(): opens the picker to copy the current template into one you own',
+        startFresh: '(): opens the picker to start an empty template',
+        confirmPicker:
+          "(name: string, icon: string, destination: 'personal' | 'space'): creates the fork or fresh template and enters editing on it",
+        cancelPicker: '(): closes the picker without creating anything',
+        enterTemplateEditing:
+          "(action?: 'edit' | 'fork' | 'fresh'): opens a template editing session on the template on screen. Omit action to edit in place; a read-only template buffers its edits",
+        exitTemplateEditing: '(): ends the template session. Buffered changes to a read-only template are dropped',
+        toggleCodePanel: '(): opens or closes the code panel',
+        openCodePanel: '(): opens the code panel',
+        closeCodePanel: '(): closes it',
+        toggleThemePanel: '(): opens or closes the theme panel',
+        openThemePanel: '(): opens the theme panel. Pair with themeStore.focusRole to land on a role',
+        closeThemePanel: '(): closes it',
+        toggleVisualPanel: '(): opens or closes the visual properties panel',
+        enterThemeEditing: '(): opens a theme editing session on the current theme, and the theme panel with it',
+        exitThemeEditing: '(): ends the theme session, discarding an unsaved draft',
+        toggleThemeEditing: '(): enters or exits theme editing — what a single button in chrome should call',
+        sendMessage:
+          '(text: string): sends a message to the assistant. Patches it proposes are applied to the template and land in undo history; the reply streams into streamingContent',
+        clearHistory: "(): deletes the active session's messages",
       },
     },
     shellStore: {
@@ -1052,8 +1258,48 @@ export function generateStoresText(entries: StoreEntry[]): string {
           'boolean — the space-settings panel is open. It configures whichever space is open, so it needs no id; bind a launcher\u2019s active state to this',
         layoutPinned:
           'Record<string, boolean> keyed by panel id — whether that panel has been dragged away from where meta.panels declared it. False for a panel no layout mentions, since there is nothing to go back to. Gate a "reset to layout" affordance on it rather than on a placement merely existing',
+        createSpaceOpen:
+          'boolean — the create-space modal is open. Shell state because more than one place opens it; bind the modal’s open prop to this and close it with setCreateSpaceOpen',
+        dockGeometry:
+          "Record<dockId, DockGeometry> — every registered panel's resolved box (top, left, width, height, edge, mode). Read a field as { $store: 'shellStore.dockGeometry.<id>.<field>' }; the frame a panel is wrapped in binds its geometry this way so a move rewrites props rather than remounting",
+        contentInset:
+          '{ top, right, bottom, left } in pixels — what the content viewport gives up to panels that displace it. Read it to keep your own fixed chrome clear of docked panels',
+        dockResizing:
+          'boolean — a panel is being dragged or resized right now. Suspend transitions while it is true so the edge tracks the cursor',
+        panelMaximised:
+          "boolean — some panel covers the whole window. The app's own chrome — sidebar, module rail — hides while it is true; a template's fixed chrome should too",
+        dockPlacement:
+          'Record<dockId, { snap, displace, canDisplace, … }> — where each panel is parked, for its frame to read: which of the eight snaps it is at, whether it displaces content, and whether it may. The state a position menu ticks; dockGeometry is the resulting box',
+        movingDock: 'string | null — the id of the panel being dragged, or null. What mounts the snap-target overlay',
+        activeSnap:
+          "SnapPoint | null — the snap the moving panel would take if dropped now ('top-left' | 'top' | … | 'left'), so that target can light up",
+        snapTargets:
+          '{ id, top, left, width, height }[] — every snap target’s box while a panel is being dragged, measured against the room left for it. Empty otherwise',
+        insertSlots:
+          "{ index, edge, mode: 'strip' | 'column', top, left, width, height }[] — the gaps in a strip of panels a dragged panel could join, while one is being dragged over it. Empty otherwise",
+        activeInsert: 'string | null — the slot a drop would take right now, as <edge>:<index>, or null',
       },
       actions: {
+        beginDockResize:
+          "(id: string): remembers a panel's current size so the drag that follows is measured from it. Wire it to we-resize-handle's resizestart",
+        resizeDock:
+          "(id: string, side: 'left' | 'right' | 'top' | 'bottom' | 'top-left' | …, dx: number, dy: number): applies a resize drag from that side or corner, in screen pixels since it began. Wire it to resize with $arg.detail.delta",
+        endDockResize: '(): ends the drag and persists the size',
+        fitDock:
+          '(id: string): shrinks a panel to the shape its content wants, keeping the width the user chose — only when the module declares an aspect for its panel',
+        beginDockMove:
+          '(id: string, pointerX: number, pointerY: number): begins moving a panel, remembering where it and the pointer started. A maximised panel shrinks back under the cursor',
+        moveDock: '(id: string, dx: number, dy: number): applies a move, in pixels from where beginDockMove was called',
+        endDockMove:
+          '(id: string): drops the panel — onto the snap or insert slot it is over, or where it is if that is nowhere',
+        snapDock:
+          "(id: string, snap: SnapPoint): parks a panel at one of the eight positions from a menu — the keyboard's way to move it",
+        insertDock:
+          "(id: string, edge: 'left' | 'right' | 'top' | 'bottom', position: number, mode?: 'strip' | 'column'): joins the strip of panels on that edge at that position, renumbering it — what a drop on a gap does",
+        toggleMaximiseDock:
+          '(id: string): covers the content region with the panel, or goes back to being a card. Nothing about where the panel was is overwritten while it is on',
+        toggleDockDisplace:
+          '(id: string): makes the panel push the content aside, or stop. A toggle rather than a setter because a menu item reports only that it was clicked',
         openShellView:
           '(id: string, path?: string): opens a shell overlay by id, optionally at a route inside it — the overlay keeps its own memory router, so this never touches the browser URL',
         setCreateSpaceOpen:
@@ -1073,10 +1319,44 @@ export function generateStoresText(entries: StoreEntry[]): string {
       state: {
         apps: 'RegisteredApp[] — list of registered external apps (id, name, image)',
         activeAppId: 'string | null — id of the currently active app, or null if none',
+        appsWithWe:
+          'RegisteredApp[] — the apps list with a WE entry prepended, for an app switcher that offers the way back to templates as one more row. Prepended here because a schema can $map a list but cannot add to it',
       },
       actions: {
         activateApp: '(id: string): activates an app and switches to its view',
         deactivateApp: '(): deactivates the current app and returns to the template view',
+      },
+    },
+    presenceStore: {
+      state: {
+        peers:
+          'PresentAgent[] — every peer known in the current space, offline included, each joined to its cached profile (did, name, avatar, tone, focus, activities, availability). Sorted by liveness',
+        online: 'PresentAgent[] — peers in the current space who are not offline — the "who is here" list',
+        onlineHere: "PresentAgent[] — peers at this agent's exact route path, for a per-page presence strip",
+        calls: 'Map<callId, PresentAgent[]> — the calls running in this space right now and who is in each',
+        available:
+          'boolean — a presence transport exists. False in a personal space, where there is nobody to be present to; gate presence UI on it rather than rendering an empty roster',
+        focusDepth:
+          "FocusDepth — how much of this agent's location peers are shown: the space only, the section, or the exact path",
+      },
+      actions: {
+        setFocusDepth: '(depth: FocusDepth): sets how much of your location peers see',
+        setAvailability:
+          "(availability: 'available' | 'busy' | 'away' | 'invisible'): sets the status published with your presence. 'invisible' stops publishing entirely rather than asking peers not to look",
+        setActivity:
+          '(activity: Activity): adds or replaces a published activity — a call, an edit, a work claim — keyed by its type and id',
+        clearActivity:
+          '(type: string, id?: string): withdraws a published activity; omit id to withdraw every one of that type',
+      },
+    },
+    model: {
+      state: {},
+      actions: {
+        create:
+          '(entity: string, fields: object, options?: { perspective?: string }): creates a model instance in the current space, or in the dataset a store path names (\'datasetStore.rootDataset\' for we-root models). See "Model mutations via $action" above',
+        update:
+          '(entity: string, id: string, fields: object, options?: { perspective?: string }): updates the named fields of one instance, leaving the rest',
+        delete: '(entity: string, id: string, options?: { perspective?: string }): deletes one instance. Irreversible',
       },
     },
     interpretationStore: {

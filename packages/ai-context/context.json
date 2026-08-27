@@ -5509,7 +5509,6 @@
       "actions": [
         "refresh",
         "createAccount",
-        "syncDisplay",
         "switchAccount",
         "removeAccount",
         "requestRemoval",
@@ -5533,7 +5532,7 @@
           "type": "string"
         }
       },
-      "actions": ["activateApp", "deactivateApp", "provideInstalledModules"]
+      "actions": ["activateApp", "deactivateApp"]
     },
     {
       "name": "datasetStore",
@@ -5575,9 +5574,6 @@
           "type": "object",
           "properties": ["id", "name", "sharedUri", "sharedId", "handle"]
         },
-        "testDataset": {
-          "type": "object"
-        },
         "globalDataset": {
           "type": "object",
           "properties": ["id", "name", "sharedUri", "sharedId", "handle"]
@@ -5585,9 +5581,6 @@
         "marketplaceDataset": {
           "type": "object",
           "properties": ["id", "name", "sharedUri", "sharedId", "handle"]
-        },
-        "agentSettings": {
-          "type": "object"
         },
         "globalSpaceConfigured": {
           "type": "boolean"
@@ -5603,25 +5596,9 @@
         },
         "marketplaceJoined": {
           "type": "boolean"
-        },
-        "getDatasetOrder": {
-          "type": "array"
         }
       },
-      "actions": [
-        "switchDataset",
-        "reorderDatasets",
-        "removeDataset",
-        "updateAgentSettings",
-        "clearCurrentDataset",
-        "cleanupSpaceSdna",
-        "trackDataset",
-        "onDatasetRemoved",
-        "initSystemDatasets",
-        "loadDatasets",
-        "subscribeToChanges",
-        "provideAutoInterpretGate"
-      ]
+      "actions": ["switchDataset", "reorderDatasets", "removeDataset", "cleanupSpaceSdna"]
     },
     {
       "name": "editorStore",
@@ -5728,10 +5705,8 @@
         "switchSession",
         "deleteSession",
         "setContentMode",
-        "onSchemaEdit",
         "undo",
         "redo",
-        "pushSnapshot",
         "startFork",
         "startFresh",
         "confirmPicker",
@@ -5752,8 +5727,7 @@
         "exitThemeEditing",
         "toggleThemeEditing",
         "sendMessage",
-        "clearHistory",
-        "setApiKey"
+        "clearHistory"
       ]
     },
     {
@@ -5857,9 +5831,6 @@
         },
         "relationshipKind": {
           "type": "string"
-        },
-        "pendingCardStyle": {
-          "type": "object"
         }
       },
       "actions": [
@@ -5874,7 +5845,6 @@
         "removeFromBoard",
         "resizeOnBoard",
         "setCardStyle",
-        "confirmPending",
         "previewCardStyle",
         "setTypeColor",
         "createOnBoard",
@@ -5894,7 +5864,7 @@
           "type": "object"
         }
       },
-      "actions": ["setNavigateFunction", "setCurrentPath", "navigate", "setParam"]
+      "actions": ["navigate", "setParam"]
     },
     {
       "name": "runtimeStore",
@@ -6080,30 +6050,9 @@
         "createAgentLoading": {
           "type": "boolean"
         },
-        "client": {
-          "type": "object"
-        },
-        "agentSession": {
-          "type": "object"
-        },
-        "lifecycle": {
-          "type": "object"
-        },
-        "backendPorts": {
-          "type": "object"
-        },
         "me": {
           "type": "object",
           "properties": ["did", "perspective", "directMessageLanguage"]
-        },
-        "port": {
-          "type": "number"
-        },
-        "token": {
-          "type": "string"
-        },
-        "serverUrl": {
-          "type": "string"
         },
         "host": {
           "type": "object",
@@ -6131,23 +6080,9 @@
         },
         "devTools": {
           "type": "boolean"
-        },
-        "ephemeralPort": {
-          "type": "object"
         }
       },
-      "actions": [
-        "setDevTools",
-        "login",
-        "createAgent",
-        "clearPasswordError",
-        "finishSetup",
-        "logout",
-        "retryBoot",
-        "refreshMe",
-        "markReady",
-        "onSessionUnlocked"
-      ]
+      "actions": ["setDevTools", "login", "createAgent", "clearPasswordError", "finishSetup", "logout", "retryBoot"]
     },
     {
       "name": "shapeStore",
@@ -6258,17 +6193,11 @@
         "activeShellView": {
           "type": "string"
         },
-        "takePendingPath": {
-          "type": "object"
-        },
         "createSpaceOpen": {
           "type": "boolean"
         },
         "spaceSettingsOpen": {
           "type": "boolean"
-        },
-        "spaceSettingsEdge": {
-          "type": "object"
         },
         "dockGeometry": {
           "type": "object"
@@ -6307,7 +6236,6 @@
       "actions": [
         "openShellView",
         "closeShellView",
-        "rememberShellPath",
         "setCreateSpaceOpen",
         "toggleSpaceSettings",
         "openSpaceSettings",
@@ -6511,9 +6439,7 @@
         "copyGuestLink",
         "getSubgroupMessages",
         "exportCallTranscript",
-        "removeSpaceFromGlobal",
-        "updateSpaceInCache",
-        "loadSpaces"
+        "removeSpaceFromGlobal"
       ]
     },
     {
@@ -6565,9 +6491,6 @@
         }
       },
       "actions": [
-        "provideSpaceLookup",
-        "updateTemplate",
-        "replaceTemplate",
         "switchTemplate",
         "removeTemplate",
         "deleteTemplate",
@@ -6582,14 +6505,9 @@
         "publishToSpace",
         "deleteMarketplaceTemplate",
         "publishToMarketplace",
-        "persistCurrentTemplate",
-        "preloadSpaceTemplates",
-        "loadSpaceTemplates",
         "refreshSpaceTemplates",
-        "clearSpaceTemplates",
         "isBuiltInTemplate",
-        "isInstalled",
-        "getTemplateModel"
+        "isInstalled"
       ]
     },
     {
@@ -6664,14 +6582,9 @@
         },
         "activeTemplateTheme": {
           "type": "object"
-        },
-        "saveEditingTheme": {
-          "type": "object"
         }
       },
       "actions": [
-        "registerHistoryCallbacks",
-        "applySnapshot",
         "setCurrentTheme",
         "setDefaultTheme",
         "focusRole",
@@ -6680,7 +6593,6 @@
         "previewThemeScope",
         "setThemeScopeGlobal",
         "setUseTemplateTheme",
-        "replaceTheme",
         "restorePersonalTheme",
         "clearSpaceTheme",
         "startEditing",
@@ -6690,6 +6602,7 @@
         "updateEditingMeta",
         "cancelEditing",
         "createAndStartEditing",
+        "saveEditingTheme",
         "saveEditingThemeAs",
         "deleteTheme",
         "installFromMarketplace",
@@ -6698,9 +6611,7 @@
         "deleteMarketplaceTheme",
         "publishToMarketplace",
         "publishToSpace",
-        "loadInstalledThemes",
-        "refreshSpaceThemes",
-        "requestNamedThemes"
+        "refreshSpaceThemes"
       ]
     },
     {

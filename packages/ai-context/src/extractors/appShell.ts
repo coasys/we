@@ -82,7 +82,42 @@ function isAction(typeText: string): boolean {
   const [, params, returns] = fn;
   if (params.trim()) return true;
   const r = returns.trim();
-  return r === 'void' || r === 'Promise<void>' || r === 'unknown' || r === 'Promise<unknown>';
+  // No accessor answers with a promise: `saveEditingTheme: () => Promise<ThemeData | null>` is a
+  // command that happens to return what it saved, and filing it as state described it as a value.
+  if (r.startsWith('Promise<')) return true;
+  return r === 'void' || r === 'unknown';
+}
+
+/**
+ * Members `templateSurface.ts` classifies as host wiring, per store.
+ *
+ * Wiring is never in any bag at any tier, so a schema cannot reach it — and a reference that names
+ * something no schema can reach is the one kind the generated context must not carry. Every such
+ * member used to be listed as `unknown`, which reads as a capability nobody has described rather
+ * than as a capability that does not exist for a template. Read from the classification rather than
+ * kept as a second list, so a member reclassified there disappears from here on the next run.
+ */
+export function extractWiringMembers(surfaceFile: string): Map<string, Set<string>> {
+  const project = new Project({ skipAddingFilesFromTsConfig: true });
+  const file = project.addSourceFileAtPath(surfaceFile);
+
+  const decl = file.getVariableDeclaration('TEMPLATE_SURFACE');
+  const surface = decl?.getInitializerIfKind(SyntaxKind.ObjectLiteralExpression);
+  if (!surface) throw new Error(`could not read TEMPLATE_SURFACE from ${surfaceFile}`);
+
+  const wiring = new Map<string, Set<string>>();
+  for (const storeProp of surface.getProperties()) {
+    if (!storeProp.isKind(SyntaxKind.PropertyAssignment)) continue;
+    const members = storeProp.getInitializerIfKind(SyntaxKind.ObjectLiteralExpression);
+    if (!members) continue;
+    const names = new Set<string>();
+    for (const member of members.getProperties()) {
+      if (!member.isKind(SyntaxKind.PropertyAssignment)) continue;
+      if (member.getInitializer()?.getText() === 'WIRING') names.add(member.getName());
+    }
+    if (names.size) wiring.set(storeProp.getName(), names);
+  }
+  return wiring;
 }
 
 /**

@@ -325,10 +325,10 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       — to exfiltrate it on paint. Any URL-valued prop is a network channel, so this is not fixable
       by watching for suspicious actions.
 
-      The root/global/marketplace handles go with it, and not only for tidiness: they are what a
-      `$query`'s `dataset` option resolves against, so leaving them reachable would let a template
-      read the same settings the long way round. `agent`-tier surfaces that genuinely need a
-      setting expose it as a named accessor rather than the whole record.
+      The root handle goes with it, and not only for tidiness: it is what a `$query`'s `dataset`
+      option resolves against, so leaving it reachable would let a template read the same settings
+      the long way round. `agent`-tier surfaces that genuinely need a setting expose it as a named
+      accessor rather than the whole record.
     */
     agentSettings: WIRING,
     /*
@@ -338,8 +338,23 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     */
     rootDataset: state('agent'),
     testDataset: WIRING,
-    globalDataset: WIRING,
-    marketplaceDataset: WIRING,
+    /*
+      The global discovery space and the marketplace — shared neighbourhoods holding nothing of this
+      agent's, so nothing here needs the protection `agentSettings` has.
+
+      They were `WIRING` alongside it, on the reasoning above, and that broke two pieces of chrome
+      without anything noticing: the create-space modal reads `globalDataset` to decide whether to
+      offer "list in the global space", and the marketplace shelf queries with
+      `dataset: 'datasetStore.marketplaceDataset'`. Both resolved to nothing — the modal never
+      offered the listing and the shelf's queries had no dataset to run against. The tier-fit test
+      did not see it because it walked neither the slot nodes nor a query's `dataset` path; it walks
+      both now.
+
+      `navigation` because a template already reaches the same space as `globalSpaceId`; `library`
+      because reading the marketplace's listing is the act the library group names.
+    */
+    globalDataset: state('navigation'),
+    marketplaceDataset: state('library'),
     updateAgentSettings: WIRING,
     clearCurrentDataset: WIRING,
     trackDataset: WIRING,
@@ -1183,6 +1198,17 @@ function collectReferences(value: unknown, into: { path: string; via: 'store' | 
   const node = value as Record<string, unknown>;
   if (typeof node.$store === 'string') into.push({ path: node.$store, via: 'store' });
   if (typeof node.$action === 'string') into.push({ path: node.$action, via: 'action' });
+  /*
+    A query's `dataset` is a store path too — `dataset: 'datasetStore.marketplaceDataset'` — and the
+    renderer resolves it against the same bag `$store` reads from. Left out of the walk, a dataset
+    the bag withholds is a query that quietly runs against nothing, which is how the marketplace
+    shelf came to render empty with every check passing. A query object always carries `entity`,
+    which is what tells this apart from any other prop that happens to be called `dataset`; the
+    `$`-prefixed forms (`$currentDataset`) are renderer bindings, not store members.
+  */
+  if (typeof node.entity === 'string' && typeof node.dataset === 'string' && !node.dataset.startsWith('$')) {
+    into.push({ path: node.dataset, via: 'store' });
+  }
 
   for (const entry of Object.values(node)) collectReferences(entry, into);
 }
