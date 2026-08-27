@@ -503,6 +503,56 @@ const shareSection: SchemaNode = {
             },
           ],
         },
+        // Guest invite link — zero-friction entry for someone without an account.
+        // Hidden when no server URL exists (local executor).
+        {
+          type: '$if',
+          props: {
+            condition: '$space.guestLink',
+            then: {
+              type: 'Column',
+              props: { gap: '100', mt: '200' },
+              children: [
+                {
+                  type: 'we-text',
+                  props: { variant: 'footnote', color: 'text-faint' },
+                  children: ['Or share a guest link — no account or download needed.'],
+                },
+                {
+                  type: 'Row',
+                  props: { gap: '200', ay: 'center', wrap: true },
+                  children: [
+                    {
+                      type: 'we-text',
+                      props: {
+                        variant: 'footnote',
+                        flex: '1',
+                        truncate: true,
+                        p: '200',
+                        bg: 'surface-sunken',
+                        r: '200',
+                        styles: { 'word-break': 'break-all' },
+                      },
+                      children: ['$space.guestLink'],
+                    },
+                    {
+                      type: 'we-button',
+                      props: {
+                        variant: 'secondary',
+                        size: 'sm',
+                        onClick: { $action: 'spaceStore.copyGuestLink', args: ['$space.uuid'] },
+                      },
+                      children: [
+                        { type: 'we-icon', props: { name: 'copy' } },
+                        { type: 'we-text', props: { variant: 'label' }, children: ['Copy guest link'] },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
       ],
     },
   },
