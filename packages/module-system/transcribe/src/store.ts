@@ -28,6 +28,10 @@ const FLUSH_AFTER_MS = 3_000;
 /**
  * The `CollectionBlock.kind` marking a collection as one call's record.
  *
+ * **The whole shape is written down in `docs/architecture/transcripts.md`**, along with the four
+ * readers that spell `'call'` themselves because no dependency edge lets them import this. Change
+ * the shape and every one of them has to change with it.
+ *
  * Replaces the old `TRANSCRIPT_TAG`, which wrote `'transcript'` into `TextBlock.tag` — a field that
  * carries the *Lexical* tag (`ul`, `h1`). Two things were wrong with that beyond the collision: the
  * value was written and never read back, and the blocks stayed loose in the space, so transcripts

@@ -33,7 +33,9 @@
  * next to authored prose.
  *
  * The record is created on the first thing said, not on the button press, so a call nobody speaks in
- * leaves no trace. See `store.ts` for the convergence rule when several agents record at once.
+ * leaves no trace. See `store.ts` for the convergence rule when several agents record at once, and
+ * `docs/architecture/transcripts.md` for the shape as a contract — four things read it now, and
+ * nothing enforces it.
  *
  * ## Who decides that it runs
  *
