@@ -1,41 +1,39 @@
 /* @refresh reload */
 
-// Polyfill crypto.randomUUID for non-secure contexts (plain HTTP over LAN/Tailscale).
-// crypto.getRandomValues works everywhere; only the randomUUID convenience method
-// requires a secure context.
-if (typeof crypto !== 'undefined' && !crypto.randomUUID) {
-  crypto.randomUUID = () => {
-    const buf = new Uint8Array(16);
-    crypto.getRandomValues(buf);
-    // Set version (4) and variant (RFC 4122) bits
-    buf[6] = (buf[6] & 0x0f) | 0x40;
-    buf[8] = (buf[8] & 0x3f) | 0x80;
-    const hex = [...buf].map((b) => b.toString(16).padStart(2, '0')).join('');
-    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-  };
-}
-
+// First, so it is in place before anything that might reach for it. See the module's own note on
+// why this cannot be written inline here.
+import './platform/randomUuidPolyfill';
 // Import global styles from app-shell
 import '@we/app-shell/shared/index.scss';
 
+import { writeGuestBootTarget } from '@we/app-shell/shared';
 import { App, PlatformProvider, type WeSeedFile } from '@we/app-shell/solid';
 import { render } from 'solid-js/web';
 
 import weSeed from '../../../we-seed.json';
 import { ad4mConnector } from './platform/ad4mConnector';
-import { createGuestConnector, parseGuestParams } from './platform/guestConnector';
+import { createGuestConnector, hasStoredSession, parseGuestParams } from './platform/guestConnector';
 import { webPlatform } from './platform/webPlatform';
 
 // Detect a guest invite URL before anything renders.
 // `/join/<spaceId>?host=<hostUrl>` → guest connector, auto-join after auth.
 const guestTarget = parseGuestParams();
-const connector = guestTarget ? createGuestConnector(guestTarget.hostUrl) : ad4mConnector;
 
-// The boot controller reads this to auto-join the target space after auth completes.
-// Stored here rather than in a store because it must survive the entire provider tree mount.
-if (guestTarget) {
-  (window as unknown as { __weGuestJoinTarget: string }).__weGuestJoinTarget = guestTarget.spaceId;
-}
+/*
+  A guest link is for somebody who has no account, and it is only allowed to act like one for them.
+
+  `connectAsGuest` writes the same localStorage keys every boot reads, so following it with a
+  session already stored would swap that identity for a throwaway one — silently, from a link
+  anybody can paste, with the original unreachable from inside the app afterwards. So an agent who
+  already has a session keeps their own connector; the link then behaves as the ordinary share link
+  does, taking them to the space's join gate to decide for themselves.
+*/
+const storedSession = hasStoredSession();
+const connector = guestTarget && !storedSession ? createGuestConnector(guestTarget.hostUrl) : ad4mConnector;
+
+// The boot controller reads this to reach the target space once auth completes. Stored on the
+// global rather than in a store because it must survive the entire provider tree mounting.
+if (guestTarget) writeGuestBootTarget({ spaceId: guestTarget.spaceId, autoJoin: !storedSession });
 
 const root = document.getElementById('root');
 
