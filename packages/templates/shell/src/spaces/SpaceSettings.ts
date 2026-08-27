@@ -552,7 +552,6 @@ const shareSection: SchemaNode = {
                         p: '200',
                         bg: 'surface-sunken',
                         r: '200',
-                        styles: { 'word-break': 'break-all' },
                       },
                       children: ['$space.guestLink'],
                     },

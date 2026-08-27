@@ -1,3 +1,4 @@
+import { buildGuestLink } from '@shared/guestLink';
 import { containmentPredicate, gatherTranscriptTurns, type TurnModel } from '@shared/interpretation/transcriptTurns';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { moduleRegistry, moduleStores, type ModuleSurface, moduleSurface } from '@shared/registries/moduleRegistry';
@@ -794,17 +795,16 @@ export function SpaceStoreProvider(props: ParentProps) {
   /**
    * A guest invite link: `/join/<sharedId>?host=<serverUrl>`.
    *
-   * Only meaningful on web with a reachable server URL. A local executor has no URL a guest could
-   * reach, so the link stays empty — the settings UI hides the button accordingly.
+   * The rule itself is `buildGuestLink`, which the web entry point's parser is the inverse of — a
+   * link this app offers has to be one this app would accept. Both halves have to be reachable by
+   * whoever *receives* it, which is more than "has a server URL": `session.serverUrl()` is set from
+   * the connection for every connector, a local executor included, so the earlier check let a
+   * desktop-shaped deployment publish `http://localhost:12000` as an invitation.
    */
   const guestLinkFor = (ds: AppDataset): string => {
-    if (!ds.sharedId) return '';
-    const url = session.serverUrl();
-    if (!url) return '';
     const onWeb = typeof window !== 'undefined' && window.location.protocol.startsWith('http');
     if (!onWeb) return '';
-    const host = encodeURIComponent(url);
-    return `${window.location.origin}/join/${ds.sharedId}?host=${host}`;
+    return buildGuestLink({ origin: window.location.origin, serverUrl: session.serverUrl(), sharedId: ds.sharedId });
   };
 
   /** The Space model behind a dataset id, for resolving what an override falls back to. */

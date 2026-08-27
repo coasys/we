@@ -6359,6 +6359,7 @@
             "canAdminister",
             "modules",
             "shareLink",
+            "guestLink",
             "defaultTemplateId",
             "defaultThemeId",
             "templateOverride",

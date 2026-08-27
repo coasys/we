@@ -2579,6 +2579,7 @@ export const contextData: ContextData = {
             'canAdminister',
             'modules',
             'shareLink',
+            'guestLink',
             'defaultTemplateId',
             'defaultThemeId',
             'templateOverride',

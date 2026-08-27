@@ -308,6 +308,7 @@ export const storeEntries: StoreEntry[] = [
           'canAdminister',
           'modules',
           'shareLink',
+          'guestLink',
           'defaultTemplateId',
           'defaultThemeId',
           'templateOverride',
@@ -368,6 +369,7 @@ export const storeEntries: StoreEntry[] = [
       'navigateToSpace',
       'canAdministerSpace',
       'copyShareLink',
+      'copyGuestLink',
       'getSubgroupMessages',
       'exportCallTranscript',
       'setModuleEnabled',
@@ -900,6 +902,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
         setSpaceDefaultTheme: '(themeId: string, spaceUuid?): sets the theme members see when they enter that space',
         copyShareLink:
           "(uuid: string): copies that space's share link to the clipboard, with a toast either way. No-op for a personal space, which has no global id and so no shareable link — read `spaceList[].shareLink` to decide whether to offer the control at all",
+        copyGuestLink:
+          "(uuid: string): copies that space's guest invite link — a URL that creates an account on the space's host and joins, with no sign-up and no download. Empty, and the control hidden, unless BOTH this app's origin and the node's URL are addresses a recipient could reach: a loopback address on either half resolves to the reader's own machine. Read `spaceList[].guestLink` to decide whether to offer it; `shareLink` is the one for somebody who already has WE",
         canAdministerSpace:
           '(uuid: string): whether this agent may change what every member of that space sees — true for a personal space, and for a shared one they authored. A UI affordance for deciding whether to offer the controls, NOT enforcement: a shared space is a neighbourhood every member can write to. Ask by name rather than comparing author to $me.did, so the answer can grow (multiple admins, roles) without every template changing',
         getSubgroupMessages:
