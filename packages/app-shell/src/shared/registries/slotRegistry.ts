@@ -39,6 +39,7 @@ import {
   templateEditor,
 } from '@we/template-shell';
 
+import { byOrderThenId, createRegistry } from './createRegistry';
 import { registerEditorDocks } from './editorDocks';
 import { registerShellDocks } from './shellDocks';
 
@@ -57,7 +58,19 @@ const ANCHOR_ORDER: CoreSlotAnchor[] = ['overlay', 'dock-left', 'dock-right', 'd
 
 const isCoreAnchor = (anchor: SlotAnchor): anchor is CoreSlotAnchor => (ANCHOR_ORDER as string[]).includes(anchor);
 
-const entries = new Map<string, SlotEntry>();
+/**
+ * Registration is observable, because chrome no longer all arrives before the first render.
+ *
+ * Modules register at boot, so `nodes()` read once was enough for years. A template declaring panels
+ * does not: its frames are registered reactively when a template says it has them, which is after
+ * the shell has been built. Without a channel to say so they were registered into a list nobody read
+ * again — the dock resolved geometry for a panel that never mounted, which looks exactly like the
+ * panel being broken rather than absent.
+ *
+ * The channel is `createRegistry`'s, shared with every other registry; it was a second hand-rolled
+ * copy of `dockRegistry`'s before that existed.
+ */
+const registry = createRegistry<SlotEntry>();
 
 /**
  * Splice module-declared anchors into a node tree.
@@ -158,72 +171,42 @@ function resolveValue(value: unknown): unknown {
   return value;
 }
 
-/**
- * Registration is observable, because chrome no longer all arrives before the first render.
- *
- * Modules register at boot, so `nodes()` read once was enough for years. A template declaring panels
- * does not: its frames are registered reactively when a template says it has them, which is after
- * the shell has been built. Without a channel to say so they were registered into a list nobody read
- * again — the dock resolved geometry for a panel that never mounted, which looks exactly like the
- * panel being broken rather than absent.
- *
- * Framework-neutral for the same reason `dockRegistry`'s is: this file is shared, so it publishes a
- * subscription and lets the host turn it into whatever reactive primitive it uses.
- */
-const listeners = new Set<() => void>();
-
-function announce(): void {
-  for (const listener of listeners) listener();
-}
-
 /** Subscribe to contribution changes. Returns an unsubscribe. */
-export function onSlotRegistryChanged(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
+export const onSlotRegistryChanged = registry.subscribe;
 
 export const slotRegistry = {
   /** Add a contribution. Replaces any entry with the same id, so re-registration is idempotent. */
-  register(entry: SlotEntry): void {
-    entries.set(entry.id, entry);
-    announce();
-  },
+  register: registry.register,
 
   /**
    * Swap the node of an existing entry, keeping its anchor and order. How a seed white-labels host
    * chrome — the mechanism `initializeIntegrations` already used for `bootScreen`.
    */
   replace(id: string, node: SchemaNode): void {
-    const existing = entries.get(id);
+    const existing = registry.get(id);
     if (!existing) return;
-    entries.set(id, { ...existing, node });
-    announce();
+    registry.register({ ...existing, node });
   },
 
   /** Remove a contribution — a module being disabled. */
   remove(id: string): void {
-    if (entries.delete(id)) announce();
+    registry.remove(id);
   },
 
-  get(id: string): SlotEntry | undefined {
-    return entries.get(id);
-  },
+  get: registry.get,
 
   /**
-   * Every contribution, in render order: by anchor, then by declared `order`, then by **id**.
-   *
-   * The id tiebreak is not cosmetic. Entries come out of a `Map`, so equal-order contributions would
-   * otherwise follow registration order — and chrome would silently rearrange depending on which
-   * module happened to load first.
+   * Every contribution, in render order: by anchor, then by declared `order`, then by id — the
+   * registry's own ordering, with the anchor's rank in front of it.
    */
   ordered(): SlotEntry[] {
-    return [...entries.values()]
+    return registry
+      .ordered()
       .filter((entry) => isCoreAnchor(entry.anchor))
       .sort(
         (a, b) =>
           ANCHOR_ORDER.indexOf(a.anchor as CoreSlotAnchor) - ANCHOR_ORDER.indexOf(b.anchor as CoreSlotAnchor) ||
-          (a.order ?? 0) - (b.order ?? 0) ||
-          a.id.localeCompare(b.id),
+          byOrderThenId(a, b),
       );
   },
 
@@ -235,9 +218,9 @@ export const slotRegistry = {
    * loose, instead of inside the bar it was meant for.
    */
   nodesFor(anchor: string): SchemaNode[] {
-    return [...entries.values()]
+    return registry
+      .ordered()
       .filter((entry) => entry.anchor === anchor)
-      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.id.localeCompare(b.id))
       .map((entry) => entry.node);
   },
 
@@ -247,13 +230,11 @@ export const slotRegistry = {
    * Distinct from {@link ordered}, which is the shell's top level and therefore core anchors only.
    * Anything that needs to see *all* contributions — clearing the registry, auditing it — wants this.
    */
-  all(): SlotEntry[] {
-    return [...entries.values()];
-  },
+  all: registry.all,
 
   /** Every anchor something has been contributed to, for reporting one nobody provides. */
   contributedAnchors(): string[] {
-    return [...new Set([...entries.values()].map((entry) => entry.anchor))].filter((a) => !isCoreAnchor(a));
+    return [...new Set(registry.all().map((entry) => entry.anchor))].filter((a) => !isCoreAnchor(a));
   },
 
   /** Just the nodes, ready to compose into the shell schema, with `$slot` markers filled in. */

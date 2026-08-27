@@ -29,6 +29,7 @@ import type { DockContribution } from '@we/module-shared';
 import type { SchemaNode } from '@we/schema-shared';
 
 import type { SnapPoint } from '../dockGeometry';
+import { createRegistry } from './createRegistry';
 
 export interface DockEntry extends DockContribution {
   /** Unique — `<moduleId>:<index>`, so one module can contribute more than one panel. */
@@ -81,10 +82,8 @@ export function registerHostChromeReserve(
 ): void {
   if (reserve) hostChromeReserves[id] = reserve;
   else delete hostChromeReserves[id];
-  announce();
+  registry.announce();
 }
-
-const entries = new Map<string, DockEntry>();
 
 /**
  * Registration is observable, because a plain object cannot be depended on.
@@ -100,56 +99,36 @@ const entries = new Map<string, DockEntry>();
  * reloading helped. Opening any *other* panel fixed it, because that changed something the memo did
  * depend on, and the re-run finally found the editor's store.
  *
- * Framework-neutral on purpose: this file is shared, so it publishes a subscription and lets the
- * host turn it into whatever reactive primitive it uses.
+ * The change channel used to live here, hand-rolled; `createRegistry` carries it now, for every
+ * registry, which is why the side tables above announce through the registry rather than through a
+ * listener set of their own.
  */
-const listeners = new Set<() => void>();
-function announce(): void {
-  for (const listener of listeners) listener();
-}
+const registry = createRegistry<DockEntry>();
 
 /** Subscribe to registration changes. Returns an unsubscribe. */
-export function onDockRegistryChanged(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
+export const onDockRegistryChanged = registry.subscribe;
 
 /** Publish a host store the dock entries can name — see `hostDockStores`. */
 export function registerHostDockStore(id: string, store: Record<string, unknown>): void {
   hostDockStores[id] = store;
-  announce();
+  registry.announce();
 }
 
 export function unregisterHostDockStore(id: string): void {
   delete hostDockStores[id];
-  announce();
+  registry.announce();
 }
 
 export const dockRegistry = {
-  register(entry: DockEntry): void {
-    entries.set(entry.id, entry);
-    announce();
-  },
-
-  remove(id: string): void {
-    entries.delete(id);
-    announce();
-  },
-
-  get(id: string): DockEntry | undefined {
-    return entries.get(id);
-  },
-
+  register: registry.register,
+  remove: registry.remove,
+  get: registry.get,
   /**
-   * Every dock, in a stable order.
-   *
-   * Ordered by declared `order` then by id, the same tiebreak `slotRegistry` uses and for the same
-   * reason: without it, registration order leaks into layout and two docks on the same edge would
-   * swap places depending on which module loaded first.
+   * Every dock, in a stable order — declared `order` then id, the registry's default. Without the
+   * tiebreak registration order leaks into layout and two docks on the same edge swap places
+   * depending on which module loaded first.
    */
-  ordered(): DockEntry[] {
-    return [...entries.values()].sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.id.localeCompare(b.id));
-  },
+  ordered: registry.ordered,
 };
 
 /**
