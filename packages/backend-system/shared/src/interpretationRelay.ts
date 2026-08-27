@@ -215,7 +215,17 @@ export function createInterpretationRelay(channel: EphemeralChannel, options: Re
     publish(activity) {
       mergeActivity(rows, activity);
       notify();
-      broadcast(activity);
+      /*
+        Only this peer's own passes go on the wire — the same rule `resend` applies.
+
+        A host feeds this everything its backend reports, and on a hosted executor that includes
+        passes run for *other* users of the same node, delivered with `mine: false` over the
+        perspective-scoped stream. Broadcasting those would put this agent's name on somebody
+        else's work on every other member's bar — the transport stamps the sender as the runner,
+        and that is the whole trust model. Merging them locally is still right: this peer did
+        observe them.
+      */
+      if (activity.mine) broadcast(activity);
     },
 
     rows: current,

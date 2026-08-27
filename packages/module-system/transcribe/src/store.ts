@@ -1345,14 +1345,21 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     activityCount: () => (interpretation?.activity() ?? []).filter((pass) => pass.running).length,
     settledCount: () => (interpretation?.activity() ?? []).filter((pass) => !pass.running).length,
     /**
-     * Whether any row on show belongs to somebody else and has nothing to open.
+     * Whether a peer's row is on show and the space has chosen not to share what is behind it.
      *
      * What the bar's one footnote is gated on. The explanation used to be a tooltip on every row,
      * which put it where nobody reads and repeated it per pass; the fact it conveys — a peer's
      * exchange never left their machine, and a space can choose otherwise — is worth saying exactly
-     * once, and only when there is a locked row to explain.
+     * once, and only while that choice is the reason.
+     *
+     * The *setting*, deliberately, rather than "a peer row with nothing to open". The latter is
+     * what this used to test, and it is true for reasons the footnote does not explain: a peer's
+     * pass that has not reached the model yet, a skipped pass that never had an exchange, a row
+     * broadcast before the switch synced to its runner. Every one of those kept the note on screen
+     * after somebody had turned sharing on — which is the one moment it is plainly wrong.
      */
-    hasLockedPass: () => (interpretation?.activity() ?? []).some((pass) => !pass.mine && !pass.hasDetail),
+    detailWithheld: () =>
+      !(interpretation?.detailShared?.() ?? false) && (interpretation?.activity() ?? []).some((pass) => !pass.mine),
     /**
      * Whether the status bar should exist at all.
      *

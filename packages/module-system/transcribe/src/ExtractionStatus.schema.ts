@@ -646,20 +646,22 @@ export const extractionStatus: SchemaNode = {
           explanation was repeated per pass. It also happened to be the box that stopped the caret
           reaching the right edge.
 
-          Shown only when there is a locked row to explain, and it names the way out: this is the
-          one moment somebody wants that setting, and settings is not where anyone looks for a
-          control they have never seen.
+          Shown only while the space's setting is the reason a peer's row will not open, and it
+          names the way out: this is the one moment somebody wants that setting, and settings is not
+          where anyone looks for a control they have never seen. Gated on the setting rather than on
+          a row lacking detail — see `detailWithheld` in the store for what the other gate showed.
+
+          One short line at footnote size. Two sentences at body size took more of the bar than the
+          rows it was explaining, for a fact that is the same on every pass.
         */
         {
           type: '$if',
           props: {
-            condition: { $store: 'modules.transcribe.hasLockedPass' },
+            condition: { $store: 'modules.transcribe.detailWithheld' },
             then: {
               type: 'we-text',
-              props: { fontSize: '200', color: 'text-faint' },
-              children: [
-                'Other people’s prompts stay on their machine. A space can share extraction detail in its settings.',
-              ],
+              props: { variant: 'footnote', color: 'text-faint' },
+              children: ['Prompts stay on each person’s machine — share them in space settings.'],
             },
           },
         },

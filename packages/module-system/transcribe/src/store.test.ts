@@ -1213,3 +1213,40 @@ describe('extracting by id', () => {
     expect(i.calls).toEqual(['call-a']);
   });
 });
+
+describe('the footnote about unshared prompts', () => {
+  /*
+    Gated on the space's setting, not on a row lacking detail. The old gate — "a peer row with
+    nothing to open" — was true for a peer's pass that had not reached the model yet, for a skipped
+    pass that never had an exchange, and for a row broadcast before the switch synced, so it kept
+    explaining the setting after somebody had turned it on.
+  */
+  const peerRow = { passId: 'p', runner: 'did:bo', mine: false, hasDetail: false };
+  const ownRow = { passId: 'q', runner: 'did:me', mine: true, hasDetail: false };
+
+  function withActivity(rows: object[], shared: boolean) {
+    return harness([], {
+      interpretation: {
+        available: () => true,
+        activity: () => rows,
+        detailShared: () => shared,
+      },
+    }).store;
+  }
+
+  it('explains a peer row while the space keeps prompts private', () => {
+    expect(withActivity([peerRow], false).detailWithheld()).toBe(true);
+  });
+
+  it('says nothing once the space shares detail, whatever the row carries', () => {
+    expect(withActivity([peerRow], true).detailWithheld()).toBe(false);
+  });
+
+  it('says nothing about one’s own rows — they never needed sharing', () => {
+    expect(withActivity([ownRow], false).detailWithheld()).toBe(false);
+  });
+
+  it('is silent with nothing on show', () => {
+    expect(withActivity([], false).detailWithheld()).toBe(false);
+  });
+});

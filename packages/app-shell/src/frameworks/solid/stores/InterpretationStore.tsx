@@ -164,8 +164,10 @@ function labelFor(phase: InterpretationPhase, name: string, mine: boolean, count
     // "Running interpretation" tells somebody staring at it nothing they can act on.
     case 'thinking':
       return `${who} waiting on the model`;
+    // Second person for one's own pass, and "they" for anyone else's: the subject of the sentence
+    // is the runner, and "what it found" read as though a machine had run off with the work.
     case 'writing':
-      return `${who} writing what it found`;
+      return `${who} writing what ${mine ? 'you' : 'they'} found`;
     case 'done':
       // "Nothing to add" rather than "0 records": a pass over a conversation with no commitments in
       // it succeeded, and a zero reads as a failure.
@@ -397,6 +399,15 @@ export function InterpretationStoreProvider(props: ParentProps) {
   provideModuleHostServices({
     interpretationAvailable: () => capable(),
     interpretationActivity: () => activity(),
+    /*
+      The space's sharing decision, for a module explaining why a peer's row will not open.
+
+      Published rather than left for the module to infer from `hasDetail`: a row can lack detail
+      for reasons that have nothing to do with the setting — a peer's pass that has not reached the
+      model yet, a skipped pass that never had an exchange, a row broadcast before the setting
+      synced — and gating an explanation of the *setting* on those showed it with sharing on.
+    */
+    interpretationDetailShared: () => shareDetail(),
   });
 
   const store: InterpretationStore = {

@@ -783,6 +783,15 @@ export interface ModuleInterpretationAccess {
    * started a pass, so its lifetime is the host's. What a module has is a place to render it.
    */
   activity: () => InterpretationActivitySummary[];
+  /**
+   * Whether this space shares each pass's model exchange with every member.
+   *
+   * A space setting, read-only and reactive. It exists beside {@link activity} because a row's
+   * `hasDetail` is not a proxy for it: a peer's pass has no prompt until it reaches the model, a
+   * skipped pass never has one, and a row broadcast before the setting synced carries none — so a
+   * module explaining "why can't I open this" must ask about the setting, not about the row.
+   */
+  detailShared: () => boolean;
 
   /** Suggestions staged in this dataset, awaiting a human. */
   proposals: () => Promise<InterpretationProposal[]>;
