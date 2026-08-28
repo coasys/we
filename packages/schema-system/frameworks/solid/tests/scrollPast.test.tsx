@@ -1,13 +1,32 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { cleanup, render, waitFor } from '@solidjs/testing-library';
 import { markReactive, type SchemaNode } from '@we/schema-shared';
 import { createSignal } from 'solid-js';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { RenderSchema } from '../src/SchemaRenderer';
 
+type Callback = (entries: { isIntersecting: boolean }[]) => void;
+const observers: { target: Element; root: Element | null; callback: Callback; disconnected: boolean }[] = [];
+
+beforeEach(() => {
+  observers.length = 0;
+  (globalThis as any).IntersectionObserver = class {
+    constructor(
+      private callback: Callback,
+      private options: { root?: Element | null },
+    ) {}
+    observe(target: Element) {
+      observers.push({ target, root: this.options?.root ?? null, callback: this.callback, disconnected: false });
+    }
+    disconnect() {
+      for (const o of observers) if (o.callback === this.callback) o.disconnected = true;
+    }
+  };
+});
 afterEach(() => {
   cleanup();
-  vi.restoreAllMocks();
+  delete (globalThis as any).IntersectionObserver;
 });
 
 const miniProfile: SchemaNode = {
@@ -26,42 +45,37 @@ const miniProfile: SchemaNode = {
   children: [{ type: 'span', children: ['Space'] }],
 };
 const sentinel: SchemaNode = { type: 'div', props: { id: 'sentinel' }, styles: { height: '0px' } };
-/** The bar the mini-profile lives in — sticky, with padding around its contents as the real one has. */
-const stickyBar: SchemaNode = { type: 'div', styles: { position: 'sticky', padding: '16px' }, children: [miniProfile] };
-
-/** jsdom has no layout: give the sentinel and the sticky bar the positions a scroll would. */
-function place(container: HTMLElement, sentinelTop: number, barTop: number) {
-  const marker = container.querySelector('#sentinel')!;
-  const bar = [...container.querySelectorAll('div')].find((el) => el.style.position === 'sticky')!;
-  const wrapper = [...container.querySelectorAll('div')].find((el) => el.style.display === 'grid')!;
-  const rect = (top: number, height: number) =>
-    ({ top, bottom: top + height, left: 0, right: 100, width: 100, height }) as DOMRect;
-  vi.spyOn(marker, 'getBoundingClientRect').mockImplementation(() => rect(sentinelTop, 0));
-  vi.spyOn(bar, 'getBoundingClientRect').mockImplementation(() => rect(barTop, 72));
-  // Inside the bar's padding: at rest the wrapper's top is already below the sentinel, which is
-  // why the bar, not the wrapper, is the edge that counts.
-  vi.spyOn(wrapper, 'getBoundingClientRect').mockImplementation(() => rect(barTop + 16, 40));
-  window.dispatchEvent(new Event('scroll'));
-  return wrapper;
-}
+/** The box the template scrolls in, below the app's own chrome. */
+const scroller = (children: SchemaNode[]): SchemaNode => ({
+  type: 'div',
+  props: { id: 'scroller' },
+  styles: { 'overflow-y': 'auto' },
+  children,
+});
+const live = () => observers.filter((o) => !o.disconnected);
+const wrapperIn = (container: HTMLElement) =>
+  [...container.querySelectorAll('div')].find((el) => el.style.display === 'grid')!;
 
 describe('$animate scrollPast — a sticky mini-profile keyed to a sentinel', () => {
-  it('stays closed while the sentinel sits above it, and opens once the sentinel scrolls behind it', async () => {
+  it('observes the sentinel against the box it scrolls in, not the window', () => {
     const { container } = render(() => (
-      <RenderSchema node={{ type: 'div', children: [sentinel, stickyBar] }} stores={{}} registry={{}} />
+      <RenderSchema node={scroller([sentinel, miniProfile])} stores={{}} registry={{}} />
     ));
-    // The header is still on screen: the sentinel touches the bar's top edge.
-    const wrapper = place(container, 400, 400);
-    await new Promise((r) => setTimeout(r, 30));
+    expect(live().map((o) => o.target.id)).toEqual(['sentinel']);
+    // Node-level `styles` land on a wrapper div, so the scrolling box is the one carrying the overflow.
+    const box = [...container.querySelectorAll('div')].find((el) => el.style.overflowY === 'auto');
+    expect(live()[0].root).toBe(box);
+  });
+
+  it('opens once the sentinel is scrolled out of the box, and closes when it returns', async () => {
+    const { container } = render(() => (
+      <RenderSchema node={scroller([sentinel, miniProfile])} stores={{}} registry={{}} />
+    ));
+    const wrapper = wrapperIn(container);
     expect(wrapper.style.gridTemplateColumns).toBe('0fr');
-
-    // The bar has stuck and the header kept going: the sentinel is now under the bar, still on
-    // screen — the case a viewport-based observer never reported.
-    place(container, 20, 60);
+    live()[0].callback([{ isIntersecting: false }]);
     await waitFor(() => expect(wrapper.style.gridTemplateColumns).toBe('1fr'));
-
-    // Scrolled back up.
-    place(container, 400, 400);
+    live()[0].callback([{ isIntersecting: true }]);
     await waitFor(() => expect(wrapper.style.gridTemplateColumns).toBe('0fr'));
   });
 
@@ -70,15 +84,28 @@ describe('$animate scrollPast — a sticky mini-profile keyed to a sentinel', ()
     // before it existed left the mini-profile closed for good.
     const [ready, setReady] = createSignal(false);
     const stores = { spaceStore: { ready: markReactive(ready) } };
-    const node: SchemaNode = {
-      type: 'div',
-      children: [{ type: '$if', props: { condition: { $: 'spaceStore.ready' }, then: sentinel } }, stickyBar],
-    };
-    const { container } = render(() => <RenderSchema node={node} stores={stores} registry={{}} />);
-    expect(container.querySelector('#sentinel')).toBeNull();
+    const node = scroller([
+      { type: '$if', props: { condition: { $: 'spaceStore.ready' }, then: sentinel } },
+      miniProfile,
+    ]);
+    render(() => <RenderSchema node={node} stores={stores} registry={{}} />);
+    expect(live()).toHaveLength(0);
     setReady(true);
-    await waitFor(() => expect(container.querySelector('#sentinel')).not.toBeNull());
-    const wrapper = place(container, -50, 60);
-    await waitFor(() => expect(wrapper.style.gridTemplateColumns).toBe('1fr'));
+    await waitFor(() => expect(live().map((o) => o.target.id)).toEqual(['sentinel']));
+  });
+
+  it('re-observes a sentinel that is replaced', async () => {
+    const [generation, setGeneration] = createSignal(1);
+    const stores = { spaceStore: { generation: markReactive(generation) } };
+    // Two arms rendering the same sentinel: switching remounts it, as a space switch remounts the header.
+    const node = scroller([
+      { type: '$if', props: { condition: { $: 'spaceStore.generation == 1' }, then: sentinel, else: sentinel } },
+      miniProfile,
+    ]);
+    const { container } = render(() => <RenderSchema node={node} stores={stores} registry={{}} />);
+    const first = container.querySelector('#sentinel');
+    setGeneration(2);
+    await waitFor(() => expect(container.querySelector('#sentinel')).not.toBe(first));
+    await waitFor(() => expect(live().map((o) => o.target)).toEqual([container.querySelector('#sentinel')]));
   });
 });
