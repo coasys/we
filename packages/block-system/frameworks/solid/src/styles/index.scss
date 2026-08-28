@@ -2,10 +2,8 @@
 @use './blocks.scss';
 @use './block-inputs.scss';
 
-// Components
-@use '../components/BlockComposer.scss';
+// Editor chrome
+@use './editor.scss';
+@use './handles.scss';
+@use './placeholders.scss';
 @use '../components/BlockMenu/BlockMenu.scss';
-
-// Plugins
-@use '../plugins/BlockHandlesPlugin/BlockHandlesPlugin.scss';
-@use '../plugins/PlaceholdersPlugin/PlaceholdersPlugin.scss';

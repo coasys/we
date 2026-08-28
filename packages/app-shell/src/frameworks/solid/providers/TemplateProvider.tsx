@@ -26,7 +26,7 @@ import {
 import type { Stores } from '@solid/types';
 import { Route, Router } from '@solidjs/router';
 import { manifestEntries } from '@we/backend-shared';
-import { BlockDatasetProvider } from '@we/block-solid';
+import { BlockHostProvider } from '@we/block-solid';
 import { toastService } from '@we/components/solid';
 import type { DatasetProxy } from '@we/models';
 import { getModel } from '@we/models';
@@ -558,7 +558,16 @@ export default function TemplateProvider() {
   // 1. Route components (called as direct functions in buildRoutes) get context via their reactive owner
   // 2. Shell chrome components like InspectorPanel (in templateEditor) get context too
   return (
-    <BlockDatasetProvider dataset={() => (datasetStore.currentDataset()?.handle as never) ?? null}>
+    <BlockHostProvider
+      dataset={() => (datasetStore.currentDataset()?.handle as never) ?? null}
+      // Who a composer here can @mention: the members of the space on screen. The host's
+      // knowledge, provided once, so no template names a store to get it.
+      mentions={() =>
+        spaceStore
+          .members()
+          .map((m) => ({ did: m.did, name: m.name || m.handle || m.did, avatar: m.avatar || undefined }))
+      }
+    >
       <VisualEditorProvider value={visualEditorCtx}>
         {/* Shell chrome — stable, never remounts. Chrome tier: this is host-authored. */}
         <RenderSchema node={shellSchema} stores={chromeBag} registry={registry} />
@@ -586,6 +595,6 @@ export default function TemplateProvider() {
            on-top-of-template paint order) so switching templates doesn't reload embedded apps. */}
         <PersistentAppFrames stores={stores} />
       </VisualEditorProvider>
-    </BlockDatasetProvider>
+    </BlockHostProvider>
   );
 }

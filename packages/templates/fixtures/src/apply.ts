@@ -12,7 +12,7 @@
  * load; without that property a screenshot script could not navigate to a route without first
  * loading the page to discover it, and the second load would produce different ids anyway.
  */
-import { editorState, textContent } from './editorState';
+import { editorState, textBlockId, textContent } from './editorState';
 import type { Fixture, FixtureNode } from './types';
 
 /** The pieces of the host a fixture needs. Passed in rather than imported, so this stays neutral. */
@@ -147,7 +147,7 @@ export async function applyFixture(deps: ApplyDeps, fixture: Fixture): Promise<A
       mode: node.mode ?? (hasBody ? 'document' : 'feed'),
       ...(node.title ? { title: node.title } : {}),
       ...(node.description ? { description: node.description } : {}),
-      ...(hasBody ? { editorState: editorState(node.body!), textContent: textContent(node.body!) } : {}),
+      ...(hasBody ? { editorState: editorState(node.body!, id), textContent: textContent(node.body!) } : {}),
       // Both are overrides of values the entity layer would otherwise stamp with `selfId()` and
       // `now`. Authorship is the entire reason a fixture looks like a community rather than a
       // diary, and a feed where every row was written this instant sorts arbitrarily and reads
@@ -161,6 +161,20 @@ export async function applyFixture(deps: ApplyDeps, fixture: Fixture): Promise<A
     // Containment is a link, not a field: `we://children` is what a `scope` drill-down and the
     // `$latestChild` projection both traverse.
     if (parent?.addChildren) await parent.addChildren(instance);
+
+    // The models are the composition; the blob above is their projection. One `TextBlock` per
+    // paragraph, keyed to match the blob, so a reader that walks `children` (the graph, a
+    // transcript, a regeneration of the blob) finds the same content the blob carries.
+    for (const [index, paragraph] of (node.body ?? []).entries()) {
+      const block = await getModel('TextBlock').create(dataset, {
+        id: textBlockId(id, index),
+        type: 'paragraph',
+        text: paragraph,
+        ...(node.author ? { author: node.author } : {}),
+        ...(node.createdAt ? { createdAt: node.createdAt, timestamp: node.createdAt } : {}),
+      });
+      await instance.addChildren?.(block);
+    }
 
     for (const [index, image] of (node.images ?? []).entries()) {
       const block = await getModel('ImageBlock').create(dataset, {

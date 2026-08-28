@@ -1,93 +1,127 @@
-import { ListItemNode, ListNode } from '@lexical/list';
-import { HeadingNode, QuoteNode } from '@lexical/rich-text';
-import type { BlockDataset, BlockRendererProps, SerializedBlockNode } from '@we/block-shared';
-import { decodeEditorState, resolveExpressionAddresses } from '@we/block-shared';
+import type { BlockRendererProps, ContentBlock, TextContentBlock } from '@we/block-shared';
+import {
+  decodeEditorState,
+  getBlockRegistration,
+  isCollectionBlock,
+  isTextBlock,
+  registerCoreBlocks,
+  resolveExpressionAddresses,
+} from '@we/block-shared';
 import type { ColumnProps } from '@we/components/solid';
 import { Column } from '@we/components/solid';
-import {
-  ContentEditable,
-  LexicalComposer,
-  LexicalErrorBoundary,
-  RichTextPlugin,
-  useLexicalComposerContext,
-} from 'lexical-solid';
-import { createEffect } from 'solid-js';
+import { DOMSerializer } from 'prosemirror-model';
+import type { JSX } from 'solid-js';
+import { createMemo, createResource, For, Match, Switch } from 'solid-js';
+import { Dynamic } from 'solid-js/web';
 
-import { blockNodeClasses } from '../nodes';
-import { useBlockDataset } from './BlockDataset';
+import { registerCoreBlockComponents } from '../core-block-components';
+import { blockToNode } from '../editor/converter';
+import { getBlockSchema } from './BlockComposer';
+import { useDisplayOverride } from './BlockDisplayOverrides';
+import { useBlockHost } from './BlockHost';
+import { CollectionDisplay } from './CollectionBlock/CollectionDisplay';
+
+registerCoreBlocks();
+registerCoreBlockComponents();
 
 type Props = Omit<BlockRendererProps, 'ax' | 'ay'> & Pick<ColumnProps, 'ax' | 'ay'> & { rootClass?: string };
 
-function LoadEditorState(props: { editorState?: SerializedBlockNode; perspective?: BlockDataset | null }) {
-  const [editor] = useLexicalComposerContext();
-
-  // Read props.editorState/props.perspective inside the effect (not destructured
-  // in the function signature) — Solid component functions run once, not on every
-  // update, so destructuring here would freeze the initial value and the effect
-  // would never re-run when a post is edited and the same BlockRenderer instance
-  // is reused (reconcile({ key: 'id' }) deliberately keeps it mounted).
-  createEffect(() => {
-    const editorState = props.editorState;
-    // Read inside the effect, like everything else here: the host's current dataset changes when the
-    // user moves between spaces, and a block must not keep resolving against the one they left.
-    const perspective = useBlockDataset(props.perspective);
-    if (!editorState || !editor) return;
-
-    const rootNode: SerializedBlockNode | null =
-      typeof editorState === 'string' ? decodeEditorState(editorState) : editorState;
-    if (!rootNode) return;
-
-    const load = async (node: SerializedBlockNode) => {
-      const resolved = perspective ? await resolveExpressionAddresses(perspective, node) : node;
-      try {
-        // Editor-produced state always carries the `version` Lexical requires.
-        const lexicalState = editor.parseEditorState({ root: resolved } as Parameters<
-          typeof editor.parseEditorState
-        >[0]);
-        editor.setEditorState(lexicalState);
-      } catch (error) {
-        console.error('Error loading editor state:', error);
-      }
-    };
-
-    load(rootNode).catch((error) => console.error('Error resolving expression addresses:', error));
-  });
-
-  return null;
+let serializer: DOMSerializer | null = null;
+function domSerializer(): DOMSerializer {
+  const schema = getBlockSchema();
+  if (!serializer || serializer.nodes !== DOMSerializer.fromSchema(schema).nodes)
+    serializer = DOMSerializer.fromSchema(schema);
+  return serializer;
 }
 
-/** @superclass DesignSystemElement */
+/**
+ * A text block as the exact DOM the composer would render it as — the schema's `toDOM` is the one
+ * definition, so the two cannot drift. No editor is instantiated: this is a serializer over a node.
+ */
+function TextBlockElement(props: { block: TextContentBlock }): JSX.Element {
+  const element = createMemo(() => {
+    const node = blockToNode(getBlockSchema(), props.block);
+    return node ? (domSerializer().serializeNode(node) as HTMLElement) : null;
+  });
+  return <>{element()}</>;
+}
+
+function CustomBlockElement(props: { block: ContentBlock }): JSX.Element {
+  const Override = useDisplayOverride(props.block._type);
+  const Display = () =>
+    Override ??
+    (getBlockRegistration(props.block._type)?.display as ((p: Record<string, unknown>) => JSX.Element) | undefined);
+  const fields = () => {
+    const { _type: _t, _key: _k, ...rest } = props.block;
+    return rest;
+  };
+  return (
+    <div class="we-block" data-block-type={props.block._type}>
+      <Switch fallback={<div class="we-unknown-block">Unsupported block: {props.block._type}</div>}>
+        <Match when={Display()}>{(D) => <Dynamic component={D()} {...fields()} />}</Match>
+      </Switch>
+    </div>
+  );
+}
+
+/** A list of blocks, walked — text through the schema's serializer, custom blocks through their display components. */
+export function Blocks(props: { blocks: readonly ContentBlock[] }): JSX.Element {
+  return (
+    <For each={props.blocks}>
+      {(block) => (
+        <Switch fallback={<CustomBlockElement block={block} />}>
+          <Match when={isTextBlock(block) ? block : null}>{(b) => <TextBlockElement block={b()} />}</Match>
+          <Match when={isCollectionBlock(block) ? block : null}>
+            {(b) => (
+              <CollectionDisplay
+                layout={b().layout}
+                columnCount={b().columnCount}
+                gap={b().gap}
+                content={b().content}
+              />
+            )}
+          </Match>
+        </Switch>
+      )}
+    </For>
+  );
+}
+
+/**
+ * Read-only rendering of a composition: a walker over the blocks, no editor. Accepts the
+ * `data:…;base64,…` string a resolved file field reads as, already-decoded blocks, or a legacy
+ * tree, and resolves stored file addresses against the host's dataset before drawing.
+ *
+ * @superclass DesignSystemElement
+ */
 export function BlockRenderer(props: Props) {
-  // editorState/perspective are read via props.* directly below (not destructured)
-  // so LoadEditorState keeps receiving a live, reactive value when an existing
-  // post is edited and this same component instance is reused — see
-  // LoadEditorState's own comment for why destructuring breaks that.
-  const { width = '100%', rootClass, editorState: _editorState, perspective: _perspective, ...rest } = props;
+  const host = useBlockHost();
+  const { width = '100%', rootClass } = props;
+
+  const [blocks] = createResource(
+    () => ({ state: props.editorState, dataset: props.perspective ?? host.dataset() }),
+    async ({ state, dataset }) => {
+      if (state === undefined || state === null) return [] as ContentBlock[];
+      const decoded = decodeEditorState(state) ?? [];
+      if (!dataset) return decoded;
+      try {
+        return await resolveExpressionAddresses(dataset, decoded);
+      } catch (error) {
+        console.error('BlockRenderer: error resolving expression addresses', error);
+        return decoded;
+      }
+    },
+  );
+
   const themeRoot = rootClass
     ? `we-block-renderer we-block-content ${rootClass}`
     : 'we-block-renderer we-block-content';
-  const initialConfig = {
-    namespace: 'BlockRenderer',
-    theme: { root: themeRoot },
-    nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, ...blockNodeClasses] as const,
-    editable: false, // If supported
-    onError: (error: Error) => console.error('Renderer Error:', error),
-  };
 
   return (
-    <Column class="we-block-renderer-wrapper" width={width} {...rest}>
-      <LexicalComposer initialConfig={initialConfig}>
-        <LoadEditorState editorState={props.editorState} perspective={props.perspective} />
-        <RichTextPlugin
-          contentEditable={
-            <div>
-              <ContentEditable readOnly={true} />
-            </div>
-          }
-          errorBoundary={LexicalErrorBoundary}
-        />
-        {/* No editing/history/custom plugins */}
-      </LexicalComposer>
+    <Column class="we-block-renderer-wrapper" width={width} ax={props.ax} ay={props.ay}>
+      <div class={themeRoot}>
+        <Blocks blocks={blocks() ?? []} />
+      </div>
     </Column>
   );
 }

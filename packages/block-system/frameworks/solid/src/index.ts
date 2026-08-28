@@ -1,9 +1,9 @@
 export * from './components';
 export * from './components/BlockComposer';
-export * from './components/BlockDataset';
+export * from './components/BlockHost';
 export * from './components/BlockDisplayOverrides';
-export * from './components/BlockRenderer';
+export { BlockRenderer, Blocks } from './components/BlockRenderer';
 export * from './core-block-components';
-export * from './nodes/createBlockNodeClass';
-export * from './nodes';
-export { INSERT_BLOCK_COMMAND } from './helpers';
+export { createBlockSchema } from './editor/schema';
+export { blocksToNodes, blockToNode, contentToDoc, docToContent, nodeToBlock } from './editor/converter';
+export { insertBlockAtSelection, insertBlocks, moveBlock, transformBlock } from './editor/commands';

@@ -12,8 +12,8 @@ export const CollectionBlock: CoreEntityDef = {
        * What this collection *is* — `'call'`, `'notes'`, later `'board'`. Semantic, and deliberately
        * separate from `type`.
        *
-       * `type` is the **Lexical node type** (`root`, `collection`, …), which the serializer round-trips
-       * and the editor interprets. It has been doing double duty as a discriminator — `type: 'root'`
+       * `type` is the **structural node type** (`root` for a composition, `collection` for a nested
+       * one), which the serializer round-trips. It has been doing double duty as a discriminator — `type: 'root'`
        * currently means "is a post" — and overloading it further would put semantic values into a
        * structural field, which is the mistake the transcribe module made writing `tag: 'transcript'`
        * into `TextBlock.tag` (a field that means `ul`/`h1`).
@@ -23,7 +23,8 @@ export const CollectionBlock: CoreEntityDef = {
        * whereas tag membership would need a reverse traversal WE does not wire up. Tags remain for user
        * taxonomy — what a thing is *about*, not what surface owns it.
        *
-       * Excluded from Lexical serialization via `AD4M_ONLY_PROPS`, so it never leaks into `editorState`.
+       * Never written into `editorState`: the blob is a projection of the children, and `kind` is a
+       * fact about the collection, not its content.
        *
        * Posts predate this field and are still identified by `type: 'root'`; the composer now also writes
        * `kind: 'post'` so new posts carry both, and the read side can switch once the legacy set stops

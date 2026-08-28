@@ -9,7 +9,7 @@ const h3 = { type: 'h3', label: 'Heading 3', icon: 'text-h-three', md: '###' };
 const quote = { type: 'quote', label: 'Quote', icon: 'quotes', md: '>' };
 const ul = { type: 'ul', label: 'Bullet List', icon: 'list-bullets', md: '-' };
 const ol = { type: 'ol', label: 'Number List', icon: 'list-numbers', md: '1.' };
-// const cl = { type: 'cl', label: 'Check List', icon: 'list-checks', md: '[]' };
+const cl = { type: 'cl', label: 'Check List', icon: 'list-checks', md: '[]' };
 
 // // Collection blocks
 const collection = { type: 'collection', label: 'Collection', icon: 'squares-four', md: '[]' };
@@ -28,7 +28,7 @@ const file = { type: 'file', label: 'File', icon: 'paperclip', md: '!!!!!' };
 // const game = { type: 'game', label: 'game', icon: 'game-controller', md: '' };
 
 const categories = [
-  { title: 'Text', blocks: [p, h1, h2, h3, quote, ul, ol] },
+  { title: 'Text', blocks: [p, h1, h2, h3, quote, ul, ol, cl] },
   { title: 'Collection', blocks: [collection] },
   { title: 'Media', blocks: [url, image, audio, video, file] },
   // { title: 'Social', blocks: [event, task, poll, game] },

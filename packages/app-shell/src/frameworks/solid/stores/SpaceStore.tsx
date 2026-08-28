@@ -22,7 +22,7 @@ import {
 } from '@shared/viewResolution';
 import type { AgentProfileSummary, DatasetRef } from '@we/backend-shared';
 import { displayName } from '@we/backend-shared';
-import type { SerializedBlockNode } from '@we/block-shared';
+import type { ContentInput } from '@we/block-shared';
 import { createBlocks, deleteBlocks, reconcileBlocks } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
 import {
@@ -1438,8 +1438,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     // has, and both are `$each`/route values rather than anything the store could derive.
     const { kind = 'post', parentId, predicate = PREDICATES.CHILDREN } = options;
 
-    // The action arrives from a schema as unknown; the composer produced it, so it is editor state.
-    const root = await createBlocks(p, json as SerializedBlockNode, {
+    // The action arrives from a schema as unknown; the composer produced it, so it is a content document.
+    const root = await createBlocks(p, json as ContentInput, {
       kind,
       ...(parentId && { anchor: { id: parentId, predicate } }),
     });
@@ -1451,7 +1451,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (!p) return;
     const existingRoot = await CollectionBlock.findOne(p, { where: { id: postId } });
     if (!existingRoot) return;
-    await reconcileBlocks(p, existingRoot, json as SerializedBlockNode);
+    await reconcileBlocks(p, existingRoot, json as ContentInput);
   }
 
   /**

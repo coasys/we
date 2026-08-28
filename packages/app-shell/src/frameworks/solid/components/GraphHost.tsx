@@ -83,8 +83,8 @@ function toEntityShape(entry: ModelManifestEntry): EntityShape {
  * A card that draws its own contents, rather than its first sixty characters.
  *
  * The `content: 'block'` a board's style rules name. It lives here, not in the graph package, which
- * is the point of the `nodeContent` seam: `BlockRenderer` drags in the block system, the design
- * system and a Lexical tree, and a graph engine that imported any of that would stop being portable.
+ * is the point of the `nodeContent` seam: `BlockRenderer` drags in the block system and the design
+ * system, and a graph engine that imported any of that would stop being portable.
  *
  * `editorState` is already on the node — it is a declared string property, so the row the seed
  * fetched carried it into `data` — and handed over exactly as it arrived. A file-backed property

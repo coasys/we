@@ -1,8 +1,8 @@
-import type { BlockDataset } from '@we/block-shared';
+import type { BlockDataset, MentionCandidate } from '@we/block-shared';
 import { createContext, type JSX, useContext } from 'solid-js';
 
 /**
- * Where blocks read and write, when nobody says otherwise.
+ * What the host tells the block system about where it is mounted.
  *
  * ## Why this exists
  *
@@ -18,8 +18,9 @@ import { createContext, type JSX, useContext } from 'solid-js';
  * answer: *the space you are in*. Forget it and the block renders blank, because an image's
  * expression URL cannot resolve without it. That is a poor trade for a value the host already knows.
  *
- * The host provides it once. A block that wants a different one still says so — the prop wins, which
- * is what the editor's preview needs when it renders a block from another space.
+ * The same argument holds for who can be @mentioned: the space's members are the host's knowledge.
+ * The host provides both once. A block that wants a different one still says so — the prop wins,
+ * which is what the editor's preview needs when it renders a block from another space.
  *
  * ## Why a context rather than a renderer special case
  *
@@ -28,10 +29,38 @@ import { createContext, type JSX, useContext } from 'solid-js';
  * know anything about the components it mounts. A context is the ordinary answer, and it works the
  * same for a hand-written Solid component as for a schema-mounted one.
  */
-const BlockDatasetContext = createContext<() => BlockDataset | null>(() => null);
+export interface BlockHostValue {
+  /** The dataset blocks read and write, when nobody says otherwise. */
+  dataset: () => BlockDataset | null;
+  /** Who can be mentioned in a composition here. */
+  mentions: () => MentionCandidate[];
+}
 
+const NONE: BlockHostValue = { dataset: () => null, mentions: () => [] };
+
+const BlockHostContext = createContext<BlockHostValue>(NONE);
+
+export function BlockHostProvider(props: {
+  dataset?: () => BlockDataset | null;
+  mentions?: () => MentionCandidate[];
+  children: JSX.Element;
+}) {
+  const parent = useContext(BlockHostContext);
+  const value: BlockHostValue = {
+    dataset: () => (props.dataset ? props.dataset() : parent.dataset()),
+    mentions: () => (props.mentions ? props.mentions() : parent.mentions()),
+  };
+  return <BlockHostContext.Provider value={value}>{props.children}</BlockHostContext.Provider>;
+}
+
+/** The host facts in force where this is called. */
+export function useBlockHost(): BlockHostValue {
+  return useContext(BlockHostContext);
+}
+
+/** Back-compat name: the dataset half of the host. */
 export function BlockDatasetProvider(props: { dataset: () => BlockDataset | null; children: JSX.Element }) {
-  return <BlockDatasetContext.Provider value={props.dataset}>{props.children}</BlockDatasetContext.Provider>;
+  return <BlockHostProvider dataset={props.dataset}>{props.children}</BlockHostProvider>;
 }
 
 /**
@@ -42,6 +71,6 @@ export function BlockDatasetProvider(props: { dataset: () => BlockDataset | null
  * space they left.
  */
 export function useBlockDataset(explicit?: BlockDataset | null): BlockDataset | null {
-  const fromContext = useContext(BlockDatasetContext);
-  return explicit ?? fromContext();
+  const host = useContext(BlockHostContext);
+  return explicit ?? host.dataset();
 }
