@@ -27,6 +27,7 @@ export type {
   DockEdge,
   DockSize,
   ModuleCapability,
+  ModuleScope,
   ModuleCompatibility,
   ModuleDefinition,
   ModuleEmbed,

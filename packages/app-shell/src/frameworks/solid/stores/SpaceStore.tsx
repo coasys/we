@@ -1879,11 +1879,27 @@ export function SpaceStoreProvider(props: ParentProps) {
    *
    * This is what the chrome gate and the launcher rail read. `enabledModules` stays the community's
    * decision alone, because that is what the space settings edit and what other members share.
+   *
+   * A module declaring `scope: 'agent'` skips the community layer entirely — see below.
    */
   const activeModules = createMemo<string[]>(() => {
     const installed = installedSet();
     const muted = new Set(mutedModulesFor(datasetStore.currentDataset()?.id));
-    return enabledModules().filter((id) => installed.has(id) && !muted.has(id));
+    const bySpace = enabledModules().filter((id) => installed.has(id) && !muted.has(id));
+    /*
+      Agent-scoped modules are active wherever this agent is, including outside a space entirely.
+      There is no community whose decision could apply to a panel that gathers things from *across*
+      spaces, and intersecting it with `enabledModules` would make it — and whatever it is holding —
+      disappear the moment somebody walked out of a space that happened to have it on.
+
+      Still gated on `installed`: Settings → Modules is the person's own switch, and this widens who
+      decides rather than removing the decision.
+    */
+    const byAgent = moduleRegistry
+      .all()
+      .filter(({ definition }) => definition.scope === 'agent' && installed.has(definition.id))
+      .map(({ definition }) => definition.id);
+    return [...new Set([...bySpace, ...byAgent])];
   });
 
   /**

@@ -463,3 +463,64 @@ describe('a module that is holding something live', () => {
     expect(gateOf('docked').$).toContain('|| modules.docked.active');
   });
 });
+
+describe('agent-scoped modules', () => {
+  /**
+   * A fake schema port that records what it was asked to compile, and hands back one class per
+   * entity name. Compiling for real needs a backend; what is under test is the routing.
+   */
+  function recordingPort() {
+    const compiled: string[] = [];
+    const port = {
+      declare: (manifest: { entities: Record<string, unknown> }) => {
+        const names = Object.keys(manifest.entities);
+        compiled.push(...names);
+        return Object.fromEntries(names.map((name) => [name, { className: name }]));
+      },
+    };
+    return { port, compiled };
+  }
+
+  const manifest = (name: string) =>
+    ({
+      version: '1.0.0',
+      entities: { [name]: { base: 'Ad4mModel', properties: {}, relations: {} } },
+    }) as never;
+
+  it('routes an agent-scoped manifest to the root dataset and nowhere else', () => {
+    // The failure this prevents is not abstract: an agent-scoped entity installed into a shared
+    // space would sync one person's private records to a whole community.
+    moduleRegistry.register(
+      mod({ id: 'pocket', entities: { manifest: manifest('PocketItem'), scope: 'agent' } }),
+      host,
+    );
+    const { port, compiled } = recordingPort();
+
+    expect(moduleRegistry.moduleSchemas(port as never)).toEqual([]);
+    expect(moduleRegistry.agentSchemas(port as never)).toEqual([{ className: 'PocketItem' }]);
+    expect(compiled).toEqual(['PocketItem']);
+  });
+
+  it('leaves a module that says nothing about scope in the space, as before', () => {
+    moduleRegistry.register(mod({ id: 'notes', entities: { manifest: manifest('Note') } }), host);
+    const { port } = recordingPort();
+
+    expect(moduleRegistry.moduleSchemas(port as never)).toEqual([{ className: 'Note' }]);
+    expect(moduleRegistry.agentSchemas(port as never)).toEqual([]);
+  });
+
+  it('compiles each module once, however many datasets it is installed into', () => {
+    // Install runs on every dataset switch, and fresh classes each time would churn the model
+    // registry underneath live queries.
+    moduleRegistry.register(
+      mod({ id: 'pocket', entities: { manifest: manifest('PocketItem'), scope: 'agent' } }),
+      host,
+    );
+    const { port, compiled } = recordingPort();
+
+    moduleRegistry.agentSchemas(port as never);
+    moduleRegistry.agentSchemas(port as never);
+
+    expect(compiled).toEqual(['PocketItem']);
+  });
+});

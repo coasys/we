@@ -459,7 +459,8 @@ export function DatasetStoreProvider(props: ParentProps) {
 
       if (rootRef) {
         // Ensure all models are registered (handles new models added after initial creation)
-        await session.backendPorts()!.schemas.installRoot(rootRef.handle);
+        const rootSchemas = session.backendPorts()!.schemas;
+        await rootSchemas.installRoot(rootRef.handle, moduleRegistry.agentSchemas(rootSchemas));
         setRootDataset(rootRef);
 
         const settings = await AgentSettings.findOne(rootRef.handle);
@@ -479,7 +480,8 @@ export function DatasetStoreProvider(props: ParentProps) {
       // No root dataset exists — create one
       console.log('DatasetStore: creating root dataset');
       const rootCreated = toApp(await lifecycle.create('we-root'));
-      await session.backendPorts()!.schemas.installRoot(rootCreated.handle);
+      const newRootSchemas = session.backendPorts()!.schemas;
+      await newRootSchemas.installRoot(rootCreated.handle, moduleRegistry.agentSchemas(newRootSchemas));
 
       const settings = await AgentSettings.create(rootCreated.handle, {
         currentTemplateId: 'default',

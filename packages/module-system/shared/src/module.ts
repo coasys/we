@@ -40,6 +40,15 @@ import type { SchemaNode } from '@we/schema-shared';
 export type CoreSlotAnchor = 'overlay' | 'dock-left' | 'dock-right' | 'dock-bottom' | 'banner';
 
 /**
+ * Whose decision a module is, and therefore where its data lives and where its chrome appears.
+ *
+ * See {@link ModuleDefinition.scope} for the full argument. One word rather than two flags, because
+ * a module whose data is the agent's and whose chrome is the space's is a contradiction nobody
+ * should be able to spell.
+ */
+export type ModuleScope = 'space' | 'agent';
+
+/**
  * Where chrome attaches — a host anchor, or one a module opened up with {@link ModuleDefinition.anchors}.
  *
  * The open half exists because the fixed set answers "where on screen" and some chrome needs to
@@ -271,6 +280,25 @@ export interface ModuleDefinition {
   icon?: string;
   version?: string;
 
+  /**
+   * Whose module this is: a **space**'s, or the **agent**'s. Omit for `'space'`.
+   *
+   * Everything the module system was built for so far belongs to a community. A call, a transcript,
+   * a shared scratchpad: the space decides whether it is on, and the module's chrome is gated on
+   * `spaceStore.activeModules` — registered ∩ installed ∩ enabled here, less what this agent muted.
+   *
+   * Some capabilities are not about a community at all. A panel that gathers things from *across*
+   * spaces has no space to be enabled in, and the moment you leave one it would vanish taking what
+   * it held with it. `'agent'` says so: the chrome is gated on being **installed** by this agent and
+   * nothing else, and the launcher is in the rail wherever they are, including outside a space
+   * entirely.
+   *
+   * It is not an escape from the gate — Settings → Modules still decides. It is the honest reading
+   * of which of the two answers "should this be here": for a space module the community's, for an
+   * agent module the person's.
+   */
+  scope?: ModuleScope;
+
   /** Capabilities to display at install. See {@link ModuleCapability}. */
   capabilities?: ModuleCapability[];
 
@@ -389,6 +417,19 @@ export interface ModuleDefinition {
     manifest: ModelManifest;
     /** Explicit predicate bindings, keyed `"Entity.property"`. */
     predicates?: Record<string, string>;
+    /**
+     * Which dataset these are installed into. Omit for `'space'`.
+     *
+     * `'agent'` installs them into the **root dataset** instead — the agent's own, private, never
+     * synced. That is where a module's knowledge about *you* belongs rather than about a community:
+     * what you have gathered, a saved graph layout, a preference the space has no business holding.
+     *
+     * Before this existed a module could own entities in a space and nowhere else, so a personal
+     * capability had two options: write per-agent state into a shared neighbourhood, or not exist.
+     * Pair it with {@link ModuleDefinition.scope} — a module whose data is agent-scoped almost
+     * always renders that way too.
+     */
+    scope?: ModuleScope;
   };
 
   /**

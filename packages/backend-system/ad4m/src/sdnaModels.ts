@@ -396,8 +396,10 @@ export async function ensureModelRegistered(p: PerspectiveProxy, model: typeof A
  * Safe to call on every boot, and safe to call from multiple independent peers/processes —
  * only models not already present on the perspective are written.
  */
-export async function installRootSdna(p: PerspectiveProxy): Promise<void> {
-  await ensureModelsRegistered(p, ROOT_MODELS);
+export async function installRootSdna(p: PerspectiveProxy, moduleSchemas: readonly unknown[] = []): Promise<void> {
+  // Agent-scoped module entities go here rather than into a space: they are what a module knows
+  // about *you*, and the root perspective is the one that is never synced to anybody.
+  await ensureModelsRegistered(p, [...ROOT_MODELS, ...(moduleSchemas as (typeof Ad4mModel)[])]);
 }
 
 /**

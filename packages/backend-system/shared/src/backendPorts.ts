@@ -29,8 +29,15 @@ import type { TranscriptionPort } from './transcription';
  * same rule as `DatasetHandle`.
  */
 export interface SchemaPort {
-  /** Install the host's root-dataset schemas (personal config entities). Idempotent. */
-  installRoot(dataset: DatasetHandle): Promise<void>;
+  /**
+   * Install the host's root-dataset schemas (personal config entities), plus any agent-scoped
+   * module entities. Idempotent.
+   *
+   * The module list is separate from `installSpace`'s and must stay that way: an agent-scoped
+   * entity installed into a shared space would sync one person's private records to the whole
+   * community. See `ModuleDefinition.entities.scope`.
+   */
+  installRoot(dataset: DatasetHandle, moduleSchemas?: readonly unknown[]): Promise<void>;
   /** Install the host's space schemas plus the given module schemas. Idempotent. */
   installSpace(dataset: DatasetHandle, moduleSchemas: readonly unknown[]): Promise<void>;
   /** Install only the given module schemas (runs on every space switch — diffs before writing). */

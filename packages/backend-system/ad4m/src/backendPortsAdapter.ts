@@ -58,7 +58,7 @@ export function createAd4mSchemaPort(backendClient: unknown): SchemaPort {
   void client; // schema install operates on dataset handles; the client stays for future needs
 
   return {
-    installRoot: (dataset) => installRootSdna(proxy(dataset)),
+    installRoot: (dataset, moduleSchemas) => installRootSdna(proxy(dataset), moduleSchemas),
     installSpace: (dataset, moduleSchemas) => installSpaceSdna(proxy(dataset), moduleSchemas),
     installModules: (dataset, moduleSchemas) => installModuleSdna(proxy(dataset), moduleSchemas),
     refreshSpace: (dataset) => refreshSpaceSdna(proxy(dataset)),
