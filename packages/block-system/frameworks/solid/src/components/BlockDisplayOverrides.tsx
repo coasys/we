@@ -5,6 +5,9 @@ type DisplayOverrideMap = Record<string, Component<Record<string, unknown>>>;
 
 const BlockDisplayOverridesContext = createContext<DisplayOverrideMap>({});
 
+/** The raw context, for a composer that must carry the overrides into node views it renders outside the tree. */
+export const DisplayOverridesContext = BlockDisplayOverridesContext;
+
 /**
  * Provides display component overrides per block type.
  * Consumers can replace the default display component for any block type

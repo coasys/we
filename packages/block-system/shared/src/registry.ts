@@ -11,7 +11,7 @@ export type BlockModelStatic = ModelStatic<ModelInstance>;
  * A registered block type mapping node types to model entities and UI components.
  */
 export interface BlockRegistration {
-  /** Lexical/serialized node type strings that map to this block (e.g., ['paragraph', 'heading', 'quote']) */
+  /** Serialized node type strings that map to this block (e.g., ['paragraph', 'heading', 'quote']) */
   nodeTypes: string[];
   /** The entity's static surface — the proxy from `@we/models`, resolving to whichever backend is connected. */
   model: BlockModelStatic;

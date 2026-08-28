@@ -126,7 +126,7 @@ export function FileInput(props: FileInputProps) {
         </Show>
       </Show>
 
-      {/* Add/edit file modal — portalled to escape the Lexical contenteditable context. */}
+      {/* Add/edit file modal — portalled to escape the editor's contenteditable context. */}
       <Show when={showModal()}>
         <Portal>
           <we-modal close={closeModal} size="sm">

@@ -68,7 +68,7 @@ export interface FixtureNode {
   /**
    * Paragraphs of body text, rendered through the real block pipeline.
    *
-   * Deliberately plain strings: a fixture is content, and asking an author to hand-write Lexical
+   * Deliberately plain strings: a fixture is content, and asking an author to hand-write block
    * JSON to get two sentences into a message would make writing fixtures the expensive part.
    */
   body?: string[];

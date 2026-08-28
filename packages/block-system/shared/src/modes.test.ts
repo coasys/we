@@ -27,8 +27,8 @@ describe('isReconcilable', () => {
     expect(isReconcilable('feed')).toBe(false);
   });
 
-  it('refuses collaborative mode: the allow-list, not a deny-list on feed', () => {
-    expect(isReconcilable('collaborative')).toBe(false);
+  it('allows collaborative mode — the shared session document is the whole truth', () => {
+    expect(isReconcilable('collaborative')).toBe(true);
   });
 
   it('refuses an unrecognised mode, for the same reason', () => {

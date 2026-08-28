@@ -12,7 +12,7 @@
  * `BlockComposer.onSave` does not fire when the user types, or when the modal closes. It fires when
  * somebody calls the composer's own `save()`, which it hands out exactly once through `onReady`. So
  * the sequence is: `onReady` stores that function in a `function`-typed local, the button calls it
- * with `$callLocal`, `save()` serializes the Lexical tree, and `onSave` runs the action with the
+ * with `$callLocal`, `save()` serializes the document, and `onSave` runs the action with the
  * tree as `$arg`.
  *
  * Written the obvious way instead — a button that calls the action with a `draft` local the
@@ -67,17 +67,30 @@ export interface ComposerModalOptions {
    *
    * On by default here and opt-in on `formModal`, because a composer is the one place in WE where
    * somebody may have written several paragraphs, and it is the one place a template author cannot
-   * write the guard themselves: the content lives inside Lexical, so no `$local` can see whether
+   * write the guard themselves: the content lives inside the editor, so no `$local` can see whether
    * anything was typed. The composer reports that through `onDirtyChange`, which this wires up.
    */
   guardDraft?: boolean;
+  /**
+   * Actions to run whenever the modal closes — cancelled, dismissed, or saved. For telling the
+   * world the composer is no longer open on something (a presence activity, a lease).
+   */
+  onClose?: SchemaProp[];
+  /**
+   * The id of a collection to co-edit live. Given, the composer joins that composition's session
+   * (see `BlockHostProvider.collab`) and every other agent with it open sees the edits as they
+   * happen; the save still materialises the document to the models as usual.
+   */
+  collaborate?: SchemaProp;
 }
 
 export function composerModal(opts: ComposerModalOptions): SchemaNode {
-  const close = { $setLocal: opts.openLocal, value: false };
+  const close: SchemaProp = opts.onClose?.length
+    ? [{ $setLocal: opts.openLocal, value: false }, ...opts.onClose]
+    : { $setLocal: opts.openLocal, value: false };
   /*
     `draftDirty` is written by the composer, not by the schema. It is the one piece of modal state
-    in the kit whose source is a component rather than a control, because Lexical's document is not
+    in the kit whose source is a component rather than a control, because the editor's document is not
     reachable from `$local` — see `BlockComposer.onDirtyChange`.
   */
   const guard = opts.guardDraft === false ? null : discardGuard({ dirty: { $: 'local.draftDirty' }, close });
@@ -119,6 +132,7 @@ export function composerModal(opts: ComposerModalOptions): SchemaNode {
                 type: 'BlockComposer',
                 props: {
                   ...(opts.editorState !== undefined && { editorState: opts.editorState }),
+                  ...(opts.collaborate !== undefined && { collaborate: opts.collaborate }),
                   ...(guard && { onDirtyChange: { $setLocal: 'draftDirty', value: { $: 'event' } } }),
                   onReady: { $setLocal: 'savePost', value: { $: 'event.save' } },
                   onSave: [
@@ -128,7 +142,11 @@ export function composerModal(opts: ComposerModalOptions): SchemaNode {
                       args: opts.saveAction.args,
                       // The close first, so anything the caller adds runs against a modal that has
                       // already gone — a refresh it triggers repaints what is behind, not under it.
-                      onSuccess: [{ $setLocal: opts.openLocal, value: false }, ...(opts.onSaved ?? [])],
+                      onSuccess: [
+                        { $setLocal: opts.openLocal, value: false },
+                        ...(opts.onClose ?? []),
+                        ...(opts.onSaved ?? []),
+                      ],
                       onFinally: [{ $setLocal: 'submitting', value: false }],
                     },
                   ],

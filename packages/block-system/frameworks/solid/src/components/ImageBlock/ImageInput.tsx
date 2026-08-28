@@ -26,7 +26,7 @@ const WIDTH_PRESETS = [
 
 /**
  * Input component for ImageBlock.
- * Pure SolidJS — no Lexical imports. Receives onChange from the factory.
+ * Pure SolidJS — no editor imports. Receives onChange from the factory.
  *
  * Empty state: BlockPlaceholder (dashed zone, icon, label).
  *   - Drop a file directly → goes straight to crop modal.
@@ -147,7 +147,7 @@ export function ImageInput(props: ImageInputProps) {
         </Show>
       </Show>
 
-      {/* Add-image modal — portalled to escape the Lexical contenteditable context. */}
+      {/* Add-image modal — portalled to escape the editor's contenteditable context. */}
       <Show when={showAddModal()}>
         <Portal>
           <we-modal close={() => setShowAddModal(false)} size="sm">
@@ -184,7 +184,7 @@ export function ImageInput(props: ImageInputProps) {
         </Portal>
       </Show>
 
-      {/* Crop modal — portalled to escape the Lexical contenteditable context. */}
+      {/* Crop modal — portalled to escape the editor's contenteditable context. */}
       <Show when={rawUrl()}>
         <Portal>
           <we-modal close={handleCropBack} size="md">

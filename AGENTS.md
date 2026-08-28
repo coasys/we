@@ -1133,11 +1133,11 @@ when `relative` is enabled.
 - AudioInput
   Props: title: string | undefined, artist: string | undefined, audioUrl: string | FileData | undefined, duration: number | undefined, albumArt: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - BlockComposer (DesignSystemElement)
-  Props: editorState?: SerializedBlockNode, perspective?: unknown, onSave?: ((json: SerializedBlockNode) => void), onReady?: ((api: { save: () => void; }) => void), onDirtyChange?: ((dirty: boolean) => void)
+  Props: editorState?: EditorStateInput, perspective?: unknown, onSave?: ((document: ContentDocument) => void), onReady?: ((api: { save: () => void; }) => void), onDirtyChange?: ((dirty: boolean) => void), mentions?: MentionCandidate[], collaborate?: string
 - BlockPlaceholder
   Props: icon: string, label: string, hint?: string, accept?: string, onFileDrop?: ((file: File) => void), onClick?: (() => void)
 - BlockRenderer (DesignSystemElement)
-  Props: editorState?: SerializedBlockNode, perspective?: unknown, rootClass?: string
+  Props: editorState?: EditorStateInput, perspective?: unknown, rootClass?: string
 - BlockToolbar
   Props: placement?: BlockToolbarPlacement, children: JSX.Element, stopPropagation?: boolean
 - CalloutDisplay
@@ -1149,9 +1149,9 @@ when `relative` is enabled.
 - CodeInput
   Props: code: string | undefined, language: string | undefined, title: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - CollectionDisplay
-  Props: layout?: string, columnCount?: number, gap?: string, childEditorState?: SerializedBlockNode
+  Props: layout?: string, columnCount?: number, gap?: string, content?: ContentBlock[]
 - CollectionInput
-  Props: nodeKey: string, layout?: string, columnCount?: number, gap?: string, childEditorState?: SerializedBlockNode, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
+  Props: layout?: string, columnCount?: number, gap?: string, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - DividerDisplay
   Props: style: "solid" | "dashed" | "dotted" | undefined
 - DividerInput
@@ -1996,16 +1996,14 @@ Template extends WeNode:
 
 TextBlock extends WeNode:
   Fields:
-  - type: string [we://type]
+  - style: string = 'normal' [we://style]
+  - listItem: string [we://list_item]
+  - level: number [we://level]
+  - checked: boolean = false [we://checked]
+  - align: string [we://align]
   - direction: string [we://direction]
-  - format: string [we://format]
-  - indent: number [we://indent]
-  - textFormat: number [we://textFormat]
-  - textStyle: string [we://textStyle]
-  - listType: string [we://listType]
-  - start: number [we://start]
-  - tag: string [we://tag]
   - text: string [we://text]
+  - marks: json [we://marks]
   - version: number [we://version]
 
 Theme extends WeNode:

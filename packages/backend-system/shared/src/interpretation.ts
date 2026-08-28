@@ -23,7 +23,7 @@
  * The class list is the real control surface, and making it optional would invite the one call
  * nobody should make. Every selected class puts its **whole shape** into the prompt — every
  * property, hinted or not — so cost and quality both degrade with the size of the list, and a class
- * carrying serialization fields (a Lexical block's `indent`, `textFormat`, `listType`) offers the
+ * carrying layout fields (a text block's `style`, `level`, `marks`) offers the
  * model a dozen fields it should never fill. "Interpret against everything installed" is not a
  * convenient default; it is the failure mode.
  *
