@@ -16,7 +16,7 @@ export const CollectionBlock: CoreEntityDef = {
        * one), which the serializer round-trips. It has been doing double duty as a discriminator — `type: 'root'`
        * currently means "is a post" — and overloading it further would put semantic values into a
        * structural field, which is the mistake the transcribe module made writing `tag: 'transcript'`
-       * into `TextBlock.tag` (a field that means `ul`/`h1`).
+       * into `TextBlock.style` (a field that means `h1`/`blockquote`).
        *
        * A scalar rather than a tag relation because this is the field you *query by*:
        * `where: { kind: 'call' }` is a native `eq` that pushes down and composes with `order`/`limit`,

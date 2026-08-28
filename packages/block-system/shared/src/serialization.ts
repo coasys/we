@@ -3,7 +3,7 @@ import type { FileData } from '@we/models';
 import { asFileField, dataURIToFileData, getFileStore, runModelTransaction } from '@we/models';
 import { CORE_MANIFEST } from '@we/models/manifest';
 
-import type { BlockStyle, CollectionContentBlock, ContentBlock, ContentDocument, TextContentBlock } from './content';
+import type { CollectionContentBlock, ContentBlock, ContentDocument, TextContentBlock } from './content';
 import {
   isCollectionBlock,
   isContentBlockArray,
@@ -54,58 +54,40 @@ const CONTENT_OWN = new Set(['_type', '_key', 'content', 'children', 'markDefs',
 // ── Text block ⇄ record ──────────────────────────────────────────────────────
 
 /**
- * A text block as `TextBlock` fields. `type`/`tag` are kept in the vocabulary the model has always
- * carried — a paragraph is `type: 'paragraph'`, a heading `type: 'heading', tag: 'h2'`, a list item
- * `type: 'listitem', listType: 'bullet', indent: 1` — so a reader written against the old records
- * (the transcribe pipeline, the notes module) keeps reading them. `marks` is the one new field, and
- * a block without any writes none.
+ * A text block as `TextBlock` fields. The record speaks Portable Text's vocabulary — `style`,
+ * `listItem`, `level` — with `align`/`direction` as WE extensions, so the stored form and the
+ * interchange form say the same thing in the same words. `marks` is written only when there are
+ * any: a block without them stores no link, and reads back as one unmarked span.
  */
 export function textBlockToRecord(block: TextContentBlock): Record<string, unknown> {
-  const style = block.style ?? 'normal';
-  const isList = !!block.listItem;
-  const type = isList ? 'listitem' : style === 'blockquote' ? 'quote' : style === 'normal' ? 'paragraph' : 'heading';
-  const tag = isList
-    ? block.listItem === 'number'
-      ? 'ol'
-      : 'ul'
-    : style === 'normal' || style === 'blockquote'
-      ? ''
-      : style;
   return {
-    type,
-    tag,
-    listType: block.listItem ?? '',
-    indent: block.level ?? 0,
+    style: block.style ?? 'normal',
+    listItem: block.listItem ?? '',
+    level: block.level ?? 0,
     checked: !!block.checked,
-    format: block.format ?? '',
+    align: block.align ?? '',
     direction: block.direction ?? '',
     text: block.text ?? '',
     marks: serializeMarks(block.marks),
-    textFormat: 0,
-    textStyle: '',
-    start: 0,
     version: 1,
   };
 }
 
-/** The inverse of {@link textBlockToRecord}, tolerant of every record shape the field has held. */
+/**
+ * The inverse of {@link textBlockToRecord}. Tolerant by construction: a record with only `text`
+ * — a transcript turn, a note — is a paragraph, which is what every field's absence means.
+ */
 export function recordToTextBlock(record: Record<string, unknown>): TextContentBlock {
-  const type = String(record.type ?? '');
-  const tag = String(record.tag ?? '');
-  const listType = String(record.listType ?? '');
   const block: TextContentBlock = { _type: 'block', text: typeof record.text === 'string' ? record.text : '' };
   if (typeof record.id === 'string' && record.id) block._key = record.id;
-  let style: BlockStyle = 'normal';
-  if (type === 'heading' && (tag === 'h1' || tag === 'h2' || tag === 'h3')) style = tag;
-  else if (type === 'quote') style = 'blockquote';
-  block.style = style;
-  if (type === 'listitem' || listType === 'bullet' || listType === 'number' || listType === 'check') {
-    block.listItem = listType === 'number' ? 'number' : listType === 'check' ? 'check' : 'bullet';
-  }
-  const indent = typeof record.indent === 'number' ? record.indent : Number(record.indent ?? 0);
-  if (indent > 0) block.level = indent;
+  const style = String(record.style ?? '');
+  block.style = style === 'h1' || style === 'h2' || style === 'h3' || style === 'blockquote' ? style : 'normal';
+  const listItem = String(record.listItem ?? '');
+  if (listItem === 'bullet' || listItem === 'number' || listItem === 'check') block.listItem = listItem;
+  const level = typeof record.level === 'number' ? record.level : Number(record.level ?? 0);
+  if (level > 0) block.level = level;
   if (record.checked === true) block.checked = true;
-  if (typeof record.format === 'string' && record.format && record.format !== 'left') block.format = record.format;
+  if (typeof record.align === 'string' && record.align && record.align !== 'left') block.align = record.align;
   if (record.direction === 'rtl') block.direction = 'rtl';
   const marks = parseMarks(record.marks);
   if (marks.length) block.marks = marks;

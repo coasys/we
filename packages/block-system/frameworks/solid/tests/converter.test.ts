@@ -23,7 +23,7 @@ describe('content → doc → content', () => {
   it('keeps every text-block style, list kind, level and alignment', () => {
     const blocks: ContentBlock[] = [
       { _type: 'block', _key: 'a', style: 'normal', text: 'para' },
-      { _type: 'block', _key: 'b', style: 'h2', text: 'title', format: 'center' },
+      { _type: 'block', _key: 'b', style: 'h2', text: 'title', align: 'center' },
       { _type: 'block', _key: 'c', style: 'blockquote', text: 'quote', direction: 'rtl' },
       { _type: 'block', _key: 'd', style: 'normal', listItem: 'bullet', text: 'item' },
       { _type: 'block', _key: 'e', style: 'normal', listItem: 'number', level: 2, text: 'nested' },

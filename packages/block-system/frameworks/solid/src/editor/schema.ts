@@ -39,7 +39,7 @@ export const MENTION_NODE = 'mention';
 const textBlockAttrs = {
   id: { default: null as string | null },
   /** Alignment — `'center'` | `'right'` | `'justify'`; null for the default. */
-  format: { default: null as string | null },
+  align: { default: null as string | null },
   /** `'rtl'` when set. */
   direction: { default: null as string | null },
   /** Indent depth; a list item's nesting level. */
@@ -52,7 +52,7 @@ function textBlockDomAttrs(
   extra: Record<string, string | undefined> = {},
 ): Record<string, string> {
   const out: Record<string, string> = {};
-  if (typeof attrs.format === 'string' && attrs.format) out.style = `text-align: ${attrs.format}`;
+  if (typeof attrs.align === 'string' && attrs.align) out.style = `text-align: ${attrs.align}`;
   if (attrs.direction === 'rtl') out.dir = 'rtl';
   const level = typeof attrs.level === 'number' ? attrs.level : 0;
   if (level > 0) out['data-level'] = String(level);
@@ -63,7 +63,7 @@ function textBlockDomAttrs(
 function readTextBlockAttrs(dom: HTMLElement): Record<string, unknown> {
   const align = dom.style?.textAlign;
   return {
-    format: align && align !== 'left' && align !== 'start' ? align : null,
+    align: align && align !== 'left' && align !== 'start' ? align : null,
     direction: dom.getAttribute('dir') === 'rtl' ? 'rtl' : null,
     level: Number(dom.getAttribute('data-level') ?? 0) || 0,
   };

@@ -1996,18 +1996,14 @@ Template extends WeNode:
 
 TextBlock extends WeNode:
   Fields:
-  - type: string [we://type]
+  - style: string = 'normal' [we://style]
+  - listItem: string [we://list_item]
+  - level: number [we://level]
+  - checked: boolean = false [we://checked]
+  - align: string [we://align]
   - direction: string [we://direction]
-  - format: string [we://format]
-  - indent: number [we://indent]
-  - textFormat: number [we://textFormat]
-  - textStyle: string [we://textStyle]
-  - listType: string [we://listType]
-  - start: number [we://start]
-  - tag: string [we://tag]
   - text: string [we://text]
   - marks: json [we://marks]
-  - checked: boolean = false [we://checked]
   - version: number [we://version]
 
 Theme extends WeNode:

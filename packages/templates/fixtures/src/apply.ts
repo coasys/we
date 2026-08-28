@@ -168,7 +168,7 @@ export async function applyFixture(deps: ApplyDeps, fixture: Fixture): Promise<A
     for (const [index, paragraph] of (node.body ?? []).entries()) {
       const block = await getModel('TextBlock').create(dataset, {
         id: textBlockId(id, index),
-        type: 'paragraph',
+        style: 'normal',
         text: paragraph,
         ...(node.author ? { author: node.author } : {}),
         ...(node.createdAt ? { createdAt: node.createdAt, timestamp: node.createdAt } : {}),

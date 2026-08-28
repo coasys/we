@@ -10,7 +10,7 @@
  * It is deliberately **conformant Portable Text with WE extensions**: `_type`/`_key` are Portable
  * Text's names, a text block is `_type: 'block'` with `style`/`listItem`/`level`, and a custom block
  * is any other `_type`. A Portable Text consumer reads `children`; a WE reader reads `text`/`marks`;
- * neither converts. The extension fields (`text`, `marks`, `format`, `direction`, `checked`, and a
+ * neither converts. The extension fields (`text`, `marks`, `align`, `direction`, `checked`, and a
  * collection's `content`) are legal — a Portable Text block is an open object.
  *
  * Content is **data, never evaluated**: nothing in here is an expression, and the renderer draws
@@ -35,7 +35,7 @@ export interface TextContentBlock {
   /** A check-list item's state. */
   checked?: boolean;
   /** Alignment — `'center'`, `'right'`, `'justify'`; absent for the default. A WE extension. */
-  format?: string;
+  align?: string;
   /** Writing direction, when it matters — `'ltr'` | `'rtl'`. A WE extension. */
   direction?: string;
   /** The canonical string. `'\n'` is a soft line break. */

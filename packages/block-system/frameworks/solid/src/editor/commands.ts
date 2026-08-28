@@ -38,8 +38,8 @@ export function menuTypeOf(node: PMNode): string {
 
 /** The attrs a text container keeps when it changes kind. */
 function carriedAttrs(node: PMNode): Attrs {
-  const { id, format, direction, level } = node.attrs;
-  return { id: id ?? null, format: format ?? null, direction: direction ?? null, level: level ?? 0 };
+  const { id, align, direction, level } = node.attrs;
+  return { id: id ?? null, align: align ?? null, direction: direction ?? null, level: level ?? 0 };
 }
 
 /** What a menu type means as a node type and attrs, or null for a custom block. */
@@ -190,7 +190,7 @@ export const splitListItem: Command = (state, dispatch) => {
         ? state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, level: level - 1 })
         : state.tr.setNodeMarkup(pos, state.schema.nodes.paragraph, {
             id: node.attrs.id,
-            format: node.attrs.format,
+            align: node.attrs.align,
             direction: node.attrs.direction,
             level: 0,
           });
@@ -214,11 +214,11 @@ export const liftToParagraph: Command = (state, dispatch) => {
   if (!node.type.isTextblock || node.type.name === 'paragraph' || $from.parentOffset > 0) return false;
   if (dispatch) {
     const pos = $from.before();
-    const { id, format, direction } = node.attrs;
+    const { id, align, direction } = node.attrs;
     dispatch(
       state.tr.setNodeMarkup(pos, state.schema.nodes.paragraph, {
         id: id ?? null,
-        format: format ?? null,
+        align: align ?? null,
         direction: direction ?? null,
         level: 0,
       }),

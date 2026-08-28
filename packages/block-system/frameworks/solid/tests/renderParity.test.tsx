@@ -34,7 +34,7 @@ const fixture: ContentBlock[] = [
       { start: 42, end: 47, type: 'mention', did: 'did:key:anna' },
     ],
   },
-  { _type: 'block', _key: 'c', style: 'blockquote', text: 'quoted', format: 'center' },
+  { _type: 'block', _key: 'c', style: 'blockquote', text: 'quoted', align: 'center' },
   { _type: 'block', _key: 'd', style: 'normal', listItem: 'bullet', text: 'one' },
   { _type: 'block', _key: 'e', style: 'normal', listItem: 'bullet', level: 1, text: 'two' },
   { _type: 'block', _key: 'f', style: 'normal', listItem: 'number', text: 'three' },

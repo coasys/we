@@ -299,18 +299,14 @@ export interface TemplateModel extends WeNodeModel {
 }
 
 export interface TextBlockModel extends WeNodeModel {
-  type: string;
+  style: string;
+  listItem: string;
+  level: number;
+  checked: boolean;
+  align: string;
   direction: string;
-  format: string;
-  indent: number;
-  textFormat: number;
-  textStyle: string;
-  listType: string;
-  start: number;
-  tag: string;
   text: string;
   marks: string;
-  checked: boolean;
   version: number;
 }
 

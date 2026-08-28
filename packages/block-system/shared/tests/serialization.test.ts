@@ -28,17 +28,15 @@ vi.mock('@we/models/manifest', () => ({
     entities: {
       TextBlock: {
         properties: {
-          type: {},
+          style: {},
+          listItem: {},
+          level: {},
+          checked: {},
+          align: {},
+          direction: {},
           text: {},
           marks: {},
-          listType: {},
-          tag: {},
-          indent: {},
-          checked: {},
-          format: {},
-          direction: {},
-          start: {},
-          textFormat: {},
+          version: {},
         },
         relations: {},
       },
@@ -163,29 +161,28 @@ beforeEach(() => {
 // ── Pure helpers ────────────────────────────────────────────────────────────
 
 describe('text block ⇄ record', () => {
-  it('writes the structural role in the vocabulary the model has always carried', () => {
+  it("writes Portable Text's own vocabulary", () => {
     expect(textBlockToRecord(paragraph('hi'))).toMatchObject({
-      type: 'paragraph',
-      tag: '',
-      listType: '',
-      indent: 0,
+      style: 'normal',
+      listItem: '',
+      level: 0,
       text: 'hi',
       marks: '',
     });
-    expect(textBlockToRecord({ _type: 'block', style: 'h2', text: 't' })).toMatchObject({ type: 'heading', tag: 'h2' });
+    expect(textBlockToRecord({ _type: 'block', style: 'h2', text: 't' })).toMatchObject({ style: 'h2' });
     expect(textBlockToRecord({ _type: 'block', style: 'blockquote', text: 'q' })).toMatchObject({
-      type: 'quote',
-      tag: '',
+      style: 'blockquote',
     });
     expect(textBlockToRecord({ _type: 'block', listItem: 'number', level: 2, text: 'i' })).toMatchObject({
-      type: 'listitem',
-      tag: 'ol',
-      listType: 'number',
-      indent: 2,
+      listItem: 'number',
+      level: 2,
     });
-    expect(textBlockToRecord({ _type: 'block', listItem: 'check', checked: true, text: 'c' })).toMatchObject({
-      listType: 'check',
+    expect(
+      textBlockToRecord({ _type: 'block', listItem: 'check', checked: true, text: 'c', align: 'center' }),
+    ).toMatchObject({
+      listItem: 'check',
       checked: true,
+      align: 'center',
     });
   });
 
@@ -196,18 +193,19 @@ describe('text block ⇄ record', () => {
     expect(recordToTextBlock({ ...record, id: 'x' })).toEqual({ ...block, _key: 'x' });
   });
 
-  it('reads every record shape the field has held — a transcript turn has only text', () => {
-    expect(recordToTextBlock({ id: 't', text: 'said', tag: 'transcript' })).toEqual({
+  it('a record with only text is a paragraph — a transcript turn, a note', () => {
+    expect(recordToTextBlock({ id: 't', text: 'said' })).toEqual({
       _type: 'block',
       _key: 't',
       style: 'normal',
       text: 'said',
     });
-    expect(recordToTextBlock({ type: 'heading', tag: 'h3', text: 'h' })).toMatchObject({ style: 'h3' });
-    expect(recordToTextBlock({ type: 'listitem', listType: 'bullet', indent: 1, text: 'l' })).toMatchObject({
+    expect(recordToTextBlock({ style: 'h3', text: 'h' })).toMatchObject({ style: 'h3' });
+    expect(recordToTextBlock({ listItem: 'bullet', level: 1, text: 'l' })).toMatchObject({
       listItem: 'bullet',
       level: 1,
     });
+    expect(recordToTextBlock({ style: 'nonsense', text: 'x' })).toMatchObject({ style: 'normal' });
   });
 });
 
@@ -292,8 +290,8 @@ describe('createBlocks', () => {
     ])) as FakeCollection;
     const items = FakeBlock.created.filter((b) => b instanceof FakeText);
     expect(items).toHaveLength(2);
-    expect(items[0]).toMatchObject({ type: 'listitem', listType: 'number', tag: 'ol', indent: 0, text: 'item one' });
-    expect(items[1]).toMatchObject({ indent: 1 });
+    expect(items[0]).toMatchObject({ style: 'normal', listItem: 'number', level: 0, text: 'item one' });
+    expect(items[1]).toMatchObject({ level: 1 });
     expect(root.children).toEqual(items.map((i) => i.id));
   });
 
@@ -459,7 +457,7 @@ describe('reconcileBlocks', () => {
   it('keeps a block somebody else added while the author was editing — three-way membership', async () => {
     const { root, p1, p2 } = await seedPost();
     // Another agent appends a paragraph after the author loaded the post.
-    const theirs = await FakeText.create(perspective, { type: 'paragraph', text: 'theirs' });
+    const theirs = await FakeText.create(perspective, { style: 'normal', text: 'theirs' });
     root.children.push(theirs.id);
 
     const edited: ContentDocument = {

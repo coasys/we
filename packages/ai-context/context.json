@@ -4951,57 +4951,41 @@
       "extends": "WeNode",
       "fields": [
         {
-          "name": "type",
+          "name": "style",
           "type": "string",
-          "predicate": "we://type",
+          "predicate": "we://style",
+          "required": false,
+          "default": "'normal'"
+        },
+        {
+          "name": "listItem",
+          "type": "string",
+          "predicate": "we://list_item",
+          "required": false
+        },
+        {
+          "name": "level",
+          "type": "number",
+          "predicate": "we://level",
+          "required": false
+        },
+        {
+          "name": "checked",
+          "type": "boolean",
+          "predicate": "we://checked",
+          "required": false,
+          "default": "false"
+        },
+        {
+          "name": "align",
+          "type": "string",
+          "predicate": "we://align",
           "required": false
         },
         {
           "name": "direction",
           "type": "string",
           "predicate": "we://direction",
-          "required": false
-        },
-        {
-          "name": "format",
-          "type": "string",
-          "predicate": "we://format",
-          "required": false
-        },
-        {
-          "name": "indent",
-          "type": "number",
-          "predicate": "we://indent",
-          "required": false
-        },
-        {
-          "name": "textFormat",
-          "type": "number",
-          "predicate": "we://textFormat",
-          "required": false
-        },
-        {
-          "name": "textStyle",
-          "type": "string",
-          "predicate": "we://textStyle",
-          "required": false
-        },
-        {
-          "name": "listType",
-          "type": "string",
-          "predicate": "we://listType",
-          "required": false
-        },
-        {
-          "name": "start",
-          "type": "number",
-          "predicate": "we://start",
-          "required": false
-        },
-        {
-          "name": "tag",
-          "type": "string",
-          "predicate": "we://tag",
           "required": false
         },
         {
@@ -5015,13 +4999,6 @@
           "type": "json",
           "predicate": "we://marks",
           "required": false
-        },
-        {
-          "name": "checked",
-          "type": "boolean",
-          "predicate": "we://checked",
-          "required": false,
-          "default": "false"
         },
         {
           "name": "version",

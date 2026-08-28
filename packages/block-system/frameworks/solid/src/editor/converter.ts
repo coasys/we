@@ -54,7 +54,7 @@ export function blockToNode(schema: Schema, block: ContentBlock): PMNode | null 
 function textBlockToNode(schema: Schema, block: TextContentBlock): PMNode {
   const common = {
     id: block._key ?? null,
-    format: block.format ?? null,
+    align: block.align ?? null,
     direction: block.direction === 'rtl' ? 'rtl' : null,
     level: block.level ?? 0,
   };
@@ -204,7 +204,7 @@ function textNodeToBlock(node: PMNode): TextContentBlock {
       block.style = 'normal';
   }
   if (typeof node.attrs.level === 'number' && node.attrs.level > 0) block.level = node.attrs.level;
-  if (typeof node.attrs.format === 'string' && node.attrs.format) block.format = node.attrs.format;
+  if (typeof node.attrs.align === 'string' && node.attrs.align) block.align = node.attrs.align;
   if (node.attrs.direction === 'rtl') block.direction = 'rtl';
   if (marks.length) block.marks = marks;
   return block;

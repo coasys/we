@@ -146,7 +146,7 @@ function textBlock(node: SerializedBlockNode, style: TextContentBlock['style'], 
   const indent = typeof node.indent === 'number' ? node.indent : 0;
   const effectiveLevel = level || indent;
   if (effectiveLevel > 0) block.level = effectiveLevel;
-  if (typeof node.format === 'string' && node.format && node.format !== 'left') block.format = node.format;
+  if (typeof node.format === 'string' && node.format && node.format !== 'left') block.align = node.format;
   if (typeof node.direction === 'string' && node.direction === 'rtl') block.direction = 'rtl';
   return block;
 }
