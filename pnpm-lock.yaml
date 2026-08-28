@@ -806,6 +806,9 @@ importers:
       '@we/design-utils':
         specifier: workspace:*
         version: link:../utils
+      '@we/drag':
+        specifier: workspace:*
+        version: link:../drag
       '@we/tokens':
         specifier: workspace:*
         version: link:../1-tokens

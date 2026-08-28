@@ -73,10 +73,11 @@
     "@floating-ui/dom": "^1.8.0",
     "@types/leaflet": "^1.9.22",
     "@we/design-utils": "workspace:*",
+    "@we/drag": "workspace:*",
     "@we/tokens": "workspace:*",
+    "dompurify": "^3.4.14",
     "jdenticon": "3.3.0",
     "leaflet": "^1.9.4",
-    "dompurify": "^3.4.14",
     "lit": "3.3.3",
     "marked": "^18.0.11",
     "tslib": "2.8.1"
