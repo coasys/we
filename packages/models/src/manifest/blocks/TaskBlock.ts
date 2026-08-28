@@ -124,7 +124,12 @@ export const TaskBlock: CoreEntityDef = {
           'Who took the task on, as the name used in conversation ("James"), not a DID. Omit if nobody was named.',
         default: '',
       },
-      version: { type: 'number', predicate: 'we://version', default: 0 },
+      version: {
+        type: 'number',
+        predicate: 'we://version',
+        interpretationHint: 'Bookkeeping. Never set this \u2014 WE maintains it.',
+        default: 0,
+      },
     },
     relations: {},
   },

@@ -63,6 +63,11 @@ export interface CalloutBlockModel extends WeNodeModel {
   version: number;
 }
 
+export interface CallExtractionModel extends WeNodeModel {
+  callId: string;
+  entities: string;
+}
+
 export interface ChatMessageModel extends WeNodeModel {
   role: string;
   content: string;
@@ -183,6 +188,7 @@ export interface ReadMarkerModel extends WeNodeModel {
 }
 
 export interface RelationshipModel extends WeNodeModel {
+  connection: string;
   relationshipTypeId: string;
   label: string;
   description: string;
@@ -247,6 +253,7 @@ export interface SpaceModel extends WeNodeModel {
   defaultThemeId: string;
   enabledModules: string;
   enabledViews: string;
+  extractionTargets: string;
   autoInterpret: boolean;
   shareExtractionDetail: boolean;
   location?: LocationBlockModel;

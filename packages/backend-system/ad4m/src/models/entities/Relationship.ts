@@ -56,6 +56,33 @@ export class Relationship extends WeNode {
   flag: string = '';
 
   /**
+   * What makes two mentions the same connection — the pair and the label, joined.
+   *
+   * The dedup key, and composite for the same reason {@link EventBlock.occurrence} is: a class
+   * gets exactly one identity property, and no single field identifies a connection. The label
+   * alone collapses every "contradicts" in a space into one record; either end alone is wrong by
+   * construction, since the whole point is that a record has many connections.
+   *
+   * Written by the model rather than derived, because machine-authored instances go through
+   * `create_subject` server-side and never pass WE's own write path — the hint spells the format.
+   * Denormalised and never recomputed: relabel the connection and the next pass sees a different
+   * one and writes a new record. That is the accepted cost of a single-property key, and it fails
+   * in the safe direction — a duplicate somebody deletes, rather than two distinct claims merged.
+   *
+   * Not `required`, deliberately, and for the reason `occurrence` records: required would mean
+   * every connection drawn by hand on a board carries `uninitialized`, and two of them would then
+   * dedup into each other. Left unset, an instance is invisible to dedup — the right answer for a
+   * record no machine is managing.
+   */
+  @Property({
+    through: 'we://connection',
+    identity: true,
+    interpretationHint:
+      'A dedup key, not a display value: the source id, the target id and the label joined, e.g. "we://a → we://b: contradicts". Always set it when you create a connection. Reuse an existing connection’s exact value only when this is the same claim about the same pair.',
+  })
+  connection: string = '';
+
+  /**
    * Which kind of connection this is, when the community has named one.
    *
    * The same shape `Signal.signalTypeId` uses, and for the same reason: a kind is a record the
@@ -67,7 +94,11 @@ export class Relationship extends WeNode {
    * to define a vocabulary before they can say so. The label carries the meaning until a kind
    * exists; afterwards it qualifies it — "contradicts, *specifically about the timeline*".
    */
-  @Property({ through: 'we://relationship_type_id' })
+  @Property({
+    through: 'we://relationship_type_id',
+    interpretationHint:
+      'Leave this empty. It names a connection kind this community defined, and those are not in this prompt — an id guessed here would point at nothing and the connection would render without its kind.',
+  })
   relationshipTypeId: string = '';
 
   /**
@@ -80,19 +111,34 @@ export class Relationship extends WeNode {
    * or a label, and the form enforces that rather than the schema, which cannot express "one of
    * these two".
    */
-  @Property({ through: 'we://title' })
+  @Property({
+    through: 'we://title',
+    interpretationHint:
+      'What the connection is, in the speakers’ own words — a short lowercase verb phrase read source-to-target: "contradicts", "came out of", "blocks", "is the same as". Not a sentence, and not a summary of either end.',
+  })
   label: string = '';
 
   /** Why — the room a one-word label does not leave. */
-  @Property({ through: 'we://description' })
+  @Property({
+    through: 'we://description',
+    interpretationHint:
+      'One sentence saying what was actually said that makes this connection. Omit it when the label already says everything.',
+  })
   description: string = '';
 
   /** Entity name of the source record, so the edge can be drawn without resolving it first. */
-  @Property({ through: 'we://source_type' })
+  @Property({
+    through: 'we://source_type',
+    interpretationHint:
+      'The class name of the record `source` points at, exactly as it is named in this prompt — "TaskBlock", "Sighting". Stored beside the id so the connection can be drawn without loading either end.',
+  })
   sourceType: string = '';
 
   /** Entity name of the target record. */
-  @Property({ through: 'we://target_type' })
+  @Property({
+    through: 'we://target_type',
+    interpretationHint: 'The class name of the record `target` points at, exactly as it is named in this prompt.',
+  })
   targetType: string = '';
 
   @HasOne({ through: 'we://relationship_source' })

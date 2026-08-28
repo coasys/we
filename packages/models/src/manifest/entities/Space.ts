@@ -56,6 +56,27 @@ export const Space: CoreEntityDef = {
        * Defaults off, and that default is the point — joining a space should never be the same act as
        * volunteering to run its extraction.
        */
+      /**
+       * Which candidate models this community's calls start out extracting, as a JSON array of
+       * entity names.
+       *
+       * The middle of three layers. `EntitySchema.extractable` says what is a candidate at all —
+       * a question about whether an LLM *could* mint one, answered by the codebase; this says which
+       * of them a call here begins with, which is a question about what this community's
+       * conversations are about and is nobody else's to answer. A call may then add or remove for
+       * itself (`CallExtraction`).
+       *
+       * **Empty means "not decided", not "none"** — the `enabledModules` rule, and it matters more
+       * here than anywhere: reading empty as none would make every space that predates this field
+       * silently stop extracting, with nothing on screen to say why. An unset value falls back to
+       * the two classes that were hardcoded before this existed (`TaskBlock`, `EventBlock`), so
+       * nothing regresses; the first toggle writes the resolved list and the community owns it
+       * thereafter.
+       *
+       * A JSON string rather than a relation because the values are entity *names* — there is
+       * nothing in the perspective to point at. Same shape as `enabledModules` and `enabledViews`.
+       */
+      extractionTargets: { type: 'string', predicate: 'we://extraction_targets', default: '' },
       autoInterpret: { type: 'boolean', predicate: 'we://auto_interpret', default: false },
       /**
        * Whether extraction passes broadcast their prompt and response to the rest of the space.

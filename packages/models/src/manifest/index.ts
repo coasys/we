@@ -21,6 +21,7 @@ import type { CoreEntityDef } from './defs';
 // AD4M lane to it live beside that lane's generated classes (@we/backend-ad4m src/models).
 export * from './types';
 import { AgentSettings } from './entities/AgentSettings';
+import { CallExtraction } from './entities/CallExtraction';
 import { ChatMessage } from './entities/ChatMessage';
 import { ChatSession } from './entities/ChatSession';
 import { MutedAgent } from './entities/MutedAgent';
@@ -51,6 +52,7 @@ export const CORE_DEFS: Record<string, CoreEntityDef> = {
   AgentSettings,
   AudioBlock,
   CalloutBlock,
+  CallExtraction,
   ChatMessage,
   ChatSession,
   CodeBlock,

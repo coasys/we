@@ -1,4 +1,5 @@
 export { AgentSettings } from './AgentSettings';
+export { CallExtraction } from './CallExtraction';
 export { ChatMessage } from './ChatMessage';
 export { ChatSession } from './ChatSession';
 export { MutedAgent } from './MutedAgent';

@@ -115,6 +115,6 @@ export class TaskBlock extends WeNode {
   })
   assignee: string = '';
 
-  @Property({ through: 'we://version' })
+  @Property({ through: 'we://version', interpretationHint: 'Bookkeeping. Never set this — WE maintains it.' })
   version: number = 0;
 }

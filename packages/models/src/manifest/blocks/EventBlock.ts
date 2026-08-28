@@ -95,7 +95,12 @@ export const EventBlock: CoreEntityDef = {
         interpretationHint: 'True whenever only a day was said and no time of day — the common case in speech.',
         default: false,
       },
-      version: { type: 'number', predicate: 'we://version', default: 0 },
+      version: {
+        type: 'number',
+        predicate: 'we://version',
+        interpretationHint: 'Bookkeeping. Never set this \u2014 WE maintains it.',
+        default: 0,
+      },
     },
     relations: {},
   },

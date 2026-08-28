@@ -4,6 +4,7 @@ import { getModelPredicates, getModelTargetClass, type ModelClass } from '@we/mo
 import {
   AgentSettings,
   AudioBlock,
+  CallExtraction,
   CalloutBlock,
   ChatMessage,
   ChatSession,
@@ -423,6 +424,10 @@ export const SPACE_MODELS = [
   // And how a board draws each kind of thing — the board's own vocabulary of colour, which is
   // shared for exactly the reason its arrangement is.
   TypeStyle,
+  // What one call extracts, where its participants wanted something other than the space default.
+  // Shared, and it has to be: a standing watch is one registration the whole neighbourhood runs, so
+  // two members holding different lists would each re-register over the other's.
+  CallExtraction,
   Template,
   Theme,
   WeNode,

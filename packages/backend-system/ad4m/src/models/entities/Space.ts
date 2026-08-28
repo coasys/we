@@ -76,17 +76,28 @@ export class Space extends WeNode {
   enabledViews: string = '';
 
   /**
-   * Whether calls in this space are interpreted as they happen, rather than only when somebody
-   * presses Extract.
+   * Which candidate models this community's calls start out extracting, as a JSON array of
+   * entity names.
    *
-   * A property of the *space* rather than of the agent, because the consequences are the
-   * community's: a standing watch spends an LLM call on whichever member's node wins the election,
-   * and writes what it finds into everyone's copy. Left to each agent, one member could sign the
-   * rest up to both.
+   * The middle of three layers. `EntitySchema.extractable` says what is a candidate at all —
+   * a question about whether an LLM *could* mint one, answered by the codebase; this says which
+   * of them a call here begins with, which is a question about what this community's
+   * conversations are about and is nobody else's to answer. A call may then add or remove for
+   * itself (`CallExtraction`).
    *
-   * Defaults off, and that default is the point — joining a space should never be the same act as
-   * volunteering to run its extraction.
+   * **Empty means "not decided", not "none"** — the `enabledModules` rule, and it matters more
+   * here than anywhere: reading empty as none would make every space that predates this field
+   * silently stop extracting, with nothing on screen to say why. An unset value falls back to
+   * the two classes that were hardcoded before this existed (`TaskBlock`, `EventBlock`), so
+   * nothing regresses; the first toggle writes the resolved list and the community owns it
+   * thereafter.
+   *
+   * A JSON string rather than a relation because the values are entity *names* — there is
+   * nothing in the perspective to point at. Same shape as `enabledModules` and `enabledViews`.
    */
+  @Property({ through: 'we://extraction_targets' })
+  extractionTargets: string = '';
+
   @Property({ through: 'we://auto_interpret' })
   autoInterpret: boolean = false;
 

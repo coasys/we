@@ -97,6 +97,6 @@ export class EventBlock extends WeNode {
   })
   allDay: boolean = false;
 
-  @Property({ through: 'we://version' })
+  @Property({ through: 'we://version', interpretationHint: 'Bookkeeping. Never set this — WE maintains it.' })
   version: number = 0;
 }

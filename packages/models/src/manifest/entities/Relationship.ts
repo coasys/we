@@ -44,10 +44,50 @@ export const Relationship: CoreEntityDef = {
     interpretationHint:
       'A relationship a person asserted between two specific records — "contradicts", "caused by", "same as". Only extract one when the speakers connect two things that both already exist as records.',
     flag: { predicate: 'we://flag', value: 'we://relationship' },
+    /**
+     * A candidate for extraction — off in a space that has made no choice, on where one has.
+     *
+     * The class hint below was written for extraction from the day it was added, and nothing ever
+     * extracted a `Relationship`: the target list was a constant naming two block types. That was
+     * the same gap this whole change exists to close, one entity along.
+     *
+     * A candidate rather than a default. What a community's calls are *about* is the community's to
+     * say, and "the speakers connected two records that already exist" is a rarer and more specific
+     * act than "somebody committed to something" — so a space turns this on deliberately rather than
+     * finding relationships appearing in a meeting about anything else.
+     */
+    extractable: true,
     // `sourceType`/`targetType` are absent: they are set from what was connected, not typed by hand,
     // and so is `relationshipTypeId` — the form offers the kinds this community has named.
     authoring: { fields: ['label', 'description'] },
     properties: {
+      /**
+       * What makes two mentions the same connection — the pair and the label, joined.
+       *
+       * The dedup key, and composite for the same reason {@link EventBlock.occurrence} is: a class
+       * gets exactly one identity property, and no single field identifies a connection. The label
+       * alone collapses every "contradicts" in a space into one record; either end alone is wrong by
+       * construction, since the whole point is that a record has many connections.
+       *
+       * Written by the model rather than derived, because machine-authored instances go through
+       * `create_subject` server-side and never pass WE's own write path — the hint spells the format.
+       * Denormalised and never recomputed: relabel the connection and the next pass sees a different
+       * one and writes a new record. That is the accepted cost of a single-property key, and it fails
+       * in the safe direction — a duplicate somebody deletes, rather than two distinct claims merged.
+       *
+       * Not `required`, deliberately, and for the reason `occurrence` records: required would mean
+       * every connection drawn by hand on a board carries `uninitialized`, and two of them would then
+       * dedup into each other. Left unset, an instance is invisible to dedup — the right answer for a
+       * record no machine is managing.
+       */
+      connection: {
+        type: 'string',
+        predicate: 'we://connection',
+        interpretationHint:
+          'A dedup key, not a display value: the source id, the target id and the label joined, e.g. "we://a \u2192 we://b: contradicts". Always set it when you create a connection. Reuse an existing connection\u2019s exact value only when this is the same claim about the same pair.',
+        identity: true,
+        default: '',
+      },
       /**
        * Which kind of connection this is, when the community has named one.
        *
@@ -60,7 +100,13 @@ export const Relationship: CoreEntityDef = {
        * to define a vocabulary before they can say so. The label carries the meaning until a kind
        * exists; afterwards it qualifies it — "contradicts, *specifically about the timeline*".
        */
-      relationshipTypeId: { type: 'string', predicate: 'we://relationship_type_id', default: '' },
+      relationshipTypeId: {
+        type: 'string',
+        predicate: 'we://relationship_type_id',
+        interpretationHint:
+          'Leave this empty. It names a connection kind this community defined, and those are not in this prompt — an id guessed here would point at nothing and the connection would render without its kind.',
+        default: '',
+      },
       /**
        * What the connection *is*, in the author's words — "contradicts", "came out of".
        *
@@ -71,13 +117,37 @@ export const Relationship: CoreEntityDef = {
        * or a label, and the form enforces that rather than the schema, which cannot express "one of
        * these two".
        */
-      label: { type: 'string', predicate: 'we://title', default: '' },
+      label: {
+        type: 'string',
+        predicate: 'we://title',
+        interpretationHint:
+          'What the connection is, in the speakers\u2019 own words \u2014 a short lowercase verb phrase read source-to-target: "contradicts", "came out of", "blocks", "is the same as". Not a sentence, and not a summary of either end.',
+        default: '',
+      },
       /** Why — the room a one-word label does not leave. */
-      description: { type: 'string', predicate: 'we://description', control: 'textarea', default: '' },
+      description: {
+        type: 'string',
+        predicate: 'we://description',
+        control: 'textarea',
+        interpretationHint:
+          'One sentence saying what was actually said that makes this connection. Omit it when the label already says everything.',
+        default: '',
+      },
       /** Entity name of the source record, so the edge can be drawn without resolving it first. */
-      sourceType: { type: 'string', predicate: 'we://source_type', default: '' },
+      sourceType: {
+        type: 'string',
+        predicate: 'we://source_type',
+        interpretationHint:
+          'The class name of the record `source` points at, exactly as it is named in this prompt \u2014 "TaskBlock", "Sighting". Stored beside the id so the connection can be drawn without loading either end.',
+        default: '',
+      },
       /** Entity name of the target record. */
-      targetType: { type: 'string', predicate: 'we://target_type', default: '' },
+      targetType: {
+        type: 'string',
+        predicate: 'we://target_type',
+        interpretationHint: 'The class name of the record `target` points at, exactly as it is named in this prompt.',
+        default: '',
+      },
     },
     relations: {
       /*
