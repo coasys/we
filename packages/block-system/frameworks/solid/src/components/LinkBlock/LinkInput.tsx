@@ -65,7 +65,7 @@ export function LinkInput(props: LinkInputProps) {
         </Show>
       </Show>
 
-      {/* Add/edit modal — portalled to escape the Lexical contenteditable context. */}
+      {/* Add/edit modal — portalled to escape the editor's contenteditable context. */}
       <Show when={showModal()}>
         <Portal>
           <we-modal close={() => setShowModal(false)} size="sm">

@@ -1,0 +1,231 @@
+// The composer's own chrome: the editable root, the selection toolbar, the mention menu.
+
+.we-block-composer-wrapper {
+  .we-block-composer-mount {
+    width: 100%;
+  }
+
+  .we-block-composer-editor {
+    outline: none;
+    position: relative;
+    min-height: 1.5em;
+  }
+
+  .we-block-composer-save {
+    display: flex;
+    justify-content: flex-end;
+  }
+}
+
+// ProseMirror essentials — what the library's own stylesheet would provide.
+.ProseMirror {
+  position: relative;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+  -webkit-font-variant-ligatures: none;
+  font-variant-ligatures: none;
+
+  &:focus {
+    outline: none;
+  }
+
+  // Selecting a block as a unit is not a text selection, and the browser must not paint one:
+  // a node selection spans the whole node, so without this the highlight is dragged across an
+  // image, its size controls, or an entire paragraph, and the block reads as broken. The
+  // ::selection rules are prosemirror-view's own — the library's stylesheet is reproduced here
+  // rather than imported (see above), and they were the part left out.
+  //
+  // ::selection cannot cross into a primitive's shadow tree, though, which is where the image
+  // itself lives, so a block takes no part in selection at all while one is being painted:
+  // `user-select` is inherited, so it reaches the shadow tree the ::selection rule cannot.
+  // ProseMirror drops the class as soon as the DOM selection moves — clicking a control inside
+  // the block, say — and an editable element is exempt from an inherited `none` regardless, so
+  // a field in there is still usable when it is the thing being used.
+  &.ProseMirror-hideselection {
+    caret-color: transparent;
+
+    *::selection {
+      background: transparent;
+    }
+
+    .we-block {
+      user-select: none;
+    }
+  }
+
+  // Nothing marks a selected block beyond the highlight the block chrome already gives it —
+  // every block has a background and padding of its own, so an outline was one cue too many, and
+  // a ring on some kinds and not others made selecting a paragraph and selecting an image read
+  // as different acts.
+
+  // A mention is the exception: inline, accent-tinted already, and with no padding to show.
+  .we-mention.ProseMirror-selectednode {
+    box-shadow: 0 0 0 2px var(--we-role-accent);
+  }
+
+  .ProseMirror-gapcursor {
+    display: none;
+    pointer-events: none;
+    position: absolute;
+    margin: 0;
+
+    &::after {
+      content: '';
+      display: block;
+      position: absolute;
+      top: -2px;
+      width: 20px;
+      border-top: 1px solid var(--we-role-text);
+      animation: we-gapcursor-blink 1.1s steps(2, start) infinite;
+    }
+  }
+
+  &.ProseMirror-focused .ProseMirror-gapcursor {
+    display: block;
+  }
+}
+
+@keyframes we-gapcursor-blink {
+  to {
+    visibility: hidden;
+  }
+}
+
+// Remote carets in a live session (y-prosemirror's cursor plugin). The colour is the peer's own,
+// set inline; this gives the caret a body and the name a label.
+.ProseMirror-yjs-cursor {
+  position: relative;
+  margin-left: -1px;
+  margin-right: -1px;
+  border-left: 1px solid;
+  border-right: 1px solid;
+  border-color: currentColor;
+  word-break: normal;
+  pointer-events: none;
+
+  > div {
+    position: absolute;
+    top: -1.35em;
+    left: -1px;
+    font-size: 11px;
+    line-height: normal;
+    font-family: var(--we-font-family);
+    font-weight: 500;
+    color: white;
+    padding: 1px 5px;
+    border-radius: var(--we-radius-200) var(--we-radius-200) var(--we-radius-200) 0;
+    white-space: nowrap;
+    user-select: none;
+  }
+}
+
+.ProseMirror-yjs-selection {
+  border-radius: 2px;
+}
+
+body.block-dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
+// ── Selection toolbar ───────────────────────────────────────────────────────
+
+.we-format-toolbar {
+  // Top-layer popover, positioned in viewport coordinates by the caller.
+  position: fixed;
+  z-index: var(--we-z-popover);
+  margin: 0;
+  border: 1px solid var(--we-role-border);
+  background: var(--we-role-surface-raised);
+  color: inherit;
+  overflow: visible;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: var(--we-radius-300);
+  box-shadow: var(--we-shadow-md);
+
+  .we-format-toolbar-button {
+    all: unset;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: var(--we-radius-200);
+    color: var(--we-role-text);
+
+    &:hover {
+      background: var(--we-role-surface-hover);
+    }
+
+    &.we-format-toolbar-active {
+      background: var(--we-role-accent-muted);
+      color: var(--we-role-accent-text);
+    }
+  }
+
+  .we-format-toolbar-link {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .we-format-toolbar-input {
+    all: unset;
+    font-family: var(--we-font-family);
+    font-size: var(--we-font-size-200);
+    color: var(--we-role-text);
+    padding: 4px 8px;
+    min-width: 220px;
+    border-radius: var(--we-radius-200);
+    background: var(--we-role-surface-sunken);
+
+    &::placeholder {
+      color: var(--we-role-text-faint);
+    }
+  }
+}
+
+// ── Mention menu ────────────────────────────────────────────────────────────
+
+.we-mention-menu {
+  position: fixed;
+  z-index: var(--we-z-popover);
+  margin: 0;
+  border: 1px solid var(--we-role-border);
+  background: var(--we-role-surface-raised);
+  color: inherit;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 220px;
+  max-height: min(320px, 50vh);
+  padding: 6px;
+  border-radius: var(--we-radius-300);
+  box-shadow: var(--we-shadow-md);
+  font-family: var(--we-font-family);
+
+  .we-mention-menu-item {
+    all: unset;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: var(--we-radius-200);
+
+    &.we-mention-menu-focused {
+      background: var(--we-role-surface-hover);
+    }
+  }
+
+  .we-mention-menu-empty {
+    padding: 8px;
+    font-size: var(--we-font-size-200);
+    color: var(--we-role-text-faint);
+    text-align: center;
+  }
+}

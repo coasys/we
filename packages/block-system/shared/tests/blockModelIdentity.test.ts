@@ -18,7 +18,7 @@ import { getBlockRegistration } from '../src/registry';
 registerCoreBlocks();
 
 describe('registered block models', () => {
-  it.each(['image', 'paragraph', 'root', 'file', 'event'])('binds "%s" to a manifest entity', (nodeType) => {
+  it.each(['image', 'block', 'root', 'collection', 'file', 'event'])('binds "%s" to a manifest entity', (nodeType) => {
     const registration = getBlockRegistration(nodeType);
     expect(registration, `no block registered for "${nodeType}"`).toBeDefined();
 
@@ -37,6 +37,14 @@ describe('registered block models', () => {
     // Spot-check one binding end to end rather than trusting the count alone.
     const registration = getBlockRegistration('image')!;
     expect(Object.keys(CORE_MANIFEST.entities[registration.entity].properties)).toContain('src');
+  });
+
+  it('declares the standoff marks field a text block persists its inline structure through', () => {
+    const registration = getBlockRegistration('block')!;
+    const properties = CORE_MANIFEST.entities[registration.entity].properties;
+    expect(properties.text).toBeDefined();
+    expect(properties.marks).toBeDefined();
+    expect(properties.checked).toBeDefined();
   });
 
   it('declares the file-storage fields the upload path depends on', () => {

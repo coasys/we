@@ -129,7 +129,7 @@ costs them the one time it was about something real.
   the model, so no set of local names exists to test — `recordStore.recordDraftDirty` and
   `runtimeStore.aiFormDirty` are the two of these, and both are derived, not stored.
 - **Content inside a component is the component's to report.** A `BlockComposer`'s document lives in
-  Lexical and no local can see it; it pushes `onDirtyChange` instead. Any component that owns
+  the editor and no local can see it; it pushes `onDirtyChange` instead. Any component that owns
   editable content and can appear in a modal owes the same.
 
 ### When to leave it off

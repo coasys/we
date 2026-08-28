@@ -101,7 +101,7 @@ export function VideoInput(props: VideoInputProps) {
         </Show>
       </Show>
 
-      {/* Add-video modal — portalled to escape the Lexical contenteditable context. */}
+      {/* Add-video modal — portalled to escape the editor's contenteditable context. */}
       <Show when={showModal()}>
         <Portal>
           <we-modal close={closeModal} size="sm">

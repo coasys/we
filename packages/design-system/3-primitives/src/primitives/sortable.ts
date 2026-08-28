@@ -19,7 +19,7 @@ const CSS_STYLES = css`
   /* The zone a drop would land in. Subtle on purpose: the indicator says *where*, this says
      *which* — and on a nested board both are on screen at once. */
   :host([data-drop-target]) [part='container'] {
-    outline: 2px solid var(--we-color-primary-400, #93c5fd);
+    outline: 2px solid var(--we-role-accent, #93c5fd);
     outline-offset: 2px;
     border-radius: var(--we-radius-400, 8px);
   }
@@ -61,6 +61,15 @@ function promoteToTopLayer(el: HTMLElement): void {
     // A popover that cannot be shown (already open, detached) simply stays where it was.
   }
 }
+
+/**
+ * How thick the drop indicator's line is, in pixels.
+ *
+ * Named because the geometry depends on it twice — the line's own size, and the half of it the
+ * line is offset by to sit centred on the edge it marks — and the two drifting apart is invisible
+ * until somebody looks closely at where a drop would land.
+ */
+const INDICATOR_THICKNESS = 4;
 
 /** UA `[popover]` defaults that would otherwise leak in — the same set `OverlayElement` undoes. */
 const POPOVER_RESETS = ['inset:auto', 'margin:0', 'border:none', 'padding:0', 'overflow:visible', 'color:inherit'];
@@ -357,7 +366,10 @@ export default class Sortable extends DesignSystemElement {
       `position:fixed`,
       `pointer-events:none`,
       `z-index:9998`,
-      `background:var(--we-color-primary-500,#3b82f6)`,
+      // The same line the block editor's drop spot draws — 2px, rounded, in the accent role.
+      // Two mechanisms (that one is native drag-and-drop over a ProseMirror document), so the
+      // tokens are the only thing they can share; keep them saying the same thing.
+      `background:var(--we-role-accent,#3b82f6)`,
       `border-radius:2px`,
       `opacity:0`,
       ...POPOVER_RESETS,
@@ -396,9 +408,14 @@ export default class Sortable extends DesignSystemElement {
       the line sat one row below where the drop would actually land, so a downward drag had to be
       taken a row too far before the line reached the place already meant.
     */
-    const fromIndex = this._getItems().indexOf(this._dragging);
+    const items = this._getItems();
+    const fromIndex = items.indexOf(this._dragging);
     const shownIndex = target === this && this._dropIndex > fromIndex ? this._dropIndex - 1 : this._dropIndex;
-    target._updateIndicator(this._indicator, shownIndex, this._dragging);
+    // `_commit` refuses a drop back where it started, so nothing marks that spot either: a line
+    // there promises a move the release will not make.
+    const staysPut = target === this && Math.max(0, Math.min(shownIndex, items.length - 1)) === fromIndex;
+    if (staysPut) this._indicator?.style.setProperty('opacity', '0');
+    else target._updateIndicator(this._indicator, shownIndex, this._dragging);
   };
 
   /** Where in this zone a pointer at (x, y) would drop, by comparing against each item's centre. */
@@ -428,7 +445,7 @@ export default class Sortable extends DesignSystemElement {
         left: `${containerRect.left + 8}px`,
         top: `${containerRect.top + 8}px`,
         width: `${Math.max(containerRect.width - 16, 0)}px`,
-        height: '2px',
+        height: `${INDICATOR_THICKNESS}px`,
         opacity: '1',
       });
       return;
@@ -438,21 +455,24 @@ export default class Sortable extends DesignSystemElement {
     const atEnd = clamped >= items.length;
     const pivot = atEnd ? items[items.length - 1] : items[clamped];
     const r = pivot.getBoundingClientRect();
+    // Centred on the edge it marks, so the line does not read as belonging to the item on one
+    // side of the gap.
+    const half = INDICATOR_THICKNESS / 2;
 
     if (isVertical) {
       Object.assign(indicator.style, {
         left: `${containerRect.left}px`,
-        top: `${(atEnd ? r.bottom : r.top) - 1}px`,
+        top: `${(atEnd ? r.bottom : r.top) - half}px`,
         width: `${containerRect.width}px`,
-        height: '2px',
+        height: `${INDICATOR_THICKNESS}px`,
         opacity: '1',
       });
     } else {
       Object.assign(indicator.style, {
         top: `${containerRect.top}px`,
-        left: `${(atEnd ? r.right : r.left) - 1}px`,
+        left: `${(atEnd ? r.right : r.left) - half}px`,
         height: `${containerRect.height}px`,
-        width: '2px',
+        width: `${INDICATOR_THICKNESS}px`,
         opacity: '1',
       });
     }
