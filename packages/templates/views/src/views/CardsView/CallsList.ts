@@ -1,4 +1,4 @@
-import type { SchemaNode, SchemaProp } from '@we/schema-shared';
+import type { SchemaNode } from '@we/schema-shared';
 import { expr } from '@we/schema-shared';
 import {
   agentByline,
@@ -43,80 +43,108 @@ const utterancesQuery = {
 /** Hoisted on each call's card as `utterances`. */
 const utterances = { $: 'local.utterances' };
 
-/** Records of one kind that extraction wrote onto this call. */
-const findingsQuery = (entity: string) => ({
-  entity,
-  scope: { anchor: 'CollectionBlock', via: 'children', anchorId: { $: 'call.id' } },
-  order: { createdAt: 'asc' },
-});
-
-/** Both hoisted on each call's card, beside the utterances. */
-const taskFindings = { $: 'local.taskFindings' };
-const eventFindings = { $: 'local.eventFindings' };
-
-/** What a call's card subscribes to — its transcript and what extraction wrote. */
-const callQueries = {
-  utterances: utterancesQuery,
-  taskFindings: findingsQuery('TaskBlock'),
-  eventFindings: findingsQuery('EventBlock'),
-};
-
-/** `" · 2 tasks"`, or nothing at all when the count is zero. */
-const countOf = (query: SchemaProp, one: string, other: string) =>
-  expr`count(${query}) ? ' · ' + count(${query}) + plural(count(${query}), ${one}, ${other}) : ''`;
+/** What a call's card subscribes to. The findings are per-model and hoisted below. */
+const callQueries = { utterances: utterancesQuery };
 
 /**
- * One group of records extraction wrote onto this call.
+ * Records of one model that extraction wrote onto this call — for whichever models this space has.
  *
- * A drill-down through `children` for the same reason the transcript below uses one:
- * `CollectionBlock.children` is an *untyped* `@HasMany`, so `include` has no target class to
- * resolve and dies on it. `scope` is the supported traversal, and it takes the child type — which
- * is exactly what makes this one helper serve both tasks and events.
+ * `entity` is an expression reading the row of the `$each` above it, which is what lets one query
+ * serve a list nobody knew at authoring time. It used to be two hardcoded queries, `TaskBlock` and
+ * `EventBlock`, so a community that defined a `Sighting` and had one extracted saw the record land
+ * in the space and never appear on the call it came out of.
  *
- * Rendered only when the group has members, so a call nobody extracted from looks the way it always
- * did rather than growing two empty headings.
- *
- * `title` is the one field every extracted class has and the one the model is told to lead with, so
- * it is all this shows. Anything richer belongs in the card for that type, not in a summary hanging
- * off a call — the point here is "this came out of this conversation", not a task manager.
+ * A drill-down through `children` rather than an `include`, for the reason the transcript below
+ * gives: `CollectionBlock.children` is an *untyped* `@HasMany`, so `include` has no target class to
+ * resolve and dies on it. `scope` is the supported traversal and it takes the child type, which is
+ * exactly the thing being varied here.
  */
-function extracted(query: SchemaProp, label: string, icon: string, as: string): SchemaNode {
-  return {
-    type: '$if',
-    props: {
-      condition: expr`count(${query})`,
-      then: {
-        type: 'Column',
-        props: { gap: '200' },
-        children: [
-          {
-            type: 'Row',
-            props: { gap: '200', ay: 'center' },
-            children: [
-              { type: 'we-icon', props: { name: icon, color: 'accent-text' } },
-              {
-                type: 'we-text',
-                props: { variant: 'footnote', color: 'text-muted', uppercase: true },
-                children: [label],
-              },
-            ],
+const findingsQuery = {
+  entity: { $: 'target' },
+  scope: { anchor: 'CollectionBlock', via: 'children', anchorId: { $: 'call.id' } },
+  order: { createdAt: 'asc' },
+};
+
+/**
+ * What extraction wrote onto this call, one group per model this space can extract into.
+ *
+ * The list of models comes from the space rather than from anything this card knows —
+ * `shapeStore.extractionTargets` is core vocabulary marked extractable plus every model the
+ * community defined and marked so. Deliberately the *space's* list rather than any per-call
+ * selection: a member who narrowed their own Extract press must still see what another member
+ * found, so what is *shown* and what a given pass *looks for* are different questions.
+ *
+ * Each group hoists its own subscription and renders only when it has members, so a call nobody
+ * extracted from looks exactly as it did before, and a space with no extractable models grows
+ * nothing at all.
+ *
+ * How a record is drawn comes from its own declaration (`recordStore.displays`), with the entity
+ * name and a neutral icon where a model has no display — an extraction target need not be one of
+ * the models a person can create by hand. `title` is all this shows: the point is "this came out of
+ * this conversation", not a task manager, and anything richer belongs in the card for that type.
+ *
+ * The fold this used to sit behind is gone with the hardcoded queries. It counted tasks and events
+ * in its own label ("Show what was found · 2 tasks"), and a total across a set of models nobody
+ * knows in advance is not something a schema can compute — the counts live inside the groups, one
+ * query each. No loss: `cardShell` already folds the whole card, and the note on the transcript
+ * below records what happened the last time this route had two disclosures in a row.
+ */
+const findings: SchemaNode = {
+  type: '$each',
+  props: { items: { $: 'shapeStore.extractionTargets' }, as: 'target' },
+  children: [
+    {
+      type: 'Column',
+      props: { gap: '200' },
+      $queries: { found: findingsQuery },
+      children: [
+        {
+          type: '$if',
+          props: {
+            condition: { $: 'count(local.found)' },
+            then: {
+              type: 'Column',
+              props: { gap: '200' },
+              children: [
+                {
+                  type: 'Row',
+                  props: { gap: '200', ay: 'center' },
+                  children: [
+                    {
+                      type: 'we-icon',
+                      props: { name: { $: "recordStore.displays[target].icon ?? 'cube'" }, color: 'accent-text' },
+                    },
+                    {
+                      type: 'we-text',
+                      props: { variant: 'footnote', color: 'text-muted', uppercase: true },
+                      children: [{ $: 'recordStore.displays[target].label ?? target' }],
+                    },
+                  ],
+                },
+                {
+                  type: '$each',
+                  props: { items: { $: 'local.found' }, as: 'found' },
+                  children: [
+                    {
+                      type: 'Row',
+                      props: { gap: '200', ay: 'center', bg: 'surface-sunken', r: '300', px: '300', py: '200' },
+                      children: [
+                        // Indexed by whichever property the model calls its title, falling back to
+                        // the name core blocks use — a record with neither shows an empty row rather
+                        // than the word "undefined".
+                        { type: 'we-text', children: [{ $: "found[recordStore.displays[target].title ?? 'title']" }] },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
           },
-          {
-            type: '$each',
-            props: { items: query, as },
-            children: [
-              {
-                type: 'Row',
-                props: { gap: '200', ay: 'center', bg: 'surface-sunken', r: '300', px: '300', py: '200' },
-                children: [{ type: 'we-text', children: [{ $: `${as}.title` }] }],
-              },
-            ],
-          },
-        ],
-      },
+        },
+      ],
     },
-  };
-}
+  ],
+};
 
 export const callsList: SchemaNode = {
   type: '$if',
@@ -160,11 +188,10 @@ export const callsList: SchemaNode = {
               owes a reader at a glance is who was in it, how much was said and what came out — all
               of which the header already carries.
 
-              The transcript below has no fold of its own. `cardShell` already collapses the whole
-              card, and a fold inside a collapsed card is two nested disclosures wrapping the same
-              text — which reads as a mistake rather than as two choices.
+              Neither the findings nor the transcript has a fold of its own. `cardShell` already
+              collapses the whole card, and a fold inside a collapsed card is two nested disclosures
+              wrapping the same text — which reads as a mistake rather than as two choices.
             */
-            findingsOpen: { type: 'boolean', initial: false },
           },
           header: [
             {
@@ -277,15 +304,17 @@ export const callsList: SchemaNode = {
                         fontSize: '200',
                         color: 'text',
                         /*
-                          What the model found, beside what was said — named by kind rather than
-                          totalled. "2 tasks · 1 event" says what came out of the conversation;
-                          "3 extracted" says only that the button worked.
+                          What was said. What was *found* used to be totalled here too — "2 tasks ·
+                          1 event" — and that phrasing was right while extraction could only ever
+                          produce those two kinds.
 
-                          Each part disappears at zero, so a call nobody has run extraction on
-                          reads exactly as it did before — no permanent reminder of a feature on
-                          every card.
+                          It cannot be built any more, and the reason is worth recording rather than
+                          re-attempting: the models a space extracts into are its own, so the counts
+                          are one subscription per model, and a schema cannot sum a set of queries
+                          it does not know the size of. The groups below carry their own counts, one
+                          query each, which is where a count and the rows it describes belong.
                         */
-                        text: expr`count(${utterances}) + plural(count(${utterances}), ' utterance', ' utterances') + ${countOf(taskFindings, ' task', ' tasks')} + ${countOf(eventFindings, ' event', ' events')}`,
+                        text: expr`count(${utterances}) + plural(count(${utterances}), ' utterance', ' utterances')`,
                       },
                     },
                     /*
@@ -744,51 +773,17 @@ export const callsList: SchemaNode = {
                     shape a filter grows out of.
                   */
                 /*
-                    The findings, behind their own fold.
+                    The findings themselves.
 
-                    A disclosure rather than `CollapsedContent`: this is a short list that is either
-                    wanted whole or not at all, and a height-clipped fade over three rows reads as a
-                    rendering accident. The trigger carries the counts, so the fold still says what
-                    is inside it — which is the thing that makes a closed section worth opening.
-
-                    Hidden entirely when there is nothing, so a call nobody has extracted from looks
-                    exactly as it did before.
+                    Inline rather than behind a disclosure of their own, which is a change forced by
+                    the same thing that made the list dynamic: a trigger has to say what is inside it
+                    to be worth pressing, and "Show what was found" with no counts is a button that
+                    could open onto nothing. The counts cannot be totalled across a set of models
+                    nobody knows in advance, so they live inside the groups — and each group renders
+                    only when it has rows, which leaves a call nobody extracted from looking exactly
+                    as it did before. `cardShell` still folds the whole card.
                   */
-                {
-                  type: '$if',
-                  props: {
-                    condition: expr`count(${taskFindings}) || count(${eventFindings})`,
-                    then: {
-                      type: 'Column',
-                      props: { gap: '200' },
-                      children: [
-                        {
-                          type: 'we-button',
-                          props: {
-                            variant: 'ghost',
-                            size: 'sm',
-                            onClick: { $toggleLocal: 'findingsOpen' },
-                            text: expr`(local.findingsOpen ? 'Hide' : 'Show') + ' what was found' + ${countOf(taskFindings, ' task', ' tasks')} + ${countOf(eventFindings, ' event', ' events')}`,
-                          },
-                        },
-                        {
-                          type: '$if',
-                          props: {
-                            condition: { $: 'local.findingsOpen' },
-                            then: {
-                              type: 'Column',
-                              props: { gap: '300' },
-                              children: [
-                                extracted(taskFindings, 'Tasks', 'check-square', 'task'),
-                                extracted(eventFindings, 'Events', 'calendar', 'event'),
-                              ],
-                            },
-                          },
-                        },
-                      ],
-                    },
-                  },
-                },
+                findings,
                 /*
                     The transcript, in full.
 

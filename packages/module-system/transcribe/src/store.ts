@@ -75,6 +75,22 @@ export const TRANSCRIBE_ACTIVITY = 'transcribe';
  * delete children it did not author — other agents' utterances).
  */
 
+/**
+ * An entity name as a person would say it — `TaskBlock` → "Task", `BirdSighting` → "Bird sighting".
+ *
+ * A module cannot reach `recordStore.displays`, where a model's real display name lives, and should
+ * not: this list is a row of toggles in a call panel, not a record surface. The two rules cover
+ * everything that can appear here — WE's own extraction targets are `*Block` classes, and a
+ * community's shape is named the way its author typed it.
+ *
+ * Presentation only. Every write and every request uses the entity name.
+ */
+function humanise(entity: string): string {
+  const bare = entity.endsWith('Block') ? entity.slice(0, -'Block'.length) : entity;
+  const spaced = bare.replace(/([a-z0-9])([A-Z])/g, '$1 $2');
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1).toLowerCase();
+}
+
 /** How an extraction pass is going. `done` holds until the next run, so the result stays readable. */
 export type ExtractStatus = 'idle' | 'running' | 'done' | 'error';
 
@@ -1443,7 +1459,11 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      */
     extractionTargets: () => {
       const active = activeTargets();
-      return extractionTargets().map((entity) => ({ entity, selected: active.includes(entity) }));
+      return extractionTargets().map((entity) => ({
+        entity,
+        label: humanise(entity),
+        selected: active.includes(entity),
+      }));
     },
     /** True while the next press would look for everything on offer — nothing has been narrowed. */
     allTargetsSelected: () => selectedTargets() === null,

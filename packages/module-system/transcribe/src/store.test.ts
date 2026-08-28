@@ -980,10 +980,13 @@ describe('extraction', () => {
       const i = interpreter(undefined, true, ['EventBlock', 'Sighting', 'TaskBlock']);
       const h = harness(inCall, { interpretation: i.port });
 
+      // The label is presentation only — every write and every request uses `entity`. `*Block` is
+      // WE's own naming and would read as jargon on a row of toggles beside a community's own
+      // model, so it is dropped: "Task", "Event", "Sighting".
       expect(h.store.extractionTargets()).toEqual([
-        { entity: 'EventBlock', selected: true },
-        { entity: 'Sighting', selected: true },
-        { entity: 'TaskBlock', selected: true },
+        { entity: 'EventBlock', label: 'Event', selected: true },
+        { entity: 'Sighting', label: 'Sighting', selected: true },
+        { entity: 'TaskBlock', label: 'Task', selected: true },
       ]);
       expect(h.store.allTargetsSelected()).toBe(true);
     });

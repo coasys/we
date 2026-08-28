@@ -500,6 +500,26 @@ By default $query targets the current dataset. Use dataset to query a different 
 when reading entities from an external app (e.g. Flux) that is open as a WE space:
 { "$query": { "entity": "Channel", "dataset": { "$": "currentDataset" } } }
 
+entity may be an expression rather than a literal name — what lets a list render records of a type
+the template was not written for. Put the query inside an $each over a list of model names and read
+the row:
+{
+  "type": "$each",
+  "props": { "items": { "$": "shapeStore.extractionTargets" }, "as": "target" },
+  "children": [{
+    "type": "Column",
+    "$queries": { "found": { "entity": { "$": "target" }, "order": { "createdAt": "asc" } } },
+    "children": ["…one group per model, each with its own subscription…"]
+  }]
+}
+Pair it with recordStore.displays[target] to draw the rows, and the group renders a model a
+community defined this morning with no template change (see "A record of any type").
+USE A LITERAL WHEREVER THE TYPE IS KNOWN. The validator cannot check a name it only sees at
+runtime, so a typo fails as a silently empty list rather than as an error — and a name that has not
+resolved yet reads as "not ready", so the query simply waits. Note the counts of such a set cannot
+be totalled: each group is its own subscription and a schema cannot sum a list of queries whose
+length it does not know, so put a count inside each group rather than above them.
+
 Backend-neutral identity & dataset refs — prefer these over backend-store paths inside $query and conditions:
 - currentDataset — the currently active dataset (an AD4M perspective, in the AD4M backend). Use as a dataset value.
   A host store's dataset accessor (e.g. `dataset: 'datasetStore.marketplaceDataset'`) works as a dataset value too.

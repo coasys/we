@@ -761,7 +761,13 @@ const autoInterpretSection: SchemaNode = {
               props: { variant: 'footnote', color: 'text-faint' },
               children: [
                 {
-                  $: "space.canAdminister ? 'Tasks and events are written down as a call happens, without anyone pressing Extract. Runs on a member’s node and costs them an AI call each time.' : 'Tasks and events are written down as a call happens. Changing this needs someone who administers the space.'",
+                  /*
+                    "Tasks and events" was right while those were the only two classes extraction
+                    could produce. What it looks for is now whichever of this space's models are
+                    marked for it — including any the community defined — so the sentence names the
+                    act rather than enumerating a list that is no longer fixed.
+                  */
+                  $: "space.canAdminister ? 'Whatever this space’s models are marked for is written down as a call happens, without anyone pressing Extract. Runs on a member’s node and costs them an AI call each time.' : 'What this space’s models are marked for is written down as a call happens. Changing this needs someone who administers the space.'",
                 },
               ],
             },

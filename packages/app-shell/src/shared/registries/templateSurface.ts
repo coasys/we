@@ -541,7 +541,15 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     aiAvailable: state('space-settings'),
     generating: state('space-settings'),
     hintEntities: state('space-settings'),
-    extractionTargets: state('space-settings'),
+    /*
+      'content' rather than 'space-settings', unlike everything else on this store.
+
+      Capability groups name what a template is being trusted with, and this is read to *render*: a
+      feed showing what an extraction pass found on a call needs the list of models it could have
+      found, the same way it needs `recordStore.displays` to draw one. Grouping it with the model
+      wizard would make an ordinary card list ask for the capability that edits a space's vocabulary.
+    */
+    extractionTargets: state('content'),
     extractionNeedsIdentity: state('space-settings'),
     relationshipTargets: state('space-settings'),
     identityOptions: state('space-settings'),

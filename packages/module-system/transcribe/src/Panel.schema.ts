@@ -302,10 +302,73 @@ const extract: SchemaNode = {
               props: { gap: '050' },
               children: [
                 { type: 'we-text', props: { variant: 'footnote', fontWeight: '600' }, children: ['Extract'] },
+                /*
+                  What this press will look for — the models, not a fixed sentence.
+
+                  It read "Find the tasks and events in what was said", which was true while those
+                  two classes were compiled into this module and is a lie in a space that defined
+                  its own. The chips below both say what will be looked for and let this agent
+                  narrow it; the sentence would have to be rewritten every time a community adopts
+                  a model, so it becomes a lead-in instead.
+                */
                 {
-                  type: 'we-text',
-                  props: { variant: 'footnote', color: 'text-muted' },
-                  children: ['Find the tasks and events in what was said.'],
+                  type: '$if',
+                  props: {
+                    condition: { $: 'count(modules.transcribe.extractionTargets)' },
+                    then: {
+                      type: 'we-text',
+                      props: { variant: 'footnote', color: 'text-muted' },
+                      children: ['Look through what was said for:'],
+                    },
+                    /*
+                      Not a failure, and phrased as the one thing a person can act on.
+
+                      Every other reason extraction is unavailable is about this node — no model
+                      configured, an executor that cannot interpret — and none of them can be fixed
+                      from here. This one can: it is a decision the community has not made yet, and
+                      the place to make it is the space's own models.
+                    */
+                    else: {
+                      type: 'we-text',
+                      props: { variant: 'footnote', color: 'text-muted' },
+                      children: [
+                        'No models in this space are marked for AI extraction. Turn one on in the space’s models.',
+                      ],
+                    },
+                  },
+                },
+                /*
+                  One chip per model, ticked when the next press will look for it.
+
+                  This agent's choice and nobody else's: pressing Extract spends this node's LLM
+                  call and adds to a graph that dedups, so narrowing it costs no one anything and
+                  needs no permission. The standing watch is the opposite case and ignores this
+                  entirely — it looks for everything the space declares, because its registration is
+                  shared and every peer has to compute the same one.
+                */
+                {
+                  type: 'Row',
+                  props: { gap: '100', wrap: true },
+                  children: [
+                    {
+                      type: '$each',
+                      props: { items: { $: 'modules.transcribe.extractionTargets' }, as: 'target' },
+                      children: [
+                        {
+                          type: 'we-button',
+                          props: {
+                            size: 'xs',
+                            variant: { $: "target.selected ? 'secondary' : 'ghost'" },
+                            text: { $: 'target.label' },
+                            onClick: {
+                              $action: 'modules.transcribe.toggleExtractionTarget',
+                              args: [{ $: 'target.entity' }],
+                            },
+                          },
+                        },
+                      ],
+                    },
+                  ],
                 },
               ],
             },
