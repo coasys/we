@@ -561,9 +561,11 @@ sole trigger — scrollReveal/scrollLeave/scrollPast are ignored on that node.
 scrollReveal: true fires enterTransition when the element enters the viewport.
 scrollReveal: -100 fires 100px before the element would enter (negative = earlier reveal).
 scrollLeave fires exitTransition when the element leaves the viewport.
-scrollPast: "element-id" observes a sentinel element (by DOM id) instead of the $animate element itself.
-  enterTransition fires when the sentinel leaves the viewport (user scrolled past it).
-  exitTransition fires when the sentinel returns (user scrolled back up).
+scrollPast: "element-id" watches a sentinel element (by DOM id) go past the $animate element itself.
+  enterTransition fires once the sentinel has scrolled above the $animate element's top edge (or out of
+  the viewport) — so a sentinel sliding under a sticky bar counts as gone the moment it does.
+  exitTransition fires when the sentinel comes back below it (user scrolled back up).
+  The sentinel may mount later than the $animate node; it is picked up when it appears.
   Use this for sticky headers: place a zero-height sentinel div at the bottom of the non-sticky header section,
   then wrap the mini-profile in $animate with scrollPast pointing to that sentinel's id.
   scrollPast is mutually exclusive with scrollReveal/scrollLeave.

@@ -34,9 +34,9 @@ type AnimateRendererProps = {
  *                           accordion row shouldn't tear down.
  *  - `props.scrollReveal` — fire enter transition when element scrolls into viewport
  *  - `props.scrollLeave`  — fire exit transition when element scrolls out of viewport
- *  - `props.scrollPast`   — fire enter/exit transitions keyed to a sentinel element's
- *                           viewport visibility (enter fires when sentinel leaves,
- *                           exit fires when sentinel returns). Use for sticky headers.
+ *  - `props.scrollPast`   — fire enter/exit transitions keyed to a sentinel element by DOM id:
+ *                           enter fires once the sentinel has scrolled above this element (or out
+ *                           of the viewport), exit fires when it comes back. Use for sticky headers.
  *  - None of the above    — fire enter animation on mount
  *
  * Transition effects are composed as arrays:
@@ -158,27 +158,60 @@ export function AnimateRenderer({ node, stores, context, renderNode }: AnimateRe
       }
     });
   } else if (scrollPast) {
-    // Sentinel-based trigger: observe a separate element by DOM id.
-    // enterTransition fires when the sentinel leaves the viewport (user scrolled past it).
-    // exitTransition fires when the sentinel returns (user scrolled back up).
+    /*
+      Sentinel-based trigger: a separate element, by DOM id, that this one watches go by.
+
+      "Past" is measured against this element, not the viewport. The case this exists for is a
+      sticky bar: the sentinel sits at the bottom of the header above it, and once the bar sticks the
+      header keeps scrolling while the bar stays put — so the sentinel slides *under* the bar, still
+      inside the viewport. An IntersectionObserver never saw it leave unless the page could scroll a
+      further bar-height, which a space with a short section cannot; the mini-profile simply never
+      appeared. Comparing the sentinel's top with this element's top says exactly when it has gone
+      behind. Leaving the viewport altogether counts too, for a sentinel with no sticky partner.
+
+      Looked up on every check rather than once. The sentinel is usually rendered by a sibling that
+      arrives with the same data this element does — but not always, and a lookup that ran once and
+      found nothing left the element closed for good. Cheap: one `getElementById` per scroll frame.
+    */
     createEffect(() => {
-      const sentinel = document.getElementById(scrollPast);
-      if (!sentinel) return;
+      let past = false;
+      let frame: number | undefined;
+      let seen = false;
 
-      const observer = new IntersectionObserver(
-        (entries) => {
-          const entry = entries[0];
-          if (!entry.isIntersecting && enterTransition) {
-            animateIn(enterTransition);
-          } else if (entry.isIntersecting && exitTransition) {
-            animateOut(exitTransition);
-          }
-        },
-        { threshold: 0 },
-      );
+      const check = () => {
+        frame = undefined;
+        const sentinel = document.getElementById(scrollPast);
+        if (!sentinel || !wrapperRef) return;
+        seen = true;
+        const marker = sentinel.getBoundingClientRect();
+        const self = wrapperRef.getBoundingClientRect();
+        const isPast = marker.top < self.top - 1 || marker.bottom < 0;
+        if (isPast === past) return;
+        past = isPast;
+        if (isPast && enterTransition) animateIn(enterTransition);
+        else if (!isPast && exitTransition) animateOut(exitTransition);
+      };
+      const schedule = () => {
+        if (frame === undefined) frame = requestAnimationFrame(check);
+      };
 
-      observer.observe(sentinel);
-      onCleanup(() => observer.disconnect());
+      // Scroll does not bubble, but it is capturable at the window from any scroll container.
+      window.addEventListener('scroll', schedule, { capture: true, passive: true });
+      window.addEventListener('resize', schedule, { passive: true });
+      // Until the sentinel has been seen once, watch the document for it to arrive.
+      const arrival = new MutationObserver(() => {
+        if (seen) arrival.disconnect();
+        else schedule();
+      });
+      arrival.observe(document.body, { childList: true, subtree: true });
+      check();
+
+      onCleanup(() => {
+        window.removeEventListener('scroll', schedule, { capture: true });
+        window.removeEventListener('resize', schedule);
+        arrival.disconnect();
+        if (frame !== undefined) cancelAnimationFrame(frame);
+      });
     });
   } else if (hasSelfScrollTrigger) {
     // Bidirectional scroll observer — does not disconnect after first intersection
