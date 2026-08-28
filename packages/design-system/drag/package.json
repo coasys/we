@@ -1,0 +1,35 @@
+{
+  "name": "@we/drag",
+  "version": "0.1.0",
+  "description": "The drag session: what is in flight, what is under the pointer, and what happens on release",
+  "author": "James Weir",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build:steps": "tsup",
+    "build": "we-build",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "devDependencies": {
+    "@types/node": "^26.3.0",
+    "@we/cli": "workspace:*",
+    "jsdom": "^30.0.1",
+    "tsup": "^8.5.1",
+    "vitest": "^4.1.11"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "sideEffects": false
+}
