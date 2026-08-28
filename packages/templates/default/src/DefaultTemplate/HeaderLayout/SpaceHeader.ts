@@ -142,6 +142,21 @@ export const spaceHeader: SchemaNode = {
 export const NAV_BAR_HEIGHT =
   'calc(var(--we-component-height-md) + var(--we-theme-control-height-offset, 0px) + var(--we-scrollbar-width) + 2 * var(--we-space-400) + 1px)';
 
+/** The height of a `md` control, as the primitives compute it — what the bar's buttons measure. */
+const CONTROL_HEIGHT = 'calc(var(--we-component-height-md) + var(--we-theme-control-height-offset, 0px))';
+
+/**
+ * The views strip is always this tall: the buttons plus the room a horizontal scrollbar takes.
+ *
+ * `overflowX: 'auto'` shows the scrollbar only when the strip overflows, and a scrollbar takes its
+ * room from *inside* the box — so the strip grew by the scrollbar's height the moment a space had
+ * more views than fit, and everything centred on it (the presence beside it) dropped by half that.
+ * `scrollbar-gutter` cannot reserve the room for a horizontal scrollbar, so the strip reserves it by
+ * being the taller height always, with its buttons held at the top. Overflowing or not, nothing
+ * moves.
+ */
+const STRIP_HEIGHT = `calc(${CONTROL_HEIGHT} + var(--we-scrollbar-width))`;
+
 // Sticky navigation — exported separately so it can be placed as a sibling of
 // both the header content and the $routes outlet, giving it a containing block
 // that spans the full page height (required for position:sticky to work correctly).
@@ -178,7 +193,11 @@ export const spaceNavBar: SchemaNode = {
       */
       type: 'Grid',
       props: {
-        template: 'minmax(max-content, 1fr) minmax(0, var(--we-layout-lg)) 1fr',
+        // The right track's floor is the module rail's width: the rail is chrome floating over the
+        // window's right edge, so on a narrow screen the centre track stops short of it rather than
+        // putting presence underneath.
+        template:
+          'minmax(max-content, 1fr) minmax(0, var(--we-layout-lg)) minmax(var(--we-chrome-rail-width, 56px), 1fr)',
         width: '100%',
         height: '100%',
         ay: 'center',
@@ -194,7 +213,7 @@ export const spaceNavBar: SchemaNode = {
         */
         {
           type: 'Row',
-          props: { ay: 'center', pl: '400' },
+          props: { ay: 'center', pl: '400', height: CONTROL_HEIGHT },
           children: [
             {
               type: '$animate',
@@ -252,7 +271,18 @@ export const spaceNavBar: SchemaNode = {
                 edge, so `ax: 'between'` would be describing a job already done.
               */
               type: 'Row',
-              props: { ay: 'center', p: '400', minWidth: '0' },
+              props: {
+                // Top-aligned, with the padding split unevenly on purpose: the strip is a scrollbar's
+                // height taller than its buttons (see STRIP_HEIGHT), so equal padding around the
+                // *strip* leaves more room under the buttons than over them. Moving half the
+                // scrollbar's height from the bottom to the top centres the buttons in the bar — and
+                // the sum is unchanged, so NAV_BAR_HEIGHT still says what the bar measures.
+                ay: 'start',
+                px: '400',
+                pt: 'calc(var(--we-space-400) + var(--we-scrollbar-width) / 2)',
+                pb: 'calc(var(--we-space-400) - var(--we-scrollbar-width) / 2)',
+                minWidth: '0',
+              },
               children: [
                 // Navigation
                 {
@@ -280,7 +310,14 @@ export const spaceNavBar: SchemaNode = {
                 6px — see NAV_BAR_HEIGHT.
               */
                   type: 'Row',
-                  props: { gap: '200', flex: '1 1 auto', minWidth: '0', overflowX: 'auto' },
+                  props: {
+                    gap: '200',
+                    flex: '1 1 auto',
+                    minWidth: '0',
+                    overflowX: 'auto',
+                    height: STRIP_HEIGHT,
+                    ay: 'start',
+                  },
                   children: [
                     {
                       // The space's own section list, not a literal one. This array used to be written
@@ -318,7 +355,8 @@ export const spaceNavBar: SchemaNode = {
                 // two lines while the strip that caused it kept its full width.
                 {
                   type: 'Row',
-                  props: { flex: '0 0 auto', ay: 'center' },
+                  // As tall as a button and centred on it, as the mini-profile at the other end is.
+                  props: { flex: '0 0 auto', ay: 'center', height: CONTROL_HEIGHT },
                   children: [
                     {
                       type: '$if',

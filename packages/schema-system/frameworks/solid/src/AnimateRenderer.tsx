@@ -200,7 +200,14 @@ export function AnimateRenderer({ node, stores, context, renderNode }: AnimateRe
             if (!entry.isIntersecting && enterTransition) animateIn(enterTransition);
             else if (entry.isIntersecting && exitTransition) animateOut(exitTransition);
           },
-          { root: scrollParent(sentinel), threshold: 0 },
+          /*
+            A sentinel exactly on the box's top edge counts as gone. A zero-height sentinel at the
+            bottom of a header, on a page that can scroll by precisely the header's height, comes to
+            rest *on* that edge — and edge-adjacent is intersecting, so it never left. One pixel of
+            margin is the difference between a mini-profile that appears and one that appears only
+            when there is a little more to scroll.
+          */
+          { root: scrollParent(sentinel), rootMargin: '-1px 0px 0px 0px', threshold: 0 },
         );
         observer.observe(sentinel);
       };
