@@ -1212,7 +1212,7 @@ when `relative` is enabled.
 - DividerInput
   Props: style: DividerVariant | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - EmbedDisplay
-  Props: url: string | undefined, target: string | undefined, targetType: string | undefined, displayMode: string | undefined
+  Props: url: string | undefined, target: string | undefined, targetType: string | undefined, displayMode: string | undefined, label?: string, thumbnail?: string, onOpenRef?: ((ref: string) => void)
 - EmbedInput
   Props: url: string | undefined, target: string | undefined, targetType: string | undefined, displayMode: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - EventDisplay
@@ -1860,6 +1860,8 @@ EmbedBlock extends WeNode:
   - url: string [we://url]
   - target: string [we://target]
   - targetType: string [we://target_type]
+  - label: string [we://title]
+  - thumbnail: string [we://thumbnail]
   - displayMode: string = 'card' [we://display_mode]
   - version: number [we://version]
 

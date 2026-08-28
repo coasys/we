@@ -8,6 +8,8 @@
  * up from the element at the moment they are needed rather than stored, since they shift under
  * every keystroke above.
  */
+import { formatRef, HERE } from '@we/backend-shared';
+import { type DragPayload, dragSession } from '@we/drag';
 import type { FileData } from '@we/models';
 import { compressImageToFileData, readFileAsFileData } from '@we/models';
 import type { Node as PMNode } from 'prosemirror-model';
@@ -380,8 +382,15 @@ export function BlockHandles(props: { ctx: EditorContext }) {
       setHovered(null);
     }
 
-    /** Which element the drag would land beside, and on which side. */
-    function findDropTarget(e: DragEvent): { dom: HTMLElement; before: boolean } | null {
+    /**
+     * Which element the drag would land beside, and on which side.
+     *
+     * Takes a point rather than an event, because two mechanisms ask it now: native drag-and-drop,
+     * which is still how a block is moved and how an OS file arrives, and `@we/drag`'s session,
+     * which is how a reference gets carried in from somewhere else entirely. Both are answering the
+     * same question about the same pointer.
+     */
+    function findDropTarget(e: { clientX: number; clientY: number }): { dom: HTMLElement; before: boolean } | null {
       const blocks = placedBlocks(editor);
       const source = dragSource();
       const sourceEntry = source ? blocks.find((b) => b.dom === source) : undefined;
@@ -518,6 +527,81 @@ export function BlockHandles(props: { ctx: EditorContext }) {
     const onPageDrop = (e: DragEvent) => {
       if (dragSource()) onDrop(e);
     };
+
+    /**
+     * Show where a session drag would land, using the same target-finding and the same bar as a
+     * block move. Two mechanisms, one piece of feedback: a drop line that meant something different
+     * depending on what was being dragged would be worse than none.
+     */
+    function showSessionSpot(point: { x: number; y: number }) {
+      const target = findDropTarget({ clientX: point.x, clientY: point.y });
+      dropTarget = target;
+      if (!target) {
+        setDropSpot((prev) => ({ ...prev, visible: false }));
+        return;
+      }
+      const rect = target.dom.getBoundingClientRect();
+      setDropSpot({
+        visible: true,
+        left: rect.left,
+        width: rect.width,
+        top: (target.before ? rect.top : rect.bottom) - 2,
+      });
+    }
+
+    /**
+     * A reference dropped into the composition becomes an embed.
+     *
+     * `EmbedBlock.target` / `targetType` have existed unused since the block was written; this is
+     * what they were for. The label and thumbnail come with it as a snapshot, because `EmbedDisplay`
+     * draws in a paint path and a paint path must not resolve a reference across datasets.
+     */
+    function insertReferences(payload: DragPayload, point: { x: number; y: number }) {
+      const target = findDropTarget({ clientX: point.x, clientY: point.y });
+      setDropSpot((prev) => ({ ...prev, visible: false }));
+      dropTarget = null;
+      if (!target) return;
+
+      const type = editor.state.schema.nodes[customNodeName('embed')];
+      const entry = entryFor(editor, target.dom);
+      if (!type || !entry) return;
+
+      const nodes = payload.items
+        .filter((item) => item.ref.entity && item.ref.id)
+        .map((item) =>
+          type.create({
+            id: null,
+            props: {
+              /*
+                A source that knows its dataset says so — a row out of the Pocket came from
+                somewhere else. Anything dragged from the space being composed in gets the
+                *relative* form, which is both what the editor can produce (it has no store) and
+                what is correct: an absolute address inside a post would point back at the original
+                space if that post were ever copied or the space forked.
+              */
+              target: formatRef({ datasetKey: item.ref.dataset || HERE, entity: item.ref.entity, id: item.ref.id }),
+              targetType: item.ref.entity,
+              label: item.label,
+              displayMode: 'card',
+            },
+          }),
+        );
+      if (nodes.length) insertBlocks(editor, entry.pos, nodes, target.before ? 'before' : 'after');
+    }
+
+    const releaseZone = dragSession.registerZone({
+      el: root,
+      // Anything with a reference. A composition can hold a card for any kind of record, and
+      // listing the kinds here would mean teaching the editor about every model there will ever be.
+      accepts: (payload) => payload.items.some((item) => !!item.ref.entity && !!item.ref.id),
+      onOver: ({ point }) => showSessionSpot(point),
+      onLeave: () => {
+        setDropSpot((prev) => ({ ...prev, visible: false }));
+        dropTarget = null;
+      },
+      onDrop: ({ payload, point }) => insertReferences(payload, point),
+    });
+    onCleanup(releaseZone);
 
     document.addEventListener('mouseover', onMouseOver);
     document.addEventListener('mouseout', onMouseOut);

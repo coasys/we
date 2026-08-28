@@ -19,6 +19,7 @@
  * we:<datasetKey>/<Entity>/<recordId>    a record
  * we:<datasetKey>                        the space that dataset is
  * we:agent/<did>                         a person, who is in no dataset
+ * we:./<Entity>/<recordId>               a record in the same dataset as whatever holds this
  * ```
  *
  * - `datasetKey` is `n:<cid>` for a neighbourhood — **portable**, the same string for every agent
@@ -30,6 +31,11 @@
  *   unambiguous and nothing needs escaping.
  * - The bare dataset form matters more than it looks: a space dragged out of a sidebar has a
  *   dataset before its `Space` record has loaded, and navigation only ever needs the dataset.
+ * - The **relative** form is for a reference written *inside* a record: an embed in a post pointing
+ *   at another record in the same space. Naming the dataset there would be worse than redundant —
+ *   a space that is forked, or a post copied into another one, would carry an absolute address back
+ *   to where it came from. `.` is also the only form a writer with no store access can produce, and
+ *   the composer is exactly that.
  *
  * ## Neutral on purpose
  *
@@ -51,7 +57,10 @@ export interface RecordRef {
 }
 
 /** How a dataset is named inside a reference. */
-export type DatasetKind = 'neighbourhood' | 'personal' | 'agent';
+export type DatasetKind = 'neighbourhood' | 'personal' | 'agent' | 'relative';
+
+/** The dataset a reference is *read* in — see the relative form. */
+export const HERE = '.';
 
 /**
  * Name a dataset for a reference.
@@ -78,7 +87,7 @@ function stripScheme(cid: string): string {
  * two rows. Applied inside {@link formatRef}, so nowhere else has to remember.
  */
 function normaliseKey(key: string): string {
-  if (key === 'agent') return key;
+  if (key === 'agent' || key === HERE) return key;
   if (key.startsWith('p:')) return key;
   if (key.startsWith('n:')) return `n:${stripScheme(key.slice(2))}`;
   // A bare URL or CID handed straight in — the shape a template has, since an expression cannot
@@ -89,6 +98,7 @@ function normaliseKey(key: string): string {
 /** What kind of thing a key names. */
 export function datasetKindOf(key: string): DatasetKind | null {
   if (key === 'agent') return 'agent';
+  if (key === HERE) return 'relative';
   if (key.startsWith('n:')) return 'neighbourhood';
   if (key.startsWith('p:')) return 'personal';
   return null;
@@ -126,7 +136,9 @@ export function parseRef(value: string | null | undefined): RecordRef | null {
 
   const firstSlash = rest.indexOf('/');
   if (firstSlash === -1) {
-    // The bare dataset form: the space that dataset is.
+    // The bare dataset form: the space that dataset is. `we:.` is excluded — "the dataset this is
+    // in" is not something anybody can point at, and `we:agent` names no person.
+    if (rest === HERE || rest === 'agent') return null;
     return datasetKindOf(rest) ? { datasetKey: rest, entity: '', id: '' } : null;
   }
 
@@ -156,7 +168,9 @@ export function isPortableRef(value: string): boolean {
   const ref = parseRef(value);
   if (!ref) return false;
   const kind = datasetKindOf(ref.datasetKey);
-  return kind === 'neighbourhood' || kind === 'agent';
+  // Relative counts: it resolves against whatever record carries it, so it means the same thing to
+  // every reader of that record — which is exactly what portable has to mean here.
+  return kind === 'neighbourhood' || kind === 'agent' || kind === 'relative';
 }
 
 /** The two references name the same record. String equality, given the grammar has one spelling. */

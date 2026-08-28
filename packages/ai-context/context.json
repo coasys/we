@@ -2330,6 +2330,21 @@
           "name": "displayMode",
           "type": "string | undefined",
           "optional": false
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "thumbnail",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "onOpenRef",
+          "type": "((ref: string) => void)",
+          "optional": true
         }
       ],
       "source": "components"
@@ -4080,6 +4095,18 @@
           "name": "targetType",
           "type": "string",
           "predicate": "we://target_type",
+          "required": false
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "predicate": "we://title",
+          "required": false
+        },
+        {
+          "name": "thumbnail",
+          "type": "string",
+          "predicate": "we://thumbnail",
           "required": false
         },
         {

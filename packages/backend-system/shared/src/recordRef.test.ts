@@ -68,6 +68,25 @@ describe('round trips', () => {
   });
 });
 
+describe('the relative form', () => {
+  it('names a record in whatever dataset the reference is read in', () => {
+    // What the composer writes: it has no store, so it cannot name a dataset — and naming one
+    // would be wrong anyway, since a copied post would carry an address back to where it came from.
+    const ref = formatRef({ datasetKey: '.', entity: 'CollectionBlock', id: AD4M_ID });
+    expect(ref).toBe(`we:./CollectionBlock/${AD4M_ID}`);
+    expect(parseRef(ref)).toEqual({ datasetKey: '.', entity: 'CollectionBlock', id: AD4M_ID });
+  });
+
+  it('is its own kind, and counts as portable', () => {
+    expect(datasetKindOf('.')).toBe('relative');
+    expect(isPortableRef(`we:./TextBlock/${AD4M_ID}`)).toBe(true);
+  });
+
+  it('refuses the bare form, which would name nothing', () => {
+    expect(parseRef('we:.')).toBeNull();
+  });
+});
+
 describe('refusing what is not a reference', () => {
   it.each([
     ['empty', ''],

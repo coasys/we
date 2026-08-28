@@ -108,6 +108,8 @@ export interface EmbedBlockModel extends WeNodeModel {
   url: string;
   target: string;
   targetType: string;
+  label: string;
+  thumbnail: string;
   displayMode: string;
   version: number;
 }

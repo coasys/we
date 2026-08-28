@@ -1,4 +1,4 @@
-import { datasetIdOf, formatAgentRef, formatRef, parseRef } from '@we/backend-shared';
+import { datasetIdOf, formatAgentRef, formatRef, HERE, parseRef } from '@we/backend-shared';
 import type { ModuleStoreDeps } from '@we/module-shared';
 
 import { POCKET_PREDICATES } from './entities';
@@ -140,6 +140,16 @@ export function createPocketStore(deps: ModuleStoreDeps) {
     return (uri && deps.datasets?.get(uri)?.name) || '';
   }
 
+  /**
+   * Whether a reference names somewhere to go.
+   *
+   * An agent belongs to no dataset, and a relative reference only means anything to whatever record
+   * carries it — which the Pocket is not. Both are held perfectly well; neither has a destination.
+   */
+  function openable(key: string): boolean {
+    return key !== 'agent' && key !== HERE;
+  }
+
   async function gatherOne(input: GatherInput, into?: string): Promise<string> {
     const data = agentData();
     const ref = referenceFor(input);
@@ -260,7 +270,7 @@ export function createPocketStore(deps: ModuleStoreDeps) {
      */
     goTo: (ref: string): void => {
       const parsed = parseRef(ref);
-      if (!parsed || parsed.datasetKey === 'agent') return;
+      if (!parsed || !openable(parsed.datasetKey)) return;
       const id = datasetIdOf(parsed.datasetKey);
       if (id) deps.datasets?.open(id);
     },
@@ -268,7 +278,7 @@ export function createPocketStore(deps: ModuleStoreDeps) {
     /** Whether a reference can be opened at all — an agent has no space to go to. */
     canOpen: (ref: string): boolean => {
       const parsed = parseRef(ref);
-      return !!parsed && parsed.datasetKey !== 'agent';
+      return !!parsed && openable(parsed.datasetKey);
     },
   };
 }

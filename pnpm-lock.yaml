@@ -632,9 +632,15 @@ importers:
 
   packages/block-system/frameworks/solid:
     dependencies:
+      '@we/backend-shared':
+        specifier: workspace:*
+        version: link:../../../backend-system/shared
       '@we/block-shared':
         specifier: workspace:*
         version: link:../../shared
+      '@we/drag':
+        specifier: workspace:*
+        version: link:../../../design-system/drag
       '@we/models':
         specifier: workspace:*
         version: link:../../../models

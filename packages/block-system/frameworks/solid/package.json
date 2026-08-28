@@ -27,7 +27,9 @@
     "dist"
   ],
   "dependencies": {
+    "@we/backend-shared": "workspace:*",
     "@we/block-shared": "workspace:*",
+    "@we/drag": "workspace:*",
     "@we/models": "workspace:*",
     "prosemirror-commands": "^1.7.2",
     "prosemirror-dropcursor": "^1.8.3",
