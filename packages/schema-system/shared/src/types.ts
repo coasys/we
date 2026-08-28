@@ -282,8 +282,19 @@ export type ActionToken = {
 export type IfToken = { $if: { condition: unknown; then?: unknown; else?: unknown } };
 export type QueryToken = {
   $query: {
-    /** The entity to query (neutral). */
-    entity: string;
+    /**
+     * The entity to query (neutral) — a name, or an expression that answers with one.
+     *
+     * The expression form is what lets a template list records of a type it was not written for:
+     * `entity: { $: 'target' }` inside an `$each` over a store's list of model names renders a
+     * group per model, and a model a community defines this afternoon joins the list with no
+     * template change. Resolved against the same stores and row bindings as `where` and `order`,
+     * and treated as "not yet" until it answers with a name.
+     *
+     * Prefer a literal wherever the type IS known: the validator can say nothing about a name it
+     * only sees at runtime, and a typo in an expression fails as a silently empty list.
+     */
+    entity: string | Record<string, unknown>;
     where?: Record<string, unknown>;
     order?: Record<string, unknown>;
     /**
@@ -376,7 +387,19 @@ export type CallLocalToken = { $callLocal: string };
 
 /** Descriptor returned by the shared resolver — pure data, no framework effects */
 export type QueryDescriptor = {
-  entity: string;
+  /**
+   * The entity to query, as authored: a name, or an expression that answers with one.
+   *
+   * `unknown` rather than `string` because this resolver is pure and an expression can only be
+   * evaluated against stores and a row's bindings, which the framework layer holds. Every other
+   * part of a query — `where`, `order`, `limit`, `include` — already resolves that way; `entity`
+   * was the one field a template had to know at authoring time, and that is what stopped a feed
+   * listing records of a type its author had never heard of.
+   *
+   * A consumer must resolve it and treat an empty answer as "not yet", the way an unresolved
+   * `where` condition is dropped rather than shipped with a hole in it.
+   */
+  entity: unknown;
   params: Record<string, unknown>;
   subscribe: boolean;
   dataset?: string;

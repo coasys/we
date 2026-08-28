@@ -66,6 +66,27 @@ function deepResolveTokens(
 }
 
 /**
+ * The entity a query names, resolving an expression against the stores and the row's bindings.
+ *
+ * A plain name is the overwhelming case and goes through untouched. An expression is what lets a
+ * template list records of a type it was not written for — a feed inside `$each` over a store's
+ * list of model names, where `entity: { $: 'target' }` reads the row it is on. That is the same
+ * arrangement `where` and `order` have always had; `entity` was the one part of a query a template
+ * had to know before it ran.
+ *
+ * Answers `''` for anything that does not resolve to a name, which callers must treat as **not
+ * yet** rather than as an error: a store read is empty for the first frames after a mount and
+ * permanently on a host that does not carry it, exactly as with an unresolved `where` operand.
+ *
+ * Call it inside the effect, so the read is tracked and the query re-runs when the name changes.
+ */
+function resolveEntityName(entity: unknown, stores: RendererStores, context: Record<string, unknown>): string {
+  if (typeof entity === 'string') return entity;
+  const resolved = deepResolveTokens(entity, stores, context);
+  return typeof resolved === 'string' ? resolved : '';
+}
+
+/**
  * Compose an array of handler values into a single sequential handler.
  * Non-function entries (e.g. undefined from $if without else) are skipped.
  */
@@ -217,17 +238,25 @@ function createQuerySignal(
       return;
     }
 
+    // Read inside the effect, so a name that comes from an expression re-runs the query when it
+    // changes — and so a name that is not there yet is a frame to wait through, not a failure.
+    const entity = resolveEntityName(descriptor.entity, stores, context);
+    if (!entity) {
+      setItems(reconcile([]));
+      return;
+    }
+
     // Dataset-scoped model lookup: prefer a dataset-specific dynamic model, fall back to the global
     // registry.
     // The dataset stays opaque here: the host derives whatever key its per-dataset model registry
     // needs, since only it knows the concrete handle type.
-    const dynamicCls = getModelForPerspective ? getModelForPerspective(descriptor.entity, p) : undefined;
+    const dynamicCls = getModelForPerspective ? getModelForPerspective(entity, p) : undefined;
     let Model: ModelClass;
     try {
-      Model = dynamicCls ?? getModel(descriptor.entity);
+      Model = dynamicCls ?? getModel(entity);
     } catch {
       const onError = stores.$onError;
-      onError?.(`Model "${descriptor.entity}" is not available in this perspective`);
+      onError?.(`Model "${entity}" is not available in this perspective`);
       setItems(reconcile([]));
       return;
     }
@@ -257,7 +286,7 @@ function createQuerySignal(
     if (useQueryIR && queryAdapter) {
       // Fail loud: an IR/adapter gap renders nothing and reports, rather than silently reverting to the
       // raw backend path (which only ever worked because AD4M is both the dialect and the backend).
-      const lowered = routeQueryThroughIR(descriptor.entity, queryOptions, queryAdapter, irErrorReporter(stores));
+      const lowered = routeQueryThroughIR(entity, queryOptions, queryAdapter, irErrorReporter(stores));
       if (lowered === null) {
         setItems(reconcile([]));
         return;
@@ -292,7 +321,7 @@ function createQuerySignal(
         .catch((err) => {
           setItems(reconcile([]));
           setLoaded(true);
-          reportQueryError(stores, descriptor.entity, err);
+          reportQueryError(stores, entity, err);
         });
       onCleanup(() => builder.dispose());
     } else {
@@ -320,7 +349,7 @@ function createQuerySignal(
           if (isAbort(err)) return;
           setItems(reconcile([]));
           setLoaded(true);
-          reportQueryError(stores, descriptor.entity, err);
+          reportQueryError(stores, entity, err);
         });
     }
   });
@@ -759,13 +788,21 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
             return;
           }
 
-          const dynamicCls = getModelForPerspective ? getModelForPerspective(descriptor.entity, p) : undefined;
+          // Same as `createQuerySignal`: read inside the effect so an expression re-runs the query,
+          // and treat a name that has not resolved yet as a frame to wait through.
+          const entity = resolveEntityName(descriptor.entity, stores, effectiveContext);
+          if (!entity) {
+            setHasItem(false);
+            return;
+          }
+
+          const dynamicCls = getModelForPerspective ? getModelForPerspective(entity, p) : undefined;
           let Model: ModelClass;
           try {
-            Model = dynamicCls ?? getModelFn(descriptor.entity);
+            Model = dynamicCls ?? getModelFn(entity);
           } catch {
             const onError = stores.$onError;
-            onError?.(`Model "${descriptor.entity}" is not available in this perspective`);
+            onError?.(`Model "${entity}" is not available in this perspective`);
             setHasItem(false);
             return;
           }
@@ -798,7 +835,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
           const useQueryIR = typeof irFlag === 'function' ? (irFlag as () => unknown)() === true : irFlag === true;
           const queryAdapter = stores.$queryAdapter;
           if (useQueryIR && queryAdapter) {
-            const lowered = routeQueryThroughIR(descriptor.entity, queryOptions, queryAdapter, irErrorReporter(stores));
+            const lowered = routeQueryThroughIR(entity, queryOptions, queryAdapter, irErrorReporter(stores));
             if (lowered === null) {
               setHasItem(false);
               return;
@@ -830,7 +867,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
               .then(handleResults)
               .catch((err: unknown) => {
                 setHasItem(false);
-                reportQueryError(stores, descriptor.entity, err);
+                reportQueryError(stores, entity, err);
               });
             onCleanup(() => builder.dispose());
           } else {
@@ -848,7 +885,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
               .catch((err) => {
                 if (isAbort(err)) return;
                 setHasItem(false);
-                reportQueryError(stores, descriptor.entity, err);
+                reportQueryError(stores, entity, err);
               });
           }
         });
