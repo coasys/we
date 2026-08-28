@@ -45,6 +45,7 @@ export { createCallMesh, type CallMesh, type SignallingChannel } from './mesh';
 export { createMediaController, type MediaController, type MediaState } from './media';
 export { anchoredCallId, CALL_PROTOCOL_VERSION, parseCallMessage, spaceCallId } from './protocol';
 export {
+  type BackendDataMessage,
   type BackendQuality,
   type BackendParticipant,
   type CallBackend,

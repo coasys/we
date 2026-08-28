@@ -46,6 +46,14 @@ export interface BackendParticipant {
   isActiveSpeaker: boolean;
 }
 
+/** A data channel message from another participant, relayed through the session. */
+export interface BackendDataMessage {
+  senderDid: string;
+  channelLabel: string;
+  data: string;
+  binary: boolean;
+}
+
 /**
  * Structural interface for a WebRTC session backend — topology-agnostic.
  *
@@ -63,6 +71,10 @@ export interface CallBackend {
   getState(): string;
   on(event: string, cb: (...args: unknown[]) => void): void;
   off(event: string, cb?: (...args: unknown[]) => void): void;
+  /** Send data to all other participants via the session's relay (SFU or mesh signalling). */
+  sendData(label: string, data: string, binary?: boolean): Promise<void>;
+  /** Subscribe to data channel messages. Returns an unsubscribe function. */
+  onData(cb: (message: BackendDataMessage) => void): () => void;
 }
 
 /**
@@ -337,6 +349,8 @@ export function createCallStore(deps: CallStoreDeps) {
   let controller: MediaController | null = null;
   let remoteStreams = new Map<string, MediaStream>();
   let peerStates = new Map<string, RTCPeerConnectionState>();
+  let dataUnsubscribe: (() => void) | null = null;
+  const dataListeners: Set<(msg: BackendDataMessage) => void> = new Set();
 
   /**
    * The previous tile object per participant, reused when nothing about them changed.
@@ -530,6 +544,11 @@ export function createCallStore(deps: CallStoreDeps) {
 
   function teardown() {
     const id = callId();
+    if (dataUnsubscribe) {
+      dataUnsubscribe();
+      dataUnsubscribe = null;
+    }
+    dataListeners.clear();
     if (backend) {
       backend.destroy().catch((err) => console.error('call: backend destroy', err));
       backend = null;
@@ -679,6 +698,17 @@ export function createCallStore(deps: CallStoreDeps) {
         if (topo === 'mesh' || topo === 'sfu') setTopology(topo);
       });
       backend.on('error', (err: unknown) => console.error('call: backend error', err));
+
+      // Subscribe to data channel messages from other participants.
+      dataUnsubscribe = backend.onData((msg) => {
+        for (const cb of dataListeners) {
+          try {
+            cb(msg);
+          } catch (e) {
+            console.error('call: data listener error', e);
+          }
+        }
+      });
 
       // Announce before acquiring devices, same as the mesh path.
       publishActivity();
@@ -1306,6 +1336,27 @@ export function createCallStore(deps: CallStoreDeps) {
     setQualityPreference: async (quality: BackendQuality) => {
       setQualityPreferenceSignal(quality);
       if (backend) await backend.setQualityPreference(quality);
+    },
+
+    /**
+     * Send data to all other call participants via the session's relay.
+     *
+     * Only works when a backend (Session) handles the call — mesh-only calls
+     * have no server relay for data. Returns silently if no backend exists.
+     */
+    sendData: async (label: string, data: string, binary?: boolean) => {
+      if (backend) await backend.sendData(label, data, binary);
+    },
+
+    /**
+     * Subscribe to data channel messages from other call participants.
+     * Returns an unsubscribe function.
+     */
+    onData: (cb: (msg: BackendDataMessage) => void) => {
+      dataListeners.add(cb);
+      return () => {
+        dataListeners.delete(cb);
+      };
     },
   };
 }
