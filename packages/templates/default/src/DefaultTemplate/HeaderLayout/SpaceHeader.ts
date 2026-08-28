@@ -200,7 +200,9 @@ export const spaceNavBar: SchemaNode = {
           'minmax(max-content, 1fr) minmax(0, var(--we-layout-lg)) minmax(var(--we-chrome-rail-width, 56px), 1fr)',
         width: '100%',
         height: '100%',
-        ay: 'center',
+        // No gap: `Grid` defaults to one, and here it would be dead room beside the rail's reserve
+        // on the right and beside the mini-profile's own padding on the left.
+        gap: '0',
         minWidth: '0',
       },
       children: [
@@ -213,7 +215,9 @@ export const spaceNavBar: SchemaNode = {
         */
         {
           type: 'Row',
-          props: { ay: 'center', pl: '400', height: CONTROL_HEIGHT },
+          // Fills its track and centres inside it: a grid item with a fixed height sits at the top of
+          // its track, whatever the grid is asked to align.
+          props: { ay: 'center', pl: '400', height: '100%' },
           children: [
             {
               type: '$animate',
