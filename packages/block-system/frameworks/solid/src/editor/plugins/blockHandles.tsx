@@ -25,6 +25,16 @@ import { blockChromeKey } from './blockChrome';
 const ATTR_HANDLE_FOR_BLOCK = 'data-handle-for-block';
 const DRAG_TYPE = 'application/x-we-block';
 
+/**
+ * The strip beside a block that its handle occupies: how far left of the block the handle starts,
+ * and how wide it is (`.we-block-handle` in handles.scss fills it).
+ *
+ * One number, because where the handle is drawn and where the pointer has to be for it to appear
+ * are the same question asked twice. A strip you can hover that the handle does not fill — or the
+ * reverse — is a handle that shows up somewhere the pointer is not.
+ */
+const HANDLE_GUTTER = 50;
+
 type Placed = BlockEntry & { dom: HTMLElement };
 
 /** Every block with its element, in document order. */
@@ -111,7 +121,7 @@ function BlockHandle(props: {
     // The handle is a top-layer popover (see below), so its containing block is the viewport —
     // use viewport-relative coordinates, not document coordinates.
     const { top, left, height } = props.dom.getBoundingClientRect();
-    const next = { top, left: left - 40, height };
+    const next = { top, left: left - HANDLE_GUTTER, height };
     setPosition((prev) =>
       prev.top !== next.top || prev.left !== next.left || prev.height !== next.height ? next : prev,
     );
@@ -121,7 +131,7 @@ function BlockHandle(props: {
     const view = props.ctx.view();
     const entry = view && entryFor(view, props.dom);
     if (!entry) return;
-    props.ctx.openBlockMenu(entry.pos, { top: position().top + 38, left: position().left - 10 });
+    props.ctx.openBlockMenu(entry.pos, { top: position().top + 38, left: position().left });
   }
 
   createEffect(() => {
@@ -184,12 +194,12 @@ function BlockHandle(props: {
       data-block-focused={props.focused ? 'true' : undefined}
       style={{
         top: `${position().top + (heightOffset[nodeType()] || 0)}px`,
-        left: `${position().left - 10}px`,
+        left: `${position().left}px`,
         height: `${position().height}px`,
       }}
     >
       <button class="we-block-handle-settings-button" onMouseDown={(e) => e.preventDefault()} onClick={openMenu}>
-        <we-icon name="cube" size="sm" color="text-muted" />
+        <we-icon name="cube" size="sm" />
       </button>
       <div
         class="we-block-handle-dragger"
@@ -208,7 +218,7 @@ function BlockHandle(props: {
         }}
         onDragEnd={() => props.onDragEnd()}
       >
-        <we-icon name="dots-six-vertical" weight="bold" size="sm" color="text-muted" />
+        <we-icon name="dots-six-vertical" weight="bold" size="sm" />
       </div>
     </div>
   );
@@ -258,15 +268,28 @@ export function BlockHandles(props: { ctx: EditorContext }) {
     view.dispatch(view.state.tr.setMeta(blockChromeKey, { hovered: pos }).setMeta('addToHistory', false));
   }
 
+  /** Mark (or unmark) the dragged block, so the stylesheet can fade it. */
+  function markDragging(dom: HTMLElement | null) {
+    const view = props.ctx.view();
+    if (!view) return;
+    const entry = dom ? entryFor(view, dom) : undefined;
+    const pos = entry ? entry.pos : null;
+    const current = blockChromeKey.getState(view.state)?.dragging ?? null;
+    if (pos === current) return;
+    view.dispatch(view.state.tr.setMeta(blockChromeKey, { dragging: pos }).setMeta('addToHistory', false));
+  }
+
   function onDragStart(dom: HTMLElement) {
     setDragSource(dom);
-    dom.style.opacity = '0.5';
+    // Through a decoration, never `dom.style`: an outside mutation of the editor's DOM is read
+    // back as a document change, and the redraw that follows replaces the element the drag is
+    // anchored to — which is what stopped text blocks being draggable (see blockChrome.ts).
+    markDragging(dom);
     document.body.classList.add('block-dragging');
   }
 
   function onDragEnd() {
-    const dom = dragSource();
-    if (dom) dom.style.opacity = '';
+    markDragging(null);
     setDragSource(null);
     document.body.classList.remove('block-dragging');
     setDropSpot((prev) => ({ ...prev, visible: false }));
@@ -305,9 +328,48 @@ export function BlockHandles(props: { ctx: EditorContext }) {
       setHovered(entry?.dom ?? null);
     }
 
+    /** The block whose handle strip holds this point — the strip is beside the block, never on it. */
+    function blockBesidePoint(blocks: readonly Placed[], x: number, y: number): Placed | undefined {
+      let best: Placed | undefined;
+      for (const entry of blocks) {
+        const r = entry.dom.getBoundingClientRect();
+        if (y < r.top || y > r.bottom || x >= r.left || x < r.left - HANDLE_GUTTER) continue;
+        if (!best || entry.depth > best.depth) best = entry;
+      }
+      return best;
+    }
+
+    /** Whether a point is close enough to the editor's left edge to be in a handle's strip. */
+    function nearGutter(x: number, y: number): boolean {
+      const r = root.getBoundingClientRect();
+      return y >= r.top && y <= r.bottom && x >= r.left - HANDLE_GUTTER && x <= r.left + HANDLE_GUTTER;
+    }
+
+    /**
+     * Hovering the empty strip a handle occupies counts as hovering its block.
+     *
+     * `mouseover` cannot answer this: the strip is beside the block rather than on it, so nothing
+     * under the pointer there belongs to the editor at all — reaching straight for a handle did
+     * nothing, and it appeared only if you hovered the block first and slid sideways into 50px of
+     * margin. `mousemove`, because which block the strip belongs to changes as the pointer moves
+     * within one element, which fires no further `mouseover`. The band test comes first so the
+     * work is confined to that column and an ordinary move across the page costs one rect.
+     */
+    function onMouseMove(e: MouseEvent) {
+      if (!nearGutter(e.clientX, e.clientY)) return;
+      const blocks = placedBlocks(editor);
+      const target = e.target as Node | null;
+      if (target && innermostBlock(blocks, target)) return; // over a block: onMouseOver has it
+      const beside = blockBesidePoint(blocks, e.clientX, e.clientY);
+      if (beside) setHovered(beside.dom);
+    }
+
     function onMouseOut(e: MouseEvent) {
       const related = e.relatedTarget as HTMLElement | null;
       if (related && (root.contains(related) || related.closest?.(`[${ATTR_HANDLE_FOR_BLOCK}]`))) return;
+      // Reaching sideways for the handle is not leaving the block, and clearing here would hide
+      // the handle for the frame between this and the move that puts it back.
+      if (nearGutter(e.clientX, e.clientY)) return;
       setHovered(null);
     }
 
@@ -340,13 +402,32 @@ export function BlockHandles(props: { ctx: EditorContext }) {
         // An empty container: land inside it, before its first child if it has one.
         return null;
       }
-      void sourceEntry;
+
+      /**
+       * A landing spot, unless the block is already there.
+       *
+       * The gap above the dragged block and the gap below it are two spots that mean the same
+       * thing — put it back — so drawing a bar for each offered a choice between a move and the
+       * same move. Nothing to mark, and nothing to mark is also the clearest way to say that
+       * letting go here does nothing, now that carrying the pointer off the editor no longer
+       * cancels a drop.
+       */
+      const landing = (dom: HTMLElement, before: boolean): { dom: HTMLElement; before: boolean } | null => {
+        if (sourceEntry && sourceEntry.parentPos === containerPos) {
+          const family = blocks.filter((b) => b.parentPos === containerPos);
+          const at = family.findIndex((b) => b.dom === sourceEntry.dom);
+          const neighbour = at < 0 ? undefined : family[before ? at + 1 : at - 1];
+          if (neighbour?.dom === dom) return null;
+        }
+        return { dom, before };
+      };
+
       for (let i = 0; i < siblings.length; i++) {
         const rect = siblings[i].dom.getBoundingClientRect();
-        if (e.clientY < rect.top + rect.height / 2) return { dom: siblings[i].dom, before: true };
-        if (i === siblings.length - 1) return { dom: siblings[i].dom, before: false };
+        if (e.clientY < rect.top + rect.height / 2) return landing(siblings[i].dom, true);
+        if (i === siblings.length - 1) return landing(siblings[i].dom, false);
         const nextRect = siblings[i + 1].dom.getBoundingClientRect();
-        if (e.clientY < nextRect.top) return { dom: siblings[i].dom, before: false };
+        if (e.clientY < nextRect.top) return landing(siblings[i].dom, false);
       }
       return null;
     }
@@ -377,6 +458,7 @@ export function BlockHandles(props: { ctx: EditorContext }) {
         visible: true,
         left: rect.left,
         width: rect.width,
+        // Centred on the edge it marks: half the bar's height (see handles.scss).
         top: (target.before ? rect.top : rect.bottom) - 2,
       });
     }
@@ -406,11 +488,35 @@ export function BlockHandles(props: { ctx: EditorContext }) {
     }
 
     function onDragLeave(e: DragEvent) {
+      // A block this editor is dragging keeps its drop spot wherever the pointer goes (below);
+      // a file drag that leaves the editor is going somewhere else.
+      if (dragSource()) return;
       if (!root.contains(e.relatedTarget as Node | null)) setDropSpot((prev) => ({ ...prev, visible: false }));
     }
 
+    /**
+     * A block being dragged from this editor's handle is followed across the whole page, because
+     * `dragover` only fires over the element it is bound to: carrying the pointer past the
+     * editor's left or right edge otherwise stopped the drop spot updating, and hid it, though
+     * the pointer was still level with the block it meant. Where the drop lands is a question
+     * about the pointer's height, so leaving the column is not leaving the drag.
+     *
+     * Gated on this editor's own drag rather than on the drag type: a second composer on the
+     * page sees the same events, and a drag it did not start is not its to answer. Both
+     * handlers stop the event, so the editor's own listeners below never see it twice.
+     */
+    const onPageDragOver = (e: DragEvent) => {
+      if (dragSource()) onDragOver(e);
+    };
+    const onPageDrop = (e: DragEvent) => {
+      if (dragSource()) onDrop(e);
+    };
+
     document.addEventListener('mouseover', onMouseOver);
     document.addEventListener('mouseout', onMouseOut);
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('dragover', onPageDragOver, true);
+    document.addEventListener('drop', onPageDrop, true);
     // Capture phase, ahead of ProseMirror's own drop handling on the same element.
     root.addEventListener('dragover', onDragOver, true);
     root.addEventListener('drop', onDrop, true);
@@ -419,6 +525,9 @@ export function BlockHandles(props: { ctx: EditorContext }) {
     onCleanup(() => {
       document.removeEventListener('mouseover', onMouseOver);
       document.removeEventListener('mouseout', onMouseOut);
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('dragover', onPageDragOver, true);
+      document.removeEventListener('drop', onPageDrop, true);
       root.removeEventListener('dragover', onDragOver, true);
       root.removeEventListener('drop', onDrop, true);
       root.removeEventListener('dragleave', onDragLeave, true);

@@ -29,14 +29,38 @@
     outline: none;
   }
 
-  .ProseMirror-selectednode {
-    outline: 2px solid var(--we-role-accent);
-    outline-offset: 1px;
+  // Selecting a block as a unit is not a text selection, and the browser must not paint one:
+  // a node selection spans the whole node, so without this the highlight is dragged across an
+  // image, its size controls, or an entire paragraph, and the block reads as broken. The
+  // ::selection rules are prosemirror-view's own — the library's stylesheet is reproduced here
+  // rather than imported (see above), and they were the part left out.
+  //
+  // ::selection cannot cross into a primitive's shadow tree, though, which is where the image
+  // itself lives, so a block takes no part in selection at all while one is being painted:
+  // `user-select` is inherited, so it reaches the shadow tree the ::selection rule cannot.
+  // ProseMirror drops the class as soon as the DOM selection moves — clicking a control inside
+  // the block, say — and an editable element is exempt from an inherited `none` regardless, so
+  // a field in there is still usable when it is the thing being used.
+  &.ProseMirror-hideselection {
+    caret-color: transparent;
+
+    *::selection {
+      background: transparent;
+    }
+
+    .we-block {
+      user-select: none;
+    }
   }
 
-  // A selected non-editable block keeps its own look; the outline is enough.
-  .we-block.ProseMirror-selectednode {
-    outline-color: var(--we-role-accent);
+  // Nothing marks a selected block beyond the highlight the block chrome already gives it —
+  // every block has a background and padding of its own, so an outline was one cue too many, and
+  // a ring on some kinds and not others made selecting a paragraph and selecting an image read
+  // as different acts.
+
+  // A mention is the exception: inline, accent-tinted already, and with no padding to show.
+  .we-mention.ProseMirror-selectednode {
+    box-shadow: 0 0 0 2px var(--we-role-accent);
   }
 
   .ProseMirror-gapcursor {

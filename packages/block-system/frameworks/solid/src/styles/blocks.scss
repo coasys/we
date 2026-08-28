@@ -17,6 +17,12 @@
     background-color: var(--we-color-neutral-75);
   }
 
+  // The block being dragged by its handle — a decoration, not a style written onto the
+  // element, which the editor would read back as an edit (see blockChrome.ts).
+  [data-block-dragging='true'] {
+    opacity: 0.5;
+  }
+
   font-family: var(--we-font-family);
   color: var(--we-role-text);
   white-space: pre-wrap;
