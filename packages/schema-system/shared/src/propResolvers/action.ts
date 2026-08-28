@@ -116,7 +116,7 @@ export function resolveActionProp(
 
       It also fixes a quieter bug. A memoized argument arrives as an accessor rather than a value,
       and the relative-path branch below tests `typeof resolvedArgs[0] === 'string'` before
-      `deepUnwrap` runs — so `onSuccess: [{ $action: 'routeStore.navigate', args: [{ $concat: … }] }]`
+      `deepUnwrap` runs — so `onSuccess: [{ $action: 'routeStore.navigate', args: [{ $: '`…${result.id}`' }] }]`
       skipped relative-path resolution entirely. Absolute paths survived that; relative ones did not.
     */
     function dispatchActions(actions: unknown[], ctx: Props): void {

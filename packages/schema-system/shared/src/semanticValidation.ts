@@ -1489,16 +1489,16 @@ function walkChildren(
       if (typeof child !== 'object' || child === null) continue;
 
       /*
-        A token sitting directly in `children` — `{ $plural: … }` beside a count, `{ $store: … }`
-        for a name, `{ $local: … }` for a label. Legal (the children union accepts tokens, which is
-        how a count-noun label is written at all) but *not a node*, so it must be checked as a token
-        rather than walked as one.
+        An expression sitting directly in `children` — a count-noun label, a store member for a
+        name, a local for a label. Legal (the children union accepts tokens, which is how a computed
+        label is written at all) but *not a node*, so it must be checked as a token rather than
+        walked as one.
 
         Walking it as a node is what used to happen, and since a token has no `type` it fell into
         the grouping-node branch, which looks for routes and children and finds neither — so every
-        store path, action name and `$local` reference inside a token in a children array went
-        unexamined. The gap was invisible because the same expressions are checked everywhere else:
-        move `{ $local: 'signalTypes' }` from a prop into a children array and the validator stopped
+        store path and local reference inside an expression in a children array went unexamined.
+        The gap was invisible because the same expressions are checked everywhere else: move
+        `{ $: 'local.signalTypes' }` from a prop into a children array and the validator stopped
         having an opinion about it.
 
         `type`/`children` still win, so a node carrying `$localState` or `$queries` stays a node.
