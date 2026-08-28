@@ -359,7 +359,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     clearCurrentDataset: WIRING,
     trackDataset: WIRING,
     provideAutoInterpretGate: WIRING,
-    provideExtractionTargets: WIRING,
+    provideExtractionCandidates: WIRING,
+    provideCallExtraction: WIRING,
     onDatasetRemoved: WIRING,
     initSystemDatasets: WIRING,
     loadDatasets: WIRING,
@@ -475,6 +476,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       indicator that silently never rendered.
     */
     autoInterpret: state('space-settings'),
+    extractionTargets: state('space-settings'),
+    setExtractionTarget: action('space-settings'),
     shareExtractionDetail: state('space-settings'),
     setShareExtractionDetail: action('space-settings'),
     templateOverrideOptions: state('space-admin'),
@@ -549,7 +552,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       found, the same way it needs `recordStore.displays` to draw one. Grouping it with the model
       wizard would make an ordinary card list ask for the capability that edits a space's vocabulary.
     */
-    extractionTargets: state('content'),
+    extractionCandidates: state('content'),
+    provideExtractionEnroller: WIRING,
     extractionNeedsIdentity: state('space-settings'),
     relationshipTargets: state('space-settings'),
     identityOptions: state('space-settings'),

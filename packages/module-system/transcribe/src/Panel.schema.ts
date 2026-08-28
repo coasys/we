@@ -332,19 +332,21 @@ const extract: SchemaNode = {
                       type: 'we-text',
                       props: { variant: 'footnote', color: 'text-muted' },
                       children: [
-                        'No models in this space are marked for AI extraction. Turn one on in the space’s models.',
+                        'No models are set up for AI extraction here. A space chooses its own in its settings.',
                       ],
                     },
                   },
                 },
                 /*
-                  One chip per model, ticked when the next press will look for it.
+                  One chip per model, ticked when this call is looking for it.
 
-                  This agent's choice and nobody else's: pressing Extract spends this node's LLM
-                  call and adds to a graph that dedups, so narrowing it costs no one anything and
-                  needs no permission. The standing watch is the opposite case and ignores this
-                  entirely — it looks for everything the space declares, because its registration is
-                  shared and every peer has to compute the same one.
+                  A group decision rather than a private one, and it has to be: the same list drives
+                  the standing watch, whose registration is one row every peer shares. Two members
+                  holding different lists would each remove-then-add over the other's in a loop.
+
+                  Changing it applies from here on, because a watch keeps a processed-turn cursor —
+                  the note under the button says so, since the answer for the rest of the
+                  conversation is the button itself.
                 */
                 {
                   type: 'Row',
@@ -385,6 +387,30 @@ const extract: SchemaNode = {
               children: [{ $: "modules.transcribe.extractStatus == 'running' ? 'Reading…' : 'Extract'" }],
             },
           ],
+        },
+        /*
+          The one thing about mid-call changes that is not guessable.
+
+          A standing watch keeps a processed-turn cursor, so a model switched on part-way through is
+          applied to what is said next and not to what was said before it. The one-shot pass carries
+          no cursor — it hands the executor the whole transcript — so pressing Extract is the
+          backfill, and the executor's dedup means what was already found returns as updates rather
+          than as second copies.
+
+          Shown only where it applies: a call nobody has changed the list for has nothing to backfill.
+        */
+        {
+          type: '$if',
+          props: {
+            condition: { $: 'count(modules.transcribe.extractionTargets)' },
+            then: {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-faint' },
+              children: [
+                'A model switched on mid-call applies from here — press Extract to sweep what was said before.',
+              ],
+            },
+          },
         },
         {
           type: '$if',

@@ -796,6 +796,14 @@ const shapeWizardModal: SchemaNode = {
           somebody curates by hand should not have an interpreter minting rows into it, and every
           model an extraction pass names puts its whole shape into the prompt at the community's
           expense.
+
+          Ticking it does two things, deliberately. It marks the *model* extractable, which travels
+          with the definition — so a fork of it lands in another space as something that space may
+          switch on. And it adds this model to *this* space's default targets on save, because
+          whoever ticked the box is the community saying yes, now; asking the same question again in
+          Settings would be two affordances for one intent. A model that arrives already marked —
+          copied, forked, synced from a peer — is only ever a candidate, and never starts writing
+          into a space unasked.
         */
         {
           type: 'Column',
@@ -814,7 +822,7 @@ const shapeWizardModal: SchemaNode = {
                       type: 'we-text',
                       props: { variant: 'footnote', color: 'text-faint' },
                       children: [
-                        'Extraction passes over this space’s calls may create entries of this model from what was said. Leave off for a model your community fills in by hand.',
+                        'Extraction passes over this space’s calls may create entries of this model from what was said, and saving adds it to what calls here look for by default. Leave off for a model your community fills in by hand.',
                       ],
                     },
                   ],

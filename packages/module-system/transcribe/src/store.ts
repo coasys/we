@@ -340,22 +340,6 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    */
   const [watchProblem, setWatchProblem] = signal<string>('');
   /**
-   * What *this agent's* next Extract press will look for, or `null` for "whatever the space offers".
-   *
-   * Null rather than a copy of the list, and that is the whole design of the default: a community
-   * that defines a model mid-call should have the next press find one, which a snapshot taken when
-   * the panel opened would not. Only an explicit narrowing turns this into a list.
-   *
-   * **Deliberately this agent's and not the call's.** Pressing Extract spends this node's LLM call
-   * and is additive into a graph that dedups, so two members pressing it with different selections
-   * lose nothing — the union lands. Making it shared would buy a write and a sync round trip before
-   * every press, an administer gate, and a concurrent-edit story, to coordinate an operation that
-   * does not need coordinating. The standing watch is the opposite case and is handled the opposite
-   * way: its class list is neighbourhood state, so it takes the space's targets and nobody's
-   * selection — see `syncWatch`.
-   */
-  const [selectedTargets, setSelectedTargets] = signal<string[] | null>(null);
-  /**
    * The call the current collection belongs to.
    *
    * The record's lifetime is the *call's*, not the recording toggle's. Tying it to the toggle meant
@@ -685,33 +669,22 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   }
 
   /**
-   * What this space offers, in the order the host computed — core vocabulary first, then shapes.
+   * What this call extracts, and what else it could — the host's answer, not this module's.
+   *
+   * Three layers decide it and none of them is a module's business: the codebase says what is a
+   * candidate, the space says what its calls start with, the call's participants say what this one
+   * is doing. This used to be a constant naming two classes, which is why a community could write
+   * careful hints for a `Sighting` and never have anything extract one.
    *
    * Feature-tested per method rather than per object, the same way `syncWatch` tests its two: the
    * host publishes a forwarding wrapper that is always present, so `interpretation?.` only answers
    * "is there a wrapper" — and a host predating this list has one without a `targets` on it.
    */
-  const extractionTargets = (): string[] =>
-    typeof interpretation?.targets === 'function' ? interpretation.targets() : [];
+  const targetsFor = (collection: string): { entity: string; selected: boolean }[] =>
+    typeof interpretation?.targets === 'function' ? interpretation.targets(collection) : [];
 
-  /**
-   * What a press should actually ask for: the agent's narrowing, intersected with what is on offer.
-   *
-   * Intersected rather than used as given, because the two lists have different lifetimes. A
-   * selection is made against the space that was open; a space switch, an unadopted shape or a
-   * model whose `extractable` was withdrawn all leave a name in it that this space has no shape
-   * for — and a class the perspective does not have fails `assertShapesInstalled`, taking the whole
-   * pass down rather than the one entry. Filtering here means a stale selection quietly narrows
-   * instead of breaking.
-   *
-   * An empty result is passed through as empty and refused by the port, which is the honest answer:
-   * "nothing here may be extracted" and "the model found nothing" must not look the same.
-   */
-  const activeTargets = (): string[] => {
-    const offered = extractionTargets();
-    const chosen = selectedTargets();
-    return chosen === null ? offered : offered.filter((entity) => chosen.includes(entity));
-  };
+  /** Whether a pass over this collection has anything to look for. */
+  const hasTargets = (collection: string): boolean => targetsFor(collection).some((t) => t.selected);
 
   /**
    * One extraction pass over a named collection.
@@ -737,7 +710,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     setExtractError('');
     try {
       if (collection === collectionId()) await flush();
-      const result = await interpretation.runOnCollection(collection, { classes: activeTargets() });
+      const result = await interpretation.runOnCollection(collection);
       setExtractCount(result.ids.length);
       setExtractTurns(result.turns);
       setExtractedId(collection);
@@ -1045,20 +1018,15 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * call that is over. Pairing the two here makes that structural rather than remembered.
    */
   function useCollection(next: string | null): void {
-    // Back to "whatever this space offers" for a different conversation. A narrowing is a statement
-    // about the call it was made in — "this one is about sightings" — and carrying it into the next
-    // meeting would silently stop finding tasks in it, with the only evidence a checkbox somebody
-    // ticked an hour ago.
-    if (next !== collectionId()) setSelectedTargets(null);
+    // Nothing to reset: what a call extracts is recorded beside the call, so a different
+    // conversation reads its own list — or the space's, when nobody has touched it.
     setCollectionId(next);
     void syncWatch(next);
     // Repair anything a standing pass minted while nobody was here to attach it — see
     // `reconcileCollection`. Adopting a collection is the moment somebody is about to look at it.
     if (next && typeof interpretation?.reconcileCollection === 'function') {
-      // The space's targets, not this agent's selection: this attaches what a *standing* pass
-      // minted, and that pass ran against what the watch registered — see `syncWatch`. Repairing
-      // only what you happened to have ticked would leave another member's findings unparented.
-      void interpretation.reconcileCollection(next, { classes: extractionTargets() }).catch(() => 0);
+      // The host resolves what to repair, as it does for every other pass over this collection.
+      void interpretation.reconcileCollection(next).catch(() => 0);
     }
   }
 
@@ -1072,8 +1040,15 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    */
   let watchedClasses = '';
 
-  async function syncWatch(next: string | null, classes: string[] = extractionTargets()): Promise<void> {
-    const key = classes.join(',');
+  async function syncWatch(next: string | null): Promise<void> {
+    // Keyed on what this call currently extracts, so a group changing it mid-call moves the watch.
+    // The host owns the list; this only has to notice when the answer changed.
+    const key = next
+      ? targetsFor(next)
+          .filter((t) => t.selected)
+          .map((t) => t.entity)
+          .join(',')
+      : '';
     if (watched === next && watchedClasses === key) return;
     const previous = watched;
     /*
@@ -1120,9 +1095,9 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       }
     }
 
-    if (next && classes.length && typeof interpretation?.watchCollection === 'function') {
+    if (next && key && typeof interpretation?.watchCollection === 'function') {
       try {
-        await interpretation.watchCollection(next, { classes });
+        await interpretation.watchCollection(next);
         setWatchProblem('');
         console.debug('[transcribe] watching collection for auto-extraction', next);
       } catch (error) {
@@ -1141,7 +1116,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
         setWatchProblem(error instanceof Error ? error.message : String(error));
         console.warn('[transcribe] could not watch this call for auto-extraction', error);
       }
-    } else if (next && !classes.length) {
+    } else if (next && !key) {
       // Not a failure, and worth saying in its own words: the node can watch perfectly well and
       // this space has declared nothing for it to look for. The fix is in the space's own models,
       // which is somewhere a person can go — unlike every other reason a watch does not run.
@@ -1154,24 +1129,24 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   }
 
   /*
-    Move the watch when the space's targets change, not only when the call does.
+    Move the watch when what this call extracts changes, not only when the call does.
 
-    A community can adopt a model in the middle of a meeting, and until this existed the watch
-    registered at the start of that meeting would go on looking for the old set for the rest of it.
-    `syncWatch` short-circuits when nothing changed, so this is a no-op on every other re-run.
+    Two things change it mid-meeting and both have to land: a community adopting a model, and the
+    participants toggling one for this conversation. Until this existed the watch registered at the
+    start of a call went on looking for the old set for the rest of it. `syncWatch` short-circuits
+    when the answer has not changed, so this is a no-op on every other re-run.
 
-    Reads the *space's* list rather than this agent's selection, and that is the split the whole
-    feature turns on: a watch's class list is neighbourhood state — the registration is one row in
-    the shared perspective and whichever peer runs the pass spends its own LLM call writing into
-    everyone's copy — so it must be derived from something every peer computes identically. A
-    per-agent narrowing here would have peers fighting over the registration, each remove-then-add
-    undoing the last. The narrowing belongs to the button, which is one person's press. See
-    `selectedTargets`.
+    The list is a *group* fact rather than this agent's, and it has to be: the registration is one
+    row in the shared perspective and whichever peer runs the pass spends its own LLM call writing
+    into everyone's copy, so every peer must compute the same list or they would each
+    remove-then-add over the other's in a loop.
   */
   effect?.(() => {
-    const classes = extractionTargets();
-    if (!watched) return;
-    void syncWatch(watched, classes);
+    const live = collectionId();
+    if (!live) return;
+    // Read inside the effect so a change to the list re-runs it.
+    void targetsFor(live);
+    void syncWatch(live);
   });
 
   effect?.(() => {
@@ -1447,42 +1422,39 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * no port means this node has no LLM. The panel tells those apart; this is the guard that stops
      * the button being offered when neither can be fixed by pressing it.
      */
-    canExtract: () => Boolean(collectionId()) && (interpretation?.available() ?? false) && activeTargets().length > 0,
+    canExtract: () =>
+      Boolean(collectionId()) && (interpretation?.available() ?? false) && hasTargets(collectionId() ?? ''),
     /**
-     * What this space can have extracted, and whether the next press will look for each.
+     * What this call can have extracted, and whether each is on — `{ entity, label, selected }`.
      *
-     * One list of `{ entity, selected }` rather than two arrays, because a schema renders it as a
-     * row of checkboxes and cannot join two lists to decide which are ticked. Every entry is a
-     * model — core vocabulary that declares itself extractable, or one this community defined and
-     * marked so — and the whole list is empty in a space that has declared none, which is a real
-     * state worth saying rather than an error.
+     * One list rather than two, because a schema renders it as a row of toggles and cannot join two
+     * lists to decide which are ticked. Empty in a space that has marked no models for extraction,
+     * which is a real state worth saying rather than an error.
      */
-    extractionTargets: () => {
-      const active = activeTargets();
-      return extractionTargets().map((entity) => ({
-        entity,
-        label: humanise(entity),
-        selected: active.includes(entity),
-      }));
-    },
-    /** True while the next press would look for everything on offer — nothing has been narrowed. */
-    allTargetsSelected: () => selectedTargets() === null,
+    extractionTargets: () =>
+      targetsFor(collectionId() ?? '').map((target) => ({ ...target, label: humanise(target.entity) })),
     /**
-     * Include or exclude one model from *this agent's* next press. Nothing is written and no peer
-     * is affected; the standing watch keeps looking for everything the space declares.
+     * Include or exclude one model from what **this call** extracts, for everyone in it.
      *
-     * Turning the last one off is allowed, and leaves `canExtract` false — the button then says
-     * what is wrong rather than running a pass that asks the model for nothing.
+     * A group decision recorded beside the call, not a private preference: the standing watch is one
+     * registration the whole neighbourhood shares, so per-agent lists would have peers overwriting
+     * each other's. Turning the last one off is allowed and leaves `canExtract` false, so the button
+     * says what is wrong rather than running a pass that asks the model for nothing.
+     *
+     * Applies to what is said from here on — a watch keeps a processed-turn cursor. The one-shot
+     * button carries none, so pressing Extract is how the rest of the conversation gets swept with
+     * the new list.
      */
-    toggleExtractionTarget: (entity: string) => {
-      const current = activeTargets();
-      const next = current.includes(entity) ? current.filter((name) => name !== entity) : [...current, entity];
-      // Back to null when everything is on, so a model defined later is included by default —
-      // a saved full list would silently exclude it. See `selectedTargets`.
-      setSelectedTargets(next.length === extractionTargets().length ? null : next);
+    toggleExtractionTarget: async (entity: string) => {
+      const live = collectionId();
+      if (!live || typeof interpretation?.setTarget !== 'function') return;
+      const current = targetsFor(live).find((target) => target.entity === entity);
+      try {
+        await interpretation.setTarget(live, entity, !current?.selected);
+      } catch (error) {
+        console.warn('[transcribe] could not change what this call extracts', error);
+      }
     },
-    /** Undo a narrowing: look for everything the space offers again, including anything new. */
-    selectAllTargets: () => setSelectedTargets(null),
     /** True when the backend could interpret but there is no transcript yet — a waiting state. */
     extractable: () => interpretation?.available() ?? false,
     /**

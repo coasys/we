@@ -3821,6 +3821,26 @@
       "relations": []
     },
     {
+      "name": "CallExtraction",
+      "className": "CallExtraction",
+      "extends": "WeNode",
+      "fields": [
+        {
+          "name": "callId",
+          "type": "string",
+          "predicate": "we://call_id",
+          "required": false
+        },
+        {
+          "name": "entities",
+          "type": "string",
+          "predicate": "we://extraction_targets",
+          "required": false
+        }
+      ],
+      "relations": []
+    },
+    {
       "name": "ChatMessage",
       "className": "ChatMessage",
       "extends": "WeNode",
@@ -4369,6 +4389,12 @@
       "extends": "WeNode",
       "fields": [
         {
+          "name": "connection",
+          "type": "string",
+          "predicate": "we://connection",
+          "required": false
+        },
+        {
           "name": "relationshipTypeId",
           "type": "string",
           "predicate": "we://relationship_type_id",
@@ -4712,6 +4738,12 @@
           "name": "enabledViews",
           "type": "string",
           "predicate": "we://enabled_views",
+          "required": false
+        },
+        {
+          "name": "extractionTargets",
+          "type": "string",
+          "predicate": "we://extraction_targets",
           "required": false
         },
         {
@@ -6125,7 +6157,7 @@
           "type": "array",
           "properties": ["entity", "source"]
         },
-        "extractionTargets": {
+        "extractionCandidates": {
           "type": "array"
         },
         "relationshipTargets": {
@@ -6403,6 +6435,9 @@
         },
         "shareExtractionDetail": {
           "type": "boolean"
+        },
+        "extractionTargets": {
+          "type": "array"
         }
       },
       "actions": [
@@ -6425,6 +6460,7 @@
         "setModuleEnabled",
         "setAutoInterpret",
         "setShareExtractionDetail",
+        "setExtractionTarget",
         "setModuleInstalled",
         "setModuleVisible",
         "setViewEnabled",

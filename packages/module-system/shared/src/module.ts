@@ -754,25 +754,43 @@ export interface ModuleInterpretationAccess {
   /** Whether interpretation can run at all — false when the backend has no model configured. */
   available: () => boolean;
   /**
-   * Entity names a pass may write in the space the module is running in — the default class list,
-   * and the whole set a module may offer a person to choose from.
+   * What this call extracts, and what else it could — one row per model, ticked when it is on.
    *
-   * Here because a module cannot work it out. The answer is core vocabulary that declares itself
-   * extractable *plus whatever models this community defined*, and a module has no read surface, no
-   * dataset handle and no business knowing that a space carries models at all. It was a constant in
-   * the transcribe module naming two classes, which is why a community could write careful hints
-   * for a `Sighting` and never have anything extract one.
+   * Here because a module cannot work it out, and should not try. Three layers decide it: the
+   * codebase says which entities are candidates at all, the space says which of them its calls
+   * start with, and the call's own participants add or remove from there. A module has no read
+   * surface, no dataset handle, and no business knowing that a space carries models — so it is
+   * handed the answer rather than the inputs.
    *
-   * Reactive, and read on every call rather than captured: a model defined a moment ago is a target
-   * a moment later, and a module store outlives a space switch.
+   * One list of `{ entity, selected }` rather than two, because the surface that renders it is a
+   * row of toggles and a schema cannot join two lists to work out which are ticked.
    *
-   * **Still passed explicitly as `classes` below.** The port's class list is its real control
-   * surface — every entity named puts its whole shape into the prompt — so a module that narrows
-   * this (a per-call choice) sends what it means rather than relying on a default it cannot see.
-   * Empty means nothing here may be extracted: an honest answer, and the one to render as "this
-   * space has no extraction targets" rather than silently falling back to something.
+   * Reactive, and read on every call rather than captured: a community adopting a model makes it a
+   * candidate a moment later, and a module store outlives a space switch. Empty means nothing here
+   * may be extracted — an honest answer, and one to render as such rather than as a failure.
+   *
+   * The class list itself never reaches a module. It used to, and the module held the constant that
+   * decided it — which is why a community could write careful hints for a `Sighting` and never have
+   * anything extract one.
    */
-  targets: () => string[];
+  targets: (collectionId: string) => { entity: string; selected: boolean }[];
+  /**
+   * Add or remove one model from what this call extracts.
+   *
+   * A **group** decision, not this agent's: it is recorded in the space beside the call, and the
+   * standing watch re-registers against it, so it changes what the whole neighbourhood extracts
+   * from this conversation. That is what it has to be — the watch is one registration every peer
+   * shares, and per-agent lists would have peers overwriting each other's in a loop.
+   *
+   * Takes effect from here on. A watch keeps a processed-turn cursor, so a model switched on
+   * part-way through a call is applied to what is said *next*; the one-shot pass carries no cursor,
+   * so pressing Extract is how the rest of the conversation gets swept with the new list. Worth
+   * saying wherever this is offered, because it is not guessable.
+   *
+   * Rejects on a host that cannot record it, so a module can offer the affordance only where it
+   * means something rather than silently dropping a press.
+   */
+  setTarget: (collectionId: string, entity: string, on: boolean) => Promise<void>;
   /**
    * Interpret a collection's children, attaching what is created back onto that same collection.
    *
@@ -785,7 +803,7 @@ export interface ModuleInterpretationAccess {
    * Rejects when there is no usable model, so a caller can tell "no LLM here" from "nothing worth
    * extracting was said" — the two are identical from an empty result and only one is worth saying.
    */
-  runOnCollection: (collectionId: string, request: { classes: string[] }) => Promise<InterpretationResult>;
+  runOnCollection: (collectionId: string) => Promise<InterpretationResult>;
   /**
    * Keep interpreting a collection as it grows, without anyone pressing anything.
    *
@@ -800,7 +818,7 @@ export interface ModuleInterpretationAccess {
    * Rejects on a backend that can interpret but cannot coordinate a shared watch, so a module can
    * offer the affordance only where it means something.
    */
-  watchCollection: (collectionId: string, request: { classes: string[] }) => Promise<void>;
+  watchCollection: (collectionId: string) => Promise<void>;
   /** Stop the watch on a collection. Safe to call when none was registered. */
   unwatchCollection: (collectionId: string) => Promise<void>;
   /**
@@ -810,7 +828,7 @@ export interface ModuleInterpretationAccess {
    * writes the edge, and the client that would have done it may not have been running. Returns 0
    * where there was nothing to repair, including on a backend that parents its own results.
    */
-  reconcileCollection: (collectionId: string, request: { classes: string[] }) => Promise<number>;
+  reconcileCollection: (collectionId: string) => Promise<number>;
   /**
    * What extraction is doing in this space right now — this agent's passes and its peers'.
    *

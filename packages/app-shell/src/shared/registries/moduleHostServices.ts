@@ -55,15 +55,17 @@ export interface ModuleHostServices {
    * dataset's models. Separate from `interpretation` because the port takes turns and only the host
    * can produce them — see `shared/interpretation/transcriptTurns.ts`.
    */
-  interpretCollection?: (collectionId: string, request: { classes: string[] }) => Promise<InterpretationResult>;
+  interpretCollection?: (collectionId: string) => Promise<InterpretationResult>;
   /**
-   * What an extraction pass may write in the current space, published by the store that can see the
-   * space's own models. Absent reads as none — see `ModuleInterpretationAccess.targets`.
+   * What one call extracts and what else it could, published by the store that can see all three
+   * layers. Absent reads as an empty list — see `ModuleInterpretationAccess.targets`.
    */
-  extractionTargets?: () => string[];
-  watchCollection?: (collectionId: string, request: { classes: string[] }) => Promise<void>;
+  extractionTargets?: (collectionId: string) => { entity: string; selected: boolean }[];
+  /** Add or remove one model from what a call extracts. Absent means the host cannot record it. */
+  setExtractionTarget?: (collectionId: string, entity: string, on: boolean) => Promise<void>;
+  watchCollection?: (collectionId: string) => Promise<void>;
   unwatchCollection?: (collectionId: string) => Promise<void>;
-  reconcileCollection?: (collectionId: string, request: { classes: string[] }) => Promise<number>;
+  reconcileCollection?: (collectionId: string) => Promise<number>;
   /**
    * Live extraction activity for the current space, published by the store that holds the feed.
    *
@@ -187,11 +189,16 @@ export function createModuleStoreDeps(framework: {
         services.interpretation !== undefined,
       // Read through on every call rather than captured, like every accessor here: a module store
       // outlives a space switch, and a captured list would offer the previous space's models.
-      targets: () => services.extractionTargets?.() ?? [],
-      runOnCollection: async (collectionId, request) => {
+      targets: (collectionId) => services.extractionTargets?.(collectionId) ?? [],
+      setTarget: async (collectionId, entity, on) => {
+        const set = services.setExtractionTarget;
+        if (!set) throw new Error('interpretation: this host cannot record a call’s extraction targets');
+        await set(collectionId, entity, on);
+      },
+      runOnCollection: async (collectionId) => {
         const run = services.interpretCollection;
         if (!run) throw new Error('interpretation: this backend cannot interpret');
-        return run(collectionId, request);
+        return run(collectionId);
       },
       /*
         Keep interpreting this collection as it grows — the standing counterpart to
@@ -205,16 +212,15 @@ export function createModuleStoreDeps(framework: {
         Rejects on a backend that cannot hold one, so a module can offer the affordance only where
         it means something instead of silently doing nothing.
       */
-      watchCollection: async (collectionId, request) => {
+      watchCollection: async (collectionId) => {
         const start = services.watchCollection;
         if (!start) throw new Error('interpretation: this backend cannot run a standing watch');
-        return start(collectionId, request);
+        return start(collectionId);
       },
       unwatchCollection: async (collectionId) => {
         await services.unwatchCollection?.(collectionId);
       },
-      reconcileCollection: async (collectionId, request) =>
-        (await services.reconcileCollection?.(collectionId, request)) ?? 0,
+      reconcileCollection: async (collectionId) => (await services.reconcileCollection?.(collectionId)) ?? 0,
       /*
         Reads through on every call rather than capturing, like every accessor here — a module store
         outlives a space switch, and a captured array would keep showing the passes of the space the

@@ -157,14 +157,15 @@ export interface ShapeStore {
   /** Entities offering hint tuning here: core interpretable vocabulary plus this space's shapes. */
   hintEntities: Accessor<HintEntityView[]>;
   /**
-   * Entity names an extraction pass may write in this space — core vocabulary that declares itself
+   * Entity names an extraction pass *could* write here — core vocabulary that declares itself
    * extractable, plus every adopted shape that does.
    *
-   * The answer to "what could be found here", and deliberately not "what will this pass look for":
-   * a call may narrow it and the space may have auto-extraction off. Read it to *display* findings,
-   * so a card shows a record another member extracted whatever this agent had selected.
+   * Candidacy, not a decision. Which of these a call actually looks for is two layers down: the
+   * space names its defaults (`spaceStore.extractionTargets`) and a call may add or remove for
+   * itself. Read this to offer a choice, and to *display* findings — a card should show a record
+   * somebody extracted an hour ago even if the target has since been switched off.
    */
-  extractionTargets: Accessor<string[]>;
+  extractionCandidates: Accessor<string[]>;
   /** Options for the relationship target picker — `{ label, value }`, grouped and labelled. */
   relationshipTargets: Accessor<RelationshipTargetOption[]>;
   /**
@@ -179,6 +180,18 @@ export interface ShapeStore {
   hintEditor: Accessor<HintEditorState | null>;
   /** The hint editor is loading or saving. */
   hintBusy: Accessor<boolean>;
+  /**
+   * SpaceStore supplies "add this model to the space's default extraction targets".
+   *
+   * Injected upward rather than read, because SpaceStore owns the `Space` record and sits *below*
+   * this store in the provider tree — the same arrangement in the same direction as
+   * `datasetStore.provideAutoInterpretGate`, which SpaceStore also fills in.
+   *
+   * Used on save and nowhere else, which is what makes the imported case behave: a shape that
+   * arrives already marked extractable — copied, forked, synced from a peer — becomes a *candidate*
+   * this space can switch on, not a target that starts writing into it unasked.
+   */
+  provideExtractionEnroller: (enrol: (entity: string) => Promise<void>) => void;
 
   // Actions — wizard
   /** Open the wizard: empty for a new model, or pre-filled from a stored shape's definition. */
@@ -348,6 +361,15 @@ export function ShapeStoreProvider(props: ParentProps) {
     return apiKey ? { kind: 'anthropic', apiKey } : null;
   }
 
+  /*
+    Filled in by SpaceStore, which owns the `Space` record and mounts below this store — see
+    `provideExtractionEnroller`. Unset until it does, and a save before then simply does not enrol.
+  */
+  let enrolExtractionTarget: ((entity: string) => Promise<void>) | null = null;
+  const provideExtractionEnroller = (enrol: (entity: string) => Promise<void>) => {
+    enrolExtractionTarget = enrol;
+  };
+
   const schemas = () => session.backendPorts()?.schemas;
   const handle = () => datasetStore.currentDataset()?.handle;
 
@@ -380,7 +402,7 @@ export function ShapeStoreProvider(props: ParentProps) {
     prefers the native class, so the two names resolve to one class and requesting it twice would
     put the same shape in the prompt twice at the community's expense.
   */
-  const extractionTargets = createMemo<string[]>(() => {
+  const extractionCandidates = createMemo<string[]>(() => {
     const names = [
       ...coreExtractionTargets,
       ...spaceShapes().flatMap((shape) => (shape.manifest ? extractableEntities(shape.manifest) : [])),
@@ -389,13 +411,13 @@ export function ShapeStoreProvider(props: ParentProps) {
   });
 
   /*
-    Lend the list downward, the way SpaceStore lends `autoInterpret`.
+    Lend the candidates downward, the way SpaceStore lends `autoInterpret`.
 
     DatasetStore publishes the interpretation surface modules reach, and sits *above* this store in
     the provider tree, so it cannot read a shape. The accessor rather than the value, so it follows
     a community defining a model without anything re-registering.
   */
-  datasetStore.provideExtractionTargets(extractionTargets);
+  datasetStore.provideExtractionCandidates(extractionCandidates);
 
   /**
    * What a relationship may point at here, grouped by where it comes from and labelled for the
@@ -968,6 +990,24 @@ export function ShapeStoreProvider(props: ParentProps) {
         });
       }
       await adoptShape({ name: entityName, shapeId: shapeUuid }, gate.manifest);
+      /*
+        Ticking the switch is the space's decision, so it does not need making twice.
+
+        `extractable` on the entity is candidacy — it travels with the definition, so a fork of this
+        model lands elsewhere as something that space may switch on. Enrolling it in *this* space's
+        defaults is a separate fact, and asking for it separately would be the two-affordances-for-
+        one-intent problem: whoever ticked the box in this wizard is the community, saying yes, now.
+
+        Best-effort. The model is saved and adopted by this point, so a failure here is one setting
+        that did not stick, not a lost definition — and the space's own settings can fix it.
+      */
+      if (draft.extractable) {
+        try {
+          await enrolExtractionTarget?.(entityName);
+        } catch (err) {
+          console.warn('ShapeStore: could not add the new model to this space’s extraction targets', err);
+        }
+      }
       cancelShapeWizard();
       toastService.success(existing ? `Model "${entityName}" updated` : `Model "${entityName}" created`);
       await loadShapes();
@@ -1108,7 +1148,8 @@ export function ShapeStoreProvider(props: ParentProps) {
     aiAvailable,
     generating,
     hintEntities,
-    extractionTargets,
+    extractionCandidates,
+    provideExtractionEnroller,
     relationshipTargets,
     identityOptions,
     hintEditor,

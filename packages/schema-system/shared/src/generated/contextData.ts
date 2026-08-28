@@ -1419,6 +1419,16 @@ export const contextData: ContextData = {
       relations: [],
     },
     {
+      name: 'CallExtraction',
+      className: 'CallExtraction',
+      extends: 'WeNode',
+      fields: [
+        { name: 'callId', type: 'string', predicate: 'we://call_id', required: false },
+        { name: 'entities', type: 'string', predicate: 'we://extraction_targets', required: false },
+      ],
+      relations: [],
+    },
+    {
       name: 'ChatMessage',
       className: 'ChatMessage',
       extends: 'WeNode',
@@ -1603,6 +1613,7 @@ export const contextData: ContextData = {
       className: 'Relationship',
       extends: 'WeNode',
       fields: [
+        { name: 'connection', type: 'string', predicate: 'we://connection', required: false },
         { name: 'relationshipTypeId', type: 'string', predicate: 'we://relationship_type_id', required: false },
         { name: 'label', type: 'string', predicate: 'we://title', required: false },
         { name: 'description', type: 'string', predicate: 'we://description', required: false },
@@ -1705,6 +1716,7 @@ export const contextData: ContextData = {
         { name: 'defaultThemeId', type: 'string', predicate: 'we://default_theme_id', required: false },
         { name: 'enabledModules', type: 'string', predicate: 'we://enabled_modules', required: false },
         { name: 'enabledViews', type: 'string', predicate: 'we://enabled_views', required: false },
+        { name: 'extractionTargets', type: 'string', predicate: 'we://extraction_targets', required: false },
         { name: 'autoInterpret', type: 'boolean', predicate: 'we://auto_interpret', required: false, default: 'false' },
         {
           name: 'shareExtractionDetail',
@@ -2435,7 +2447,7 @@ export const contextData: ContextData = {
         aiAvailable: { type: 'boolean' },
         generating: { type: 'boolean' },
         hintEntities: { type: 'array', properties: ['entity', 'source'] },
-        extractionTargets: { type: 'array' },
+        extractionCandidates: { type: 'array' },
         relationshipTargets: { type: 'array', properties: ['label', 'value'] },
         identityOptions: { type: 'array', properties: ['label', 'value'] },
         hintEditor: { type: 'object', properties: ['entity', 'classHint', 'defaultClassHint', 'rows', 'customized'] },
@@ -2577,6 +2589,7 @@ export const contextData: ContextData = {
         myMentions: { type: 'array', properties: ['id', 'author', 'createdAt'] },
         autoInterpret: { type: 'boolean' },
         shareExtractionDetail: { type: 'boolean' },
+        extractionTargets: { type: 'array' },
       },
       actions: [
         'createSpace',
@@ -2598,6 +2611,7 @@ export const contextData: ContextData = {
         'setModuleEnabled',
         'setAutoInterpret',
         'setShareExtractionDetail',
+        'setExtractionTarget',
         'setModuleInstalled',
         'setModuleVisible',
         'setViewEnabled',

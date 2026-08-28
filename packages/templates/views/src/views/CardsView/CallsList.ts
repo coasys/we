@@ -68,11 +68,10 @@ const findingsQuery = {
 /**
  * What extraction wrote onto this call, one group per model this space can extract into.
  *
- * The list of models comes from the space rather than from anything this card knows —
- * `shapeStore.extractionTargets` is core vocabulary marked extractable plus every model the
- * community defined and marked so. Deliberately the *space's* list rather than any per-call
- * selection: a member who narrowed their own Extract press must still see what another member
- * found, so what is *shown* and what a given pass *looks for* are different questions.
+ * The list of models comes from `shapeStore.extractionCandidates` — everything that *could* be
+ * extracted here, rather than what this call is currently looking for. Deliberately the widest of
+ * the three layers: a record found an hour ago is still on this call after its target is switched
+ * off, and a card that hid it would be reporting the setting rather than the conversation.
  *
  * Each group hoists its own subscription and renders only when it has members, so a call nobody
  * extracted from looks exactly as it did before, and a space with no extractable models grows
@@ -91,7 +90,7 @@ const findingsQuery = {
  */
 const findings: SchemaNode = {
   type: '$each',
-  props: { items: { $: 'shapeStore.extractionTargets' }, as: 'target' },
+  props: { items: { $: 'shapeStore.extractionCandidates' }, as: 'target' },
   children: [
     {
       type: 'Column',

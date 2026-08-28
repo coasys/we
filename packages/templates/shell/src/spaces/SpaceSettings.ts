@@ -801,6 +801,107 @@ const autoInterpretSection: SchemaNode = {
  * it is simply tens of KB per pass on a transport meant for small messages, which is a poor
  * standing default and a very reasonable thing to switch on while working on extraction.
  */
+/**
+ * Which models this community's calls extract into.
+ *
+ * The middle of three layers, and the only one a community owns. The codebase decides what is a
+ * *candidate* — an entity earns that by having AI hints, a dedup key and no required field a model
+ * cannot satisfy, which is why no image or file block is one. This decides which candidates a call
+ * here starts with. A call's participants then add or remove for that conversation.
+ *
+ * That middle layer exists because the alternative is WE asserting what every community's calls are
+ * about. Tasks and events as a fixed default is an assumption about meeting culture; a space that
+ * runs birdwatching walks wants its own model on and tasks off, and only it can know that.
+ *
+ * A space that has never touched this keeps what was hardcoded before the setting existed, so
+ * nothing changes underneath anyone — the first toggle writes the whole resolved list and the
+ * community owns it from then on.
+ *
+ * Administer-only, like the switches above: what a space extracts is written into everyone's copy
+ * and spends whichever member's node runs the pass.
+ */
+const extractionTargetsSection: SchemaNode = {
+  type: 'Column',
+  props: { gap: '300', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+  children: [
+    {
+      type: 'Column',
+      props: { gap: '100' },
+      children: [
+        { type: 'we-text', props: { variant: 'label' }, children: ['What calls extract'] },
+        {
+          type: 'we-text',
+          props: { variant: 'footnote', color: 'text-faint' },
+          children: [
+            {
+              $: "space.canAdminister ? 'The models a call in this space starts out looking for. Participants can add or remove them for one call. Every model named costs tokens on every pass, so keep the list to what this community actually talks about.' : 'The models a call in this space starts out looking for. Changing this needs someone who administers the space.'",
+            },
+          ],
+        },
+      ],
+    },
+    /*
+      Every candidate, ticked or not — rather than only what is on.
+
+      A list of what is enabled cannot be turned into a list of what could be, so a settings page
+      that showed only the current targets would give a community no way to add one. The rows come
+      from `shapeStore.extractionCandidates`, which is core vocabulary marked extractable plus this
+      space's own adopted models.
+    */
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'count(shapeStore.extractionCandidates)' },
+        then: {
+          type: 'Column',
+          props: { gap: '100' },
+          children: [
+            {
+              type: '$each',
+              props: { items: { $: 'shapeStore.extractionCandidates' }, as: 'candidate' },
+              children: [
+                {
+                  type: 'Row',
+                  props: { width: '100%', gap: '300', ay: 'center' },
+                  children: [
+                    { type: 'we-text', props: { flex: '1' }, children: [{ $: 'candidate' }] },
+                    {
+                      type: 'we-switch',
+                      props: {
+                        size: 'sm',
+                        checked: { $: 'candidate in spaceStore.extractionTargets' },
+                        disabled: { $: '!space.canAdminister' },
+                        // Bare `event.detail` — an operator around it would resolve at render time,
+                        // before the event exists.
+                        onChange: {
+                          $action: 'spaceStore.setExtractionTarget',
+                          args: [{ $: 'candidate' }, { $: 'event.detail' }, { $: 'space.uuid' }],
+                        },
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        /*
+          Not an error, and the one place it can be acted on.
+
+          A space has candidates unless somebody has been through the vocabulary; a community that
+          defines its own model marks it here by ticking the wizard's switch, which enrols it in
+          this list on save.
+        */
+        else: {
+          type: 'we-text',
+          props: { variant: 'footnote', color: 'text-faint' },
+          children: ['Nothing in this space can be extracted yet. Models declare it, in Vocabulary.'],
+        },
+      },
+    },
+  ],
+};
+
 const shareExtractionDetailSection: SchemaNode = {
   type: 'Column',
   props: { gap: '200', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
@@ -1048,6 +1149,7 @@ export function spaceSettingsBody(uuid: SchemaProp, chrome: SchemaNode[], fill?:
                         $: 'space.canAdminister',
                       }),
                       autoInterpretSection,
+                      extractionTargetsSection,
                       shareExtractionDetailSection,
                     ],
                     fill,

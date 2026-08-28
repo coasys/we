@@ -786,46 +786,60 @@ describe('extraction', () => {
      */
     initialTargets: string[] = ['TaskBlock', 'EventBlock'],
   ) {
-    const calls: Array<{ collectionId: string; classes: string[] }> = [];
+    const calls: string[] = [];
     /** Every watch registration and removal, in order — `-id` for a removal. */
     const watches: string[] = [];
-    /** Every class list a registration was made with, so a re-registration can be inspected. */
-    const watchClassSets: string[][] = [];
-    let watchClasses: string[] | null = null;
-    /** Collections a repair sweep was asked for, with what each was asked to repair. */
+    /** Collections a repair sweep was asked for. */
     const reconciled: string[] = [];
-    const reconciledClasses: string[][] = [];
-    let targets = initialTargets;
+    /**
+     * What each call extracts, as the host resolves it.
+     *
+     * A map rather than one list, because the answer is per call now: the space names a default and
+     * a call's participants may add to or remove from it. The module never sees any of that — it
+     * asks the host what this collection extracts and is handed the answer.
+     */
+    const targets = new Map<string, string[]>();
+    const candidates = new Set(initialTargets);
+    const defaults = [...initialTargets];
+    const forCall = (collection: string) => targets.get(collection) ?? defaults.filter((e) => candidates.has(e));
     return {
       calls,
       watches,
-      watchClassSets,
       reconciled,
-      reconciledClasses,
-      watchClassesOf: () => watchClasses,
+      /** What the watch would currently be registered for — the module hands the host a collection. */
+      watchTargetsOf: (collection: string) => forCall(collection),
       /** Stand in for a community adopting (or withdrawing) a model while the call is running. */
-      setTargets: (next: string[]) => {
-        targets = next;
+      setCandidates: (next: string[]) => {
+        candidates.clear();
+        for (const entity of next) candidates.add(entity);
+        defaults.length = 0;
+        defaults.push(...next);
       },
       port: {
         available: () => available,
-        targets: () => targets,
-        runOnCollection: async (collectionId: string, request: { classes: string[] }) => {
-          calls.push({ collectionId, classes: request.classes });
+        targets: (collection: string) => {
+          const active = forCall(collection);
+          return [...candidates].map((entity) => ({ entity, selected: active.includes(entity) }));
+        },
+        setTarget: async (collection: string, entity: string, on: boolean) => {
+          const next = new Set(forCall(collection));
+          if (on) next.add(entity);
+          else next.delete(entity);
+          targets.set(collection, [...next]);
+        },
+        runOnCollection: async (collectionId: string) => {
+          calls.push(collectionId);
           if (result instanceof Error) throw result;
           return result;
         },
-        watchCollection: async (collectionId: string, request: { classes: string[] }) => {
+        watchCollection: async (collectionId: string) => {
           watches.push(collectionId);
-          watchClasses = request.classes;
-          watchClassSets.push(request.classes);
         },
         unwatchCollection: async (collectionId: string) => {
           watches.push(`-${collectionId}`);
         },
-        reconcileCollection: async (collectionId: string, request: { classes: string[] }) => {
+        reconcileCollection: async (collectionId: string) => {
           reconciled.push(collectionId);
-          reconciledClasses.push(request.classes);
           return 0;
         },
         proposals: async () => [],
@@ -852,15 +866,15 @@ describe('extraction', () => {
       expect(i.watches).toEqual([]);
     });
 
-    it('watches the collection once there is one, for the classes the host offers', async () => {
+    it('watches the collection once there is one, and names only the collection', async () => {
       const i = interpreter(undefined, true, ['EventBlock', 'Sighting', 'TaskBlock']);
       const h = harness(inCall, { interpretation: i.port });
       await h.say('we should ship the docs on friday');
 
       expect(i.watches).toHaveLength(1);
-      // The space's whole list, including the model this community defined — not the two classes
-      // the module used to carry.
-      expect(i.watchClassesOf()).toEqual(['EventBlock', 'Sighting', 'TaskBlock']);
+      // The class list never reaches the module: three layers decide it and all three are host
+      // state, so the module hands over a collection and the host resolves what to look for.
+      expect(i.watchTargetsOf(i.watches[0])).toEqual(['EventBlock', 'Sighting', 'TaskBlock']);
       // Registered against a real collection rather than an empty string — a watch over nothing
       // would sit there interpreting a transcript that does not exist.
       expect(i.watches[0]).toBeTruthy();
@@ -961,9 +975,7 @@ describe('extraction', () => {
 
     await h.store.extract();
 
-    expect(i.calls).toHaveLength(1);
-    expect(i.calls[0].collectionId).toBe('id-1');
-    expect(i.calls[0].classes).toEqual(['TaskBlock', 'EventBlock']);
+    expect(i.calls).toEqual(['id-1']);
   });
 
   /*
@@ -976,61 +988,43 @@ describe('extraction', () => {
     the neighbourhood extracts, or have peers overwrite each other's registration in turn.
   */
   describe('choosing what a pass looks for', () => {
-    it('offers every target the space has, all selected until somebody says otherwise', () => {
+    it('offers every candidate the space has, ticked as the host resolved them', async () => {
       const i = interpreter(undefined, true, ['EventBlock', 'Sighting', 'TaskBlock']);
       const h = harness(inCall, { interpretation: i.port });
 
       // The label is presentation only — every write and every request uses `entity`. `*Block` is
       // WE's own naming and would read as jargon on a row of toggles beside a community's own
       // model, so it is dropped: "Task", "Event", "Sighting".
+      await h.say('we should ship the docs on friday');
       expect(h.store.extractionTargets()).toEqual([
         { entity: 'EventBlock', label: 'Event', selected: true },
         { entity: 'Sighting', label: 'Sighting', selected: true },
         { entity: 'TaskBlock', label: 'Task', selected: true },
       ]);
-      expect(h.store.allTargetsSelected()).toBe(true);
     });
 
-    it('narrows what the press asks for, and leaves the watch alone', async () => {
+    /*
+      A toggle is a *group* decision, and that is the whole reason it goes through the host.
+
+      It changes what the standing watch registers for the neighbourhood as well as what the next
+      press asks for — one list, both consumers. A per-agent narrowing would have peers overwriting
+      each other's registration in a loop, which is why the module holds no selection of its own.
+    */
+    it('changes what the call extracts, for the press and the watch alike', async () => {
       const i = interpreter(undefined, true, ['EventBlock', 'Sighting', 'TaskBlock']);
       const h = harness(inCall, { interpretation: i.port });
       await h.say('a heron on the river this morning');
+      const collection = h.store.liveCollectionId();
 
-      h.store.toggleExtractionTarget('TaskBlock');
-      await h.store.extract();
+      await h.store.toggleExtractionTarget('TaskBlock');
 
-      expect(i.calls[0].classes).toEqual(['EventBlock', 'Sighting']);
-      // The registration is neighbourhood state: one member deselecting a class must not stop it
-      // being extracted for everyone else.
-      expect(i.watchClassesOf()).toEqual(['EventBlock', 'Sighting', 'TaskBlock']);
-    });
-
-    it('goes back to "everything" rather than pinning a list, so a later model is included', () => {
-      const i = interpreter(undefined, true, ['EventBlock', 'TaskBlock']);
-      const h = harness(inCall, { interpretation: i.port });
-
-      h.store.toggleExtractionTarget('TaskBlock');
-      h.store.toggleExtractionTarget('TaskBlock');
-
-      expect(h.store.allTargetsSelected()).toBe(true);
-      i.setTargets(['EventBlock', 'Sighting', 'TaskBlock']);
-      expect(h.store.extractionTargets().map((t) => t.entity)).toContain('Sighting');
-      expect(h.store.extractionTargets().every((t) => t.selected)).toBe(true);
-    });
-
-    it('drops a selected class the space no longer offers instead of failing the pass', async () => {
-      const i = interpreter(undefined, true, ['EventBlock', 'Sighting', 'TaskBlock']);
-      const h = harness(inCall, { interpretation: i.port });
-      await h.say('a heron on the river this morning');
-
-      h.store.toggleExtractionTarget('TaskBlock');
-      // The community withdraws the shape mid-call. A class the perspective has no shape for fails
-      // `assertShapesInstalled` and takes the whole pass with it, so a stale selection has to
-      // narrow rather than break.
-      i.setTargets(['EventBlock', 'TaskBlock']);
-      await h.store.extract();
-
-      expect(i.calls[0].classes).toEqual(['EventBlock']);
+      expect(
+        h.store
+          .extractionTargets()
+          .filter((t) => t.selected)
+          .map((t) => t.entity),
+      ).toEqual(['EventBlock', 'Sighting']);
+      expect(i.watchTargetsOf(collection)).toEqual(['EventBlock', 'Sighting']);
     });
 
     it('will not run a pass with nothing selected, and says so through canExtract', async () => {
@@ -1039,12 +1033,12 @@ describe('extraction', () => {
       await h.say('we should ship the docs on friday');
       expect(h.store.canExtract()).toBe(true);
 
-      h.store.toggleExtractionTarget('TaskBlock');
+      await h.store.toggleExtractionTarget('TaskBlock');
 
       expect(h.store.canExtract()).toBe(false);
     });
 
-    it('has nothing to offer, and no watch to run, in a space that declares no targets', async () => {
+    it('has nothing to offer, and no watch to run, in a space that marks no models', async () => {
       const i = interpreter(undefined, true, []);
       const h = harness(inCall, { interpretation: i.port });
       await h.say('we should ship the docs on friday');
@@ -1065,39 +1059,52 @@ describe('extraction', () => {
       would widen it instead — permanently, for the neighbourhood. So a change has to remove first,
       and this pins the order.
     */
-    it('removes the watch before re-registering it when the space gains a model', async () => {
+    it('removes the watch before re-registering it when the call gains a model', async () => {
       const i = interpreter(undefined, true, ['EventBlock', 'TaskBlock']);
       const h = harness(inCall, { interpretation: i.port });
       await h.say('we should ship the docs on friday');
       const collection = h.store.liveCollectionId();
 
-      i.setTargets(['EventBlock', 'Sighting', 'TaskBlock']);
+      i.setCandidates(['EventBlock', 'Sighting', 'TaskBlock']);
       await h.settle();
 
       expect(i.watches).toEqual([collection, `-${collection}`, collection]);
-      expect(i.watchClassSets.at(-1)).toEqual(['EventBlock', 'Sighting', 'TaskBlock']);
+      expect(i.watchTargetsOf(collection)).toEqual(['EventBlock', 'Sighting', 'TaskBlock']);
     });
 
-    it('does not re-register when the target list has not actually changed', async () => {
+    it('re-registers when the participants toggle one mid-call', async () => {
+      const i = interpreter(undefined, true, ['EventBlock', 'TaskBlock']);
+      const h = harness(inCall, { interpretation: i.port });
+      await h.say('we should ship the docs on friday');
+      const collection = h.store.liveCollectionId();
+
+      await h.store.toggleExtractionTarget('EventBlock');
+      await h.settle();
+
+      // Removed first, then registered again — a plain re-register would union the old list back in.
+      expect(i.watches).toEqual([collection, `-${collection}`, collection]);
+      expect(i.watchTargetsOf(collection)).toEqual(['TaskBlock']);
+    });
+
+    it('does not re-register when the list has not actually changed', async () => {
       const i = interpreter(undefined, true, ['EventBlock', 'TaskBlock']);
       const h = harness(inCall, { interpretation: i.port });
       await h.say('we should ship the docs on friday');
 
-      i.setTargets(['EventBlock', 'TaskBlock']);
+      i.setCandidates(['EventBlock', 'TaskBlock']);
       await h.settle();
 
       expect(i.watches).toHaveLength(1);
     });
 
-    it("repairs against the space's targets, not one agent's selection", async () => {
+    it('names only the collection when it asks for a repair', async () => {
       const i = interpreter(undefined, true, ['EventBlock', 'Sighting', 'TaskBlock']);
       const h = harness(inCall, { interpretation: i.port });
-      h.store.toggleExtractionTarget('TaskBlock');
       await h.say('a heron on the river this morning');
 
-      // A standing pass ran against the watch's list, so anything it left unparented can be of a
-      // class this agent had deselected.
-      expect(i.reconciledClasses.at(-1)).toEqual(['EventBlock', 'Sighting', 'TaskBlock']);
+      // The host resolves what a repair should look for, as it does for every other pass — this
+      // attaches what a *standing* pass minted, and that ran against the call's shared list.
+      expect(i.reconciled).toContain(h.store.liveCollectionId());
     });
   });
 

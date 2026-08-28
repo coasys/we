@@ -34,6 +34,7 @@ import {
 import { toastService } from '@we/components/solid';
 import {
   AGENT_DEFAULT,
+  CallExtraction,
   CollectionBlock,
   compressImageToFileData,
   type DatasetProxy,
@@ -70,6 +71,7 @@ import { type AppDataset, useDatasetStore } from './DatasetStore';
 import { useProfileStore } from './ProfileStore';
 import { useRouteStore } from './RouteStore';
 import { useSessionStore } from './SessionStore';
+import { useShapeStore } from './ShapeStore';
 import { useShellStore } from './ShellStore';
 import { useTemplateStore } from './TemplateStore';
 import { useThemeStore } from './ThemeStore';
@@ -163,6 +165,29 @@ export interface SpaceListEntry {
  * A plain function over the stored string rather than a memo over the current space, because the
  * settings page answers this for spaces the agent is not standing in.
  */
+/**
+ * What a space extracts before anybody decides — the two classes that were hardcoded until this
+ * setting existed.
+ *
+ * A migration floor, not a default anybody chose. `Space.extractionTargets` follows the
+ * `enabledModules` rule that empty means "not decided", and reading it as "none" would make every
+ * space that predates the field silently stop extracting with nothing on screen to say why. The
+ * first toggle writes the resolved list and the community owns it from then on.
+ */
+const LEGACY_EXTRACTION_TARGETS = ['TaskBlock', 'EventBlock'];
+
+/** A JSON array of entity names as stored on `Space.extractionTargets` / `CallExtraction.entities`. */
+function parseEntityList(raw: string | undefined): string[] | null {
+  if (raw === undefined || raw === '') return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((name): name is string => typeof name === 'string') : null;
+  } catch {
+    console.warn('extraction targets are not valid JSON; falling back');
+    return null;
+  }
+}
+
 function resolveEnabledModules(raw: string | undefined): string[] {
   if (raw) {
     try {
@@ -607,6 +632,19 @@ export interface SpaceStore {
    */
   shareExtractionDetail: Accessor<boolean>;
   setShareExtractionDetail: (enabled: boolean, spaceUuid?: string) => Promise<void>;
+  /**
+   * Which models this community's calls start out extracting.
+   *
+   * The middle of three layers: the codebase says what is a *candidate*
+   * (`shapeStore.extractionCandidates`), this says which of them a call here begins with, and a
+   * call's participants may add or remove for themselves. Always intersected with the candidates,
+   * so a model since deleted cannot reach a pass and fail it.
+   *
+   * A community decision, readable by every member; writing it is space-settings. Unset falls back
+   * to the two classes that were hardcoded before the setting existed, so nothing regresses.
+   */
+  extractionTargets: Accessor<string[]>;
+  setExtractionTarget: (entity: string, on: boolean, spaceUuid?: string) => Promise<void>;
   /** Turn a module on or off for this agent everywhere. */
   setModuleInstalled: (moduleId: string, installed: boolean) => Promise<void>;
   /** Show or hide a module for this agent in one space. Private to this agent. */
@@ -680,6 +718,7 @@ const SPACE_AVATAR_PX = 512;
 export function SpaceStoreProvider(props: ParentProps) {
   const session = useSessionStore();
   const datasetStore = useDatasetStore();
+  const shapeStore = useShapeStore();
   const profileStore = useProfileStore();
   const routeStore = useRouteStore();
   const templateStore = useTemplateStore();
@@ -1870,6 +1909,95 @@ export function SpaceStoreProvider(props: ParentProps) {
   const shareExtractionDetail = createMemo<boolean>(() => currentSpace()?.shareExtractionDetail === true);
   datasetStore.provideAutoInterpretGate(() => autoInterpret());
 
+  /*
+    Which candidates this space's calls start with.
+
+    Intersected with the candidates rather than trusted as stored, and that is load bearing: a name
+    the perspective has no shape for fails `assertShapesInstalled` and takes the whole pass down, so
+    a list naming a model since deleted — or one whose `extractable` was withdrawn in a release —
+    has to narrow quietly instead of breaking extraction for the space.
+
+    Order follows the candidates, so a settings list reads the same way every time rather than in
+    whatever order somebody happened to tick things.
+  */
+  const extractionTargets = createMemo<string[]>(() => {
+    const candidates = shapeStore.extractionCandidates();
+    const chosen = parseEntityList(currentSpace()?.extractionTargets) ?? LEGACY_EXTRACTION_TARGETS;
+    return candidates.filter((entity) => chosen.includes(entity));
+  });
+
+  /**
+   * What one call extracts, where its participants asked for something other than the default.
+   *
+   * One subscription for the space rather than a read per call: a list of calls asks this question
+   * once per card, and the records are few — one per call that has been customised. Same shape as
+   * `readMarkers`.
+   */
+  const [callExtractions, setCallExtractions] = createSignal<CallExtraction[]>([]);
+
+  createEffect(() => {
+    const dataset = datasetStore.currentDataset();
+    if (!dataset || !datasetStore.isWeSpace()) {
+      setCallExtractions([]);
+      return;
+    }
+    void CallExtraction.findAll(dataset.handle)
+      .then(setCallExtractions)
+      .catch(() => setCallExtractions([]));
+  });
+
+  /**
+   * The models one call extracts: its own list if it has one, else the space's default.
+   *
+   * A record with `entities: '[]'` is a group that turned everything off, and answers `[]`. A call
+   * with no record has not been touched and answers the space's list — which is exactly the
+   * distinction the record exists to make, and why this cannot be a set of links.
+   */
+  const extractionTargetsForCall = (collectionId: string): string[] => {
+    const candidates = shapeStore.extractionCandidates();
+    const own = parseEntityList(callExtractions().find((row) => row.callId === collectionId)?.entities);
+    if (!own) return extractionTargets();
+    return candidates.filter((entity) => own.includes(entity));
+  };
+
+  /**
+   * Add or remove one model from what a call extracts, for everyone in it.
+   *
+   * Writes the *resolved* list rather than a diff, so the first toggle also pins whatever the space
+   * default was at that moment — a model added to the space's defaults later does not silently join
+   * a call whose participants have already decided. The same rule `setModuleEnabled` follows.
+   */
+  async function setCallExtractionTarget(collectionId: string, entity: string, on: boolean): Promise<void> {
+    const dataset = datasetStore.currentDataset();
+    if (!dataset || !collectionId) return;
+    const next = new Set(extractionTargetsForCall(collectionId));
+    if (on) next.add(entity);
+    else next.delete(entity);
+    const entities = JSON.stringify([...next]);
+    const existing = callExtractions().find((row) => row.callId === collectionId);
+    try {
+      if (existing) await CallExtraction.update(dataset.handle, existing.id, { entities });
+      else await CallExtraction.create(dataset.handle, { callId: collectionId, entities });
+      setCallExtractions(await CallExtraction.findAll(dataset.handle));
+    } catch (error) {
+      console.error('SpaceStore: could not save what this call extracts', error);
+      toastService.error('Could not save what this call extracts.');
+      throw error;
+    }
+  }
+
+  datasetStore.provideExtractionCandidates(shapeStore.extractionCandidates);
+  datasetStore.provideCallExtraction({
+    forCall: extractionTargetsForCall,
+    setForCall: setCallExtractionTarget,
+  });
+  /*
+    Ticking "let AI create these" in the model wizard is this space saying yes — see
+    `ShapeStore.provideExtractionEnroller`. Handed upward because ShapeStore mounts above this one
+    and cannot reach a `Space`, the mirror of how `autoInterpret` is handed down.
+  */
+  shapeStore.provideExtractionEnroller((entity) => setExtractionTarget(entity, true));
+
   /**
    * What actually renders here, for this agent: the three layers intersected, minus personal mutes.
    *
@@ -2579,6 +2707,46 @@ export function SpaceStoreProvider(props: ParentProps) {
     );
   }
 
+  /**
+   * Add or remove one model from what this community's calls start out extracting.
+   *
+   * Writes the resolved list, exactly as `setModuleEnabled` does and for the same two reasons: the
+   * first toggle pins whatever was on by fallback — so a space that had never touched the setting
+   * keeps `TaskBlock` and `EventBlock` rather than being reduced to the one thing just ticked — and
+   * a model that becomes a candidate in a later release does not silently join a space that has
+   * already decided.
+   */
+  async function setExtractionTarget(entity: string, on: boolean, spaceUuid?: string) {
+    const ds = targetDataset(spaceUuid);
+    const space = ds ? mySpaces().find((s) => isSpaceSelf(s, ds)) : undefined;
+    if (!ds || !space) return;
+    const current = parseEntityList(space.extractionTargets) ?? LEGACY_EXTRACTION_TARGETS;
+    const next = new Set(current);
+    if (on) next.add(entity);
+    else next.delete(entity);
+    const extractionTargetsJson = JSON.stringify([...next]);
+    try {
+      await Space.update(ds.handle, space.id, { extractionTargets: extractionTargetsJson });
+    } catch (error) {
+      console.error('SpaceStore: could not persist extractionTargets', error);
+      toastService.error('Could not save this change for the space.');
+      throw error;
+    }
+    updateSpaceInCache(ds, { extractionTargets: extractionTargetsJson } as never);
+    if (!isCurrent(ds)) return;
+    // Republished as a *new* instance, the `setModuleEnabled` idiom: `currentSpace` is a plain
+    // signal and Solid dedupes on `===`, so handing back the object just written through notifies
+    // nothing — and the settings list, and every call's resolved target list, would keep reading the
+    // previous value until something else refetched the space.
+    setCurrentSpace((prev) =>
+      prev
+        ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, {
+            extractionTargets: extractionTargetsJson,
+          }) as Space)
+        : prev,
+    );
+  }
+
   async function setModuleEnabled(moduleId: string, enabled: boolean, spaceUuid?: string) {
     const ds = targetDataset(spaceUuid);
     // Read the space from the cache rather than `currentSpace`, so this answers for a space being
@@ -3016,6 +3184,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     setAutoInterpret,
     shareExtractionDetail,
     setShareExtractionDetail,
+    extractionTargets,
+    setExtractionTarget,
     setModuleInstalled,
     setModuleVisible,
     setViewEnabled,
