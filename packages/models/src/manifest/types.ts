@@ -309,6 +309,8 @@ export interface TextBlockModel extends WeNodeModel {
   start: number;
   tag: string;
   text: string;
+  marks: string;
+  checked: boolean;
   version: number;
 }
 

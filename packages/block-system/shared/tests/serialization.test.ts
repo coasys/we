@@ -1,13 +1,11 @@
 /**
  * The block persistence pipeline, tested against a fake model layer.
  *
- * The pipeline's contract is structural — id-claiming, duplicate detection,
- * orphan deletion, relation overwrite — none of which needs any backend at
- * all. The fakes implement exactly the neutral surface serialization.ts
- * touches: the model statics and instance methods of the contract, the
- * registered transaction runner (a passthrough), and the manifest entries
- * the field facts are read from. No @coasys mock — the module under test no
- * longer imports it.
+ * The pipeline's contract is structural — key-claiming, duplicate detection, three-way membership,
+ * relation assignment, the blob projection — none of which needs any backend at all. The fakes
+ * implement exactly the neutral surface serialization.ts touches: the model statics and instance
+ * methods of the contract, the registered transaction runner (a passthrough), and the manifest
+ * entries the field facts are read from.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -29,26 +27,43 @@ vi.mock('@we/models/manifest', () => ({
     version: '1',
     entities: {
       TextBlock: {
-        properties: { type: {}, text: {}, listType: {}, tag: {}, start: {}, textFormat: {} },
+        properties: {
+          type: {},
+          text: {},
+          marks: {},
+          listType: {},
+          tag: {},
+          indent: {},
+          checked: {},
+          format: {},
+          direction: {},
+          start: {},
+          textFormat: {},
+        },
         relations: {},
       },
       CollectionBlock: {
-        properties: { type: {}, title: {}, kind: {}, mode: {} },
+        properties: { type: {}, title: {}, kind: {}, mode: {}, layout: {}, columnCount: {} },
         relations: {},
       },
+      ImageBlock: { properties: { src: {}, altText: {} }, relations: {} },
     },
   },
 }));
 
+import type { ContentBlock, ContentDocument, TextContentBlock } from '../src/content';
 import { type BlockModelStatic, registerBlock } from '../src/registry';
 import {
   createBlocks,
   extractBlockData,
-  extractInlineText,
+  extractMentions,
   extractTextContent,
+  loadBlocks,
   reconcileBlocks,
+  recordToTextBlock,
+  textBlockToRecord,
 } from '../src/serialization';
-import type { SerializedBlockNode } from '../src/types';
+import { decodeEditorState } from '../src/utils';
 
 // ── Fake model layer ────────────────────────────────────────────────────────
 
@@ -56,8 +71,6 @@ let idCounter = 0;
 const byId = new Map<string, FakeBlock>();
 
 class FakeBlock {
-  static propsMeta: Record<string, { resolveLanguage?: string }> = {};
-  static className = 'FakeBlock';
   static created: FakeBlock[] = [];
 
   id: string;
@@ -77,11 +90,12 @@ class FakeBlock {
 
   async delete(_batchId?: string) {
     this.deleted = true;
+    byId.delete(this.id);
   }
 
   static async create(_p: unknown, data: Record<string, unknown>, opts?: { parent?: unknown }) {
     const block = new this(data);
-    // Recorded rather than acted on: the anchor is passed straight to Ad4mModel.create, so what a
+    // Recorded rather than acted on: the anchor is passed straight to the model's create, so what a
     // test can meaningfully assert is that it arrived, and on the root only.
     block.createdWithParent = opts?.parent;
     FakeBlock.created.push(block);
@@ -89,11 +103,13 @@ class FakeBlock {
   }
 
   static async findOne(_p: unknown, opts: { where: { id: string } }) {
-    return byId.get(opts.where.id);
+    const found = byId.get(opts.where.id);
+    return found instanceof this ? found : undefined;
   }
 }
 
 class FakeText extends FakeBlock {}
+class FakeImage extends FakeBlock {}
 
 class FakeCollection extends FakeBlock {
   children: string[] = [];
@@ -117,25 +133,25 @@ class FakeCollection extends FakeBlock {
   }
 }
 
-registerBlock({
-  nodeTypes: ['paragraph', 'heading', 'quote', 'listitem'],
-  model: FakeText as unknown as BlockModelStatic,
-  entity: 'TextBlock',
-});
+registerBlock({ nodeTypes: ['block'], model: FakeText as unknown as BlockModelStatic, entity: 'TextBlock' });
 registerBlock({
   nodeTypes: ['root', 'collection'],
   model: FakeCollection as unknown as BlockModelStatic,
   entity: 'CollectionBlock',
 });
+registerBlock({ nodeTypes: ['image'], model: FakeImage as unknown as BlockModelStatic, entity: 'ImageBlock' });
 
 // The dataset handle is opaque to the pipeline — an empty object is a complete fake.
 const perspective = {};
 
-function text(t: string): SerializedBlockNode {
-  return { type: 'text', text: t, version: 1 };
+function paragraph(text: string, extra: Partial<TextContentBlock> = {}): TextContentBlock {
+  return { _type: 'block', style: 'normal', text, ...extra };
 }
-function paragraph(t: string, extra: Record<string, unknown> = {}): SerializedBlockNode {
-  return { type: 'paragraph', version: 1, children: [text(t)], ...extra };
+
+/** The blob a root holds, decoded back to blocks. */
+function blobOf(root: FakeCollection): ContentBlock[] {
+  const file = root.editorState as { data_base64: string };
+  return decodeEditorState(`data:application/json;base64,${file.data_base64}`)!;
 }
 
 beforeEach(() => {
@@ -146,147 +162,199 @@ beforeEach(() => {
 
 // ── Pure helpers ────────────────────────────────────────────────────────────
 
-describe('extractInlineText', () => {
-  it('merges text runs and renders linebreaks as newlines', () => {
-    expect(extractInlineText([text('a'), { type: 'linebreak', version: 1 }, text('b')])).toBe('a\nb');
+describe('text block ⇄ record', () => {
+  it('writes the structural role in the vocabulary the model has always carried', () => {
+    expect(textBlockToRecord(paragraph('hi'))).toMatchObject({
+      type: 'paragraph',
+      tag: '',
+      listType: '',
+      indent: 0,
+      text: 'hi',
+      marks: '',
+    });
+    expect(textBlockToRecord({ _type: 'block', style: 'h2', text: 't' })).toMatchObject({ type: 'heading', tag: 'h2' });
+    expect(textBlockToRecord({ _type: 'block', style: 'blockquote', text: 'q' })).toMatchObject({
+      type: 'quote',
+      tag: '',
+    });
+    expect(textBlockToRecord({ _type: 'block', listItem: 'number', level: 2, text: 'i' })).toMatchObject({
+      type: 'listitem',
+      tag: 'ol',
+      listType: 'number',
+      indent: 2,
+    });
+    expect(textBlockToRecord({ _type: 'block', listItem: 'check', checked: true, text: 'c' })).toMatchObject({
+      listType: 'check',
+      checked: true,
+    });
   });
 
-  it('ignores non-inline children', () => {
-    expect(extractInlineText([text('a'), paragraph('nested')])).toBe('a');
+  it('serialises marks as JSON and reads them back', () => {
+    const block = paragraph('hi', { marks: [{ start: 0, end: 2, type: 'strong' }] });
+    const record = textBlockToRecord(block);
+    expect(record.marks).toBe('[{"start":0,"end":2,"type":"strong"}]');
+    expect(recordToTextBlock({ ...record, id: 'x' })).toEqual({ ...block, _key: 'x' });
+  });
+
+  it('reads every record shape the field has held — a transcript turn has only text', () => {
+    expect(recordToTextBlock({ id: 't', text: 'said', tag: 'transcript' })).toEqual({
+      _type: 'block',
+      _key: 't',
+      style: 'normal',
+      text: 'said',
+    });
+    expect(recordToTextBlock({ type: 'heading', tag: 'h3', text: 'h' })).toMatchObject({ style: 'h3' });
+    expect(recordToTextBlock({ type: 'listitem', listType: 'bullet', indent: 1, text: 'l' })).toMatchObject({
+      listItem: 'bullet',
+      level: 1,
+    });
+  });
+});
+
+describe('extractBlockData', () => {
+  it('takes only properties present on both the block and the model', () => {
+    expect(extractBlockData('ImageBlock', { _type: 'image', src: 'x', unrelated: 'y', width: 10 })).toEqual({
+      src: 'x',
+    });
+  });
+
+  it('never persists the composition-only fields', () => {
+    expect(extractBlockData('CollectionBlock', { _type: 'collection', layout: 'grid', content: [] })).toEqual({
+      layout: 'grid',
+    });
   });
 });
 
 describe('extractTextContent', () => {
-  it('collects container text and leaf block fields, collapsing whitespace', () => {
-    const node: SerializedBlockNode = {
-      type: 'root',
-      version: 1,
-      children: [
-        paragraph('  hello\n world '),
-        { type: 'link', version: 1, title: 'A title', description: 'A description', url: 'https://x' },
-      ],
-    };
-    expect(extractTextContent(node)).toBe('hello world A title A description');
-  });
-
-  it('recurses into collection childEditorState', () => {
-    const node: SerializedBlockNode = {
-      type: 'root',
-      version: 1,
-      children: [
-        {
-          type: 'collection',
-          version: 1,
-          childEditorState: { type: 'root', version: 1, children: [paragraph('inside')] },
-        },
-      ],
-    };
-    expect(extractTextContent(node)).toBe('inside');
+  it('collects text blocks and custom text fields, collapsing whitespace, nested included', () => {
+    const blocks: ContentBlock[] = [
+      paragraph('  hello\n world '),
+      { _type: 'link', title: 'A title', description: 'A description', url: 'https://x' },
+      { _type: 'collection', content: [paragraph('inside')] },
+    ];
+    expect(extractTextContent(blocks)).toBe('hello world A title A description inside');
   });
 
   it('caps at 5000 chars, truncating on a word boundary', () => {
     const words = Array.from({ length: 1200 }, (_, i) => `word${i}`).join(' ');
-    const result = extractTextContent({ type: 'root', version: 1, children: [paragraph(words)] });
+    const result = extractTextContent([paragraph(words)]);
     expect(result.length).toBeLessThanOrEqual(5000);
-    expect(result.endsWith(' ')).toBe(false);
-    // No word is cut in half: the result is a prefix of the input ending at a space.
     expect(words.startsWith(result)).toBe(true);
     expect(words[result.length]).toBe(' ');
   });
 });
 
-describe('extractBlockData', () => {
-  it('takes only properties present on both the node and the model', () => {
-    const node: SerializedBlockNode = { type: 'paragraph', version: 1, text: 'hi', unrelated: 'x' };
-    expect(extractBlockData('TextBlock', node)).toEqual({
-      type: 'paragraph',
-      text: 'hi',
-    });
-  });
-
-  it('skips undefined values', () => {
-    const node: SerializedBlockNode = { type: 'paragraph', version: 1, text: undefined };
-    expect(extractBlockData('TextBlock', node)).toEqual({ type: 'paragraph' });
+describe('extractMentions', () => {
+  it('reads DIDs off mention marks, de-duplicated, nested included', () => {
+    const blocks: ContentBlock[] = [
+      paragraph('hi @a', { marks: [{ start: 3, end: 5, type: 'mention', did: 'did:key:a' }] }),
+      {
+        _type: 'collection',
+        content: [
+          paragraph('@a @b', {
+            marks: [
+              { start: 0, end: 2, type: 'mention', did: 'did:key:a' },
+              { start: 3, end: 5, type: 'mention', did: 'did:key:b' },
+            ],
+          }),
+        ],
+      },
+    ];
+    expect(extractMentions(blocks)).toEqual(['did:key:a', 'did:key:b']);
   });
 });
 
 // ── createBlocks ────────────────────────────────────────────────────────────
 
 describe('createBlocks', () => {
-  it('creates the tree, links children, stamps ids, and writes the root blob', async () => {
-    const node: SerializedBlockNode = {
-      type: 'root',
-      version: 1,
-      children: [paragraph('first'), paragraph('second')],
-    };
+  it('creates the tree, links children, stamps keys, and writes the root blob', async () => {
+    const blocks: ContentBlock[] = [paragraph('first'), paragraph('second')];
 
-    const root = (await createBlocks(perspective, node, { kind: 'post' })) as FakeCollection;
+    const root = (await createBlocks(perspective, blocks, { kind: 'post' })) as FakeCollection;
 
     expect(root).toBeInstanceOf(FakeCollection);
     expect(root.kind).toBe('post');
+    expect(root.type).toBe('root');
     expect(root.children).toHaveLength(2);
-    // ids stamped back onto the serialized nodes for later reconciliation
-    expect(node.id).toBe(root.id);
-    expect(node.children?.[0].id).toBe(root.children[0]);
-    // blob + search index written
+    // keys stamped back onto the caller's blocks for later reconciliation
+    expect(blocks[0]._key).toBe(root.children[0]);
+    expect(blocks[1]._key).toBe(root.children[1]);
+    // blob + search index written; the blob is Portable Text with the model ids as keys
     expect(root.editorState).toMatchObject({ name: 'editor-state.json', file_type: 'application/json' });
+    expect(blobOf(root).map((b) => b._key)).toEqual(root.children);
     expect(root.textContent).toBe('first second');
   });
 
-  it('carries list metadata onto listitems without creating a model for the list', async () => {
-    const node: SerializedBlockNode = {
+  it('persists list items as their own text blocks carrying the list metadata', async () => {
+    const root = (await createBlocks(perspective, [
+      { _type: 'block', listItem: 'number', text: 'item one' },
+      { _type: 'block', listItem: 'number', level: 1, text: 'nested' },
+    ])) as FakeCollection;
+    const items = FakeBlock.created.filter((b) => b instanceof FakeText);
+    expect(items).toHaveLength(2);
+    expect(items[0]).toMatchObject({ type: 'listitem', listType: 'number', tag: 'ol', indent: 0, text: 'item one' });
+    expect(items[1]).toMatchObject({ indent: 1 });
+    expect(root.children).toEqual(items.map((i) => i.id));
+  });
+
+  it('persists a nested collection as a child with children of its own', async () => {
+    const blocks: ContentBlock[] = [
+      {
+        _type: 'collection',
+        layout: 'grid',
+        columnCount: 2,
+        content: [{ _type: 'image', src: 'Qm://x' }, paragraph('cap')],
+      },
+    ];
+    const root = (await createBlocks(perspective, blocks, { kind: 'post' })) as FakeCollection;
+    const nested = byId.get(root.children[0]) as FakeCollection;
+    expect(nested).toBeInstanceOf(FakeCollection);
+    expect(nested.layout).toBe('grid');
+    expect(nested.children).toHaveLength(2);
+    expect(byId.get(nested.children[0])).toBeInstanceOf(FakeImage);
+    expect(root.textContent).toBe('cap');
+    // keys at every depth
+    expect((blocks[0] as { content: ContentBlock[] }).content[0]._key).toBe(nested.children[0]);
+  });
+
+  it('accepts a legacy Lexical tree and converts it on the way in', async () => {
+    const legacy = {
       type: 'root',
       version: 1,
-      children: [
-        {
-          type: 'list',
-          version: 1,
-          listType: 'number',
-          tag: 'ol',
-          start: 1,
-          children: [{ type: 'listitem', version: 1, children: [text('item one')] }],
-        },
-      ],
+      children: [{ type: 'paragraph', version: 1, children: [{ type: 'text', version: 1, text: 'old', format: 1 }] }],
     };
-
-    const root = (await createBlocks(perspective, node)) as FakeCollection;
-    const items = FakeBlock.created.filter((b) => b instanceof FakeText);
-    expect(items).toHaveLength(1);
-    expect(items[0].listType).toBe('number');
-    expect(items[0].tag).toBe('ol');
-    expect(items[0].text).toBe('item one');
-    expect(root.children).toEqual([items[0].id]);
+    const root = (await createBlocks(perspective, legacy, { kind: 'post' })) as FakeCollection;
+    const item = FakeBlock.created.find((b) => b instanceof FakeText)!;
+    expect(item.text).toBe('old');
+    expect(item.marks).toBe('[{"start":0,"end":3,"type":"strong"}]');
+    expect(root.textContent).toBe('old');
   });
 
   it('defaults mode to document when a kind is given — everything it creates is a composition', async () => {
-    const node: SerializedBlockNode = { type: 'root', version: 1, children: [paragraph('x')] };
-    const root = (await createBlocks(perspective, node, { kind: 'message' })) as FakeCollection;
+    const root = (await createBlocks(perspective, [paragraph('x')], { kind: 'message' })) as FakeCollection;
     expect(root.mode).toBe('document');
   });
 
   it('writes neither kind nor mode when the caller opts out of the vocabulary', async () => {
-    const node: SerializedBlockNode = { type: 'root', version: 1, children: [paragraph('x')] };
-    const root = (await createBlocks(perspective, node)) as FakeCollection;
+    const root = (await createBlocks(perspective, [paragraph('x')])) as FakeCollection;
     expect(root.kind).toBeUndefined();
     expect(root.mode).toBeUndefined();
   });
 
   it('honours an explicit mode over the default', async () => {
-    const node: SerializedBlockNode = { type: 'root', version: 1, children: [paragraph('x')] };
-    const root = (await createBlocks(perspective, node, { kind: 'channel', mode: 'feed' })) as FakeCollection;
+    const root = (await createBlocks(perspective, [paragraph('x')], {
+      kind: 'channel',
+      mode: 'feed',
+    })) as FakeCollection;
     expect(root.mode).toBe('feed');
   });
 
   it('passes the anchor to the root only — descendants attach to their in-tree parent', async () => {
-    const node: SerializedBlockNode = {
-      type: 'root',
-      version: 1,
-      children: [paragraph('first'), paragraph('second')],
-    };
     const anchor = { id: 'channel-1', predicate: 'we://children' };
-
-    const root = (await createBlocks(perspective, node, { kind: 'message', anchor })) as FakeCollection;
-
+    const root = (await createBlocks(perspective, [paragraph('first'), paragraph('second')], {
+      kind: 'message',
+      anchor,
+    })) as FakeCollection;
     expect(root.createdWithParent).toEqual(anchor);
     for (const child of FakeBlock.created.filter((b) => b instanceof FakeText)) {
       expect(child.createdWithParent).toBeUndefined();
@@ -296,85 +364,56 @@ describe('createBlocks', () => {
 
 // ── mentions ────────────────────────────────────────────────────────────────
 
-/** An inline mention run, as the composer emits it. */
-function mention(did: string, handle: string): SerializedBlockNode {
-  return { type: 'mention', version: 1, did, text: handle };
-}
-
 describe('mentions', () => {
-  it('writes a mention edge per distinct DID named in the tree', async () => {
-    const node: SerializedBlockNode = {
-      type: 'root',
-      version: 1,
-      children: [
-        { type: 'paragraph', version: 1, children: [text('hi '), mention('did:key:alice', '@alice')] },
-        { type: 'paragraph', version: 1, children: [mention('did:key:bob', '@bob')] },
-      ],
-    };
+  const mention = (did: string, handle: string, at = 0) => ({
+    start: at,
+    end: at + handle.length,
+    type: 'mention',
+    did,
+  });
 
-    const root = (await createBlocks(perspective, node, { kind: 'post' })) as FakeCollection;
+  it('writes a mention edge per distinct DID named in the composition', async () => {
+    const root = (await createBlocks(
+      perspective,
+      [
+        paragraph('hi @alice', { marks: [mention('did:key:alice', '@alice', 3)] }),
+        paragraph('@bob', { marks: [mention('did:key:bob', '@bob')] }),
+      ],
+      { kind: 'post' },
+    )) as FakeCollection;
     expect(root.mentions).toEqual(['did:key:alice', 'did:key:bob']);
   });
 
   it('de-duplicates — naming someone twice is one fact about the post', async () => {
-    const node: SerializedBlockNode = {
-      type: 'root',
-      version: 1,
-      children: [
-        { type: 'paragraph', version: 1, children: [mention('did:key:alice', '@alice')] },
-        { type: 'paragraph', version: 1, children: [mention('did:key:alice', '@alice again')] },
+    const root = (await createBlocks(
+      perspective,
+      [
+        paragraph('@alice', { marks: [mention('did:key:alice', '@alice')] }),
+        paragraph('@alice', { marks: [mention('did:key:alice', '@alice')] }),
       ],
-    };
-
-    const root = (await createBlocks(perspective, node, { kind: 'post' })) as FakeCollection;
+      { kind: 'post' },
+    )) as FakeCollection;
     expect(root.mentions).toEqual(['did:key:alice']);
   });
 
-  it('finds mentions inside a nested collection sub-editor', async () => {
-    const node: SerializedBlockNode = {
-      type: 'root',
-      version: 1,
-      children: [
-        {
-          type: 'collection',
-          version: 1,
-          childEditorState: {
-            type: 'root',
-            version: 1,
-            children: [{ type: 'paragraph', version: 1, children: [mention('did:key:carol', '@carol')] }],
-          },
-        },
-      ],
-    };
-
-    const root = (await createBlocks(perspective, node, { kind: 'post' })) as FakeCollection;
-    expect(root.mentions).toContain('did:key:carol');
-  });
-
   it('reconciles on edit — adds the new, drops the removed, leaves the kept alone', async () => {
-    const node: SerializedBlockNode = {
-      type: 'root',
-      version: 1,
-      children: [
-        { type: 'paragraph', version: 1, children: [mention('did:key:alice', '@alice')] },
-        { type: 'paragraph', version: 1, children: [mention('did:key:bob', '@bob')] },
-      ],
-    };
-    const root = (await createBlocks(perspective, node, { kind: 'post' })) as FakeCollection;
-    expect((root as FakeCollection).mentions).toEqual(['did:key:alice', 'did:key:bob']);
+    const blocks: ContentBlock[] = [
+      paragraph('@alice', { marks: [mention('did:key:alice', '@alice')] }),
+      paragraph('@bob', { marks: [mention('did:key:bob', '@bob')] }),
+    ];
+    const root = (await createBlocks(perspective, blocks, { kind: 'post' })) as FakeCollection;
+    expect(root.mentions).toEqual(['did:key:alice', 'did:key:bob']);
 
-    const edited: SerializedBlockNode = {
-      type: 'root',
-      version: 1,
-      id: root.id,
-      children: [
-        { type: 'paragraph', version: 1, id: node.children![0].id, children: [mention('did:key:alice', '@alice')] },
-        { type: 'paragraph', version: 1, id: node.children![1].id, children: [mention('did:key:dave', '@dave')] },
+    const edited: ContentDocument = {
+      _type: 'document',
+      base: [blocks[0]._key!, blocks[1]._key!],
+      blocks: [
+        paragraph('@alice', { _key: blocks[0]._key, marks: [mention('did:key:alice', '@alice')] }),
+        paragraph('@dave', { _key: blocks[1]._key, marks: [mention('did:key:dave', '@dave')] }),
       ],
     };
     await reconcileBlocks(perspective, root as never, edited);
-
-    expect((root as FakeCollection).mentions).toEqual(['did:key:alice', 'did:key:dave']);
+    expect(root.mentions).toEqual(['did:key:alice', 'did:key:dave']);
   });
 });
 
@@ -382,111 +421,163 @@ describe('mentions', () => {
 
 /** Persist an initial two-paragraph post and return its pieces. */
 async function seedPost() {
-  const node: SerializedBlockNode = {
-    type: 'root',
-    version: 1,
-    children: [paragraph('one'), paragraph('two')],
-  };
-  const root = (await createBlocks(perspective, node, { kind: 'post' })) as FakeCollection & { children: string[] };
+  const blocks: ContentBlock[] = [paragraph('one'), paragraph('two')];
+  const root = (await createBlocks(perspective, blocks, { kind: 'post' })) as FakeCollection;
   const [p1, p2] = root.children.map((id) => byId.get(id)!) as FakeText[];
-  return { root, p1, p2 };
+  return { root, p1, p2, blocks };
 }
 
 describe('reconcileBlocks', () => {
-  it('updates claimed blocks in place, creates unclaimed ones, deletes orphans', async () => {
+  it('updates claimed blocks in place, creates unclaimed ones, deletes what the author removed', async () => {
     const { root, p1, p2 } = await seedPost();
 
-    const edited: SerializedBlockNode = {
-      type: 'root',
-      version: 1,
-      id: root.id,
-      children: [
-        paragraph('two edited', { id: p2.id }), // kept + moved first
-        paragraph('brand new'), // no id → created
+    const edited: ContentDocument = {
+      _type: 'document',
+      base: [p1.id, p2.id],
+      blocks: [
+        paragraph('two edited', { _key: p2.id }), // kept + moved first
+        paragraph('brand new'), // no key → created
       ],
     };
 
     await reconcileBlocks(perspective, root as never, edited);
 
-    // p2 claimed and updated in place
     expect(p2.text).toBe('two edited');
     expect(p2.deleted).toBe(false);
-    // p1 never claimed → deleted
     expect(p1.deleted).toBe(true);
-    // new block created and stamped
     const created = FakeBlock.created.filter((b) => b instanceof FakeText && b.text === 'brand new');
     expect(created).toHaveLength(1);
-    // children overwritten with the final ordered list — reorder falls out
+    // children assigned the final ordered list — reorder falls out
     expect(root.children).toEqual([p2.id, created[0].id]);
+    // the new block's key stamped back
+    expect(edited.blocks[1]._key).toBe(created[0].id);
     // blob + search index refreshed
     expect(root.textContent).toBe('two edited brand new');
+    expect(blobOf(root).map((b) => b._key)).toEqual(root.children);
   });
 
-  it('treats a duplicate id (copy/paste) as brand new for the second occurrence', async () => {
+  it('keeps a block somebody else added while the author was editing — three-way membership', async () => {
     const { root, p1, p2 } = await seedPost();
+    // Another agent appends a paragraph after the author loaded the post.
+    const theirs = await FakeText.create(perspective, { type: 'paragraph', text: 'theirs' });
+    root.children.push(theirs.id);
 
-    const edited: SerializedBlockNode = {
-      type: 'root',
-      version: 1,
-      id: root.id,
-      children: [
-        paragraph('one', { id: p1.id }),
-        paragraph('one pasted', { id: p1.id }),
-        paragraph('two', { id: p2.id }),
-      ],
+    const edited: ContentDocument = {
+      _type: 'document',
+      base: [p1.id, p2.id], // what the author loaded — `theirs` is not in it
+      blocks: [paragraph('one', { _key: p1.id })], // author removed p2
     };
-
     await reconcileBlocks(perspective, root as never, edited);
 
-    // First occurrence claims p1; the duplicate gets a fresh instance.
+    expect(p2.deleted).toBe(true); // the author's own removal
+    expect(theirs.deleted).toBe(false); // not theirs to remove
+    expect(root.children).toEqual([p1.id, theirs.id]); // kept, after the author's blocks
+    // and the blob knows about it too
+    expect(blobOf(root).map((b) => (b as TextContentBlock).text)).toEqual(['one', 'theirs']);
+    expect(root.textContent).toBe('one theirs');
+  });
+
+  it('without a base — a legacy caller — everything unclaimed is treated as removed', async () => {
+    const { root, p1, p2 } = await seedPost();
+    await reconcileBlocks(perspective, root as never, [paragraph('replacement')]);
+    expect(p1.deleted).toBe(true);
+    expect(p2.deleted).toBe(true);
+    expect(root.children).toHaveLength(1);
+  });
+
+  it('treats a duplicate key (copy/paste) as brand new for the second occurrence', async () => {
+    const { root, p1, p2 } = await seedPost();
+
+    await reconcileBlocks(perspective, root as never, {
+      _type: 'document',
+      base: [p1.id, p2.id],
+      blocks: [
+        paragraph('one', { _key: p1.id }),
+        paragraph('one pasted', { _key: p1.id }),
+        paragraph('two', { _key: p2.id }),
+      ],
+    });
+
     expect(p1.deleted).toBe(false);
     expect(root.children).toHaveLength(3);
-    const pasted = byId.get(root.children[1] as string) as FakeText;
+    const pasted = byId.get(root.children[1]) as FakeText;
     expect(pasted.id).not.toBe(p1.id);
     expect(pasted.text).toBe('one pasted');
   });
 
-  it('an id unknown to the existing tree is not claimed — a fresh block is created', async () => {
+  it('a key unknown to the existing tree is not claimed — a fresh block is created', async () => {
     const { root, p1, p2 } = await seedPost();
 
-    const edited: SerializedBlockNode = {
-      type: 'root',
-      version: 1,
-      id: root.id,
-      children: [paragraph('imported', { id: 'id-from-somewhere-else' })],
-    };
-
-    await reconcileBlocks(perspective, root as never, edited);
+    await reconcileBlocks(perspective, root as never, {
+      _type: 'document',
+      base: [p1.id, p2.id],
+      blocks: [paragraph('imported', { _key: 'id-from-somewhere-else' })],
+    });
 
     expect(p1.deleted).toBe(true);
     expect(p2.deleted).toBe(true);
     expect(root.children).toHaveLength(1);
     expect(root.children[0]).not.toBe('id-from-somewhere-else');
-    expect((byId.get(root.children[0] as string) as FakeText).text).toBe('imported');
+    expect((byId.get(root.children[0]) as FakeText).text).toBe('imported');
+  });
+
+  it('reconciles inside a nested collection', async () => {
+    const blocks: ContentBlock[] = [{ _type: 'collection', layout: 'grid', content: [paragraph('a'), paragraph('b')] }];
+    const root = (await createBlocks(perspective, blocks, { kind: 'post' })) as FakeCollection;
+    const nested = byId.get(root.children[0]) as FakeCollection;
+    const [a, b] = nested.children.map((id) => byId.get(id)!) as FakeText[];
+
+    await reconcileBlocks(perspective, root as never, {
+      _type: 'document',
+      base: [nested.id, a.id, b.id],
+      blocks: [{ _type: 'collection', _key: nested.id, layout: 'row', content: [paragraph('b!', { _key: b.id })] }],
+    });
+
+    expect(nested.layout).toBe('row');
+    expect(a.deleted).toBe(true);
+    expect(b.text).toBe('b!');
+    expect(nested.children).toEqual([b.id]);
+  });
+});
+
+// ── loadBlocks ──────────────────────────────────────────────────────────────
+
+describe('loadBlocks', () => {
+  it('rebuilds the composition from the models — the read path the blob is a cache of', async () => {
+    const blocks: ContentBlock[] = [
+      paragraph('one', { marks: [{ start: 0, end: 3, type: 'em' }] }),
+      { _type: 'collection', layout: 'grid', content: [{ _type: 'image', src: 'Qm://x' }] },
+    ];
+    const root = (await createBlocks(perspective, blocks, { kind: 'post' })) as FakeCollection;
+
+    const loaded = await loadBlocks(perspective, root.id);
+    expect(loaded).toEqual([
+      { _type: 'block', _key: blocks[0]._key, style: 'normal', text: 'one', marks: [{ start: 0, end: 3, type: 'em' }] },
+      {
+        _type: 'collection',
+        _key: blocks[1]._key,
+        layout: 'grid',
+        content: [{ _type: 'image', _key: expect.any(String), src: 'Qm://x' }],
+      },
+    ]);
   });
 });
 
 // ── the document-mode guard ─────────────────────────────────────────────────
 
 describe('reconcileBlocks mode guard', () => {
-  /** A minimal edit of `root` that would delete every child it does not mention. */
-  function emptyEditOf(root: FakeCollection): SerializedBlockNode {
-    return { type: 'root', version: 1, id: root.id, children: [paragraph('replacement')] };
-  }
+  const emptyEdit: ContentBlock[] = [paragraph('replacement')];
 
   it('refuses a feed collection — reconciling one deletes other agents content', async () => {
     const { root } = await seedPost();
-    (root as FakeCollection).mode = 'feed';
-
-    await expect(reconcileBlocks(perspective, root as never, emptyEditOf(root))).rejects.toThrow(/not 'document'/);
+    root.mode = 'feed';
+    await expect(reconcileBlocks(perspective, root as never, emptyEdit)).rejects.toThrow(/not 'document'/);
   });
 
   it('refuses before touching anything — the children survive the refusal', async () => {
     const { root, p1, p2 } = await seedPost();
-    (root as FakeCollection).mode = 'feed';
-
-    await expect(reconcileBlocks(perspective, root as never, emptyEditOf(root))).rejects.toThrow();
-
+    root.mode = 'feed';
+    await expect(reconcileBlocks(perspective, root as never, emptyEdit)).rejects.toThrow();
     expect(p1.deleted).toBe(false);
     expect(p2.deleted).toBe(false);
     expect(root.children).toHaveLength(2);
@@ -494,22 +585,19 @@ describe('reconcileBlocks mode guard', () => {
 
   it('refuses collaborative mode too — the check is an allow-list', async () => {
     const { root } = await seedPost();
-    (root as FakeCollection).mode = 'collaborative';
-
-    await expect(reconcileBlocks(perspective, root as never, emptyEditOf(root))).rejects.toThrow(/not 'document'/);
+    root.mode = 'collaborative';
+    await expect(reconcileBlocks(perspective, root as never, emptyEdit)).rejects.toThrow(/not 'document'/);
   });
 
   it('allows a document collection', async () => {
     const { root } = await seedPost();
-    expect((root as FakeCollection).mode).toBe('document');
-
-    await expect(reconcileBlocks(perspective, root as never, emptyEditOf(root))).resolves.toBeDefined();
+    expect(root.mode).toBe('document');
+    await expect(reconcileBlocks(perspective, root as never, emptyEdit)).resolves.toBeDefined();
   });
 
   it('allows a legacy collection with no mode — every post predating the field', async () => {
     const { root } = await seedPost();
-    (root as FakeCollection).mode = undefined;
-
-    await expect(reconcileBlocks(perspective, root as never, emptyEditOf(root))).resolves.toBeDefined();
+    root.mode = undefined;
+    await expect(reconcileBlocks(perspective, root as never, emptyEdit)).resolves.toBeDefined();
   });
 });
