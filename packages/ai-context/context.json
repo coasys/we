@@ -6153,6 +6153,9 @@
         "hintBusy": {
           "type": "boolean"
         },
+        "extractionNeedsIdentity": {
+          "type": "boolean"
+        },
         "memberOptions": {
           "type": "array",
           "properties": ["rowId", "options"]
@@ -6175,6 +6178,7 @@
         "cancelShapeWizard",
         "setShapeField",
         "setIdentityMember",
+        "setExtractable",
         "addProperty",
         "addRelationship",
         "removeMember",

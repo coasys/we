@@ -84,6 +84,18 @@ export interface ShapeDraft {
    * cannot. Keyed by `rowId` so renaming or reordering the chosen field keeps the choice.
    */
   identityMember: string;
+  /**
+   * An AI extraction pass may mint instances of this model from what people said.
+   *
+   * Off by default, and that default is the point: a model somebody curates by hand should not have
+   * an interpreter writing rows into it, and every model named in a pass puts its whole shape into
+   * the prompt at the community's expense. See `EntitySchema.extractable`.
+   *
+   * Independent of {@link identityMember}, and the wizard should say so where it offers both: a
+   * model with no identity field still extracts, it just has no way to recognise what it already
+   * wrote, so every pass mints fresh copies of everything it finds.
+   */
+  extractable: boolean;
   members: ShapeDraftMember[];
 }
 
@@ -156,6 +168,7 @@ export const emptyShapeDraft = (): ShapeDraft => ({
   icon: '',
   classHint: '',
   identityMember: '',
+  extractable: false,
   members: [],
 });
 
@@ -388,6 +401,9 @@ export function draftToManifest(draft: ShapeDraft, shapeUuid: string): DraftLowe
     relations,
     flag: { predicate: 'we://flag', value: `${prefix}${snakeCase(name)}` },
     ...(draft.classHint.trim() ? { interpretationHint: draft.classHint.trim() } : {}),
+    // Written only when true, so a manifest reads as the declarations somebody made rather than as
+    // every field the IR has — the same rule `required` and `identity` follow above.
+    ...(draft.extractable ? { extractable: true } : {}),
   };
   return { ok: true, manifest: { version: '1', entities: { [name]: entity } } };
 }
@@ -442,6 +458,7 @@ export function manifestToDraft(
     icon: meta.icon ?? '',
     classHint: entity?.interpretationHint ?? '',
     identityMember,
+    extractable: entity?.extractable ?? false,
     members: members.length ? members : [emptyDraftProperty()],
   };
 }

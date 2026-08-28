@@ -409,6 +409,7 @@ export const storeEntries: StoreEntry[] = [
       generating: { type: 'boolean' },
       hintEntities: { type: 'array', properties: ['entity', 'source'] },
       extractionTargets: { type: 'array' },
+      extractionNeedsIdentity: { type: 'boolean' },
       relationshipTargets: { type: 'array', properties: ['label', 'value'] },
       identityOptions: { type: 'array', properties: ['label', 'value'] },
       hintEditor: {

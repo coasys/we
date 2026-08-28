@@ -38,6 +38,7 @@ function sightingDraft(): ShapeDraft {
     icon: 'binoculars',
     classHint: 'A specific observation of a bird.',
     identityMember: species.rowId,
+    extractable: false,
     members: [
       { ...species, hint: 'The common name.' },
       { ...emptyDraftProperty(), name: 'seenAt', type: 'date', required: true },
@@ -85,6 +86,28 @@ describe('draftToManifest', () => {
     });
     // Only the chosen member carries identity — the picker can express nothing else.
     expect(Object.values(entity.properties).filter((p) => p.identity)).toHaveLength(1);
+  });
+
+  /*
+    Extraction eligibility survives the round trip, and is absent rather than false when off.
+
+    The whole point of the flag is that a community can mark its own model as something an
+    interpreter may write into — so a form that took the tick and dropped it at lowering would
+    reproduce, one layer down, the exact gap it exists to close.
+  */
+  it('carries the extraction flag onto the entity when it is set', () => {
+    const draft = { ...sightingDraft(), extractable: true };
+    const result = draftToManifest(draft, UUID);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.manifest.entities.Sighting.extractable).toBe(true);
+  });
+
+  it('omits the extraction flag rather than writing false', () => {
+    const result = draftToManifest(sightingDraft(), UUID);
+    expect(result.ok).toBe(true);
+    // Same rule as `required` and `identity`: a stored definition reads as the declarations
+    // somebody made, not as every field the IR has.
+    if (result.ok) expect('extractable' in result.manifest.entities.Sighting).toBe(false);
   });
 
   it('lowers a to-many relationship as a many cardinality', () => {
@@ -330,6 +353,14 @@ describe('manifestToDraft', () => {
     const second = draftToManifest(lifted, UUID);
     expect(second.ok).toBe(true);
     if (second.ok) expect(second.manifest).toEqual(first.manifest);
+  });
+
+  it('lifts the extraction flag back onto the draft, so editing does not silently clear it', () => {
+    const first = draftToManifest({ ...sightingDraft(), extractable: true }, UUID);
+    if (!first.ok) throw new Error('fixture failed');
+    // Opening a stored model in the wizard and saving it again must not turn extraction off — the
+    // one direction this could fail in that nobody would notice until a pass stopped finding things.
+    expect(manifestToDraft('Sighting', first.manifest).extractable).toBe(true);
   });
 
   it('lifts identity onto the row that holds it, not onto its name', () => {

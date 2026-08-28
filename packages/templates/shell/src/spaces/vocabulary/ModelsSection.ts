@@ -786,6 +786,76 @@ const shapeWizardModal: SchemaNode = {
             },
           ],
         },
+        /*
+          Whether an interpreter may write into this model — the switch that makes the hint above
+          mean something.
+
+          Here rather than beside the hint, and immediately before the identifying field, because
+          the three read as one decision in the order they are made: what this is, whether AI may
+          create them, and how it recognises one it has already created. Off by default: a model
+          somebody curates by hand should not have an interpreter minting rows into it, and every
+          model an extraction pass names puts its whole shape into the prompt at the community's
+          expense.
+        */
+        {
+          type: 'Column',
+          props: { gap: '200', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+          children: [
+            {
+              type: 'Row',
+              props: { width: '100%', gap: '400', ay: 'center' },
+              children: [
+                {
+                  type: 'Column',
+                  props: { gap: '100', flex: '1' },
+                  children: [
+                    { type: 'we-text', props: { variant: 'label' }, children: ['Let AI create these'] },
+                    {
+                      type: 'we-text',
+                      props: { variant: 'footnote', color: 'text-faint' },
+                      children: [
+                        'Extraction passes over this space’s calls may create entries of this model from what was said. Leave off for a model your community fills in by hand.',
+                      ],
+                    },
+                  ],
+                },
+                {
+                  type: 'we-switch',
+                  props: {
+                    size: 'sm',
+                    checked: { $: 'shapeStore.shapeDraft.extractable' },
+                    // Bare `event.detail` — an operator around it would resolve at render time,
+                    // before the event exists.
+                    onChange: { $action: 'shapeStore.setExtractable', args: [{ $: 'event.detail' }] },
+                  },
+                },
+              ],
+            },
+            /*
+              The warning, and why it is a warning rather than a refusal.
+
+              A model with no identifying field still extracts perfectly well — it simply has no way
+              to recognise what it wrote last time, so every pass mints fresh copies of everything it
+              finds. That is a real cost and a recoverable one, and the fix is one field below this,
+              so saying so beats refusing the save. Gated on the store rather than composed from two
+              reads here, because "what makes extraction converge" is knowledge about the model layer
+              and not about this form.
+            */
+            {
+              type: '$if',
+              props: {
+                condition: { $: 'shapeStore.extractionNeedsIdentity' },
+                then: {
+                  type: 'we-alert',
+                  props: { variant: 'warning' },
+                  children: [
+                    'Without an identifying field below, every extraction pass will create fresh entries rather than recognising ones it already made.',
+                  ],
+                },
+              },
+            },
+          ],
+        },
         {
           type: 'we-form-field',
           /*

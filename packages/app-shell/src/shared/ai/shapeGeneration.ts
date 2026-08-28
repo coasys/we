@@ -147,6 +147,11 @@ function toolInputToDraft(input: ToolInput): ShapeDraft {
     icon: input.icon ?? '',
     classHint: input.classHint ?? '',
     identityMember: identity?.rowId ?? '',
+    // Off, even though the generation writes interpretation hints. Whether an interpreter may mint
+    // rows into a model is the author's decision and not a property of the description they typed —
+    // the wizard offers the switch beside the hint the generation just wrote, which is where the
+    // question belongs. `generateShapeFields` merges over an existing draft and leaves this alone.
+    extractable: false,
     members,
   };
 }

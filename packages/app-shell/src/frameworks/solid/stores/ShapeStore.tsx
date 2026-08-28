@@ -188,6 +188,19 @@ export interface ShapeStore {
   setShapeField: (field: 'name' | 'description' | 'icon' | 'classHint', value: string) => void;
   /** Choose which member is the interpretation dedup key; 'none' (or '') clears it. */
   setIdentityMember: (rowId: string) => void;
+  /**
+   * Whether an AI extraction pass may write instances of the open draft — its own action rather
+   * than a `setShapeField` case because the value is a boolean and the field takes strings.
+   */
+  setExtractable: (on: boolean) => void;
+  /**
+   * The open draft would be extracted into, and has no field to recognise what it already wrote.
+   *
+   * Worth saying rather than refusing: a model with no identity property still extracts, it just
+   * duplicates everything on every pass — so this is a warning beside the switch, and the wizard
+   * saves either way.
+   */
+  extractionNeedsIdentity: Accessor<boolean>;
   addProperty: () => void;
   addRelationship: () => void;
   removeMember: (rowId: string) => void;
@@ -638,6 +651,16 @@ export function ShapeStoreProvider(props: ParentProps) {
     // '' is the "None" option, and the only way to clear it.
     if (draft) setShapeDraft({ ...draft, identityMember: rowId === 'none' ? '' : rowId });
   }
+
+  function setExtractable(on: boolean): void {
+    const draft = shapeDraft();
+    if (draft) setShapeDraft({ ...draft, extractable: on });
+  }
+
+  const extractionNeedsIdentity = createMemo(() => {
+    const draft = shapeDraft();
+    return Boolean(draft?.extractable) && !draft?.identityMember;
+  });
 
   /** Append a row and open it — you added it in order to fill it in. */
   function appendMember(row: ShapeDraftMember): void {
@@ -1094,6 +1117,8 @@ export function ShapeStoreProvider(props: ParentProps) {
     cancelShapeWizard,
     setShapeField,
     setIdentityMember,
+    setExtractable,
+    extractionNeedsIdentity,
     addProperty,
     addRelationship,
     removeMember,
