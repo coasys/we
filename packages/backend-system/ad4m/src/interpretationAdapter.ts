@@ -31,7 +31,7 @@ import type {
   TranscriptTurn,
   WatchRequest,
 } from '@we/backend-shared';
-import { getModel, getModelTargetClass, getRegisteredModelNames } from '@we/models';
+import { getModel, getModelForPerspective, getModelTargetClass, getRegisteredModelNames } from '@we/models';
 
 const proxy = (dataset: DatasetHandle) => dataset as PerspectiveProxy;
 
@@ -721,7 +721,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       await attachListener(perspective);
 
       const sourceScopeQuery = transcriptScopeQuery(request.parent.id, request.parent.predicate);
-      const interpretationClasses = targetClasses(request.classes);
+      const interpretationClasses = targetClasses(perspective, request.classes);
       /*
         Both at debug, and the query included deliberately.
 
@@ -731,6 +731,46 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       */
       console.debug('[interpretation] registering watch', { watchId: request.watchId, interpretationClasses });
       console.debug('[interpretation] scope query\n%s', sourceScopeQuery);
+
+      /*
+        Create, or replace — never register over what is already there.
+
+        `addAutoProcessor` is create-only, and the reason is not obvious from its name.
+        `write_processor` overwrites a processor's scalars (its setters are `setSingleTarget`) but
+        writes `interpretationClasses` through the shape's `addLink` setter, so registering twice
+        under one processor id **unions** the two class lists rather than replacing them. Narrowing
+        by re-registering therefore *widens*, permanently, for the whole neighbourhood — the class
+        list is shared state and there is no subtraction.
+
+        That was harmless while the list was a constant naming two core classes: every registration
+        unioned a set with itself. It stops being harmless the moment the list can differ between
+        one registration and the next, which is exactly what a space defining its own models does.
+
+        So: read what is registered, and if the set differs, delete the config first. The
+        `InterpretationRun` nodes survive a delete by design — they are the processed-turn cursor —
+        so a processor re-registered under the same id resumes where it left off rather than
+        re-reading the whole conversation. Right for narrowing; for widening it means the new class
+        applies to what is said from here, and a one-shot press is how the rest of the transcript
+        gets swept with it.
+
+        Best-effort: a read that fails leaves `existing` empty and falls through to a plain
+        registration, which is the pre-existing behaviour rather than a new failure mode.
+      */
+      let existing: string[] = [];
+      try {
+        existing = await readProcessorClasses(perspective, request.watchId);
+      } catch (error) {
+        console.debug('[interpretation] could not read the registered class list', error);
+      }
+      const desired = [...interpretationClasses].sort();
+      if (existing.length && existing.join(',') !== desired.join(',')) {
+        console.debug('[interpretation] class set changed — clearing the watch before re-registering', {
+          watchId: request.watchId,
+          from: existing,
+          to: desired,
+        });
+        await deleteProcessorConfig(perspective, request.watchId);
+      }
 
       try {
         await perspective.addAutoProcessor({
@@ -784,7 +824,17 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
 
       let linked = 0;
       for (const name of request.classes) {
-        const model = getModel(name) as unknown as
+        /*
+          Perspective-scoped, and the `continue` below now means something.
+
+          This read the global registry through `getModel`, which *throws* for an unregistered name
+          rather than returning undefined — so the guard beneath it was unreachable, and one
+          community shape in the list took the whole repair pass down before it reached the classes
+          it could have repaired. Skipping is the right answer here in a way it is not on the watch
+          path: this attaches what a pass already minted, so a name it cannot resolve has nothing to
+          find and nothing to lose.
+        */
+        const model = getModelForPerspective(name, perspective) as unknown as
           { findAll(p: PerspectiveProxy, o?: unknown): Promise<{ id: string }[]> } | undefined;
         if (!model) continue;
         for (const instance of await model.findAll(perspective)) {
@@ -803,53 +853,8 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       // up, and a call ending on a host that never registered anything is not a failure worth
       // throwing into a teardown path.
       if (!runtimeSupportsAutoProcessing(dataset)) return;
-      const perspective = proxy(dataset);
-
-      /*
-        Deleting the config *is* the removal, because there is no other.
-
-        `addAutoProcessor` has no counterpart — not on `PerspectiveProxy`, not in the WS handler
-        map, not in the engine. What it does is `write_processor`, which puts an
-        `AutoProcessorConfig` instance into the perspective's own graph, and the watch loop reads
-        its processors back out of that graph on every tick. So the registration is data, and
-        deleting the record is what stops the loop seeing it.
-
-        That also makes this the right shape rather than a workaround: the config is shared with
-        every peer, so removing it stops the watch for the neighbourhood rather than only for
-        whoever pressed stop — which is what a shared watch has to mean.
-      */
       watchParents.delete(watchId);
-      /*
-        Delete the processor's links directly, without going through the ORM.
-
-        This used to call `AutoProcessorConfig.register(perspective)` first, because `findAll`
-        resolves a shape by name and the client model is named differently from the class the
-        executor registers. But `register` *writes SDNA*: it installs the TypeScript model's SHACL
-        over the same target class the executor hard-wires, replacing a definition the engine owns
-        as a side effect of tidying up after a call.
-
-        The two shapes agree on property names and paths — there is a parity test for exactly that
-        — and that test compares nothing else. Setters, constructors and literal encoding are all
-        free to differ while it passes, and the write path is made of setters. So the class an
-        executor wrote through on one call could be a different class by the next one, with nothing
-        in between reporting a problem.
-
-        Whether or not that is what bit us, a delete has no business redefining a class. The node
-        URI is derived from the processor id (`processor_node` in the executor), so its links can be
-        removed directly — no shape lookup, no registration, nothing for the engine's own definition
-        to collide with.
-      */
-      const node = `ad4m://autoprocessor/${watchId}`;
-      const links = await perspective.get(new LinkQuery({ source: node }));
-      for (const link of links) {
-        try {
-          await perspective.remove(link);
-        } catch (error) {
-          // One stubborn link should not strand the rest: what stops the watch is the required
-          // scalars going away, and a partial removal still achieves that.
-          console.warn('[interpretation] could not remove a watch config link', error);
-        }
-      }
+      await deleteProcessorConfig(proxy(dataset), watchId);
     },
   };
 }
@@ -889,6 +894,78 @@ export function transcriptScopeQuery(parentId: string, childPredicate: string): 
 ORDER BY ?timestamp`;
 }
 
+/** Where the executor mints a processor's config node — `processor_node` in `auto_processor`. */
+const processorNode = (watchId: string) => `ad4m://autoprocessor/${watchId}`;
+
+/** How the executor stores a processor's class list: one link per member, literal-encoded. */
+const INTERPRETATION_CLASS_PREDICATE = 'ad4m://interpretation_class';
+
+/**
+ * The target classes a registered watch is currently looking for, or `[]` when there is no config.
+ *
+ * Read off the links rather than through the ORM, for the reason spelled out in
+ * {@link deleteProcessorConfig}: `AutoProcessorConfig.findAll` needs `register`, and `register`
+ * writes SDNA over a class the engine owns.
+ *
+ * Sorted, so a comparison against a desired list is about membership rather than about the order
+ * two writers happened to add links in — which is also how the executor's own loader returns it.
+ */
+async function readProcessorClasses(perspective: PerspectiveProxy, watchId: string): Promise<string[]> {
+  const links = await perspective.get(
+    new LinkQuery({ source: processorNode(watchId), predicate: INTERPRETATION_CLASS_PREDICATE }),
+  );
+  return links
+    .map((link) => decode(link.data.target))
+    .filter((value): value is string => typeof value === 'string')
+    .sort();
+}
+
+/**
+ * Delete a processor's config, which is what stops it — and the seam an AD4M release closes.
+ *
+ * Deleting the config *is* the removal. `write_processor` puts an `AutoProcessorConfig` instance
+ * into the perspective's own graph and the watch loop reads its processors back out of that graph
+ * on every tick, so removing the record is what stops the loop seeing it. That also makes it the
+ * right shape rather than a workaround: the config is shared with every peer, so this stops the
+ * watch for the neighbourhood rather than only for whoever pressed stop — which is what a shared
+ * watch has to mean.
+ *
+ * **`perspective.removeAutoProcessor(watchId)` replaces this whole body** once WE's pinned
+ * `@coasys/ad4m` carries it. It landed in `coasys/ad4m` #931 and is on `dev`; the version pinned
+ * here (`0.13.0-test-interpretation-2`) was published before it, so until a build is cut from
+ * `dev` the links have to be removed by hand. Nothing else about the feature waits on that.
+ *
+ * ## Why the links, and not the ORM
+ *
+ * This used to call `AutoProcessorConfig.register(perspective)` first, because `findAll` resolves a
+ * shape by name and the client model is named differently from the class the executor registers.
+ * But `register` *writes SDNA*: it installs the TypeScript model's SHACL over the same target class
+ * the executor hard-wires, replacing a definition the engine owns as a side effect of tidying up
+ * after a call.
+ *
+ * The two shapes agree on property names and paths — there is a parity test for exactly that — and
+ * that test compares nothing else. Setters, constructors and literal encoding are all free to
+ * differ while it passes, and the write path is made of setters. So the class an executor wrote
+ * through on one call could be a different class by the next one, with nothing in between reporting
+ * a problem.
+ *
+ * Whether or not that is what bit us, a delete has no business redefining a class. The node URI is
+ * derived from the processor id, so its links can be removed directly — no shape lookup, no
+ * registration, nothing for the engine's own definition to collide with.
+ */
+async function deleteProcessorConfig(perspective: PerspectiveProxy, watchId: string): Promise<void> {
+  const links = await perspective.get(new LinkQuery({ source: processorNode(watchId) }));
+  for (const link of links) {
+    try {
+      await perspective.remove(link);
+    } catch (error) {
+      // One stubborn link should not strand the rest: what stops the watch is the required scalars
+      // going away, and a partial removal still achieves that.
+      console.warn('[interpretation] could not remove a watch config link', error);
+    }
+  }
+}
+
 /**
  * Entity names → SHACL target-class URIs.
  *
@@ -900,10 +977,16 @@ ORDER BY ?timestamp`;
  *
  * So the conversion is explicit and it throws rather than dropping: a name with no registered model
  * behind it would otherwise silently narrow what a watch extracts.
+ *
+ * **Resolved against the perspective, not the global registry.** A community's own shape is compiled
+ * and registered *for its dataset only* (`mergeDynamicModels`), so `getModel` — which reads the
+ * global map and throws rather than answering — could not see one and took the whole watch down
+ * with it. That was invisible while the target list was a constant naming two core classes; it is
+ * the ordinary case the moment a space can add to it.
  */
-function targetClasses(names: readonly string[]): string[] {
+function targetClasses(perspective: PerspectiveProxy, names: readonly string[]): string[] {
   return names.map((name) => {
-    const model = getModel(name);
+    const model = getModelForPerspective(name, perspective);
     const targetClass = model ? getModelTargetClass(model as never) : undefined;
     if (!targetClass) throw new Error(`interpretation: no target class for "${name}" — is the model registered?`);
     return targetClass;

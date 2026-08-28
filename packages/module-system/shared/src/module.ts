@@ -754,6 +754,26 @@ export interface ModuleInterpretationAccess {
   /** Whether interpretation can run at all — false when the backend has no model configured. */
   available: () => boolean;
   /**
+   * Entity names a pass may write in the space the module is running in — the default class list,
+   * and the whole set a module may offer a person to choose from.
+   *
+   * Here because a module cannot work it out. The answer is core vocabulary that declares itself
+   * extractable *plus whatever models this community defined*, and a module has no read surface, no
+   * dataset handle and no business knowing that a space carries models at all. It was a constant in
+   * the transcribe module naming two classes, which is why a community could write careful hints
+   * for a `Sighting` and never have anything extract one.
+   *
+   * Reactive, and read on every call rather than captured: a model defined a moment ago is a target
+   * a moment later, and a module store outlives a space switch.
+   *
+   * **Still passed explicitly as `classes` below.** The port's class list is its real control
+   * surface — every entity named puts its whole shape into the prompt — so a module that narrows
+   * this (a per-call choice) sends what it means rather than relying on a default it cannot see.
+   * Empty means nothing here may be extracted: an honest answer, and the one to render as "this
+   * space has no extraction targets" rather than silently falling back to something.
+   */
+  targets: () => string[];
+  /**
    * Interpret a collection's children, attaching what is created back onto that same collection.
    *
    * Takes an id rather than the turns themselves, and that follows from the contract rather than

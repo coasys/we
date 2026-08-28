@@ -153,6 +153,46 @@ export interface EntitySchema {
   interpretationHint?: string;
 
   /**
+   * An LLM may mint instances of this entity from what people said.
+   *
+   * The declaration that makes extraction targets *data*. It was a constant in one module —
+   * `EXTRACT_CLASSES = ['TaskBlock', 'EventBlock']` — which meant a community could define a
+   * `Sighting`, write careful hints for it, and never have anything extract one: the hints were
+   * stored, synced and editable, and nothing read them.
+   *
+   * ## Why it is opt-in, and why the flag has to be explicit
+   *
+   * Every selected entity puts its **whole shape** into the prompt, every property hinted or not,
+   * so the target list is the cost *and* the quality control — a longer one is slower, dearer and
+   * vaguer rather than more capable. `TextBlock` is the case that makes this concrete: it is what a
+   * transcript is made of, and most of its shape is serialization (`indent`, `textFormat`,
+   * `listType`), so offering it is offering a model a dozen fields it can only fill with noise.
+   * And a model somebody curates by hand should not have an interpreter minting rows into it,
+   * which is a decision only its author can make.
+   *
+   * Deriving it instead from "carries an interpretationHint" does not work and was tried on paper:
+   * `Relationship` carries hints — it is a *target* of hint-driven work, not of extraction — so the
+   * derivation admits exactly the entity that must never be admitted.
+   *
+   * ## Where it does not belong
+   *
+   * Not a property of the `Shape` record. That record is metadata *about* a definition document;
+   * this is a fact about the entity, so it lives beside `interpretationHint` in the document
+   * itself — which also means it travels with a shape that is copied or forked, as a record
+   * property would not.
+   *
+   * ## What it does not decide
+   *
+   * Whether a *pass* targets it. The space's declared targets are the default set; a call may
+   * narrow that (see the transcribe module), and a space may switch auto-extraction off entirely.
+   * This says only that the entity is eligible.
+   *
+   * Absent means no, which is the right default: an entity becomes an extraction target by
+   * somebody deciding it should be one.
+   */
+  extractable?: boolean;
+
+  /**
    * A person can create one of these by hand, filling in these fields in this order.
    *
    * Two facts in one, because they are the same fact. Most entities are not hand-authored at all —
@@ -234,6 +274,7 @@ const entitySchema = z.object({
   extends: z.string().optional(),
   abstract: z.boolean().optional(),
   interpretationHint: z.string().optional(),
+  extractable: z.boolean().optional(),
   authoring: z.object({ fields: z.array(z.string()) }).optional(),
   display: z
     .object({
@@ -300,6 +341,15 @@ export function validateManifest(
         message: `more than one identity property (${identityProps.join(', ')}) — an entity has at most one dedup key`,
       });
     }
+    // Nothing is ever *of* an abstract entity, so nothing could be minted as one — and a target
+    // list built by collecting the flag would carry a name the executor cannot resolve to a shape,
+    // failing the whole pass rather than the one entry.
+    if (entity.extractable && entity.abstract) {
+      errors.push({
+        path: `entities.${entityName}.extractable`,
+        message: 'an abstract entity cannot be an extraction target — nothing is ever an instance of it',
+      });
+    }
     for (const [propName, spec] of Object.entries(entity.properties)) {
       if (!spec.options) continue;
       const base = `entities.${entityName}.properties.${propName}.options`;
@@ -358,4 +408,22 @@ export function getProperty(manifest: ModelManifest, entity: string, property: s
 
 export function getRelation(manifest: ModelManifest, entity: string, relation: string): RelationSchema | undefined {
   return manifest.entities[entity]?.relations[relation];
+}
+
+/**
+ * Names of the entities a manifest declares an LLM may mint — see {@link EntitySchema.extractable}.
+ *
+ * Sorted, because the answer becomes an `AutoProcessorConfig`'s class list and two peers computing
+ * a different order for the same set would each see the other's registration as a change worth
+ * rewriting. The executor sorts what it loads back for the same reason.
+ *
+ * One function over one field, rather than each caller filtering: core vocabulary and a community's
+ * own shapes are both manifests, so "what may be extracted here" is this run twice and concatenated
+ * — which is exactly what keeps a shape defined this morning on equal footing with `TaskBlock`.
+ */
+export function extractableEntities(manifest: ModelManifest): string[] {
+  return Object.entries(manifest.entities)
+    .filter(([, entity]) => entity.extractable && !entity.abstract)
+    .map(([name]) => name)
+    .sort();
 }

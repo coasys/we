@@ -20,7 +20,7 @@
  *    EventBlock) and space shapes alike, through `SchemaPort.interpretationHints` — with the
  *    customized/reset lifecycle that decides whether release improvements still flow.
  */
-import { manifestEntries, type ModelManifest, validateManifest } from '@we/backend-shared';
+import { extractableEntities, manifestEntries, type ModelManifest, validateManifest } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import { asFileField, decodeFileAsJson, encodeJsonFileData, Shape } from '@we/models';
 import { CORE_MANIFEST } from '@we/models/manifest';
@@ -156,6 +156,15 @@ export interface ShapeStore {
   generating: Accessor<boolean>;
   /** Entities offering hint tuning here: core interpretable vocabulary plus this space's shapes. */
   hintEntities: Accessor<HintEntityView[]>;
+  /**
+   * Entity names an extraction pass may write in this space — core vocabulary that declares itself
+   * extractable, plus every adopted shape that does.
+   *
+   * The answer to "what could be found here", and deliberately not "what will this pass look for":
+   * a call may narrow it and the space may have auto-extraction off. Read it to *display* findings,
+   * so a card shows a record another member extracted whatever this agent had selected.
+   */
+  extractionTargets: Accessor<string[]>;
   /** Options for the relationship target picker — `{ label, value }`, grouped and labelled. */
   relationshipTargets: Accessor<RelationshipTargetOption[]>;
   /**
@@ -342,6 +351,38 @@ export function ShapeStoreProvider(props: ParentProps) {
       .filter((s) => s.manifest)
       .map((s) => ({ entity: s.name, source: 'shape' as const })),
   ]);
+
+  /** Core vocabulary that declares itself extractable — `TaskBlock` and `EventBlock` today. */
+  const coreExtractionTargets = extractableEntities(CORE_MANIFEST);
+
+  /*
+    What could be extracted in this space: core vocabulary plus the shapes this community adopted.
+
+    Core first because those are the entities every space has, so a list that grows as a community
+    defines models reads as an addition rather than a reshuffle. A shape with adoption problems is
+    excluded by `manifest` being null — an entity that is not queryable cannot be minted into
+    either, and offering it would produce a pass that fails on a name the executor has no shape for.
+
+    Deduplicated, because a space may name a shape after core vocabulary: `getModelForPerspective`
+    prefers the native class, so the two names resolve to one class and requesting it twice would
+    put the same shape in the prompt twice at the community's expense.
+  */
+  const extractionTargets = createMemo<string[]>(() => {
+    const names = [
+      ...coreExtractionTargets,
+      ...spaceShapes().flatMap((shape) => (shape.manifest ? extractableEntities(shape.manifest) : [])),
+    ];
+    return [...new Set(names)];
+  });
+
+  /*
+    Lend the list downward, the way SpaceStore lends `autoInterpret`.
+
+    DatasetStore publishes the interpretation surface modules reach, and sits *above* this store in
+    the provider tree, so it cannot read a shape. The accessor rather than the value, so it follows
+    a community defining a model without anything re-registering.
+  */
+  datasetStore.provideExtractionTargets(extractionTargets);
 
   /**
    * What a relationship may point at here, grouped by where it comes from and labelled for the
@@ -1044,6 +1085,7 @@ export function ShapeStoreProvider(props: ParentProps) {
     aiAvailable,
     generating,
     hintEntities,
+    extractionTargets,
     relationshipTargets,
     identityOptions,
     hintEditor,

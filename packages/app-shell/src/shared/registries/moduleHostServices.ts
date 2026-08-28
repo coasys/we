@@ -56,6 +56,11 @@ export interface ModuleHostServices {
    * can produce them — see `shared/interpretation/transcriptTurns.ts`.
    */
   interpretCollection?: (collectionId: string, request: { classes: string[] }) => Promise<InterpretationResult>;
+  /**
+   * What an extraction pass may write in the current space, published by the store that can see the
+   * space's own models. Absent reads as none — see `ModuleInterpretationAccess.targets`.
+   */
+  extractionTargets?: () => string[];
   watchCollection?: (collectionId: string, request: { classes: string[] }) => Promise<void>;
   unwatchCollection?: (collectionId: string) => Promise<void>;
   reconcileCollection?: (collectionId: string, request: { classes: string[] }) => Promise<number>;
@@ -180,6 +185,9 @@ export function createModuleStoreDeps(framework: {
         services.interpretationAvailable?.() ??
         services.interpretation?.available?.() ??
         services.interpretation !== undefined,
+      // Read through on every call rather than captured, like every accessor here: a module store
+      // outlives a space switch, and a captured list would offer the previous space's models.
+      targets: () => services.extractionTargets?.() ?? [],
       runOnCollection: async (collectionId, request) => {
         const run = services.interpretCollection;
         if (!run) throw new Error('interpretation: this backend cannot interpret');

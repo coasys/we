@@ -6135,6 +6135,9 @@
           "type": "array",
           "properties": ["entity", "source"]
         },
+        "extractionTargets": {
+          "type": "array"
+        },
         "relationshipTargets": {
           "type": "array",
           "properties": ["label", "value"]

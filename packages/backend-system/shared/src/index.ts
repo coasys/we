@@ -69,7 +69,14 @@ export type {
 export { setTraceSink, trace, tracing } from './trace';
 export type { TraceSink } from './trace';
 
-export { modelManifestSchema, validateManifest, getEntity, getProperty, getRelation } from './manifest';
+export {
+  extractableEntities,
+  getEntity,
+  getProperty,
+  getRelation,
+  modelManifestSchema,
+  validateManifest,
+} from './manifest';
 export type {
   ModelManifest,
   EntitySchema,

@@ -2437,6 +2437,7 @@ export const contextData: ContextData = {
         aiAvailable: { type: 'boolean' },
         generating: { type: 'boolean' },
         hintEntities: { type: 'array', properties: ['entity', 'source'] },
+        extractionTargets: { type: 'array' },
         relationshipTargets: { type: 'array', properties: ['label', 'value'] },
         identityOptions: { type: 'array', properties: ['label', 'value'] },
         hintEditor: { type: 'object', properties: ['entity', 'classHint', 'defaultClassHint', 'rows', 'customized'] },

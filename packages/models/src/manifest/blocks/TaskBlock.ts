@@ -35,21 +35,29 @@ export const TaskBlock: CoreEntityDef = {
     interpretationHint:
       'A piece of work the speakers say needs doing and that is not done yet. Includes anything phrased as "we need to…", "one task is…", "someone should…", or a commitment like "I\'ll do X" — an owner is not required, and neither is a deadline. It must be work in the world that outlives this conversation. Exclude work described as already finished, work raised purely to rule it out, and anything about the act of talking or testing itself — "let me add another one", "I need to say more to trigger this" and the like are about the conversation, not work anybody committed to.',
     flag: { predicate: 'we://flag', value: 'we://task_block' },
+    // One of the two core entities extraction may write, and the reason the flag exists at all:
+    // this list used to be a constant in the transcribe module, so no shape a community defined
+    // could join it. See `EntitySchema.extractable` for why it is opt-in rather than derived.
+    extractable: true,
     // Title first because it is the task; everything else qualifies it. `version` is bookkeeping.
     authoring: { fields: ['title', 'description', 'status', 'priority', 'dueDate', 'assignee'] },
     properties: {
       /**
        * The task, and its dedup key.
        *
-       * `identity` is the flag that makes a class visible to interpretation at all: a class that
-       * declares none is skipped entirely when the executor assembles the "instances that already
-       * exist" block, so the model is never shown it, the deterministic dedup net has nothing to
-       * compare against, and every pass mints fresh copies of everything it finds. Without this,
-       * pressing Extract twice on one call produced two of every task.
+       * `identity` is what makes extraction *converge*. A class that declares none is skipped when
+       * the executor assembles the "instances that already exist" block, so the model is never
+       * shown it, the deterministic dedup net has nothing to compare against, and every pass mints
+       * fresh copies of everything it finds. Without this, pressing Extract twice on one call
+       * produced two of every task.
+       *
+       * It is not what admits a class to extraction — `extractable` on the entity is (a class
+       * without an identity property still extracts, it merely duplicates). Which is why an
+       * authoring surface offering the one should warn about the absence of the other.
        *
        * It does three jobs at once, which is why the name reads oddly: it selects the human-readable
        * label the model matches against, it is the value compared for equality, and its presence is
-       * what admits the class to the prompt. Matching is normalised — trimmed, whitespace-collapsed,
+       * what puts this class's existing instances in front of the model. Matching is normalised — trimmed, whitespace-collapsed,
        * lowercased — so "Ship  the docs " and "ship the docs" are one task, but "Ship the docs" and
        * "Send the docs" are two. Semantic (embedding) matching exists upstream as a strategy and is
        * the better default here eventually.

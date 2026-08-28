@@ -99,6 +99,11 @@ export interface DatasetStore {
   getDatasetOrder: () => string[];
   /** SpaceStore supplies "does this space want calls interpreted automatically". Unset reads off. */
   provideAutoInterpretGate: (gate: () => boolean) => void;
+  /**
+   * ShapeStore supplies "which entities may an extraction pass write here" — core vocabulary that
+   * declares itself extractable, plus this space's adopted shapes. Unset reads as none.
+   */
+  provideExtractionTargets: (targets: () => string[]) => void;
 }
 
 const DatasetContext = createContext<DatasetStore>();
@@ -144,6 +149,20 @@ export function DatasetStoreProvider(props: ParentProps) {
     autoInterpretGate = gate;
   };
 
+  /*
+    What an extraction pass may write here — the same arrangement, one layer along.
+
+    A space's own models are compiled and registered for its dataset by ShapeStore, which also sits
+    above this one, so the list it computes has to arrive the same way the auto-extract setting
+    does. Unset reads as *none* rather than as the two core classes: this replaced a constant, and a
+    silent fallback to that constant would make a wiring failure look exactly like a space whose
+    community had turned everything off.
+  */
+  let extractionTargetsGate: (() => string[]) | null = null;
+  const provideExtractionTargets = (targets: () => string[]) => {
+    extractionTargetsGate = targets;
+  };
+
   // Lend feature modules the neutral ports the host owns. Published rather than imported so a
   // module never reaches into host stores — what it receives is `EphemeralPort` and dataset
   // accessors, all of which any backend could satisfy. See moduleHostServices.ts.
@@ -180,6 +199,16 @@ export function DatasetStoreProvider(props: ParentProps) {
       reject: async (dataset, id, property) =>
         (await session.backendPorts()?.interpretation?.reject(dataset, id, property)) ?? false,
     },
+
+    /*
+      What could be extracted here, for a module that has to name its classes.
+
+      Published beside `interpretCollection` rather than derived inside it, because a module needs
+      the list for more than the call: the transcribe panel offers it as a per-call choice, and a
+      module that could only pass it through could not show it. Empty until ShapeStore provides it —
+      see `provideExtractionTargets`.
+    */
+    extractionTargets: () => extractionTargetsGate?.() ?? [],
 
     // Gathering the turns is the host's half of the job: the port takes turns, and a module has no
     // read with which to produce them. Parenting what comes back onto the same collection is not
@@ -679,6 +708,7 @@ export function DatasetStoreProvider(props: ParentProps) {
     subscribeToChanges,
     getDatasetOrder,
     provideAutoInterpretGate,
+    provideExtractionTargets,
   };
 
   return <DatasetContext.Provider value={store}>{props.children}</DatasetContext.Provider>;

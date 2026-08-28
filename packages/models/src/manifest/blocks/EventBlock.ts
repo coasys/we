@@ -7,6 +7,8 @@ export const EventBlock: CoreEntityDef = {
     interpretationHint:
       'Something happening at a identifiable future time — a meeting, a trip, a deadline event, an occasion. A day is enough; it does not need a time of day, an agreement between the speakers, or other attendees. "Visiting my grandma this weekend" is an event. Exclude only the conversation currently happening, and intentions with no when at all.',
     flag: { predicate: 'we://flag', value: 'we://event_block' },
+    /** The other core extraction target — see {@link TaskBlock} and `EntitySchema.extractable`. */
+    extractable: true,
     // `occurrence` is absent on purpose: it is a dedup key a machine maintains, and asking an
     // author for one would hand two hand-made events the same key — see its own note below.
     authoring: { fields: ['title', 'description', 'startDate', 'endDate', 'location', 'allDay'] },
