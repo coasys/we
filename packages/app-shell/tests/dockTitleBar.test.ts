@@ -74,7 +74,7 @@ describe('a panel’s titlebar in full screen', () => {
     // One gate per inert control, each on that panel's own maximised flag. Hidden rather than
     // disabled, which is the choice `fitButton` already makes for a module publishing no aspect:
     // a control that does nothing is worse than one that is not there.
-    const maximised = gates(frame).filter((path) => path === `shellStore.dockPlacement.${entry.id}.maximised`);
+    const maximised = gates(frame).filter((path) => path === `shellStore.dockPlacement['${entry.id}'].maximised`);
     expect(maximised).toHaveLength(3);
 
     // Named, for the one whose tooltip is a plain string — the other two write theirs conditionally,
@@ -129,7 +129,7 @@ describe('the way back to the layout an interface declared', () => {
   it('is disabled rather than absent when there is nothing to go back to', () => {
     // The same choice displaceButton makes: a control that vanishes when you move a panel is one you
     // stop looking for, and the disabled state carries the actual rule.
-    expect(reset?.disabled).toEqual({ $: `!shellStore.layoutPinned.${entry.id}` });
+    expect(reset?.disabled).toEqual({ $: `!shellStore.layoutPinned['${entry.id}']` });
   });
 
   it('forgets the stored placement rather than writing the declared one', () => {

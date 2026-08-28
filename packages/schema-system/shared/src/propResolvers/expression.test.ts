@@ -89,3 +89,37 @@ describe('{ $: … } through the dispatcher', () => {
     expect(run('local.page +')).toBeUndefined();
   });
 });
+
+describe('functions a callback hands over', () => {
+  it("lets a callback argument's function through, bound to its object, so a function-typed local can hold it", () => {
+    let written: unknown;
+    const ctx = { ...context, $localSetters: { savePost: (value: unknown) => (written = value) } };
+    const handler = resolveProp({ $setLocal: 'savePost', value: { $: 'event.save' } }, stores, ctx, noMemo) as (
+      event: unknown,
+    ) => void;
+    const api = {
+      count: 0,
+      save() {
+        this.count += 1;
+        return 'saved';
+      },
+    };
+    handler(api);
+    expect(typeof written).toBe('function');
+    expect((written as () => unknown)()).toBe('saved');
+    expect(api.count).toBe(1);
+  });
+
+  it('still hands the whole argument on, and reads its data as before', () => {
+    const handler = resolveProp({ $: 'arg' }, stores, context, noMemo) as (arg: unknown) => unknown;
+    const event = { detail: { value: 'x' }, save: () => 1 };
+    expect(handler(event)).toBe(event);
+    const detail = resolveProp({ $: 'arg.detail.value' }, stores, context, noMemo) as (a: unknown) => unknown;
+    expect(detail(event)).toBe('x');
+  });
+
+  it('keeps refusing functions found anywhere else', () => {
+    expect(run('spaceStore.logout')).toBeUndefined();
+    expect(run('item.fn', { ...context, item: { fn: () => 1 } })).toBeUndefined();
+  });
+});

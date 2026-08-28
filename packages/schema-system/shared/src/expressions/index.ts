@@ -56,7 +56,7 @@ export { ExpressionSyntaxError, MAX_EXPRESSION_LENGTH } from './lexer';
 export { parseExpression } from './parser';
 export { printExpression, printLiteral, quote } from './printer';
 export type { EvaluationEnv, Namespace } from './evaluate';
-export { evaluateExpression, NAMESPACE, namespace, readValue } from './evaluate';
+export { callbackValue, evaluateExpression, NAMESPACE, namespace, readValue } from './evaluate';
 export type { ExpressionCallEnv, FunctionCategory, FunctionSpec } from './functions';
 export { arityOf, defineFunction, getFunction, hasFunction, listFunctions } from './functions';
 export type { ExpressionIssue, ExpressionScope } from './check';

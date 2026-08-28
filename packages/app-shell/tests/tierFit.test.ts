@@ -183,7 +183,7 @@ describe('the chrome the shell renders', () => {
     const paths = allowed.map((reference) => reference.path);
 
     expect(paths).toContain('shellStore.beginDockResize');
-    expect(paths.some((path) => path.startsWith('shellStore.dockGeometry.'))).toBe(true);
+    expect(paths.some((path) => path.startsWith('shellStore.dockGeometry'))).toBe(true);
   });
 
   it('keeps the app furniture out of a space template', () => {

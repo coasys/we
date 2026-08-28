@@ -138,7 +138,8 @@ export const dockRegistry = {
  * geometry and the schema node that reads it derive their key from the same function.
  */
 export function dockGeometryPath(id: string, field: string): string {
-  return `shellStore.dockGeometry.${id}.${field}`;
+  // By index, not by member: a dock id holds a colon (`call:0`, `editor:code`), which no identifier can.
+  return `shellStore.dockGeometry['${id}'].${field}`;
 }
 
 /**
@@ -358,7 +359,7 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
 function whileRestored(id: string, node: SchemaNode): SchemaNode {
   return {
     type: '$if',
-    props: { condition: { $: `!shellStore.dockPlacement.${id}.maximised` }, then: node },
+    props: { condition: { $: `!shellStore.dockPlacement['${id}'].maximised` }, then: node },
   };
 }
 
@@ -454,7 +455,7 @@ function fitButton(id: string): SchemaNode {
  * this is the same answer, made visible before the click rather than after it.
  */
 function displaceButton(id: string): SchemaNode {
-  const place = (field: string) => `shellStore.dockPlacement.${id}.${field}`;
+  const place = (field: string) => `shellStore.dockPlacement['${id}'].${field}`;
 
   return {
     type: 'we-tooltip',
@@ -489,7 +490,7 @@ function displaceButton(id: string): SchemaNode {
  * capability being on or off, so "expand" and "contract" say more than a highlight would.
  */
 function maximiseButton(id: string): SchemaNode {
-  const maximised = `shellStore.dockPlacement.${id}.maximised`;
+  const maximised = `shellStore.dockPlacement['${id}'].maximised`;
 
   return {
     type: 'we-tooltip',
@@ -559,7 +560,7 @@ function closeButton(entry: DockEntry): SchemaNode {
 
 function positionMenu(entry: DockEntry): SchemaNode {
   const id = entry.id;
-  const place = (field: string) => `shellStore.dockPlacement.${id}.${field}`;
+  const place = (field: string) => `shellStore.dockPlacement['${id}'].${field}`;
 
   /*
     An options object, not three positional arguments — and the reason is the icon bundler.
@@ -624,7 +625,7 @@ function positionMenu(entry: DockEntry): SchemaNode {
           // Disabled rather than hidden, for the reason `displaceButton` is: a control that vanishes
           // when you move a panel is one you stop looking for, and the disabled state carries the
           // actual rule — there is a layout to go back to, and you are not on it.
-          disabled: { $: `!shellStore.layoutPinned.${id}` },
+          disabled: { $: `!shellStore.layoutPinned['${id}']` },
           onAction: { $action: 'shellStore.resetDockToLayout', args: [id] },
         },
         at({ snap: 'top-left', label: 'Top left', icon: 'arrow-up-left' }),

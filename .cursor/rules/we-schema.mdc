@@ -2391,7 +2391,7 @@ ShellStore:
   - activeShellView: string | null — id of the currently open shell overlay ('profile' | 'settings' | 'schema-tests' | 'landing-page'), or null
   - createSpaceOpen: boolean — the create-space modal is open. Shell state because more than one place opens it; bind the modal’s open prop to this and close it with setCreateSpaceOpen
   - spaceSettingsOpen: boolean — the space-settings panel is open. It configures whichever space is open, so it needs no id; bind a launcher’s active state to this
-  - dockGeometry: Record<dockId, DockGeometry> — every registered panel's resolved box (top, left, width, height, edge, mode). Read a field as { $: 'shellStore.dockGeometry.<id>.<field>' }; the frame a panel is wrapped in binds its geometry this way so a move rewrites props rather than remounting
+  - dockGeometry: Record<dockId, DockGeometry> — every registered panel's resolved box (top, left, width, height, edge, mode). Read a field as { $: "shellStore.dockGeometry['<id>'].<field>" } — by index, since a dock id holds a colon; the frame a panel is wrapped in binds its geometry this way so a move rewrites props rather than remounting
   - contentInset: { top, right, bottom, left } in pixels — what the content viewport gives up to panels that displace it. Read it to keep your own fixed chrome clear of docked panels
   - dockResizing: boolean — a panel is being dragged or resized right now. Suspend transitions while it is true so the edge tracks the cursor
   - panelMaximised: boolean — some panel covers the whole window. The app's own chrome — sidebar, module rail — hides while it is true; a template's fixed chrome should too

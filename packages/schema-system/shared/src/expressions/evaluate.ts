@@ -44,6 +44,43 @@ export function namespace(get: (property: string) => unknown): Namespace {
   return { [NAMESPACE]: true, get };
 }
 
+/**
+ * A function a callback handed over, which an expression may read as a value.
+ *
+ * The inert rule refuses every untagged function, and that is the right rule for the bag: a
+ * template must not obtain a callable from a store. A callback's argument is the other way round —
+ * it is the host handing the template something on purpose, and `onReady: { $setLocal: 'save',
+ * value: { $: 'event.save' } }` is how a composer's `save()` reaches the button that calls it.
+ * Marked rather than let through as-is, so nothing else that happens to be a function is.
+ */
+const CALLBACK_FUNCTION = Symbol('expression-callback-function');
+const RAW = Symbol('expression-callback-raw');
+
+type CallbackNamespace = Namespace & { [RAW]: unknown };
+
+/**
+ * The value of a call-time root — `event`, `arg`, `result` — as an expression reads it: its
+ * properties are data, its functions are readable (bound to the object they came from), and the
+ * whole thing settles back to the raw value, so `{ $: 'arg' }` still hands the argument itself on.
+ */
+export function callbackValue(value: unknown): unknown {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return value;
+  const raw = value as Record<string, unknown>;
+  const ns = namespace((property) => {
+    if (DENIED_PROPERTIES.has(property) || !(property in raw)) return undefined;
+    const member = raw[property];
+    if (typeof member === 'function') {
+      if (REACTIVE_ACCESSOR in member) return member;
+      const bound = (...args: unknown[]) => (member as (...a: unknown[]) => unknown).apply(raw, args);
+      (bound as unknown as Record<symbol, true>)[CALLBACK_FUNCTION] = true;
+      return bound;
+    }
+    return callbackValue(member);
+  }) as CallbackNamespace;
+  ns[RAW] = value;
+  return ns;
+}
+
 export interface EvaluationEnv {
   /** What a root name means here. `bound: false` when it means nothing. */
   root(name: string): { bound: boolean; value: unknown };
@@ -54,18 +91,20 @@ export interface EvaluationEnv {
 const isNamespace = (value: unknown): value is Namespace =>
   typeof value === 'object' && value !== null && NAMESPACE in value;
 
-/** Read through a tagged accessor; refuse any other function. */
+/** Read through a tagged accessor; let a callback's function through; refuse any other function. */
 export function readValue(value: unknown): unknown {
   if (typeof value === 'function') {
-    return REACTIVE_ACCESSOR in value ? readValue((value as unknown as () => unknown)()) : undefined;
+    if (REACTIVE_ACCESSOR in value) return readValue((value as unknown as () => unknown)());
+    return CALLBACK_FUNCTION in value ? value : undefined;
   }
   return value;
 }
 
-/** A value fit to leave the evaluator: namespaces become undefined. */
+/** A value fit to leave the evaluator: a callback value is its raw self, any other namespace undefined. */
 function settle(value: unknown): unknown {
   const read = readValue(value);
-  return isNamespace(read) ? undefined : read;
+  if (!isNamespace(read)) return read;
+  return RAW in read ? (read as CallbackNamespace)[RAW] : undefined;
 }
 
 function readProperty(object: unknown, property: string): unknown {

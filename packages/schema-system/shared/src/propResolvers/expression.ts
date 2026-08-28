@@ -18,6 +18,7 @@
 import type { EvaluationEnv } from '../expressions';
 import {
   CALL_TIME_ROOTS,
+  callbackValue,
   evaluateExpression,
   ExpressionSyntaxError,
   getFunction,
@@ -27,7 +28,7 @@ import {
   referencedRoots,
 } from '../expressions';
 import { markReactive } from './reactive';
-import type { Memo, Props } from './types';
+import { type Memo, noMemo, type Props } from './types';
 
 /** Tags a function the action dispatcher must call with the callback argument to get the value. */
 export const DEFERRED_ARG = Symbol('schema-deferred-arg');
@@ -87,8 +88,12 @@ export function buildEnvironment(stores: Props, context: Props): EvaluationEnv {
   return {
     root(name) {
       if (name === 'local') return { bound: true, value: localNamespace };
+      // A callback's argument may hand over functions — a composer's `save()` — on purpose.
+      if (CALL_TIME_ROOTS.has(name)) {
+        if (name in context) return { bound: true, value: callbackValue(context[name]) };
+        if (name === 'arg' && 'event' in context) return { bound: true, value: callbackValue(context.event) };
+      }
       if (name in context && !name.startsWith('$')) return { bound: true, value: context[name] };
-      if (name === 'arg' && 'event' in context) return { bound: true, value: context.event };
       const global = bag[`$${name}`];
       if (global !== undefined) {
         return { bound: true, value: typeof global === 'function' ? (global as () => unknown)() : global };
@@ -159,21 +164,26 @@ export function resolveExpressionProp(token: { $: string }, stores: Props, conte
   }
 
   const env = buildEnvironment(stores, context);
-  return markReactive(
-    memo(() => {
-      /*
-        Re-read the source inside the memo. The schema is reactive in the visual editor, so an
-        expression edited in place must be picked up on the next evaluation — the same lesson
-        `$if` learned when destructuring its spec once made edited branches invisible until the
-        subtree remounted. The parse is cached, so this costs a map lookup.
-      */
-      let current = ast;
-      try {
-        current = parseCached(token.$);
-      } catch {
-        return undefined;
-      }
-      return readValue(evaluateExpression(current, env));
-    }),
-  );
+  const computed = memo(() => {
+    /*
+      Re-read the source inside the memo. The schema is reactive in the visual editor, so an
+      expression edited in place must be picked up on the next evaluation — the same lesson
+      `$if` learned when destructuring its spec once made edited branches invisible until the
+      subtree remounted. The parse is cached, so this costs a map lookup.
+    */
+    let current = ast;
+    try {
+      current = parseCached(token.$);
+    } catch {
+      return undefined;
+    }
+    return readValue(evaluateExpression(current, env));
+  });
+  /*
+    A real memo hands back an accessor, which is tagged so the renderer reads it. `noMemo` hands
+    back the value itself — and tagging a *value* that happens to be a function (a callback's
+    `save()`, on its way into a function-typed local) would make it read as an accessor and be
+    called instead of kept.
+  */
+  return memo === noMemo ? computed : markReactive(computed);
 }

@@ -81,7 +81,9 @@ describe('a floating panel is glass', () => {
   it('reads floating AND not maximised, off paths the geometry actually publishes', () => {
     const condition = gateOf(surface!.bg)?.condition;
 
-    expect(condition).toBe('shellStore.dockGeometry.call:0.floating && !shellStore.dockGeometry.call:0.maximised');
+    expect(condition).toBe(
+      "shellStore.dockGeometry['call:0'].floating && !shellStore.dockGeometry['call:0'].maximised",
+    );
   });
 
   it('carries the titlebar with it, so the card is one piece of glass', () => {
