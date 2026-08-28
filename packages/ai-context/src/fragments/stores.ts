@@ -1006,7 +1006,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         unreadNodeIds:
           'string[] — ids of containers in this space holding something newer than your read marker. The read side of `ReadMarker`: use it for unread dots with `{ "$": "channel.id in spaceStore.unreadNodeIds" }` rather than recomputing a `$latestChild` projection and a comparison per row',
         myMentions:
-          '{ id, author, createdAt }[] — nodes in this space that name you, newest first. The read side of `WeNode.mentions`, which the composer has always written and nothing could read',
+          '{ id, author, createdAt }[] — nodes in this space that name you, newest first. The read side of `WeNode.mentions`, which the composer writes from the @mentions in a post',
         uploadFile:
           '(file: File, name?: string): stores a file and returns the URL to reference it by, or null. Images are compressed on the way through. For a template doing its own media UI — without it, only the block composer could accept an upload',
         upsertSignal:

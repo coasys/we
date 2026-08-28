@@ -19,6 +19,7 @@ export type {
 } from './content';
 export {
   collectKeys,
+  contentHash,
   emptyContent,
   fromPortableText,
   isCollectionBlock,

@@ -71,10 +71,23 @@ export interface ComposerModalOptions {
    * anything was typed. The composer reports that through `onDirtyChange`, which this wires up.
    */
   guardDraft?: boolean;
+  /**
+   * Actions to run whenever the modal closes — cancelled, dismissed, or saved. For telling the
+   * world the composer is no longer open on something (a presence activity, a lease).
+   */
+  onClose?: SchemaProp[];
+  /**
+   * The id of a collection to co-edit live. Given, the composer joins that composition's session
+   * (see `BlockHostProvider.collab`) and every other agent with it open sees the edits as they
+   * happen; the save still materialises the document to the models as usual.
+   */
+  collaborate?: SchemaProp;
 }
 
 export function composerModal(opts: ComposerModalOptions): SchemaNode {
-  const close = { $setLocal: opts.openLocal, value: false };
+  const close: SchemaProp = opts.onClose?.length
+    ? [{ $setLocal: opts.openLocal, value: false }, ...opts.onClose]
+    : { $setLocal: opts.openLocal, value: false };
   /*
     `draftDirty` is written by the composer, not by the schema. It is the one piece of modal state
     in the kit whose source is a component rather than a control, because Lexical's document is not
@@ -119,6 +132,7 @@ export function composerModal(opts: ComposerModalOptions): SchemaNode {
                 type: 'BlockComposer',
                 props: {
                   ...(opts.editorState !== undefined && { editorState: opts.editorState }),
+                  ...(opts.collaborate !== undefined && { collaborate: opts.collaborate }),
                   ...(guard && { onDirtyChange: { $setLocal: 'draftDirty', value: { $: 'event' } } }),
                   onReady: { $setLocal: 'savePost', value: { $: 'event.save' } },
                   onSave: [
@@ -128,7 +142,11 @@ export function composerModal(opts: ComposerModalOptions): SchemaNode {
                       args: opts.saveAction.args,
                       // The close first, so anything the caller adds runs against a modal that has
                       // already gone — a refresh it triggers repaints what is behind, not under it.
-                      onSuccess: [{ $setLocal: opts.openLocal, value: false }, ...(opts.onSaved ?? [])],
+                      onSuccess: [
+                        { $setLocal: opts.openLocal, value: false },
+                        ...(opts.onClose ?? []),
+                        ...(opts.onSaved ?? []),
+                      ],
                       onFinally: [{ $setLocal: 'submitting', value: false }],
                     },
                   ],

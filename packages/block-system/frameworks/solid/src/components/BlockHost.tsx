@@ -1,6 +1,8 @@
 import type { BlockDataset, MentionCandidate } from '@we/block-shared';
 import { createContext, type JSX, useContext } from 'solid-js';
 
+import type { CollabSession, CollabUser } from '../editor/collab';
+
 /**
  * What the host tells the block system about where it is mounted.
  *
@@ -18,9 +20,10 @@ import { createContext, type JSX, useContext } from 'solid-js';
  * answer: *the space you are in*. Forget it and the block renders blank, because an image's
  * expression URL cannot resolve without it. That is a poor trade for a value the host already knows.
  *
- * The same argument holds for who can be @mentioned: the space's members are the host's knowledge.
- * The host provides both once. A block that wants a different one still says so — the prop wins,
- * which is what the editor's preview needs when it renders a block from another space.
+ * The same argument holds for who can be @mentioned, and for how a live co-editing session
+ * travels: the space's members and the ephemeral transport are the host's knowledge. The host
+ * provides them once. A block that wants a different one still says so — the prop wins, which is
+ * what the editor's preview needs when it renders a block from another space.
  *
  * ## Why a context rather than a renderer special case
  *
@@ -34,21 +37,37 @@ export interface BlockHostValue {
   dataset: () => BlockDataset | null;
   /** Who can be mentioned in a composition here. */
   mentions: () => MentionCandidate[];
+  /**
+   * Open a live co-editing session on a composition, or null where none is possible — a personal
+   * space has nobody to share with. The composer calls this when asked to `collaborate`.
+   */
+  collab: (nodeId: string) => CollabSession | null;
+  /** How this agent appears to co-editors. */
+  collabUser: () => CollabUser;
 }
 
-const NONE: BlockHostValue = { dataset: () => null, mentions: () => [] };
+const NONE: BlockHostValue = {
+  dataset: () => null,
+  mentions: () => [],
+  collab: () => null,
+  collabUser: () => ({ name: 'Someone', color: 'hsl(210 70% 45%)' }),
+};
 
 const BlockHostContext = createContext<BlockHostValue>(NONE);
 
 export function BlockHostProvider(props: {
   dataset?: () => BlockDataset | null;
   mentions?: () => MentionCandidate[];
+  collab?: (nodeId: string) => CollabSession | null;
+  collabUser?: () => CollabUser;
   children: JSX.Element;
 }) {
   const parent = useContext(BlockHostContext);
   const value: BlockHostValue = {
     dataset: () => (props.dataset ? props.dataset() : parent.dataset()),
     mentions: () => (props.mentions ? props.mentions() : parent.mentions()),
+    collab: (nodeId) => (props.collab ? props.collab(nodeId) : parent.collab(nodeId)),
+    collabUser: () => (props.collabUser ? props.collabUser() : parent.collabUser()),
   };
   return <BlockHostContext.Provider value={value}>{props.children}</BlockHostContext.Provider>;
 }

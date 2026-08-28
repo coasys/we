@@ -1,6 +1,7 @@
 import type { BlockComposerProps, ContentBlock, ContentDocument, MentionCandidate } from '@we/block-shared';
 import {
   collectKeys,
+  contentHash,
   decodeEditorState,
   emptyContent,
   getRegisteredBlockModels,
@@ -18,6 +19,8 @@ import { createEffect, createSignal, on, onCleanup, onMount, Show, useContext } 
 import { Portal } from 'solid-js/web';
 
 import { registerCoreBlockComponents } from '../core-block-components';
+import type { CollabSession } from '../editor/collab';
+import { collabPlugins, seedSession } from '../editor/collab';
 import { menuTypeOf, toggleChecked, transformBlock } from '../editor/commands';
 import type { EditorContext } from '../editor/context';
 import { contentToDoc, docToContent } from '../editor/converter';
@@ -94,6 +97,8 @@ export function BlockComposer(props: Props) {
 
   /** Keys of the blocks that were loaded — what a save reports as its base. */
   let baseKeys: string[] = [];
+  /** Hash of the blocks as loaded, so a save can tell that somebody else wrote in between. */
+  let baseHash: string | undefined;
   /** The document as loaded, for change detection; null until something is loaded. */
   let baseline: string | null = null;
   let dirty = false;
@@ -142,10 +147,24 @@ export function BlockComposer(props: Props) {
     }
   }
 
+  /**
+   * The live session, when this composer was asked to `collaborate` and the host can provide one.
+   * With a session the document is the session's: the editor renders the shared fragment, every
+   * edit is an update to it, and the models are written from it on save.
+   */
+  const session: CollabSession | null = props.collaborate ? host.collab(props.collaborate) : null;
+
   function save() {
     const v = view();
     if (!v) return;
-    const document: ContentDocument = { _type: 'document', blocks: docToContent(v.state.doc), base: baseKeys };
+    const document: ContentDocument = {
+      _type: 'document',
+      blocks: docToContent(v.state.doc),
+      // In a session the shared document is the whole truth about the collection, so there is no
+      // "what I loaded" to diff against: everything it omits was deleted by somebody in the session.
+      ...(session ? {} : { base: baseKeys }),
+      ...(baseHash && !session ? { baseHash } : {}),
+    };
     if (props.onSave) props.onSave(document);
     else console.error('BlockComposer: no onSave callback provided.');
   }
@@ -157,7 +176,8 @@ export function BlockComposer(props: Props) {
       composerInputRules(schema),
       composerKeymap(schema, { requestLink: ctx.requestLink }),
       baseKeymapPlugin(),
-      history(),
+      // A session's undo is the session's — local history would undo other people's edits.
+      ...(session ? collabPlugins(session, host.collabUser()) : [history()]),
       gapCursor(),
       linksPlugin(),
       blockChromePlugin(),
@@ -168,6 +188,9 @@ export function BlockComposer(props: Props) {
   async function load(v: EditorView, input: BlockComposerProps['editorState']) {
     const schema = v.state.schema;
     let blocks: ContentBlock[] = input === undefined ? emptyContent() : (decodeEditorState(input) ?? emptyContent());
+    // Hashed before file addresses are resolved to data URIs — the stored form is what a save
+    // compares against.
+    baseHash = input === undefined ? undefined : contentHash(blocks);
     // Resolve stored file-storage addresses (an image's CID) to renderable data URIs first —
     // without this, an existing post's image src is still its address when loaded into the editor.
     const dataset = host.dataset() ?? props.perspective ?? null;
@@ -179,6 +202,18 @@ export function BlockComposer(props: Props) {
       }
     }
     const doc = contentToDoc(schema, blocks);
+    if (session) {
+      // The session owns the document. Wait for a peer to answer; if none does, this composer is
+      // first in and seeds the session from the models. A peer that answered has already carried
+      // the content over, and seeding again would write a second copy.
+      await session.synced;
+      if (v.isDestroyed) return;
+      seedSession(session, doc);
+      baseKeys = [];
+      rebase(v);
+      setVersion((n) => n + 1);
+      return;
+    }
     v.updateState(EditorState.create({ schema, doc, plugins: v.state.plugins }));
     baseKeys = collectKeys(blocks);
     rebase(v);
@@ -242,6 +277,7 @@ export function BlockComposer(props: Props) {
       document.removeEventListener('mousedown', onMouseDown, true);
       v.destroy();
       setView(null);
+      session?.destroy();
     });
   });
 

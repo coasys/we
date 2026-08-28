@@ -5,5 +5,7 @@ export * from './components/BlockDisplayOverrides';
 export { BlockRenderer, Blocks } from './components/BlockRenderer';
 export * from './core-block-components';
 export { createBlockSchema } from './editor/schema';
+export type { CollabSession, CollabUser } from './editor/collab';
+export { colorFor } from './editor/collab';
 export { blocksToNodes, blockToNode, contentToDoc, docToContent, nodeToBlock } from './editor/converter';
 export { insertBlockAtSelection, insertBlocks, moveBlock, transformBlock } from './editor/commands';

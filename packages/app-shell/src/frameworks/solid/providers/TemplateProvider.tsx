@@ -26,7 +26,7 @@ import {
 import type { Stores } from '@solid/types';
 import { Route, Router } from '@solidjs/router';
 import { manifestEntries } from '@we/backend-shared';
-import { BlockHostProvider } from '@we/block-solid';
+import { BlockHostProvider, colorFor } from '@we/block-solid';
 import { toastService } from '@we/components/solid';
 import type { DatasetProxy } from '@we/models';
 import { getModel } from '@we/models';
@@ -38,6 +38,7 @@ import { RenderSchema, VisualEditorProvider } from '@we/schema-solid';
 import { CHROME_RAIL_WIDTH } from '@we/template-shell';
 import { createEffect, createMemo, createSignal, onCleanup, onMount, Show, untrack } from 'solid-js';
 
+import { createCollabSession } from '../collab/collabSession';
 import { PersistentAppFrames } from '../layouts/PersistentAppFrames';
 import { SHELL_SIDEBAR_WIDTH, TemplateLayout } from '../layouts/TemplateLayout';
 import { buildRoutes } from '../utils/buildRoutes';
@@ -567,6 +568,16 @@ export default function TemplateProvider() {
           .members()
           .map((m) => ({ did: m.did, name: m.name || m.handle || m.did, avatar: m.avatar || undefined }))
       }
+      // A live co-editing session rides the ephemeral port of the space on screen — null in a
+      // personal space, where there is nobody to share with, and the composer edits alone.
+      collab={(nodeId) => {
+        const handle = datasetStore.currentDataset()?.handle;
+        return handle ? createCollabSession(sessionStore.ephemeralPort, handle, nodeId) : null;
+      }}
+      collabUser={() => {
+        const did = sessionStore.me()?.did ?? '';
+        return { name: profileStore.ownProfile()?.name || 'Someone', color: colorFor(did) };
+      }}
     >
       <VisualEditorProvider value={visualEditorCtx}>
         {/* Shell chrome — stable, never remounts. Chrome tier: this is host-authored. */}

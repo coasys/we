@@ -23,7 +23,14 @@ import {
 import type { AgentProfileSummary, DatasetRef } from '@we/backend-shared';
 import { displayName } from '@we/backend-shared';
 import type { ContentInput } from '@we/block-shared';
-import { createBlocks, deleteBlocks, reconcileBlocks } from '@we/block-shared';
+import {
+  contentHash,
+  createBlocks,
+  decodeEditorState,
+  deleteBlocks,
+  isContentDocument,
+  reconcileBlocks,
+} from '@we/block-shared';
 import { toastService } from '@we/components/solid';
 import {
   AGENT_DEFAULT,
@@ -1451,7 +1458,26 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (!p) return;
     const existingRoot = await CollectionBlock.findOne(p, { where: { id: postId } });
     if (!existingRoot) return;
-    await reconcileBlocks(p, existingRoot, json as ContentInput);
+    const document = json as ContentInput;
+
+    // Somebody else may have saved this post while it was open here. A peer-to-peer store cannot
+    // refuse the second writer — a write that has not arrived is invisible — so what it can do is
+    // notice: the document carries a hash of the content as loaded, and the stored blob says what
+    // is there now. Their blocks survive the save either way (reconcileBlocks keeps what the author
+    // never loaded); a paragraph both agents edited resolves to whichever write is later, and that
+    // is the one thing worth saying out loud.
+    const loadedHash = isContentDocument(document) ? document.baseHash : undefined;
+    const storedHash = loadedHash ? contentHash(decodeEditorState(existingRoot.editorState) ?? []) : undefined;
+    const changedMeanwhile = !!loadedHash && !!storedHash && loadedHash !== storedHash;
+
+    await reconcileBlocks(p, existingRoot, document);
+
+    if (changedMeanwhile) {
+      toastService.warning(
+        'This post was changed by someone else while you were editing. Your version of anything you both changed was kept.',
+        8000,
+      );
+    }
   }
 
   /**

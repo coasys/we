@@ -583,9 +583,15 @@ describe('reconcileBlocks mode guard', () => {
     expect(root.children).toHaveLength(2);
   });
 
-  it('refuses collaborative mode too — the check is an allow-list', async () => {
+  it('allows collaborative mode — a save materialises the shared session document', async () => {
     const { root } = await seedPost();
     root.mode = 'collaborative';
+    await expect(reconcileBlocks(perspective, root as never, emptyEdit)).resolves.toBeDefined();
+  });
+
+  it('refuses an unrecognised mode — the check is an allow-list', async () => {
+    const { root } = await seedPost();
+    root.mode = 'something-later';
     await expect(reconcileBlocks(perspective, root as never, emptyEdit)).rejects.toThrow(/not 'document'/);
   });
 

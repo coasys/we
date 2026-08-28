@@ -75,6 +75,27 @@ export interface ContentDocument {
   _type: 'document';
   blocks: ContentBlock[];
   base?: string[];
+  /**
+   * {@link contentHash} of the blocks as loaded. A save can compare it with what is stored now and
+   * tell that somebody else wrote in between — the signal, since a peer-to-peer store cannot refuse
+   * the second writer, only notice.
+   */
+  baseHash?: string;
+}
+
+/**
+ * A short, stable hash of a composition's content — FNV-1a over its JSON — for telling "what I
+ * loaded" from "what is there now". Not cryptographic; two agents hashing the same blocks agree,
+ * which is all it is for.
+ */
+export function contentHash(blocks: readonly ContentBlock[]): string {
+  const json = JSON.stringify(blocks);
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < json.length; i++) {
+    hash ^= json.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, '0');
 }
 
 export interface PortableTextSpan {

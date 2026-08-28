@@ -67,6 +67,26 @@ export const postsList: SchemaNode = {
               },
               children: [
                 agentByline({ did: { $: 'post.author' }, timestamp: { $: 'post.createdAt' } }),
+                // Who has the composer open on this post right now — the `edit` activity peers
+                // publish (see the edit button below). Shown so two people rarely edit the same post
+                // at once; when they do anyway, the save says whose paragraph was kept.
+                {
+                  type: '$if',
+                  props: {
+                    condition: {
+                      $: "count(presenceStore.online.filter(p, p.did != me.did && p.activities.exists(a, a.type == 'edit' && a.nodeId == post.id)))",
+                    },
+                    then: {
+                      type: 'we-badge',
+                      props: { variant: 'warning', size: 'sm' },
+                      children: [
+                        {
+                          $: "`${presenceStore.online.filter(p, p.did != me.did && p.activities.exists(a, a.type == 'edit' && a.nodeId == post.id)).map(p, p.name).join(', ')} editing`",
+                        },
+                      ],
+                    },
+                  },
+                },
                 {
                   type: '$if',
                   props: {
@@ -81,7 +101,16 @@ export const postsList: SchemaNode = {
                             variant: 'ghost',
                             size: 'sm',
                             square: true,
-                            onClick: { $setLocal: 'editPostOpen', value: true },
+                            // Opening the composer says so to everyone: an `edit` activity on the
+                            // post, which a peer's card shows as "X is editing" (below). The soft
+                            // lock a peer-to-peer store can offer — a refusal it cannot.
+                            onClick: [
+                              { $setLocal: 'editPostOpen', value: true },
+                              {
+                                $action: 'presenceStore.setActivity',
+                                args: [{ type: 'edit', nodeId: { $: 'post.id' } }],
+                              },
+                            ],
                           },
                           children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],
                         },
@@ -94,6 +123,7 @@ export const postsList: SchemaNode = {
                           // `'$arg'` second: `updatePost(postId, json)`.
                           saveAction: { $action: 'spaceStore.updatePost', args: [{ $: 'post.id' }, { $: 'arg' }] },
                           saveLabel: 'Save',
+                          onClose: [{ $action: 'presenceStore.clearActivity', args: ['edit', { $: 'post.id' }] }],
                         }),
                         {
                           type: 'we-button',

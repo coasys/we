@@ -58,6 +58,13 @@ export type BlockComposerProps = Omit<DesignSystemProps, 'direction'> & {
    * for a composer that mentions people outside the space it is rendered in.
    */
   mentions?: MentionCandidate[];
+  /**
+   * The id of a collection to co-edit live. The composer joins that composition's session through
+   * the host (`BlockHostProvider.collab`); edits flow between everyone who has it open, and the
+   * save still materialises the document to the models. Ignored where the host has no session
+   * transport — a personal space has nobody to share with.
+   */
+  collaborate?: string;
 };
 
 export type BlockRendererProps = Omit<DesignSystemProps, 'direction'> & {

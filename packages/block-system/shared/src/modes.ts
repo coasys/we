@@ -26,15 +26,15 @@
  */
 
 /**
- * - **`document`** — authored as one artifact by one agent. Order lives in `editorState`; the write
- *   path is `reconcileBlocks`, whose orphan-deletion pass assumes the incoming tree is the whole
- *   truth. A post, a reply, a message.
+ * - **`document`** — authored as one artifact by one agent. Order lives in the `children` relation
+ *   (the blob is its projection); the write path is `reconcileBlocks`, whose removal pass treats the
+ *   incoming document as the whole truth about what the author loaded. A post, a reply, a message.
  * - **`feed`** — children accumulate independently, from many agents. No `editorState`; order is
  *   derived at query time; the write path is append. A channel, a board, a playlist.
- * - **`collaborative`** — many agents, *one* artifact: a wiki page, a co-written proposal. Declared
- *   but **supported by nothing yet** — it is the regime neither of the others can hold, and it
- *   needs a text/tree CRDT that does not exist here. Present so this type, and the stage-A IR that
- *   will absorb it, do not bake in a two-value assumption a third mode would have to migrate out of.
+ * - **`collaborative`** — many agents, *one* artifact: a wiki page, a co-written proposal. Every
+ *   editor joins one live session (a Yjs document over the ephemeral port — see the composer's
+ *   `collaborate` prop) and a save materialises the merged document to the models. Durable block
+ *   order still lives in `children`; the session carries the live text.
  */
 export type CollectionMode = 'document' | 'feed' | 'collaborative';
 
@@ -46,9 +46,14 @@ export function isCollectionMode(value: unknown): value is CollectionMode {
 /**
  * May `reconcileBlocks` be run against a collection in this mode?
  *
- * An **allow-list**, deliberately: `mode === 'document'`, never `mode !== 'feed'`. Under the
- * deny-list form, the day `collaborative` becomes real is the day reconcile quietly starts eating
- * collaborative documents.
+ * An **allow-list**, deliberately: never `mode !== 'feed'`. A mode is admitted here when its write
+ * path genuinely hands reconcile the whole truth about the collection's content:
+ *
+ * - `document` — one agent authored it and just re-saved it.
+ * - `collaborative` — every editor shares one live session document, and a save materialises
+ *   that merged document. The session *is* the truth, so deletions in it are real deletions;
+ *   what a save must not do is run against a container whose members were never in a session
+ *   together, which is what `feed` means and why it stays refused.
  *
  * **An absent mode answers `true`.** Every post written before this field existed has none, and
  * refusing those would break editing on every pre-existing post in every space — a certain,
@@ -58,5 +63,5 @@ export function isCollectionMode(value: unknown): value is CollectionMode {
  */
 export function isReconcilable(mode: unknown): boolean {
   if (mode === undefined || mode === null || mode === '') return true;
-  return mode === 'document';
+  return mode === 'document' || mode === 'collaborative';
 }

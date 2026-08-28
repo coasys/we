@@ -121,11 +121,41 @@ this directory.
 
 ## Block & editor system
 
-`@we/block-shared` holds block content types + serialization; blocks (TextBlock, ImageBlock,
-EmbedBlock, CodeBlock, …) are AD4M models composed by the block composer.
+`@we/block-shared` holds the **content model** and persistence; `@we/block-solid` holds the
+composer (ProseMirror), the renderer and every block's display/input components. Blocks
+(TextBlock, ImageBlock, EmbedBlock, CodeBlock, …) are models composed into posts.
 
-> **To expand:** BlockComposer/BlockRenderer, editor state format, how posts serialize to/from
-> blocks (`spaceStore.createPost` / `updatePost` reconciliation), and the Solid block renderer package.
+**The content model** (`block-shared/src/content.ts`). A composition is an ordered list of blocks.
+A text block is one canonical `text` string plus standoff `marks` — `{ start, end, type, …data }`
+ranges over it in Unicode code points — with `style`, `listItem` and `level` for its role; every
+other block is a typed record whose `_type` is its registry key; a collection holds a nested
+composition. It is Portable Text with WE extensions: `toPortableText` derives spans and markDefs
+beside the canonical fields. Content is data, never evaluated.
+
+**Where the truth is.** The models are canonical — one per block, linked through `children`.
+`CollectionBlock.editorState` is a cache: the Portable Text projection of those models, written on
+every save because reading a post is one file read rather than a hydration per block, and
+regenerable from the models (`loadBlocks`). Legacy Lexical blobs are read forever by
+`legacyLexical.ts` and converted on load; nothing is rewritten in place.
+
+**Save.** The composer's `onSave` hands `spaceStore.createPost` / `updatePost` a
+`ContentDocument` — `{ blocks, base }`, where `base` is the keys of the blocks that were loaded.
+`createBlocks` uploads file assets, creates the models, writes the blob, the `textContent` search
+index and the `we://mention` edges. `reconcileBlocks` updates blocks whose key survived, creates the
+rest, and computes removals against `base` rather than current state, so a block another agent
+added mid-edit is kept. It refuses any collection whose `mode` is not `document`.
+
+**The editor** (`block-solid/src/editor/`). One ProseMirror document per composition, the schema
+built from the block registry: text containers are textblocks, registered blocks are atoms with
+their fields in a `props` attr (rendered by a Solid root per node view), a collection is a node with
+nested content, a mention is an inline atom, the decorators and links are marks. Every block node
+carries its model id. Lists are flat items with `listType`/`level` attrs. The chrome — handles,
+drag-and-drop, hover/focus decorations, placeholders, slash menu, input rules, the @mention
+typeahead, the selection toolbar — is plugins and Solid overlays.
+
+**The renderer** walks the content and serialises text blocks through the same schema's `toDOM`,
+so it and the composer cannot draw different DOM (`tests/renderParity.test.tsx`), and no editor is
+instantiated to show a post.
 
 ## Seed system & deployment
 
