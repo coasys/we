@@ -50,6 +50,14 @@ export const postsList: SchemaNode = {
       empty: emptyState({ icon: 'newspaper', label: 'posts', searchable: true }),
       children: [
         cardShell({
+          // Every card in this route is a drag source; the list is the only thing that knows what
+          // its rows are. See `cardShell`'s `drag`.
+          drag: {
+            entity: 'CollectionBlock',
+            id: { $: 'post.id' },
+            label: { $: 'post.textContent' },
+            icon: 'newspaper',
+          },
           // Both of these drive controls in `header`, so the card is the nearest node that can
           // declare them. Undeclared, `$setLocal` warned and no-opped — the edit and delete
           // buttons rendered, took the click, and did nothing.

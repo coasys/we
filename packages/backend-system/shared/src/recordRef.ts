@@ -69,6 +69,23 @@ function stripScheme(cid: string): string {
   return cid.replace(/^neighbourhood:\/\//, '');
 }
 
+/**
+ * One spelling for one dataset.
+ *
+ * A caller usually has the neighbourhood URL rather than the bare CID — it is what `Space.url`
+ * holds and what a share link carries — so both arrive here, and two spellings of one dataset would
+ * mean two references to one record: gathering the same post twice, from two surfaces, and getting
+ * two rows. Applied inside {@link formatRef}, so nowhere else has to remember.
+ */
+function normaliseKey(key: string): string {
+  if (key === 'agent') return key;
+  if (key.startsWith('p:')) return key;
+  if (key.startsWith('n:')) return `n:${stripScheme(key.slice(2))}`;
+  // A bare URL or CID handed straight in — the shape a template has, since an expression cannot
+  // strip a prefix.
+  return `n:${stripScheme(key)}`;
+}
+
 /** What kind of thing a key names. */
 export function datasetKindOf(key: string): DatasetKind | null {
   if (key === 'agent') return 'agent';
@@ -85,8 +102,9 @@ export function datasetIdOf(key: string): string {
 /** Write a reference. */
 export function formatRef(ref: Partial<RecordRef> & { datasetKey: string }): string {
   if (!ref.datasetKey) return '';
-  if (!ref.entity || !ref.id) return `${SCHEME}${ref.datasetKey}`;
-  return `${SCHEME}${ref.datasetKey}/${ref.entity}/${ref.id}`;
+  const key = normaliseKey(ref.datasetKey);
+  if (!ref.entity || !ref.id) return `${SCHEME}${key}`;
+  return `${SCHEME}${key}/${ref.entity}/${ref.id}`;
 }
 
 /** A person. They belong to no dataset, so they get their own form. */

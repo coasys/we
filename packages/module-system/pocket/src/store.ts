@@ -30,7 +30,12 @@ export interface GatherInput {
   id: string;
   label?: string;
   icon?: string;
-  /** Already a whole reference, for a source that knows its own dataset. */
+  /**
+   * Where it lives, when that is not the dataset on screen — a space listed in a directory, or a
+   * row dragged back out of the Pocket. Any spelling: `formatRef` normalises it.
+   */
+  datasetKey?: string;
+  /** Already a whole reference, for a source that has one. */
   ref?: string;
 }
 
@@ -112,8 +117,20 @@ export function createPocketStore(deps: ModuleStoreDeps) {
   function referenceFor(input: GatherInput): string {
     if (input.ref) return input.ref;
     if (input.entity === 'Agent') return formatAgentRef(input.id);
-    const key = deps.datasetRefKey?.() ?? '';
-    if (!key || !input.entity || !input.id) return '';
+    const key = input.datasetKey || deps.datasetRefKey?.() || '';
+    if (!key) return '';
+    /*
+      A space is the one thing whose identity *is* its dataset, so it gets the bare form and its
+      record id is dropped.
+
+      Not a shortcut. The Space records a directory lists are copies, with ids local to the
+      directory — so `we:n:<theSpace>/Space/<idInTheDirectory>` would name a record that does not
+      exist there. Keeping only the dataset is both true and more useful: two directories listing
+      one space produce the same reference, and going to it goes to the space rather than back to
+      wherever you happened to find it.
+    */
+    if (input.entity === 'Space' && input.datasetKey) return formatRef({ datasetKey: key });
+    if (!input.entity || !input.id) return '';
     return formatRef({ datasetKey: key, entity: input.entity, id: input.id });
   }
 
@@ -207,9 +224,7 @@ export function createPocketStore(deps: ModuleStoreDeps) {
               label: item.label,
               icon: item.icon,
               // A source in another dataset says so; everything in the space on screen does not.
-              ref: item.ref?.dataset
-                ? formatRef({ datasetKey: item.ref.dataset, entity: item.ref.entity ?? '', id: item.ref.id ?? '' })
-                : undefined,
+              datasetKey: item.ref?.dataset,
             }))
           : [payload as GatherInput];
 

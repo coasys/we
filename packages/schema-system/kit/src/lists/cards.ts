@@ -46,6 +46,24 @@ export interface CardShellOptions {
    * the card so they can name the row (`call.id`), which nothing above the `$each` can.
    */
   queries?: Record<string, QueryStateField>;
+  /**
+   * What this card *is*, so it can be picked up and carried somewhere else.
+   *
+   * Given, never derived: this fragment is called from inside a `$each` and never sees the row's
+   * name, so only the list knows whether a row is a `CollectionBlock` or a `Space` and which field
+   * holds its id. One line per list, and every card in the route becomes a drag source.
+   *
+   * Leave `datasetKey` alone for anything in the space on screen — the receiver stamps it. See
+   * `we-draggable`.
+   */
+  drag?: {
+    entity: SchemaProp;
+    id: SchemaProp;
+    label?: SchemaProp;
+    icon?: SchemaProp;
+    /** Only where the row is not in the dataset being looked at — a space listed in a directory. */
+    datasetKey?: SchemaProp;
+  };
 }
 
 const defaultMaxHeight = { $: "local.displayMode == 'grid' ? '250px' : '100px'" };
@@ -61,6 +79,27 @@ const defaultMaxHeight = { $: "local.displayMode == 'grid' ? '250px' : '100px'" 
  * $localState (displayMode, sortDirection, etc.) remains accessible.
  */
 export function cardShell(opts: CardShellOptions): SchemaNode {
+  const card = buildCard(opts);
+  if (!opts.drag) return card;
+  /*
+    Wrapped rather than given props of its own, because `we-draggable` is `display: contents`: it
+    adds no box, so the card is still the grid item its parent lays out, and the card is what the
+    ghost and the geometry are measured from.
+  */
+  return {
+    type: 'we-draggable',
+    props: {
+      entity: opts.drag.entity,
+      recordId: opts.drag.id,
+      ...(opts.drag.label !== undefined && { label: opts.drag.label }),
+      ...(opts.drag.icon !== undefined && { icon: opts.drag.icon }),
+      ...(opts.drag.datasetKey !== undefined && { datasetKey: opts.drag.datasetKey }),
+    },
+    children: [card],
+  };
+}
+
+function buildCard(opts: CardShellOptions): SchemaNode {
   const { header, body, modalContent } = opts;
   const maxHeight = opts.maxHeight ?? defaultMaxHeight;
 

@@ -31,7 +31,21 @@ const blockSection = (opts: BlockSectionOptions): SchemaNode => ({
       // Not search-aware: these sections don't filter on `searchText`, so nothing here can be
       // hidden by the search box.
       empty: emptyState({ icon: opts.icon, label: opts.label }),
-      children: [cardShell({ header: blockHeader(opts.icon), body: opts.body, maxHeight: opts.maxHeight })],
+      children: [
+        cardShell({
+          // Thirteen sections, one shape: the entity and the icon are already parameters, and a
+          // block's name lives under a different property per type.
+          drag: {
+            entity: opts.entity,
+            id: { $: 'block.id' },
+            label: { $: 'block.title ?? block.name ?? block.text' },
+            icon: opts.icon,
+          },
+          header: blockHeader(opts.icon),
+          body: opts.body,
+          maxHeight: opts.maxHeight,
+        }),
+      ],
     }),
   },
 });

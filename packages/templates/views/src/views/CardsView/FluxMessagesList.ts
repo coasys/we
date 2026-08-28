@@ -30,6 +30,7 @@ export const fluxMessagesList: SchemaNode = {
       empty: noRows,
       children: [
         cardShell({
+          drag: { entity: 'Message', id: { $: 'message.id' }, label: { $: 'message.body' }, icon: 'chat-text' },
           header: [agentByline({ did: { $: 'message.author' }, timestamp: { $: 'message.createdAt' } })],
           body: [{ type: 'we-html', props: { content: { $: 'message.body' } } }],
         }),

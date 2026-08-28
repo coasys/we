@@ -146,6 +146,7 @@ export const callsList: SchemaNode = {
       }),
       children: [
         cardShell({
+          drag: { entity: 'CollectionBlock', id: { $: 'call.id' }, label: { $: 'call.title' }, icon: 'phone' },
           queries: callQueries,
           localState: {
             confirmDeleteOpen: { type: 'boolean', initial: false },

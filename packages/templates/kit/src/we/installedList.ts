@@ -46,6 +46,14 @@ export function installedList(opts: InstalledListOptions): SchemaNode {
     empty: emptyState({ icon: opts.emptyIcon, label: opts.label, searchable: true }),
     children: [
       cardShell({
+        // Templates and themes are records like any other, so they are gathered like any other —
+        // the entity and the noun are already parameters here.
+        drag: {
+          entity: opts.entity,
+          id: { $: `${opts.as}.id` },
+          label: { $: `${opts.as}.name` },
+          icon: opts.emptyIcon,
+        },
         header: [
           {
             type: 'Row',
