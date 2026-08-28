@@ -135,8 +135,7 @@ beside the canonical fields. Content is data, never evaluated.
 **Where the truth is.** The models are canonical — one per block, linked through `children`.
 `CollectionBlock.editorState` is a cache: the Portable Text projection of those models, written on
 every save because reading a post is one file read rather than a hydration per block, and
-regenerable from the models (`loadBlocks`). Legacy Lexical blobs are read forever by
-`legacyLexical.ts` and converted on load; nothing is rewritten in place.
+regenerable from the models (`loadBlocks`). Nothing is rewritten in place.
 
 **Save.** The composer's `onSave` hands `spaceStore.createPost` / `updatePost` a
 `ContentDocument` — `{ blocks, base }`, where `base` is the keys of the blocks that were loaded.

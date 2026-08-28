@@ -6,26 +6,11 @@ import type { ContentBlock, ContentDocument } from './content';
 export type BlockDataset = unknown;
 
 /**
- * A node of the **legacy** stored form: Lexical's serialized editor state, as WE wrote it before the
- * content layer. Read by `legacyLexical.ts` and nowhere else; the current form is `ContentBlock`.
- *
- * `type` is the Lexical node type ('paragraph', 'image', 'collection', 'root', …) and the index
- * signature carries per-type properties (text, src, title, listType, childEditorState, and the `id`
- * the persistence pipeline stamped onto persisted nodes).
+ * What a composer or renderer accepts as content: the blocks, a document around them, or the
+ * `data:…;base64,…` string a resolved file field reads as. `decodeEditorState` turns any of them
+ * into blocks.
  */
-export interface SerializedBlockNode {
-  type: string;
-  version?: number;
-  children?: SerializedBlockNode[];
-  [key: string]: unknown;
-}
-
-/**
- * What a composer or renderer accepts as content: the blocks, a document around them, the legacy
- * tree, or the `data:…;base64,…` string a resolved file field reads as. `decodeEditorState` turns
- * any of them into blocks.
- */
-export type EditorStateInput = ContentBlock[] | ContentDocument | SerializedBlockNode | string;
+export type EditorStateInput = ContentBlock[] | ContentDocument | string;
 
 /** A person the composer can @mention. */
 export interface MentionCandidate {

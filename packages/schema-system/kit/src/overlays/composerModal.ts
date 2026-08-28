@@ -12,7 +12,7 @@
  * `BlockComposer.onSave` does not fire when the user types, or when the modal closes. It fires when
  * somebody calls the composer's own `save()`, which it hands out exactly once through `onReady`. So
  * the sequence is: `onReady` stores that function in a `function`-typed local, the button calls it
- * with `$callLocal`, `save()` serializes the Lexical tree, and `onSave` runs the action with the
+ * with `$callLocal`, `save()` serializes the document, and `onSave` runs the action with the
  * tree as `$arg`.
  *
  * Written the obvious way instead — a button that calls the action with a `draft` local the
@@ -67,7 +67,7 @@ export interface ComposerModalOptions {
    *
    * On by default here and opt-in on `formModal`, because a composer is the one place in WE where
    * somebody may have written several paragraphs, and it is the one place a template author cannot
-   * write the guard themselves: the content lives inside Lexical, so no `$local` can see whether
+   * write the guard themselves: the content lives inside the editor, so no `$local` can see whether
    * anything was typed. The composer reports that through `onDirtyChange`, which this wires up.
    */
   guardDraft?: boolean;
@@ -90,7 +90,7 @@ export function composerModal(opts: ComposerModalOptions): SchemaNode {
     : { $setLocal: opts.openLocal, value: false };
   /*
     `draftDirty` is written by the composer, not by the schema. It is the one piece of modal state
-    in the kit whose source is a component rather than a control, because Lexical's document is not
+    in the kit whose source is a component rather than a control, because the editor's document is not
     reachable from `$local` — see `BlockComposer.onDirtyChange`.
   */
   const guard = opts.guardDraft === false ? null : discardGuard({ dirty: { $: 'local.draftDirty' }, close });

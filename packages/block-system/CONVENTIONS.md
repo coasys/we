@@ -49,8 +49,7 @@ marks — the transcribe pipeline, the notes module — produces a well-formed b
 The **models are canonical**: one model per block, linked through `children`, in the order the
 composition has. `CollectionBlock.editorState` is a **cache** — the Portable Text projection of
 those models, written on every save, kept because reading a post is one file read rather than a
-hydration per block. It is regenerable (`loadBlocks` rebuilds the composition from the models) and
-a legacy Lexical blob is read forever by `legacyLexical.ts` and converted on the way in. Nothing
+hydration per block. It is regenerable (`loadBlocks` rebuilds the composition from the models). Nothing
 is ever rewritten in place; a post converges when it is next saved.
 
 ### What is a block?
@@ -245,9 +244,9 @@ creates the rest, and computes removals **against `document.base`** — the keys
 so a block another agent added meanwhile is kept and re-linked rather than deleted. It refuses any
 collection whose `mode` is not `document` (see `modes.ts`).
 
-**Load:** `decodeEditorState(blob)` accepts the current blob, a legacy Lexical tree, a document or
-bare blocks; `loadBlocks(perspective, rootId)` rebuilds the composition from the models when there is
-no blob, or the blob is behind.
+**Load:** `decodeEditorState(blob)` accepts the current blob, a document or bare blocks;
+`loadBlocks(perspective, rootId)` rebuilds the composition from the models when there is no blob, or
+the blob is behind.
 
 The composer's `onSave` hands over a `ContentDocument` — `{ _type: 'document', blocks, base }` —
 and `spaceStore.createPost` / `updatePost` pass it straight through.

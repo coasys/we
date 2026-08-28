@@ -315,17 +315,10 @@ describe('createBlocks', () => {
     expect((blocks[0] as { content: ContentBlock[] }).content[0]._key).toBe(nested.children[0]);
   });
 
-  it('accepts a legacy Lexical tree and converts it on the way in', async () => {
-    const legacy = {
-      type: 'root',
-      version: 1,
-      children: [{ type: 'paragraph', version: 1, children: [{ type: 'text', version: 1, text: 'old', format: 1 }] }],
-    };
-    const root = (await createBlocks(perspective, legacy, { kind: 'post' })) as FakeCollection;
-    const item = FakeBlock.created.find((b) => b instanceof FakeText)!;
-    expect(item.text).toBe('old');
-    expect(item.marks).toBe('[{"start":0,"end":3,"type":"strong"}]');
-    expect(root.textContent).toBe('old');
+  it('refuses content that is not a composition', async () => {
+    await expect(
+      createBlocks(perspective, { type: 'root', children: [] } as unknown as ContentBlock[], { kind: 'post' }),
+    ).rejects.toThrow('not a composition');
   });
 
   it('defaults mode to document when a kind is given — everything it creates is a composition', async () => {

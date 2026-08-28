@@ -16,8 +16,7 @@ import { mentionedDids, parseMarks, serializeMarks } from './marks';
 import type { CollectionMode } from './modes';
 import { isReconcilable } from './modes';
 import { getBlockRegistration, getRegisteredBlockModels } from './registry';
-import type { SerializedBlockNode } from './types';
-import { contentFromValue, encodeBase64Utf8 } from './utils';
+import { encodeBase64Utf8 } from './utils';
 
 /**
  * The dataset a block tree persists into — whatever handle the connected backend takes. This
@@ -31,7 +30,7 @@ type BlockDataset = unknown;
 type BlockModel = ModelInstance & Record<string, unknown>;
 
 /** What a save may hand over — see {@link normalizeInput}. */
-export type ContentInput = ContentBlock[] | ContentDocument | SerializedBlockNode;
+export type ContentInput = ContentBlock[] | ContentDocument;
 
 /** The manifest's answer to "which of this entity's fields hold file-stored content". */
 function fileFieldNames(entity: string | undefined): string[] {
@@ -274,16 +273,12 @@ function isFileData(value: unknown): value is FileData {
  * Whatever a save handed over, as blocks plus the base keys of an edit.
  *
  * The caller's own block objects are returned, not copies: persisting stamps `_key` onto them, and
- * a composer that holds the document reconciles against those keys next time. Only a legacy tree
- * is converted into fresh objects, since there is nothing of the caller's to stamp.
+ * a composer that holds the document reconciles against those keys next time.
  */
 function normalizeInput(input: ContentInput): { blocks: ContentBlock[]; base?: string[] } {
   if (isContentDocument(input)) return { blocks: input.blocks, base: input.base };
   if (isContentBlockArray(input)) return { blocks: input };
-  const blocks = contentFromValue(input);
-  if (!blocks)
-    throw new Error('createBlocks: the content is not a composition (expected blocks, a document, or a legacy tree)');
-  return { blocks };
+  throw new Error('createBlocks: the content is not a composition (expected blocks or a document)');
 }
 
 // ── File assets ──────────────────────────────────────────────────────────────

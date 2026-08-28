@@ -1,11 +1,4 @@
-export type {
-  BlockComposerProps,
-  BlockDataset,
-  BlockRendererProps,
-  EditorStateInput,
-  MentionCandidate,
-  SerializedBlockNode,
-} from './types';
+export type { BlockComposerProps, BlockDataset, BlockRendererProps, EditorStateInput, MentionCandidate } from './types';
 export type {
   BlockStyle,
   CollectionContentBlock,
@@ -47,7 +40,6 @@ export {
   shiftMarks,
   utf16ToCp,
 } from './marks';
-export { isLegacyLexicalRoot, lexicalRootToContent } from './legacyLexical';
 export type { BlockRegistration } from './registry';
 export {
   getBlockModel,

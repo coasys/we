@@ -1,13 +1,12 @@
 /**
- * The content model's pure half: marks arithmetic, the Portable Text projection and its inverse,
- * and the legacy Lexical reader. No models, no backend — these are the functions everything else
- * is built on, and they have to be right for every string JavaScript can hold.
+ * The content model's pure half: marks arithmetic, and the Portable Text projection with its
+ * inverse. No models, no backend — these are the functions everything else is built on, and they
+ * have to be right for every string JavaScript can hold.
  */
 import { describe, expect, it } from 'vitest';
 
 import type { ContentBlock, TextContentBlock } from '../src/content';
 import { collectKeys, fromPortableText, spansFromStandoff, standoffFromSpans, toPortableText } from '../src/content';
-import { isLegacyLexicalRoot, lexicalRootToContent } from '../src/legacyLexical';
 import { cpLength, cpToUtf16, normalizeMarks, parseMarks, serializeMarks, shiftMarks, utf16ToCp } from '../src/marks';
 import { decodeEditorState, encodeBase64Utf8 } from '../src/utils';
 
@@ -169,107 +168,14 @@ describe('decodeEditorState', () => {
     expect(decoded[0].text).toBe('héllo — 😀');
   });
 
-  it('accepts a document, a bare array, and a legacy root', () => {
+  it('accepts a document and a bare array, and refuses anything else', () => {
     expect(decodeEditorState({ _type: 'document', blocks: [{ _type: 'block', text: 'x' }] })).toHaveLength(1);
     expect(decodeEditorState([{ _type: 'image', src: 'y' }])).toHaveLength(1);
+    // The Lexical tree WE stored before the content layer is no longer a composition.
     expect(
       decodeEditorState({ type: 'root', children: [{ type: 'paragraph', children: [{ type: 'text', text: 'z' }] }] }),
-    ).toEqual([{ _type: 'block', style: 'normal', text: 'z' }]);
+    ).toBeNull();
     expect(decodeEditorState('nonsense')).toBeNull();
     expect(decodeEditorState(42)).toBeNull();
-  });
-});
-
-describe('legacy Lexical reader', () => {
-  const lex = (children: unknown[]) => ({ type: 'root', version: 1, children });
-  const text = (t: string, format = 0) => ({ type: 'text', version: 1, text: t, format });
-
-  it('recognises a root and an editor-state envelope', () => {
-    expect(isLegacyLexicalRoot(lex([]))).toBe(true);
-    expect(isLegacyLexicalRoot({ root: lex([]) })).toBe(true);
-    expect(isLegacyLexicalRoot([{ _type: 'block' }])).toBe(false);
-  });
-
-  it('maps paragraphs, headings and quotes to styles and keeps ids as keys', () => {
-    const blocks = lexicalRootToContent(
-      lex([
-        { type: 'paragraph', id: 'p', children: [text('one')] },
-        { type: 'heading', tag: 'h2', children: [text('two')] },
-        { type: 'quote', children: [text('three')] },
-      ]) as never,
-    ) as TextContentBlock[];
-    expect(blocks.map((b) => [b.style, b.text, b._key])).toEqual([
-      ['normal', 'one', 'p'],
-      ['h2', 'two', undefined],
-      ['blockquote', 'three', undefined],
-    ]);
-  });
-
-  it('turns format bits into decorator marks and linebreaks into newlines', () => {
-    const [block] = lexicalRootToContent(
-      lex([
-        {
-          type: 'paragraph',
-          children: [text('bold', 1), text(' plain'), { type: 'linebreak', version: 1 }, text('it', 2)],
-        },
-      ]) as never,
-    ) as TextContentBlock[];
-    expect(block.text).toBe('bold plain\nit');
-    expect(block.marks).toEqual([
-      { start: 0, end: 4, type: 'strong' },
-      { start: 11, end: 13, type: 'em' },
-    ]);
-  });
-
-  it('flattens nested lists into items with level, carrying the list type', () => {
-    const blocks = lexicalRootToContent(
-      lex([
-        {
-          type: 'list',
-          listType: 'number',
-          children: [
-            { type: 'listitem', children: [text('a')] },
-            {
-              type: 'listitem',
-              children: [
-                { type: 'list', listType: 'number', children: [{ type: 'listitem', children: [text('a.1')] }] },
-              ],
-            },
-            { type: 'listitem', children: [text('b')] },
-          ],
-        },
-      ]) as never,
-    ) as TextContentBlock[];
-    expect(blocks.map((b) => [b.text, b.listItem, b.level ?? 0])).toEqual([
-      ['a', 'number', 0],
-      ['a.1', 'number', 1],
-      ['b', 'number', 0],
-    ]);
-  });
-
-  it('reads a mention run as text plus a mention mark', () => {
-    const [block] = lexicalRootToContent(
-      lex([{ type: 'paragraph', children: [text('hi '), { type: 'mention', did: 'did:key:a', text: '@a' }] }]) as never,
-    ) as TextContentBlock[];
-    expect(block.text).toBe('hi @a');
-    expect(block.marks).toEqual([{ start: 3, end: 5, type: 'mention', did: 'did:key:a' }]);
-  });
-
-  it('turns a decorator node into a custom block and a collection into nested content', () => {
-    const blocks = lexicalRootToContent(
-      lex([
-        { type: 'image', version: 1, id: 'img', src: 'Qm://x', altText: 'alt', width: 66 },
-        {
-          type: 'collection',
-          id: 'col',
-          layout: 'grid',
-          columnCount: 2,
-          childEditorState: lex([{ type: 'paragraph', children: [text('inside')] }]),
-        },
-      ]) as never,
-    );
-    expect(blocks[0]).toEqual({ _type: 'image', _key: 'img', src: 'Qm://x', altText: 'alt', width: 66 });
-    expect(blocks[1]).toMatchObject({ _type: 'collection', _key: 'col', layout: 'grid', columnCount: 2 });
-    expect((blocks[1] as { content: TextContentBlock[] }).content[0].text).toBe('inside');
   });
 });

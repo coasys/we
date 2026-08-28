@@ -1,6 +1,5 @@
 import type { ContentBlock } from './content';
 import { fromPortableText, isContentBlockArray, isContentDocument } from './content';
-import { isLegacyLexicalRoot, lexicalRootToContent } from './legacyLexical';
 
 /**
  * Decode base64 that was produced from UTF-8 — the way `createBlocks` writes the blob. A bare
@@ -26,8 +25,8 @@ export function encodeBase64Utf8(text: string): string {
  * Whatever a stored composition arrives as, to content blocks.
  *
  * Accepts the `data:application/json;base64,…` string a resolved file field reads as, an already
- * parsed value, a content document, a bare block array, or a legacy Lexical root — and answers with
- * the lean in-memory form. Returns null only for something that is none of those.
+ * parsed value, a content document or a bare block array — and answers with the lean in-memory
+ * form. Returns null only for something that is none of those.
  */
 export function decodeEditorState(input: unknown): ContentBlock[] | null {
   let value: unknown = input;
@@ -54,6 +53,5 @@ export function decodeEditorState(input: unknown): ContentBlock[] | null {
 export function contentFromValue(value: unknown): ContentBlock[] | null {
   if (isContentDocument(value)) return fromPortableText(value.blocks);
   if (isContentBlockArray(value)) return fromPortableText(value);
-  if (isLegacyLexicalRoot(value)) return lexicalRootToContent(value);
   return null;
 }
