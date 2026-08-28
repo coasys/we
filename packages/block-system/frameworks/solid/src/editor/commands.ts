@@ -7,7 +7,7 @@
  * heading reconciles against the same model — and dropped when a block genuinely becomes another
  * thing.
  */
-import type { Attrs, Node as PMNode, NodeType, Schema } from 'prosemirror-model';
+import type { Attrs, Node as PMNode, NodeType, ResolvedPos, Schema } from 'prosemirror-model';
 import { Fragment, Slice } from 'prosemirror-model';
 import type { Command, EditorState, Transaction } from 'prosemirror-state';
 import { NodeSelection, TextSelection } from 'prosemirror-state';
@@ -157,16 +157,42 @@ export function moveBlock(view: EditorView, sourcePos: number, targetPos: number
   return true;
 }
 
-/** Change the indent level of the textblock around the selection, within bounds. */
+/** The indent of the block before this one under the same parent, or -1 when there is none. */
+function levelAbove($from: ResolvedPos): number {
+  const depth = $from.depth;
+  if (depth === 0) return -1;
+  const index = $from.index(depth - 1);
+  if (index === 0) return -1;
+  return Number($from.node(depth - 1).child(index - 1).attrs.level ?? 0);
+}
+
+/**
+ * Change the indent level of the textblock around the selection.
+ *
+ * **A list item may sit at most one level deeper than the block above it**, which is what every
+ * outliner does. Without that, holding Tab walked an item six levels right under a level-0
+ * neighbour — drawn as a hierarchy that is not there, since nothing above it sits at any of the
+ * levels it passed through. An item with nothing above it has nothing to nest beneath, so it stays
+ * where it is. A paragraph or a heading is not a hierarchy, only a margin, so it indents freely to
+ * `MAX_LEVEL`. Indenting never *out*dents: a block already deeper than its ceiling (older content,
+ * or a neighbour that moved) is left alone rather than tidied up by a keystroke.
+ *
+ * **The key is always claimed**, even where the level cannot change. Tab belongs to the editor
+ * while the caret is in it; letting it through moves focus to whatever is behind the composer —
+ * in a modal, to Cancel — from a caret in the middle of a document, which is not what anybody
+ * pressing Tab against the end of an indent meant. The way out of the composer is the way in:
+ * the mouse, or Escape.
+ */
 export function shiftLevel(delta: number): Command {
   return (state, dispatch) => {
     const { $from, $to } = state.selection;
-    if (state.selection instanceof NodeSelection) return false;
+    if (state.selection instanceof NodeSelection) return true;
     const node = $from.parent;
-    if (!node.type.isTextblock || !$from.sameParent($to)) return false;
+    if (!node.type.isTextblock || !$from.sameParent($to)) return true;
     const current = Number(node.attrs.level ?? 0);
-    const next = Math.max(0, Math.min(MAX_LEVEL, current + delta));
-    if (next === current) return false;
+    const ceiling = node.type.name === 'list_item' ? Math.min(MAX_LEVEL, levelAbove($from) + 1) : MAX_LEVEL;
+    const next = delta > 0 ? Math.max(current, Math.min(current + delta, ceiling)) : Math.max(0, current + delta);
+    if (next === current) return true;
     if (dispatch) {
       const pos = $from.before();
       dispatch(state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, level: next }));

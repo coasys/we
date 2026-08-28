@@ -79,9 +79,18 @@
     position: relative;
     padding-left: 30px;
 
+    // The marker is a box exactly one line tall, sitting at the top of the item's content — so it
+    // is centred on the item's *first* line whatever the theme's type scale says, rather than at
+    // a hand-measured offset that was right for one font size. It sets no font-size or
+    // line-height of its own, which is what lets `1lh` mean "one line of this item's text".
     &::before {
       position: absolute;
       left: 10px;
+      top: var(--we-space-300); // the padding `.we-block` gives every item
+      height: 1.5em; // fallback where `lh` is unsupported
+      height: 1lh;
+      display: flex;
+      align-items: center;
       color: var(--we-role-text);
     }
   }
@@ -92,9 +101,10 @@
     .we-list-item[data-list-type='bullet'][data-level='#{$i}'] {
       &::before {
         content: list.nth($bullets, ($i % 3) + 1);
-        top: 5px;
-        font-size: 22px;
-        line-height: 1;
+        // Scaled rather than sized: a transform leaves the line box alone, so the dot grows about
+        // its own centre and stays on the line. A `font-size` here would change what `1lh` above
+        // means and put the marker back out of alignment.
+        transform: scale(1.4);
       }
     }
   }
@@ -109,8 +119,6 @@
       counter-increment: we-list-#{$i};
       &::before {
         content: counter(we-list-#{$i}) '.';
-        top: 10px;
-        font-size: 16px;
       }
     }
     // A run starts after anything that is not a numbered item at this level.
@@ -124,7 +132,9 @@
   .we-list-item[data-list-type='check'] {
     &::before {
       content: '';
-      top: 12px;
+      // A fixed square, so it centres itself on the line rather than filling it.
+      top: calc(var(--we-space-300) + (1.5em - 16px) / 2); // fallback where `lh` is unsupported
+      top: calc(var(--we-space-300) + (1lh - 16px) / 2);
       width: 16px;
       height: 16px;
       border: 1.5px solid var(--we-role-border-strong);
