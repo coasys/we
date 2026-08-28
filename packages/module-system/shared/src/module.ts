@@ -584,6 +584,19 @@ export interface ModuleStoreDeps {
    */
   datasetUri?: () => string | null;
 
+  /**
+   * How the current dataset is named inside a **record reference** — `n:<cid>` or `p:<uuid>`.
+   *
+   * The host builds it rather than the module, because only the host knows a dataset has two names
+   * and which one applies: a neighbourhood is keyed by its CID, so the same string means the same
+   * record to every agent who joined it, and a personal dataset falls back to a local uuid that
+   * means nothing anywhere else. A module deriving this itself would get the second case wrong in
+   * the direction that matters — a reference that looks shareable and is not.
+   *
+   * Empty while no dataset is open. See `@we/backend-shared`'s `recordRef`.
+   */
+  datasetRefKey?: () => string;
+
   /** This agent's id in the host's identity scheme (a DID on AD4M). `null` before login. */
   selfId?: () => string | null;
 
@@ -619,6 +632,14 @@ export interface ModuleStoreDeps {
   identities?: ModuleIdentityAccess;
   /** Naming and reaching spaces — for a module whose state can outlive the space on screen. */
   datasets?: ModuleDatasetAccess;
+
+  /**
+   * This agent's own records, in the root dataset. See {@link AgentDataAccess}.
+   *
+   * The other half of `entities: { scope: 'agent' }` — declaring private entities without a way to
+   * write them would be half a feature. Nothing here reaches a space.
+   */
+  agentData?: AgentDataAccess;
 
   /**
    * Speech to text, for a module that listens. Absent when the backend cannot transcribe.
@@ -701,6 +722,38 @@ export interface CreateEntityOptions {
    * anything: a module has no access to the host's model classes, and should not.
    */
   parent?: { id: string; predicate: string };
+}
+
+/**
+ * Read and write this agent's **own** records — the ones a module declared `scope: 'agent'`.
+ *
+ * The write surface for the root dataset, and the counterpart of `createEntity`, which writes into
+ * whichever space is open. Two calls rather than one because the root dataset is where a module
+ * keeps what it knows about *you*, and knowing it usually means reading it back: "have I gathered
+ * this already" is a question about the agent's own collection, and it has to be answerable without
+ * a space being open at all.
+ *
+ * Deliberately not a general ORM. No update, no relations, no includes — the same restraint
+ * `createEntity` shows, and for the same reason: a module's data surface should be the smallest
+ * thing that does the job, not whatever the host's ORM happens to expose. A module that needs more
+ * than this from a schema already has it, through `$query` against
+ * `dataset: 'datasetStore.rootDataset'`.
+ *
+ * Absent where the host has no agent dataset — a presentation-only host, or the frames before boot
+ * finishes. A module must degrade rather than throw.
+ */
+export interface AgentDataAccess {
+  /** Whether the agent's dataset is reachable yet. False during boot. */
+  ready: () => boolean;
+  /** Create a record. Returns its id, or `null` if there was nowhere to write it. */
+  create: (entity: string, fields: Record<string, unknown>, options?: CreateEntityOptions) => Promise<string | null>;
+  /** Read records back. The same `where`/`order`/`limit` a `$query` takes. */
+  find: (
+    entity: string,
+    query?: { where?: Record<string, unknown>; order?: Record<string, 'asc' | 'desc'>; limit?: number },
+  ) => Promise<Record<string, unknown>[]>;
+  /** Delete one record. Irreversible, and only ever this agent's own. */
+  remove: (entity: string, id: string) => Promise<void>;
 }
 
 /** An application embedded in an iframe — see {@link ModuleDefinition.embed}. */

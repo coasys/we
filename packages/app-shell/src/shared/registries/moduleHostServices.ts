@@ -28,6 +28,7 @@ import type {
   TranscriptionPort,
 } from '@we/backend-shared';
 import type {
+  AgentDataAccess,
   CreateEntityOptions,
   InterpretationActivitySummary,
   ModuleDatasetAccess,
@@ -96,6 +97,10 @@ export interface ModuleHostServices {
   ) => Promise<string | null>;
   /** Add one value to a to-many relation on an existing record. See `ModuleStoreDeps.linkEntity`. */
   linkEntity?: (entity: string, id: string, relation: string, value: string) => Promise<void>;
+  /** This agent's own records, in the root dataset. See `AgentDataAccess`. */
+  agentData?: AgentDataAccess;
+  /** How the current dataset is named in a record reference. See `ModuleStoreDeps.datasetRefKey`. */
+  datasetRefKey?: () => string;
 }
 
 const services: ModuleHostServices = {};
@@ -131,6 +136,7 @@ export function createModuleStoreDeps(framework: {
 
     dataset: () => services.dataset?.() ?? null,
     datasetUri: () => services.datasetUri?.() ?? null,
+    datasetRefKey: () => services.datasetRefKey?.() ?? '',
     selfId: () => services.selfId?.() ?? null,
 
     // A stable function that forwards, so a module capturing `deps.ephemeral` at construction still
@@ -252,6 +258,18 @@ export function createModuleStoreDeps(framework: {
     audioInput: () => audioInput(),
 
     createEntity: async (entity, fields, options) => (await services.createEntity?.(entity, fields, options)) ?? null,
+
+    // Forwarded rather than captured, like every other port here: a module store is built before
+    // the root dataset has been found, and an agent-scoped module reading it at construction would
+    // capture nothing and never notice.
+    agentData: {
+      ready: () => services.agentData?.ready() ?? false,
+      create: async (entity, fields, options) => (await services.agentData?.create(entity, fields, options)) ?? null,
+      find: async (entity, query) => (await services.agentData?.find(entity, query)) ?? [],
+      remove: async (entity, id) => {
+        await services.agentData?.remove(entity, id);
+      },
+    },
 
     linkEntity: async (entity, id, relation, value) => {
       await services.linkEntity?.(entity, id, relation, value);

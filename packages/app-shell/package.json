@@ -57,6 +57,7 @@
     "@we/module-globe": "workspace:*",
     "@we/module-graph": "workspace:*",
     "@we/module-notes": "workspace:*",
+    "@we/module-pocket": "workspace:*",
     "@we/module-shared": "workspace:*",
     "@we/module-transcribe": "workspace:*",
     "@we/primitives": "workspace:*",

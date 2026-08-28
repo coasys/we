@@ -20,7 +20,7 @@ import { containmentPredicate, gatherTranscriptTurns, type TurnModel } from '@sh
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { moduleRegistry } from '@shared/registries/moduleRegistry';
 import { getSeed } from '@shared/seedRegistry';
-import type { DatasetRef, ModelManifestEntry } from '@we/backend-shared';
+import { datasetKey, type DatasetRef, type ModelManifestEntry } from '@we/backend-shared';
 import { AgentSettings, type DatasetProxy, getModelForPerspective } from '@we/models';
 import { Accessor, batch, createContext, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
@@ -152,6 +152,12 @@ export function DatasetStoreProvider(props: ParentProps) {
     // The *global* uri, never the local uuid — a uuid is local per-agent, so a call id derived
     // from one would differ on every peer and each would join a call only they can see.
     datasetUri: () => currentDataset()?.sharedUri ?? null,
+    // The same dataset, named the way a stored reference names it: the CID where there is one, so
+    // the reference means the same record to every agent who joined, and the local uuid otherwise.
+    datasetRefKey: () => {
+      const ds = currentDataset();
+      return ds ? datasetKey({ cid: ds.sharedUri, uuid: ds.id }) : '';
+    },
     selfId: () => session.me()?.did ?? null,
     ephemeral: session.ephemeralPort,
     // Read through `backendPorts()` on every call rather than captured: the backend connects after

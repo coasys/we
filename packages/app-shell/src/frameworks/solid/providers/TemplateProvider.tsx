@@ -82,6 +82,14 @@ export default function TemplateProvider() {
     info: (...args: unknown[]) => console.info(...args),
   };
 
+  /**
+   * Where a module's agent-scoped records live, named once.
+   *
+   * A literal in three call sites would be three chances to write a space's path by mistake, and the
+   * consequence of getting it wrong is one person's private collection synced to a community.
+   */
+  const ROOT_PERSPECTIVE = 'datasetStore.rootDataset';
+
   // Model store — wraps Ad4m static model methods with automatic perspective injection.
   // Pass `{ perspective: 'store.path' }` in options to target a different perspective
   // (e.g. 'datasetStore.rootDataset' for we-root models like AgentProfile).
@@ -111,6 +119,35 @@ export default function TemplateProvider() {
       if (!datasetStore.currentDataset()) return null;
       const created = (await modelStore.create(entity, fields, { ...options })) as { id?: string } | undefined;
       return created?.id ?? null;
+    },
+
+    /*
+      This agent's own records, in the root dataset — the write half of `entities: { scope: 'agent' }`.
+
+      Everything goes through `modelStore` with the root perspective named, so there is one place
+      that knows how a perspective path is resolved and an agent-scoped module cannot reach a space
+      by accident: the path is fixed here rather than passed in.
+    */
+    agentData: {
+      ready: () => !!datasetStore.rootDataset(),
+      create: async (entity, fields, options) => {
+        if (!datasetStore.rootDataset()) return null;
+        const created = (await modelStore.create(entity, fields, {
+          ...options,
+          perspective: ROOT_PERSPECTIVE,
+        })) as { id?: string } | undefined;
+        return created?.id ?? null;
+      },
+      find: async (entity, query) => {
+        if (!datasetStore.rootDataset()) return [];
+        const [Model, p] = resolve(entity, { perspective: ROOT_PERSPECTIVE });
+        const rows = (await Model.findAll(p, query as never)) as unknown as Record<string, unknown>[];
+        return rows ?? [];
+      },
+      remove: async (entity, id) => {
+        if (!datasetStore.rootDataset()) return;
+        await modelStore.delete(entity, id, { perspective: ROOT_PERSPECTIVE });
+      },
     },
 
     // Add-one on a to-many relation. An instance bound to an existing base expression is enough —

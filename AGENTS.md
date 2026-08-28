@@ -967,8 +967,63 @@ Most @we/primitives also accept Design System Props (see next section for detail
   Props: value: string = '', showTime: boolean = false, placeholder: string = 'Select date', disabled: boolean = false, name: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-divider (LayoutElement)
   Props: orientation: 'horizontal' | 'vertical' = 'horizontal', variant: 'solid' | 'dashed' | 'dotted' = 'solid', color?: string | undefined, thickness?: string | undefined
+- we-draggable (LayoutElement) — Makes whatever is inside it something that can be picked up and carried somewhere else.
+
+## Why this exists as a primitive
+
+A post card, a member row and a space in the sidebar are rendered by **templates**, which are
+data. If making one draggable were a code change, every future draggable surface would be a code
+change too, and the contribution ladder says arrangement stays data. This is the same rung
+`we-sortable` occupies: two custom elements and an existing `$action`, with no new prop resolver,
+no new operator, and nothing added to the expression grammar.
+
+```json
+{ "type": "we-draggable",
+  "props": { "entity": "CollectionBlock", "recordId": { "$": "post.id" }, "label": { "$": "post.title" } },
+  "children": [ "…the card…" ] }
+```
+
+## What it carries
+
+A **reference** — `{ dataset?, entity, id }` — never DOM, and never the row object. `dataset` is
+deliberately left empty here: a card fragment cannot name its own dataset without reading a
+store, and portable fragments name no store by construction. The receiver stamps it, from
+whichever dataset was current when the drop happened.
+
+## `display: contents`
+
+The wrapper must not exist as a box. A card inside a grid track, a row inside a flex column: a
+real element in between would take the track and leave the card laid out against the wrapper
+instead of the grid. What is dragged is therefore the *child*, which is also what the ghost and
+the geometry are measured from.
+  Props: entity: string = '', recordId: string = '', datasetKey: string = '', label: string = '', icon: string = '', effect: 'move' | 'copy' | 'link' = 'copy', disabled: boolean = false
 - we-drawer (OverlayElement)
   Props: hideclosebutton: boolean = false, close: () => void
+- we-drop-zone (LayoutElement) — Anything a `we-draggable` can be dropped into.
+
+The receiving half of the pair, and the same rung: two custom elements and an existing `$action`,
+so a template can make a region a drop target without a code change.
+
+```json
+{ "type": "we-drop-zone",
+  "props": { "accepts": "CollectionBlock,Space,Agent",
+             "onDropped": { "$action": "modules.pocket.gather", "args": [{ "$": "event.detail" }] } },
+  "children": [ "…the panel…" ] }
+```
+
+## It emits intent, it never mutates
+
+Exactly `we-sortable`'s rule, and for the same reason: what a drop *means* differs. A panel writes
+a record, a composer inserts a block, a board records a position. A primitive that assumed one of
+those would be useless to the others.
+
+## `accepts` is a list of entity names, as a string
+
+A comma-separated string rather than an array because that is what an HTML attribute is, and
+because a schema writing `"accepts": "CollectionBlock,Space"` needs no expression. Empty means
+"anything", which is right for a general-purpose tray and wrong for a composer — say what you
+take.
+  Props: accepts: string = '', disabled: boolean = false, noArm: boolean = false
 - we-file-upload (DesignSystemElement)
   Props: accept: string = '', multiple: boolean = false, disabled: boolean = false, name: string = ''
 - we-form-field (DesignSystemElement)

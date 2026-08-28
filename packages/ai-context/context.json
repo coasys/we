@@ -353,6 +353,56 @@
       ]
     },
     {
+      "tagName": "we-draggable",
+      "className": "Draggable",
+      "description": "Makes whatever is inside it something that can be picked up and carried somewhere else.\n\n## Why this exists as a primitive\n\nA post card, a member row and a space in the sidebar are rendered by **templates**, which are\ndata. If making one draggable were a code change, every future draggable surface would be a code\nchange too, and the contribution ladder says arrangement stays data. This is the same rung\n`we-sortable` occupies: two custom elements and an existing `$action`, with no new prop resolver,\nno new operator, and nothing added to the expression grammar.\n\n```json\n{ \"type\": \"we-draggable\",\n  \"props\": { \"entity\": \"CollectionBlock\", \"recordId\": { \"$\": \"post.id\" }, \"label\": { \"$\": \"post.title\" } },\n  \"children\": [ \"…the card…\" ] }\n```\n\n## What it carries\n\nA **reference** — `{ dataset?, entity, id }` — never DOM, and never the row object. `dataset` is\ndeliberately left empty here: a card fragment cannot name its own dataset without reading a\nstore, and portable fragments name no store by construction. The receiver stamps it, from\nwhichever dataset was current when the drop happened.\n\n## `display: contents`\n\nThe wrapper must not exist as a box. A card inside a grid track, a row inside a flex column: a\nreal element in between would take the track and leave the card laid out against the wrapper\ninstead of the grid. What is dragged is therefore the *child*, which is also what the ghost and\nthe geometry are measured from.",
+      "superclass": "LayoutElement",
+      "ownProps": [
+        {
+          "name": "entity",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "recordId",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "datasetKey",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "icon",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "effect",
+          "type": "'move' | 'copy' | 'link'",
+          "optional": false,
+          "default": "'copy'"
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
+        }
+      ]
+    },
+    {
       "tagName": "we-drawer",
       "className": "Drawer",
       "superclass": "OverlayElement",
@@ -367,6 +417,32 @@
           "name": "close",
           "type": "() => void",
           "optional": false
+        }
+      ]
+    },
+    {
+      "tagName": "we-drop-zone",
+      "className": "DropZone",
+      "description": "Anything a `we-draggable` can be dropped into.\n\nThe receiving half of the pair, and the same rung: two custom elements and an existing `$action`,\nso a template can make a region a drop target without a code change.\n\n```json\n{ \"type\": \"we-drop-zone\",\n  \"props\": { \"accepts\": \"CollectionBlock,Space,Agent\",\n             \"onDropped\": { \"$action\": \"modules.pocket.gather\", \"args\": [{ \"$\": \"event.detail\" }] } },\n  \"children\": [ \"…the panel…\" ] }\n```\n\n## It emits intent, it never mutates\n\nExactly `we-sortable`'s rule, and for the same reason: what a drop *means* differs. A panel writes\na record, a composer inserts a block, a board records a position. A primitive that assumed one of\nthose would be useless to the others.\n\n## `accepts` is a list of entity names, as a string\n\nA comma-separated string rather than an array because that is what an HTML attribute is, and\nbecause a schema writing `\"accepts\": \"CollectionBlock,Space\"` needs no expression. Empty means\n\"anything\", which is right for a general-purpose tray and wrong for a composer — say what you\ntake.",
+      "superclass": "LayoutElement",
+      "ownProps": [
+        {
+          "name": "accepts",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
+        },
+        {
+          "name": "noArm",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
         }
       ]
     },

@@ -65,6 +65,17 @@ export default class Draggable extends LayoutElement {
   /** The record's id within its dataset. A DID, where the entity is an agent. */
   @property({ type: String, reflect: true }) recordId = '';
 
+  /**
+   * Which dataset holds it. **Leave this empty for anything in the space on screen** — the receiver
+   * stamps it, and that is the ordinary case.
+   *
+   * Set it only where the source knows the answer and the receiver would get it wrong: a row in the
+   * Pocket panel came from somewhere else entirely, so dragging it out and letting the receiver
+   * assume "wherever we are now" would rewrite what the row points at. The value is opaque here —
+   * the design system does not know what a dataset is, and must not have to.
+   */
+  @property({ type: String }) datasetKey = '';
+
   /** What the ghost says, and what a receiver writes down. */
   @property({ type: String }) label = '';
 
@@ -118,7 +129,7 @@ export default class Draggable extends LayoutElement {
 
   private _item(): DragItem {
     return {
-      ref: { entity: this.entity, id: this.recordId },
+      ref: { entity: this.entity, id: this.recordId, ...(this.datasetKey && { dataset: this.datasetKey }) },
       label: this.label || this.entity,
       ...(this.icon && { icon: this.icon }),
     };

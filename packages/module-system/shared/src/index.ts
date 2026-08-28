@@ -26,6 +26,7 @@ export type {
   DockAspect,
   DockEdge,
   DockSize,
+  AgentDataAccess,
   ModuleCapability,
   ModuleScope,
   ModuleCompatibility,
