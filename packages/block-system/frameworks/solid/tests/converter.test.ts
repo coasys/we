@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest';
 import { contentToDoc, docToContent, inlineContent, inlineToStandoff } from '../src/editor/converter';
 import { createBlockSchema } from '../src/editor/schema';
 
-const schema = createBlockSchema(['image', 'task']);
+const schema = createBlockSchema(['image', 'task', 'code']);
 
 function roundTrip(blocks: ContentBlock[]): ContentBlock[] {
   return docToContent(contentToDoc(schema, blocks));
@@ -82,6 +82,16 @@ describe('content → doc → content', () => {
     const doc = contentToDoc(schema, blocks);
     expect(doc.firstChild!.type.name).toBe('image');
     expect(doc.firstChild!.attrs).toEqual({ id: 'i', props: { src: 'Qm://x', altText: 'alt', width: 66 } });
+    expect(roundTrip(blocks)).toEqual(blocks);
+  });
+
+  it('a block type that shares its name with a mark still round-trips as itself', () => {
+    const blocks: ContentBlock[] = [
+      { _type: 'code', _key: 'c', code: 'x = 1', language: 'py' },
+      { _type: 'block', _key: 'p', style: 'normal', text: 'inline', marks: [{ start: 0, end: 6, type: 'code' }] },
+    ];
+    const doc = contentToDoc(schema, blocks);
+    expect(doc.firstChild!.type.name).toBe('code_block');
     expect(roundTrip(blocks)).toEqual(blocks);
   });
 

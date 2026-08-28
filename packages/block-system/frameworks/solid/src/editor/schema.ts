@@ -23,7 +23,7 @@
  * about what a heading or a list item looks like — parity is structural rather than tested for.
  */
 import type { CollectionContentBlock } from '@we/block-shared';
-import type { DOMOutputSpec, MarkSpec, NodeSpec } from 'prosemirror-model';
+import type { DOMOutputSpec, MarkSpec, NodeSpec, NodeType } from 'prosemirror-model';
 import { Schema } from 'prosemirror-model';
 
 /** Node types the schema always has, whatever is registered. */
@@ -281,9 +281,24 @@ export function collectionStyle(props: Partial<CollectionContentBlock>): string 
   return `--we-cols: ${cols}; --we-gap: ${gap}`;
 }
 
+/**
+ * The schema node name a registered block type gets. Usually the type itself; a type that would
+ * collide with a mark or a built-in node (`code` is both a block and a decorator) is suffixed.
+ * The block's `_type` is what a node's spec records as `blockType` — see {@link blockTypeOf}.
+ */
+export function customNodeName(type: string): string {
+  return RESERVED.has(type) || type in marks ? `${type}_block` : type;
+}
+
+/** The registry key a custom node stands for — the inverse of {@link customNodeName}. */
+export function blockTypeOf(nodeType: NodeType): string {
+  return (nodeType.spec as { blockType?: string }).blockType ?? nodeType.name;
+}
+
 /** The node spec a registered custom block gets. */
 function customBlockSpec(type: string): NodeSpec {
   return {
+    blockType: type,
     group: 'block',
     atom: true,
     selectable: true,
@@ -320,8 +335,9 @@ const RESERVED = new Set([
 export function createBlockSchema(customTypes: readonly string[]): Schema {
   const custom: Record<string, NodeSpec> = {};
   for (const type of customTypes) {
-    if (RESERVED.has(type) || custom[type]) continue;
-    custom[type] = customBlockSpec(type);
+    const name = customNodeName(type);
+    if (nodes[name] || custom[name]) continue;
+    custom[name] = customBlockSpec(type);
   }
   return new Schema({ nodes: { ...nodes, ...custom }, marks });
 }

@@ -12,7 +12,7 @@ import type { ContentBlock, ListItemKind, StandoffMark, TextContentBlock } from 
 import { cpLength, isCollectionBlock, isDecorator, isTextBlock, normalizeMarks } from '@we/block-shared';
 import type { Mark, Node as PMNode, Schema } from 'prosemirror-model';
 
-import { COLLECTION_NODE, isTextNodeType, MENTION_NODE, UNKNOWN_NODE } from './schema';
+import { blockTypeOf, COLLECTION_NODE, customNodeName, isTextNodeType, MENTION_NODE, UNKNOWN_NODE } from './schema';
 
 // ── Content → ProseMirror ────────────────────────────────────────────────────
 
@@ -46,7 +46,7 @@ export function blockToNode(schema: Schema, block: ContentBlock): PMNode | null 
   }
 
   const { _type, _key, ...props } = block;
-  const type = schema.nodes[_type];
+  const type = schema.nodes[customNodeName(_type)];
   if (type && type.isAtom && type.name !== MENTION_NODE) return type.create({ id: _key ?? null, props });
   return schema.nodes[UNKNOWN_NODE].create({ id: _key ?? null, blockType: _type, props });
 }
@@ -176,7 +176,7 @@ export function nodeToBlock(node: PMNode): ContentBlock | null {
 
   if (node.type.isAtom) {
     return {
-      _type: name,
+      _type: blockTypeOf(node.type),
       ...(node.attrs.id ? { _key: node.attrs.id } : {}),
       ...(node.attrs.props as Record<string, unknown>),
     };

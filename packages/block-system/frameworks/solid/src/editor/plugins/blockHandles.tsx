@@ -19,6 +19,7 @@ import type { BlockEntry } from '../blockIndex';
 import { focusedBlock, indexBlocks } from '../blockIndex';
 import { insertBlocks, menuTypeOf, moveBlock, selectBlock } from '../commands';
 import type { EditorContext } from '../context';
+import { customNodeName } from '../schema';
 import { blockChromeKey } from './blockChrome';
 
 const ATTR_HANDLE_FOR_BLOCK = 'data-handle-for-block';
@@ -79,7 +80,7 @@ async function dropFiles(view: EditorView, files: File[], targetDom: HTMLElement
   if (!target) return;
   const nodes: PMNode[] = [];
   for (const { type, props } of blocks) {
-    const nodeType = view.state.schema.nodes[type];
+    const nodeType = view.state.schema.nodes[customNodeName(type)];
     if (nodeType) nodes.push(nodeType.create({ id: null, props }));
   }
   insertBlocks(view, target.pos, nodes, before ? 'before' : 'after');

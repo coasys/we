@@ -13,7 +13,7 @@ import type { Command, EditorState, Transaction } from 'prosemirror-state';
 import { NodeSelection, TextSelection } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
 
-import { COLLECTION_NODE, isTextNodeType } from './schema';
+import { blockTypeOf, COLLECTION_NODE, customNodeName, isTextNodeType } from './schema';
 
 /** How deep a list may nest. */
 export const MAX_LEVEL = 6;
@@ -32,7 +32,7 @@ export function menuTypeOf(node: PMNode): string {
     case 'unknown_block':
       return String(node.attrs.blockType);
     default:
-      return node.type.name;
+      return blockTypeOf(node.type);
   }
 }
 
@@ -103,7 +103,7 @@ export function transformBlock(view: EditorView, pos: number, menuType: string):
     tr = state.tr.replaceWith(pos, end, collection);
     tr.setSelection(TextSelection.near(tr.doc.resolve(pos + 2)));
   } else {
-    const type = schema.nodes[menuType];
+    const type = schema.nodes[customNodeName(menuType)];
     if (!type || !type.isAtom) return false;
     tr = state.tr.replaceWith(pos, end, type.create({ id: null, props: {} }));
     tr.setSelection(NodeSelection.create(tr.doc, pos));

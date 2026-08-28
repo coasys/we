@@ -29,7 +29,7 @@ import { createSignal } from 'solid-js';
 import { render } from 'solid-js/web';
 
 import type { EditorContext } from './context';
-import { COLLECTION_NODE, collectionStyle, MENTION_NODE, UNKNOWN_NODE } from './schema';
+import { blockTypeOf, COLLECTION_NODE, collectionStyle, MENTION_NODE, UNKNOWN_NODE } from './schema';
 
 /** Elements whose clicks belong to them, not to block selection. */
 const INTERACTIVE =
@@ -60,7 +60,7 @@ abstract class SolidNodeView implements NodeView {
   ) {
     this.dom = document.createElement('div');
     this.dom.className = 'we-block';
-    this.dom.setAttribute('data-block-type', node.type.name);
+    this.dom.setAttribute('data-block-type', blockTypeOf(node.type));
     const [selected, setSelected] = createSignal(false);
     this.selected = selected;
     this.setSelected = setSelected;
@@ -110,14 +110,15 @@ class CustomBlockView extends SolidNodeView {
       this.selectSelf();
     });
 
-    const registration = getBlockRegistration(node.type.name);
+    const blockType = blockTypeOf(node.type);
+    const registration = getBlockRegistration(blockType);
     const Input = registration?.input as ((p: Record<string, unknown>) => JSX.Element) | undefined;
     this.dispose = render(
       () =>
         Input ? (
           <Input {...this.props()} onChange={this.onChange} isSelected={this.isSelected} />
         ) : (
-          <div class="we-unknown-block">Unsupported block: {node.type.name}</div>
+          <div class="we-unknown-block">Unsupported block: {blockType}</div>
         ),
       this.dom,
     );
