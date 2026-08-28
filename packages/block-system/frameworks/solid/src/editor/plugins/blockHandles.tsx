@@ -194,11 +194,12 @@ function BlockHandle(props: {
       <div
         class="we-block-handle-dragger"
         draggable={true}
-        onMouseDown={(e) => {
-          e.preventDefault();
+        // No preventDefault here: cancelling a draggable's mousedown cancels the native drag that
+        // follows it. The selection is set without moving focus, for the same reason.
+        onMouseDown={() => {
           const view = props.ctx.view();
           const entry = view && entryFor(view, props.dom);
-          if (view && entry) selectBlock(view, entry.pos);
+          if (view && entry) selectBlock(view, entry.pos, { focus: false });
         }}
         onDragStart={(e) => {
           e.dataTransfer?.setData(DRAG_TYPE, 'block');

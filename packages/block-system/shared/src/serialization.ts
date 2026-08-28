@@ -110,6 +110,32 @@ export function extractBlockData(entity: string, block: ContentBlock): Record<st
   return data;
 }
 
+/**
+ * The fields a block writes to its **model** — {@link extractBlockData}, with every file-format
+ * property as the file's data rather than an address.
+ *
+ * The model layer runs a file property's value through the file-storage language on every write
+ * (`createExpression`), and that language wants `{ data_base64, name, file_type }`; hand it an
+ * address string and it fails inside the language. So the models get the payload — a `FileData`
+ * object as the input component produced it, or the data URI a loaded block carries turned back
+ * into one (with the original upload name, so content addressing lands on the same expression) —
+ * and only the blob, which is a projection and never written back through a language, carries
+ * the addresses `preUploadFileAssets` resolves them to. Uploading the same bytes twice returns the
+ * same address, so the double write costs nothing but the round trip.
+ */
+function modelData(entity: string, block: ContentBlock): Record<string, unknown> {
+  const data = extractBlockData(entity, block);
+  const fields = block as unknown as Record<string, unknown>;
+  const assetNames = fields.__assetNames as Record<string, string> | undefined;
+  for (const prop of fileFieldNames(entity)) {
+    const value = data[prop];
+    if (typeof value === 'string' && value.startsWith('data:')) {
+      data[prop] = dataURIToFileData(value, assetNames?.[prop] ?? prop);
+    }
+  }
+  return data;
+}
+
 /** entity name → the registry node type its blocks carry as `_type`. */
 function nodeTypeForEntity(entity: string): string | undefined {
   if (entity === 'TextBlock') return TEXT_TYPE;
@@ -484,7 +510,9 @@ export async function createBlocks(
         ...(anchor && { parent: { id: anchor.id, predicate: anchor.predicate } }),
       })) as BlockModel;
 
-      for (const block of uploaded) await persistBlock(perspective, tx.batchId, block, root);
+      // Models are written from the author's blocks (file payloads), the blob from the uploaded
+      // copies (file addresses); the two walk in lockstep so every key lands on both.
+      for (let i = 0; i < blocks.length; i++) await persistBlock(perspective, tx.batchId, blocks[i], uploaded[i], root);
 
       // Assigned before the blob write below so both land in that one `save`, rather than costing a
       // second round trip for one string.
@@ -500,45 +528,38 @@ export async function createBlocks(
       // After the save: `addMentions` writes links, which is a separate operation from the property
       // write above and has nothing to add to that round trip.
       await writeMentions(root, uploaded, tx.batchId);
-
-      // Stamp the keys back onto the caller's blocks — the uploaded copies carry them.
-      stampKeys(blocks, uploaded);
       return root;
     },
     { batchId },
   );
 }
 
-/** Copy `_key`s from a persisted copy of the blocks onto the caller's originals, position by position. */
-function stampKeys(target: ContentBlock[], source: readonly ContentBlock[]): void {
-  target.forEach((block, i) => {
-    const from = source[i];
-    if (!from) return;
-    if (from._key) block._key = from._key;
-    if (isCollectionBlock(block) && isCollectionBlock(from)) stampKeys(block.content ?? [], from.content ?? []);
-  });
-}
-
 /**
  * Create one block's model (and, for a collection, its descendants), link it to its parent, and
- * stamp its id onto the block.
+ * stamp its id onto the block — both the author's copy and the uploaded one, which share a shape.
  */
 async function persistBlock(
   perspective: BlockDataset,
   batchId: string | undefined,
   block: ContentBlock,
+  uploaded: ContentBlock | undefined,
   parent: ModelInstance,
 ): Promise<BlockModel | undefined> {
   const registration = getBlockRegistration(isTextBlock(block) ? TEXT_TYPE : block._type);
   if (!registration) return undefined;
 
-  const data = extractBlockData(registration.entity, block);
+  const data = modelData(registration.entity, block);
   const model = (await registration.model.create(perspective, data, { batchId })) as BlockModel;
   block._key = model.id;
+  if (uploaded) uploaded._key = model.id;
   if (hasChildrenRelation(parent)) await parent.addChildren(model.id, batchId);
 
   if (isCollectionBlock(block)) {
-    for (const child of block.content ?? []) await persistBlock(perspective, batchId, child, model);
+    const children = block.content ?? [];
+    const uploadedChildren = uploaded && isCollectionBlock(uploaded) ? (uploaded.content ?? []) : [];
+    for (let i = 0; i < children.length; i++) {
+      await persistBlock(perspective, batchId, children[i], uploadedChildren[i], model);
+    }
   }
   return model;
 }
@@ -696,10 +717,14 @@ export async function reconcileBlocks(
     /** The blob's view of a parent's final children: the author's blocks, then anything kept. */
     const finalBlocks = new Map<ModelInstance, ContentBlock[]>();
 
-    async function reconcileList(blocks: ContentBlock[], parent: BlockWithChildren): Promise<void> {
+    async function reconcileList(
+      blocks: ContentBlock[],
+      uploadedBlocks: ContentBlock[],
+      parent: BlockWithChildren,
+    ): Promise<void> {
       const orderedIds: string[] = [];
-      for (const block of blocks) {
-        const model = await reconcileOne(block);
+      for (let i = 0; i < blocks.length; i++) {
+        const model = await reconcileOne(blocks[i], uploadedBlocks[i]);
         if (model) orderedIds.push(model.id);
       }
       // Somebody else's additions — present now, absent from what the author loaded — keep their
@@ -710,7 +735,7 @@ export async function reconcileBlocks(
       parent.children = [...orderedIds, ...kept];
 
       finalBlocks.set(parent, [
-        ...blocks.filter((b) => typeof b._key === 'string' && orderedIds.includes(b._key)),
+        ...uploadedBlocks.filter((b) => typeof b._key === 'string' && orderedIds.includes(b._key)),
         ...(await Promise.all(kept.map((id) => keptBlock(id)))).filter((b): b is ContentBlock => !!b),
       ]);
     }
@@ -723,11 +748,14 @@ export async function reconcileBlocks(
       return block;
     }
 
-    async function reconcileOne(block: ContentBlock): Promise<BlockModel | undefined> {
+    async function reconcileOne(
+      block: ContentBlock,
+      uploaded: ContentBlock | undefined,
+    ): Promise<BlockModel | undefined> {
       const registration = getBlockRegistration(isTextBlock(block) ? TEXT_TYPE : block._type);
       if (!registration) return undefined;
 
-      const data = extractBlockData(registration.entity, block);
+      const data = modelData(registration.entity, block);
       const existingId = typeof block._key === 'string' ? block._key : undefined;
       let model: BlockModel | undefined;
       if (existingId && !claimed.has(existingId)) {
@@ -735,6 +763,10 @@ export async function reconcileBlocks(
         if (found) {
           model = found.model;
           claimed.add(existingId);
+          // Only what changed. A file field the author never touched reads back as the same data
+          // URI it was loaded as, and writing it again would re-upload the file for nothing.
+          const raw = block as unknown as Record<string, unknown>;
+          for (const key of Object.keys(data)) if (model[key] === raw[key]) delete data[key];
           Object.assign(model, data);
           await model.save(tx.batchId);
         }
@@ -743,15 +775,17 @@ export async function reconcileBlocks(
         model = (await registration.model.create(perspective, data, { batchId: tx.batchId })) as BlockModel;
       }
       block._key = model.id;
+      if (uploaded) uploaded._key = model.id;
 
       if (isCollectionBlock(block) && hasChildrenRelation(model)) {
-        await reconcileList(block.content ?? [], model);
+        const uploadedChildren = uploaded && isCollectionBlock(uploaded) ? (uploaded.content ?? []) : [];
+        await reconcileList(block.content ?? [], uploadedChildren, model);
         await model.save(tx.batchId);
       }
       return model;
     }
 
-    await reconcileList(uploaded, existingRoot);
+    await reconcileList(authored, uploaded, existingRoot);
 
     for (const [id, resolved] of existing) {
       if (!claimed.has(id) && base.has(id)) await resolved.model.delete(tx.batchId);
@@ -767,8 +801,6 @@ export async function reconcileBlocks(
     // the same reason `textContent` is rewritten: both are projections of the document that just
     // changed.
     await writeMentions(existingRoot, blobBlocks, tx.batchId);
-
-    stampKeys(authored, uploaded);
     return existingRoot;
 
     /** The blocks a parent ends up with, kept additions included, recursively. */

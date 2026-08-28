@@ -261,12 +261,12 @@ export function toggleChecked(view: EditorView, pos: number): boolean {
 }
 
 /** Select the block at `pos` as a unit. */
-export function selectBlock(view: EditorView, pos: number): void {
+export function selectBlock(view: EditorView, pos: number, options: { focus?: boolean } = {}): void {
   const node = view.state.doc.nodeAt(pos);
   if (!node) return;
   const tr = view.state.tr.setSelection(NodeSelection.create(view.state.doc, pos));
   view.dispatch(tr);
-  view.focus();
+  if (options.focus !== false) view.focus();
 }
 
 /** The textblock types a `Slice` of pasted or dropped blocks may contain. */
