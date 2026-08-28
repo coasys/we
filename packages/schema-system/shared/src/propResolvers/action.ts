@@ -114,10 +114,9 @@ export function resolveActionProp(
       is evaluated exactly once, at a moment that has already happened, so there is nothing for a
       memo to be *for*.
 
-      It also fixes a quieter bug. A memoized argument arrives as an accessor rather than a value,
-      and the relative-path branch below tests `typeof resolvedArgs[0] === 'string'` before
-      `deepUnwrap` runs — so `onSuccess: [{ $action: 'routeStore.navigate', args: [{ $: '`…${result.id}`' }] }]`
-      skipped relative-path resolution entirely. Absolute paths survived that; relative ones did not.
+      It also keeps a lifecycle argument a plain value: a memoized argument arrives as an accessor,
+      and the relative-path branch below unwraps only what it needs to test — the rest reach the
+      store through `deepUnwrap` at call time.
     */
     function dispatchActions(actions: unknown[], ctx: Props): void {
       for (const item of actions) {
@@ -127,19 +126,29 @@ export function resolveActionProp(
     }
 
     return (...callArgs: unknown[]) => {
-      // Handle special case for relative paths used in router navigation
-      if (storeName === 'routeStore' && methodName === 'navigate' && typeof resolvedArgs[0] === 'string') {
-        const path = resolvedArgs[0].trim();
-        const isAbsolute = path.startsWith('/') || path.startsWith('http');
-        const baseDepth = (context?.$nav as { baseDepth?: number })?.baseDepth;
+      /*
+        Handle special case for relative paths used in router navigation.
 
-        if (!isAbsolute && typeof baseDepth === 'number') {
-          const pathname =
-            (context?.$nav as { pathname?: string })?.pathname ??
-            (typeof window !== 'undefined' ? window.location.pathname : '/');
-          const normalizedPath = resolveRelativePath(path, baseDepth, pathname);
-          const nextArgs = [normalizedPath, ...resolvedArgs.slice(1)];
-          return method.apply(store, nextArgs);
+        The path is unwrapped before it is tested: an expression argument resolved at render time —
+        `args: [{ $: 'view.path' }]` on a nav strip — arrives as a reactive accessor, not a string,
+        and testing the accessor skipped this branch entirely. `./cards` then reached the router as
+        written and landed on the catch-all route, while an absolute path survived unchanged.
+      */
+      if (storeName === 'routeStore' && methodName === 'navigate') {
+        const first = deepUnwrap(resolvedArgs[0]);
+        if (typeof first === 'string') {
+          const path = first.trim();
+          const isAbsolute = path.startsWith('/') || path.startsWith('http');
+          const baseDepth = (context?.$nav as { baseDepth?: number })?.baseDepth;
+
+          if (!isAbsolute && typeof baseDepth === 'number') {
+            const pathname =
+              (context?.$nav as { pathname?: string })?.pathname ??
+              (typeof window !== 'undefined' ? window.location.pathname : '/');
+            const normalizedPath = resolveRelativePath(path, baseDepth, pathname);
+            const nextArgs = [normalizedPath, ...resolvedArgs.slice(1).map(deepUnwrap)];
+            return method.apply(store, nextArgs);
+          }
         }
       }
 

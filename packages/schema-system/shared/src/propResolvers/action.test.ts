@@ -155,3 +155,25 @@ describe('lifecycle dispatch resolves without a reactive owner', () => {
     expect(save).toHaveBeenCalledWith('ab');
   });
 });
+
+describe('relative navigation with a render-time memo', () => {
+  /**
+   * A nav strip's `args: [{ $: 'view.path' }]` resolves through the renderer's `createMemo`, so the
+   * path arrives as a reactive accessor rather than a string. The relative-path branch used to test
+   * the accessor's type and skip itself — `./cards` reached the router as written and landed on the
+   * catch-all route, while an absolute path survived unchanged. This is the space header's bug.
+   */
+  it('resolves a relative path that arrives as an accessor', () => {
+    const navigate = vi.fn();
+    const memo = ((fn: () => unknown) => fn) as <T>(fn: () => T) => T;
+    const handler = resolveProp(
+      { $action: 'routeStore.navigate', args: [{ $: 'view.path' }] },
+      { routeStore: { navigate } },
+      { view: { path: './cards' }, $nav: { baseDepth: 2, pathname: '/space/abc' } },
+      memo,
+    ) as () => void;
+
+    handler();
+    expect(navigate).toHaveBeenCalledWith('/space/abc/cards');
+  });
+});
