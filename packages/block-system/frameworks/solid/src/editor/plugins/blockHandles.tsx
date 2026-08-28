@@ -12,7 +12,7 @@ import type { FileData } from '@we/models';
 import { compressImageToFileData, readFileAsFileData } from '@we/models';
 import type { Node as PMNode } from 'prosemirror-model';
 import type { EditorView } from 'prosemirror-view';
-import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, onCleanup } from 'solid-js';
 import { Portal } from 'solid-js/web';
 
 import type { BlockEntry } from '../blockIndex';
@@ -446,7 +446,6 @@ export function BlockHandles(props: { ctx: EditorContext }) {
           style={{ top: `${dropSpot().top}px`, left: `${dropSpot().left}px`, width: `${dropSpot().width}px` }}
         />
       </Portal>
-      <Show when={false}>{null}</Show>
     </>
   );
 }

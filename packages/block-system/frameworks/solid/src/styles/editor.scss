@@ -67,6 +67,38 @@
   }
 }
 
+// Remote carets in a live session (y-prosemirror's cursor plugin). The colour is the peer's own,
+// set inline; this gives the caret a body and the name a label.
+.ProseMirror-yjs-cursor {
+  position: relative;
+  margin-left: -1px;
+  margin-right: -1px;
+  border-left: 1px solid;
+  border-right: 1px solid;
+  border-color: currentColor;
+  word-break: normal;
+  pointer-events: none;
+
+  > div {
+    position: absolute;
+    top: -1.35em;
+    left: -1px;
+    font-size: 11px;
+    line-height: normal;
+    font-family: var(--we-font-family);
+    font-weight: 500;
+    color: white;
+    padding: 1px 5px;
+    border-radius: var(--we-radius-200) var(--we-radius-200) var(--we-radius-200) 0;
+    white-space: nowrap;
+    user-select: none;
+  }
+}
+
+.ProseMirror-yjs-selection {
+  border-radius: 2px;
+}
+
 body.block-dragging {
   cursor: grabbing;
   user-select: none;

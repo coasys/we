@@ -193,7 +193,7 @@ export function BlockComposer(props: Props) {
     baseHash = input === undefined ? undefined : contentHash(blocks);
     // Resolve stored file-storage addresses (an image's CID) to renderable data URIs first —
     // without this, an existing post's image src is still its address when loaded into the editor.
-    const dataset = host.dataset() ?? props.perspective ?? null;
+    const dataset = props.perspective ?? host.dataset() ?? null;
     if (dataset) {
       try {
         blocks = await resolveExpressionAddresses(dataset, blocks);
@@ -288,7 +288,9 @@ export function BlockComposer(props: Props) {
       () => [view(), props.editorState] as const,
       ([v, input]) => {
         if (!v) return;
-        if (input === undefined && baseline === null) return; // a fresh composer starts empty already
+        // A fresh composer starts empty already — unless it is joining a session, which must be
+        // seeded with that empty paragraph if nobody else has content for it.
+        if (input === undefined && baseline === null && !session) return;
         void load(v, input);
       },
     ),

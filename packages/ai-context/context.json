@@ -1924,7 +1924,7 @@
       "props": [
         {
           "name": "editorState",
-          "type": "SerializedBlockNode",
+          "type": "EditorStateInput",
           "optional": true
         },
         {
@@ -1934,7 +1934,7 @@
         },
         {
           "name": "onSave",
-          "type": "((json: SerializedBlockNode) => void)",
+          "type": "((document: ContentDocument) => void)",
           "optional": true
         },
         {
@@ -1945,6 +1945,16 @@
         {
           "name": "onDirtyChange",
           "type": "((dirty: boolean) => void)",
+          "optional": true
+        },
+        {
+          "name": "mentions",
+          "type": "MentionCandidate[]",
+          "optional": true
+        },
+        {
+          "name": "collaborate",
+          "type": "string",
           "optional": true
         }
       ],
@@ -1992,7 +2002,7 @@
       "props": [
         {
           "name": "editorState",
-          "type": "SerializedBlockNode",
+          "type": "EditorStateInput",
           "optional": true
         },
         {
@@ -2152,8 +2162,8 @@
           "optional": true
         },
         {
-          "name": "childEditorState",
-          "type": "SerializedBlockNode",
+          "name": "content",
+          "type": "ContentBlock[]",
           "optional": true
         }
       ],
@@ -2162,11 +2172,6 @@
     {
       "name": "CollectionInput",
       "props": [
-        {
-          "name": "nodeKey",
-          "type": "string",
-          "optional": false
-        },
         {
           "name": "layout",
           "type": "string",
@@ -2180,11 +2185,6 @@
         {
           "name": "gap",
           "type": "string",
-          "optional": true
-        },
-        {
-          "name": "childEditorState",
-          "type": "SerializedBlockNode",
           "optional": true
         },
         {
@@ -5009,6 +5009,19 @@
           "type": "string",
           "predicate": "we://text",
           "required": false
+        },
+        {
+          "name": "marks",
+          "type": "json",
+          "predicate": "we://marks",
+          "required": false
+        },
+        {
+          "name": "checked",
+          "type": "boolean",
+          "predicate": "we://checked",
+          "required": false,
+          "default": "false"
         },
         {
           "name": "version",

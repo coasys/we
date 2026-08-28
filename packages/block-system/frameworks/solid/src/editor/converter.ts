@@ -9,7 +9,7 @@
  * editor can express.
  */
 import type { ContentBlock, ListItemKind, StandoffMark, TextContentBlock } from '@we/block-shared';
-import { cpLength, cpToUtf16, isCollectionBlock, isDecorator, isTextBlock, normalizeMarks } from '@we/block-shared';
+import { cpLength, isCollectionBlock, isDecorator, isTextBlock, normalizeMarks } from '@we/block-shared';
 import type { Mark, Node as PMNode, Schema } from 'prosemirror-model';
 
 import { COLLECTION_NODE, isTextNodeType, MENTION_NODE, UNKNOWN_NODE } from './schema';
@@ -265,9 +265,4 @@ export function inlineToStandoff(node: PMNode): { text: string; marks: StandoffM
 
 function markKey(mark: Mark): string {
   return isDecorator(mark.type.name) ? mark.type.name : `${mark.type.name}:${JSON.stringify(mark.attrs)}`;
-}
-
-/** Convert a code-point offset into a block's text into a ProseMirror position inside the textblock at `blockPos`. */
-export function cpOffsetToPos(node: PMNode, blockPos: number, cpOffset: number): number {
-  return blockPos + 1 + cpToUtf16(node.textContent, cpOffset);
 }
