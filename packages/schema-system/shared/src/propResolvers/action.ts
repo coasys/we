@@ -1,4 +1,5 @@
 import type { resolveProp } from './dispatcher';
+import { isDeferredArg } from './expression';
 import { deepUnwrap } from './reactive';
 import { type Memo, noMemo, type Props } from './types';
 
@@ -32,33 +33,16 @@ function processArgTokens(resolvedArgs: unknown[], callArgs: unknown[]): unknown
 }
 
 /**
- * `$arg` and `$event` both mean "the first callback argument", exactly as they already do in
- * `extractFromPath` (the `$setLocal` path).
+ * An argument that was about the callback.
  *
- * `$event` was previously understood here only when the handler was an *array* — that path rebuilds
- * the context with `event` at call time, so `resolveProp` resolved it before this ran. A lone
- * `{ $action, args }` resolves once at render time instead, where `$event` matches no context key
- * and an unresolved `$`-string is returned verbatim (see the dispatcher's final `return value`). So
- * the store method was handed the *string* `'$event.detail'` — truthy, silently, with no error
- * anywhere. `spaceStore.setModuleEnabled(id, '$event.detail')` is what that looks like from the
- * outside: a module toggle that can only ever switch a module on.
+ * `args` resolve once at render time, where there is no event. An expression naming `event`,
+ * `arg` or `result` therefore resolved to a *deferred* function — see `resolveExpressionProp` —
+ * and the callback argument is what it was waiting for. Everything else arrived as a value and is
+ * passed through; nested arrays and objects are walked because a deferred expression may sit inside
+ * an options object.
  */
 function processArgValue(arg: unknown, callArgs: unknown[]): unknown {
-  if (typeof arg === 'string' && (arg.startsWith('$arg') || arg.startsWith('$event'))) {
-    // Handle $arg / $event without property - return the entire first argument
-    if (arg === '$arg' || arg === '$event') {
-      return callArgs[0];
-    }
-    // Handle $arg.property.path / $event.property.path syntax to extract nested properties
-    const prefix = arg.startsWith('$arg.') ? '$arg.' : arg.startsWith('$event.') ? '$event.' : undefined;
-    if (prefix) {
-      const path = arg.slice(prefix.length).split('.');
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let result: any = callArgs[0]; // Get first callback argument
-      for (const prop of path) result = result?.[prop];
-      return result;
-    }
-  }
+  if (isDeferredArg(arg)) return arg(callArgs[0]);
   // Recurse into arrays
   if (Array.isArray(arg)) {
     return arg.map((item) => processArgValue(item, callArgs));
@@ -75,9 +59,9 @@ function processArgValue(arg: unknown, callArgs: unknown[]): unknown {
 }
 
 // Resolves $action props: { $action: 'routeStore.navigate', args: ['/home'] }
-// Supports $arg token for extracting properties from callback arguments: args: ['$arg.id']
+// An argument may be an expression about the callback: args: [{ $: 'arg.id' }]
 // Supports lifecycle callbacks: onSuccess, onError, onFinally — fired after async actions resolve.
-// Within lifecycle arrays, '$result' resolves to the action's return value (onSuccess) or error (onError).
+// Within lifecycle arrays, `result` is the action's return value (onSuccess) or error (onError).
 export function resolveActionProp(
   value: unknown,
   context: Props,
@@ -130,10 +114,9 @@ export function resolveActionProp(
       is evaluated exactly once, at a moment that has already happened, so there is nothing for a
       memo to be *for*.
 
-      It also fixes a quieter bug. A memoized argument arrives as an accessor rather than a value,
-      and the relative-path branch below tests `typeof resolvedArgs[0] === 'string'` before
-      `deepUnwrap` runs — so `onSuccess: [{ $action: 'routeStore.navigate', args: [{ $concat: … }] }]`
-      skipped relative-path resolution entirely. Absolute paths survived that; relative ones did not.
+      It also keeps a lifecycle argument a plain value: a memoized argument arrives as an accessor,
+      and the relative-path branch below unwraps only what it needs to test — the rest reach the
+      store through `deepUnwrap` at call time.
     */
     function dispatchActions(actions: unknown[], ctx: Props): void {
       for (const item of actions) {
@@ -143,23 +126,33 @@ export function resolveActionProp(
     }
 
     return (...callArgs: unknown[]) => {
-      // Handle special case for relative paths used in router navigation
-      if (storeName === 'routeStore' && methodName === 'navigate' && typeof resolvedArgs[0] === 'string') {
-        const path = resolvedArgs[0].trim();
-        const isAbsolute = path.startsWith('/') || path.startsWith('http');
-        const baseDepth = (context?.$nav as { baseDepth?: number })?.baseDepth;
+      /*
+        Handle special case for relative paths used in router navigation.
 
-        if (!isAbsolute && typeof baseDepth === 'number') {
-          const pathname =
-            (context?.$nav as { pathname?: string })?.pathname ??
-            (typeof window !== 'undefined' ? window.location.pathname : '/');
-          const normalizedPath = resolveRelativePath(path, baseDepth, pathname);
-          const nextArgs = [normalizedPath, ...resolvedArgs.slice(1)];
-          return method.apply(store, nextArgs);
+        The path is unwrapped before it is tested: an expression argument resolved at render time —
+        `args: [{ $: 'view.path' }]` on a nav strip — arrives as a reactive accessor, not a string,
+        and testing the accessor skipped this branch entirely. `./cards` then reached the router as
+        written and landed on the catch-all route, while an absolute path survived unchanged.
+      */
+      if (storeName === 'routeStore' && methodName === 'navigate') {
+        const first = deepUnwrap(resolvedArgs[0]);
+        if (typeof first === 'string') {
+          const path = first.trim();
+          const isAbsolute = path.startsWith('/') || path.startsWith('http');
+          const baseDepth = (context?.$nav as { baseDepth?: number })?.baseDepth;
+
+          if (!isAbsolute && typeof baseDepth === 'number') {
+            const pathname =
+              (context?.$nav as { pathname?: string })?.pathname ??
+              (typeof window !== 'undefined' ? window.location.pathname : '/');
+            const normalizedPath = resolveRelativePath(path, baseDepth, pathname);
+            const nextArgs = [normalizedPath, ...resolvedArgs.slice(1).map(deepUnwrap)];
+            return method.apply(store, nextArgs);
+          }
         }
       }
 
-      // Process $arg tokens - extract properties from callback arguments
+      // Hand deferred expressions the callback argument they were waiting for.
       const finalArgs = processArgTokens(resolvedArgs, callArgs);
 
       // Use finalArgs if any were defined in schema, otherwise use callArgs

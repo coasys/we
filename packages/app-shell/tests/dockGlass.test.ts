@@ -36,10 +36,12 @@ function allProps(node: unknown, found: Record<string, unknown>[] = []): Record<
   return found;
 }
 
-/** The `$if` a prop is gated behind, if it is gated at all. */
-type Gated = { $if: { condition: unknown; then?: unknown; else?: unknown } };
-const gateOf = (value: unknown): Gated['$if'] | undefined =>
-  value && typeof value === 'object' && '$if' in value ? (value as Gated).$if : undefined;
+/** The ternary a prop is gated behind, if it is gated at all: `condition ? then : else`. */
+const gateOf = (value: unknown): { condition: string; then: string; else: string } | undefined => {
+  if (!value || typeof value !== 'object' || !('$' in value)) return undefined;
+  const match = /^(.*?) \? (.*) : ([^:]*)$/.exec((value as { $: string }).$);
+  return match ? { condition: match[1], then: match[2], else: match[3] } : undefined;
+};
 
 describe('a floating panel is glass', () => {
   const frame = dockFrame(entry as DockEntry, { type: 'Column' });
@@ -51,12 +53,12 @@ describe('a floating panel is glass', () => {
   it('makes the panel body translucent and blurred, both behind the same condition', () => {
     expect(surface).toBeDefined();
     const bg = gateOf(surface!.bg);
-    const styles = gateOf(surface!.styles);
+    const styles = gateOf((surface!.styles as Record<string, unknown>)['backdrop-filter']);
 
     expect(bg?.then).toContain('color-mix');
-    expect(bg?.else).toBe('surface-sunken');
-    expect(styles?.then).toEqual({ 'backdrop-filter': expect.stringContaining('blur(') });
-    expect(styles?.else).toEqual({});
+    expect(bg?.else).toBe("'surface-sunken'");
+    expect(styles?.then).toContain('blur(');
+    expect(styles?.else).toBe("'none'");
 
     /*
       Both halves come from the theme, not from numbers written here.
@@ -67,7 +69,7 @@ describe('a floating panel is glass', () => {
       the one surface in the app that would have disagreed with the theme.
     */
     expect(bg?.then).toContain('var(--we-theme-surface-opacity');
-    expect(styles?.then).toEqual({ 'backdrop-filter': expect.stringContaining('var(--we-theme-surface-blur') });
+    expect(styles?.then).toContain('var(--we-theme-surface-blur');
     // `in srgb`, as Card and overlay-element spell it — the mix space is part of the shared idiom.
     expect(bg?.then).toContain('in srgb');
 
@@ -77,17 +79,18 @@ describe('a floating panel is glass', () => {
   });
 
   it('reads floating AND not maximised, off paths the geometry actually publishes', () => {
-    const condition = gateOf(surface!.bg)?.condition as { $and: [{ $store: string }, { $not: { $store: string } }] };
+    const condition = gateOf(surface!.bg)?.condition;
 
-    expect(condition.$and[0].$store).toBe('shellStore.dockGeometry.call:0.floating');
-    expect(condition.$and[1].$not.$store).toBe('shellStore.dockGeometry.call:0.maximised');
+    expect(condition).toBe(
+      "shellStore.dockGeometry['call:0'].floating && !shellStore.dockGeometry['call:0'].maximised",
+    );
   });
 
   it('carries the titlebar with it, so the card is one piece of glass', () => {
     // The titlebar is the box with a bottom border and a move handle under it.
     const bar = props.find((p) => p.borderBottom === '1px solid border' && p.bg !== undefined);
     expect(gateOf(bar!.bg)?.then).toContain('color-mix');
-    expect(gateOf(bar!.bg)?.else).toBe('page');
+    expect(gateOf(bar!.bg)?.else).toBe("'page'");
   });
 });
 

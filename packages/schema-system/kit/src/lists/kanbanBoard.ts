@@ -62,10 +62,10 @@ export function kanbanBoard(opts: KanbanBoardOptions): SchemaNode {
       {
         type: '$if',
         props: {
-          condition: { $count: { items: { $local: 'columnRows' } } },
+          condition: { $: 'count(local.columnRows)' },
           then: {
             type: '$each',
-            props: { items: { $local: 'columnRows' }, as: 'column' },
+            props: { items: { $: 'local.columnRows' }, as: 'column' },
             children: [
               {
                 type: 'Column',
@@ -81,7 +81,7 @@ export function kanbanBoard(opts: KanbanBoardOptions): SchemaNode {
                 $queries: {
                   cardRows: {
                     entity: 'CollectionBlock',
-                    scope: { anchor: 'CollectionBlock', via: 'children', anchorId: '$column.id' },
+                    scope: { anchor: 'CollectionBlock', via: 'children', anchorId: { $: 'column.id' } },
                     order: { createdAt: 'asc' },
                     include: { signals: true },
                   },
@@ -94,26 +94,26 @@ export function kanbanBoard(opts: KanbanBoardOptions): SchemaNode {
                       {
                         type: 'we-text',
                         props: { fontWeight: 'semibold', truncate: true },
-                        children: ['$column.title'],
+                        children: [{ $: 'column.title' }],
                       },
                       {
                         type: 'we-badge',
                         props: { size: 'sm' },
-                        children: [{ type: 'we-number', props: { value: '$column.$cardCount' } }],
+                        children: [{ type: 'we-number', props: { value: { $: 'column.$cardCount' } } }],
                       },
                     ],
                   },
                   {
                     type: '$if',
                     props: {
-                      condition: { $count: { items: { $local: 'cardRows' } } },
+                      condition: { $: 'count(local.cardRows)' },
                       then: {
                         type: 'Column',
                         props: { gap: '200', width: '100%' },
                         children: [
                           {
                             type: '$each',
-                            props: { items: { $local: 'cardRows' }, as: 'card' },
+                            props: { items: { $: 'local.cardRows' }, as: 'card' },
                             children: opts.card('card'),
                           },
                         ],
@@ -126,7 +126,7 @@ export function kanbanBoard(opts: KanbanBoardOptions): SchemaNode {
               },
             ],
           },
-          else: { type: '$if', props: { condition: { $local: 'columnRowsLoaded' }, then: opts.empty } },
+          else: { type: '$if', props: { condition: { $: 'local.columnRowsLoaded' }, then: opts.empty } },
         },
       },
       ...(opts.boardFooter ? [opts.boardFooter] : []),
@@ -143,7 +143,7 @@ export function kanbanBoard(opts: KanbanBoardOptions): SchemaNode {
  * waiting on CRDT ordering. A menu moves a card correctly today and keeps working when dragging
  * arrives beside it.
  */
-export function moveCardMenu(cardRef: string, columnRef: string): SchemaNode {
+export function moveCardMenu(card: string, column: string): SchemaNode {
   return {
     type: 'DropdownMenu',
     props: {
@@ -152,18 +152,14 @@ export function moveCardMenu(cardRef: string, columnRef: string): SchemaNode {
       // read "Options" beside the arrows — the fallback label, which no caller here ever asked for.
       triggerTitle: 'Move this card',
       size: 'xs',
-      items: {
-        $map: {
-          items: { $local: 'columnRows' },
-          select: {
-            id: '$item.id',
-            label: '$item.title',
-            onAction: {
-              $action: 'spaceStore.moveChild',
-              args: [`${cardRef}.id`, `${columnRef}.id`, '$item.id'],
-            },
-          },
-        },
+      /*
+        The rows come from data, so no handler can be written per row. The menu reports the chosen
+        entry through `onSelect`, and the one handler reads its id as `arg`.
+      */
+      items: { $: 'local.columnRows.map(c, { id: c.id, label: c.title })' },
+      onSelect: {
+        $action: 'spaceStore.moveChild',
+        args: [{ $: `${card}.id` }, { $: `${column}.id` }, { $: 'arg.id' }],
       },
     },
   };

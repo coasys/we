@@ -45,11 +45,11 @@ const rail: SchemaNode = {
       type: 'Row',
       props: { ay: 'center', gap: '300', px: '200' },
       children: [
-        { type: 'we-avatar', props: { image: { $store: 'spaceStore.currentSpace.avatar' }, size: 'sm' } },
+        { type: 'we-avatar', props: { image: { $: 'spaceStore.currentSpace.avatar' }, size: 'sm' } },
         {
           type: 'we-text',
-          props: { fontWeight: 'bold', truncate: true, loading: { $not: { $store: 'spaceStore.currentSpace' } } },
-          children: [{ $store: 'spaceStore.currentSpace.name' }],
+          props: { fontWeight: 'bold', truncate: true, loading: { $: '!spaceStore.currentSpace' } },
+          children: [{ $: 'spaceStore.currentSpace.name' }],
         },
       ],
     },
@@ -97,10 +97,10 @@ const messageBody: SchemaNode[] = [
   {
     type: 'BlockRenderer',
     props: {
-      editorState: '$message.editorState',
+      editorState: { $: 'message.editorState' },
     },
   },
-  signalRow('$message'),
+  signalRow('message'),
 ];
 
 /**
@@ -123,7 +123,7 @@ const messageBody: SchemaNode[] = [
 const messageRow: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $eq: ['$message.author', '$prev.author'] },
+    condition: { $: 'message.author == prev.author' },
     then: {
       type: 'Row',
       props: { width: '100%', gap: '300', py: '25', ay: 'start' },
@@ -136,7 +136,12 @@ const messageRow: SchemaNode = {
       type: 'Column',
       props: { width: '100%', gap: '100', pt: '300', pb: '25' },
       children: [
-        agentByline({ did: '$message.author', timestamp: '$message.createdAt', stacked: true, children: messageBody }),
+        agentByline({
+          did: { $: 'message.author' },
+          timestamp: { $: 'message.createdAt' },
+          stacked: true,
+          children: messageBody,
+        }),
       ],
     },
   },
@@ -157,7 +162,7 @@ const channelRoute: RouteSchema = {
         item: {
           $query: {
             entity: 'CollectionBlock',
-            where: { id: { $store: 'routeStore.segments.1' } },
+            where: { id: { $: 'routeStore.segments[1]' } },
             limit: 1,
           },
         },
@@ -180,12 +185,12 @@ const channelRoute: RouteSchema = {
               props: { gap: '200', ay: 'center' },
               children: [
                 { type: 'we-icon', props: { name: 'hash', color: 'text-faint' } },
-                { type: 'we-text', props: { fontWeight: 'bold' }, children: ['$channel.title'] },
+                { type: 'we-text', props: { fontWeight: 'bold' }, children: [{ $: 'channel.title' }] },
               ],
             },
             // Who is looking at this channel right now, from presence. Free — nothing here writes
             // it; the shell already publishes focus, so the roster is a read.
-            peopleRow({ items: { $store: 'presenceStore.onlineHere' }, dids: true, max: 5, noun: 'here' }),
+            peopleRow({ items: { $: 'presenceStore.onlineHere' }, dids: true, max: 5, noun: 'here' }),
           ],
         },
       ],
@@ -197,7 +202,7 @@ const channelRoute: RouteSchema = {
       children: [
         collectionFeed({
           kind: KIND.message,
-          anchorId: { $store: 'routeStore.segments.1' },
+          anchorId: { $: 'routeStore.segments[1]' },
           as: 'message',
           // Oldest first: a channel reads as a transcript, where a timeline reads newest-first.
           order: 'asc',
@@ -231,7 +236,7 @@ const channelRoute: RouteSchema = {
       openLocal: 'composeOpen',
       title: 'New message',
       kind: KIND.message,
-      parentId: { $store: 'routeStore.segments.1' },
+      parentId: { $: 'routeStore.segments[1]' },
       saveLabel: 'Send',
     }),
   ],

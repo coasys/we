@@ -35,7 +35,7 @@ const labelled = (label: string, control: SchemaNode): SchemaNode => ({
 });
 
 const createModal: SchemaNode = formModal({
-  open: { $local: 'createRelationshipTypeOpen' },
+  open: { $: 'local.createRelationshipTypeOpen' },
   close: { $setLocal: 'createRelationshipTypeOpen', value: false },
   title: 'New kind of connection',
   size: 'sm',
@@ -70,15 +70,15 @@ const createModal: SchemaNode = formModal({
         labelled('Icon', {
           type: 'we-icon-picker',
           props: {
-            value: { $local: 'kindIcon' },
-            onChange: { $setLocal: 'kindIcon', from: '$event.detail' },
+            value: { $: 'local.kindIcon' },
+            onChange: { $setLocal: 'kindIcon', value: { $: 'event.detail' } },
           },
         }),
         labelled('Colour', {
           type: 'we-color-picker',
           props: {
-            value: { $local: 'kindColor' },
-            onChange: { $setLocal: 'kindColor', from: '$event.detail' },
+            value: { $: 'local.kindColor' },
+            onChange: { $setLocal: 'kindColor', value: { $: 'event.detail' } },
           },
         }),
       ],
@@ -102,8 +102,8 @@ const createModal: SchemaNode = formModal({
         {
           type: 'we-switch',
           props: {
-            checked: { $local: 'kindDirected' },
-            onChange: { $setLocal: 'kindDirected', from: '$event.detail' },
+            checked: { $: 'local.kindDirected' },
+            onChange: { $setLocal: 'kindDirected', value: { $: 'event.detail' } },
           },
         },
       ],
@@ -111,20 +111,20 @@ const createModal: SchemaNode = formModal({
   ],
   // Nothing about a name is locally judgeable beyond its presence, so this gates on the value
   // rather than dragging in the validation machinery.
-  disabled: { $not: { $local: 'kindName' } },
+  disabled: { $: '!local.kindName' },
   // The typed fields only — `kindIcon`, `kindColour` and `kindDirected` all start set.
-  discardWhen: { $or: [{ $local: 'kindName' }, { $local: 'kindInverse' }, { $local: 'kindDescription' }] },
+  discardWhen: { $: 'local.kindName || local.kindInverse || local.kindDescription' },
   submitLabel: 'Create',
   submit: {
     $action: 'spaceStore.createRelationshipType',
     args: [
       {
-        name: { $local: 'kindName' },
-        inverseName: { $local: 'kindInverse' },
-        description: { $local: 'kindDescription' },
-        icon: { $local: 'kindIcon' },
-        color: { $local: 'kindColor' },
-        directed: { $local: 'kindDirected' },
+        name: { $: 'local.kindName' },
+        inverseName: { $: 'local.kindInverse' },
+        description: { $: 'local.kindDescription' },
+        icon: { $: 'local.kindIcon' },
+        color: { $: 'local.kindColor' },
+        directed: { $: 'local.kindDirected' },
       },
     ],
   },
@@ -144,8 +144,8 @@ const kindRow: SchemaNode = {
     {
       type: 'we-icon',
       props: {
-        name: '$kind.icon',
-        color: { $if: { condition: '$kind.color', then: '$kind.color', else: 'text-muted' } },
+        name: { $: 'kind.icon' },
+        color: { $: "kind.color ? kind.color : 'text-muted'" },
       },
     },
     {
@@ -156,22 +156,22 @@ const kindRow: SchemaNode = {
           type: 'Row',
           props: { gap: '200', ay: 'center', wrap: true },
           children: [
-            { type: 'we-text', props: { fontWeight: '600' }, children: ['$kind.name'] },
+            { type: 'we-text', props: { fontWeight: '600' }, children: [{ $: 'kind.name' }] },
             {
               type: '$if',
               props: {
-                condition: '$kind.inverseName',
+                condition: { $: 'kind.inverseName' },
                 then: {
                   type: 'we-text',
                   props: { variant: 'footnote', color: 'text-muted' },
-                  children: [{ $concat: ['↔ ', '$kind.inverseName'] }],
+                  children: [{ $: '`↔ ${kind.inverseName}`' }],
                 },
               },
             },
             {
               type: '$if',
               props: {
-                condition: { $not: '$kind.directed' },
+                condition: { $: '!kind.directed' },
                 then: { type: 'we-badge', props: { size: 'xs' }, children: ['undirected'] },
               },
             },
@@ -180,11 +180,11 @@ const kindRow: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: '$kind.description',
+            condition: { $: 'kind.description' },
             then: {
               type: 'we-text',
               props: { variant: 'footnote', color: 'text-muted' },
-              children: ['$kind.description'],
+              children: [{ $: 'kind.description' }],
             },
           },
         },
@@ -199,7 +199,7 @@ const kindRow: SchemaNode = {
         // Removing a kind leaves the connections that used it: they keep their label and lose their
         // colour, which is the right degradation. Deleting them with it would delete claims people
         // made because somebody tidied a vocabulary.
-        onClick: { $action: 'model.delete', args: ['RelationshipType', '$kind.id'] },
+        onClick: { $action: 'model.delete', args: ['RelationshipType', { $: 'kind.id' }] },
       },
       children: [{ type: 'we-icon', props: { name: 'trash' } }],
     },

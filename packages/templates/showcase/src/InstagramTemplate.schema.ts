@@ -42,7 +42,7 @@ const header: SchemaNode = {
             {
               type: 'we-text',
               props: { variant: 'heading-sm' },
-              children: [{ $store: 'spaceStore.currentSpace.name' }],
+              children: [{ $: 'spaceStore.currentSpace.name' }],
             },
           ],
         },
@@ -76,7 +76,7 @@ const tileOverlay = (as: string): SchemaNode[] => [
   },
   {
     type: 'we-number',
-    props: { value: { $count: { items: `$${as}.signals` } }, shorten: true },
+    props: { value: { $: `count(${as}.signals)` }, shorten: true },
   },
 ];
 
@@ -89,7 +89,7 @@ const grid = (opts: { author?: SchemaProp; empty: SchemaNode }): SchemaNode =>
     overlay: tileOverlay,
     onTileClick: (as) => ({
       $action: 'routeStore.navigate',
-      args: [{ $concat: ['/photo/', `$${as}.id`] }],
+      args: [{ $: `'/photo/' + ${as}.id` }],
     }),
     empty: opts.empty,
   });
@@ -121,7 +121,7 @@ const photoDetail: RouteSchema = {
             item: {
               $query: {
                 entity: 'CollectionBlock',
-                where: { id: { $store: 'routeStore.segments.1' } },
+                where: { id: { $: 'routeStore.segments[1]' } },
                 include: { signals: true },
                 limit: 1,
               },
@@ -140,19 +140,19 @@ const photoDetail: RouteSchema = {
                 border: '1px solid border',
               },
               children: [
-                agentByline({ did: '$post.author', timestamp: '$post.createdAt' }),
+                agentByline({ did: { $: 'post.author' }, timestamp: { $: 'post.createdAt' } }),
                 {
                   // The whole post, images and caption together — the detail view is the one place
                   // the grid's crop is undone.
                   type: 'BlockRenderer',
                   props: {
-                    editorState: '$post.editorState',
+                    editorState: { $: 'post.editorState' },
                   },
                 },
                 {
                   type: 'Row',
                   props: { gap: '600', ay: 'center' },
-                  children: [signalRow('$post'), replyCount('$post')],
+                  children: [signalRow('post'), replyCount('post')],
                 },
                 {
                   type: 'we-button',
@@ -168,12 +168,12 @@ const photoDetail: RouteSchema = {
                   openLocal: 'replyOpen',
                   title: 'Comment',
                   kind: KIND.reply,
-                  parentId: '$post.id',
+                  parentId: { $: 'post.id' },
                   predicate: 'we://comment',
                   saveLabel: 'Comment',
                 }),
                 commentThread({
-                  anchorId: { $store: 'routeStore.segments.1' },
+                  anchorId: { $: 'routeStore.segments[1]' },
                   empty: noReplies(),
                   depth: 2,
                   reply: (as) => [
@@ -181,11 +181,11 @@ const photoDetail: RouteSchema = {
                       type: 'Column',
                       props: { width: '100%', gap: '100', py: '200' },
                       children: [
-                        agentByline({ did: `$${as}.author`, timestamp: `$${as}.createdAt` }),
+                        agentByline({ did: { $: `${as}.author` }, timestamp: { $: `${as}.createdAt` } }),
                         {
                           type: 'BlockRenderer',
                           props: {
-                            editorState: `$${as}.editorState`,
+                            editorState: { $: `${as}.editorState` },
                           },
                         },
                       ],
@@ -244,7 +244,7 @@ export const instagramTemplate: TemplateSchema = {
           children: [
             { type: 'we-text', props: { variant: 'heading-md' }, children: ['Your photos'] },
             grid({
-              author: { $store: 'sessionStore.me.did' },
+              author: { $: 'sessionStore.me.did' },
               empty: emptyState({ icon: 'user', label: 'photos of your own', delay: 0 }),
             }),
           ],

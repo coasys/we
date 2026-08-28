@@ -1,5 +1,6 @@
 import { cardList, cardShell, emptyState } from '@we/schema-kit';
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
+import { expr } from '@we/schema-shared';
 
 export interface InstalledListOptions {
   /** What the space holds — `Template` or `Theme`. */
@@ -12,8 +13,8 @@ export interface InstalledListOptions {
   emptyIcon: string;
   /** The row avatar's icon prop — a literal for templates, the theme's own icon field for themes. */
   avatarIcon: SchemaProp;
-  /** The row's identity in apply/default comparisons — `$template.slug` vs `$theme.id`. */
-  key: string;
+  /** The row's identity in apply/default comparisons — `template.slug` vs `theme.id`, as an expression. */
+  key: SchemaProp;
   /** Store path holding the currently applied id, for hiding the Apply button. */
   activeStorePath: string;
   /** Store action Apply invokes with the key. */
@@ -38,8 +39,8 @@ export function installedList(opts: InstalledListOptions): SchemaNode {
   return cardList({
     query: {
       entity: opts.entity,
-      where: { name: { contains: { $local: 'searchText' } } },
-      order: { createdAt: { $local: 'sortDirection' } },
+      where: { name: { contains: { $: 'local.searchText' } } },
+      order: { createdAt: { $: 'local.sortDirection' } },
     },
     as: opts.as,
     empty: emptyState({ icon: opts.emptyIcon, label: opts.label, searchable: true }),
@@ -53,7 +54,7 @@ export function installedList(opts: InstalledListOptions): SchemaNode {
               // Left: icon + name + author
               {
                 type: '$agent',
-                props: { did: `$${opts.as}.author`, as: `${opts.as}Author` },
+                props: { did: { $: `${opts.as}.author` }, as: `${opts.as}Author` },
                 children: [
                   {
                     type: 'Row',
@@ -70,12 +71,12 @@ export function installedList(opts: InstalledListOptions): SchemaNode {
                           {
                             type: 'we-text',
                             props: { fontWeight: 'semibold' },
-                            children: [`$${opts.as}.name`],
+                            children: [{ $: `${opts.as}.name` }],
                           },
                           {
                             type: 'we-text',
                             props: { variant: 'label' },
-                            children: [{ $concat: ['@', `$${opts.as}Author.handle`] }],
+                            children: [{ $: `'@' + ${opts.as}Author.handle` }],
                           },
                         ],
                       },
@@ -92,9 +93,7 @@ export function installedList(opts: InstalledListOptions): SchemaNode {
                   {
                     type: '$if',
                     props: {
-                      condition: {
-                        $ne: [opts.key, { $store: opts.activeStorePath }],
-                      },
+                      condition: expr`${opts.key} != ${{ $: opts.activeStorePath }}`,
                       then: {
                         type: 'we-button',
                         props: {
@@ -113,12 +112,7 @@ export function installedList(opts: InstalledListOptions): SchemaNode {
                   {
                     type: '$if',
                     props: {
-                      condition: {
-                        $and: [
-                          { $eq: [{ $store: 'spaceStore.currentSpace.author' }, '$me.did'] },
-                          { $ne: [opts.key, { $store: `spaceStore.currentSpace.${opts.defaultField}` }] },
-                        ],
-                      },
+                      condition: expr`spaceStore.currentSpace.author == me.did && ${opts.key} != ${{ $: `spaceStore.currentSpace.${opts.defaultField}` }}`,
                       then: {
                         type: 'we-button',
                         props: {
@@ -126,11 +120,7 @@ export function installedList(opts: InstalledListOptions): SchemaNode {
                           size: 'sm',
                           onClick: {
                             $action: 'model.update',
-                            args: [
-                              'Space',
-                              { $store: 'spaceStore.currentSpace.id' },
-                              { [opts.defaultField]: opts.key },
-                            ],
+                            args: ['Space', { $: 'spaceStore.currentSpace.id' }, { [opts.defaultField]: opts.key }],
                           },
                         },
                         children: ['Set as default'],
@@ -141,9 +131,7 @@ export function installedList(opts: InstalledListOptions): SchemaNode {
                   {
                     type: '$if',
                     props: {
-                      condition: {
-                        $eq: [`$${opts.as}.author`, '$me.did'],
-                      },
+                      condition: { $: `${opts.as}.author == me.did` },
                       then: {
                         type: 'we-button',
                         props: {
@@ -151,7 +139,7 @@ export function installedList(opts: InstalledListOptions): SchemaNode {
                           size: 'sm',
                           onClick: {
                             $action: 'model.delete',
-                            args: [opts.entity, `$${opts.as}.id`],
+                            args: [opts.entity, { $: `${opts.as}.id` }],
                             onSuccess: [{ $action: opts.refreshAction }],
                           },
                         },
@@ -172,14 +160,12 @@ export function installedList(opts: InstalledListOptions): SchemaNode {
               {
                 type: 'we-badge',
                 props: { variant: 'neutral' },
-                children: [{ $concat: ['v', `$${opts.as}.version`] }],
+                children: [{ $: `'v' + ${opts.as}.version` }],
               },
               {
                 type: '$if',
                 props: {
-                  condition: {
-                    $eq: [opts.key, { $store: `spaceStore.currentSpace.${opts.defaultField}` }],
-                  },
+                  condition: expr`${opts.key} == ${{ $: `spaceStore.currentSpace.${opts.defaultField}` }}`,
                   then: {
                     type: 'we-badge',
                     props: { variant: 'primary' },

@@ -34,7 +34,7 @@ describe('diagnostics', () => {
         {
           type: '$each',
           props: { items: [{ title: 'Alpha' }, { title: 'Beta' }], as: 'row' },
-          children: [{ type: 'we-text', children: ['$row.title'] }],
+          children: [{ type: 'we-text', children: [{ $: 'row.title' }] }],
         },
       ],
     };
@@ -52,7 +52,7 @@ describe('diagnostics', () => {
         {
           type: '$each',
           props: { items: { $query: { entity: 'Post' } }, as: 'post' },
-          children: [{ type: 'we-text', children: ['$post.title'] }],
+          children: [{ type: 'we-text', children: [{ $: 'post.title' }] }],
         },
       ],
     };

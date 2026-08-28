@@ -48,18 +48,18 @@ const guarded: SchemaNode = {
       props: {
         close: {
           $if: {
-            condition: { $local: 'dirty' },
+            condition: { $: 'local.dirty' },
             then: { $setLocal: 'asked', value: true },
             else: { $setLocal: 'closed', value: true },
           },
         },
-        value: { $concat: [{ $local: 'asked' }, '/', { $local: 'closed' }] },
+        value: { $: '`${local.asked}/${local.closed}`' },
       },
     },
     // The control that dirties the form, standing in for a field.
     {
       type: 'Probe',
-      props: { close: { $setLocal: 'dirty', value: true }, value: { $local: 'dirty' } },
+      props: { close: { $setLocal: 'dirty', value: true }, value: { $: 'local.dirty' } },
     },
   ],
 };

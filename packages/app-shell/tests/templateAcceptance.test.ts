@@ -91,7 +91,7 @@ describe('finding the references at all', () => {
             {
               type: 'we-button',
               props: {
-                disabled: { $if: { condition: { $store: 'runtimeStore.loading' }, then: true } },
+                disabled: { $: 'runtimeStore.loading ? true : null' },
                 onClick: [{ $setLocal: 'x', value: 1 }, { $action: 'runtimeStore.restartExecutor' }],
               },
             },
@@ -106,7 +106,7 @@ describe('finding the references at all', () => {
 
   it('reports each distinct reference once however many times it appears', () => {
     const repeated = wellFormed(
-      Array.from({ length: 5 }, () => ({ type: 'we-text', props: { text: { $store: 'sessionStore.bootState' } } })),
+      Array.from({ length: 5 }, () => ({ type: 'we-text', props: { text: { $: 'sessionStore.bootState' } } })),
     );
 
     expect(inspectTemplateSurface(repeated, SPACE_TIER).blocked).toHaveLength(1);
@@ -116,8 +116,8 @@ describe('finding the references at all', () => {
     // `modules.<id>.<key>` is the documented way to depend on an optional module, and its members
     // cannot be classified here — which module ids exist depends on the deployment's seed.
     const schema = wellFormed([
-      { type: 'we-text', props: { text: { $store: 'modules.notes.open' } } },
-      { type: 'we-text', props: { text: { $store: '$me.did' } } },
+      { type: 'we-text', props: { text: { $: 'modules.notes.open' } } },
+      { type: 'we-text', props: { text: { $: { $: 'me.did' } } } },
     ]);
 
     expect(inspectTemplateSurface(schema, SPACE_TIER).blocked).toEqual([]);
@@ -126,7 +126,7 @@ describe('finding the references at all', () => {
   it('blocks a store nobody has classified, rather than admitting it', () => {
     // An undecided member is not an open one. Reported with a null group so a caller can word
     // "there is no such thing" differently from "you may not have that".
-    const schema = wellFormed([{ type: 'we-text', props: { text: { $store: 'inventedStore.secrets' } } }]);
+    const schema = wellFormed([{ type: 'we-text', props: { text: { $: 'inventedStore.secrets' } } }]);
     const { blocked } = inspectTemplateSurface(schema, SPACE_TIER);
 
     expect(blocked).toHaveLength(1);
@@ -136,14 +136,14 @@ describe('finding the references at all', () => {
   it('judges a deep path by its store and member, as the bag does', () => {
     // `spaceStore.currentSpace.name` — the bag filters members, and everything under one travels
     // with it, so only the first two segments can decide.
-    const schema = wellFormed([{ type: 'we-text', props: { text: { $store: 'spaceStore.currentSpace.name' } } }]);
+    const schema = wellFormed([{ type: 'we-text', props: { text: { $: 'spaceStore.currentSpace.name' } } }]);
 
     expect(inspectTemplateSurface(schema, SPACE_TIER).blocked).toEqual([]);
   });
 
   it('reports the groups a template actually uses, for an install prompt', () => {
     const schema = wellFormed([
-      { type: 'we-text', props: { text: { $store: 'spaceStore.currentSpace.name' } } },
+      { type: 'we-text', props: { text: { $: 'spaceStore.currentSpace.name' } } },
       { type: 'we-button', props: { onClick: { $action: 'routeStore.navigate', args: ['/'] } } },
     ]);
 

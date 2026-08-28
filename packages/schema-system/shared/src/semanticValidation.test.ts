@@ -26,54 +26,30 @@ function messages(node: SchemaNode, severity: 'error' | 'warning') {
  * These cover the failure class this validator exists for: schemas that render, accept input, and
  * quietly do the wrong thing. Every case below shipped in WE's own templates at some point.
  */
-describe('$map select references', () => {
-  it('rejects a bare $item, which resolves to a literal', () => {
+describe('map projections', () => {
+  it('accepts a projection over a known store member', () => {
     const node: SchemaNode = {
       type: 'AvatarStack',
-      props: {
-        avatars: { $map: { items: { $store: 'spaceStore.members' }, select: { hash: '$item' } } },
-      },
-    };
-    const errs = messages(node, 'error');
-    expect(errs).toHaveLength(1);
-    expect(errs[0]).toContain('resolved as a literal');
-    expect(errs[0]).toContain('$concat');
-  });
-
-  it('accepts a dotted $item path, and a token object', () => {
-    const node: SchemaNode = {
-      type: 'AvatarStack',
-      props: {
-        avatars: {
-          $map: {
-            items: { $store: 'spaceStore.members' },
-            select: { image: '$item.avatar', hash: { $concat: ['$item'] } },
-          },
-        },
-      },
+      props: { avatars: { $: 'spaceStore.members.map(m, { image: m.avatar, hash: m.did })' } },
     };
     expect(messages(node, 'error')).toEqual([]);
   });
 
-  it('warns about any other $-prefixed string in a select', () => {
-    const node: SchemaNode = {
+  it('rejects a name the comprehension did not bind', () => {
+    // With `meta` the schema is a whole template, so an unbound name has nowhere else to come from.
+    const node = {
+      meta: { name: 'T', description: 'd', icon: 'users' },
       type: 'AvatarStack',
-      props: {
-        avatars: { $map: { items: { $store: 'spaceStore.members' }, select: { hash: '$person.did' } } },
-      },
-    };
-    expect(messages(node, 'warning').join()).toContain('passed through as a literal');
+      props: { avatars: { $: 'spaceStore.members.map(m, { hash: person.did })' } },
+    } as SchemaNode;
+    expect(messages(node, 'error').join()).toContain('person');
   });
 
-  it('checks tokens inside the source expression', () => {
+  it('checks the source the projection reads from', () => {
     const node: SchemaNode = {
       type: 'AvatarStack',
-      props: {
-        avatars: { $map: { items: { $store: 'spaceStore.definitelyNotAMember' }, select: { hash: '$item.did' } } },
-      },
+      props: { avatars: { $: 'spaceStore.definitelyNotAMember.map(m, { hash: m.did })' } },
     };
-    // The source used to be read from a key the grammar does not have (`source`), so nothing in it
-    // was ever checked.
     expect(messages(node, 'warning').join()).toContain('definitelyNotAMember');
   });
 });
@@ -99,7 +75,7 @@ describe('writes to hoisted query results', () => {
     const node: SchemaNode = {
       type: 'Column',
       $queries: { signalTypes: { entity: 'SignalType', subscribe: true } },
-      children: [{ type: 'we-text', children: [{ $count: { items: { $local: 'signalTypes' } } }] }],
+      children: [{ type: 'we-text', children: [{ $: 'count(local.signalTypes)' }] }],
     };
     expect(messages(node, 'error')).toEqual([]);
   });
@@ -148,9 +124,8 @@ describe('local scope across a route boundary', () => {
    * reads that resolve to nothing: the showcase Timeline template hoisted its `signalTypes` query
    * onto the root, validated clean, and rendered no signal controls at all.
    *
-   * The reads are in `props` because that is where the real ones were (a `$count` guard and a
-   * `$find` inside a query projection) — and because a token sitting directly in a `children` array
-   * is not walked at all, which is a separate gap this does not pretend to cover.
+   * The reads are in `props` because that is where the real ones were (a `count()` guard and a
+   * `find()` inside a query projection).
    */
   const template = (routes: unknown): SchemaNode =>
     ({
@@ -162,18 +137,18 @@ describe('local scope across a route boundary', () => {
       routes,
     }) as SchemaNode;
 
-  const readsSignalTypes = { type: 'we-text', props: { text: { $local: 'signalTypes' } } };
+  const readsSignalTypes = { type: 'we-text', props: { text: { $: 'local.signalTypes' } } };
 
   it('rejects a route reading a $queries entry declared on the root', () => {
     const node = template([{ path: '/', type: 'Column', children: [readsSignalTypes] }]);
-    expect(messages(node, 'error').join(' ')).toMatch(/\$local references "signalTypes"/);
+    expect(messages(node, 'error').join(' ')).toMatch(/signalTypes/);
   });
 
   it('rejects a route reading a $localState field declared on the root', () => {
     const node = template([
-      { path: '/', type: 'Column', children: [{ type: 'we-text', props: { text: { $local: 'draft' } } }] },
+      { path: '/', type: 'Column', children: [{ type: 'we-text', props: { text: { $: 'local.draft' } } }] },
     ]);
-    expect(messages(node, 'error').join(' ')).toMatch(/\$local references "draft"/);
+    expect(messages(node, 'error').join(' ')).toMatch(/draft/);
   });
 
   it('accepts the same read when the route declares it itself', () => {
@@ -194,7 +169,7 @@ describe('local scope across a route boundary', () => {
         path: '/',
         type: 'Column',
         $localState: { open: { type: 'boolean', initial: false } },
-        children: [{ type: 'Column', children: [{ type: 'we-text', props: { text: { $local: 'open' } } }] }],
+        children: [{ type: 'Column', children: [{ type: 'we-text', props: { text: { $: 'local.open' } } }] }],
       },
     ]);
     expect(messages(node, 'error')).toEqual([]);
@@ -211,7 +186,7 @@ describe('BlockComposer save handshake', () => {
   it('rejects onSave without onReady', () => {
     const node: SchemaNode = {
       type: 'BlockComposer',
-      props: { onSave: { $setLocal: 'draft', from: '$arg' } },
+      props: { onSave: { $setLocal: 'draft', value: { $: 'arg' } } },
     } as SchemaNode;
     expect(messages(node, 'error').join(' ')).toMatch(/onSave.*but no "onReady"/);
   });
@@ -224,8 +199,8 @@ describe('BlockComposer save handshake', () => {
         {
           type: 'BlockComposer',
           props: {
-            onReady: { $setLocal: 'savePost', from: '$event.save' },
-            onSave: { $action: 'spaceStore.createPost', args: ['$arg'] },
+            onReady: { $setLocal: 'savePost', value: { $: 'event.save' } },
+            onSave: { $action: 'spaceStore.createPost', args: [{ $: 'arg' }] },
           },
         },
       ],
@@ -239,53 +214,53 @@ describe('BlockComposer save handshake', () => {
   });
 });
 
-describe('tokens sitting directly in a children array', () => {
+describe('expressions sitting directly in a children array', () => {
   /**
-   * `children` legitimately accepts tokens — a `$plural` count-noun label is written that way, and
-   * so is a `$store` name. But a token is not a node, and walking it as one dropped it into the
-   * grouping-node branch, which looks for routes and children and finds neither. So every store
-   * path, action name and `$local` reference inside a token in a children array went unexamined:
-   * move the same expression from a prop into children and the validator stopped having an opinion.
+   * `children` legitimately accepts an expression — a count-noun label is written that way. But a
+   * token is not a node, and walking it as one dropped it into the grouping-node branch, which
+   * looks for routes and children and finds neither. So every store path and local reference
+   * inside an expression in a children array went unexamined: move the same expression from a
+   * prop into children and the validator stopped having an opinion.
    */
-  it('catches an unknown store member inside a children token', () => {
+  it('catches an unknown store member inside a children expression', () => {
     const node: SchemaNode = {
       type: 'we-text',
-      children: [{ $store: 'spaceStore.noSuchMember' }],
+      children: [{ $: 'spaceStore.noSuchMember' }],
     } as SchemaNode;
     expect(messages(node, 'error').concat(messages(node, 'warning')).join(' ')).toMatch(/noSuchMember/);
   });
 
-  it('catches an undeclared $local inside a children token', () => {
+  it('catches an undeclared local inside a children expression', () => {
     const node: SchemaNode = {
       type: 'Column',
       $localState: { other: { type: 'string', initial: '' } },
-      children: [{ type: 'we-text', children: [{ $local: 'missing' }] }],
+      children: [{ type: 'we-text', children: [{ $: 'local.missing' }] }],
     } as SchemaNode;
-    expect(messages(node, 'error').join(' ')).toMatch(/\$local references "missing"/);
+    expect(messages(node, 'error').join(' ')).toMatch(/missing/);
   });
 
-  it('catches a bad expression nested inside a $plural count', () => {
+  it('catches a bad reference nested inside a plural() count', () => {
     const node: SchemaNode = {
       type: 'Column',
       $localState: { rows: { type: 'object', initial: null } },
       children: [
         {
           type: 'we-text',
-          children: [{ $plural: { count: { $local: 'notDeclared' }, one: 'reply', other: 'replies' } }],
+          children: [{ $: "plural(count(local.notDeclared), 'reply', 'replies')" }],
         },
       ],
     } as SchemaNode;
-    expect(messages(node, 'error').join(' ')).toMatch(/\$local references "notDeclared"/);
+    expect(messages(node, 'error').join(' ')).toMatch(/notDeclared/);
   });
 
-  it('still accepts a well-formed token in children', () => {
+  it('still accepts a well-formed expression in children', () => {
     const node: SchemaNode = {
       type: 'Column',
       $localState: { rows: { type: 'object', initial: null } },
       children: [
         {
           type: 'we-text',
-          children: [{ $plural: { count: { $local: 'rows' }, one: 'reply', other: 'replies' } }],
+          children: [{ $: "plural(count(local.rows), 'reply', 'replies')" }],
         },
       ],
     } as SchemaNode;
@@ -299,11 +274,22 @@ describe('tokens sitting directly in a children array', () => {
         {
           type: 'Column',
           $localState: { open: { type: 'boolean', initial: false } },
-          children: [{ type: 'we-text', props: { text: { $local: 'open' } } }],
+          children: [{ type: 'we-text', props: { text: { $: 'local.open' } } }],
         },
       ],
     } as SchemaNode;
     expect(messages(node, 'error')).toEqual([]);
+  });
+
+  it('rejects a reference written as a string', () => {
+    const node: SchemaNode = {
+      type: 'we-text',
+      props: { text: '$item.title' },
+      children: ['$me.did'],
+    } as SchemaNode;
+    const errs = messages(node, 'error');
+    expect(errs.join(' ')).toMatch(/old string spelling/);
+    expect(errs).toHaveLength(2);
   });
 });
 

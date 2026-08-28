@@ -41,7 +41,7 @@ const nodes = walk(sidebar);
 /** The loop that renders one row per app, found by what it iterates. */
 const appsLoop = nodes.find((node) => {
   const items = (node.props as Node | undefined)?.items as Node | undefined;
-  return node.type === '$each' && items?.$store === 'appStore.appsWithWe';
+  return node.type === '$each' && items?.$ === 'appStore.appsWithWe';
 });
 
 describe('sidebar Apps group', () => {
@@ -66,8 +66,6 @@ describe('sidebar Apps group', () => {
       .sort((a, b) => walk(a).length - walk(b).length)[0];
 
     expect(gate, 'the Apps group must be behind an $if').toBeDefined();
-    expect((gate?.props as Node).condition).toEqual({
-      $count: { items: { $store: 'appStore.apps' } },
-    });
+    expect((gate?.props as Node).condition).toEqual({ $: 'count(appStore.apps)' });
   });
 });

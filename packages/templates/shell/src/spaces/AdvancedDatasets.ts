@@ -1,4 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
+import { expr } from '@we/schema-shared';
 
 /**
  * Every dataset this agent holds, as datasets rather than as spaces — ids, share URIs, and the two
@@ -15,10 +16,10 @@ import type { SchemaNode } from '@we/schema-shared';
  */
 
 /** True when this dataset is one the app made for itself rather than one the agent joined. */
-const isSystem = { $in: ['$dataset.id', { $store: 'datasetStore.systemDatasetUuids' }] };
+const isSystem = { $: 'dataset.id in datasetStore.systemDatasetUuids' };
 
 /** `we-root` specifically — deleting it takes settings, preferences and installed templates/themes. */
-const isRoot = { $eq: ['$dataset.id', { $store: 'datasetStore.rootDataset.id' }] };
+const isRoot = { $: 'dataset.id == datasetStore.rootDataset.id' };
 
 const datasetCard: SchemaNode = {
   type: 'Column',
@@ -32,17 +33,11 @@ const datasetCard: SchemaNode = {
         {
           type: 'we-icon',
           props: {
-            name: {
-              $if: {
-                condition: isSystem,
-                then: 'hard-drives',
-                else: { $if: { condition: '$dataset.sharedUri', then: 'globe', else: 'folder' } },
-              },
-            },
+            name: expr`${isSystem} ? 'hard-drives' : (dataset.sharedUri ? 'globe' : 'folder')`,
             size: '16px',
           },
         },
-        { type: 'we-text', props: { variant: 'label' }, children: ['$dataset.name'] },
+        { type: 'we-text', props: { variant: 'label' }, children: [{ $: 'dataset.name' }] },
         {
           type: '$if',
           props: {
@@ -55,16 +50,16 @@ const datasetCard: SchemaNode = {
     {
       type: 'we-text',
       props: { variant: 'footnote', color: 'text-faint' },
-      children: [{ $concat: ['ID: ', '$dataset.id'] }],
+      children: [{ $: '`ID: ${dataset.id}`' }],
     },
     {
       type: '$if',
       props: {
-        condition: '$dataset.sharedUri',
+        condition: { $: 'dataset.sharedUri' },
         then: {
           type: 'we-text',
           props: { variant: 'footnote', color: 'text-faint' },
-          children: [{ $concat: ['URL: ', '$dataset.sharedUri'] }],
+          children: [{ $: '`URL: ${dataset.sharedUri}`' }],
         },
       },
     },
@@ -79,8 +74,8 @@ const datasetCard: SchemaNode = {
             size: 'sm',
             onClick: {
               $action: 'datasetStore.cleanupSpaceSdna',
-              args: ['$dataset.id'],
-              onSuccess: [{ $setLocal: 'sdnaCleanupResult', from: '$result' }],
+              args: [{ $: 'dataset.id' }],
+              onSuccess: [{ $setLocal: 'sdnaCleanupResult', value: { $: 'result' } }],
             },
           },
           children: [
@@ -93,7 +88,7 @@ const datasetCard: SchemaNode = {
           props: {
             variant: 'danger',
             size: 'sm',
-            onClick: { $action: 'spaceStore.removeSpace', args: ['$dataset.id'] },
+            onClick: { $action: 'spaceStore.removeSpace', args: [{ $: 'dataset.id' }] },
           },
           children: [
             { type: 'we-icon', props: { name: 'trash' } },
@@ -121,11 +116,11 @@ const datasetCard: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $local: 'sdnaCleanupResult' },
+        condition: { $: 'local.sdnaCleanupResult' },
         then: {
           type: 'we-text',
           props: { variant: 'footnote', color: 'text-faint' },
-          children: [{ $local: 'sdnaCleanupResult' }],
+          children: [{ $: 'local.sdnaCleanupResult' }],
         },
       },
     },
@@ -143,7 +138,7 @@ export const advancedDatasetsSection: SchemaNode = {
       children: [
         {
           type: 'we-icon',
-          props: { name: { $if: { condition: { $local: 'advancedOpen' }, then: 'caret-down', else: 'caret-right' } } },
+          props: { name: { $: "local.advancedOpen ? 'caret-down' : 'caret-right'" } },
         },
         { type: 'we-text', props: { variant: 'label' }, children: ['Advanced — all datasets'] },
       ],
@@ -151,7 +146,7 @@ export const advancedDatasetsSection: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $local: 'advancedOpen' },
+        condition: { $: 'local.advancedOpen' },
         then: {
           type: 'Column',
           props: { gap: '200' },
@@ -163,7 +158,7 @@ export const advancedDatasetsSection: SchemaNode = {
             },
             {
               type: '$each',
-              props: { items: { $store: 'datasetStore.datasets' }, as: 'dataset' },
+              props: { items: { $: 'datasetStore.datasets' }, as: 'dataset' },
               children: [datasetCard],
             },
           ],

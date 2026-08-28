@@ -1,4 +1,5 @@
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
+import { expr } from '@we/schema-shared';
 import { agentByline, emptyState, field, formModal } from '@we/template-kit';
 
 /**
@@ -23,9 +24,9 @@ import { agentByline, emptyState, field, formModal } from '@we/template-kit';
  * datetime with, so demanding date-only strings would make the component unusable by the only data
  * that feeds it.
  */
-const eventsQuery = {
-  $query: { entity: 'EventBlock', order: { startDate: 'asc' }, limit: 200 },
-};
+const eventsDecl = { entity: 'EventBlock', order: { startDate: 'asc' }, limit: 200 };
+/** Hoisted on the view root as `events`; read from there everywhere below. */
+const eventsQuery = { $: 'local.events' };
 
 /**
  * The same events, narrowed to the selected day.
@@ -49,14 +50,14 @@ const eventsQuery = {
  * else in a fixed-width datetime for a date to hide. It stops being exact the moment the format
  * does, which is why this comment exists.
  */
-const eventsOnDay = {
-  $query: {
-    entity: 'EventBlock',
-    where: { startDate: { contains: { $local: 'day' } } },
-    order: { startDate: 'asc' },
-    limit: 100,
-  },
+const dayEventsDecl = {
+  entity: 'EventBlock',
+  where: { startDate: { contains: { $: 'local.day' } } },
+  order: { startDate: 'asc' },
+  limit: 100,
 };
+/** Hoisted on the view root as `dayEvents`. */
+const eventsOnDay = { $: 'local.dayEvents' };
 
 /** Step a month. The carets flank the label rather than sitting off to one side. */
 const step = (by: number, icon: string): SchemaNode => ({
@@ -65,10 +66,9 @@ const step = (by: number, icon: string): SchemaNode => ({
     size: 'sm',
     variant: 'ghost',
     square: true,
-    // Paging is arithmetic on an offset, which is the one calculation the schema layer can do —
-    // `$setLocal` sets a literal and adds a constant, nothing else — so every source reads the same
-    // offset and the template only ever adds to it.
-    onClick: { $setLocal: 'monthOffset', by },
+    // Paging is arithmetic on an offset, so every source reads the same offset and the template
+    // only ever adds to it.
+    onClick: { $setLocal: 'monthOffset', value: { $: `local.monthOffset + ${by}` } },
   },
   children: [{ type: 'we-icon', props: { name: icon } }],
 });
@@ -87,7 +87,7 @@ const step = (by: number, icon: string): SchemaNode => ({
 const monthPicker: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $local: 'pickerOpen' },
+    condition: { $: 'local.pickerOpen' },
     then: {
       type: 'Column',
       props: {
@@ -117,7 +117,7 @@ const monthPicker: SchemaNode = {
                 flex: '1',
                 textAlign: 'center',
                 fontWeight: 'semibold',
-                text: { $source: { name: 'yearLabel', options: { offset: { $local: 'monthOffset' } } } },
+                text: { $: 'yearLabel({ offset: local.monthOffset })' },
               },
             },
             step(12, 'caret-right'),
@@ -130,7 +130,7 @@ const monthPicker: SchemaNode = {
             {
               type: '$each',
               props: {
-                items: { $source: { name: 'calendarMonths', options: { offset: { $local: 'monthOffset' } } } },
+                items: { $: 'calendarMonths({ offset: local.monthOffset })' },
                 as: 'month',
               },
               children: [
@@ -139,19 +139,19 @@ const monthPicker: SchemaNode = {
                   props: {
                     size: 'sm',
                     width: 'calc(33.33% - 6px)',
-                    variant: { $if: { condition: '$month.isShown', then: 'secondary', else: 'ghost' } },
+                    variant: { $: "month.isShown ? 'secondary' : 'ghost'" },
                     // The offset is computed by the source and read off the row, because
                     // `$setLocal` cannot work out how far away a month is. `from` takes a context
                     // path, so the arithmetic arrives as data.
                     onClick: [
-                      { $setLocal: 'monthOffset', from: '$month.offset' },
+                      { $setLocal: 'monthOffset', value: { $: 'month.offset' } },
                       { $setLocal: 'pickerOpen', value: false },
                     ],
                     // The real current month stays marked even while another year is on screen,
                     // so "where am I relative to now" survives paging away.
-                    color: { $if: { condition: '$month.isThisMonth', then: 'accent-text', else: '' } },
+                    color: { $: "month.isThisMonth ? 'accent-text' : ''" },
                   },
-                  children: ['$month.label'],
+                  children: [{ $: 'month.label' }],
                 },
               ],
             },
@@ -195,7 +195,7 @@ const monthNav: SchemaNode = {
               type: 'we-text',
               props: {
                 fontWeight: 'semibold',
-                text: { $source: { name: 'monthLabel', options: { offset: { $local: 'monthOffset' } } } },
+                text: { $: 'monthLabel({ offset: local.monthOffset })' },
               },
             },
           ],
@@ -218,7 +218,7 @@ const monthNav: SchemaNode = {
           */
           type: '$if',
           props: {
-            condition: { $local: 'monthOffset' },
+            condition: { $: 'local.monthOffset' },
             then: {
               type: 'we-button',
               props: { size: 'xs', variant: 'ghost', onClick: { $setLocal: 'monthOffset', value: 0 } },
@@ -238,7 +238,7 @@ const monthNav: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $local: 'pickerOpen' },
+        condition: { $: 'local.pickerOpen' },
         then: {
           type: 'div',
           props: {
@@ -285,7 +285,9 @@ const monthGrid: SchemaNode = {
             {
               type: 'Row',
               props: { flex: '1', ax: 'center' },
-              children: [{ type: 'we-text', props: { variant: 'footnote', color: 'text-muted', text: '$weekday' } }],
+              children: [
+                { type: 'we-text', props: { variant: 'footnote', color: 'text-muted', text: { $: 'weekday' } } },
+              ],
             },
           ],
         },
@@ -300,7 +302,7 @@ const monthGrid: SchemaNode = {
         {
           type: '$each',
           props: {
-            items: { $source: { name: 'calendarMonth', options: { offset: { $local: 'monthOffset' } } } },
+            items: { $: 'calendarMonth({ offset: local.monthOffset })' },
             as: 'cell',
           },
           children: [
@@ -323,28 +325,10 @@ const monthGrid: SchemaNode = {
                   restyled to survive it. The outline says "this one" just as clearly and leaves
                   what is inside legible.
                 */
-                bg: {
-                  $if: {
-                    condition: { $eq: ['$cell.date', { $local: 'day' }] },
-                    then: 'accent-muted',
-                    else: { $if: { condition: '$cell.inMonth', then: '', else: 'page' } },
-                  },
-                },
-                border: {
-                  $if: {
-                    condition: { $eq: ['$cell.date', { $local: 'day' }] },
-                    then: '1px solid primary-500',
-                    else: '1px solid transparent',
-                  },
-                },
+                bg: { $: "cell.date == local.day ? 'accent-muted' : cell.inMonth ? '' : 'page'" },
+                border: { $: "cell.date == local.day ? '1px solid primary-500' : '1px solid transparent'" },
                 hoverProps: {
-                  bg: {
-                    $if: {
-                      condition: { $eq: ['$cell.date', { $local: 'day' }] },
-                      then: 'accent-muted',
-                      else: 'surface-sunken',
-                    },
-                  },
+                  bg: { $: "cell.date == local.day ? 'accent-muted' : 'surface-sunken'" },
                 },
                 /*
                   Clicking the selected day again clears the selection.
@@ -360,9 +344,9 @@ const monthGrid: SchemaNode = {
                 onClick: [
                   {
                     $if: {
-                      condition: { $eq: ['$cell.date', { $local: 'day' }] },
+                      condition: { $: 'cell.date == local.day' },
                       then: { $setLocal: 'day', value: '' },
-                      else: { $setLocal: 'day', from: '$cell.date' },
+                      else: { $setLocal: 'day', value: { $: 'cell.date' } },
                     },
                   },
                 ],
@@ -378,24 +362,18 @@ const monthGrid: SchemaNode = {
                     ax: 'center',
                     ay: 'center',
                     r: 'pill',
-                    bg: { $if: { condition: '$cell.isToday', then: 'accent', else: '' } },
+                    bg: { $: "cell.isToday ? 'accent' : ''" },
                   },
                   children: [
                     {
                       type: 'we-text',
                       props: {
                         fontSize: '100',
-                        text: '$cell.day',
+                        text: { $: 'cell.day' },
                         // Today first — its disc decides the colour. Then the neighbouring months,
                         // which stay visible but recede.
-                        color: {
-                          $if: {
-                            condition: '$cell.isToday',
-                            then: 'on-accent',
-                            else: { $if: { condition: '$cell.inMonth', then: 'text', else: 'text-faint' } },
-                          },
-                        },
-                        fontWeight: { $if: { condition: '$cell.isToday', then: 'semibold', else: '' } },
+                        color: { $: "cell.isToday ? 'on-accent' : cell.inMonth ? 'text' : 'text-faint'" },
+                        fontWeight: { $: "cell.isToday ? 'semibold' : ''" },
                       },
                     },
                   ],
@@ -415,13 +393,7 @@ const monthGrid: SchemaNode = {
                 {
                   type: '$each',
                   props: {
-                    items: {
-                      $filter: {
-                        items: eventsQuery,
-                        where: { startDate: { startsWith: '$cell.date' } },
-                        limit: 2,
-                      },
-                    },
+                    items: expr`filter(${eventsQuery}, { startDate: { startsWith: cell.date } }, 2)`,
                     as: 'mark',
                   },
                   children: [
@@ -433,11 +405,11 @@ const monthGrid: SchemaNode = {
                         truncate: true,
                         px: '100',
                         r: '200',
-                        text: '$mark.title',
+                        text: { $: 'mark.title' },
                         // Faded for the neighbouring months, so a busy 1st of next month does not
                         // read as part of the month being looked at.
-                        bg: { $if: { condition: '$cell.inMonth', then: 'accent-muted', else: 'surface-sunken' } },
-                        color: { $if: { condition: '$cell.inMonth', then: 'accent-text', else: 'text-muted' } },
+                        bg: { $: "cell.inMonth ? 'accent-muted' : 'surface-sunken'" },
+                        color: { $: "cell.inMonth ? 'accent-text' : 'text-muted'" },
                       },
                     },
                   ],
@@ -450,18 +422,7 @@ const monthGrid: SchemaNode = {
                   */
                   type: '$if',
                   props: {
-                    condition: {
-                      $gt: [
-                        {
-                          $count: {
-                            items: {
-                              $filter: { items: eventsQuery, where: { startDate: { startsWith: '$cell.date' } } },
-                            },
-                          },
-                        },
-                        2,
-                      ],
-                    },
+                    condition: expr`count(filter(${eventsQuery}, { startDate: { startsWith: cell.date } })) > 2`,
                     then: {
                       type: 'we-text',
                       props: { fontSize: '100', color: 'text-muted', px: '100', text: 'more…' },
@@ -493,36 +454,36 @@ const eventRow: SchemaNode = {
       props: { gap: '300', ay: 'center' },
       children: [
         { type: 'we-icon', props: { name: 'calendar', color: 'accent-text' } },
-        { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['$event.title'] },
+        { type: 'we-text', props: { fontWeight: 'semibold' }, children: [{ $: 'event.title' }] },
         {
           type: 'we-text',
           props: { fontSize: '200', color: 'text', ml: 'auto' },
-          children: [{ type: 'we-timestamp', props: { value: '$event.startDate' } }],
+          children: [{ type: 'we-timestamp', props: { value: { $: 'event.startDate' } } }],
         },
       ],
     },
     {
       type: '$if',
       props: {
-        condition: '$event.description',
-        then: { type: 'we-text', props: { color: 'text' }, children: ['$event.description'] },
+        condition: { $: 'event.description' },
+        then: { type: 'we-text', props: { color: 'text' }, children: [{ $: 'event.description' }] },
       },
     },
     {
       type: '$if',
       props: {
-        condition: '$event.location',
+        condition: { $: 'event.location' },
         then: {
           type: 'Row',
           props: { gap: '200', ay: 'center' },
           children: [
             { type: 'we-icon', props: { name: 'map-pin', color: 'text-muted' } },
-            { type: 'we-text', props: { fontSize: '200', color: 'text' }, children: ['$event.location'] },
+            { type: 'we-text', props: { fontSize: '200', color: 'text' }, children: [{ $: 'event.location' }] },
           ],
         },
       },
     },
-    agentByline({ did: '$event.author', as: 'organiser', timestamp: '$event.createdAt' }),
+    agentByline({ did: { $: 'event.author' }, as: 'organiser', timestamp: { $: 'event.createdAt' } }),
   ],
 };
 
@@ -533,7 +494,7 @@ const eventRow: SchemaNode = {
  * composer for why that beats clearing them in `onSuccess`.
  */
 const composer: SchemaNode = formModal({
-  open: { $local: 'composerOpen' },
+  open: { $: 'local.composerOpen' },
   close: { $setLocal: 'composerOpen', value: false },
   title: 'New event',
   size: 'sm',
@@ -554,19 +515,17 @@ const composer: SchemaNode = formModal({
     field({ name: 'draftLocation', label: 'Where', placeholder: 'Optional' }),
   ],
   // Title and a time are what the model requires; anything else is optional here too.
-  disabled: { $or: [{ $not: { $local: 'draftTitle' } }, { $not: { $local: 'draftStart' } }] },
-  discardWhen: {
-    $or: [{ $local: 'draftTitle' }, { $local: 'draftStart' }, { $local: 'draftLocation' }],
-  },
+  disabled: { $: '!local.draftTitle || !local.draftStart' },
+  discardWhen: { $: 'local.draftTitle || local.draftStart || local.draftLocation' },
   submitLabel: 'Add event',
   submit: {
     $action: 'model.create',
     args: [
       'EventBlock',
       {
-        title: { $local: 'draftTitle' },
-        startDate: { $local: 'draftStart' },
-        location: { $local: 'draftLocation' },
+        title: { $: 'local.draftTitle' },
+        startDate: { $: 'local.draftStart' },
+        location: { $: 'local.draftLocation' },
       },
     ],
   },
@@ -582,6 +541,7 @@ export const calendarView: TemplateSchema = {
   },
   type: 'Column',
   props: { width: '100%', ax: 'center', p: '500' },
+  $queries: { events: eventsDecl, dayEvents: dayEventsDecl },
   $localState: {
     /** The day the grid has selected, `YYYY-MM-DD`. Empty means "everything scheduled". */
     day: { type: 'string', initial: '' },
@@ -616,7 +576,7 @@ export const calendarView: TemplateSchema = {
         {
           type: '$if',
           props: {
-            condition: { $local: 'day' },
+            condition: { $: 'local.day' },
             then: {
               type: 'Column',
               props: { width: '100%', gap: '300' },
@@ -631,7 +591,7 @@ export const calendarView: TemplateSchema = {
                       // the machine-readable key the grid matches on.
                       type: 'we-timestamp',
                       props: {
-                        value: { $local: 'day' },
+                        value: { $: 'local.day' },
                         dateStyle: 'full',
                         // The typography props rather than `we-text`'s `variant`/`uppercase`
                         // shorthands, which are that element's own and not part of the DS layers a
@@ -652,7 +612,7 @@ export const calendarView: TemplateSchema = {
                 {
                   type: '$if',
                   props: {
-                    condition: { $count: { items: eventsOnDay } },
+                    condition: expr`count(${eventsOnDay})`,
                     then: {
                       type: '$each',
                       props: { items: eventsOnDay, as: 'event' },
@@ -703,7 +663,7 @@ export const calendarView: TemplateSchema = {
             else: {
               type: '$if',
               props: {
-                condition: { $count: { items: eventsQuery } },
+                condition: expr`count(${eventsQuery})`,
                 then: {
                   type: 'Column',
                   props: { width: '100%', gap: '300' },

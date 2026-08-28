@@ -31,7 +31,7 @@ import { agentByline, commentThread, composerModal } from '@we/template-kit';
  * Absent on an ordinary edge, which stands for a declared relation and has no record; the modal's
  * condition is exactly that absence, so clicking one opens nothing.
  */
-const EDGE_ID = { $local: 'selectedEdge.recordId' };
+const EDGE_ID = { $: 'local.selectedEdge.recordId' };
 
 const close = { $setLocal: 'selectedEdge', value: null };
 
@@ -39,22 +39,25 @@ const close = { $setLocal: 'selectedEdge', value: null };
 const signals: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $count: { items: { $local: 'signalTypes' } } },
+    condition: { $: 'count(local.signalTypes)' },
     then: {
       type: 'Row',
       props: { gap: '600', ay: 'center', minHeight: '40px' },
       children: [
         {
           type: '$each',
-          props: { items: { $local: 'signalTypes' }, as: 'sig' },
+          props: { items: { $: 'local.signalTypes' }, as: 'sig' },
           children: [
             {
               type: 'SignalControl',
               props: {
-                signalType: '$sig',
-                signals: { $filter: { items: '$link.signals', where: { signalTypeId: '$sig.id' } } },
-                myDid: '$me.did',
-                onSignal: { $action: 'spaceStore.upsertSignal', args: ['$link.id', '$sig.id', '$arg'] },
+                signalType: { $: 'sig' },
+                signals: { $: 'filter(link.signals, { signalTypeId: sig.id })' },
+                myDid: { $: 'me.did' },
+                onSignal: {
+                  $action: 'spaceStore.upsertSignal',
+                  args: [{ $: 'link.id' }, { $: 'sig.id' }, { $: 'arg' }],
+                },
               },
             },
           ],
@@ -72,14 +75,14 @@ const signals: SchemaNode = {
  * way was that none of this had to be built twice.
  */
 const thread: SchemaNode = commentThread({
-  anchorId: '$link.id',
+  anchorId: { $: 'link.id' },
   reply: (as) => [
     {
       type: 'Column',
       props: { gap: '100', width: '100%', py: '200' },
       children: [
-        agentByline({ did: `$${as}.author`, timestamp: `$${as}.createdAt` }),
-        { type: 'BlockRenderer', props: { editorState: `$${as}.editorState` } },
+        agentByline({ did: { $: `${as}.author` }, timestamp: { $: `${as}.createdAt` } }),
+        { type: 'BlockRenderer', props: { editorState: { $: `${as}.editorState` } } },
       ],
     },
   ],
@@ -112,20 +115,20 @@ const editing: SchemaNode = {
   */
   $localState: {
     editOpen: { type: 'boolean', initial: false },
-    draftLabel: { type: 'string', initial: '$link.label' },
-    draftDescription: { type: 'string', initial: '$link.description' },
-    draftKind: { type: 'string', initial: '$link.relationshipTypeId' },
+    draftLabel: { type: 'string', initial: { $: 'link.label' } },
+    draftDescription: { type: 'string', initial: { $: 'link.description' } },
+    draftKind: { type: 'string', initial: { $: 'link.relationshipTypeId' } },
   },
   children: [
     {
       type: '$if',
       props: {
-        condition: { $local: 'editOpen' },
+        condition: { $: 'local.editOpen' },
         else: {
           type: 'Row',
           props: { gap: '200', ay: 'center', width: '100%' },
           children: [
-            { type: 'we-text', props: { variant: 'heading-md' }, children: ['$link.label'] },
+            { type: 'we-text', props: { variant: 'heading-md' }, children: [{ $: 'link.label' }] },
             {
               type: 'we-button',
               props: {
@@ -152,8 +155,8 @@ const editing: SchemaNode = {
                   props: {
                     width: '100%',
                     placeholder: 'contradicts, depends on, inspired by…',
-                    value: { $local: 'draftLabel' },
-                    onInput: { $setLocal: 'draftLabel', from: '$event.detail' },
+                    value: { $: 'local.draftLabel' },
+                    onInput: { $setLocal: 'draftLabel', value: { $: 'event.detail' } },
                   },
                 },
               ],
@@ -168,8 +171,8 @@ const editing: SchemaNode = {
                     width: '100%',
                     rows: 2,
                     placeholder: 'What makes this true? (optional)',
-                    value: { $local: 'draftDescription' },
-                    onInput: { $setLocal: 'draftDescription', from: '$event.detail' },
+                    value: { $: 'local.draftDescription' },
+                    onInput: { $setLocal: 'draftDescription', value: { $: 'event.detail' } },
                   },
                 },
               ],
@@ -184,7 +187,7 @@ const editing: SchemaNode = {
             {
               type: '$if',
               props: {
-                condition: { $count: { items: { $local: 'relationshipKinds' } } },
+                condition: { $: 'count(local.relationshipKinds)' },
                 then: {
                   type: 'we-form-field',
                   props: { label: 'Kind', size: 'sm', width: '100%' },
@@ -195,14 +198,9 @@ const editing: SchemaNode = {
                         size: 'sm',
                         width: '100%',
                         placeholder: 'No particular kind',
-                        value: { $local: 'draftKind' },
-                        options: {
-                          $map: {
-                            items: { $local: 'relationshipKinds' },
-                            select: { label: '$item.name', value: '$item.id' },
-                          },
-                        },
-                        onChange: { $setLocal: 'draftKind', from: '$event.detail' },
+                        value: { $: 'local.draftKind' },
+                        options: { $: 'local.relationshipKinds.map(item, { label: item.name, value: item.id })' },
+                        onChange: { $setLocal: 'draftKind', value: { $: 'event.detail' } },
                       },
                     },
                   ],
@@ -230,22 +228,22 @@ const editing: SchemaNode = {
                     size: 'sm',
                     variant: 'primary',
                     // Nothing about a label is locally judgeable beyond its presence.
-                    disabled: { $not: { $local: 'draftLabel' } },
+                    disabled: { $: '!local.draftLabel' },
                     onClick: {
                       $action: 'model.update',
                       args: [
                         'Relationship',
-                        '$link.id',
+                        { $: 'link.id' },
                         {
-                          label: { $local: 'draftLabel' },
-                          description: { $local: 'draftDescription' },
-                          relationshipTypeId: { $local: 'draftKind' },
+                          label: { $: 'local.draftLabel' },
+                          description: { $: 'local.draftDescription' },
+                          relationshipTypeId: { $: 'local.draftKind' },
                         },
                       ],
                       // The graph re-reads, so the line's label and its colour change with it.
                       onSuccess: [
                         { $setLocal: 'editOpen', value: false },
-                        { $setLocal: 'revision', by: 1 },
+                        { $setLocal: 'revision', value: { $: 'local.revision + 1' } },
                       ],
                     },
                   },
@@ -260,8 +258,8 @@ const editing: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $and: ['$link.description', { $not: { $local: 'editOpen' } }] },
-        then: { type: 'we-text', props: { color: 'text-muted' }, children: ['$link.description'] },
+        condition: { $: 'link.description && !local.editOpen' },
+        then: { type: 'we-text', props: { color: 'text-muted' }, children: [{ $: 'link.description' }] },
       },
     },
   ],
@@ -294,13 +292,13 @@ export const edgeDetailModal: SchemaNode = {
                   type: 'Row',
                   props: { gap: '200', ay: 'center', wrap: true, width: '100%' },
                   children: [
-                    { type: 'we-badge', props: { size: 'xs' }, children: ['$link.sourceType'] },
+                    { type: 'we-badge', props: { size: 'xs' }, children: [{ $: 'link.sourceType' }] },
                     { type: 'we-icon', props: { name: 'arrow-right', size: 'xs', color: 'text-faint' } },
-                    { type: 'we-badge', props: { size: 'xs' }, children: ['$link.targetType'] },
+                    { type: 'we-badge', props: { size: 'xs' }, children: [{ $: 'link.targetType' }] },
                   ],
                 },
                 editing,
-                agentByline({ did: '$link.author', timestamp: '$link.createdAt' }),
+                agentByline({ did: { $: 'link.author' }, timestamp: { $: 'link.createdAt' } }),
                 signals,
                 { type: 'we-divider' },
                 thread,
@@ -330,8 +328,8 @@ export const edgeDetailModal: SchemaNode = {
                         ml: 'auto',
                         onClick: {
                           $action: 'model.delete',
-                          args: ['Relationship', '$link.id'],
-                          onSuccess: [close, { $setLocal: 'revision', by: 1 }],
+                          args: ['Relationship', { $: 'link.id' }],
+                          onSuccess: [close, { $setLocal: 'revision', value: { $: 'local.revision + 1' } }],
                         },
                       },
                       children: [{ type: 'we-icon', props: { name: 'trash' } }, 'Remove'],
@@ -350,7 +348,7 @@ export const edgeDetailModal: SchemaNode = {
                   saveAction: {
                     $action: 'spaceStore.createPost',
                     // `'$arg'` first: `createPost(json, options)`.
-                    args: ['$arg', { kind: 'reply', parentId: '$link.id', predicate: 'we://comment' }],
+                    args: [{ $: 'arg' }, { kind: 'reply', parentId: { $: 'link.id' }, predicate: 'we://comment' }],
                   },
                 }),
               ],

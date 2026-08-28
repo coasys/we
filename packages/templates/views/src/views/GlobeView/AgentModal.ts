@@ -16,7 +16,7 @@ export const agentModal = {
   children: [
     {
       type: '$agent',
-      props: { did: { $local: 'selectedPin.id' }, as: 'agent' },
+      props: { did: { $: 'local.selectedPin.id' }, as: 'agent' },
       children: [
         {
           type: 'Column',
@@ -30,11 +30,11 @@ export const agentModal = {
                 {
                   type: '$if',
                   props: {
-                    condition: '$agent.avatar',
+                    condition: { $: 'agent.avatar' },
                     then: {
                       type: 'we-image',
                       props: {
-                        src: '$agent.avatar',
+                        src: { $: 'agent.avatar' },
                         width: '60px',
                         height: '60px',
                         fit: 'cover',
@@ -54,12 +54,12 @@ export const agentModal = {
                     {
                       type: 'we-text',
                       props: { variant: 'heading-sm' },
-                      children: ['$agent.name'],
+                      children: [{ $: 'agent.name' }],
                     },
                     {
                       type: 'we-text',
                       props: { variant: 'footnote', color: 'text-faint' },
-                      children: [{ $concat: ['@', '$agent.handle'] }],
+                      children: [{ $: '`@${agent.handle}`' }],
                     },
                   ],
                 },
@@ -70,11 +70,11 @@ export const agentModal = {
             {
               type: '$if',
               props: {
-                condition: '$agent.bio',
+                condition: { $: 'agent.bio' },
                 then: {
                   type: 'we-text',
                   props: { variant: 'body' },
-                  children: ['$agent.bio'],
+                  children: [{ $: 'agent.bio' }],
                 },
               },
             },
@@ -91,12 +91,12 @@ export const agentModal = {
                     {
                       type: 'SignalControl',
                       props: {
-                        signalType: '$sig',
+                        signalType: { $: 'sig' },
                         signals: [],
-                        myDid: '$me.did',
+                        myDid: { $: 'me.did' },
                         onSignal: {
                           $action: 'spaceStore.upsertSignal',
-                          args: ['$agent.did', '$sig.id', '$arg'],
+                          args: [{ $: 'agent.did' }, { $: 'sig.id' }, { $: 'arg' }],
                         },
                       },
                     },

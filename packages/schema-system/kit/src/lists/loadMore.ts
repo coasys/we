@@ -37,8 +37,8 @@ export function loadMore(opts: LoadMoreOptions): SchemaNode {
   return {
     type: '$if',
     props: {
-      // A short page means the end. `$gte` does not exist, so this is `not less-than`.
-      condition: { $not: { $lt: [{ $count: { items: { $local: opts.rowsLocal } } }, { $local: opts.field }] } },
+      // A short page means the end.
+      condition: { $: `count(local.${opts.rowsLocal}) >= local.${opts.field}` },
       then: {
         type: 'Row',
         props: { ax: 'center', width: '100%', py: '300' },
@@ -48,7 +48,7 @@ export function loadMore(opts: LoadMoreOptions): SchemaNode {
             props: {
               variant: 'ghost',
               size: 'sm',
-              onClick: { $setLocal: opts.field, by: opts.pageSize },
+              onClick: { $setLocal: opts.field, value: { $: `local.${opts.field} + ${opts.pageSize}` } },
             },
             children: [opts.label ?? 'Load more'],
           },

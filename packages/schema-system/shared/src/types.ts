@@ -259,11 +259,14 @@ export type RenderProps<NodeType = unknown> = {
 
 export type RendererOutput<NodeType = unknown> = NodeType | null;
 
-// --- Operator Token Types ---
-// Opt-in types for schema authors. SchemaProp remains `Record<string, unknown>` for Zod compatibility.
+// --- Token Types ---
+// The tokens a schema writes besides nodes: one expression, the handler verbs, and a query.
 
-export type StoreToken = { $store: string };
-export type ConcatToken = { $concat: unknown[] };
+/**
+ * `{ $: '…' }` — an expression over the value layer. See `expressions/index.ts`. Every computed
+ * value is one of these; a plain string is text.
+ */
+export type ExpressionToken = { $: string };
 export type ActionToken = {
   $action: string;
   args?: unknown[];
@@ -271,27 +274,12 @@ export type ActionToken = {
   onError?: unknown[];
   onFinally?: unknown[];
 };
-export type IfToken = { $if: { condition: unknown; then: unknown; else?: unknown } };
-export type MapToken = { $map: { items: unknown; select: Record<string, unknown> } };
-export type PickToken = { $pick: { from: unknown; props: string[] } };
-export type EqToken = { $eq: unknown[] };
-export type NeToken = { $ne: unknown[] };
-export type LtToken = { $lt: unknown[] };
-export type GtToken = { $gt: unknown[] };
-export type InToken = { $in: unknown[] };
-export type NotToken = { $not: unknown };
-export type AndToken = { $and: unknown[] };
-export type OrToken = { $or: unknown[] };
-export type FilterToken = { $filter: { items: unknown; where: Record<string, unknown> } };
-export type CountToken = { $count: { items: unknown } };
-export type FindToken = { $find: { items: unknown; where?: Record<string, unknown>; select?: string } };
-export type PluralToken = { $plural: { count: unknown; one: string; other: string } };
 /**
- * Rows from a registered pure function — see `propResolvers/source.ts`.
- *
- * `options` is open because a source names its own arguments, and they may themselves be tokens.
+ * The conditional between handlers: `condition` is an expression, `then`/`else` a handler or a
+ * list of them. The only `$if` token — a conditional value is a ternary, a conditional subtree the
+ * node-level `{ type: '$if' }`.
  */
-export type SourceToken = { $source: { name: string; options?: Record<string, unknown> } };
+export type IfToken = { $if: { condition: unknown; then?: unknown; else?: unknown } };
 export type QueryToken = {
   $query: {
     /** The entity to query (neutral). */
@@ -376,17 +364,9 @@ export type MatchRule = { rule: 'match'; field: string; message?: string };
 
 export type ValidationRule = RequiredRule | MinLengthRule | MaxLengthRule | MinRule | MaxRule | PatternRule | MatchRule;
 
-export type LocalToken = { $local: string };
+/** Write local state: `value` is a literal or an expression evaluated when the handler fires. */
 export type SetLocalToken =
-  | { $setLocal: string; from: string }
-  | { $setLocal: string; value: unknown }
-  | { $setLocal: string; merge: Record<string, unknown> }
-  /** Add to a number field. The schema layer's only arithmetic — see `resolveSetLocalProp`. */
-  | { $setLocal: string; by: number };
-export type ErrorToken = { $error: string };
-export type ValidToken = { $valid: string };
-export type TouchedToken = { $touched: string };
-export type FormValidToken = { $formValid: string };
+  { $setLocal: string; value: unknown } | { $setLocal: string; merge: Record<string, unknown> };
 export type TouchToken = { $touch: string };
 export type ResetLocalToken = { $resetLocal: string };
 export type ToggleLocalToken = { $toggleLocal: string };
@@ -403,36 +383,15 @@ export type QueryDescriptor = {
   include?: Record<string, boolean | Record<string, unknown>>;
 };
 
-/** Union of all prop-level operator tokens */
+/** Union of every token a schema writes in a value or handler position. */
 export type OperatorToken =
-  | StoreToken
-  | ConcatToken
+  | ExpressionToken
   | ActionToken
   | IfToken
-  | MapToken
-  | PickToken
-  | EqToken
-  | NeToken
-  | LtToken
-  | GtToken
-  | InToken
-  | NotToken
-  | AndToken
-  | OrToken
   | QueryToken
-  | SourceToken
-  | LocalToken
   | SetLocalToken
-  | ErrorToken
-  | ValidToken
-  | TouchedToken
-  | FormValidToken
   | TouchToken
   | ResetLocalToken
   | ToggleLocalToken
   | ToggleLocalInToken
-  | CallLocalToken
-  | FilterToken
-  | CountToken
-  | FindToken
-  | PluralToken;
+  | CallLocalToken;

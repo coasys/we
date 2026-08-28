@@ -1,4 +1,5 @@
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
+import { expr } from '@we/schema-shared';
 import { attributeRow } from '@we/template-kit';
 
 import { spaceDefaultsSection } from './SpaceDefaults.ts';
@@ -48,7 +49,7 @@ import { spaceVocabularySection } from './SpaceVocabulary.ts';
  */
 
 /** Read the space the *page* is for out of the route. `/spaces/<uuid>` → segments[1]. */
-const routeSpaceUuid = { $store: 'routeStore.segments.1' };
+const routeSpaceUuid = { $: 'routeStore.segments[1]' };
 
 const backLink: SchemaNode = {
   type: 'we-button',
@@ -70,28 +71,18 @@ export const spaceIdentity: SchemaNode = {
   type: 'Row',
   props: { gap: '300', ay: 'center' },
   children: [
-    { type: 'we-avatar', props: { image: '$space.avatar', initials: '$space.name', size: 'md' } },
+    { type: 'we-avatar', props: { image: { $: 'space.avatar' }, initials: { $: 'space.name' }, size: 'md' } },
     {
       type: 'Column',
       props: { gap: '100' },
       children: [
-        { type: 'we-text', props: { variant: 'heading-sm' }, children: ['$space.name'] },
+        { type: 'we-text', props: { variant: 'heading-sm' }, children: [{ $: 'space.name' }] },
         {
           type: 'we-text',
           props: { variant: 'footnote', color: 'text-faint' },
           children: [
             {
-              $if: {
-                condition: '$space.isWeSpace',
-                then: {
-                  $if: {
-                    condition: { $eq: ['$space.kind', 'shared'] },
-                    then: 'Shared space',
-                    else: 'Personal space',
-                  },
-                },
-                else: 'Joined dataset — not yet a WE space',
-              },
+              $: "space.isWeSpace ? space.kind == 'shared' ? 'Shared space' : 'Personal space' : 'Joined dataset — not yet a WE space'",
             },
           ],
         },
@@ -110,7 +101,7 @@ const pageHeader: SchemaNode = {
       props: {
         variant: 'secondary',
         size: 'sm',
-        onClick: { $action: 'spaceStore.navigateToSpace', args: ['$space.uuid'] },
+        onClick: { $action: 'spaceStore.navigateToSpace', args: [{ $: 'space.uuid' }] },
       },
       children: [
         { type: 'we-text', props: { variant: 'label' }, children: ['Open'] },
@@ -148,12 +139,12 @@ const notAWeSpaceNotice: SchemaNode = {
 const saveMetaOnBlur = [
   {
     $if: {
-      condition: { $local: 'metaDirty' },
+      condition: { $: 'local.metaDirty' },
       then: [
         { $setLocal: 'saving', value: true },
         {
           $action: 'spaceStore.updateSpaceMeta',
-          args: [{ name: { $local: 'editName' }, description: { $local: 'editDescription' } }, '$space.uuid'],
+          args: [{ name: { $: 'local.editName' }, description: { $: 'local.editDescription' } }, { $: 'space.uuid' }],
           onFinally: [
             { $setLocal: 'metaDirty', value: false },
             { $setLocal: 'saving', value: false },
@@ -164,7 +155,7 @@ const saveMetaOnBlur = [
   },
 ];
 
-const isListed = { $eq: ['$space.discovery', 'listed'] };
+const isListed = { $: "space.discovery == 'listed'" };
 
 /**
  * Whether the space appears on the global discovery globe.
@@ -173,21 +164,14 @@ const isListed = { $eq: ['$space.discovery', 'listed'] };
  * configured is usually not the space on screen, and the store accessor would answer for the wrong
  * one. The write names the space for the same reason.
  *
- * The switch computes its next value from the current one at *click* time rather than binding
- * `$event.detail`: `discovery` is a two-valued string, not a boolean, and there is no operator that
- * maps one to the other in an argument position.
+ * The switch computes its next value from the current one rather than binding `event.detail`:
+ * `discovery` is a two-valued string, not a boolean, and the current value is already on the row.
  */
 const discoveryRow: SchemaNode = attributeRow({
   icon: 'globe',
   label: 'Discovery',
-  value: { $if: { condition: isListed, then: 'Listed', else: 'Hidden' } },
-  description: {
-    $if: {
-      condition: isListed,
-      then: 'Appears on the WE discovery globe',
-      else: 'Not shown in global discovery',
-    },
-  },
+  value: expr`${isListed} ? 'Listed' : 'Hidden'`,
+  description: expr`${isListed} ? 'Appears on the WE discovery globe' : 'Not shown in global discovery'`,
   control: {
     type: 'we-switch',
     props: {
@@ -197,7 +181,7 @@ const discoveryRow: SchemaNode = attributeRow({
       labelOff: 'Hidden',
       onChange: {
         $action: 'spaceStore.updateSpaceMeta',
-        args: [{ discovery: { $if: { condition: isListed, then: 'hidden', else: 'listed' } } }, '$space.uuid'],
+        args: [{ discovery: expr`${isListed} ? 'hidden' : 'listed'` }, { $: 'space.uuid' }],
       },
     },
   },
@@ -206,10 +190,10 @@ const discoveryRow: SchemaNode = attributeRow({
 const saveLocationOnBlur = [
   {
     $if: {
-      condition: { $local: 'locationDirty' },
+      condition: { $: 'local.locationDirty' },
       then: {
         $action: 'spaceStore.updateSpaceMeta',
-        args: [{ location: { $local: 'location' } }, '$space.uuid'],
+        args: [{ location: { $: 'local.location' } }, { $: 'space.uuid' }],
         onFinally: [{ $setLocal: 'locationDirty', value: false }],
       },
     },
@@ -220,13 +204,7 @@ const saveLocationOnBlur = [
 const locationRow: SchemaNode = attributeRow({
   icon: 'map-pin',
   label: 'Location',
-  value: {
-    $if: {
-      condition: '$space.location',
-      then: { $concat: ['$space.location.city', ', ', '$space.location.country'] },
-      else: 'Not set',
-    },
-  },
+  value: { $: "space.location ? `${space.location.city}, ${space.location.country}` : 'Not set'" },
   control: {
     type: 'Row',
     props: { ay: 'center', gap: '300' },
@@ -234,14 +212,14 @@ const locationRow: SchemaNode = attributeRow({
       {
         type: 'we-button',
         props: { variant: 'secondary', size: 'sm', onClick: { $toggleLocal: 'editLocation' } },
-        children: [{ $if: { condition: { $local: 'editLocation' }, then: 'Hide', else: 'Edit' } }],
+        children: [{ $: "local.editLocation ? 'Hide' : 'Edit'" }],
       },
       {
         type: '$if',
         props: {
           // Nothing to remove when there is no location, and a Remove button beside "Not set"
           // reads as an offer that does nothing.
-          condition: '$space.location',
+          condition: { $: 'space.location' },
           then: {
             type: 'we-button',
             props: {
@@ -249,7 +227,7 @@ const locationRow: SchemaNode = attributeRow({
               variant: 'danger',
               onClick: [
                 { $setLocal: 'location', value: null },
-                { $action: 'spaceStore.updateSpaceMeta', args: [{ location: null }, '$space.uuid'] },
+                { $action: 'spaceStore.updateSpaceMeta', args: [{ location: null }, { $: 'space.uuid' }] },
               ],
             },
             children: [
@@ -267,7 +245,7 @@ const locationRow: SchemaNode = attributeRow({
 const locationEditor: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $local: 'editLocation' },
+    condition: { $: 'local.editLocation' },
     then: {
       type: 'Column',
       props: { gap: '300' },
@@ -279,15 +257,15 @@ const locationEditor: SchemaNode = {
             {
               type: 'we-location-picker',
               props: {
-                latitude: { $local: 'location.latitude' },
-                longitude: { $local: 'location.longitude' },
+                latitude: { $: 'local.location.latitude' },
+                longitude: { $: 'local.location.longitude' },
                 // Saved immediately rather than on blur: picking a place on a map is a deliberate,
                 // finished act, and there is no field to leave.
                 onChange: [
-                  { $setLocal: 'location', from: '$event.detail' },
+                  { $setLocal: 'location', value: { $: 'event.detail' } },
                   {
                     $action: 'spaceStore.updateSpaceMeta',
-                    args: [{ location: { $local: 'location' } }, '$space.uuid'],
+                    args: [{ location: { $: 'local.location' } }, { $: 'space.uuid' }],
                   },
                 ],
               },
@@ -297,7 +275,7 @@ const locationEditor: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $local: 'location' },
+            condition: { $: 'local.location' },
             then: {
               type: 'Row',
               props: { gap: '300' },
@@ -309,10 +287,10 @@ const locationEditor: SchemaNode = {
                     {
                       type: 'we-input',
                       props: {
-                        value: { $local: 'location.city' },
+                        value: { $: 'local.location.city' },
                         placeholder: 'City…',
                         onInput: [
-                          { $setLocal: 'location', merge: { city: '$event.detail' } },
+                          { $setLocal: 'location', merge: { city: { $: 'event.detail' } } },
                           { $setLocal: 'locationDirty', value: true },
                         ],
                         onBlur: saveLocationOnBlur,
@@ -327,10 +305,10 @@ const locationEditor: SchemaNode = {
                     {
                       type: 'we-input',
                       props: {
-                        value: { $local: 'location.country' },
+                        value: { $: 'local.location.country' },
                         placeholder: 'Country…',
                         onInput: [
-                          { $setLocal: 'location', merge: { country: '$event.detail' } },
+                          { $setLocal: 'location', merge: { country: { $: 'event.detail' } } },
                           { $setLocal: 'locationDirty', value: true },
                         ],
                         onBlur: saveLocationOnBlur,
@@ -354,18 +332,18 @@ const locationEditor: SchemaNode = {
 const communitySection: SchemaNode = {
   type: '$if',
   props: {
-    condition: '$space.canAdminister',
+    condition: { $: 'space.canAdminister' },
     then: {
       type: 'Column',
       props: { gap: '300', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
       $localState: {
-        editName: { type: 'string', initial: '$space.name' },
-        editDescription: { type: 'string', initial: '$space.description' },
+        editName: { type: 'string', initial: { $: 'space.name' } },
+        editDescription: { type: 'string', initial: { $: 'space.description' } },
         metaDirty: { type: 'boolean', initial: false },
         saving: { type: 'boolean', initial: false },
         // One object rather than five scalar fields, all of which would need the same `$if` on the
         // space having a location at all. Read with dot notation, written with `merge`.
-        location: { type: 'object', initial: '$space.location' },
+        location: { type: 'object', initial: { $: 'space.location' } },
         locationDirty: { type: 'boolean', initial: false },
         editLocation: { type: 'boolean', initial: false },
       },
@@ -388,7 +366,7 @@ const communitySection: SchemaNode = {
             },
             {
               type: '$if',
-              props: { condition: { $local: 'saving' }, then: { type: 'we-spinner', props: { size: 'sm' } } },
+              props: { condition: { $: 'local.saving' }, then: { type: 'we-spinner', props: { size: 'sm' } } },
             },
           ],
         },
@@ -399,10 +377,10 @@ const communitySection: SchemaNode = {
             {
               type: 'we-input',
               props: {
-                value: { $local: 'editName' },
-                disabled: { $local: 'saving' },
+                value: { $: 'local.editName' },
+                disabled: { $: 'local.saving' },
                 onInput: [
-                  { $setLocal: 'editName', from: '$event.detail' },
+                  { $setLocal: 'editName', value: { $: 'event.detail' } },
                   { $setLocal: 'metaDirty', value: true },
                 ],
                 onBlur: saveMetaOnBlur,
@@ -417,10 +395,10 @@ const communitySection: SchemaNode = {
             {
               type: 'we-textarea',
               props: {
-                value: { $local: 'editDescription' },
-                disabled: { $local: 'saving' },
+                value: { $: 'local.editDescription' },
+                disabled: { $: 'local.saving' },
                 onInput: [
-                  { $setLocal: 'editDescription', from: '$event.detail' },
+                  { $setLocal: 'editDescription', value: { $: 'event.detail' } },
                   { $setLocal: 'metaDirty', value: true },
                 ],
                 onBlur: saveMetaOnBlur,
@@ -447,7 +425,7 @@ const communitySection: SchemaNode = {
 const moduleStatus: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $and: ['$mod.enabled', { $not: '$mod.installed' }] },
+    condition: { $: 'mod.enabled && !mod.installed' },
     then: {
       type: 'we-text',
       props: { variant: 'footnote', color: 'warning-text' },
@@ -456,7 +434,7 @@ const moduleStatus: SchemaNode = {
     else: {
       type: '$if',
       props: {
-        condition: { $and: ['$mod.installed', { $not: '$mod.enabled' }] },
+        condition: { $: 'mod.installed && !mod.enabled' },
         then: {
           type: 'we-text',
           props: { variant: 'footnote', color: 'text-faint' },
@@ -477,7 +455,7 @@ const moduleStatus: SchemaNode = {
 const shareSection: SchemaNode = {
   type: '$if',
   props: {
-    condition: '$space.shareLink',
+    condition: { $: 'space.shareLink' },
     then: {
       type: 'Column',
       props: { gap: '300', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
@@ -513,14 +491,14 @@ const shareSection: SchemaNode = {
                 bg: 'surface-sunken',
                 r: '200',
               },
-              children: ['$space.shareLink'],
+              children: [{ $: 'space.shareLink' }],
             },
             {
               type: 'we-button',
               props: {
                 variant: 'secondary',
                 size: 'sm',
-                onClick: { $action: 'spaceStore.copyShareLink', args: ['$space.uuid'] },
+                onClick: { $action: 'spaceStore.copyShareLink', args: [{ $: 'space.uuid' }] },
               },
               children: [
                 { type: 'we-icon', props: { name: 'copy' } },
@@ -534,7 +512,7 @@ const shareSection: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: '$space.guestLink',
+            condition: { $: 'space.guestLink' },
             then: {
               type: 'Column',
               props: { gap: '100', mt: '200' },
@@ -563,14 +541,14 @@ const shareSection: SchemaNode = {
                         bg: 'surface-sunken',
                         r: '200',
                       },
-                      children: ['$space.guestLink'],
+                      children: [{ $: 'space.guestLink' }],
                     },
                     {
                       type: 'we-button',
                       props: {
                         variant: 'secondary',
                         size: 'sm',
-                        onClick: { $action: 'spaceStore.copyGuestLink', args: ['$space.uuid'] },
+                        onClick: { $action: 'spaceStore.copyGuestLink', args: [{ $: 'space.uuid' }] },
                       },
                       children: [
                         { type: 'we-icon', props: { name: 'copy' } },
@@ -622,11 +600,11 @@ const personalAppearanceSection: SchemaNode = {
         {
           type: 'we-select',
           props: {
-            value: '$space.templateOverride',
-            options: { $store: 'spaceStore.templateOverrideOptions' },
+            value: { $: 'space.templateOverride' },
+            options: { $: 'spaceStore.templateOverrideOptions' },
             onChange: {
               $action: 'spaceStore.setSpaceTemplateOverride',
-              args: ['$event.detail', '$space.uuid'],
+              args: [{ $: 'event.detail' }, { $: 'space.uuid' }],
             },
           },
         },
@@ -639,11 +617,11 @@ const personalAppearanceSection: SchemaNode = {
         {
           type: 'we-select',
           props: {
-            value: '$space.themeOverride',
-            options: { $store: 'spaceStore.themeOverrideOptions' },
+            value: { $: 'space.themeOverride' },
+            options: { $: 'spaceStore.themeOverrideOptions' },
             onChange: {
               $action: 'spaceStore.setSpaceThemeOverride',
-              args: ['$event.detail', '$space.uuid'],
+              args: [{ $: 'event.detail' }, { $: 'space.uuid' }],
             },
           },
         },
@@ -660,16 +638,16 @@ const moduleRow: SchemaNode = {
       type: 'Row',
       props: { gap: '300', ay: 'center' },
       children: [
-        { type: 'we-icon', props: { name: '$mod.icon', size: '20px' } },
+        { type: 'we-icon', props: { name: { $: 'mod.icon' }, size: '20px' } },
         {
           type: 'Column',
           props: { gap: '100' },
           children: [
-            { type: 'we-text', props: { variant: 'label' }, children: ['$mod.name'] },
+            { type: 'we-text', props: { variant: 'label' }, children: [{ $: 'mod.name' }] },
             {
               type: 'we-text',
               props: { variant: 'footnote', color: 'text-faint' },
-              children: ['$mod.description'],
+              children: [{ $: 'mod.description' }],
             },
             moduleStatus,
           ],
@@ -691,15 +669,15 @@ const moduleRow: SchemaNode = {
               type: 'we-switch',
               props: {
                 size: 'sm',
-                checked: '$mod.visible',
+                checked: { $: 'mod.visible' },
                 // Nothing to show while the module is not installed, so the control cannot do what
                 // it appears to. The note beside it says where to change that.
-                disabled: { $not: '$mod.installed' },
+                disabled: { $: '!mod.installed' },
                 // A bare `$event.detail`, never wrapped: an operator object around it would be
                 // evaluated at render time, before the event exists. See `setModuleVisible`.
                 onChange: {
                   $action: 'spaceStore.setModuleVisible',
-                  args: ['$mod.id', '$event.detail', '$space.uuid'],
+                  args: [{ $: 'mod.id' }, { $: 'event.detail' }, { $: 'space.uuid' }],
                 },
               },
             },
@@ -715,11 +693,11 @@ const moduleRow: SchemaNode = {
               type: 'we-switch',
               props: {
                 size: 'sm',
-                checked: '$mod.enabled',
-                disabled: { $not: '$space.canAdminister' },
+                checked: { $: 'mod.enabled' },
+                disabled: { $: '!space.canAdminister' },
                 onChange: {
                   $action: 'spaceStore.setModuleEnabled',
-                  args: ['$mod.id', '$event.detail', '$space.uuid'],
+                  args: [{ $: 'mod.id' }, { $: 'event.detail' }, { $: 'space.uuid' }],
                 },
               },
             },
@@ -744,17 +722,13 @@ const modulesSection: SchemaNode = {
           props: { variant: 'footnote', color: 'text-faint' },
           children: [
             {
-              $if: {
-                condition: '$space.canAdminister',
-                then: 'What this space runs, and what you want to see of it. Only the right-hand switch affects other members.',
-                else: 'What this space runs, and what you want to see of it. Changing what everyone sees needs someone who administers the space.',
-              },
+              $: "space.canAdminister ? 'What this space runs, and what you want to see of it. Only the right-hand switch affects other members.' : 'What this space runs, and what you want to see of it. Changing what everyone sees needs someone who administers the space.'",
             },
           ],
         },
       ],
     },
-    { type: '$each', props: { items: '$space.modules', as: 'mod' }, children: [moduleRow] },
+    { type: '$each', props: { items: { $: 'space.modules' }, as: 'mod' }, children: [moduleRow] },
   ],
 };
 
@@ -787,11 +761,7 @@ const autoInterpretSection: SchemaNode = {
               props: { variant: 'footnote', color: 'text-faint' },
               children: [
                 {
-                  $if: {
-                    condition: '$space.canAdminister',
-                    then: 'Tasks and events are written down as a call happens, without anyone pressing Extract. Runs on a member’s node and costs them an AI call each time.',
-                    else: 'Tasks and events are written down as a call happens. Changing this needs someone who administers the space.',
-                  },
+                  $: "space.canAdminister ? 'Tasks and events are written down as a call happens, without anyone pressing Extract. Runs on a member’s node and costs them an AI call each time.' : 'Tasks and events are written down as a call happens. Changing this needs someone who administers the space.'",
                 },
               ],
             },
@@ -801,11 +771,11 @@ const autoInterpretSection: SchemaNode = {
           type: 'we-switch',
           props: {
             size: 'sm',
-            checked: { $store: 'spaceStore.autoInterpret' },
-            disabled: { $not: '$space.canAdminister' },
+            checked: { $: 'spaceStore.autoInterpret' },
+            disabled: { $: '!space.canAdminister' },
             // Bare `$event.detail` — an operator around it would resolve at render time, before
             // the event exists. Same reason as the module switches above.
-            onChange: { $action: 'spaceStore.setAutoInterpret', args: ['$event.detail', '$space.uuid'] },
+            onChange: { $action: 'spaceStore.setAutoInterpret', args: [{ $: 'event.detail' }, { $: 'space.uuid' }] },
           },
         },
       ],
@@ -843,11 +813,7 @@ const shareExtractionDetailSection: SchemaNode = {
               props: { variant: 'footnote', color: 'text-faint' },
               children: [
                 {
-                  $if: {
-                    condition: '$space.canAdminister',
-                    then: 'Everyone in the space can read what each extraction asked the model and what it answered. Useful while working on extraction; off by default, since it sends a lot to every member on every pass.',
-                    else: 'Everyone can read what each extraction asked the model and what it answered. Changing this needs someone who administers the space.',
-                  },
+                  $: "space.canAdminister ? 'Everyone in the space can read what each extraction asked the model and what it answered. Useful while working on extraction; off by default, since it sends a lot to every member on every pass.' : 'Everyone can read what each extraction asked the model and what it answered. Changing this needs someone who administers the space.'",
                 },
               ],
             },
@@ -857,10 +823,13 @@ const shareExtractionDetailSection: SchemaNode = {
           type: 'we-switch',
           props: {
             size: 'sm',
-            checked: { $store: 'spaceStore.shareExtractionDetail' },
-            disabled: { $not: '$space.canAdminister' },
+            checked: { $: 'spaceStore.shareExtractionDetail' },
+            disabled: { $: '!space.canAdminister' },
             // Bare `$event.detail`, for the reason the switch above it gives.
-            onChange: { $action: 'spaceStore.setShareExtractionDetail', args: ['$event.detail', '$space.uuid'] },
+            onChange: {
+              $action: 'spaceStore.setShareExtractionDetail',
+              args: [{ $: 'event.detail' }, { $: 'space.uuid' }],
+            },
           },
         },
       ],
@@ -878,7 +847,7 @@ const shareExtractionDetailSection: SchemaNode = {
  * `readOnlyWhen` names a condition under which the group is visible but not editable, so the heading
  * can say so once instead of every card repeating it.
  */
-const groupHeading = (label: string, description: string, editableWhen?: string): SchemaNode => ({
+const groupHeading = (label: string, description: string, editableWhen?: SchemaProp): SchemaNode => ({
   type: 'Column',
   props: { gap: '100', pt: '200', borderTop: '1px solid border' },
   children: [
@@ -888,13 +857,7 @@ const groupHeading = (label: string, description: string, editableWhen?: string)
       props: { variant: 'footnote', color: 'text-faint' },
       children: [
         editableWhen
-          ? {
-              $if: {
-                condition: editableWhen,
-                then: description,
-                else: `${description} Changing them needs someone who administers the space.`,
-              },
-            }
+          ? expr`${editableWhen} ? ${description} : ${`${description} Changing them needs someone who administers the space.`}`
           : description,
       ],
     },
@@ -908,18 +871,12 @@ const groupHeading = (label: string, description: string, editableWhen?: string)
  * there is nothing to separate from, so a rule and a bold label would be drawing a boundary around
  * the only thing present.
  */
-const audienceNote = (text: string, editableWhen?: string): SchemaNode => ({
+const audienceNote = (text: string, editableWhen?: SchemaProp): SchemaNode => ({
   type: 'we-text',
   props: { variant: 'footnote', color: 'text-faint' },
   children: [
     editableWhen
-      ? {
-          $if: {
-            condition: editableWhen,
-            then: text,
-            else: `${text} Changing them needs someone who administers the space.`,
-          },
-        }
+      ? expr`${editableWhen} ? ${text} : ${`${text} Changing them needs someone who administers the space.`}`
       : text,
   ],
 });
@@ -955,7 +912,7 @@ const tabPanel = (key: string, children: SchemaNode[], fill?: boolean): SchemaNo
   return {
     type: '$if',
     props: {
-      condition: { $eq: [{ $local: 'tab' }, key] },
+      condition: expr`local.tab == ${key}`,
       then: fill ? { type: 'we-scroll-area', props: { flex: '1', width: '100%' }, children: [body] } : body,
     },
   };
@@ -983,7 +940,7 @@ export function spaceSettingsBody(uuid: SchemaProp, chrome: SchemaNode[], fill?:
   return {
     type: '$each',
     props: {
-      items: { $filter: { items: { $store: 'spaceStore.spaceList' }, where: { uuid } } },
+      items: expr`filter(spaceStore.spaceList, { uuid: ${uuid} })`,
       as: 'space',
     },
     children: [
@@ -996,7 +953,7 @@ export function spaceSettingsBody(uuid: SchemaProp, chrome: SchemaNode[], fill?:
           {
             type: '$if',
             props: {
-              condition: '$space.isWeSpace',
+              condition: { $: 'space.isWeSpace' },
               then: {
                 type: 'Column',
                 props: { gap: '400', width: '100%', ...fills },
@@ -1004,7 +961,7 @@ export function spaceSettingsBody(uuid: SchemaProp, chrome: SchemaNode[], fill?:
                   {
                     type: 'we-tabs',
                     props: {
-                      selectedKey: { $local: 'tab' },
+                      selectedKey: { $: 'local.tab' },
                       gap: '100',
                       width: '100%',
                       // Never squeezed by the scroll region beside it: the strip is how you reach
@@ -1035,7 +992,7 @@ export function spaceSettingsBody(uuid: SchemaProp, chrome: SchemaNode[], fill?:
                   tabPanel(
                     'about',
                     [
-                      audienceNote('Everyone in this space sees these.', '$space.canAdminister'),
+                      audienceNote('Everyone in this space sees these.', { $: 'space.canAdminister' }),
                       communitySection,
                       shareSection,
                     ],
@@ -1053,11 +1010,9 @@ export function spaceSettingsBody(uuid: SchemaProp, chrome: SchemaNode[], fill?:
                   tabPanel(
                     'appearance',
                     [
-                      groupHeading(
-                        'Everyone in this space',
-                        'What members get when they open this space.',
-                        '$space.canAdminister',
-                      ),
+                      groupHeading('Everyone in this space', 'What members get when they open this space.', {
+                        $: 'space.canAdminister',
+                      }),
                       spaceDefaultsSection,
                       groupHeading('Just for you, here', 'Nobody else is affected by anything in this group.'),
                       personalAppearanceSection,
@@ -1083,11 +1038,9 @@ export function spaceSettingsBody(uuid: SchemaProp, chrome: SchemaNode[], fill?:
                       groupHeading('What this space has', 'Two answers per row: yours, and the community’s.'),
                       spaceSectionsSection,
                       modulesSection,
-                      groupHeading(
-                        'Everyone in this space',
-                        'What this space does on its own, for every member.',
-                        '$space.canAdminister',
-                      ),
+                      groupHeading('Everyone in this space', 'What this space does on its own, for every member.', {
+                        $: 'space.canAdminister',
+                      }),
                       autoInterpretSection,
                       shareExtractionDetailSection,
                     ],
@@ -1104,7 +1057,7 @@ export function spaceSettingsBody(uuid: SchemaProp, chrome: SchemaNode[], fill?:
                   tabPanel(
                     'vocabulary',
                     [
-                      audienceNote('Everyone in this space sees these.', '$space.canAdminister'),
+                      audienceNote('Everyone in this space sees these.', { $: 'space.canAdminister' }),
                       spaceVocabularySection,
                     ],
                     fill,

@@ -6,7 +6,7 @@
  * never push history entries at the app behind them. That difference is exactly what made the
  * store's `params`/`setParam` easy to forget when the routing work added them: nothing in the type
  * system objected, because app-shell has no typecheck script (audit P3-1), and every
- * `{ $store: 'routeStore.params.x' }` inside a shell surface silently read `undefined`.
+ * `{ $: 'routeStore.params.x' }` inside a shell surface silently read `undefined`.
  *
  * These assert against the memory location rather than `window.location`, which is the whole
  * point: a shell param that leaked into the browser URL would be a different bug of equal size.

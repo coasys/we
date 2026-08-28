@@ -77,7 +77,7 @@ const spaceSettingsLauncher: SchemaNode = railButton({
   icon: 'gear',
   tooltip: 'Space settings',
   // Lit while its panel is up, exactly as a module launcher is — see `activeWhen` on those.
-  active: { $store: 'shellStore.spaceSettingsOpen' },
+  active: { $: 'shellStore.spaceSettingsOpen' },
   onClick: { $action: 'shellStore.toggleSpaceSettings' },
 });
 
@@ -91,24 +91,24 @@ const spaceSettingsLauncher: SchemaNode = railButton({
 const spaceSection: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $store: 'datasetStore.currentDataset' },
+    condition: { $: 'datasetStore.currentDataset' },
     then: {
       type: 'Column',
       props: { gap: '100', ay: 'center', width: '100%' },
       children: [
         {
           type: '$each',
-          props: { items: { $store: 'spaceStore.moduleLaunchers' }, as: 'mod' },
+          props: { items: { $: 'spaceStore.moduleLaunchers' }, as: 'mod' },
           children: [
             railButton({
-              icon: '$mod.icon',
-              tooltip: '$mod.label',
+              icon: { $: 'mod.icon' },
+              tooltip: { $: 'mod.label' },
               // Highlighted while the module reports itself open, which is what makes the rail read
               // as a set of tabs rather than a row of buttons.
-              active: '$mod.active',
+              active: { $: 'mod.active' },
               // The id is passed rather than a path: `$action` resolves a literal string, so a rail
               // iterating over modules cannot build `modules.<id>.<method>` itself.
-              onClick: { $action: 'spaceStore.launchModule', args: ['$mod.id'] },
+              onClick: { $action: 'spaceStore.launchModule', args: [{ $: 'mod.id' }] },
             }),
           ],
         },
@@ -116,7 +116,7 @@ const spaceSection: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $count: { items: { $store: 'spaceStore.moduleLaunchers' } } },
+            condition: { $: 'count(spaceStore.moduleLaunchers)' },
             then: { type: 'we-divider', props: { width: '100%', my: '100' } },
           },
         },
@@ -137,9 +137,7 @@ const spaceSection: SchemaNode = {
 const designSection: SchemaNode = {
   type: '$if',
   props: {
-    condition: {
-      $and: [{ $not: { $store: 'appStore.activeAppId' } }, { $not: { $store: 'shellStore.activeShellView' } }],
-    },
+    condition: { $: '!appStore.activeAppId && !shellStore.activeShellView' },
     then: {
       type: 'Column',
       props: { gap: '100', ay: 'center', width: '100%' },
@@ -158,7 +156,7 @@ export const chromeRail: SchemaNode = {
   type: '$if',
   props: {
     // Nothing here means anything before the app is up, and the boot screen owns the whole window.
-    condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'ready'] },
+    condition: { $: "sessionStore.bootState == 'ready'" },
     then: {
       type: 'Column',
       props: {
@@ -234,12 +232,7 @@ export const chromeRail: SchemaNode = {
           dropped below the titlebar, which was the first answer: full screen means the app's own
           furniture is gone, and the way back is the panel's titlebar and the Escape key.
         */
-        styles: {
-          $if: {
-            condition: { $store: 'shellStore.panelMaximised' },
-            then: { display: 'none' },
-          },
-        },
+        styles: { $: "shellStore.panelMaximised ? { display: 'none' } : null" },
         transition: 'right var(--we-chrome-transition, 300ms) ease, top var(--we-chrome-transition, 300ms) ease',
       },
       children: [spaceSection, designSection],

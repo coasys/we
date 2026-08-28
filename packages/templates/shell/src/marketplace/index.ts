@@ -18,7 +18,7 @@ const tabs = [
 const tabBar = {
   type: 'we-tabs',
   props: {
-    selectedKey: { $store: 'routeStore.segments.0' },
+    selectedKey: { $: 'routeStore.segments[0]' },
     gap: '300',
   },
   children: tabs.map((tab) => ({
@@ -80,7 +80,7 @@ export const marketplaceTemplate: TemplateSchema = {
     {
       type: '$if',
       props: {
-        condition: { $store: 'datasetStore.marketplaceJoined' },
+        condition: { $: 'datasetStore.marketplaceJoined' },
         then: marketplaceBrowser,
         else: marketplaceGate,
       },

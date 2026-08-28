@@ -49,7 +49,7 @@ describe('Settings → Developer', () => {
     // The whole reason this section exists: `localStorage.setItem('we.devTools', 'off')` is a thing
     // you look up every time, and therefore a thing you leave in whichever position you left it.
     expect(toggle).toBeDefined();
-    expect((toggle?.props as Node).checked).toEqual({ $store: 'sessionStore.devTools' });
+    expect((toggle?.props as Node).checked).toEqual({ $: 'sessionStore.devTools' });
   });
 
   it('passes the switch value straight through', () => {
@@ -59,7 +59,7 @@ describe('Settings → Developer', () => {
       set one value. The store method is phrased positively so no operator is needed.
     */
     const action = (toggle?.props as Node).onChange as Node;
-    expect(action.args).toEqual(['$event.detail']);
+    expect(action.args).toEqual([{ $: 'event.detail' }]);
   });
 
   it('gates the way to the switch on the build, not on the switch', () => {
@@ -78,6 +78,6 @@ describe('Settings → Developer', () => {
       return node.type === '$if' && walk(props?.then).includes(navToDeveloper as Node);
     });
     expect(gate, 'the Developer nav entry must be behind an $if').toBeDefined();
-    expect((gate?.props as Node).condition).toEqual({ $store: 'sessionStore.isDevelopment' });
+    expect((gate?.props as Node).condition).toEqual({ $: 'sessionStore.isDevelopment' });
   });
 });

@@ -34,6 +34,7 @@
  * So moving any of these to the neutral harness would weaken them rather than tidy them.
  */
 import type { RouteSchema, SchemaNode, TemplateSchema } from '@we/schema-shared';
+import { expr } from '@we/schema-shared';
 
 import { schemaMutationsTemplate } from './tests/SchemaMutations.schema.ts';
 import { schemaQueriesTemplate } from './tests/SchemaQueries.schema.ts';
@@ -83,13 +84,7 @@ function sectionButton(section: (typeof sections)[number]): SchemaNode {
   return {
     type: 'we-button',
     props: {
-      variant: {
-        $if: {
-          condition: { $eq: [{ $store: 'routeStore.segments.0' }, section.id] },
-          then: 'primary',
-          else: 'secondary',
-        },
-      },
+      variant: expr`routeStore.segments[0] == ${section.id} ? 'primary' : 'secondary'`,
       onClick: { $action: 'routeStore.navigate', args: [section.path] },
     },
     children: [{ type: 'we-icon', props: { name: section.icon, size: 'sm' } }, section.label],

@@ -68,7 +68,7 @@ describe('the picker offers editing on every editable row', () => {
 
     // The row's own answer. `editorStore.isReadOnly` describes the *current* template, so gating on
     // it gives every row the same verdict and the pencil could only ever appear on one of them.
-    expect(condition).toBe('$template.editable');
+    expect(condition).toEqual({ $: 'template.editable' });
     expect(JSON.stringify(condition)).not.toContain('isReadOnly');
     expect(JSON.stringify(condition)).not.toContain('currentSwitcherId');
   });
@@ -81,7 +81,7 @@ describe('the picker offers editing on every editable row', () => {
     expect(steps).toEqual(['templateStore.switchTemplate', 'editorStore.enterTemplateEditing']);
 
     const [switchStep] = clickOf(edit!) as { args?: unknown[] }[];
-    expect(switchStep.args).toEqual(['$template.id']);
+    expect(switchStep.args).toEqual([{ $: 'template.id' }]);
   });
 
   it('still switches first when forking, which always did', () => {

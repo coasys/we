@@ -17,11 +17,18 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import type { ContextData, ContextFragment, StoreEntry } from '@we/schema-shared';
+import { listFunctions } from '@we/schema-shared';
 import { format, resolveConfig } from 'prettier';
 
 import { aggregateFragments } from './aggregate.js';
 import { assembleReference } from './assembler.js';
-import { type ExtractedStore, extractRegisteredComponents, extractStores } from './extractors/appShell.js';
+import {
+  type ExtractedStore,
+  extractHostSources,
+  extractRegisteredComponents,
+  extractStores,
+  extractWiringMembers,
+} from './extractors/appShell.js';
 import { extractPrimitives } from './extractors/cem.js';
 import { extractModels } from './extractors/models.js';
 import { extractPluginCatalog } from './extractors/plugins.js';
@@ -67,10 +74,31 @@ const DEFAULTS: Record<string, string> = {
  * that no longer exists is worse: it documents something that isn't there, and its metadata would
  * silently license a `$store` path into nothing.
  */
-function mergeStoreEntries(derived: ExtractedStore[], authored: StoreEntry[]): StoreEntry[] {
+function mergeStoreEntries(
+  derived: ExtractedStore[],
+  authored: StoreEntry[],
+  wiring: Map<string, Set<string>>,
+): StoreEntry[] {
   const byName = new Map(authored.map((s) => [s.name, s]));
   const undocumented: string[] = [];
   const stale: string[] = [];
+
+  /*
+    Host wiring leaves the list before anything else looks at it.
+
+    `templateSurface.ts` is the one place that decides what a schema may name, and a member it
+    classifies as wiring is absent from every bag. Listing it anyway — as the generator did, under
+    `unknown` — told an author (and an LLM) that `sessionStore.token` and `templateStore.replaceTemplate`
+    were vocabulary with a missing description, when the truth is that no template can reach them.
+    Dropped here, the validator reports a reference to one as an unknown member, which is the accurate
+    complaint.
+  */
+  for (const store of derived) {
+    const hidden = wiring.get(store.name);
+    if (!hidden) continue;
+    for (const key of Object.keys(store.state)) if (hidden.has(key)) delete store.state[key];
+    store.actions = store.actions.filter((action) => !hidden.has(action));
+  }
 
   /*
     A hand-authored entry with no interface behind it is kept, not dropped.
@@ -211,6 +239,7 @@ async function main() {
   contextData.storeEntries = mergeStoreEntries(
     extractStores(resolve(repoRoot, 'packages/app-shell/src/frameworks/solid/stores')),
     storeEntries,
+    extractWiringMembers(resolve(repoRoot, 'packages/app-shell/src/shared/registries/templateSurface.ts')),
   );
 
   /*
@@ -228,10 +257,22 @@ async function main() {
   ]);
   contextData.shellComponents = registered.filter((name) => !documented.has(name));
 
+  /*
+    The functions the host lends to expressions, read from its registry. Listed beside the built-in
+    library in the reference and handed to the validator, which is what makes a call to one accepted
+    and a typo in one reported — the same catalogue argument as the graph plugins.
+  */
+  contextData.sources = extractHostSources(resolve(repoRoot, 'packages/app-shell/src/shared/sources/index.ts'));
+
   const context = {
     ...contextData,
     fragments: {
-      schemaOperators,
+      // The library is generated from the registry, so the documented set and the callable set are
+      // one list.
+      schemaOperators: schemaOperators(
+        listFunctions().map(({ name, category, params, doc, example }) => ({ name, category, params, doc, example })),
+        contextData.sources,
+      ),
       designSystemProps,
       routing,
       panels,
@@ -319,6 +360,7 @@ async function main() {
     tokens: context.tokens,
     storeEntries: context.storeEntries,
     shellComponents: context.shellComponents,
+    sources: context.sources,
   };
   await writeFormatted(contextJsonPath, JSON.stringify(contextJson, null, 2));
   console.log(`  Written: ${contextJsonPath}`);

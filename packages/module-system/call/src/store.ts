@@ -55,7 +55,7 @@ export interface CallTile {
  * the tile, muting your microphone blanked your own video.
  *
  * So the tile carries only what identifies a participant and their stream, and changes rarely. Their
- * flags live here and a fragment reaches them with `$find` over `modules.call.tileStates` — which
+ * flags live here and a fragment reaches them with `find()` over `modules.call.tileStates` — which
  * resolves inside the renderer's prop memo, so it stays reactive while the row itself never remounts.
  */
 export interface CallTileState {

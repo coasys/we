@@ -1,9 +1,7 @@
 import type { SchemaNode } from '@we/schema-shared';
 import { cardList, cardShell, emptyState, peopleRow } from '@we/template-kit';
 
-const hasConversationSubgroupModel = {
-  $find: { items: { $store: 'datasetStore.currentDatasetModels' }, where: { name: 'ConversationSubgroup' } },
-};
+const hasConversationSubgroupModel = { $: "find(datasetStore.currentDatasetModels, { name: 'ConversationSubgroup' })" };
 
 /*
   Two ways this list can be empty, one sentence for both.
@@ -26,11 +24,11 @@ export const fluxConversationSubgroupsList: SchemaNode = {
         dataset: '$currentDataset',
         where: {
           OR: [
-            { subgroupName: { contains: { $local: 'searchText' } } },
-            { summary: { contains: { $local: 'searchText' } } },
+            { subgroupName: { contains: { $: 'local.searchText' } } },
+            { summary: { contains: { $: 'local.searchText' } } },
           ],
         },
-        order: { timestamp: { $local: 'sortDirection' } },
+        order: { timestamp: { $: 'local.sortDirection' } },
         limit: 20,
       },
       as: 'subgroup',
@@ -43,7 +41,7 @@ export const fluxConversationSubgroupsList: SchemaNode = {
               props: { ay: 'center', gap: '300' },
               children: [
                 { type: 'we-icon', props: { name: 'chat-dots' } },
-                { type: 'we-text', props: { variant: 'heading-sm' }, children: ['$subgroup.subgroupName'] },
+                { type: 'we-text', props: { variant: 'heading-sm' }, children: [{ $: 'subgroup.subgroupName' }] },
               ],
             },
           ],
@@ -51,11 +49,11 @@ export const fluxConversationSubgroupsList: SchemaNode = {
             {
               type: '$if',
               props: {
-                condition: '$subgroup.summary',
-                then: { type: 'we-text', props: { color: 'text-muted' }, children: ['$subgroup.summary'] },
+                condition: { $: 'subgroup.summary' },
+                then: { type: 'we-text', props: { color: 'text-muted' }, children: [{ $: 'subgroup.summary' }] },
               },
             },
-            peopleRow({ items: '$subgroup.participants', dids: true, noun: 'Participant' }),
+            peopleRow({ items: { $: 'subgroup.participants' }, dids: true, noun: 'Participant' }),
           ],
         }),
       ],

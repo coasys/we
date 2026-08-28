@@ -15,6 +15,13 @@
  * chrome, they render at `CHROME_TIER`, and asking them to fit the space tier would be asking the
  * app to be unable to sign anybody out.
  */
+import {
+  consentPrompt,
+  consentSecret,
+  createSpaceModalMount,
+  namePrompt,
+  removeAccountModal,
+} from '@we/template-shell';
 import { describe, expect, it } from 'vitest';
 
 import { bundledModules } from '../src/shared/registries/bundledModules';
@@ -144,6 +151,19 @@ describe('the chrome the shell renders', () => {
     ['profile', profileTemplate],
     ['marketplace', marketplaceTemplate],
     ['landingPage', landingPageTemplate],
+    /*
+      The overlay slot's other contributions. They were not here, and the create-space modal is
+      where that showed: it reads `datasetStore.globalDataset` to offer a global listing, the member
+      was classified as wiring, and the option never appeared — with this test green throughout,
+      because the sidebar it hangs off was covered and the modal itself was not. Everything
+      `slotRegistry` registers from the shell is a schema the chrome bag renders, so all of it is
+      judged here.
+    */
+    ['createSpaceModal', createSpaceModalMount],
+    ['consentPrompt', consentPrompt],
+    ['consentSecret', consentSecret],
+    ['namePrompt', namePrompt],
+    ['removeAccountModal', removeAccountModal],
     // One docked panel, on one edge. The frame is identical for every module and every edge — what
     // is under test is which store members it names, not the geometry it computes from them.
     ['a docked panel', dockFrame({ id: 'call', edge: 'left' } as never, { type: 'Column' } as never)],
@@ -163,7 +183,7 @@ describe('the chrome the shell renders', () => {
     const paths = allowed.map((reference) => reference.path);
 
     expect(paths).toContain('shellStore.beginDockResize');
-    expect(paths.some((path) => path.startsWith('shellStore.dockGeometry.'))).toBe(true);
+    expect(paths.some((path) => path.startsWith('shellStore.dockGeometry'))).toBe(true);
   });
 
   it('keeps the app furniture out of a space template', () => {

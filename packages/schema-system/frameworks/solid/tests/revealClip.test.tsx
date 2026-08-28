@@ -49,7 +49,7 @@ describe('$if with a reveal', () => {
     const node: SchemaNode = {
       type: '$if',
       props: {
-        condition: { $store: 'appStore.show' },
+        condition: { $: 'appStore.show' },
         enterTransition: { type: 'reveal', duration: 30 },
         then: { type: 'Box' },
       },
@@ -90,7 +90,7 @@ describe('$if with a reveal', () => {
     const node: SchemaNode = {
       type: '$if',
       props: {
-        condition: { $store: 'appStore.show' },
+        condition: { $: 'appStore.show' },
         enterTransition: { type: 'reveal', duration: 60 },
         then: { type: 'Box' },
       },

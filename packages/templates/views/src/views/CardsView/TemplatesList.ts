@@ -7,7 +7,7 @@ export const templatesList: SchemaNode = installedList({
   label: 'templates',
   emptyIcon: 'layout',
   avatarIcon: 'layout',
-  key: '$template.slug',
+  key: { $: 'template.slug' },
   activeStorePath: 'templateStore.currentTemplate.id',
   applyAction: 'templateStore.switchTemplate',
   defaultField: 'defaultTemplateId',

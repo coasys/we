@@ -12,8 +12,8 @@ export interface DiscardGuardOptions {
    *
    * **Only when there is.** A guard that fires unconditionally asks about an empty form, and a
    * dialog people learn to click through is worse than no dialog — it costs them the one time it
-   * was about something. Express it over the draft: `{ $or: [{ $local: 'name' }, …] }` for a blank
-   * form, `{ $ne: [{ $local: 'titleDraft' }, '$call.title'] }` for one seeded from a record.
+   * was about something. Express it over the draft: `{ $: 'local.name || …' }` for a blank
+   * form, `{ $: 'local.titleDraft != call.title' }` for one seeded from a record.
    */
   dirty: SchemaProp;
   /** What actually closes the modal, once discarding is agreed. The unguarded `close`. */
@@ -84,7 +84,7 @@ export function discardGuard(opts: DiscardGuardOptions): {
     localState: { [FLAG]: { type: 'boolean', initial: false } },
 
     node: confirmModal({
-      open: { $local: FLAG },
+      open: { $: `local.${FLAG}` },
       /*
         Dismissing the question means keeping the work, not discarding it — the safe direction, and
         the one a stray click should land on. So the backdrop and Escape both cancel, and the only

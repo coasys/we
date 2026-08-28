@@ -163,7 +163,7 @@ the item is never asked to be narrower than its content in the first place.
 | cursor | "pointer" \\| "default" \\| "text" \\| "not-allowed" | Cursor style |
 | pointerEvents | "none" \\| "auto" | Pointer events |
 | transform | string | CSS transform |
-| transition | string | CSS transition. Durations may be animation tokens (\`'0'\`–\`'500'\`): \`'width 300 ease-in-out'\`. Prefer the token — a theme's animationSpeed preset overrides those, so \`300\` respects a reduced-motion setting where \`300ms\` overrides it. Use for a property whose *value* changes in place (a width bound to \`$local\`); for something appearing and disappearing use \`$if\`/\`$animate\` transitions instead |
+| transition | string | CSS transition. Durations may be animation tokens (\`'0'\`–\`'500'\`): \`'width 300 ease-in-out'\`. Prefer the token — a theme's animationSpeed preset overrides those, so \`300\` respects a reduced-motion setting where \`300ms\` overrides it. Use for a property whose *value* changes in place (a width bound to a local); for something appearing and disappearing use \`$if\`/\`$animate\` transitions instead |
 | r | RadiusValue | Border radius (all corners) |
 | rt | RadiusValue | Border radius top |
 | rb | RadiusValue | Border radius bottom |
@@ -267,7 +267,7 @@ Three ways to respond to size, and they are not interchangeable:
 | Need | Use | Why |
 |---|---|---|
 | Different **values** — padding, gap, width, font size | \`*UpProps\` | Pure CSS. Nothing remounts. |
-| A different **tree** — a pane becomes a drawer, two panes become one | \`$surface\` + \`$if\` on \`$surface.tier\` | Only a branch can swap DOM. |
+| A different **tree** — a pane becomes a drawer, two panes become one | \`$surface\` + \`$if\` on \`surface.tier\` | Only a branch can swap DOM. |
 | Same-shaped things **filling a box** — video tiles, a photo wall | \`Grid\` with \`childAspect\` | Needs both axes and an argmax; CSS cannot express it. |
 
 **Prefer \`*UpProps\` for anything that is a value.** \`$if\` on the tier works and is tempting, because

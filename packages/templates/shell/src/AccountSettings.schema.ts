@@ -30,13 +30,18 @@ const accountRow: SchemaNode = {
           children: [
             {
               type: 'we-avatar',
-              props: { image: '$account.avatar', initials: '$account.name', size: 'sm', bg: 'accent-muted' },
+              props: {
+                image: { $: 'account.avatar' },
+                initials: { $: 'account.name' },
+                size: 'sm',
+                bg: 'accent-muted',
+              },
             },
-            { type: 'we-text', props: { variant: 'label' }, children: ['$account.name'] },
+            { type: 'we-text', props: { variant: 'label' }, children: [{ $: 'account.name' }] },
             {
               type: '$if',
               props: {
-                condition: '$account.active',
+                condition: { $: 'account.active' },
                 then: { type: 'we-badge', props: { variant: 'primary', size: 'xs' }, children: ['Signed in'] },
               },
             },
@@ -47,13 +52,13 @@ const accountRow: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $not: '$account.active' },
+            condition: { $: '!account.active' },
             then: {
               type: 'we-button',
               props: {
                 variant: 'ghost',
                 size: 'sm',
-                onClick: { $action: 'accountStore.requestRemoval', args: ['$account.id'] },
+                onClick: { $action: 'accountStore.requestRemoval', args: [{ $: 'account.id' }] },
               },
               children: [{ type: 'we-icon', props: { name: 'trash' } }],
             },
@@ -67,7 +72,7 @@ const accountRow: SchemaNode = {
 export const accountSettings: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $store: 'accountStore.canManageAccounts' },
+    condition: { $: 'accountStore.canManageAccounts' },
     then: {
       type: 'Column',
       props: { gap: '300' },
@@ -76,8 +81,8 @@ export const accountSettings: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $store: 'accountStore.error' },
-            then: { type: 'we-alert', props: { variant: 'danger' }, children: [{ $store: 'accountStore.error' }] },
+            condition: { $: 'accountStore.error' },
+            then: { type: 'we-alert', props: { variant: 'danger' }, children: [{ $: 'accountStore.error' }] },
           },
         },
         {
@@ -86,7 +91,7 @@ export const accountSettings: SchemaNode = {
           children: [
             {
               type: '$each',
-              props: { items: { $store: 'accountStore.accounts' }, as: 'account' },
+              props: { items: { $: 'accountStore.accounts' }, as: 'account' },
               children: [accountRow],
             },
           ],
@@ -117,9 +122,9 @@ export const accountSettings: SchemaNode = {
  * quieter second line — is now what `confirmModal` gives all of them.
  */
 export const removeAccountModal: SchemaNode = confirmModal({
-  open: { $store: 'accountStore.pendingRemoval' },
+  open: { $: 'accountStore.pendingRemoval' },
   close: { $action: 'accountStore.cancelRemoval' },
-  title: { $concat: ['Delete ', { $store: 'accountStore.pendingRemoval.name' }, '?'] },
+  title: { $: '`Delete ${accountStore.pendingRemoval.name}?`' },
   body: 'This permanently deletes the account and everything in it — its identity, its spaces, and its data. It cannot be undone.',
   detail: 'Close Flux and the ADAM launcher first if they use this account.',
   children: [
@@ -128,7 +133,7 @@ export const removeAccountModal: SchemaNode = confirmModal({
     {
       type: '$if',
       props: {
-        condition: { $store: 'accountStore.pendingRemoval.sharedWithLauncher' },
+        condition: { $: 'accountStore.pendingRemoval.sharedWithLauncher' },
         then: {
           type: 'we-alert',
           props: { variant: 'warning' },
@@ -142,6 +147,6 @@ export const removeAccountModal: SchemaNode = confirmModal({
   confirmLabel: 'Delete account',
   // The store runs the removal and already knows it is running — a `busyLocal` beside it could only
   // disagree with it.
-  busy: { $store: 'accountStore.busy' },
+  busy: { $: 'accountStore.busy' },
   confirm: { $action: 'accountStore.confirmRemoval' },
 });

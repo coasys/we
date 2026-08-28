@@ -17,6 +17,12 @@ import { dockFrame } from '../src/shared/registries/dockRegistry';
 
 const entry = { id: 'call:0', moduleId: 'call', edge: 'bottom', aspect: 'dockAspect', close: 'closeStage' };
 
+/** The store path a gate negates — `{ $: '!shellStore.…' }` — or nothing for any other condition. */
+const negatedPath = (condition: unknown): string | undefined => {
+  const source = condition && typeof condition === 'object' && '$' in condition ? (condition as { $: string }).$ : '';
+  return source.startsWith('!') ? source.slice(1) : undefined;
+};
+
 /** Every `$if` in the tree, with the store path its condition negates — the gate, if it is one. */
 function gates(node: unknown, found: string[] = []): string[] {
   if (Array.isArray(node)) {
@@ -26,8 +32,8 @@ function gates(node: unknown, found: string[] = []): string[] {
   if (!node || typeof node !== 'object') return found;
   const record = node as Record<string, unknown>;
   const props = record.props as Record<string, unknown> | undefined;
-  const condition = props?.condition as { $not?: { $store?: string } } | undefined;
-  if (record.type === '$if' && condition?.$not?.$store) found.push(condition.$not.$store);
+  const negated = record.type === '$if' ? negatedPath(props?.condition) : undefined;
+  if (negated) found.push(negated);
   for (const value of Object.values(record)) if (value && typeof value === 'object') gates(value, found);
   return found;
 }
@@ -55,8 +61,7 @@ function hiddenInFullScreen(node: unknown, text: string, inside = false): boolea
   const record = node as Record<string, unknown>;
   const props = record.props as Record<string, unknown> | undefined;
   if (inside && (props?.title === text || props?.label === text)) return true;
-  const condition = props?.condition as { $not?: { $store?: string } } | undefined;
-  const within = inside || (record.type === '$if' && Boolean(condition?.$not?.$store?.endsWith('.maximised')));
+  const within = inside || (record.type === '$if' && Boolean(negatedPath(props?.condition)?.endsWith('.maximised')));
   return Object.values(record).some(
     (value) => value && typeof value === 'object' && hiddenInFullScreen(value, text, within),
   );
@@ -69,7 +74,7 @@ describe('a panel’s titlebar in full screen', () => {
     // One gate per inert control, each on that panel's own maximised flag. Hidden rather than
     // disabled, which is the choice `fitButton` already makes for a module publishing no aspect:
     // a control that does nothing is worse than one that is not there.
-    const maximised = gates(frame).filter((path) => path === `shellStore.dockPlacement.${entry.id}.maximised`);
+    const maximised = gates(frame).filter((path) => path === `shellStore.dockPlacement['${entry.id}'].maximised`);
     expect(maximised).toHaveLength(3);
 
     // Named, for the one whose tooltip is a plain string — the other two write theirs conditionally,
@@ -124,7 +129,7 @@ describe('the way back to the layout an interface declared', () => {
   it('is disabled rather than absent when there is nothing to go back to', () => {
     // The same choice displaceButton makes: a control that vanishes when you move a panel is one you
     // stop looking for, and the disabled state carries the actual rule.
-    expect(reset?.disabled).toEqual({ $not: { $store: `shellStore.layoutPinned.${entry.id}` } });
+    expect(reset?.disabled).toEqual({ $: `!shellStore.layoutPinned['${entry.id}']` });
   });
 
   it('forgets the stored placement rather than writing the declared one', () => {

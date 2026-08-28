@@ -32,8 +32,13 @@ const zThemeOverrides = z
 // zDefined requires the value to be present (not undefined) while accepting any type.
 const zDefined = z.custom<unknown>((v) => v !== undefined, 'Required');
 
-const zStoreToken = z.object({ $store: z.string().min(1) }).strict();
-const zConcatToken = z.object({ $concat: z.array(z.unknown()) }).strict();
+/**
+ * `{ $: '…' }` — an expression. See `expressions/index.ts`.
+ *
+ * Only the shape is checked here; the *content* is parsed and checked against what the template
+ * can see by `semanticValidation`, which is where a column-precise error can be reported.
+ */
+const zExpressionToken = z.object({ $: z.string().min(1) }).strict();
 const zActionToken = z
   .object({
     $action: z.string().min(1),
@@ -41,84 +46,6 @@ const zActionToken = z
     onSuccess: z.array(z.unknown()).optional(),
     onError: z.array(z.unknown()).optional(),
     onFinally: z.array(z.unknown()).optional(),
-  })
-  .strict();
-const zIfToken = z
-  .object({
-    $if: z.object({
-      condition: zDefined,
-      then: zDefined,
-      else: z.unknown().optional(),
-    }),
-  })
-  .strict();
-const zMapToken = z
-  .object({
-    $map: z.object({
-      items: zDefined,
-      select: z.record(z.string(), z.unknown()),
-    }),
-  })
-  .strict();
-const zPickToken = z
-  .object({
-    $pick: z.object({
-      from: zDefined,
-      props: z.array(z.string()),
-    }),
-  })
-  .strict();
-const zEqToken = z.object({ $eq: z.array(z.unknown()).length(2) }).strict();
-const zNeToken = z.object({ $ne: z.array(z.unknown()).length(2) }).strict();
-const zLtToken = z.object({ $lt: z.array(z.unknown()).length(2) }).strict();
-const zGtToken = z.object({ $gt: z.array(z.unknown()).length(2) }).strict();
-const zInToken = z.object({ $in: z.array(z.unknown()).length(2) }).strict();
-const zNotToken = z.object({ $not: zDefined }).strict();
-const zAndToken = z.object({ $and: z.array(z.unknown()) }).strict();
-const zOrToken = z.object({ $or: z.array(z.unknown()) }).strict();
-const zFilterToken = z
-  .object({
-    $filter: z.object({
-      items: zDefined,
-      where: z.record(z.string(), z.unknown()),
-    }),
-  })
-  .strict();
-const zCountToken = z
-  .object({
-    $count: z.object({
-      items: zDefined,
-    }),
-  })
-  .strict();
-/*
-  Count-noun labels — `{ $plural: { count, one, other } }`.
-
-  Documented in the schema reference and resolvable since the operator was added, but missing from
-  this union until now, so any schema using one failed validation for a pattern that renders fine.
-  Nothing caught it because the only fragment emitting one (`peopleRow`'s count) had no validated
-  caller — a reminder that this union is a second, hand-maintained list of the operators the
-  dispatcher supports, and the two drift silently in exactly this direction.
-
-  `count` is `zDefined` rather than a number: it is nearly always an expression
-  (`{ $count: { items } }`), which is the whole reason the operator exists.
-*/
-const zPluralToken = z
-  .object({
-    $plural: z.object({
-      count: zDefined,
-      one: z.string(),
-      other: z.string(),
-    }),
-  })
-  .strict();
-const zFindToken = z
-  .object({
-    $find: z.object({
-      items: zDefined,
-      where: z.record(z.string(), z.unknown()).optional(),
-      select: z.string().optional(),
-    }),
   })
   .strict();
 // Neutral authoring DSL — `entity` (the entity to query) + `dataset` (the perspective/store handle).
@@ -155,35 +82,23 @@ const zQuery = z.object({
 const zQueryToken = z.object({ $query: zQuery }).strict();
 
 /**
- * `$source` — rows from a registered pure function rather than from a backend.
- *
- * `options` is deliberately open: a source names its own arguments, and they may themselves be
- * tokens (`{ month: { $local: 'month' } }`), which is what makes "next month" a `$setLocal` rather
- * than state hidden inside a component.
+ * The conditional between handlers. `condition` is an expression; `then`/`else` a handler or a list,
+ * either optional — `{ $if: { condition, else: [...] } }` is how "on nothing selected" is written.
  */
-const zSourceToken = z
+const zIfToken = z
   .object({
-    $source: z
-      .object({
-        name: z.string(),
-        options: z.record(z.string(), z.unknown()).optional(),
-      })
-      .strict(),
+    $if: z.object({
+      condition: zDefined,
+      then: z.unknown().optional(),
+      else: z.unknown().optional(),
+    }),
   })
   .strict();
-
-const zLocalToken = z.object({ $local: z.string().min(1) }).strict();
+// `value` is a literal or an expression evaluated when the handler fires; `merge` shallow-merges.
 const zSetLocalToken = z.union([
-  z.object({ $setLocal: z.string().min(1), from: z.string().min(1) }).strict(),
   z.object({ $setLocal: z.string().min(1), value: z.unknown() }).strict(),
   z.object({ $setLocal: z.string().min(1), merge: z.record(z.string(), z.unknown()) }).strict(),
-  // Add to a number field — the schema layer's only arithmetic. See `resolveSetLocalProp`.
-  z.object({ $setLocal: z.string().min(1), by: z.number() }).strict(),
 ]);
-const zErrorToken = z.object({ $error: z.string().min(1) }).strict();
-const zValidToken = z.object({ $valid: z.string().min(1) }).strict();
-const zTouchedToken = z.object({ $touched: z.string().min(1) }).strict();
-const zFormValidToken = z.object({ $formValid: z.string().min(1) }).strict();
 const zTouchToken = z.object({ $touch: z.string().min(1) }).strict();
 const zResetLocalToken = z.object({ $resetLocal: z.string().min(1) }).strict();
 const zToggleLocalToken = z.object({ $toggleLocal: z.string().min(1) }).strict();
@@ -216,39 +131,18 @@ const zValidationRule = z.union([
   zMatchRule,
 ]);
 
-/** All prop-level token types — used in both prop values and children arrays */
+/** Every token a schema writes in a value or handler position — one expression, the verbs, a query. */
 const zPropToken = z.union([
-  zStoreToken,
-  zConcatToken,
+  zExpressionToken,
   zActionToken,
   zIfToken,
-  zMapToken,
-  zPickToken,
-  zEqToken,
-  zNeToken,
-  zLtToken,
-  zGtToken,
-  zInToken,
-  zNotToken,
-  zAndToken,
-  zOrToken,
   zQueryToken,
-  zSourceToken,
-  zLocalToken,
   zSetLocalToken,
-  zErrorToken,
-  zValidToken,
-  zTouchedToken,
-  zFormValidToken,
   zTouchToken,
   zResetLocalToken,
   zToggleLocalToken,
   zToggleLocalInToken,
   zCallLocalToken,
-  zFilterToken,
-  zCountToken,
-  zFindToken,
-  zPluralToken,
 ]);
 
 const zLocalStateField = z.object({

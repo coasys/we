@@ -17,14 +17,10 @@ export const postsList: SchemaNode = {
     cardList({
       query: {
         entity: 'CollectionBlock',
-        where: { type: 'root', textContent: { contains: { $local: 'searchText' } } },
+        where: { type: 'root', textContent: { contains: { $: 'local.searchText' } } },
         limit: 20,
         order: {
-          $if: {
-            condition: { $eq: [{ $local: 'sortField' }, 'likes'] },
-            then: { $likeCount: { $local: 'sortDirection' } },
-            else: { createdAt: { $local: 'sortDirection' } },
-          },
+          $: "local.sortField == 'likes' ? { $likeCount: local.sortDirection } : { createdAt: local.sortDirection }",
         },
         include: {
           signals: true,
@@ -44,9 +40,7 @@ export const postsList: SchemaNode = {
               which type `like` is.
             */
             where: {
-              signalTypeId: {
-                $find: { items: { $local: 'signalTypes' }, where: { slug: 'like' }, select: 'id' },
-              },
+              signalTypeId: { $: "find(local.signalTypes, { slug: 'like' }).id" },
             },
             count: true,
           },
@@ -72,11 +66,11 @@ export const postsList: SchemaNode = {
                 editPostOpen: { type: 'boolean', initial: false },
               },
               children: [
-                agentByline({ did: '$post.author', timestamp: '$post.createdAt' }),
+                agentByline({ did: { $: 'post.author' }, timestamp: { $: 'post.createdAt' } }),
                 {
                   type: '$if',
                   props: {
-                    condition: { $eq: ['$post.author', '$me.did'] },
+                    condition: { $: 'post.author == me.did' },
                     then: {
                       type: 'Row',
                       props: { gap: '100' },
@@ -96,9 +90,9 @@ export const postsList: SchemaNode = {
                         composerModal({
                           title: 'Edit Post',
                           openLocal: 'editPostOpen',
-                          editorState: '$post.editorState',
+                          editorState: { $: 'post.editorState' },
                           // `'$arg'` second: `updatePost(postId, json)`.
-                          saveAction: { $action: 'spaceStore.updatePost', args: ['$post.id', '$arg'] },
+                          saveAction: { $action: 'spaceStore.updatePost', args: [{ $: 'post.id' }, { $: 'arg' }] },
                           saveLabel: 'Save',
                         }),
                         {
@@ -112,12 +106,12 @@ export const postsList: SchemaNode = {
                           children: [{ type: 'we-icon', props: { name: 'trash' } }],
                         },
                         confirmModal({
-                          open: { $local: 'confirmDeleteOpen' },
+                          open: { $: 'local.confirmDeleteOpen' },
                           close: { $setLocal: 'confirmDeleteOpen', value: false },
                           title: 'Delete post?',
                           body: 'This will permanently delete the post and everything inside it. This cannot be undone.',
                           confirmLabel: 'Delete',
-                          confirm: { $action: 'spaceStore.deleteCollection', args: ['$post.id'] },
+                          confirm: { $action: 'spaceStore.deleteCollection', args: [{ $: 'post.id' }] },
                         }),
                       ],
                     },
@@ -130,32 +124,30 @@ export const postsList: SchemaNode = {
             {
               type: 'BlockRenderer',
               props: {
-                editorState: '$post.editorState',
+                editorState: { $: 'post.editorState' },
               },
             },
             {
               type: '$if',
               props: {
-                condition: { $count: { items: { $local: 'signalTypes' } } },
+                condition: { $: 'count(local.signalTypes)' },
                 then: {
                   type: 'Row',
                   props: { height: '40px', mt: '200', ay: 'center', gap: '700' },
                   children: [
                     {
                       type: '$each',
-                      props: { items: { $local: 'signalTypes' }, as: 'sig' },
+                      props: { items: { $: 'local.signalTypes' }, as: 'sig' },
                       children: [
                         {
                           type: 'SignalControl',
                           props: {
-                            signalType: '$sig',
-                            signals: {
-                              $filter: { items: '$post.signals', where: { signalTypeId: '$sig.id' } },
-                            },
-                            myDid: '$me.did',
+                            signalType: { $: 'sig' },
+                            signals: { $: 'filter(post.signals, { signalTypeId: sig.id })' },
+                            myDid: { $: 'me.did' },
                             onSignal: {
                               $action: 'spaceStore.upsertSignal',
-                              args: ['$post.id', '$sig.id', '$arg'],
+                              args: [{ $: 'post.id' }, { $: 'sig.id' }, { $: 'arg' }],
                             },
                           },
                         },

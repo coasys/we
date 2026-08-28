@@ -50,7 +50,7 @@ stores above it):
 Route → Shell → Account → Session → Runtime → Dataset → Profile → Theme →
 Template → Editor → App → Space → Presence.
 
-The store surface a schema can reach with `$store`/`$action` is documented in
+The store surface a schema can reach through expressions and `$action` is documented in
 the generated reference (`CLAUDE.md`, "Stores" section) and kept honest by
 `@we/ai-context`'s extractor. The names to know: `sessionStore` (boot, agent
 identity — `sessionStore.me`), `datasetStore` (datasets/perspectives,

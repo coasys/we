@@ -1,4 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
+import { expr } from '@we/schema-shared';
 import { cardList, cardShell, emptyState } from '@we/template-kit';
 
 interface BlockSectionOptions {
@@ -23,9 +24,9 @@ interface BlockSectionOptions {
 const blockSection = (opts: BlockSectionOptions): SchemaNode => ({
   type: '$if',
   props: {
-    condition: { $eq: [{ $local: 'contentType' }, opts.contentType] },
+    condition: expr`local.contentType == ${opts.contentType}`,
     then: cardList({
-      query: { entity: opts.entity, order: { createdAt: { $local: 'sortDirection' } } },
+      query: { entity: opts.entity, order: { createdAt: { $: 'local.sortDirection' } } },
       as: 'block',
       // Not search-aware: these sections don't filter on `searchText`, so nothing here can be
       // hidden by the search box.
@@ -56,14 +57,8 @@ export const blocksList: SchemaNode = {
       entity: 'TextBlock',
       icon: 'file-text',
       label: 'text blocks',
-      body: [{ type: 'we-text', children: ['$block.text'] }],
-      maxHeight: {
-        $if: {
-          condition: { $eq: [{ $local: 'displayMode' }, 'grid'] },
-          then: '200px',
-          else: '50px',
-        },
-      },
+      body: [{ type: 'we-text', children: [{ $: 'block.text' }] }],
+      maxHeight: { $: "local.displayMode == 'grid' ? '200px' : '50px'" },
     }),
 
     blockSection({
@@ -74,7 +69,12 @@ export const blocksList: SchemaNode = {
       body: [
         {
           type: 'ImageDisplay',
-          props: { src: '$block.src', altText: '$block.altText', width: '$block.width', height: '$block.height' },
+          props: {
+            src: { $: 'block.src' },
+            altText: { $: 'block.altText' },
+            width: { $: 'block.width' },
+            height: { $: 'block.height' },
+          },
         },
       ],
     }),
@@ -88,11 +88,11 @@ export const blocksList: SchemaNode = {
         {
           type: 'AudioDisplay',
           props: {
-            title: '$block.title',
-            artist: '$block.artist',
-            audioUrl: '$block.audioUrl',
-            duration: '$block.duration',
-            albumArt: '$block.albumArt',
+            title: { $: 'block.title' },
+            artist: { $: 'block.artist' },
+            audioUrl: { $: 'block.audioUrl' },
+            duration: { $: 'block.duration' },
+            albumArt: { $: 'block.albumArt' },
           },
         },
       ],
@@ -107,10 +107,10 @@ export const blocksList: SchemaNode = {
         {
           type: 'VideoDisplay',
           props: {
-            url: '$block.url',
-            title: '$block.title',
-            thumbnail: '$block.thumbnail',
-            provider: '$block.provider',
+            url: { $: 'block.url' },
+            title: { $: 'block.title' },
+            thumbnail: { $: 'block.thumbnail' },
+            provider: { $: 'block.provider' },
           },
         },
       ],
@@ -125,11 +125,11 @@ export const blocksList: SchemaNode = {
         {
           type: 'FileDisplay',
           props: {
-            title: '$block.title',
-            name: '$block.name',
-            url: '$block.url',
-            mimeType: '$block.mimeType',
-            size: '$block.size',
+            title: { $: 'block.title' },
+            name: { $: 'block.name' },
+            url: { $: 'block.url' },
+            mimeType: { $: 'block.mimeType' },
+            size: { $: 'block.size' },
           },
         },
       ],
@@ -144,10 +144,10 @@ export const blocksList: SchemaNode = {
         {
           type: 'LinkDisplay',
           props: {
-            url: '$block.url',
-            title: '$block.title',
-            description: '$block.description',
-            thumbnail: '$block.thumbnail',
+            url: { $: 'block.url' },
+            title: { $: 'block.title' },
+            description: { $: 'block.description' },
+            thumbnail: { $: 'block.thumbnail' },
           },
         },
       ],
@@ -162,10 +162,10 @@ export const blocksList: SchemaNode = {
         {
           type: 'EmbedDisplay',
           props: {
-            url: '$block.url',
-            target: '$block.target',
-            targetType: '$block.targetType',
-            displayMode: '$block.displayMode',
+            url: { $: 'block.url' },
+            target: { $: 'block.target' },
+            targetType: { $: 'block.targetType' },
+            displayMode: { $: 'block.displayMode' },
           },
         },
       ],
@@ -180,12 +180,12 @@ export const blocksList: SchemaNode = {
         {
           type: 'EventDisplay',
           props: {
-            title: '$block.title',
-            description: '$block.description',
-            startDate: '$block.startDate',
-            endDate: '$block.endDate',
-            location: '$block.location',
-            allDay: '$block.allDay',
+            title: { $: 'block.title' },
+            description: { $: 'block.description' },
+            startDate: { $: 'block.startDate' },
+            endDate: { $: 'block.endDate' },
+            location: { $: 'block.location' },
+            allDay: { $: 'block.allDay' },
           },
         },
       ],
@@ -200,12 +200,12 @@ export const blocksList: SchemaNode = {
         {
           type: 'TaskDisplay',
           props: {
-            title: '$block.title',
-            description: '$block.description',
-            status: '$block.status',
-            priority: '$block.priority',
-            dueDate: '$block.dueDate',
-            assignee: '$block.assignee',
+            title: { $: 'block.title' },
+            description: { $: 'block.description' },
+            status: { $: 'block.status' },
+            priority: { $: 'block.priority' },
+            dueDate: { $: 'block.dueDate' },
+            assignee: { $: 'block.assignee' },
           },
         },
       ],
@@ -219,7 +219,7 @@ export const blocksList: SchemaNode = {
       body: [
         {
           type: 'CodeDisplay',
-          props: { code: '$block.code', language: '$block.language', title: '$block.title' },
+          props: { code: { $: 'block.code' }, language: { $: 'block.language' }, title: { $: 'block.title' } },
         },
       ],
     }),
@@ -232,7 +232,7 @@ export const blocksList: SchemaNode = {
       body: [
         {
           type: 'CalloutDisplay',
-          props: { text: '$block.text', variant: '$block.variant', icon: '$block.icon' },
+          props: { text: { $: 'block.text' }, variant: { $: 'block.variant' }, icon: { $: 'block.icon' } },
         },
       ],
     }),
@@ -246,10 +246,10 @@ export const blocksList: SchemaNode = {
         {
           type: 'LocationDisplay',
           props: {
-            name: '$block.name',
-            latitude: '$block.latitude',
-            longitude: '$block.longitude',
-            address: '$block.address',
+            name: { $: 'block.name' },
+            latitude: { $: 'block.latitude' },
+            longitude: { $: 'block.longitude' },
+            address: { $: 'block.address' },
           },
         },
       ],
@@ -260,7 +260,7 @@ export const blocksList: SchemaNode = {
       entity: 'TagBlock',
       icon: 'tag',
       label: 'tag blocks',
-      body: [{ type: 'TagDisplay', props: { name: '$block.name', color: '$block.color' } }],
+      body: [{ type: 'TagDisplay', props: { name: { $: 'block.name' }, color: { $: 'block.color' } } }],
     }),
   ],
 };

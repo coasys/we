@@ -120,7 +120,7 @@ that declares \`backends: ['ad4m']\` — nothing else. See \`docs/architecture/p
    code — a DX layer, not a runtime one.)
 
 2. **Schema semantics live in \`@we/schema-shared\`, parameterized by a reactivity port.** All token
-   resolution (\`$store\`, \`$if\`, \`$query\`, \`$local\`, \`$action\`, …) is in \`propResolvers/\`.
+   resolution (\`{ $ }\` expressions, \`$action\`, \`$query\`, \`$setLocal\`, …) is in \`propResolvers/\`.
    \`resolveProp(value, stores, context, memo)\` takes a framework-injected memoization function
    (\`memo\`), and \`markReactive()\` (see \`propResolvers/reactive.ts\`) tags accessors so a renderer
    knows a prop is reactive. The entire schema engine AND its reactivity wiring are framework-neutral;
@@ -137,7 +137,7 @@ that declares \`backends: ['ad4m']\` — nothing else. See \`docs/architecture/p
 1. A schema node has \`type\` (component/tag name), \`props\`, \`children\`, optional
    \`routes\`/\`slots\`/\`$localState\`/\`$queries\`.
 2. Props are resolved by the shared dispatcher (\`propResolvers/dispatcher.ts\`): token objects
-   (\`$store\`, \`$if\`, \`$query\`, …) become values or reactive accessors via the injected \`memo\`;
+   (\`{ $ }\` expressions, \`$query\`, handlers) become values or reactive accessors via the injected \`memo\`;
    event-handler arrays resolve lazily at call time.
 3. The renderer looks up \`type\` in the \`ComponentRegistry\` — a custom-element tag for
    \`@we/primitives\`, a framework component for \`@we/components\`/\`@we/widgets\`.

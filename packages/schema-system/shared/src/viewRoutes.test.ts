@@ -187,14 +187,14 @@ describe('expandViewRoutes with a gate', () => {
 
     expect(route.path).toBe('/calendar');
     expect(route.type).toBe('$if');
-    expect(route.props?.condition).toEqual({ $in: ['calendar', { $store: 'spaceStore.enabledViewIds' }] });
+    expect(route.props?.condition).toEqual({ $: "'calendar' in spaceStore.enabledViewIds" });
   });
 
   it('tests the id, not the segment, since a space names sections by id', () => {
     const feed = view('feed', 'posts', { segment: 'posts' });
     const [route] = expandViewRoutes([marker], [feed], gate);
 
-    expect(route.props?.condition).toEqual({ $in: ['feed', { $store: 'spaceStore.enabledViewIds' }] });
+    expect(route.props?.condition).toEqual({ $: "'feed' in spaceStore.enabledViewIds" });
   });
 
   it("puts the view's own node on the then branch and the host's node on the else", () => {

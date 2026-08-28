@@ -6,16 +6,16 @@
 export const storePatterns = `
 ## Store Usage Patterns
 
-Reading state:
-{ "$store": "storeName.property" }
-Example: { "$store": "routeStore.currentPath" }
+Reading state — an expression naming the store:
+{ "$": "storeName.property" }
+Example: { "$": "routeStore.currentPath" }
 
 Calling actions:
 { "$action": "storeName.method", "args": [...] }
 Example: { "$action": "routeStore.navigate", "args": ["/home"] }
 
 Feature-module stores:
-{ "$store": "modules.<moduleId>.<key>" } and { "$action": "modules.<moduleId>.<method>" }
+{ "$": "modules.<moduleId>.<key>" } and { "$action": "modules.<moduleId>.<method>" }
 Each installed feature module publishes its store under its own id — modules.call.tiles,
 modules.notes.open, modules.transcribe.pending. Which ids exist depends on the deployment's seed,
 so these are not listed in the Stores section below and are never checked against a known-member
@@ -24,13 +24,13 @@ list. A reference to a module that is not installed simply resolves to nothing.
 Iterating over store data:
 {
   "type": "$each",
-  "props": { "items": { "$store": "spaceStore.personalSpaces" }, "as": "space" },
+  "props": { "items": { "$": "spaceStore.personalSpaces" }, "as": "space" },
   "children": [
     {
       "type": "we-button",
       "props": {
         "variant": "ghost",
-        "onClick": { "$action": "routeStore.navigate", "args": [{ "$concat": ["/space/", "$space.uuid"] }] }
+        "onClick": { "$action": "routeStore.navigate", "args": [{ "$": "\`/space/\${space.uuid}\`" }] }
       },
       "children": [
         { "type": "we-avatar", "props": { "image": "$space.avatar", "initials": "$space.name", "size": "sm" } },
@@ -44,19 +44,14 @@ Conditional rendering from store:
 {
   "type": "$if",
   "props": {
-    "condition": { "$eq": [{ "$store": "routeStore.currentPath" }, "/"] },
+    "condition": { "$": "routeStore.currentPath == '/'" },
     "then": { "type": "we-text", "children": ["Home"] },
     "else": { "type": "we-text", "children": ["Not home"] }
   }
 }
 
 Deriving options from store:
-{
-  "$map": {
-    "items": { "$store": "templateStore.templates" },
-    "select": { "name": "$item.meta.name", "icon": "$item.meta.icon" }
-  }
-}
+{ "$": "templateStore.templates.map(t, { name: t.meta.name, icon: t.meta.icon })" }
 
 Querying model data:
 {
@@ -73,7 +68,7 @@ Example — Channel list with conversation count and latest conversation:
     "items": {
       "$query": {
         "entity": "Channel",
-        "dataset": "$currentDataset",
+        "dataset": { "$": "currentDataset" },
         "include": {
           "$conversationCount": { "from": "conversations", "count": true },
           "$latestConversation": { "from": "conversations", "order": { "createdAt": "desc" }, "limit": 1 }
@@ -95,7 +90,7 @@ Example — Nested include (Conversations with their messages):
 {
   "$query": {
     "entity": "Conversation",
-    "dataset": "$currentDataset",
+    "dataset": { "$": "currentDataset" },
     "include": {
       "messages": {
         "order": { "createdAt": "desc" },
@@ -124,14 +119,14 @@ Example — Channel list → Conversation list:
       "children": [{
         "type": "$each",
         "props": {
-          "items": { "$query": { "entity": "Channel", "dataset": "$currentDataset" } },
+          "items": { "$query": { "entity": "Channel", "dataset": { "$": "currentDataset" } } },
           "as": "channel"
         },
         "children": [{
           "type": "we-button",
           "props": {
             "variant": "ghost",
-            "onClick": { "$action": "routeStore.navigate", "args": [{ "$concat": ["/channels/", "$channel.id"] }] }
+            "onClick": { "$action": "routeStore.navigate", "args": [{ "$": "\`/channels/\${channel.id}\`" }] }
           },
           "children": ["$channel.name"]
         }]
@@ -147,8 +142,8 @@ Example — Channel list → Conversation list:
           "items": {
             "$query": {
               "entity": "Conversation",
-              "scope": { "anchor": "Channel", "via": "conversations", "anchorId": { "$store": "routeStore.segments.1" } },
-              "dataset": "$currentDataset"
+              "scope": { "anchor": "Channel", "via": "conversations", "anchorId": { "$": "routeStore.segments[1]" } },
+              "dataset": { "$": "currentDataset" }
             }
           },
           "as": "convo"
@@ -164,7 +159,7 @@ Example — Channel list → Conversation list:
 Notes:
 - Use include when you need related data displayed inline (e.g. a post with its comments, a channel with its conversation count).
 - Use a scope drill-down when you're on a detail route and want only children belonging to the current record.
-- dataset must point to the dataset that holds the data. For external apps (e.g. Flux) opened as a WE space, use "$currentDataset".
+- dataset must point to the dataset that holds the data. For external apps (e.g. Flux) opened as a WE space, use { "$": "currentDataset" }.
 - The relation name (in include, or scope.via) is the HasMany field name on the parent entity.
 
 Local state (form with validation):
@@ -181,12 +176,12 @@ Local state (form with validation):
   "children": [
     {
       "type": "we-form-field",
-      "props": { "label": "Name", "error": { "$error": "name" } },
+      "props": { "label": "Name", "error": { "$": "error('name')" } },
       "children": [{
         "type": "we-input",
         "props": {
-          "value": { "$local": "name" },
-          "onInput": { "$setLocal": "name", "from": "$event.detail" }
+          "value": { "$": "local.name" },
+          "onInput": { "$setLocal": "name", "value": { "$": "event.detail" } }
         }
       }]
     },
@@ -194,17 +189,17 @@ Local state (form with validation):
       "type": "we-button",
       "props": {
         "text": "Submit",
-        "loading": { "$local": "loading" },
-        "disabled": { "$local": "loading" },
+        "loading": { "$": "local.loading" },
+        "disabled": { "$": "local.loading" },
         "onClick": [
           { "$touch": "$all" },
-          { "$if": { "condition": { "$formValid": "$scope" }, "then": { "$action": "myStore.submit", "args": [{ "$local": "name" }] } } }
+          { "$if": { "condition": { "$": "formValid()" }, "then": { "$action": "myStore.submit", "args": [{ "$": "local.name" }] } } }
         ]
       }
     }
   ]
 }
-The button is disabled only while the submit is in flight. Disabling it on { "$not": { "$formValid": "$scope" } }
+The button is disabled only while the submit is in flight. Disabling it on { "$": "!formValid()" }
 instead contradicts the { "$touch": "$all" } beneath it — the button is unclickable in exactly the state that
 guard exists to report. See the "Typical form pattern" section for the full rationale and the two valid shapes.
 
@@ -242,12 +237,12 @@ Use literal arrays for fixed/sample data:
   ]
 }
 
-Use $query or $store for dynamic data (more common in production):
+Use $query or a store read for dynamic data (more common in production):
 { "type": "$each", "props": { "items": { "$query": { "entity": "TextBlock" } }, "as": "post" }, "children": [...] }
-{ "type": "$each", "props": { "items": { "$store": "spaceStore.posts" }, "as": "post" }, "children": [...] }
+{ "type": "$each", "props": { "items": { "$": "spaceStore.posts" }, "as": "post" }, "children": [...] }
 
 Per-item customization inside $each:
-To style or highlight specific items, add a data flag to those items and use $if on the flag inside the template. Do NOT use $eq: ["$index", N] comparisons — they are fragile, repetitive, and break when items are reordered.
+To style or highlight specific items, add a data flag to those items and use $if on the flag inside the template. Do NOT use index == N comparisons — they are fragile, repetitive, and break when items are reordered.
 Example: add "highlighted": true to one item's data, then use $if on "$post.highlighted" in the template:
 { "type": "$if", "props": { "condition": "$post.highlighted", "then": { "type": "we-badge", "props": { "variant": "primary" }, "children": ["Featured"] } } }
 For conditional props (e.g. different bg on highlighted items):
@@ -259,7 +254,7 @@ Boolean toggle (show/hide, expand/collapse):
   "$localState": { "showDetails": { "type": "boolean", "initial": false } },
   "children": [
     { "type": "we-button", "props": { "variant": "ghost", "onClick": { "$toggleLocal": "showDetails" } }, "children": ["Toggle Details"] },
-    { "type": "$if", "props": { "condition": { "$local": "showDetails" }, "then": { "type": "we-text", "children": ["Details content here"] } } }
+    { "type": "$if", "props": { "condition": { "$": "local.showDetails" }, "then": { "type": "we-text", "children": ["Details content here"] } } }
   ]
 }
 
@@ -269,7 +264,7 @@ Resolve them by slug from a hoisted $queries subscription on the node.
 
 There is no store accessor for this. spaceStore.signalTypesBySlug existed once and was removed;
 schemas still referencing it filtered on undefined — a like count that silently counted the wrong
-thing. Query the SignalType entity instead, and look the slug up with $find.
+thing. Query the SignalType entity instead, and look the slug up with find().
 
 ALWAYS ask the user: "What slug should I use? (e.g. 'like', 'upvote', 'star')"
 Then use that slug in the pattern below.
@@ -290,7 +285,7 @@ Pattern — live wired SignalControl (one hoisted query, reused by the projectio
               "$totalLikeCount": {
                 "from": "signals",
                 "where": {
-                  "signalTypeId": { "$find": { "items": { "$local": "signalTypes" }, "where": { "slug": "like" }, "select": "id" } }
+                  "signalTypeId": { "$": "find(local.signalTypes, { slug: 'like' }).id" }
                 },
                 "count": true
               }
@@ -303,18 +298,18 @@ Pattern — live wired SignalControl (one hoisted query, reused by the projectio
         {
           "type": "$if",
           "props": {
-            "condition": { "$count": { "items": { "$local": "signalTypes" } } },
+            "condition": { "$": "count(local.signalTypes)" },
             "then": {
               "type": "$each",
-              "props": { "items": { "$local": "signalTypes" }, "as": "sig" },
+              "props": { "items": { "$": "local.signalTypes" }, "as": "sig" },
               "children": [
                 {
                   "type": "SignalControl",
                   "props": {
-                    "signalType": "$sig",
-                    "signals": { "$filter": { "items": "$item.signals", "where": { "signalTypeId": "$sig.id" } } },
-                    "myDid": "$me.did",
-                    "onSignal": { "$action": "spaceStore.upsertSignal", "args": ["$item.id", "$sig.id", "$arg"] }
+                    "signalType": { "$": "sig" },
+                    "signals": { "$": "filter(item.signals, { signalTypeId: sig.id })" },
+                    "myDid": { "$": "me.did" },
+                    "onSignal": { "$action": "spaceStore.upsertSignal", "args": [{ "$": "item.id" }, { "$": "sig.id" }, { "$": "arg" }] }
                   }
                 }
               ]
@@ -327,11 +322,11 @@ Pattern — live wired SignalControl (one hoisted query, reused by the projectio
 }
 
 Notes:
-- $queries and $localState share one $local namespace, so { "$local": "signalTypes" } reads the
+- $queries and $localState share one local namespace, so { "$": "local.signalTypes" } reads the
   subscription from any descendant — the projection above and the controls below stay in agreement
   about which type a slug means.
-- The $count guard renders nothing until the community has created a signal type.
-- Iterating signalTypes renders every type the community defined; use $find with a slug only where
+- The count() guard renders nothing until the community has created a signal type.
+- Iterating signalTypes renders every type the community defined; use find() with a slug only where
   one specific type is meant (e.g. a like count).
 - Replace "like" with the user's slug.
 - $query include adds $totalLikeCount as a computed property on each item.

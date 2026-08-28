@@ -1,4 +1,5 @@
 import type { TemplateSchema } from '@we/schema-shared';
+import { expr } from '@we/schema-shared';
 import { pageShell } from '@we/template-kit';
 
 import { blocksList } from './BlocksList.ts';
@@ -74,42 +75,42 @@ export const cardsView: TemplateSchema = {
       // Gates itself on `createPostOpen` — see `composerModal`.
       createPostModal,
 
-      { type: '$if', props: { condition: { $eq: [{ $local: 'contentType' }, 'posts'] }, then: postsList } },
+      { type: '$if', props: { condition: { $: "local.contentType == 'posts'" }, then: postsList } },
       callsList,
-      { type: '$if', props: { condition: { $eq: [{ $local: 'contentType' }, 'users'] }, then: usersList } },
-      { type: '$if', props: { condition: { $eq: [{ $local: 'contentType' }, 'spaces'] }, then: spacesList } },
-      { type: '$if', props: { condition: { $eq: [{ $local: 'contentType' }, 'templates'] }, then: templatesList } },
-      { type: '$if', props: { condition: { $eq: [{ $local: 'contentType' }, 'themes'] }, then: themesList } },
+      { type: '$if', props: { condition: { $: "local.contentType == 'users'" }, then: usersList } },
+      { type: '$if', props: { condition: { $: "local.contentType == 'spaces'" }, then: spacesList } },
+      { type: '$if', props: { condition: { $: "local.contentType == 'templates'" }, then: templatesList } },
+      { type: '$if', props: { condition: { $: "local.contentType == 'themes'" }, then: themesList } },
       {
         type: '$if',
-        props: { condition: { $eq: [{ $local: 'contentType' }, 'flux-channels'] }, then: fluxChannelsList },
+        props: { condition: { $: "local.contentType == 'flux-channels'" }, then: fluxChannelsList },
       },
       {
         type: '$if',
-        props: { condition: { $eq: [{ $local: 'contentType' }, 'flux-conversations'] }, then: fluxConversationsList },
+        props: { condition: { $: "local.contentType == 'flux-conversations'" }, then: fluxConversationsList },
       },
       {
         type: '$if',
         props: {
-          condition: { $eq: [{ $local: 'contentType' }, 'flux-conversations-nested'] },
+          condition: { $: "local.contentType == 'flux-conversations-nested'" },
           then: fluxConversationsNestedList,
         },
       },
       {
         type: '$if',
         props: {
-          condition: { $eq: [{ $local: 'contentType' }, 'flux-conversation-subgroups'] },
+          condition: { $: "local.contentType == 'flux-conversation-subgroups'" },
           then: fluxConversationSubgroupsList,
         },
       },
       {
         type: '$if',
-        props: { condition: { $eq: [{ $local: 'contentType' }, 'flux-messages'] }, then: fluxMessagesList },
+        props: { condition: { $: "local.contentType == 'flux-messages'" }, then: fluxMessagesList },
       },
       {
         type: '$if',
         props: {
-          condition: { $not: { $in: [{ $local: 'contentType' }, NON_BLOCK_CONTENT_TYPES] } },
+          condition: expr`!(local.contentType in ${NON_BLOCK_CONTENT_TYPES})`,
           then: blocksList,
         },
       },

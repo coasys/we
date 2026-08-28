@@ -36,11 +36,11 @@ const LOG_LEVEL_OPTIONS = [
 export const runtimeError: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $store: 'runtimeStore.error' },
+    condition: { $: 'runtimeStore.error' },
     then: {
       type: 'we-alert',
       props: { variant: 'danger' },
-      children: [{ $store: 'runtimeStore.error' }],
+      children: [{ $: 'runtimeStore.error' }],
     },
   },
 };
@@ -49,7 +49,7 @@ export const runtimeError: SchemaNode = {
 export const connectedApps: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $store: 'runtimeStore.canManageApps' },
+    condition: { $: 'runtimeStore.canManageApps' },
     then: adminSection({
       title: 'Connected apps',
       icon: 'squares-four',
@@ -58,14 +58,14 @@ export const connectedApps: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $count: { items: { $store: 'runtimeStore.authorizedApps' } } },
+            condition: { $: 'count(runtimeStore.authorizedApps)' },
             then: {
               type: 'Column',
               props: { gap: '200' },
               children: [
                 {
                   type: '$each',
-                  props: { items: { $store: 'runtimeStore.authorizedApps' }, as: 'app' },
+                  props: { items: { $: 'runtimeStore.authorizedApps' }, as: 'app' },
                   children: [
                     {
                       type: 'Card',
@@ -79,7 +79,7 @@ export const connectedApps: SchemaNode = {
                               type: 'Row',
                               props: { gap: '300', ay: 'center' },
                               children: [
-                                { type: 'we-avatar', props: { image: '$app.iconUrl', size: 'sm' } },
+                                { type: 'we-avatar', props: { image: { $: 'app.iconUrl' }, size: 'sm' } },
                                 {
                                   type: 'Column',
                                   props: { gap: '100' },
@@ -88,11 +88,11 @@ export const connectedApps: SchemaNode = {
                                       type: 'Row',
                                       props: { gap: '200', ay: 'center' },
                                       children: [
-                                        { type: 'we-text', props: { variant: 'label' }, children: ['$app.name'] },
+                                        { type: 'we-text', props: { variant: 'label' }, children: [{ $: 'app.name' }] },
                                         {
                                           type: '$if',
                                           props: {
-                                            condition: '$app.revoked',
+                                            condition: { $: 'app.revoked' },
                                             then: {
                                               type: 'we-badge',
                                               props: { variant: 'neutral', size: 'xs' },
@@ -105,7 +105,7 @@ export const connectedApps: SchemaNode = {
                                     {
                                       type: 'we-text',
                                       props: { variant: 'footnote', color: 'text-muted' },
-                                      children: ['$app.url'],
+                                      children: [{ $: 'app.url' }],
                                     },
                                   ],
                                 },
@@ -120,14 +120,14 @@ export const connectedApps: SchemaNode = {
                                 {
                                   type: '$if',
                                   props: {
-                                    condition: { $not: '$app.revoked' },
+                                    condition: { $: '!app.revoked' },
                                     then: {
                                       type: 'we-button',
                                       props: {
                                         text: 'Revoke',
                                         variant: 'ghost',
                                         size: 'sm',
-                                        onClick: { $action: 'runtimeStore.revokeApp', args: ['$app.id'] },
+                                        onClick: { $action: 'runtimeStore.revokeApp', args: [{ $: 'app.id' }] },
                                       },
                                     },
                                   },
@@ -137,7 +137,7 @@ export const connectedApps: SchemaNode = {
                                   props: {
                                     variant: 'ghost',
                                     size: 'sm',
-                                    onClick: { $action: 'runtimeStore.removeApp', args: ['$app.id'] },
+                                    onClick: { $action: 'runtimeStore.removeApp', args: [{ $: 'app.id' }] },
                                   },
                                   children: [{ type: 'we-icon', props: { name: 'trash' } }],
                                 },
@@ -163,7 +163,7 @@ export const connectedApps: SchemaNode = {
 export const trustedAgents: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $store: 'runtimeStore.canManageTrust' },
+    condition: { $: 'runtimeStore.canManageTrust' },
     then: adminSection({
       title: 'Trusted agents',
       icon: 'shield-check',
@@ -172,14 +172,14 @@ export const trustedAgents: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $count: { items: { $store: 'runtimeStore.trustedAgents' } } },
+            condition: { $: 'count(runtimeStore.trustedAgents)' },
             then: {
               type: 'Column',
               props: { gap: '200' },
               children: [
                 {
                   type: '$each',
-                  props: { items: { $store: 'runtimeStore.trustedAgents' }, as: 'did' },
+                  props: { items: { $: 'runtimeStore.trustedAgents' }, as: 'did' },
                   children: [
                     {
                       type: 'Row',
@@ -196,14 +196,14 @@ export const trustedAgents: SchemaNode = {
                         {
                           type: 'we-text',
                           props: { variant: 'footnote' },
-                          children: ['$did'],
+                          children: [{ $: 'did' }],
                         },
                         {
                           type: 'we-button',
                           props: {
                             variant: 'ghost',
                             size: 'sm',
-                            onClick: { $action: 'runtimeStore.untrustAgent', args: ['$did'] },
+                            onClick: { $action: 'runtimeStore.untrustAgent', args: [{ $: 'did' }] },
                           },
                           children: [{ type: 'we-icon', props: { name: 'x' } }],
                         },
@@ -226,8 +226,8 @@ export const trustedAgents: SchemaNode = {
                 flex: '1',
                 size: 'sm',
                 placeholder: 'did:key:...',
-                value: { $local: 'newTrustedAgent' },
-                onInput: { $setLocal: 'newTrustedAgent', from: '$event.detail' },
+                value: { $: 'local.newTrustedAgent' },
+                onInput: { $setLocal: 'newTrustedAgent', value: { $: 'event.detail' } },
               },
             },
             {
@@ -236,10 +236,10 @@ export const trustedAgents: SchemaNode = {
                 text: 'Trust',
                 size: 'sm',
                 variant: 'secondary',
-                disabled: { $not: { $local: 'newTrustedAgent' } },
+                disabled: { $: '!local.newTrustedAgent' },
                 onClick: {
                   $action: 'runtimeStore.trustAgent',
-                  args: [{ $local: 'newTrustedAgent' }],
+                  args: [{ $: 'local.newTrustedAgent' }],
                   onSuccess: [{ $setLocal: 'newTrustedAgent', value: '' }],
                 },
               },
@@ -264,7 +264,7 @@ export const trustedAgents: SchemaNode = {
 export const mcpServer: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $store: 'runtimeStore.canConfigureExecutor' },
+    condition: { $: 'runtimeStore.canConfigureExecutor' },
     then: {
       type: 'Column',
       props: { gap: '300' },
@@ -291,8 +291,8 @@ export const mcpServer: SchemaNode = {
             {
               type: 'we-switch',
               props: {
-                checked: { $store: 'runtimeStore.mcpEnabled' },
-                onChange: { $action: 'runtimeStore.setMcpEnabled', args: ['$event.detail'] },
+                checked: { $: 'runtimeStore.mcpEnabled' },
+                onChange: { $action: 'runtimeStore.setMcpEnabled', args: [{ $: 'event.detail' }] },
               },
             },
             { type: 'we-text', props: { variant: 'label' }, children: ['Serve MCP'] },
@@ -309,8 +309,8 @@ export const mcpServer: SchemaNode = {
                 min: 1024,
                 max: 65535,
                 step: 1,
-                value: { $store: 'runtimeStore.mcpPort' },
-                onChange: { $action: 'runtimeStore.setMcpPort', args: ['$event.detail'] },
+                value: { $: 'runtimeStore.mcpPort' },
+                onChange: { $action: 'runtimeStore.setMcpPort', args: [{ $: 'event.detail' }] },
               },
             },
           ],
@@ -318,7 +318,7 @@ export const mcpServer: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $store: 'runtimeStore.executorRestartPending' },
+            condition: { $: 'runtimeStore.executorRestartPending' },
             then: {
               type: 'Row',
               props: { gap: '300', ay: 'center', ax: 'between', bg: 'surface-sunken', r: '300', px: '300', py: '200' },
@@ -360,7 +360,7 @@ export const mcpServer: SchemaNode = {
 export const backup: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $store: 'runtimeStore.canBackUp' },
+    condition: { $: 'runtimeStore.canBackUp' },
     then: {
       type: 'Column',
       props: { gap: '300' },
@@ -390,7 +390,7 @@ export const backup: SchemaNode = {
                 text: 'Export',
                 size: 'sm',
                 variant: 'secondary',
-                loading: { $store: 'runtimeStore.loading' },
+                loading: { $: 'runtimeStore.loading' },
                 onClick: { $action: 'runtimeStore.exportDatabase' },
               },
             },
@@ -400,7 +400,7 @@ export const backup: SchemaNode = {
                 text: 'Import',
                 size: 'sm',
                 variant: 'ghost',
-                loading: { $store: 'runtimeStore.loading' },
+                loading: { $: 'runtimeStore.loading' },
                 onClick: { $action: 'runtimeStore.importDatabase' },
               },
             },
@@ -409,11 +409,11 @@ export const backup: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $store: 'runtimeStore.backupStatus' },
+            condition: { $: 'runtimeStore.backupStatus' },
             then: {
               type: 'we-text',
               props: { variant: 'footnote', color: 'text-muted' },
-              children: [{ $store: 'runtimeStore.backupStatus' }],
+              children: [{ $: 'runtimeStore.backupStatus' }],
             },
           },
         },
@@ -435,7 +435,7 @@ export const backup: SchemaNode = {
 export const logging: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $store: 'runtimeStore.canConfigureExecutor' },
+    condition: { $: 'runtimeStore.canConfigureExecutor' },
     then: {
       type: 'Column',
       props: { gap: '300' },
@@ -456,30 +456,30 @@ export const logging: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $count: { items: { $store: 'runtimeStore.logLevels' } } },
+            condition: { $: 'count(runtimeStore.logLevels)' },
             then: {
               type: 'Column',
               props: { gap: '200' },
               children: [
                 {
                   type: '$each',
-                  props: { items: { $store: 'runtimeStore.logLevels' }, as: 'entry' },
+                  props: { items: { $: 'runtimeStore.logLevels' }, as: 'entry' },
                   children: [
                     {
                       type: 'Row',
                       props: { gap: '200', ay: 'center', bg: 'surface-sunken', r: '300', px: '300', py: '200' },
                       children: [
-                        { type: 'we-code', props: { flex: '1' }, children: ['$entry.crate'] },
+                        { type: 'we-code', props: { flex: '1' }, children: [{ $: 'entry.crate' }] },
                         {
                           type: 'we-select',
                           props: {
                             width: '140px',
                             size: 'sm',
-                            value: '$entry.level',
+                            value: { $: 'entry.level' },
                             options: LOG_LEVEL_OPTIONS,
                             onChange: {
                               $action: 'runtimeStore.setLogLevel',
-                              args: ['$entry.crate', '$event.detail'],
+                              args: [{ $: 'entry.crate' }, { $: 'event.detail' }],
                             },
                           },
                         },
@@ -488,7 +488,7 @@ export const logging: SchemaNode = {
                           props: {
                             variant: 'ghost',
                             size: 'sm',
-                            onClick: { $action: 'runtimeStore.removeLogLevel', args: ['$entry.crate'] },
+                            onClick: { $action: 'runtimeStore.removeLogLevel', args: [{ $: 'entry.crate' }] },
                           },
                           children: [{ type: 'we-icon', props: { name: 'x' } }],
                         },
@@ -513,8 +513,8 @@ export const logging: SchemaNode = {
                 // Named rather than offered as a list: the parts of a backend are its own business,
                 // and a picker here would go stale the moment one of them was renamed.
                 placeholder: 'Part of the data layer, e.g. rust_executor or holochain',
-                value: { $local: 'newLogCrate' },
-                onInput: { $setLocal: 'newLogCrate', from: '$event.detail' },
+                value: { $: 'local.newLogCrate' },
+                onInput: { $setLocal: 'newLogCrate', value: { $: 'event.detail' } },
               },
             },
             {
@@ -522,9 +522,9 @@ export const logging: SchemaNode = {
               props: {
                 width: '140px',
                 size: 'sm',
-                value: { $local: 'newLogLevel' },
+                value: { $: 'local.newLogLevel' },
                 options: LOG_LEVEL_OPTIONS,
-                onChange: { $setLocal: 'newLogLevel', from: '$event.detail' },
+                onChange: { $setLocal: 'newLogLevel', value: { $: 'event.detail' } },
               },
             },
             {
@@ -533,10 +533,10 @@ export const logging: SchemaNode = {
                 text: 'Set',
                 size: 'sm',
                 variant: 'secondary',
-                disabled: { $not: { $local: 'newLogCrate' } },
+                disabled: { $: '!local.newLogCrate' },
                 onClick: {
                   $action: 'runtimeStore.setLogLevel',
-                  args: [{ $local: 'newLogCrate' }, { $local: 'newLogLevel' }],
+                  args: [{ $: 'local.newLogCrate' }, { $: 'local.newLogLevel' }],
                   onSuccess: [{ $setLocal: 'newLogCrate', value: '' }],
                 },
               },
@@ -558,7 +558,7 @@ export const loggingLocalState = {
 export const peerNetwork: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $store: 'runtimeStore.canManageNetwork' },
+    condition: { $: 'runtimeStore.canManageNetwork' },
     then: adminSection({
       title: 'Peer network',
       icon: 'globe',
@@ -574,7 +574,7 @@ export const peerNetwork: SchemaNode = {
                 text: 'Restart networking',
                 size: 'sm',
                 variant: 'secondary',
-                loading: { $store: 'runtimeStore.loading' },
+                loading: { $: 'runtimeStore.loading' },
                 onClick: { $action: 'runtimeStore.restartNetwork' },
               },
             },
@@ -594,7 +594,7 @@ export const peerNetwork: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $store: 'runtimeStore.networkMetrics' },
+            condition: { $: 'runtimeStore.networkMetrics' },
             then: {
               type: 'we-scroll-area',
               props: { maxHeight: '200px' },
@@ -602,7 +602,7 @@ export const peerNetwork: SchemaNode = {
                 {
                   type: 'we-code',
                   props: { block: true },
-                  children: [{ $store: 'runtimeStore.networkMetrics' }],
+                  children: [{ $: 'runtimeStore.networkMetrics' }],
                 },
               ],
             },
@@ -612,7 +612,7 @@ export const peerNetwork: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $local: 'showPeerExchange' },
+            condition: { $: 'local.showPeerExchange' },
             then: {
               type: 'Column',
               props: { gap: '200' },
@@ -636,12 +636,12 @@ export const peerNetwork: SchemaNode = {
                       children: [
                         {
                           type: '$each',
-                          props: { items: { $store: 'runtimeStore.peerInfos' }, as: 'info' },
+                          props: { items: { $: 'runtimeStore.peerInfos' }, as: 'info' },
                           children: [
                             {
                               type: 'we-code',
                               props: { block: true },
-                              children: ['$info'],
+                              children: [{ $: 'info' }],
                             },
                           ],
                         },
@@ -654,8 +654,8 @@ export const peerNetwork: SchemaNode = {
                   props: {
                     rows: 3,
                     placeholder: "Paste a peer's info here...",
-                    value: { $local: 'peerInfoText' },
-                    onInput: { $setLocal: 'peerInfoText', from: '$event.detail' },
+                    value: { $: 'local.peerInfoText' },
+                    onInput: { $setLocal: 'peerInfoText', value: { $: 'event.detail' } },
                   },
                 },
                 {
@@ -664,10 +664,10 @@ export const peerNetwork: SchemaNode = {
                     text: 'Add peer info',
                     size: 'sm',
                     variant: 'secondary',
-                    disabled: { $not: { $local: 'peerInfoText' } },
+                    disabled: { $: '!local.peerInfoText' },
                     onClick: {
                       $action: 'runtimeStore.addPeerInfos',
-                      args: [{ $local: 'peerInfoText' }],
+                      args: [{ $: 'local.peerInfoText' }],
                       onSuccess: [{ $setLocal: 'peerInfoText', value: '' }],
                     },
                   },

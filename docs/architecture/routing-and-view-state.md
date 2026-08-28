@@ -32,7 +32,7 @@ sortDirection: { type: 'string', initial: 'DESC',  syncParam: 'dir' },
 searchText:    { type: 'string', initial: '',      syncParam: 'q' },
 ```
 
-Reads and writes stay `$local`/`$setLocal` — the mirroring is declarative.
+Reads and writes stay `local.*` / `$setLocal` — the mirroring is declarative.
 Semantics:
 
 - **Push vs replace:** a content-type switch deserves a Back entry
@@ -85,7 +85,7 @@ boot still gets honored.
 ## Store surface
 
 `routeStore.params` (reactive `Record<string, string>`, readable from schemas
-as `{ $store: 'routeStore.params.<name>' }`) and
+as `{ $: 'routeStore.params.<name>' }`) and
 `routeStore.setParam(name, value | null, { push? })`. `setParam` writes
 history directly — the path doesn't change, so the route tree must not
 re-resolve.

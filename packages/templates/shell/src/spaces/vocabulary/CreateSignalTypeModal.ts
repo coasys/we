@@ -7,7 +7,7 @@ import { field, formModal } from '@we/template-kit';
  * in the signal-types section's header rather than in here.
  */
 export const createSignalTypeModal = formModal({
-  open: { $local: 'createSignalTypeOpen' },
+  open: { $: 'local.createSignalTypeOpen' },
   close: { $setLocal: 'createSignalTypeOpen', value: false },
   title: 'New signal type',
   /*
@@ -63,8 +63,8 @@ export const createSignalTypeModal = formModal({
             {
               type: 'we-icon-picker',
               props: {
-                value: { $local: 'icon' },
-                onChange: { $setLocal: 'icon', from: '$event.detail' },
+                value: { $: 'local.icon' },
+                onChange: { $setLocal: 'icon', value: { $: 'event.detail' } },
               },
             },
           ],
@@ -73,7 +73,7 @@ export const createSignalTypeModal = formModal({
         {
           type: '$if',
           props: {
-            condition: { $eq: [{ $local: 'mode' }, 'vote'] },
+            condition: { $: "local.mode == 'vote'" },
             then: {
               type: 'we-form-field',
               props: { label: 'Secondary Icon', description: 'Used as the negative icon in vote mode' },
@@ -82,8 +82,8 @@ export const createSignalTypeModal = formModal({
                   type: 'we-icon-picker',
                   props: {
                     placeholder: 'Same as icon',
-                    value: { $local: 'iconSecondary' },
-                    onChange: { $setLocal: 'iconSecondary', from: '$event.detail' },
+                    value: { $: 'local.iconSecondary' },
+                    onChange: { $setLocal: 'iconSecondary', value: { $: 'event.detail' } },
                   },
                 },
               ],
@@ -97,7 +97,7 @@ export const createSignalTypeModal = formModal({
     {
       type: '$if',
       props: {
-        condition: { $or: [{ $eq: [{ $local: 'mode' }, 'rating'] }, { $eq: [{ $local: 'mode' }, 'slider'] }] },
+        condition: { $: "local.mode == 'rating' || local.mode == 'slider'" },
         then: {
           type: 'Row',
           props: { gap: '300' },
@@ -109,8 +109,8 @@ export const createSignalTypeModal = formModal({
                 {
                   type: 'we-number-input',
                   props: {
-                    value: { $local: 'rangeMin' },
-                    onChange: { $setLocal: 'rangeMin', from: '$event.detail' },
+                    value: { $: 'local.rangeMin' },
+                    onChange: { $setLocal: 'rangeMin', value: { $: 'event.detail' } },
                   },
                 },
               ],
@@ -122,8 +122,8 @@ export const createSignalTypeModal = formModal({
                 {
                   type: 'we-number-input',
                   props: {
-                    value: { $local: 'rangeMax' },
-                    onChange: { $setLocal: 'rangeMax', from: '$event.detail' },
+                    value: { $: 'local.rangeMax' },
+                    onChange: { $setLocal: 'rangeMax', value: { $: 'event.detail' } },
                   },
                 },
               ],
@@ -135,10 +135,10 @@ export const createSignalTypeModal = formModal({
                 {
                   type: 'we-number-input',
                   props: {
-                    value: { $local: 'step' },
+                    value: { $: 'local.step' },
                     min: 0.1,
                     step: 0.1,
-                    onChange: { $setLocal: 'step', from: '$event.detail' },
+                    onChange: { $setLocal: 'step', value: { $: 'event.detail' } },
                   },
                 },
               ],
@@ -159,12 +159,12 @@ export const createSignalTypeModal = formModal({
           props: {
             preview: true,
             signalType: {
-              icon: { $local: 'icon' },
-              iconSecondary: { $local: 'iconSecondary' },
-              mode: { $local: 'mode' },
-              rangeMin: { $local: 'rangeMin' },
-              rangeMax: { $local: 'rangeMax' },
-              step: { $local: 'step' },
+              icon: { $: 'local.icon' },
+              iconSecondary: { $: 'local.iconSecondary' },
+              mode: { $: 'local.mode' },
+              rangeMin: { $: 'local.rangeMin' },
+              rangeMax: { $: 'local.rangeMax' },
+              step: { $: 'local.step' },
             },
           },
         },
@@ -172,25 +172,25 @@ export const createSignalTypeModal = formModal({
     },
   ],
   // The slug derives from the name when left blank, so a name is the whole precondition.
-  disabled: { $not: { $local: 'name' } },
+  disabled: { $: '!local.name' },
   // The typed fields only. `mode`, `aggregate` and the range have defaults and pickers, so they
   // are set from the first frame and would make the guard fire on an untouched form.
-  discardWhen: { $or: [{ $local: 'name' }, { $local: 'slug' }, { $local: 'description' }] },
+  discardWhen: { $: 'local.name || local.slug || local.description' },
   submitLabel: 'Create',
   submit: {
     $action: 'spaceStore.createSignalType',
     args: [
       {
-        name: { $local: 'name' },
-        slug: { $local: 'slug' },
-        description: { $local: 'description' },
-        icon: { $local: 'icon' },
-        iconSecondary: { $local: 'iconSecondary' },
-        mode: { $local: 'mode' },
-        aggregate: { $local: 'aggregate' },
-        rangeMin: { $local: 'rangeMin' },
-        rangeMax: { $local: 'rangeMax' },
-        step: { $local: 'step' },
+        name: { $: 'local.name' },
+        slug: { $: 'local.slug' },
+        description: { $: 'local.description' },
+        icon: { $: 'local.icon' },
+        iconSecondary: { $: 'local.iconSecondary' },
+        mode: { $: 'local.mode' },
+        aggregate: { $: 'local.aggregate' },
+        rangeMin: { $: 'local.rangeMin' },
+        rangeMax: { $: 'local.rangeMax' },
+        step: { $: 'local.step' },
       },
     ],
   },

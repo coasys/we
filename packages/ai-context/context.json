@@ -3074,6 +3074,11 @@
           "optional": true
         },
         {
+          "name": "onSelect",
+          "type": "((item: DropdownMenuAction) => void)",
+          "optional": true
+        },
+        {
           "name": "placement",
           "type": "Placement",
           "optional": true
@@ -5509,7 +5514,6 @@
       "actions": [
         "refresh",
         "createAccount",
-        "syncDisplay",
         "switchAccount",
         "removeAccount",
         "requestRemoval",
@@ -5533,7 +5537,7 @@
           "type": "string"
         }
       },
-      "actions": ["activateApp", "deactivateApp", "provideInstalledModules"]
+      "actions": ["activateApp", "deactivateApp"]
     },
     {
       "name": "datasetStore",
@@ -5575,9 +5579,6 @@
           "type": "object",
           "properties": ["id", "name", "sharedUri", "sharedId", "handle"]
         },
-        "testDataset": {
-          "type": "object"
-        },
         "globalDataset": {
           "type": "object",
           "properties": ["id", "name", "sharedUri", "sharedId", "handle"]
@@ -5585,9 +5586,6 @@
         "marketplaceDataset": {
           "type": "object",
           "properties": ["id", "name", "sharedUri", "sharedId", "handle"]
-        },
-        "agentSettings": {
-          "type": "object"
         },
         "globalSpaceConfigured": {
           "type": "boolean"
@@ -5603,25 +5601,9 @@
         },
         "marketplaceJoined": {
           "type": "boolean"
-        },
-        "getDatasetOrder": {
-          "type": "array"
         }
       },
-      "actions": [
-        "switchDataset",
-        "reorderDatasets",
-        "removeDataset",
-        "updateAgentSettings",
-        "clearCurrentDataset",
-        "cleanupSpaceSdna",
-        "trackDataset",
-        "onDatasetRemoved",
-        "initSystemDatasets",
-        "loadDatasets",
-        "subscribeToChanges",
-        "provideAutoInterpretGate"
-      ]
+      "actions": ["switchDataset", "reorderDatasets", "removeDataset", "cleanupSpaceSdna"]
     },
     {
       "name": "editorStore",
@@ -5728,10 +5710,8 @@
         "switchSession",
         "deleteSession",
         "setContentMode",
-        "onSchemaEdit",
         "undo",
         "redo",
-        "pushSnapshot",
         "startFork",
         "startFresh",
         "confirmPicker",
@@ -5752,8 +5732,7 @@
         "exitThemeEditing",
         "toggleThemeEditing",
         "sendMessage",
-        "clearHistory",
-        "setApiKey"
+        "clearHistory"
       ]
     },
     {
@@ -5843,6 +5822,9 @@
         "recordDraftDirty": {
           "type": "boolean"
         },
+        "displays": {
+          "type": "object"
+        },
         "recordErrors": {
           "type": "array"
         },
@@ -5857,9 +5839,6 @@
         },
         "relationshipKind": {
           "type": "string"
-        },
-        "pendingCardStyle": {
-          "type": "object"
         }
       },
       "actions": [
@@ -5874,7 +5853,6 @@
         "removeFromBoard",
         "resizeOnBoard",
         "setCardStyle",
-        "confirmPending",
         "previewCardStyle",
         "setTypeColor",
         "createOnBoard",
@@ -5894,7 +5872,7 @@
           "type": "object"
         }
       },
-      "actions": ["setNavigateFunction", "setCurrentPath", "navigate", "setParam"]
+      "actions": ["navigate", "setParam"]
     },
     {
       "name": "runtimeStore",
@@ -6080,30 +6058,9 @@
         "createAgentLoading": {
           "type": "boolean"
         },
-        "client": {
-          "type": "object"
-        },
-        "agentSession": {
-          "type": "object"
-        },
-        "lifecycle": {
-          "type": "object"
-        },
-        "backendPorts": {
-          "type": "object"
-        },
         "me": {
           "type": "object",
           "properties": ["did", "perspective", "directMessageLanguage"]
-        },
-        "port": {
-          "type": "number"
-        },
-        "token": {
-          "type": "string"
-        },
-        "serverUrl": {
-          "type": "string"
         },
         "host": {
           "type": "object",
@@ -6131,23 +6088,9 @@
         },
         "devTools": {
           "type": "boolean"
-        },
-        "ephemeralPort": {
-          "type": "object"
         }
       },
-      "actions": [
-        "setDevTools",
-        "login",
-        "createAgent",
-        "clearPasswordError",
-        "finishSetup",
-        "logout",
-        "retryBoot",
-        "refreshMe",
-        "markReady",
-        "onSessionUnlocked"
-      ]
+      "actions": ["setDevTools", "login", "createAgent", "clearPasswordError", "finishSetup", "logout", "retryBoot"]
     },
     {
       "name": "shapeStore",
@@ -6258,17 +6201,11 @@
         "activeShellView": {
           "type": "string"
         },
-        "takePendingPath": {
-          "type": "object"
-        },
         "createSpaceOpen": {
           "type": "boolean"
         },
         "spaceSettingsOpen": {
           "type": "boolean"
-        },
-        "spaceSettingsEdge": {
-          "type": "object"
         },
         "dockGeometry": {
           "type": "object"
@@ -6307,7 +6244,6 @@
       "actions": [
         "openShellView",
         "closeShellView",
-        "rememberShellPath",
         "setCreateSpaceOpen",
         "toggleSpaceSettings",
         "openSpaceSettings",
@@ -6511,9 +6447,7 @@
         "copyGuestLink",
         "getSubgroupMessages",
         "exportCallTranscript",
-        "removeSpaceFromGlobal",
-        "updateSpaceInCache",
-        "loadSpaces"
+        "removeSpaceFromGlobal"
       ]
     },
     {
@@ -6565,9 +6499,6 @@
         }
       },
       "actions": [
-        "provideSpaceLookup",
-        "updateTemplate",
-        "replaceTemplate",
         "switchTemplate",
         "removeTemplate",
         "deleteTemplate",
@@ -6582,14 +6513,7 @@
         "publishToSpace",
         "deleteMarketplaceTemplate",
         "publishToMarketplace",
-        "persistCurrentTemplate",
-        "preloadSpaceTemplates",
-        "loadSpaceTemplates",
-        "refreshSpaceTemplates",
-        "clearSpaceTemplates",
-        "isBuiltInTemplate",
-        "isInstalled",
-        "getTemplateModel"
+        "refreshSpaceTemplates"
       ]
     },
     {
@@ -6664,14 +6588,9 @@
         },
         "activeTemplateTheme": {
           "type": "object"
-        },
-        "saveEditingTheme": {
-          "type": "object"
         }
       },
       "actions": [
-        "registerHistoryCallbacks",
-        "applySnapshot",
         "setCurrentTheme",
         "setDefaultTheme",
         "focusRole",
@@ -6680,9 +6599,6 @@
         "previewThemeScope",
         "setThemeScopeGlobal",
         "setUseTemplateTheme",
-        "replaceTheme",
-        "restorePersonalTheme",
-        "clearSpaceTheme",
         "startEditing",
         "changeBasePreset",
         "updateEditingOverrides",
@@ -6690,6 +6606,7 @@
         "updateEditingMeta",
         "cancelEditing",
         "createAndStartEditing",
+        "saveEditingTheme",
         "saveEditingThemeAs",
         "deleteTheme",
         "installFromMarketplace",
@@ -6698,9 +6615,7 @@
         "deleteMarketplaceTheme",
         "publishToMarketplace",
         "publishToSpace",
-        "loadInstalledThemes",
-        "refreshSpaceThemes",
-        "requestNamedThemes"
+        "refreshSpaceThemes"
       ]
     },
     {
@@ -6718,5 +6633,31 @@
     "EditorThemePanel",
     "TemplateCard",
     "WeCube"
+  ],
+  "sources": [
+    {
+      "name": "calendarMonth",
+      "params": ["options?"],
+      "doc": "The days of a month as rows — { date, day, inMonth, isToday, weekday } — padded to whole weeks. Options: month (YYYY-MM-DD, default today), offset (months from it), weekStartsOn (0 Sunday … 6), fixedWeeks (six rows, default on).",
+      "example": "calendarMonth({ offset: local.monthOffset, weekStartsOn: 1 })"
+    },
+    {
+      "name": "calendarMonths",
+      "params": ["options?"],
+      "doc": "The twelve months of the year an offset lands in — { label, month, year, offset, isThisMonth, isShown } — each carrying its own offset from today, for a jump-to-month picker.",
+      "example": "calendarMonths({ offset: local.monthOffset })"
+    },
+    {
+      "name": "monthLabel",
+      "params": ["options?"],
+      "doc": "The month a calendar is showing, as \"August 2026\" in the viewer’s language. Same options as calendarMonth.",
+      "example": "monthLabel({ offset: local.monthOffset })"
+    },
+    {
+      "name": "yearLabel",
+      "params": ["options?"],
+      "doc": "The year a calendar is showing, on its own. Same options as calendarMonth.",
+      "example": "yearLabel({ offset: local.monthOffset })"
+    }
   ]
 }

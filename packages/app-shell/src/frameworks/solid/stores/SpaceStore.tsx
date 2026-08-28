@@ -93,7 +93,7 @@ export interface SpaceListEntry {
   /**
    * This space's module settings, carried on the row rather than fetched per space.
    *
-   * `$store` resolves a literal path, so a settings page rendered for one row of a list cannot ask
+   * A store read resolves a literal path, so a settings page rendered for one row of a list cannot ask
    * for `moduleSettingsFor(<that row's uuid>)` — the same constraint that made `launchModule` take
    * an id. Precomputing puts the answer where the row's context already reaches it.
    */
@@ -101,7 +101,7 @@ export interface SpaceListEntry {
   /**
    * This space's sections, with both layers' answers — the community's and this agent's.
    *
-   * On the row for the same reason `modules` is: `$store` resolves a literal path, so a settings
+   * On the row for the same reason `modules` is: a store read resolves a literal path, so a settings
    * page rendered per row cannot ask for the sections of "that row's space".
    */
   views: ViewSetting[];
@@ -517,7 +517,7 @@ export interface SpaceStore {
   /**
    * DIDs this agent has muted, everywhere. Private, held in the root dataset.
    *
-   * A feed filters on this before rendering — `{ $not: { $in: ['$post.author', …] } }`. Hiding on
+   * A feed filters on this before rendering — `{ $: '!(post.author in spaceStore.mutedDids)' }`. Hiding on
    * this agent's screen only: an AD4M neighbourhood is writable by every member, so nothing here
    * removes anything for anyone else.
    */
@@ -532,7 +532,7 @@ export interface SpaceStore {
    * An unread indicator is "latest child newer than this" — the seen-half of the standing-query
    * pattern notifications will generalise. No row means never read, so everything is unread.
    *
-   * Read it with `$find` on `nodeId`; a schema cannot index a keyed map by a context ref.
+   * Read it with `find()` on `nodeId`; a keyed map would not be indexable by a row.
    */
   readMarkers: Accessor<{ nodeId: string; lastReadAt: string }[]>;
   /** Mark a node read as of now. Silent on failure — a lost marker is a stale dot, not an error. */
@@ -541,7 +541,7 @@ export interface SpaceStore {
    * Which containers in this space hold something newer than this agent's marker for them.
    *
    * The read side of `ReadMarker`, which every template that lists channels, boards or topics was
-   * recomputing inline — a `$latestChild` projection, a `$find` over the markers and a `$gt` on two
+   * recomputing inline — a `$latestChild` projection, a `find()` over the markers and a comparison on two
    * ISO strings, repeated in each one. Written once here it is a `$in` in the template, and the
    * comparison rule (lexicographic order is chronological, and *no marker* means unread rather than
    * read) lives in one place instead of being restated correctly-or-not per template.
@@ -2161,9 +2161,9 @@ export function SpaceStoreProvider(props: ParentProps) {
    * Markers as `{ nodeId, lastReadAt }` rows.
    *
    * An array rather than a map keyed by node id, because **a schema cannot index a map
-   * dynamically**: `$store` resolves a static dot path, so `spaceStore.readMarkers.<some context
+   * dynamically**: a store read resolves a static dot path, so `spaceStore.readMarkers.<some context
    * ref>` is not expressible — the path would be taken literally. The read is always "this row's
-   * marker" from inside a `$each`, which means `$find` over an array with a context ref in `where`,
+   * marker" from inside a `$each`, which means `find()` over an array with a context ref in `where`,
    * the only form the resolver supports. Linear per rendered row, over a list the size of the
    * channels one agent has opened.
    */
@@ -2292,12 +2292,9 @@ export function SpaceStoreProvider(props: ParentProps) {
   /**
    * Show or hide a module for this agent in one space.
    *
-   * Phrased as *visible* rather than *muted* so it takes what a switch emits directly. Inverting in
-   * a schema is not available: `{ $not: '$event.detail' }` inside `$action` args is an operator
-   * object, so it is evaluated at render time — before any event exists — and the unresolved
-   * `'$event.detail'` string is truthy, making the argument a constant `false`. Only bare
-   * `$event`/`$arg` strings survive to call time. Storage stays a list of exclusions; the
-   * inversion happens here, where it can be seen.
+   * Phrased as *visible* rather than *muted* so it takes what a switch emits directly —
+   * `{ $: 'event.detail' }` bare — and a template never has to invert a boolean to say what it
+   * means. Storage stays a list of exclusions; the inversion happens here, where it can be seen.
    */
   async function setModuleVisible(moduleId: string, visible: boolean, spaceUuid?: string): Promise<void> {
     const uuid = spaceUuid ?? datasetStore.currentDataset()?.id;
@@ -2675,7 +2672,7 @@ export function SpaceStoreProvider(props: ParentProps) {
    *
    * Private — written to the root dataset, never to the space, so hiding a tab for yourself cannot
    * remove it for anybody else. Phrased positively so a `we-switch` can pass `$event.detail` bare;
-   * wrapping it in `$not` would evaluate at render time and send a constant.
+   * wrapping it in another token would evaluate at render time and send a constant.
    */
   async function setViewVisible(viewId: string, visible: boolean, spaceUuid?: string): Promise<void> {
     const uuid = spaceUuid ?? datasetStore.currentDataset()?.id;

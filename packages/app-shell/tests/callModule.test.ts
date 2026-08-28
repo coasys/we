@@ -143,24 +143,24 @@ describe('call module — contributions', () => {
     // row — and a remounted row builds a new `<video>`, dropping and re-attaching `srcObject`. Muting
     // your microphone blanked your own video.
     //
-    // Volatile flags are therefore looked up with `$find` over `modules.call.tileStates` rather than
-    // read off `$tile`. Asserted on the serialised fragment because nothing else would catch someone
-    // reasonably "simplifying" a `$find` back into a context ref.
+    // Volatile flags are therefore looked up with `find()` over `modules.call.tileStates` rather than
+    // read off `tile`. Asserted on the serialised fragment because nothing else would catch someone
+    // reasonably "simplifying" a `find()` back into a row read.
     const tile = JSON.stringify(moduleRegistry.schemas()['call.tile'] ?? callModule.schemas?.tile);
 
-    // Never off `$tile`, for every volatile flag — the invariant that matters, and the one a
+    // Never off `tile`, for every volatile flag — the invariant that matters, and the one a
     // well-meaning simplification breaks.
     for (const volatile of ['audioEnabled', 'videoEnabled', 'isScreen', 'connection', 'hasPicture']) {
-      expect(tile).not.toContain(`$tile.${volatile}`);
+      expect(tile).not.toContain(`tile.${volatile}`);
     }
     // Looked up for the ones the fragment reads. `videoEnabled` is deliberately absent: deciding
     // whether there is a picture needs the live track as well as the sender's flag, so the store
     // combines them into `hasPicture` and the fragment asks that one question instead.
     for (const looked of ['audioEnabled', 'isScreen', 'connection', 'hasPicture']) {
-      expect(tile).toContain(`"select":"${looked}"`);
+      expect(tile).toContain(`find(modules.call.tileStates, { id: tile.id }).${looked}`);
     }
     // Identity and stream stay on the tile: both genuinely require a remount when they change.
-    expect(tile).toContain('$tile.stream');
+    expect(tile).toContain('tile.stream');
   });
 
   it('contributes the stage as a dock rather than as chrome that places itself', () => {
@@ -198,8 +198,8 @@ describe('call module — contributions', () => {
     // very window that showed nothing.
     const tile = JSON.stringify(moduleRegistry.schemas()['call.tile'] ?? callModule.schemas?.tile);
 
-    expect(tile).toContain('"select":"connecting"');
-    expect(tile).toContain('"select":"failed"');
+    expect(tile).toContain('find(modules.call.tileStates, { id: tile.id }).connecting');
+    expect(tile).toContain('find(modules.call.tileStates, { id: tile.id }).failed');
     // A failure must not animate like progress.
     expect(tile).toContain('we-spinner');
     expect(tile).toContain("Couldn't connect");
@@ -208,19 +208,19 @@ describe('call module — contributions', () => {
   it('looks a participant up by id for their face, so a profile arriving cannot remount their video', () => {
     // The same hazard as the volatile flags above, with a stranger symptom: a profile is fetched
     // after the tile exists, so folding it onto the tile object would blank that person's video at
-    // the exact moment their avatar loaded. `$tile.name` and `$tile.avatar` used to be declared on
+    // the exact moment their avatar loaded. `tile.name` and `tile.avatar` used to be declared on
     // `CallTile`, were never set by anything, and were read here — an invitation to "fix" it the
     // wrong way.
     const tile = JSON.stringify(moduleRegistry.schemas()['call.tile'] ?? callModule.schemas?.tile);
 
     for (const late of ['name', 'avatar']) {
-      expect(tile).not.toContain(`$tile.${late}`);
+      expect(tile).not.toContain(`tile.${late}`);
     }
     for (const field of ['image', 'hash', 'name']) {
-      expect(tile).toContain(`"select":"${field}"`);
+      expect(tile).toContain(`find(modules.call.tileFaces, { id: tile.id }).${field}`);
     }
     // Identity that cannot change is still read straight off the tile — nothing to gain by hiding it.
-    expect(tile).toContain('$tile.isSelf');
+    expect(tile).toContain('tile.isSelf');
   });
 
   it('exposes a launcher a template can place on any node', () => {
@@ -259,9 +259,7 @@ describe('per-space module gate', () => {
       in — see `holdsWhen`. That disjunct is this module's alone: the space's decision is still the
       whole condition for every module that is not holding something live.
     */
-    expect(node.props?.condition).toEqual({
-      $or: [{ $in: ['call', { $store: 'spaceStore.activeModules' }] }, { $store: 'modules.call.active' }],
-    });
+    expect(node.props?.condition).toEqual({ $: "'call' in spaceStore.activeModules || modules.call.active" });
     // The module's own node survives underneath, so gating composes with whatever visibility rules
     // the module already had rather than replacing them.
     expect(node.props?.then).toBeDefined();
@@ -276,7 +274,7 @@ describe('per-space module gate', () => {
     // application is exactly the bug worth catching.
     for (const id of ['core:sidebar', 'core:bootScreen', 'core:templateEditor']) {
       const node = slotRegistry.get(id)?.node as { props?: { condition?: unknown } };
-      expect(node.props?.condition).not.toEqual({ $in: [expect.anything(), { $store: 'spaceStore.enabledModules' }] });
+      expect(node.props?.condition).not.toEqual({ $in: [expect.anything(), { $: 'spaceStore.enabledModules' }] });
     }
   });
 

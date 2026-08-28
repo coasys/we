@@ -9,22 +9,33 @@ The schema system provides a framework-agnostic, schema-driven UI renderer desig
 
 ## Features
 
-### Prop-Level Operators
+### Values: one expression language
 
-Operators that appear inside `props` and resolve to values:
+Anything computed — a condition, a label, a count, a filtered list — is one expression in a
+`{ $: '…' }` token, with a closed grammar and an open function library
+(`shared/src/expressions/`):
 
-| Operator       | Purpose                             | Example                                                            |
-| -------------- | ----------------------------------- | ------------------------------------------------------------------ |
-| `$store`       | Reactive store access               | `{ $store: 'userStore.name' }`                                     |
-| `$concat`      | String building                     | `{ $concat: ['/space/', '$item.uuid'] }`                           |
-| `$action`      | Store method call + async lifecycle | `{ $action: 'store.method', args: ['$arg.id'], onSuccess: [...] }` |
-| `$map`         | Array/object transformation         | `{ $map: { items: ..., select: { ... } } }`                        |
-| `$pick`        | Property extraction                 | `{ $pick: { from: ..., props: ['a', 'b'] } }`                      |
-| `$if`          | Conditional value                   | `{ $if: { condition: ..., then: 'a', else: 'b' } }`                |
-| `$eq` / `$ne`  | Equality / inequality               | `{ $eq: [{ $store: 'x.role' }, 'admin'] }`                         |
-| `$not`         | Logical NOT                         | `{ $not: { $store: 'x.locked' } }`                                 |
-| `$and` / `$or` | Logical AND / OR                    | `{ $and: [cond1, cond2] }`                                         |
-| `$item.*`      | Context reference                   | `'$space.name'` (inside `$each` children)                          |
+| Written as                                           | Answers                                  |
+| ---------------------------------------------------- | ---------------------------------------- |
+| `{ $: "spaceStore.members.count() > 0" }`            | a boolean                                |
+| `{ $: "` `` `/space/${item.uuid}` `` `" }`           | a string                                 |
+| `{ $: "item.author == me.did ? 'mine' : 'theirs'" }` | a value                                  |
+| `{ $: "filter(local.rows, { role: 'admin' }, 5)" }`  | a list — the where-object `$query` takes |
+| `{ $: "items.filter(x, x.done).map(x, x.title)" }`   | a list, by comprehension                 |
+| `{ $: "plural(count(local.rows), 'row', 'rows')" }`  | a library call                           |
+
+References start from a store, `local`, a name `$each` bound, `me`, `surface`, or `event` inside a
+handler. Checked statically with a column; total and inert at paint. A plain string is always
+text — a reference is always `{ $: '…' }`.
+
+### Handler and query tokens
+
+| Token         | Purpose                             | Example                                                                  |
+| ------------- | ----------------------------------- | ------------------------------------------------------------------------ |
+| `$action`     | Store method call + async lifecycle | `{ $action: 'store.method', args: [{ $: 'arg.id' }], onSuccess: [...] }` |
+| `$setLocal` … | Write local state                   | `{ $setLocal: 'page', value: { $: 'local.page + 20' } }`                 |
+| `$if`         | Choose between handlers             | `{ $if: { condition: { $: 'formValid()' }, then: { $action: '…' } } }`   |
+| `$query`      | Data retrieval                      | `{ $query: { entity: 'Post', where: { … } } }`                           |
 
 ### Renderer Operators
 
@@ -90,7 +101,8 @@ See [OPERATORS.md](./OPERATORS.md) for the full operator reference.
 ### `@we/schema-shared`
 
 - **Types:** `SchemaNode`, `TemplateSchema`, `RouteSchema`, `SchemaProp`, `ComponentRegistry`, `RenderProps`, `RendererOutput`, `TransitionConfig`
-- **Operator token types:** `StoreToken`, `ExprToken`, `ActionToken`, `IfToken`, `MapToken`, `PickToken`, `EqToken`, `NeToken`, `NotToken`, `AndToken`, `OrToken`, `OperatorToken`
+- **Operator token types:** `ExpressionToken`, `StoreToken`, `ActionToken`, `IfToken`, `MapToken`, `PickToken`, `EqToken`, `NeToken`, `NotToken`, `AndToken`, `OrToken`, `OperatorToken`
+- **Expressions:** `parseExpression()`, `printExpression()`, `evaluateExpression()`, `checkExpression()`, `defineFunction()`, `listFunctions()`, `operatorToExpr()`, `exprToOperator()`
 - **Functions:** `resolveProp()`, `resolveProps()`, `splitProps()`, `validateSchema()`, `findMutations()`, `hasToken()`
 - **Constants:** `REACTIVE_ACCESSOR`
 

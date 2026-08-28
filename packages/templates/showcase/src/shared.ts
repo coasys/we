@@ -13,6 +13,7 @@
  * is `kind: 'channel', mode: 'feed'`. That is the whole extension mechanism.
  */
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
+import { expr } from '@we/schema-shared';
 import { composerModal as kitComposerModal, field, formModal } from '@we/template-kit';
 
 /**
@@ -73,7 +74,7 @@ export function composerModal(opts: {
       $action: 'spaceStore.createPost',
       // `'$arg'` first: `createPost(json, options)`.
       args: [
-        '$arg',
+        { $: 'arg' },
         {
           kind: opts.kind,
           ...(opts.parentId !== undefined && { parentId: opts.parentId }),
@@ -98,11 +99,11 @@ export function newContainerModal(opts: {
   placeholder: string;
   /** Attach inside another container — a channel inside a category. */
   parentId?: unknown;
-  /** Where to go once it exists. Receives the new id as `$result.id`. */
+  /** Where to go once it exists. Receives the new id as `result.id`. */
   navigateTo?: string;
 }): SchemaNode {
   return formModal({
-    open: { $local: opts.openLocal },
+    open: { $: `local.${opts.openLocal}` },
     close: { $setLocal: opts.openLocal, value: false },
     title: opts.title,
     size: 'sm',
@@ -114,7 +115,7 @@ export function newContainerModal(opts: {
     // A precondition rather than a validation rule: a container needs a name, and nothing else
     // about it is judgeable here. See the house form guidance. The in-flight half of what this
     // used to `$or` in by hand is the fragment's now.
-    disabled: { $not: { $local: 'name' } },
+    disabled: { $: '!local.name' },
     busyLocal: 'creating',
     submitLabel: 'Create',
     submit: {
@@ -125,12 +126,12 @@ export function newContainerModal(opts: {
           kind: opts.kind,
           mode: MODE.feed,
           type: 'collection',
-          title: { $local: 'name' },
+          title: { $: 'local.name' },
         },
         ...(opts.parentId !== undefined ? [{ parent: { id: opts.parentId, predicate: 'we://children' } }] : []),
       ],
       ...(opts.navigateTo && {
-        onSuccess: [{ $action: 'routeStore.navigate', args: [{ $concat: [opts.navigateTo, '$result.id'] }] }],
+        onSuccess: [{ $action: 'routeStore.navigate', args: [expr`${opts.navigateTo} + result.id`] }],
       }),
     },
   });
@@ -152,14 +153,14 @@ export function signalRow(nodeRef: string): SchemaNode {
   return {
     type: '$if',
     props: {
-      condition: { $count: { items: { $local: 'signalTypes' } } },
+      condition: { $: 'count(local.signalTypes)' },
       then: {
         type: 'Row',
         props: { gap: '400', ay: 'center' },
         children: [
           {
             type: '$each',
-            props: { items: { $local: 'signalTypes' }, as: 'sig' },
+            props: { items: { $: 'local.signalTypes' }, as: 'sig' },
             children: [
               {
                 /*
@@ -178,16 +179,17 @@ export function signalRow(nodeRef: string): SchemaNode {
                 */
                 type: '$if',
                 props: {
-                  condition: {
-                    $count: { items: { $filter: { items: `${nodeRef}.signals`, where: { signalTypeId: '$sig.id' } } } },
-                  },
+                  condition: { $: `count(filter(${nodeRef}.signals, { signalTypeId: sig.id }))` },
                   then: {
                     type: 'SignalControl',
                     props: {
-                      signalType: '$sig',
-                      signals: { $filter: { items: `${nodeRef}.signals`, where: { signalTypeId: '$sig.id' } } },
-                      myDid: '$me.did',
-                      onSignal: { $action: 'spaceStore.upsertSignal', args: [`${nodeRef}.id`, '$sig.id', '$arg'] },
+                      signalType: { $: 'sig' },
+                      signals: { $: `filter(${nodeRef}.signals, { signalTypeId: sig.id })` },
+                      myDid: { $: 'me.did' },
+                      onSignal: {
+                        $action: 'spaceStore.upsertSignal',
+                        args: [{ $: `${nodeRef}.id` }, { $: 'sig.id' }, { $: 'arg' }],
+                      },
                     },
                   },
                 },
@@ -208,7 +210,7 @@ export function signalRow(nodeRef: string): SchemaNode {
  * the template root — `$queries` and `$localState` declared up there are invisible below a
  * `$routes` outlet. Getting this wrong is quiet in the worst way: the reads resolve to nothing, the
  * `$count` guard reads falsy, and the signal controls simply never appear, with only a
- * `Schema $local: field "signalTypes" not declared` line in the console to say so.
+ * `Expression: local.signalTypes is not declared` line in the console to say so.
  *
  * One declaration per route, not per row: hoisting is what stops a feed of thirty posts opening
  * thirty identical subscriptions, and it is what keeps the like-count projection and the controls

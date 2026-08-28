@@ -9,7 +9,7 @@ export interface RouteStore {
   segments: Accessor<string[]>;
   /**
    * The URL's query parameters, reactive. Read from schemas as
-   * `{ $store: 'routeStore.params.<name>' }` — view state that belongs in the
+   * `{ $: 'routeStore.params.<name>' }` — view state that belongs in the
    * URL (selected content type, sort, filters) lives here so a link reproduces
    * the view for whoever receives it. See docs/architecture/routing-and-view-state.md.
    */

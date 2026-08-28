@@ -13,30 +13,15 @@ export type {
   RouteSchema,
   TransitionConfig,
   TransitionEffect,
-  StoreToken,
-  ConcatToken,
+  ExpressionToken,
   ActionToken,
   IfToken,
-  MapToken,
-  PickToken,
-  EqToken,
-  NeToken,
-  LtToken,
-  GtToken,
-  NotToken,
-  AndToken,
-  OrToken,
   QueryToken,
   QueryDescriptor,
   OperatorToken,
   LocalStateField,
   QueryStateField,
-  LocalToken,
   SetLocalToken,
-  ErrorToken,
-  ValidToken,
-  TouchedToken,
-  FormValidToken,
   TouchToken,
   ResetLocalToken,
   ToggleLocalToken,
@@ -64,6 +49,7 @@ export type {
   TokenCategory,
   PluginCatalog,
   PluginEntry,
+  SourceEntry,
 } from './contextTypes';
 
 export { validateSchema, validateSemantic, buildValidationContext } from './semanticValidation';
@@ -84,7 +70,9 @@ export {
   noMemo,
   setLocalWarningSink,
 } from './propResolvers';
-export type { LocalFieldMeta, LocalMetaMap, MapProp } from './propResolvers';
+export type { LocalFieldMeta, LocalMetaMap } from './propResolvers';
+export { DEFERRED_ARG, isDeferredArg, setExpressionWarningSink } from './propResolvers/expression';
+export * from './expressions';
 export { hasToken } from './predicates';
 export { isPropsSchemaNode, isSchemaChild, replaceNodeInTree } from './treeUtils';
 export {

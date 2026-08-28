@@ -3,7 +3,7 @@ import { provideModuleHostServices } from '@shared/registries/moduleHostServices
 import { moduleStores } from '@shared/registries/moduleRegistry';
 import { onSlotRegistryChanged, slotRegistry } from '@shared/registries/slotRegistry';
 import { buildTemplateBag, CHROME_TIER, SPACE_TIER } from '@shared/registries/templateSurface';
-import { calendarMonth, calendarMonths, monthLabel, yearLabel } from '@shared/sources/calendarMonth';
+import { hostSourceBag } from '@shared/sources';
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
 import {
   useAccountStore,
@@ -148,7 +148,7 @@ export default function TemplateProvider() {
     shellStore,
     presenceStore,
     interpretationStore,
-    // Always present, even with no modules registered: `{ $store: 'modules.x' }` resolves through the
+    // Always present, even with no modules registered: a read of `modules.x` resolves through the
     // single-segment path, which indexes the store object without a guard and would throw on a
     // missing `modules` key rather than returning undefined.
     modules: moduleStores,
@@ -220,7 +220,7 @@ export default function TemplateProvider() {
     decides what its templates can reach, and a module could contribute its own. Plain data rather
     than a memo, because a source is a pure function and there is nothing here to react to.
   */
-  stores.$sources = { calendarMonth, calendarMonths, monthLabel, yearLabel };
+  stores.$sources = hostSourceBag();
 
   const BINDING_KEYS = [
     '$getModel',
@@ -349,7 +349,7 @@ export default function TemplateProvider() {
   const noSectionsNode = {
     type: '$if',
     props: {
-      condition: { $count: { items: { $store: 'spaceStore.enabledViewIds' } } },
+      condition: { $: 'count(spaceStore.enabledViewIds)' },
       // Other sections exist and the redirect is already on its way — say nothing.
       else: {
         type: 'Column',
@@ -376,7 +376,7 @@ export default function TemplateProvider() {
               // neighbourhood CID, and the settings page keys off the dataset id.
               onClick: {
                 $action: 'shellStore.openShellView',
-                args: ['settings', { $concat: ['/spaces/', { $store: 'datasetStore.currentDataset.id' }] }],
+                args: ['settings', { $: '`/spaces/${datasetStore.currentDataset.id}`' }],
               },
             },
             children: [

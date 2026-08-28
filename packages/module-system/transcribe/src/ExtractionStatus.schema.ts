@@ -29,7 +29,8 @@
  * which is the shape James asked for, and the right one: a bar that grew a row per concurrent pass
  * would push the whole call's chrome around while somebody was using it.
  */
-import { type SchemaNode } from '@we/schema-shared';
+import { type SchemaNode, type SchemaProp } from '@we/schema-shared';
+import { expr } from '@we/schema-shared';
 
 /** Must match `CALL_STATUS_ANCHOR` in `@we/module-call`. Deliberately not imported — a shared
  *  constant would be a hard dependency on the module this is meant to work without, exactly as
@@ -92,28 +93,14 @@ const CARET_SIZE = 'xs';
 const phaseIcon: SchemaNode = {
   type: '$if',
   props: {
-    condition: '$pass.running',
+    condition: { $: 'pass.running' },
     then: { type: 'we-spinner', props: { size: GLYPH_SIZE } },
     else: {
       type: 'we-icon',
       props: {
         size: GLYPH_SIZE,
-        name: {
-          $if: {
-            condition: { $eq: ['$pass.phase', 'failed'] },
-            then: 'warning',
-            else: {
-              $if: { condition: { $eq: ['$pass.phase', 'skipped'] }, then: 'minus-circle', else: 'check-circle' },
-            },
-          },
-        },
-        color: {
-          $if: {
-            condition: { $eq: ['$pass.phase', 'failed'] },
-            then: 'danger-text',
-            else: { $if: { condition: { $eq: ['$pass.phase', 'done'] }, then: 'success-text', else: 'text-muted' } },
-          },
-        },
+        name: { $: "pass.phase == 'failed' ? 'warning' : pass.phase == 'skipped' ? 'minus-circle' : 'check-circle'" },
+        color: { $: "pass.phase == 'failed' ? 'danger-text' : pass.phase == 'done' ? 'success-text' : 'text-muted'" },
       },
     },
   },
@@ -128,7 +115,7 @@ const phaseIcon: SchemaNode = {
  */
 const runnerFace: SchemaNode = {
   type: 'we-avatar',
-  props: { size: 'xs', image: '$pass.avatar', hash: '$pass.runner' },
+  props: { size: 'xs', image: { $: 'pass.avatar' }, hash: { $: 'pass.runner' } },
 };
 
 /**
@@ -149,16 +136,16 @@ const runnerFace: SchemaNode = {
 const passRowChildren: SchemaNode[] = [
   phaseIcon,
   runnerFace,
-  { type: 'we-text', props: { fontSize: '200', truncate: true, flex: '1' }, children: ['$pass.label'] },
+  { type: 'we-text', props: { fontSize: '200', truncate: true, flex: '1' }, children: [{ $: 'pass.label' }] },
   {
     type: '$if',
     props: {
-      condition: '$pass.elapsed',
+      condition: { $: 'pass.elapsed' },
       then: {
         // Tabular, so the seconds column does not jitter the row every time it ticks.
         type: 'we-text',
         props: { fontSize: '200', color: 'text-faint', styles: { fontVariantNumeric: 'tabular-nums' } },
-        children: ['$pass.elapsed'],
+        children: [{ $: 'pass.elapsed' }],
       },
       /*
         Once settled, when it happened rather than how long it took.
@@ -174,10 +161,10 @@ const passRowChildren: SchemaNode[] = [
       else: {
         type: '$if',
         props: {
-          condition: '$pass.finishedAt',
+          condition: { $: 'pass.finishedAt' },
           then: {
             type: 'we-timestamp',
-            props: { value: '$pass.finishedAt', relative: true, fontSize: '200', color: 'text-faint' },
+            props: { value: { $: 'pass.finishedAt' }, relative: true, fontSize: '200', color: 'text-faint' },
           },
         },
       },
@@ -205,19 +192,13 @@ const passRowChildren: SchemaNode[] = [
 const disclosureCaret: SchemaNode = {
   type: '$if',
   props: {
-    condition: '$pass.openable',
+    condition: { $: 'pass.openable' },
     then: {
       type: 'we-icon',
       props: {
         size: CARET_SIZE,
         color: 'text-muted',
-        name: {
-          $if: {
-            condition: { $in: ['$pass.passId', { $local: 'openPasses' }] },
-            then: 'caret-up',
-            else: 'caret-down',
-          },
-        },
+        name: { $: "pass.passId in local.openPasses ? 'caret-up' : 'caret-down'" },
       },
     },
   },
@@ -249,7 +230,7 @@ function paneLabel(label: string): SchemaNode {
 function codePane(options: {
   label: string;
   /** The already-indented text, from the store — a schema has no `JSON.stringify`. */
-  value: string;
+  value: SchemaProp;
   /** Resolves true while this pane is open. */
   isOpen: SchemaNode | Record<string, unknown>;
   /** The `$localState` array field this pane's toggle writes into. */
@@ -268,7 +249,7 @@ function codePane(options: {
             props: {
               variant: 'bare',
               width: '100%',
-              onClick: { $toggleLocalIn: options.field, value: '$pass.passId' },
+              onClick: { $toggleLocalIn: options.field, value: { $: 'pass.passId' } },
             },
             children: [
               {
@@ -281,7 +262,7 @@ function codePane(options: {
                     props: {
                       size: CARET_SIZE,
                       color: 'text-faint',
-                      name: { $if: { condition: options.isOpen, then: 'caret-up', else: 'caret-down' } },
+                      name: expr`${options.isOpen} ? 'caret-up' : 'caret-down'`,
                     },
                   },
                 ],
@@ -336,9 +317,9 @@ function codePane(options: {
  */
 const promptPane: SchemaNode = codePane({
   label: 'Prompt',
-  value: '$pass.prompt',
+  value: { $: 'pass.prompt' },
   field: 'openPrompts',
-  isOpen: { $in: ['$pass.passId', { $local: 'openPrompts' }] },
+  isOpen: { $: 'pass.passId in local.openPrompts' },
 });
 
 /**
@@ -352,9 +333,9 @@ const promptPane: SchemaNode = codePane({
  */
 const responsePane: SchemaNode = codePane({
   label: 'Response',
-  value: '$pass.response',
+  value: { $: 'pass.response' },
   field: 'closedResponses',
-  isOpen: { $not: { $in: ['$pass.passId', { $local: 'closedResponses' }] } },
+  isOpen: { $: '!(pass.passId in local.closedResponses)' },
 });
 
 /**
@@ -370,7 +351,7 @@ const responsePane: SchemaNode = codePane({
 const passDetail: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $in: ['$pass.passId', { $local: 'openPasses' }] },
+    condition: { $: 'pass.passId in local.openPasses' },
     enterTransition: { type: 'reveal', duration: 200 },
     exitTransition: { type: 'reveal', duration: 160 },
     then: {
@@ -382,11 +363,11 @@ const passDetail: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: '$pass.detail',
+            condition: { $: 'pass.detail' },
             then: {
               type: 'we-text',
               props: { fontSize: '200', color: 'danger-text' },
-              children: ['$pass.detail'],
+              children: [{ $: 'pass.detail' }],
             },
           },
         },
@@ -430,7 +411,7 @@ const passEntry: SchemaNode = {
         ax: 'start',
         ay: 'center',
         gap: '200',
-        disabled: { $not: '$pass.openable' },
+        disabled: { $: '!pass.openable' },
         /*
           Keep the row legible when it cannot be opened.
 
@@ -444,7 +425,7 @@ const passEntry: SchemaNode = {
           appearance is overridden.
         */
         disabledProps: { cursor: 'default', opacity: 1 },
-        onClick: { $toggleLocalIn: 'openPasses', value: '$pass.passId' },
+        onClick: { $toggleLocalIn: 'openPasses', value: { $: 'pass.passId' } },
       },
       children: [...passRowChildren, disclosureCaret],
     },
@@ -455,7 +436,7 @@ const passEntry: SchemaNode = {
 /** The passes still in flight. Always listed — this is the half somebody is waiting on. */
 const runningList: SchemaNode = {
   type: '$each',
-  props: { items: { $store: 'modules.transcribe.runningPasses' }, as: 'pass' },
+  props: { items: { $: 'modules.transcribe.runningPasses' }, as: 'pass' },
   children: [passEntry],
 };
 
@@ -474,7 +455,7 @@ const runningList: SchemaNode = {
 const settledSection: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $store: 'modules.transcribe.settledCount' },
+    condition: { $: 'modules.transcribe.settledCount' },
     then: {
       type: 'Column',
       props: { gap: '200', width: '100%' },
@@ -500,15 +481,9 @@ const settledSection: SchemaNode = {
                   type: 'we-text',
                   props: { fontSize: '200', color: 'text-muted', flex: '1', textAlign: 'left' },
                   children: [
-                    { $store: 'modules.transcribe.settledCount' },
+                    { $: 'modules.transcribe.settledCount' },
                     ' ',
-                    {
-                      $plural: {
-                        count: { $store: 'modules.transcribe.settledCount' },
-                        one: 'extraction processed',
-                        other: 'extractions processed',
-                      },
-                    },
+                    { $: "plural(modules.transcribe.settledCount, 'extraction processed', 'extractions processed')" },
                   ],
                 },
                 {
@@ -516,7 +491,7 @@ const settledSection: SchemaNode = {
                   props: {
                     size: CARET_SIZE,
                     color: 'text-muted',
-                    name: { $if: { condition: { $local: 'historyOpen' }, then: 'caret-up', else: 'caret-down' } },
+                    name: { $: "local.historyOpen ? 'caret-up' : 'caret-down'" },
                   },
                 },
               ],
@@ -526,7 +501,7 @@ const settledSection: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $local: 'historyOpen' },
+            condition: { $: 'local.historyOpen' },
             enterTransition: { type: 'reveal', duration: 200 },
             exitTransition: { type: 'reveal', duration: 160 },
             then: {
@@ -535,7 +510,7 @@ const settledSection: SchemaNode = {
               children: [
                 {
                   type: '$each',
-                  props: { items: { $store: 'modules.transcribe.settledPasses' }, as: 'pass' },
+                  props: { items: { $: 'modules.transcribe.settledPasses' }, as: 'pass' },
                   children: [passEntry],
                 },
               ],
@@ -557,7 +532,7 @@ const settledSection: SchemaNode = {
 export const extractionStatus: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $store: 'modules.transcribe.hasActivity' },
+    condition: { $: 'modules.transcribe.hasActivity' },
     // Slides down from behind the bar rather than appearing. The bar is a fixed object somebody is
     // already looking at, and something materialising a few pixels under it reads as a glitch.
     enterTransition: [
@@ -616,13 +591,7 @@ export const extractionStatus: SchemaNode = {
           every pane after that renders into space the bar already has. Closed, it still shrinks to
           whatever the rows need, which is the point of the cap being a maximum in the first place.
         */
-        width: {
-          $if: {
-            condition: { $count: { items: { $local: 'openPasses' } } },
-            then: '520px',
-            else: 'auto',
-          },
-        },
+        width: { $: "count(local.openPasses) ? '520px' : 'auto'" },
         /*
           Glide rather than snap, matching the reveals inside it.
 
@@ -657,7 +626,7 @@ export const extractionStatus: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $store: 'modules.transcribe.detailWithheld' },
+            condition: { $: 'modules.transcribe.detailWithheld' },
             then: {
               type: 'we-text',
               props: { variant: 'footnote', color: 'text-faint' },

@@ -125,6 +125,23 @@ export interface ContextData {
   shellComponents?: string[];
   /** Sub-registries a component resolves by name — see {@link PluginCatalog}. */
   pluginCatalogs?: PluginCatalog[];
+  /** Functions the host lends to expressions beyond the built-in library — see {@link SourceEntry}. */
+  sources?: SourceEntry[];
+}
+
+/**
+ * A host-registered function — what `$source` reaches by name and an expression calls directly.
+ *
+ * Catalogued for the same reason a plugin is: a name that is not in the generated context is one an
+ * author has to already know. The validator reads the same list, so a call to a registered source
+ * is accepted and a typo in one is reported.
+ */
+export interface SourceEntry {
+  name: string;
+  /** Parameter names in the library's notation — `?` for optional. */
+  params: string[];
+  doc: string;
+  example: string;
 }
 
 /** A partial context fragment that a single package exports at build time */

@@ -16,6 +16,7 @@
  * should move to.
  */
 import { type SchemaNode } from '@we/schema-shared';
+import { expr } from '@we/schema-shared';
 
 /**
  * A message shown for exactly one status.
@@ -28,7 +29,7 @@ function note(status: string, icon: string, text: string, action?: SchemaNode): 
   return {
     type: '$if',
     props: {
-      condition: { $eq: [{ $store: 'modules.transcribe.status' }, status] },
+      condition: expr`modules.transcribe.status == ${status}`,
       then: {
         type: 'Column',
         props: { gap: '200', ay: 'start' },
@@ -62,7 +63,7 @@ function note(status: string, icon: string, text: string, action?: SchemaNode): 
 const meter: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $store: 'modules.transcribe.enabled' },
+    condition: { $: 'modules.transcribe.enabled' },
     then: {
       type: 'Column',
       props: { gap: '150' },
@@ -81,23 +82,9 @@ const meter: SchemaNode = {
               type: 'we-text',
               props: {
                 variant: 'footnote',
-                color: {
-                  $if: {
-                    condition: { $store: 'modules.transcribe.speaking' },
-                    then: 'success-text',
-                    else: 'text-faint',
-                  },
-                },
+                color: { $: "modules.transcribe.speaking ? 'success-text' : 'text-faint'" },
               },
-              children: [
-                {
-                  $if: {
-                    condition: { $store: 'modules.transcribe.speaking' },
-                    then: 'hearing you',
-                    else: 'quiet',
-                  },
-                },
-              ],
+              children: [{ $: "modules.transcribe.speaking ? 'hearing you' : 'quiet'" }],
             },
           ],
         },
@@ -117,17 +104,11 @@ const meter: SchemaNode = {
               props: {
                 height: '100%',
                 r: 'pill',
-                bg: {
-                  $if: {
-                    condition: { $store: 'modules.transcribe.speaking' },
-                    then: 'success-500',
-                    else: 'surface-active',
-                  },
-                },
+                bg: { $: "modules.transcribe.speaking ? 'success-500' : 'surface-active'" },
                 // `styles` rather than `width`, because the value is computed per frame and a DS prop
                 // takes a token. This is the escape hatch working as intended.
                 styles: {
-                  width: { $store: 'modules.transcribe.levelPercent' },
+                  width: { $: 'modules.transcribe.levelPercent' },
                   transition: 'width 80ms linear',
                   'max-width': '100%',
                 },
@@ -142,7 +123,7 @@ const meter: SchemaNode = {
                 height: '100%',
                 width: '2px',
                 bg: 'border-strong',
-                styles: { left: { $store: 'modules.transcribe.thresholdPercent' } },
+                styles: { left: { $: 'modules.transcribe.thresholdPercent' } },
               },
             },
           ],
@@ -178,7 +159,7 @@ const meter: SchemaNode = {
 const coverage: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $count: { items: { $store: 'modules.transcribe.callAgents' } } },
+    condition: { $: 'count(modules.transcribe.callAgents)' },
     then: {
       type: 'Column',
       props: { gap: '150' },
@@ -192,22 +173,11 @@ const coverage: SchemaNode = {
               type: 'we-text',
               props: {
                 variant: 'footnote',
-                color: {
-                  $if: {
-                    condition: { $store: 'modules.transcribe.partialCoverage' },
-                    then: 'warning-text',
-                    else: 'success-text',
-                  },
-                },
+                color: { $: "modules.transcribe.partialCoverage ? 'warning-text' : 'success-text'" },
               },
               children: [
                 {
-                  $concat: [
-                    { $count: { items: { $store: 'modules.transcribe.transcribers' } } },
-                    ' of ',
-                    { $count: { items: { $store: 'modules.transcribe.callAgents' } } },
-                    ' transcribing',
-                  ],
+                  $: '`${count(modules.transcribe.transcribers)} of ${count(modules.transcribe.callAgents)} transcribing`',
                 },
               ],
             },
@@ -223,7 +193,7 @@ const coverage: SchemaNode = {
           */
           type: '$if',
           props: {
-            condition: { $store: 'modules.transcribe.partialCoverage' },
+            condition: { $: 'modules.transcribe.partialCoverage' },
             then: {
               type: 'we-text',
               props: { variant: 'footnote', color: 'text-faint' },
@@ -251,7 +221,7 @@ const coverage: SchemaNode = {
 const proposals: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $count: { items: { $store: 'modules.transcribe.proposals' } } },
+    condition: { $: 'count(modules.transcribe.proposals)' },
     then: {
       type: 'Column',
       props: { gap: '200' },
@@ -263,13 +233,13 @@ const proposals: SchemaNode = {
         },
         {
           type: '$each',
-          props: { items: { $store: 'modules.transcribe.proposals' }, as: 'proposal' },
+          props: { items: { $: 'modules.transcribe.proposals' }, as: 'proposal' },
           children: [
             {
               type: 'Column',
               props: { bg: 'warning-surface', r: '300', p: '300', gap: '200' },
               children: [
-                { type: 'we-text', props: { variant: 'footnote' }, children: ['$proposal.summary'] },
+                { type: 'we-text', props: { variant: 'footnote' }, children: [{ $: 'proposal.summary' }] },
                 {
                   type: 'Row',
                   props: { gap: '200', ay: 'center' },
@@ -279,7 +249,7 @@ const proposals: SchemaNode = {
                       props: {
                         size: 'xs',
                         variant: 'secondary',
-                        onClick: { $action: 'modules.transcribe.acceptProposal', args: ['$proposal.id'] },
+                        onClick: { $action: 'modules.transcribe.acceptProposal', args: [{ $: 'proposal.id' }] },
                       },
                       children: ['Keep'],
                     },
@@ -288,7 +258,7 @@ const proposals: SchemaNode = {
                       props: {
                         size: 'xs',
                         variant: 'ghost',
-                        onClick: { $action: 'modules.transcribe.rejectProposal', args: ['$proposal.id'] },
+                        onClick: { $action: 'modules.transcribe.rejectProposal', args: [{ $: 'proposal.id' }] },
                       },
                       children: ['Discard'],
                     },
@@ -318,7 +288,7 @@ const proposals: SchemaNode = {
 const extract: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $store: 'modules.transcribe.extractable' },
+    condition: { $: 'modules.transcribe.extractable' },
     then: {
       type: 'Column',
       props: { gap: '200', bg: 'surface-sunken', r: '300', p: '300' },
@@ -346,30 +316,17 @@ const extract: SchemaNode = {
                 variant: 'secondary',
                 // Disabled rather than hidden once the panel is showing the section: the reason is
                 // "nothing has been said yet", which resolves on its own and is worth waiting for.
-                disabled: {
-                  $or: [
-                    { $not: { $store: 'modules.transcribe.canExtract' } },
-                    { $eq: [{ $store: 'modules.transcribe.extractStatus' }, 'running'] },
-                  ],
-                },
+                disabled: { $: "!modules.transcribe.canExtract || modules.transcribe.extractStatus == 'running'" },
                 onClick: { $action: 'modules.transcribe.extract' },
               },
-              children: [
-                {
-                  $if: {
-                    condition: { $eq: [{ $store: 'modules.transcribe.extractStatus' }, 'running'] },
-                    then: 'Reading…',
-                    else: 'Extract',
-                  },
-                },
-              ],
+              children: [{ $: "modules.transcribe.extractStatus == 'running' ? 'Reading…' : 'Extract'" }],
             },
           ],
         },
         {
           type: '$if',
           props: {
-            condition: { $eq: [{ $store: 'modules.transcribe.extractStatus' }, 'running'] },
+            condition: { $: "modules.transcribe.extractStatus == 'running'" },
             then: {
               type: 'Row',
               props: { gap: '200', ay: 'center' },
@@ -397,7 +354,7 @@ const extract: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $store: 'modules.transcribe.watchProblem' },
+            condition: { $: 'modules.transcribe.watchProblem' },
             then: {
               type: 'Row',
               props: { gap: '200', ay: 'center' },
@@ -415,7 +372,7 @@ const extract: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $eq: [{ $store: 'modules.transcribe.extractStatus' }, 'done'] },
+            condition: { $: "modules.transcribe.extractStatus == 'done'" },
             then: {
               type: 'Row',
               props: { gap: '200', ay: 'center' },
@@ -428,13 +385,7 @@ const extract: SchemaNode = {
                     // Zero is a real and common answer — a conversation with no commitments in it —
                     // and saying so is the difference between "it worked, there was nothing" and
                     // "it silently failed".
-                    {
-                      $if: {
-                        condition: { $store: 'modules.transcribe.extractCount' },
-                        then: { $store: 'modules.transcribe.extractCount' },
-                        else: 'No',
-                      },
-                    },
+                    { $: "modules.transcribe.extractCount ? modules.transcribe.extractCount : 'No'" },
                     ' records written. Open the graph to see them.',
                   ],
                 },
@@ -445,11 +396,11 @@ const extract: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $eq: [{ $store: 'modules.transcribe.extractStatus' }, 'error'] },
+            condition: { $: "modules.transcribe.extractStatus == 'error'" },
             then: {
               type: 'we-alert',
               props: { variant: 'warning' },
-              children: [{ $store: 'modules.transcribe.extractError' }],
+              children: [{ $: 'modules.transcribe.extractError' }],
             },
           },
         },
@@ -501,7 +452,7 @@ export const transcriptFeed: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $store: 'modules.transcribe.collectionId' },
+            condition: { $: 'modules.transcribe.collectionId' },
             then: {
               type: '$each',
               props: {
@@ -511,7 +462,7 @@ export const transcriptFeed: SchemaNode = {
                     scope: {
                       anchor: 'CollectionBlock',
                       via: 'children',
-                      anchorId: { $store: 'modules.transcribe.collectionId' },
+                      anchorId: { $: 'modules.transcribe.collectionId' },
                     },
                     // Oldest first, because a transcript read backwards is not a transcript.
                     order: { createdAt: 'asc' },
@@ -529,7 +480,7 @@ export const transcriptFeed: SchemaNode = {
                 */
                 {
                   type: '$agent',
-                  props: { did: '$utterance.author', as: 'speaker' },
+                  props: { did: { $: 'utterance.author' }, as: 'speaker' },
                   children: [
                     {
                       type: 'Column',
@@ -543,23 +494,23 @@ export const transcriptFeed: SchemaNode = {
                               type: 'we-avatar',
                               props: {
                                 size: 'xxs',
-                                image: '$speaker.avatar',
+                                image: { $: 'speaker.avatar' },
                                 // Always alongside `image`, never instead of it: a stable
                                 // generated avatar keeps somebody whose profile has not
                                 // arrived visually distinct from everybody else whose
                                 // profile has not arrived.
-                                hash: '$utterance.author',
+                                hash: { $: 'utterance.author' },
                               },
                             },
                             {
                               type: 'we-text',
                               props: { variant: 'footnote', color: 'text-muted', truncate: true },
-                              children: ['$speaker.name'],
+                              children: [{ $: 'speaker.name' }],
                             },
                             {
                               type: 'we-timestamp',
                               props: {
-                                value: '$utterance.createdAt',
+                                value: { $: 'utterance.createdAt' },
                                 relative: true,
                                 fontSize: '100',
                                 color: 'text-faint',
@@ -567,7 +518,7 @@ export const transcriptFeed: SchemaNode = {
                             },
                           ],
                         },
-                        { type: 'we-text', props: { color: 'text' }, children: ['$utterance.text'] },
+                        { type: 'we-text', props: { color: 'text' }, children: [{ $: 'utterance.text' }] },
                       ],
                     },
                   ],
@@ -584,7 +535,7 @@ export const transcriptFeed: SchemaNode = {
 export const panel: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $and: [{ $store: 'datasetStore.currentDataset' }, { $store: 'modules.transcribe.open' }] },
+    condition: { $: 'datasetStore.currentDataset && modules.transcribe.open' },
     then: {
       type: 'Column',
       props: {
@@ -613,7 +564,7 @@ export const panel: SchemaNode = {
                 {
                   type: '$if',
                   props: {
-                    condition: { $store: 'modules.transcribe.listening' },
+                    condition: { $: 'modules.transcribe.listening' },
                     then: { type: 'we-badge', props: { variant: 'danger', size: 'xs' }, children: ['REC'] },
                   },
                 },
@@ -629,36 +580,19 @@ export const panel: SchemaNode = {
                   // template may place neither the bar nor the rail.
                   type: 'we-button',
                   props: {
-                    variant: {
-                      $if: { condition: { $store: 'modules.transcribe.enabled' }, then: 'secondary', else: 'ghost' },
-                    },
+                    variant: { $: "modules.transcribe.enabled ? 'secondary' : 'ghost'" },
                     size: 'sm',
-                    disabled: {
-                      $and: [
-                        { $not: { $store: 'modules.transcribe.enabled' } },
-                        { $not: { $store: 'modules.transcribe.available' } },
-                      ],
-                    },
+                    disabled: { $: '!modules.transcribe.enabled && !modules.transcribe.available' },
                     onClick: { $action: 'modules.transcribe.toggle' },
-                    title: {
-                      $if: {
-                        condition: { $store: 'modules.transcribe.enabled' },
-                        then: 'Stop transcribing',
-                        else: 'Start transcribing',
-                      },
-                    },
+                    title: { $: "modules.transcribe.enabled ? 'Stop transcribing' : 'Start transcribing'" },
                   },
                   children: [
                     {
                       type: 'we-icon',
                       props: {
                         name: 'record',
-                        weight: {
-                          $if: { condition: { $store: 'modules.transcribe.listening' }, then: 'fill', else: 'regular' },
-                        },
-                        color: {
-                          $if: { condition: { $store: 'modules.transcribe.listening' }, then: 'danger-text', else: '' },
-                        },
+                        weight: { $: "modules.transcribe.listening ? 'fill' : 'regular'" },
+                        color: { $: "modules.transcribe.listening ? 'danger-text' : ''" },
                       },
                     },
                   ],
@@ -678,7 +612,7 @@ export const panel: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $eq: [{ $store: 'modules.transcribe.status' }, 'starting'] },
+            condition: { $: "modules.transcribe.status == 'starting'" },
             then: {
               type: 'Row',
               props: { gap: '200', ay: 'center' },
@@ -699,22 +633,13 @@ export const panel: SchemaNode = {
           // on the first utterance, so its absence is exactly "nothing has been said here".
           type: '$if',
           props: {
-            condition: {
-              $and: [
-                { $not: { $store: 'modules.transcribe.enabled' } },
-                { $not: { $store: 'modules.transcribe.collectionId' } },
-              ],
-            },
+            condition: { $: '!modules.transcribe.enabled && !modules.transcribe.collectionId' },
             then: {
               type: 'we-text',
               props: { variant: 'footnote', color: 'text-muted', italic: true },
               children: [
                 {
-                  $if: {
-                    condition: { $store: 'modules.transcribe.available' },
-                    then: 'Press record to transcribe what is said into text blocks in this space.',
-                    else: 'Join a call and press record to transcribe what is said.',
-                  },
+                  $: "modules.transcribe.available ? 'Press record to transcribe what is said into text blocks in this space.' : 'Join a call and press record to transcribe what is said.'",
                 },
               ],
             },
@@ -733,7 +658,7 @@ export const panel: SchemaNode = {
             // no button. The `else` says who can fix it instead.
             type: '$if',
             props: {
-              condition: { $store: 'runtimeStore.canManageAi' },
+              condition: { $: 'runtimeStore.canManageAi' },
               then: {
                 type: 'we-button',
                 props: {
@@ -756,11 +681,11 @@ export const panel: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $eq: [{ $store: 'modules.transcribe.status' }, 'error'] },
+            condition: { $: "modules.transcribe.status == 'error'" },
             then: {
               type: 'we-alert',
               props: { variant: 'warning' },
-              children: [{ $store: 'modules.transcribe.error' }],
+              children: [{ $: 'modules.transcribe.error' }],
             },
           },
         },
@@ -772,7 +697,7 @@ export const panel: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $store: 'modules.transcribe.pending' },
+            condition: { $: 'modules.transcribe.pending' },
             then: {
               type: 'Column',
               props: { bg: 'accent-muted', r: '300', p: '300', gap: '200' },
@@ -793,7 +718,7 @@ export const panel: SchemaNode = {
                     },
                   ],
                 },
-                { type: 'we-text', children: [{ $store: 'modules.transcribe.pending' }] },
+                { type: 'we-text', children: [{ $: 'modules.transcribe.pending' }] },
               ],
             },
           },

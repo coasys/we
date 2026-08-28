@@ -114,12 +114,12 @@ function markBoundary(node: Record<string, unknown>, view: ResolvedView): Record
  * Doing it in the body rather than by omitting the route is the difference between a question
  * answered on every render and one answered by rebuilding the application.
  *
- * The host supplies both halves. `activeIds` is a `$store` path to the ids currently offered, and
+ * The host supplies both halves. `activeIds` is a store path to the ids currently offered, and
  * `notInSpace` is what to draw instead — passed in rather than written here, because this file has
  * no business inventing UI text that no template could restyle.
  */
 export type ViewGate = {
-  /** `$store` path to the ids of the sections this space currently offers. */
+  /** Store path, as an expression reads it, to the ids of the sections this space currently offers. */
   activeIds: string;
   /** Rendered in place of a section the space does not offer. */
   notInSpace: SchemaNode;
@@ -149,7 +149,7 @@ function viewAsRoute(view: ResolvedView, gate?: ViewGate): RouteSchema {
     ? {
         type: '$if',
         props: {
-          condition: { $in: [view.id, { $store: gate.activeIds }] },
+          condition: { $: `'${view.id}' in ${gate.activeIds}` },
           then: node,
           else: gate.notInSpace,
         },

@@ -15,7 +15,7 @@ import { confirmModal } from '@we/template-kit';
  * consequence of getting it wrong, are the same shape.
  */
 export const consentPrompt: SchemaNode = confirmModal({
-  open: { $store: 'runtimeStore.pendingConsent' },
+  open: { $: 'runtimeStore.pendingConsent' },
   /*
     Dismissing is denying, which is the safe direction — the app asks again, and nothing was
     granted by a click that missed. Worth stating because the hand-rolled scrim this replaced had
@@ -25,7 +25,7 @@ export const consentPrompt: SchemaNode = confirmModal({
   close: { $action: 'runtimeStore.denyConsent' },
   // The backend's own title, so a request type we don't specifically recognise still says
   // something true rather than nothing.
-  title: { $store: 'runtimeStore.pendingConsent.title' },
+  title: { $: 'runtimeStore.pendingConsent.title' },
   tone: 'primary',
   icon: 'shield-check',
   children: [
@@ -33,7 +33,7 @@ export const consentPrompt: SchemaNode = confirmModal({
     {
       type: '$if',
       props: {
-        condition: { $eq: [{ $store: 'runtimeStore.pendingConsent.kind' }, 'capability'] },
+        condition: { $: "runtimeStore.pendingConsent.kind == 'capability'" },
         then: {
           type: 'Column',
           props: { gap: '400' },
@@ -44,7 +44,7 @@ export const consentPrompt: SchemaNode = confirmModal({
               children: [
                 {
                   type: 'we-avatar',
-                  props: { image: { $store: 'runtimeStore.pendingConsent.app.iconUrl' }, size: 'md' },
+                  props: { image: { $: 'runtimeStore.pendingConsent.app.iconUrl' }, size: 'md' },
                 },
                 {
                   type: 'Column',
@@ -53,12 +53,12 @@ export const consentPrompt: SchemaNode = confirmModal({
                     {
                       type: 'we-text',
                       props: { variant: 'label' },
-                      children: [{ $store: 'runtimeStore.pendingConsent.app.name' }],
+                      children: [{ $: 'runtimeStore.pendingConsent.app.name' }],
                     },
                     {
                       type: 'we-text',
                       props: { variant: 'footnote', color: 'text-muted' },
-                      children: [{ $store: 'runtimeStore.pendingConsent.app.url' }],
+                      children: [{ $: 'runtimeStore.pendingConsent.app.url' }],
                     },
                   ],
                 },
@@ -75,14 +75,14 @@ export const consentPrompt: SchemaNode = confirmModal({
               children: [
                 {
                   type: '$each',
-                  props: { items: { $store: 'runtimeStore.pendingConsent.app.capabilities' }, as: 'cap' },
+                  props: { items: { $: 'runtimeStore.pendingConsent.app.capabilities' }, as: 'cap' },
                   children: [
                     {
                       type: 'Row',
                       props: { gap: '200', ay: 'center' },
                       children: [
                         { type: 'we-icon', props: { name: 'check', color: 'success-text' } },
-                        { type: 'we-text', props: { variant: 'body' }, children: ['$cap'] },
+                        { type: 'we-text', props: { variant: 'body' }, children: [{ $: 'cap' }] },
                       ],
                     },
                   ],
@@ -99,7 +99,7 @@ export const consentPrompt: SchemaNode = confirmModal({
     {
       type: '$if',
       props: {
-        condition: { $eq: [{ $store: 'runtimeStore.pendingConsent.kind' }, 'trust'] },
+        condition: { $: "runtimeStore.pendingConsent.kind == 'trust'" },
         then: {
           type: 'Column',
           props: { gap: '300' },
@@ -107,12 +107,12 @@ export const consentPrompt: SchemaNode = confirmModal({
             {
               type: 'we-text',
               props: { variant: 'body' },
-              children: [{ $store: 'runtimeStore.pendingConsent.message' }],
+              children: [{ $: 'runtimeStore.pendingConsent.message' }],
             },
             {
               type: 'we-text',
               props: { variant: 'footnote', color: 'text-muted' },
-              children: [{ $store: 'runtimeStore.pendingConsent.peerId' }],
+              children: [{ $: 'runtimeStore.pendingConsent.peerId' }],
             },
           ],
         },
@@ -121,7 +121,7 @@ export const consentPrompt: SchemaNode = confirmModal({
   ],
   cancelLabel: 'Deny',
   confirmLabel: 'Approve',
-  busy: { $store: 'runtimeStore.loading' },
+  busy: { $: 'runtimeStore.loading' },
   confirm: { $action: 'runtimeStore.approveConsent' },
 });
 
@@ -135,7 +135,7 @@ export const consentPrompt: SchemaNode = confirmModal({
 export const consentSecret: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $store: 'runtimeStore.consentSecret' },
+    condition: { $: 'runtimeStore.consentSecret' },
     then: {
       /*
         Hand-written rather than a fragment: it has one button and nothing to confirm, so it is
@@ -162,7 +162,7 @@ export const consentSecret: SchemaNode = {
             letterSpacing: 'wider',
             styles: { 'user-select': 'all' },
           },
-          children: [{ $store: 'runtimeStore.consentSecret' }],
+          children: [{ $: 'runtimeStore.consentSecret' }],
         },
         {
           type: 'we-button',

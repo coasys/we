@@ -63,21 +63,11 @@ const peerNotice: SchemaNode = {
   type: '$if',
   props: {
     condition: {
-      $and: [
-        { $store: 'modules.transcribe.invitedBy' },
-        {
-          $or: [
-            // Joined by the effect, and being told so.
-            { $and: [{ $store: 'modules.transcribe.autoJoined' }, { $store: 'modules.transcribe.enabled' }] },
-            // Not joined, and it could still be fixed — a node with no model, chiefly. See `invited`.
-            { $store: 'modules.transcribe.invited' },
-          ],
-        },
-      ],
+      $: 'modules.transcribe.invitedBy && (modules.transcribe.autoJoined && modules.transcribe.enabled || modules.transcribe.invited)',
     },
     then: {
       type: '$agent',
-      props: { did: { $store: 'modules.transcribe.invitedBy' }, as: 'starter' },
+      props: { did: { $: 'modules.transcribe.invitedBy' }, as: 'starter' },
       children: [
         {
           type: 'Row',
@@ -87,19 +77,7 @@ const peerNotice: SchemaNode = {
               type: 'we-text',
               props: { fontSize: '200', truncate: true, maxWidth: '200px' },
               children: [
-                {
-                  $concat: [
-                    '$starter.firstName',
-                    ' is transcribing',
-                    {
-                      $if: {
-                        condition: { $store: 'modules.transcribe.autoJoined' },
-                        then: " · you're in",
-                        else: '',
-                      },
-                    },
-                  ],
-                },
+                { $: "`${starter.firstName} is transcribing${modules.transcribe.autoJoined ? ' · you\\'re in' : ''}`" },
               ],
             },
             {
@@ -112,9 +90,7 @@ const peerNotice: SchemaNode = {
               */
               type: 'we-button',
               props: { size: 'sm', variant: 'secondary', onClick: { $action: 'modules.transcribe.toggle' } },
-              children: [
-                { $if: { condition: { $store: 'modules.transcribe.autoJoined' }, then: 'Leave', else: 'Join' } },
-              ],
+              children: [{ $: "modules.transcribe.autoJoined ? 'Leave' : 'Join'" }],
             },
           ],
         },
@@ -128,7 +104,7 @@ export const callControl: SchemaNode = {
   props: {
     // The bar is only drawn during a call, so this needs no call condition of its own — but it does
     // need the audio one: mid-call, before devices are acquired, there is briefly nothing to record.
-    condition: { $store: 'modules.transcribe.available' },
+    condition: { $: 'modules.transcribe.available' },
     then: {
       type: 'Row',
       props: { ay: 'center', gap: '200' },
@@ -146,13 +122,7 @@ export const callControl: SchemaNode = {
           */
           type: 'we-tooltip',
           props: {
-            title: {
-              $if: {
-                condition: { $store: 'modules.transcribe.enabled' },
-                then: 'Stop transcribing',
-                else: 'Transcribe this call',
-              },
-            },
+            title: { $: "modules.transcribe.enabled ? 'Stop transcribing' : 'Transcribe this call'" },
             placement: 'bottom',
           },
           children: [
@@ -181,17 +151,7 @@ export const callControl: SchemaNode = {
                   switched on. Red is the same colour the icon inside it already used for this.
                 */
                 variant: {
-                  $if: {
-                    condition: { $store: 'modules.transcribe.listening' },
-                    then: 'danger',
-                    else: {
-                      $if: {
-                        condition: { $store: 'modules.transcribe.enabled' },
-                        then: 'secondary',
-                        else: 'ghost',
-                      },
-                    },
-                  },
+                  $: "modules.transcribe.listening ? 'danger' : modules.transcribe.enabled ? 'secondary' : 'ghost'",
                 },
                 onClick: { $action: 'modules.transcribe.toggle' },
               },

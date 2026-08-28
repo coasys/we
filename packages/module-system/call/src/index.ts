@@ -34,7 +34,7 @@ import { defineModule, type ModuleStoreDeps } from '@we/module-shared';
   is a devDependency here rather than a peer, unlike `@we/module-shared` and `@we/schema-shared`.
 */
 import { peopleTooltip } from '@we/schema-kit';
-import { type SchemaNode } from '@we/schema-shared';
+import { expr, type SchemaNode } from '@we/schema-shared';
 
 import { devPeersAvailable } from './devPeers';
 import { createCallStore } from './store';
@@ -159,10 +159,11 @@ function contentCentred(edge: 'top' | 'bottom', child: SchemaNode): SchemaNode {
  * The same question the mobile plan asks, answered once — a narrow window and a narrow content
  * box are the same problem to a bar, and the surface reports them as one number.
  */
-const COMPACT = { $eq: ['$surface.tier', 'base'] };
+const COMPACT = { $: "surface.tier == 'base'" };
+const ROOMY = { $: "surface.tier != 'base'" };
 const whenRoomy = (node: SchemaNode): SchemaNode => ({
   type: '$if',
-  props: { condition: { $not: COMPACT }, then: node },
+  props: { condition: ROOMY, then: node },
 });
 const whenCompact = (node: SchemaNode): SchemaNode => ({ type: '$if', props: { condition: COMPACT, then: node } });
 
@@ -257,17 +258,13 @@ export const CALL_STATUS_ANCHOR = 'call-status';
  * reference-keyed `<For>` and any change to the item remounts the row — taking the `<video>` with it.
  * Muting your microphone blanked your own video for exactly that reason.
  *
- * `$find` over a `$store` resolves inside the renderer's prop memo, so reading the signal registers a
+ * A `find` over the store resolves inside the renderer's prop memo, so reading the signal registers a
  * dependency and the prop updates on its own. The row never remounts; only the badge changes.
  */
-const stateOf = (field: string) => ({
-  $find: { items: { $store: 'modules.call.tileStates' }, where: { id: '$tile.id' }, select: field },
-});
+const stateOf = (field: string) => ({ $: `find(modules.call.tileStates, { id: tile.id }).${field}` });
 
 /** The same lookup for a participant's picture and name, which are late-arriving for the same reason. */
-const faceOf = (field: string) => ({
-  $find: { items: { $store: 'modules.call.tileFaces' }, where: { id: '$tile.id' }, select: field },
-});
+const faceOf = (field: string) => ({ $: `find(modules.call.tileFaces, { id: tile.id }).${field}` });
 
 /**
  * Whether this tile is showing moving pictures rather than an avatar.
@@ -322,9 +319,7 @@ const tile: SchemaNode = {
      * than moves across parents, and the `<video>` would lose its stream on every click. One
      * container, one `$each`, only CSS changes.
      */
-    styles: {
-      $find: { items: { $store: 'modules.call.tileCells' }, where: { id: '$tile.id' }, select: 'style' },
-    },
+    styles: { $: 'find(modules.call.tileCells, { id: tile.id }).style' },
   },
   children: [
     {
@@ -343,9 +338,7 @@ const tile: SchemaNode = {
         ay: 'center',
         minWidth: '0',
         minHeight: '0',
-        styles: {
-          $find: { items: { $store: 'modules.call.tilePins' }, where: { id: '$tile.id' }, select: 'style' },
-        },
+        styles: { $: 'find(modules.call.tilePins, { id: tile.id }).style' },
       },
       children: [
         {
@@ -366,12 +359,10 @@ const tile: SchemaNode = {
              * Computed in the store rather than written here because it depends on the placement, and a
              * side dock and a bottom dock are constrained by different axes.
              */
-            styles: { $store: 'modules.call.pictureStyle' },
+            styles: { $: 'modules.call.pictureStyle' },
             // A ring on whoever has the stage, so clicking a tile has a visible result even in the moment
             // before the layout settles. On the picture rather than the cell, so it frames the video.
-            border: {
-              $if: { condition: stateOf('focused'), then: '2px solid primary-500', else: '2px solid transparent' },
-            },
+            border: expr`${stateOf('focused')} ? '2px solid primary-500' : '2px solid transparent'`,
           },
           children: [
             {
@@ -382,7 +373,7 @@ const tile: SchemaNode = {
                 then: {
                   type: 'we-video',
                   props: {
-                    stream: '$tile.stream',
+                    stream: { $: 'tile.stream' },
                     autoplay: true,
                     playsinline: true,
                     /**
@@ -431,20 +422,14 @@ const tile: SchemaNode = {
                      * Setting `fit` at all is also what pins the video inside the box: without it the
                      * element sizes itself from the stream's own pixel dimensions. See the primitive.
                      */
-                    fit: { $if: { condition: stateOf('isScreen'), then: 'contain', else: 'cover' } },
+                    fit: expr`${stateOf('isScreen')} ? 'contain' : 'cover'`,
                     /**
                      * Your own camera, mirrored — everyone expects to raise the hand they raised.
                      *
                      * Only the camera. A mirrored screen share is unreadable text, and `isScreen` is exactly
                      * the flag that tells the two apart.
                      */
-                    transform: {
-                      $if: {
-                        condition: { $and: ['$tile.isSelf', { $not: stateOf('isScreen') }] },
-                        then: 'scaleX(-1)',
-                        else: 'none',
-                      },
-                    },
+                    transform: expr`tile.isSelf && !${stateOf('isScreen')} ? 'scaleX(-1)' : 'none'`,
                   },
                 },
                 /**
@@ -536,7 +521,7 @@ const tile: SchemaNode = {
                 left: '0',
                 width: '100%',
                 height: '100%',
-                onClick: { $action: 'modules.call.focusTile', args: ['$tile.id'] },
+                onClick: { $action: 'modules.call.focusTile', args: [{ $: 'tile.id' }] },
               },
             },
             {
@@ -555,7 +540,7 @@ const tile: SchemaNode = {
                   props: {
                     // Nothing at all rather than an empty chip, for a peer whose profile has not arrived.
                     // Your own tile always has something to say, so it is exempt.
-                    condition: { $or: ['$tile.isSelf', faceOf('name')] },
+                    condition: expr`tile.isSelf || ${faceOf('name')}`,
                     then: {
                       type: 'we-badge',
                       props: { variant: 'neutral', size: 'xs', maxWidth: '150px' },
@@ -590,7 +575,12 @@ const tile: SchemaNode = {
                           props: { variant: 'footnote', truncate: true, minWidth: '0' },
                           // "You" rather than your own name: it is shorter, and it is the thing you are
                           // actually looking for when scanning a grid for your own picture.
-                          children: [{ $if: { condition: '$tile.isSelf', then: 'You', else: faceOf('name') } }],
+                          children: [
+                            {
+                              type: '$if',
+                              props: { condition: { $: 'tile.isSelf' }, then: 'You', else: faceOf('name') },
+                            },
+                          ],
                         },
                       ],
                     },
@@ -599,7 +589,7 @@ const tile: SchemaNode = {
                 {
                   type: '$if',
                   props: {
-                    condition: { $not: stateOf('audioEnabled') },
+                    condition: expr`!${stateOf('audioEnabled')}`,
                     then: {
                       type: 'we-badge',
                       props: { variant: 'neutral', size: 'xs' },
@@ -626,9 +616,7 @@ const tile: SchemaNode = {
                   // sentence twice.
                   type: '$if',
                   props: {
-                    condition: {
-                      $and: [hasVideo, { $in: [stateOf('connection'), ['connecting', 'disconnected', 'failed']] }],
-                    },
+                    condition: expr`${hasVideo} && ${stateOf('connection')} in ['connecting', 'disconnected', 'failed']`,
                     then: {
                       type: 'we-badge',
                       props: { variant: 'warning', size: 'xs' },
@@ -666,7 +654,7 @@ const tile: SchemaNode = {
 const stage: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $store: 'modules.call.active' },
+    condition: { $: 'modules.call.active' },
     then: {
       /*
         A padded box around the tiles, rather than padding on the tiles' own box.
@@ -707,7 +695,7 @@ const stage: SchemaNode = {
           scrollbar to be lived with. The one exception is a strip holding more people than fit at a
           size worth looking at, which is a list rather than a layout and behaves like one.
         */
-            styles: { $store: 'modules.call.stageOverflow' },
+            styles: { $: 'modules.call.stageOverflow' },
             /**
              * The arrangement, solved against the box rather than guessed from the head count.
              *
@@ -730,17 +718,15 @@ const stage: SchemaNode = {
           the equal-tile solve stands down and the spotlight layout takes over; absent, it comes
           back. See `stageTemplate` in the store.
         */
-            template: { $store: 'modules.call.stageTemplate' },
-            rows: { $store: 'modules.call.stageRows' },
+            template: { $: 'modules.call.stageTemplate' },
+            rows: { $: 'modules.call.stageRows' },
             // What the stage settled on, back to the store — see `setArrangement`. The host needs it to
             // answer "fit to content".
             onArrange: { $action: 'modules.call.setArrangement' },
             // The box itself, for the one decision the grid cannot make: which edge the strip runs along.
             onMeasure: { $action: 'modules.call.setStageBox' },
           },
-          children: [
-            { type: '$each', props: { items: { $store: 'modules.call.tiles' }, as: 'tile' }, children: [tile] },
-          ],
+          children: [{ type: '$each', props: { items: { $: 'modules.call.tiles' }, as: 'tile' }, children: [tile] }],
         },
       ],
     },
@@ -775,7 +761,7 @@ const devPeerControls: SchemaNode = {
             square: true,
             size: 'sm',
             variant: 'ghost',
-            disabled: { $not: { $store: 'modules.call.fakePeerCount' } },
+            disabled: { $: '!modules.call.fakePeerCount' },
             // Zero-argument, because the schema layer has no arithmetic: there is no way to write
             // "the current count minus one" as a token, so the step belongs in the store.
             onClick: { $action: 'modules.call.removeFakePeer' },
@@ -791,7 +777,7 @@ const devPeerControls: SchemaNode = {
         {
           type: 'we-text',
           props: { variant: 'label', color: 'text-muted', minWidth: '12px', textAlign: 'center' },
-          children: [{ type: 'we-number', props: { value: { $store: 'modules.call.fakePeerCount' } } }],
+          children: [{ type: 'we-number', props: { value: { $: 'modules.call.fakePeerCount' } } }],
         },
       ],
     },
@@ -841,9 +827,7 @@ function mediaToggle(opts: {
   /** What pressing it does while it is on, and while it is off. */
   tip: { on: string; off: string };
 }): SchemaNode {
-  const toggled = (then: string, otherwise: string) => ({
-    $if: { condition: { $store: opts.enabled }, then, else: otherwise },
-  });
+  const toggled = (then: string, otherwise: string) => expr`${{ $: opts.enabled }} ? ${then} : ${otherwise}`;
 
   return {
     type: 'we-tooltip',
@@ -892,10 +876,10 @@ function mediaToggle(opts: {
  * portable tier moved to `@we/schema-kit` and this reaches for it like a template would.
  */
 const participants: SchemaNode = peopleTooltip({
-  items: { $store: 'modules.call.tileFaces' },
-  image: '$person.image',
-  hash: '$person.hash',
-  name: '$person.name',
+  items: { $: 'modules.call.tileFaces' },
+  image: { $: 'person.image' },
+  hash: { $: 'person.hash' },
+  name: { $: 'person.name' },
   placement: 'bottom',
   children: [
     {
@@ -906,13 +890,7 @@ const participants: SchemaNode = peopleTooltip({
           type: 'AvatarStack',
           props: {
             avatars: {
-              $map: {
-                items: { $store: 'modules.call.tileFaces' },
-                // `hash` always, never as a fallback for a missing picture: it seeds a generated
-                // avatar that is stable per agent, so two people whose profiles have not arrived are
-                // still two distinguishable faces rather than the same grey glyph twice.
-                select: { image: '$item.image', hash: '$item.hash', initials: '$item.name' },
-              },
+              $: 'modules.call.tileFaces.map(item, { image: item.image, hash: item.hash, initials: item.name })',
             },
             max: 3,
             size: 'sm',
@@ -944,10 +922,7 @@ const participants: SchemaNode = peopleTooltip({
           */
             styles: { whiteSpace: 'nowrap' },
           },
-          children: [
-            { type: 'we-number', props: { value: { $count: { items: { $store: 'modules.call.tiles' } } } } },
-            ' in the call',
-          ],
+          children: [{ type: 'we-number', props: { value: { $: 'count(modules.call.tiles)' } } }, ' in the call'],
         }),
       ],
     },
@@ -1047,7 +1022,7 @@ function menuToggle(opts: CallToggle) {
     type: 'toggle',
     label: opts.label,
     icon: opts.on,
-    checked: { $store: opts.enabled },
+    checked: { $: opts.enabled },
     onToggle: { $action: opts.action },
   };
 }
@@ -1084,7 +1059,9 @@ const moreMenu: SchemaNode = {
     items: [
       menuToggle(SCREEN_SHARE),
       menuToggle(STAGE),
-      { $if: { condition: { $store: 'modules.call.focusedId' }, then: menuToggle(SOLO) } },
+      // Solo is only offered while something is focused. On the entry rather than around it: an
+      // entry carries a handler, which no value expression can hold — see `hidden` on the menu.
+      { ...menuToggle(SOLO), hidden: { $: '!modules.call.focusedId' } },
     ],
   },
 };
@@ -1107,16 +1084,12 @@ const moreMenu: SchemaNode = {
 const returnToCall: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $store: 'modules.call.elsewhere' },
+    condition: { $: 'modules.call.elsewhere' },
     then: {
       type: 'we-tooltip',
       props: {
         title: {
-          $if: {
-            condition: { $store: 'modules.call.callSpace.name' },
-            then: { $concat: ['Back to the call in ', { $store: 'modules.call.callSpace.name' }] },
-            else: 'Back to the call',
-          },
+          $: "modules.call.callSpace.name ? `Back to the call in ${modules.call.callSpace.name}` : 'Back to the call'",
         },
         placement: 'bottom',
       },
@@ -1131,15 +1104,7 @@ const returnToCall: SchemaNode = {
               // Truncated rather than wrapped: a long space name would otherwise make the bar two
               // rows tall, which is the one thing a fixed strip of controls cannot absorb.
               props: { truncate: true, maxWidth: '96px' },
-              children: [
-                {
-                  $if: {
-                    condition: { $store: 'modules.call.callSpace.name' },
-                    then: { $store: 'modules.call.callSpace.name' },
-                    else: 'In a call',
-                  },
-                },
-              ],
+              children: [{ $: "modules.call.callSpace.name ? modules.call.callSpace.name : 'In a call'" }],
             },
           ],
         },
@@ -1152,7 +1117,7 @@ const returnToCall: SchemaNode = {
 const bar: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $store: 'modules.call.active' },
+    condition: { $: 'modules.call.active' },
 
     // ── Not in a call ────────────────────────────────────────────────────────
     // Shown only when somebody else is in one, offering to join. *Starting* a call is the module
@@ -1161,7 +1126,7 @@ const bar: SchemaNode = {
     else: {
       type: '$if',
       props: {
-        condition: { $count: { items: { $store: 'modules.call.ongoing' } } },
+        condition: { $: 'count(modules.call.ongoing)' },
         then: contentCentred('bottom', {
           type: 'Row',
           props: {
@@ -1182,16 +1147,13 @@ const bar: SchemaNode = {
               // `ongoing` returns faces rather than presence records — see the store. Handing an
               // avatar something with no `image` or `hash` gets the generic person glyph, once per
               // participant, which is what this used to be.
-              props: { avatars: { $store: 'modules.call.ongoing' }, size: 'sm', max: 4 },
+              props: { avatars: { $: 'modules.call.ongoing' }, size: 'sm', max: 4 },
             },
             {
               type: 'we-text',
               // One line, for the same reason the in-call readout keeps one — see `participants`.
               props: { variant: 'label', styles: { whiteSpace: 'nowrap' } },
-              children: [
-                { type: 'we-number', props: { value: { $count: { items: { $store: 'modules.call.ongoing' } } } } },
-                ' in a call',
-              ],
+              children: [{ type: 'we-number', props: { value: { $: 'count(modules.call.ongoing)' } } }, ' in a call'],
             },
             {
               type: 'we-button',
@@ -1316,7 +1278,7 @@ const bar: SchemaNode = {
               ? [
                   {
                     type: '$if',
-                    props: { condition: { $store: 'sessionStore.devTools' }, then: devPeerControls },
+                    props: { condition: { $: 'sessionStore.devTools' }, then: devPeerControls },
                   },
                 ]
               : []),
@@ -1330,7 +1292,7 @@ const bar: SchemaNode = {
             */
             whenRoomy({
               type: '$if',
-              props: { condition: { $store: 'modules.call.focusedId' }, then: mediaToggle(SOLO) },
+              props: { condition: { $: 'modules.call.focusedId' }, then: mediaToggle(SOLO) },
             }),
             whenRoomy(mediaToggle(STAGE)),
             // Two thirds of a control's height, so it reads as a separator between groups rather than as
@@ -1390,14 +1352,14 @@ const bar: SchemaNode = {
 const audioSink: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $store: 'modules.call.active' },
+    condition: { $: 'modules.call.active' },
     then: {
       type: '$each',
       props: {
-        items: { $filter: { items: { $store: 'modules.call.tiles' }, where: { isSelf: false } } },
+        items: { $: 'filter(modules.call.tiles, { isSelf: false })' },
         as: 'tile',
       },
-      children: [{ type: 'we-audio', props: { stream: '$tile.stream', autoplay: true } }],
+      children: [{ type: 'we-audio', props: { stream: { $: 'tile.stream' }, autoplay: true } }],
     },
   },
 };
@@ -1407,7 +1369,7 @@ const audioSink: SchemaNode = {
 const problem: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $store: 'modules.call.problem' },
+    condition: { $: 'modules.call.problem' },
     /*
       The end the call bar is not at — which is the top now that the bar has taken the bottom.
 
@@ -1428,7 +1390,7 @@ const problem: SchemaNode = {
         {
           type: 'we-alert',
           props: { variant: 'warning', dismissible: true, onClose: { $action: 'modules.call.dismissProblem' } },
-          children: [{ $store: 'modules.call.problem' }],
+          children: [{ $: 'modules.call.problem' }],
         },
       ],
     }),
@@ -1447,7 +1409,7 @@ const anchoredCallButton: SchemaNode = {
   props: {
     variant: 'ghost',
     size: 'sm',
-    onClick: { $action: 'modules.call.joinAnchoredCall', args: ['$node.id'] },
+    onClick: { $action: 'modules.call.joinAnchoredCall', args: [{ $: 'node.id' }] },
   },
   children: [{ type: 'we-icon', props: { name: 'phone-call' } }],
 };
