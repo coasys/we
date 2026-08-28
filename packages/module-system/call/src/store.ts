@@ -26,8 +26,44 @@ import { devPeers, devPeersAvailable, readDevPeerCount, stopDevPeers, writeDevPe
 import { createMediaController, type MediaController } from './media';
 import { type CallMesh, createCallMesh } from './mesh';
 import { anchoredCallId, spaceCallId } from './protocol';
-import { createCallSfu, type SfuBackend, type SfuQuality } from './sfu';
 import { solveStrip } from './strip';
+
+// ── Session backend ──────────────────────────────────────────────────
+//
+// Structural interface satisfied by `Session` from `@coasys/ad4m`.
+// The call module carries no import-time dependency on that package —
+// the host constructs a Session and passes it through `CallStoreDeps`.
+
+/** Quality layer the backend can forward (SFU simulcast). */
+export type BackendQuality = 'high' | 'medium' | 'low';
+
+/** A remote participant as reported by the backend. */
+export interface BackendParticipant {
+  agentDid: string;
+  stream: MediaStream;
+  hasAudio: boolean;
+  hasVideo: boolean;
+  isActiveSpeaker: boolean;
+}
+
+/**
+ * Structural interface for a WebRTC session backend — topology-agnostic.
+ *
+ * Satisfied by `Session` from `@coasys/ad4m/neighbourhood`. The host constructs the session (with
+ * neighbourhood proxy, room id, topology, etc.) and passes it here. This module never touches
+ * `NeighbourhoodProxy` or any AD4M type directly.
+ */
+export interface CallBackend {
+  join(localStream: MediaStream): Promise<void>;
+  leave(): Promise<void>;
+  destroy(): Promise<void>;
+  replaceTrack(kind: 'audio' | 'video', track: MediaStreamTrack | null): Promise<void>;
+  setQualityPreference(pref: BackendQuality): Promise<void>;
+  readonly participants: ReadonlyArray<BackendParticipant>;
+  getState(): string;
+  on(event: string, cb: (...args: unknown[]) => void): void;
+  off(event: string, cb?: (...args: unknown[]) => void): void;
+}
 
 /**
  * One participant, flattened for a template.
@@ -142,15 +178,16 @@ export interface CallStoreDeps extends ModuleStoreDeps {
   /** Overridable for tests; defaults to the browser's WebRTC and media APIs. */
   createPeerConnection?: () => RTCPeerConnection;
   /**
-   * An SFU backend to use instead of the peer-to-peer mesh.
+   * A Session backend that manages the WebRTC topology (mesh or SFU).
    *
-   * When provided, the store connects through the SFU relay rather than building N−1 direct
-   * connections. The backend must already hold the room id, neighbourhood URL, agent DID, and ICE
-   * config — this module only drives `join` / `leave` / `setQualityPreference`.
+   * When provided, the store delegates join / leave / track replacement / quality to the backend
+   * instead of building its own peer-to-peer mesh. The backend must already hold the room id,
+   * topology config, signalling channel, and agent identity — this module only drives its lifecycle.
    *
-   * Pass `SfuManager` from `@coasys/ad4m` directly — it satisfies the {@link SfuBackend} interface.
+   * Pass `Session` from `@coasys/ad4m` directly — it satisfies the {@link CallBackend} interface.
+   * The Session resolves topology automatically (mesh, SFU, or auto).
    */
-  sfuBackend?: SfuBackend;
+  backend?: CallBackend;
 }
 
 /**
@@ -240,7 +277,7 @@ export function createCallStore(deps: CallStoreDeps) {
   /** Whether this call runs through the SFU relay or the peer-to-peer mesh. */
   const [topology, setTopology] = signal<CallTopology>('mesh');
   /** The SFU quality layer this agent prefers. Only meaningful when `topology() === 'sfu'`. */
-  const [qualityPreference, setQualityPreferenceSignal] = signal<SfuQuality>('high');
+  const [qualityPreference, setQualityPreferenceSignal] = signal<BackendQuality>('high');
 
   /**
    * Named, because it is the one problem that can resolve itself.
@@ -296,8 +333,7 @@ export function createCallStore(deps: CallStoreDeps) {
   const [localAudio, setLocalAudio] = signal<MediaStream | null>(null);
 
   let mesh: CallMesh | null = null;
-  /** When the mesh wraps an SFU, this holds the quality preference setter. */
-  let sfuSetQuality: ((q: SfuQuality) => Promise<void>) | null = null;
+  let backend: CallBackend | null = null;
   let controller: MediaController | null = null;
   let remoteStreams = new Map<string, MediaStream>();
   let peerStates = new Map<string, RTCPeerConnectionState>();
@@ -494,9 +530,12 @@ export function createCallStore(deps: CallStoreDeps) {
 
   function teardown() {
     const id = callId();
+    if (backend) {
+      backend.destroy().catch((err) => console.error('call: backend destroy', err));
+      backend = null;
+    }
     mesh?.close();
     mesh = null;
-    sfuSetQuality = null;
     controller?.stop();
     controller = null;
     scopeHandle?.dispose();
@@ -591,20 +630,11 @@ export function createCallStore(deps: CallStoreDeps) {
     */
     setVisible(true);
 
-    const meshCallbacks = {
-      onRemoteStreamsChanged: (streams: Map<string, MediaStream>) => {
-        remoteStreams = streams;
-        rebuildTiles();
-      },
-      onPeerStateChanged: (peerId: string, state: RTCPeerConnectionState) => {
-        peerStates.set(peerId, state);
-        rebuildTiles();
-      },
-      onError: (context: string, error: unknown) => console.error(`call: ${context}`, error),
-    };
-
     controller = createMediaController({
-      onTrackChanged: (kind, track) => void mesh?.setOutboundTrack(kind, track),
+      onTrackChanged: (kind, track) => {
+        if (backend) void backend.replaceTrack(kind, track);
+        else void mesh?.setOutboundTrack(kind, track);
+      },
       onStateChanged: (state) => {
         setMedia({ ...state });
         // Devices arrived after all — most likely the user granted the permission and pressed the
@@ -622,42 +652,61 @@ export function createCallStore(deps: CallStoreDeps) {
       onError: (context, error) => console.error(`call: ${context}`, error),
     });
 
-    let mediaStarted = false;
-
-    if (deps.sfuBackend) {
-      // ── SFU path ────────────────────────────────────────────────────
+    if (deps.backend) {
+      // ── Session backend path ────────────────────────────────────────
       //
-      // The SFU needs media before it can build an SDP offer, so we acquire devices first, then join
-      // the relay. The ephemeral channel is still opened — presence signalling runs over it regardless
-      // of topology — but no peer-to-peer WebRTC connections are created.
-      setTopology('sfu');
+      // The backend (Session from @coasys/ad4m) manages topology, signalling, roster polling,
+      // and peer connections internally. The store only drives lifecycle and reads participants.
+      backend = deps.backend;
+
+      backend.on('participant-joined', () => {
+        remoteStreams = new Map(backend!.participants.map((p) => [p.agentDid, p.stream]));
+        rebuildTiles();
+      });
+      backend.on('participant-left', () => {
+        remoteStreams = new Map(backend!.participants.map((p) => [p.agentDid, p.stream]));
+        rebuildTiles();
+      });
+      backend.on('stream-added', () => {
+        remoteStreams = new Map(backend!.participants.map((p) => [p.agentDid, p.stream]));
+        rebuildTiles();
+      });
+      backend.on('stream-removed', () => {
+        remoteStreams = new Map(backend!.participants.map((p) => [p.agentDid, p.stream]));
+        rebuildTiles();
+      });
+      backend.on('topology-changed', (topo: unknown) => {
+        if (topo === 'mesh' || topo === 'sfu') setTopology(topo);
+      });
+      backend.on('error', (err: unknown) => console.error('call: backend error', err));
 
       // Announce before acquiring devices, same as the mesh path.
       publishActivity();
       rebuildTiles();
 
+      // Acquire media, then join the backend with the local stream.
       await controller.start();
-      mediaStarted = true;
-
       const localStream = controller.displayStream() ?? controller.localStream() ?? new MediaStream();
-      try {
-        const sfuMesh = await createCallSfu({
-          backend: deps.sfuBackend,
-          localStream,
-          ...meshCallbacks,
-        });
-        mesh = sfuMesh;
-        sfuSetQuality = (q) => sfuMesh.setQualityPreference(q);
-      } catch (error) {
-        console.error('call: SFU join failed, falling back to mesh', error);
-        setTopology('mesh');
-        // Fall through to the mesh path below.
-      }
-    }
+      await backend.join(localStream);
 
-    if (!mesh) {
-      // ── Mesh path (default, or SFU fallback) ────────────────────────
+      // Seed remote streams from anyone already in the room.
+      remoteStreams = new Map(backend.participants.map((p) => [p.agentDid, p.stream]));
+      rebuildTiles();
+    } else {
+      // ── Mesh path (default — WE's built-in peer-to-peer mesh) ───────
       setTopology('mesh');
+
+      const meshCallbacks = {
+        onRemoteStreamsChanged: (streams: Map<string, MediaStream>) => {
+          remoteStreams = streams;
+          rebuildTiles();
+        },
+        onPeerStateChanged: (peerId: string, state: RTCPeerConnectionState) => {
+          peerStates.set(peerId, state);
+          rebuildTiles();
+        },
+        onError: (context: string, error: unknown) => console.error(`call: ${context}`, error),
+      };
 
       // coalesce: false, emphatically. Presence heartbeats are last-write-wins so a dropped one costs
       // nothing; an SDP offer dropped because the previous send was slow is simply lost, and that peer
@@ -672,14 +721,12 @@ export function createCallStore(deps: CallStoreDeps) {
         ...meshCallbacks,
       });
 
-      if (!mediaStarted) {
-        // Announce before acquiring devices: joining should be visible to peers immediately, and the
-        // permission prompt can take as long as the user takes.
-        publishActivity();
-        rebuildTiles();
+      // Announce before acquiring devices: joining should be visible to peers immediately, and the
+      // permission prompt can take as long as the user takes.
+      publishActivity();
+      rebuildTiles();
 
-        await controller.start();
-      }
+      await controller.start();
     }
 
     /*
@@ -695,9 +742,10 @@ export function createCallStore(deps: CallStoreDeps) {
   }
 
   // Reconcile the mesh against the roster. This is the whole membership mechanism — see mesh.ts.
+  // When a Session backend handles the call, it manages roster polling internally — skip this.
   effect?.(() => {
     const peers = roster();
-    if (!mesh) return;
+    if (backend || !mesh) return;
     mesh.setRoster(peers.map((peer) => peer.agentId));
     rebuildTiles();
   });
@@ -1249,15 +1297,15 @@ export function createCallStore(deps: CallStoreDeps) {
     dismissProblem: () => setProblem(null),
 
     /**
-     * Ask the SFU to forward a different simulcast layer.
+     * Ask the backend to forward a different simulcast layer.
      *
      * `'high'` is the full-resolution stream, `'medium'` halves each dimension, `'low'` quarters it.
-     * The preference propagates to the SFU relay, which selects the matching layer for every forwarded
-     * stream. Only meaningful when `topology() === 'sfu'`; a no-op on a mesh call.
+     * The preference propagates to the backend (SFU relay), which selects the matching layer for
+     * every forwarded stream. Silently accepted on a mesh call (no simulcast layers).
      */
-    setQualityPreference: async (quality: SfuQuality) => {
+    setQualityPreference: async (quality: BackendQuality) => {
       setQualityPreferenceSignal(quality);
-      if (sfuSetQuality) await sfuSetQuality(quality);
+      if (backend) await backend.setQualityPreference(quality);
     },
   };
 }
