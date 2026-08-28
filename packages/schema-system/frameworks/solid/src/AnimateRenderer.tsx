@@ -161,13 +161,16 @@ export function AnimateRenderer({ node, stores, context, renderNode }: AnimateRe
     /*
       Sentinel-based trigger: a separate element, by DOM id, that this one watches go by.
 
-      "Past" is measured against this element, not the viewport. The case this exists for is a
-      sticky bar: the sentinel sits at the bottom of the header above it, and once the bar sticks the
-      header keeps scrolling while the bar stays put — so the sentinel slides *under* the bar, still
-      inside the viewport. An IntersectionObserver never saw it leave unless the page could scroll a
-      further bar-height, which a space with a short section cannot; the mini-profile simply never
-      appeared. Comparing the sentinel's top with this element's top says exactly when it has gone
-      behind. Leaving the viewport altogether counts too, for a sentinel with no sticky partner.
+      "Past" is measured against the sticky (or fixed) ancestor this element sits in, not the
+      viewport. The case this exists for is a sticky bar: the sentinel sits at the bottom of the
+      header above it, and once the bar sticks the header keeps scrolling while the bar stays put —
+      so the sentinel slides *under* the bar, still inside the viewport. An IntersectionObserver
+      never saw it leave unless the page could scroll a further bar-height, which a space with a
+      short section cannot; the mini-profile simply never appeared. The sentinel is past once its
+      bottom is above the bar's top edge: at rest the two touch, and only a stuck bar lets the
+      sentinel cross it. The bar rather than this element, because this element sits inside the
+      bar's padding and would count the sentinel as gone before anything had moved. With no sticky
+      ancestor, leaving the viewport is what counts.
 
       Looked up on every check rather than once. The sentinel is usually rendered by a sibling that
       arrives with the same data this element does — but not always, and a lookup that ran once and
@@ -178,14 +181,22 @@ export function AnimateRenderer({ node, stores, context, renderNode }: AnimateRe
       let frame: number | undefined;
       let seen = false;
 
+      const stickyAncestor = (): Element | null => {
+        for (let el = wrapperRef?.parentElement; el; el = el.parentElement) {
+          const position = getComputedStyle(el).position;
+          if (position === 'sticky' || position === 'fixed') return el;
+        }
+        return null;
+      };
+
       const check = () => {
         frame = undefined;
         const sentinel = document.getElementById(scrollPast);
         if (!sentinel || !wrapperRef) return;
         seen = true;
         const marker = sentinel.getBoundingClientRect();
-        const self = wrapperRef.getBoundingClientRect();
-        const isPast = marker.top < self.top - 1 || marker.bottom < 0;
+        const edge = stickyAncestor()?.getBoundingClientRect().top ?? 0;
+        const isPast = marker.bottom < edge - 1;
         if (isPast === past) return;
         past = isPast;
         if (isPast && enterTransition) animateIn(enterTransition);

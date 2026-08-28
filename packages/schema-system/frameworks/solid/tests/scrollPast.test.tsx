@@ -26,15 +26,21 @@ const miniProfile: SchemaNode = {
   children: [{ type: 'span', children: ['Space'] }],
 };
 const sentinel: SchemaNode = { type: 'div', props: { id: 'sentinel' }, styles: { height: '0px' } };
+/** The bar the mini-profile lives in — sticky, with padding around its contents as the real one has. */
+const stickyBar: SchemaNode = { type: 'div', styles: { position: 'sticky', padding: '16px' }, children: [miniProfile] };
 
-/** jsdom has no layout: give the sentinel and the animated wrapper the positions a scroll would. */
-function place(container: HTMLElement, sentinelTop: number, wrapperTop: number) {
+/** jsdom has no layout: give the sentinel and the sticky bar the positions a scroll would. */
+function place(container: HTMLElement, sentinelTop: number, barTop: number) {
   const marker = container.querySelector('#sentinel')!;
+  const bar = [...container.querySelectorAll('div')].find((el) => el.style.position === 'sticky')!;
   const wrapper = [...container.querySelectorAll('div')].find((el) => el.style.display === 'grid')!;
   const rect = (top: number, height: number) =>
     ({ top, bottom: top + height, left: 0, right: 100, width: 100, height }) as DOMRect;
   vi.spyOn(marker, 'getBoundingClientRect').mockImplementation(() => rect(sentinelTop, 0));
-  vi.spyOn(wrapper, 'getBoundingClientRect').mockImplementation(() => rect(wrapperTop, 40));
+  vi.spyOn(bar, 'getBoundingClientRect').mockImplementation(() => rect(barTop, 72));
+  // Inside the bar's padding: at rest the wrapper's top is already below the sentinel, which is
+  // why the bar, not the wrapper, is the edge that counts.
+  vi.spyOn(wrapper, 'getBoundingClientRect').mockImplementation(() => rect(barTop + 16, 40));
   window.dispatchEvent(new Event('scroll'));
   return wrapper;
 }
@@ -42,7 +48,7 @@ function place(container: HTMLElement, sentinelTop: number, wrapperTop: number) 
 describe('$animate scrollPast — a sticky mini-profile keyed to a sentinel', () => {
   it('stays closed while the sentinel sits above it, and opens once the sentinel scrolls behind it', async () => {
     const { container } = render(() => (
-      <RenderSchema node={{ type: 'div', children: [sentinel, miniProfile] }} stores={{}} registry={{}} />
+      <RenderSchema node={{ type: 'div', children: [sentinel, stickyBar] }} stores={{}} registry={{}} />
     ));
     // The header is still on screen: the sentinel touches the bar's top edge.
     const wrapper = place(container, 400, 400);
@@ -66,7 +72,7 @@ describe('$animate scrollPast — a sticky mini-profile keyed to a sentinel', ()
     const stores = { spaceStore: { ready: markReactive(ready) } };
     const node: SchemaNode = {
       type: 'div',
-      children: [{ type: '$if', props: { condition: { $: 'spaceStore.ready' }, then: sentinel } }, miniProfile],
+      children: [{ type: '$if', props: { condition: { $: 'spaceStore.ready' }, then: sentinel } }, stickyBar],
     };
     const { container } = render(() => <RenderSchema node={node} stores={stores} registry={{}} />);
     expect(container.querySelector('#sentinel')).toBeNull();
