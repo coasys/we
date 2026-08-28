@@ -214,6 +214,13 @@ function BlockHandle(props: {
         onDragStart={(e) => {
           e.dataTransfer?.setData(DRAG_TYPE, 'block');
           if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+          // The drag image defaults to the element the gesture began on — which is this handle, so
+          // the thing following the cursor was a dots icon rather than the paragraph being moved.
+          // The block's own DOM is already on screen and already styled, so it is both the honest
+          // picture and free. The offset keeps it under the pointer where it was grabbed: measured
+          // against the block rather than the handle, since the handle sits outside it.
+          const rect = props.dom.getBoundingClientRect();
+          e.dataTransfer?.setDragImage(props.dom, e.clientX - rect.left, e.clientY - rect.top);
           props.onDragStart(props.dom);
         }}
         onDragEnd={() => props.onDragEnd()}
