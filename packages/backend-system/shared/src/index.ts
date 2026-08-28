@@ -80,6 +80,23 @@ export type {
   ManifestError,
 } from './manifest';
 
+/**
+ * How one record names another that lives in a different dataset — the address a gathered item, an
+ * embed and a deep link all hold. Here rather than in an adapter because an address only one
+ * backend can write is not an address.
+ */
+export {
+  datasetIdOf,
+  datasetKey,
+  datasetKindOf,
+  formatAgentRef,
+  formatRef,
+  isPortableRef,
+  parseRef,
+  sameRef,
+} from './recordRef';
+export type { DatasetKind, RecordRef } from './recordRef';
+
 export { queryIRSchema, filterSchema, validateQueryIR } from './queryIR';
 export { validateQueryAgainstManifest } from './queryValidation';
 export { planQuery } from './queryCapabilities';
