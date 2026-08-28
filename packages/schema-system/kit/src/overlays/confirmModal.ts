@@ -49,7 +49,7 @@ export interface ConfirmModalOptions {
    * One action, not a list: all seven of these run exactly one, and a list would raise the question
    * of where the close goes in it.
    */
-  confirm: Record<string, unknown>;
+  confirm: Record<string, unknown> | unknown[];
   cancelLabel?: Content;
   /**
    * What the cancel button does, when merely closing is not it — "Keep editing" dismisses the
@@ -120,20 +120,27 @@ export function confirmModal(opts: ConfirmModalOptions): SchemaNode {
     the dialog. Nothing had noticed because the only such caller is `discardGuard`, whose confirm
     unmounts the whole modal anyway.
   */
-  const isAction = '$action' in opts.confirm;
+  // A handler array is a confirm too — `discardGuard` hands over whatever the modal's `close` is,
+  // and a composer's close can be several steps (close, then clear a presence activity). Nested
+  // arrays are not flattened by the resolver, so the steps are spliced in rather than wrapped.
+  const isAction = !Array.isArray(opts.confirm) && '$action' in opts.confirm;
   const confirmAction = isAction
-    ? { ...opts.confirm, onSuccess: [opts.close, ...((opts.confirm.onSuccess as unknown[]) ?? [])] }
+    ? {
+        ...(opts.confirm as Record<string, unknown>),
+        onSuccess: [opts.close, ...(((opts.confirm as Record<string, unknown>).onSuccess as unknown[]) ?? [])],
+      }
     : opts.confirm;
+  const confirmSteps = Array.isArray(confirmAction) ? confirmAction : [confirmAction];
 
   const onClick = opts.busyLocal
     ? // `busyLocal` only means anything around an async action — see its doc comment.
       [
         { $setLocal: opts.busyLocal, value: true },
-        { ...confirmAction, onFinally: [{ $setLocal: opts.busyLocal, value: false }] },
+        { ...(confirmAction as Record<string, unknown>), onFinally: [{ $setLocal: opts.busyLocal, value: false }] },
       ]
     : isAction
       ? confirmAction
-      : [confirmAction, opts.close];
+      : [...confirmSteps, opts.close];
 
   return {
     type: '$if',

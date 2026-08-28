@@ -451,3 +451,48 @@ describe('contracts call sites depend on', () => {
     expect(portable.emptyState.type).toBe('$animate');
   });
 });
+
+describe('handler arrays are never nested', () => {
+  /*
+    The resolver runs a handler array step by step and does not flatten: an array inside an array
+    is a step that does nothing. `composerModal` with `onClose` hands `discardGuard` a multi-step
+    close, and `discardGuard` hands that to `confirmModal` as its confirm — which once wrapped it
+    in another array, so discarding an edited post silently did nothing while a fresh post (a
+    single-token close) discarded fine.
+  */
+  function nestedHandlerArrays(value: unknown, path: string[] = []): string[] {
+    if (Array.isArray(value)) {
+      const nested = value.some((item) => Array.isArray(item));
+      return [
+        ...(nested ? [path.join('.')] : []),
+        ...value.flatMap((item, i) => nestedHandlerArrays(item, [...path, String(i)])),
+      ];
+    }
+    if (value && typeof value === 'object') {
+      return Object.entries(value as Record<string, unknown>).flatMap(([k, v]) => nestedHandlerArrays(v, [...path, k]));
+    }
+    return [];
+  }
+
+  it('a composer whose close has several steps discards through all of them', () => {
+    const node = composerModal({
+      openLocal: 'editOpen',
+      title: 'Edit',
+      saveAction: { $action: 'spaceStore.updatePost', args: ['x', { $: 'arg' }] },
+      onClose: [{ $action: 'presenceStore.clearActivity', args: ['edit', 'x'] }],
+    });
+    expect(nestedHandlerArrays(node)).toEqual([]);
+  });
+
+  it('a confirm given as a handler array is spliced into the button, not wrapped', () => {
+    const node = confirmModal({
+      open: { $: 'local.flag' },
+      close: { $setLocal: 'flag', value: false },
+      title: 't',
+      body: 'b',
+      confirmLabel: 'Go',
+      confirm: [{ $setLocal: 'a', value: 1 }, { $action: 'x.y' }],
+    });
+    expect(nestedHandlerArrays(node)).toEqual([]);
+  });
+});
