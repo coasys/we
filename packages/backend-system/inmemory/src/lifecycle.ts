@@ -25,7 +25,7 @@ import type {
   RendererDataBindings,
   SchemaPort,
 } from '@we/backend-shared';
-import { createInMemoryEphemeralPort, InMemoryBus } from '@we/backend-shared';
+import { createInMemoryEphemeralPort, InMemoryBus, manifestEntries } from '@we/backend-shared';
 import { getEntitiesForPerspective, getEntity, registerEntity, registerFileStore } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 
@@ -242,6 +242,10 @@ export function createInMemorySchemaPort(runtime: EntityRuntime): SchemaPort {
       for (const [name, cls] of Object.entries(compiled)) registerEntity(name, cls as never);
       return compiled;
     },
+
+    // Rows here are keyed by entity and property name rather than by predicate, so the neutral
+    // projection is the whole answer — there is no wire vocabulary for this backend to mint.
+    entries: (manifest) => manifestEntries(manifest),
 
     declareInDataset(dataset, manifest) {
       // Rows need no per-dataset schema separation here — the runtime resolves entities by name at

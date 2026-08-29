@@ -1,6 +1,6 @@
 import { queryIRFlag } from '@shared/queryIRFlag';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
-import { moduleStores } from '@shared/registries/moduleRegistry';
+import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry';
 import { onSlotRegistryChanged, slotRegistry } from '@shared/registries/slotRegistry';
 import { buildTemplateBag, CHROME_TIER, SPACE_TIER } from '@shared/registries/templateSurface';
 import { hostSourceBag } from '@shared/sources';
@@ -239,8 +239,18 @@ export default function TemplateProvider() {
    *
    * Foreign first, so nothing that resolves today changes: `resolveScopeToParent` takes the first
    * match by name, and core is purely a fallback behind it.
+   *
+   * Module-declared entities are the third source, and were missing for the same reason core was:
+   * they are in neither of the other two. A module that declares a relation and then drills into it
+   * — the Pocket, reading a folder's contents — got "no such relation in the current perspective's
+   * model manifest" on a completely correct query. Behind core, since a module may not shadow the
+   * host's vocabulary.
    */
-  const modelsForBindings = () => [...datasetStore.currentDatasetEntities(), ...coreEntries];
+  const moduleEntries = createMemo(() => {
+    const schemas = sessionStore.backendPorts()?.schemas;
+    return schemas ? moduleRegistry.entityEntries(schemas) : [];
+  });
+  const modelsForBindings = () => [...datasetStore.currentDatasetEntities(), ...coreEntries, ...moduleEntries()];
 
   const boundBindings = createMemo(() =>
     sessionStore.backendPorts()?.dataBindings({

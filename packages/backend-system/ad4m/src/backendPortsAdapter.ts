@@ -34,7 +34,7 @@ import { createAd4mInterpretationPort } from './interpretationAdapter';
 import { readInterpretationHints, resetInterpretationHints, writeInterpretationHints } from './interpretationHints';
 import { createAd4mLanguageModelPort } from './languageModelPort';
 import { createAd4mAgentSession, createAd4mDatasetLifecycle } from './lifecycleAdapter';
-import { compileManifest } from './manifestCompiler';
+import { compileManifest, manifestToEntries } from './manifestCompiler';
 import { buildEntityClasses, buildEntityManifest, getForeignShacl } from './perspectiveHelpers';
 import { type Ad4mRuntimeOptions, createAd4mRuntimeAdmin } from './runtimeAdminAdapter';
 import {
@@ -77,6 +77,10 @@ export function createAd4mSchemaPort(backendClient: unknown): SchemaPort {
       for (const [name, cls] of Object.entries(classes)) registerEntity(name, cls as EntityClass);
       return classes;
     },
+
+    // The read half of `declare`, through the very function `compileManifest` builds its classes
+    // from — so the predicate a `scope` resolves against and the one the class writes cannot differ.
+    entries: (manifest: EntityManifest, opts) => manifestToEntries(manifest, opts as never),
 
     declareInDataset(dataset, manifest: EntityManifest, opts) {
       const classes = compileManifest(manifest, {

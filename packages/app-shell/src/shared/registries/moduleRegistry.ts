@@ -23,7 +23,7 @@
  * registers. That is exactly what makes `{ $: 'modules.notes' }` as a condition the
  * supported way for a template to depend on an optional module.
  */
-import { type SchemaPort, validateManifest } from '@we/backend-shared';
+import { type EntityManifestEntry, type SchemaPort, validateManifest } from '@we/backend-shared';
 import { type EntityClass, getEntityPredicates, registerEntity, unregisterEntity } from '@we/entities';
 import {
   checkModuleCompatibility,
@@ -442,6 +442,31 @@ export const moduleRegistry = {
    */
   agentSchemas(schemas: SchemaPort): unknown[] {
     return declaredEntities(schemas, 'agent');
+  },
+
+  /**
+   * Every module-declared entity as a neutral manifest entry, whatever scope it installs into.
+   *
+   * What a `scope` drill-down is resolved against: an adapter looks the anchor up by name and reads
+   * the `via` relation's predicate. Module entities were in neither list the host merged — not
+   * foreign schemas, not core vocabulary — so a module declaring a relation and then drilling into
+   * it failed with "no such relation in the current perspective's model manifest", which is a true
+   * statement about a list it was never added to. The Pocket is the first module to have its own
+   * relation to drill through; every one before it anchored on core vocabulary and resolved by luck.
+   *
+   * Both scopes, deliberately. Which dataset an entity is *installed* into says nothing about where
+   * a query naming it runs from — the Pocket's panel reads the root dataset while a space is open,
+   * so filtering this list by scope would put its relations out of reach exactly when they are used.
+   */
+  entityEntries(schemas: SchemaPort): EntityManifestEntry[] {
+    return moduleRegistry.all().flatMap(({ definition }) =>
+      definition.entities
+        ? schemas.entries(definition.entities.manifest, {
+            moduleId: definition.id,
+            predicates: definition.entities.predicates,
+          })
+        : [],
+    );
   },
 
   /**

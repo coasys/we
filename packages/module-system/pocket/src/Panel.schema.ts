@@ -156,6 +156,49 @@ const emptyPocket: SchemaNode = {
   ],
 };
 
+/**
+ * What is in the folder being looked at: its sub-folders, then what was gathered into it.
+ *
+ * Split out so the whole subtree — both subscriptions included — can be gated on there being a
+ * folder at all. `$queries` on a node run whether or not anything reads them, so leaving these
+ * mounted and merely hiding the rows would still fire two drill-downs with no anchor.
+ */
+const folderContents: SchemaNode = {
+  type: 'Column',
+  props: { gap: '200', width: '100%' },
+  $queries: {
+    folders: {
+      entity: 'PocketFolder',
+      scope: { anchor: 'PocketFolder', via: 'folders', anchorId: currentFolder },
+      dataset: ROOT,
+    },
+    items: {
+      entity: 'PocketItem',
+      scope: { anchor: 'PocketFolder', via: 'items', anchorId: currentFolder },
+      order: { gatheredAt: 'desc' },
+      dataset: ROOT,
+    },
+  },
+  children: [
+    { type: '$each', props: { items: { $: 'local.folders' }, as: 'folder' }, children: [folderRow] },
+    { type: '$each', props: { items: { $: 'local.items' }, as: 'item' }, children: [itemRow] },
+    /*
+      Only once both subscriptions have answered. An empty `$each` renders nothing at all, so
+      without this the first frame of every open would claim the Pocket is empty — which for the one
+      screen whose whole job is to hold what you kept is the worst possible thing to say.
+    */
+    {
+      type: '$if',
+      props: {
+        condition: {
+          $: 'local.foldersLoaded && local.itemsLoaded && !count(local.folders) && !count(local.items)',
+        },
+        then: emptyPocket,
+      },
+    },
+  ],
+};
+
 const header: SchemaNode = {
   type: 'Row',
   props: { ay: 'center', gap: '200', width: '100%' },
@@ -286,49 +329,27 @@ const panel: SchemaNode = {
             {
               type: 'we-scroll-area',
               children: [
+                /*
+                  Nothing is listed until there is a folder to list the contents of.
+
+                  The root folder is made by the first gather, so before that there is no anchor —
+                  and a drill-down whose `anchorId` is undefined is not an empty query, it is a
+                  malformed one. The notes panel gates its own scoped query the same way and for the
+                  same reason; this is that lesson, one module later.
+
+                  `rootFolderLoaded` rather than the folder itself, so the first frame of every open
+                  says nothing rather than claiming the Pocket is empty.
+                */
                 {
-                  type: 'Column',
-                  props: { gap: '200', width: '100%' },
-                  $queries: {
-                    folders: {
-                      entity: 'PocketFolder',
-                      scope: { anchor: 'PocketFolder', via: 'folders', anchorId: currentFolder },
-                      dataset: ROOT,
-                    },
-                    items: {
-                      entity: 'PocketItem',
-                      scope: { anchor: 'PocketFolder', via: 'items', anchorId: currentFolder },
-                      order: { gatheredAt: 'desc' },
-                      dataset: ROOT,
+                  type: '$if',
+                  props: {
+                    condition: currentFolder,
+                    then: folderContents,
+                    else: {
+                      type: '$if',
+                      props: { condition: { $: 'local.rootFolderLoaded' }, then: emptyPocket },
                     },
                   },
-                  children: [
-                    {
-                      type: '$each',
-                      props: { items: { $: 'local.folders' }, as: 'folder' },
-                      children: [folderRow],
-                    },
-                    {
-                      type: '$each',
-                      props: { items: { $: 'local.items' }, as: 'item' },
-                      children: [itemRow],
-                    },
-                    /*
-                      Only once both subscriptions have answered. An empty `$each` renders nothing at
-                      all, so without this the first frame of every open would claim the Pocket is
-                      empty — which for the one screen whose whole job is to hold what you kept is
-                      the worst possible thing to say.
-                    */
-                    {
-                      type: '$if',
-                      props: {
-                        condition: {
-                          $: 'local.foldersLoaded && local.itemsLoaded && !count(local.folders) && !count(local.items)',
-                        },
-                        then: emptyPocket,
-                      },
-                    },
-                  ],
                 },
               ],
             },
