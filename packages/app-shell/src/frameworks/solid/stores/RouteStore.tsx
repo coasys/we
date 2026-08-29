@@ -27,6 +27,18 @@ export interface RouteStore {
    * changes that deserve a Back entry (a content-type switch).
    */
   setParam: (name: string, value: string | null, options?: { push?: boolean }) => void;
+  /**
+   * Go back one entry, the browser's own way.
+   *
+   * `history.back()` rather than navigating to a computed parent, because "where did I come from"
+   * is not derivable from a path: a record page is reached from a list, from a search, from a link
+   * somebody sent, and only one of those has a parent worth guessing. A guessed destination is worse
+   * than none — it silently sends people somewhere they have never been.
+   *
+   * Does nothing at the start of the session's history, which is the honest outcome: there is
+   * nowhere back to go, and inventing a destination would be the same guess.
+   */
+  back: () => void;
 }
 
 const RouteContext = createContext<RouteStore>();
@@ -117,6 +129,7 @@ export function RouteStoreProvider(props: ParentProps) {
     // Actions
     navigate,
     setParam,
+    back: () => window.history.back(),
   };
 
   return <RouteContext.Provider value={store}>{props.children}</RouteContext.Provider>;

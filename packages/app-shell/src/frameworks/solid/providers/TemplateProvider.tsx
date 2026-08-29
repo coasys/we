@@ -36,6 +36,7 @@ import { expandViewRoutes, hasViewsMarker } from '@we/schema-shared';
 import type { VisualEditorContextValue } from '@we/schema-solid';
 import { RenderSchema, VisualEditorProvider } from '@we/schema-solid';
 import { CHROME_RAIL_WIDTH } from '@we/template-shell';
+import { recordPage } from '@we/template-views';
 import { createEffect, createMemo, createSignal, onCleanup, onMount, Show, untrack } from 'solid-js';
 
 import { createCollabSession } from '../collab/collabSession';
@@ -396,6 +397,10 @@ export default function TemplateProvider() {
     return expandViewRoutes(routes, spaceStore.routableViews(), {
       activeIds: 'spaceStore.enabledViewIds',
       notInSpace: noSectionsNode,
+      // A page for one record, wherever this shell puts its sections — see `recordPage`. Injected
+      // by the host rather than declared by each template because every space wants it and no
+      // template should have to remember to include it.
+      extraRoutes: [{ ...recordPage, path: '/record/:entity/:recordId' } as (typeof routes)[number]],
     });
   });
 

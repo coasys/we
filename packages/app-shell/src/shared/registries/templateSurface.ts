@@ -775,6 +775,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     params: state('view-state'),
     navigate: action('navigation'),
     setParam: action('view-state'),
+    back: action('navigation'),
 
     setNavigateFunction: WIRING,
     setCurrentPath: WIRING,

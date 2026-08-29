@@ -2290,7 +2290,7 @@ export const contextData: ContextData = {
     {
       name: 'routeStore',
       state: { currentPath: { type: 'string' }, segments: { type: 'array' }, params: { type: 'object' } },
-      actions: ['navigate', 'setParam'],
+      actions: ['navigate', 'setParam', 'back'],
     },
     {
       name: 'runtimeStore',

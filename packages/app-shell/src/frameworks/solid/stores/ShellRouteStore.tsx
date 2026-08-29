@@ -46,9 +46,11 @@ export function ShellRouteStoreProvider(props: ParentProps) {
   const segments = createMemo(() => currentPath().split('/').filter(Boolean));
   const params = createMemo(() => Object.fromEntries(new URLSearchParams(search())));
 
-  function navigate(to: string, options?: Record<string, unknown>) {
+  // `number` as well as a path: the router takes a delta for history movement, which is what `back`
+  // needs and what the store's public `navigate` deliberately does not offer.
+  function navigate(to: string | number, options?: Record<string, unknown>) {
     const nav = navigateFunction();
-    if (nav) nav(to, options);
+    if (nav) nav(to as string, options);
     else console.warn('ShellRouteStore: navigate called before router was ready');
   }
 
@@ -78,6 +80,15 @@ export function ShellRouteStoreProvider(props: ParentProps) {
     setSearch,
     navigate,
     setParam,
+    /*
+      The overlay's own history, not the browser's.
+
+      `history.back()` would take the *page behind the overlay* back a step, which is the wrong
+      stack entirely — an overlay is a memory router, so going back inside it means navigating this
+      router. `navigate(-1)` is how a memory router expresses that, and at the start of its history
+      it does nothing, which matches what the browser does.
+    */
+    back: () => navigate(-1),
   };
 
   return <ShellRouteContext.Provider value={store}>{props.children}</ShellRouteContext.Provider>;

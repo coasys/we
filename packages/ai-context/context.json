@@ -5894,7 +5894,7 @@
           "type": "object"
         }
       },
-      "actions": ["navigate", "setParam"]
+      "actions": ["navigate", "setParam", "back"]
     },
     {
       "name": "runtimeStore",

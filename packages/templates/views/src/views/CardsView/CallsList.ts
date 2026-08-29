@@ -11,6 +11,8 @@ import {
   peopleRow,
 } from '@we/template-kit';
 
+import { recordLink } from '../RecordPage';
+
 /**
  * Recorded calls in this space.
  *
@@ -235,8 +237,9 @@ export const callsList: SchemaNode = {
                                   props: { fontWeight: 'semibold' },
                                   // The name someone gave it, falling back to the noun. Tested on the field
                                   // rather than shown blank, because an untitled call is the ordinary case:
-                                  // the record is created by the first utterance, and nothing on that path
-                                  // knows what the call was about.
+                                  // the record is created when the call starts, and the only agent present
+                                  // then is the one starting it — so nothing on that path knows what the
+                                  // call turned out to be about.
                                   children: [{ $: "call.title ? call.title : 'Call'" }],
                                 },
                                 /*
@@ -273,14 +276,23 @@ export const callsList: SchemaNode = {
                               ],
                             },
                             {
-                              type: 'we-text',
-                              props: { fontSize: '200', color: 'text' },
-                              // Relative, because what matters about a call is how long ago it was. The
-                              // end is not stored — it is the last utterance's timestamp, derived rather
-                              // than written so nobody has to remember to close the record and it cannot
-                              // go wrong when the agent who started it is the first to leave.
+                              type: 'Row',
+                              props: { gap: '200', ay: 'center' },
                               children: [
-                                { type: 'we-timestamp', props: { value: { $: 'call.createdAt' }, relative: true } },
+                                {
+                                  type: 'we-text',
+                                  props: { fontSize: '200', color: 'text' },
+                                  // Relative, because what matters about a call is how long ago it was. The
+                                  // end is not stored — it is the last utterance's timestamp, derived rather
+                                  // than written so nobody has to remember to close the record and it cannot
+                                  // go wrong when the agent who started it is the first to leave.
+                                  children: [
+                                    { type: 'we-timestamp', props: { value: { $: 'call.createdAt' }, relative: true } },
+                                  ],
+                                },
+                                // The way to this call's own page. A real link, so middle-click, "open in
+                                // new tab" and "copy link address" all do what they say — see `recordLink`.
+                                recordLink({ $: "'CollectionBlock'" }, { $: 'call.id' }),
                               ],
                             },
                           ],

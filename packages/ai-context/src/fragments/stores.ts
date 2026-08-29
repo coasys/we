@@ -224,7 +224,7 @@ export const storeEntries: StoreEntry[] = [
       segments: { type: 'array' },
       params: { type: 'object' },
     },
-    actions: ['navigate', 'setParam'],
+    actions: ['navigate', 'setParam', 'back'],
   },
   {
     name: 'themeStore',
@@ -757,6 +757,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
           "(to: string, options?): navigates to a route (a bare path restores that route's remembered query string)",
         setParam:
           '(name: string, value: string | null, options?: { push?: boolean }): writes one query parameter (null removes); replaceState by default, push: true for changes that deserve a Back entry. Prefer $localState syncParam over calling this directly',
+        back: "(): goes back one entry, the browser's own way. Use it on a page reached from several places — a record page is opened from a list, from a search and from a link somebody sent, and only one of those has a parent worth guessing. Does nothing at the start of the session's history",
       },
     },
     themeStore: {
