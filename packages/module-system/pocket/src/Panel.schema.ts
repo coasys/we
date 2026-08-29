@@ -161,11 +161,15 @@ const itemRow: SchemaNode = {
  * gives up against a tree navigator: filing something two levels down without opening anything.
  * Nested inside the panel's own zone, and the innermost zone under the pointer wins — so a drop on
  * a folder goes into the folder and a drop anywhere else goes into the folder being looked at.
+ *
+ * `noArm`, like every zone inside the panel: see the panel itself for why only one of them speaks
+ * when a drag begins.
  */
 const folderRow: SchemaNode = {
   type: 'we-drop-zone',
   props: {
     width: '100%',
+    noArm: true,
     onDropped: { $action: 'modules.pocket.gatherInto', args: [{ $: 'folder.id' }, { $: 'event.detail' }] },
   },
   children: [
@@ -235,6 +239,7 @@ const itemTile: SchemaNode = {
 const folderTile: SchemaNode = {
   type: 'we-drop-zone',
   props: {
+    noArm: true,
     onDropped: { $action: 'modules.pocket.gatherInto', args: [{ $: 'folder.id' }, { $: 'event.detail' }] },
   },
   children: [
@@ -380,6 +385,7 @@ const breadcrumb: SchemaNode = {
             {
               type: 'we-drop-zone',
               props: {
+                noArm: true,
                 onDropped: {
                   $action: 'modules.pocket.gatherInto',
                   args: [{ $: 'crumb.id' }, { $: 'event.detail' }],
@@ -538,6 +544,19 @@ const newFolderForm: SchemaNode = {
  * The whole thing is one drop zone, listing nothing in `accepts`: a Pocket that refused a kind of
  * thing would have to be taught every new one, and "keep this" is not a claim about what a thing
  * *is*. A composer says what it takes; a bag does not.
+ *
+ * ## One zone speaks when a drag begins, and it is this one
+ *
+ * Every zone inside — each crumb, each folder — carries `noArm`, so picking something up outlines
+ * the panel and nothing else. The first version armed all of them, and a Pocket three folders deep
+ * lit up nine nested rectangles the moment a card was touched: it read as an error state, and the
+ * one thing it needed to say — *this panel is where things go* — was the hardest to pick out.
+ *
+ * The rows are not undiscoverable for it. Arming answers "where could this go", which for a
+ * container is worth saying and for a row inside a container the reader is already looking at is
+ * noise; hovering one still lights it, which is the answer to the question actually being asked by
+ * then — "is it going *there*". Same division the dock makes: the eight snap targets appear over
+ * empty screen where nothing else would suggest them, and the one under the pointer fills in.
  */
 const panel: SchemaNode = {
   type: '$if',

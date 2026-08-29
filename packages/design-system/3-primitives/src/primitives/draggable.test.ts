@@ -22,6 +22,7 @@ interface DraggableEl extends HTMLElement {
 interface DropZoneEl extends HTMLElement {
   accepts: string;
   disabled: boolean;
+  noArm: boolean;
   updateComplete: Promise<unknown>;
 }
 
@@ -215,5 +216,89 @@ describe('the keyboard path', () => {
     key(card, ' ');
     // The trailing Space picks up again rather than dropping the abandoned hold.
     expect(dropped).toHaveLength(0);
+  });
+});
+
+/**
+ * Zones inside zones — the ordinary case, not an edge one.
+ *
+ * A folder inside the Pocket's panel, a card inside a board. The reported failure: dropping onto a
+ * folder wrote the item into the folder *and* into the folder being looked at, because `dropped`
+ * bubbled from the inner zone to the outer one, whose handler is an ordinary listener on its own
+ * element. One drop, two records, in two places.
+ */
+describe('a zone inside a zone', () => {
+  /** An outer zone with an inner one occupying its top-left quarter. */
+  async function nested() {
+    const outer = document.createElement('we-drop-zone') as DropZoneEl;
+    const inner = document.createElement('we-drop-zone') as DropZoneEl;
+    outer.appendChild(inner);
+    document.body.appendChild(outer);
+    await outer.updateComplete;
+    await inner.updateComplete;
+    stubRect(outer, { top: 0, bottom: 200, left: 0, right: 200 });
+    stubRect(inner, { top: 0, bottom: 100, left: 0, right: 100 });
+
+    const outerDrops: CustomEvent[] = [];
+    const innerDrops: CustomEvent[] = [];
+    outer.addEventListener('dropped', (e) => outerDrops.push(e as CustomEvent));
+    inner.addEventListener('dropped', (e) => innerDrops.push(e as CustomEvent));
+    return { outer, inner, outerDrops, innerDrops };
+  }
+
+  it('lands in the innermost one only', async () => {
+    const { el, card } = await makeSource();
+    const { outerDrops, innerDrops } = await nested();
+
+    drag(el, card, { x: 50, y: 50 });
+
+    expect(innerDrops).toHaveLength(1);
+    // The bug. The session picks one zone; an ancestor hearing about it undoes that decision.
+    expect(outerDrops).toHaveLength(0);
+  });
+
+  it('lands in the outer one when the pointer is outside the inner', async () => {
+    const { el, card } = await makeSource();
+    const { outerDrops, innerDrops } = await nested();
+
+    drag(el, card, { x: 150, y: 150 });
+
+    expect(outerDrops).toHaveLength(1);
+    expect(innerDrops).toHaveLength(0);
+  });
+
+  it('marks only the innermost as the target, so the feedback matches where it will land', async () => {
+    const { el, card } = await makeSource();
+    const { outer, inner } = await nested();
+    const base = { bubbles: true, composed: true, button: 0, pointerId: 1, pointerType: 'mouse' };
+
+    card.dispatchEvent(new PointerEvent('pointerdown', { ...base, clientX: 500, clientY: 500 }));
+    el.dispatchEvent(new PointerEvent('pointermove', { ...base, clientX: 50, clientY: 50 }));
+
+    expect(inner.hasAttribute('data-we-drop-target')).toBe(true);
+    expect(outer.hasAttribute('data-we-drop-target')).toBe(false);
+
+    el.dispatchEvent(new PointerEvent('pointerup', { ...base, clientX: 50, clientY: 50 }));
+  });
+});
+
+describe('staying quiet on pickup', () => {
+  it('never arms a zone that asked not to', async () => {
+    // A panel three folders deep armed nine nested rectangles the moment a card was touched. The
+    // container says "things go here"; the rows inside it wait to be hovered.
+    const { el, card } = await makeSource();
+    const { el: zone } = await makeZone();
+    zone.noArm = true;
+    await zone.updateComplete;
+    const base = { bubbles: true, composed: true, button: 0, pointerId: 1, pointerType: 'mouse' };
+
+    card.dispatchEvent(new PointerEvent('pointerdown', { ...base, clientX: 500, clientY: 500 }));
+    el.dispatchEvent(new PointerEvent('pointermove', { ...base, clientX: 540, clientY: 540 }));
+    expect(zone.hasAttribute('data-we-drop-armed')).toBe(false);
+
+    // …and still takes the drop, and still says so while the pointer is over it.
+    el.dispatchEvent(new PointerEvent('pointermove', { ...base, clientX: 100, clientY: 100 }));
+    expect(zone.hasAttribute('data-we-drop-target')).toBe(true);
+    el.dispatchEvent(new PointerEvent('pointerup', { ...base, clientX: 100, clientY: 100 }));
   });
 });

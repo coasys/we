@@ -12,25 +12,58 @@ const CSS_STYLES = css`
   }
 
   /*
-    The outline says *which* zone a release would land in. Subtle on purpose, and the same statement
-    we-sortable makes with the same attribute name — on a page with both, they must not read as two
-    different things.
+    The feedback is painted INSIDE the zone, on a pseudo-element inset to its own bounds.
+
+    It was an outline with outline-offset: 2px on [part='base'], which draws 2px *outside* the box —
+    and every zone that matters is inside something that clips: a docked panel sets overflow hidden,
+    a breadcrumb strip sets overflow-x auto, a list sits in a scroll area. So the ring was there and
+    shaved off on exactly the sides that mattered, which reads as no feedback at all rather than as
+    clipped feedback. Anything drawn within the host's own bounds cannot be clipped by an ancestor
+    without the content being clipped too.
+
+    On :host rather than [part='base'] because the host is the box the session measured for
+    hit-testing. A ring around anything else would be a promise about a different rectangle.
   */
-  :host([data-we-drop-target]) [part='base'] {
-    outline: 2px solid var(--we-role-accent, #93c5fd);
-    outline-offset: 2px;
-    border-radius: var(--we-radius-400, 8px);
+  :host::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: var(--we-drop-zone-radius, var(--we-radius-400, 8px));
+    pointer-events: none;
+    opacity: 0;
+    transition:
+      opacity var(--we-animation-transition-200, 150ms) ease,
+      background-color var(--we-animation-transition-200, 150ms) ease;
   }
 
   /*
-    While *anything* is being dragged that this zone would take. Quieter than the target state: it
-    answers "where could this go", which is the question somebody holding a card is actually asking,
-    and without it a zone that is off-screen or collapsed is undiscoverable.
+    Armed: a drag this zone would take is running somewhere. Deliberately faint, and deliberately
+    rare — see the noArm property. It answers "this panel is a place things go", which is worth
+    saying once about a container and not at all about each of the rows inside it.
   */
-  :host([data-we-drop-armed]) [part='base'] {
-    outline: 2px dashed var(--we-role-border-strong, #cbd5e1);
-    outline-offset: 2px;
-    border-radius: var(--we-radius-400, 8px);
+  :host([data-we-drop-armed])::after {
+    opacity: 1;
+    box-shadow: inset 0 0 0 1px var(--we-role-accent, #93c5fd);
+  }
+
+  /*
+    Target: releasing now lands here. A tinted fill as well as a ring, because at this point the
+    question is no longer "where could this go" but "is it going *there*" — and a ring alone is hard
+    to attribute when zones are nested three deep, as they are in a folder inside a panel.
+
+    The same statement the dock's snap targets make when a panel is dragged over one (an accent-muted
+    fill behind an accent border), so the two gestures do not teach different vocabularies.
+  */
+  :host([data-we-drop-target])::after {
+    opacity: 1;
+    box-shadow: inset 0 0 0 2px var(--we-role-accent, #93c5fd);
+    background: var(--we-role-accent-muted, rgba(147, 197, 253, 0.18));
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :host::after {
+      transition: none;
+    }
   }
 `;
 
@@ -60,8 +93,17 @@ const CSS_STYLES = css`
  * "anything", which is right for a general-purpose tray and wrong for a composer — say what you
  * take.
  *
- * @fires dropped - detail: the `DragPayload`, on a completed drop
- * @fires dropenter / dropleave - so a zone can open, highlight, or scroll itself
+ * ## Zones nest, and the innermost one wins
+ *
+ * A folder inside a panel, a card inside a board. Hit-testing picks the innermost accepting zone
+ * and fires exactly one drop — and these events **do not bubble**, so that decision survives the
+ * DOM. See `_zone` for what happened when they did.
+ *
+ * Give every nested zone `noArm`, so picking something up speaks once about the container rather
+ * than once about every row inside it.
+ *
+ * @fires dropped - detail: the `DragPayload`, on a completed drop. Does not bubble
+ * @fires dropenter / dropleave - so a zone can open, highlight, or scroll itself. Do not bubble
  */
 @customElement('we-drop-zone')
 export default class DropZone extends LayoutElement {
@@ -74,9 +116,14 @@ export default class DropZone extends LayoutElement {
   @property({ type: Boolean, reflect: true }) disabled = false;
 
   /**
-   * Whether to show the quiet "you could drop here" outline while any acceptable drag is running.
+   * Suppress the quiet "you could drop here" ring shown while any acceptable drag is running.
    *
-   * On by default: a target nobody can see is a target nobody uses.
+   * Arming is on by default, because a target nobody can see is a target nobody uses. **Set this on
+   * every zone nested inside another one.** Arming answers "where could this go", and that is a
+   * question about a *container*: a Pocket three folders deep armed nine nested rectangles the
+   * moment a card was picked up, which read as an error state and buried the one thing worth
+   * saying. A zone with `noArm` still highlights when the pointer is actually over it, which is the
+   * different — and by then more useful — question of whether it is going *there*.
    */
   @property({ type: Boolean }) noArm = false;
 
@@ -98,14 +145,33 @@ export default class DropZone extends LayoutElement {
     this.removeAttribute('data-we-drop-armed');
   }
 
+  /**
+   * These events do **not** bubble, and that is the whole point.
+   *
+   * They used to, and a drop into a folder inside the Pocket then wrote the item twice — once into
+   * the folder, and once into the folder being looked at, because the inner zone's `dropped` rose
+   * through the DOM to the panel's own zone, whose handler is an ordinary listener on its element.
+   * Two records from one drop, in two places, with nothing to say which was meant.
+   *
+   * The session has already decided: hit-testing picks the innermost accepting zone and fires
+   * exactly one `onDrop`. The event is *addressed* to that zone, so an ancestor receiving it is not
+   * a feature that happens to be inconvenient here — it is the session's decision being undone by
+   * DOM mechanics. Nesting zones is the ordinary case (a folder in a panel, a card in a board), so
+   * this had to be right in the primitive rather than worked around at each call site.
+   *
+   * `composed` still matters: the listener sits on the host, and a consumer inside another
+   * component's shadow root must be able to hear its own zone.
+   */
   private _zone(): DragZone {
+    const emit = (name: string, detail?: unknown) =>
+      this.dispatchEvent(new CustomEvent(name, { detail, bubbles: false, composed: true }));
+
     return {
       el: this,
       accepts: (payload) => this._accepts(payload),
-      onEnter: () => this.dispatchEvent(new CustomEvent('dropenter', { bubbles: true, composed: true })),
-      onLeave: () => this.dispatchEvent(new CustomEvent('dropleave', { bubbles: true, composed: true })),
-      onDrop: ({ payload }) =>
-        this.dispatchEvent(new CustomEvent('dropped', { detail: payload, bubbles: true, composed: true })),
+      onEnter: () => emit('dropenter'),
+      onLeave: () => emit('dropleave'),
+      onDrop: ({ payload }) => emit('dropped', payload),
     };
   }
 

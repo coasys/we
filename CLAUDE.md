@@ -1051,6 +1051,15 @@ A comma-separated string rather than an array because that is what an HTML attri
 because a schema writing `"accepts": "CollectionBlock,Space"` needs no expression. Empty means
 "anything", which is right for a general-purpose tray and wrong for a composer — say what you
 take.
+
+## Zones nest, and the innermost one wins
+
+A folder inside a panel, a card inside a board. Hit-testing picks the innermost accepting zone
+and fires exactly one drop — and these events **do not bubble**, so that decision survives the
+DOM. See `_zone` for what happened when they did.
+
+Give every nested zone `noArm`, so picking something up speaks once about the container rather
+than once about every row inside it.
   Props: accepts: string = '', disabled: boolean = false, noArm: boolean = false
 - we-file-upload (DesignSystemElement)
   Props: accept: string = '', multiple: boolean = false, disabled: boolean = false, name: string = ''
