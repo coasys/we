@@ -960,6 +960,31 @@ export function SpaceStoreProvider(props: ParentProps) {
   /** `installedModules` as a set — the shape both the list and the intersection want. */
   const installedSet = createMemo(() => new Set(installedModules()));
 
+  /*
+    Row identity, held stable while a row's *content* is unchanged.
+
+    `<For>` — which is what `$each` renders through — keys by reference, so handing it a fresh
+    object for every row on every recompute destroys and rebuilds the whole subtree. That is not a
+    render-cost point: everything below it loses its `$localState`, so toggling any one setting in
+    the space-settings panel reset the open tab and threw away a half-typed name and description.
+    The query path solved this long ago with `reconcile({ key: 'id' })`; a store-backed list has no
+    such protection, so it is done here.
+
+    `location` is compared by reference because `updateSpaceInCache` clones the space and carries it
+    through untouched; everything else is plain data and compares as JSON. A row whose content
+    genuinely changed still gets a new object, and still remounts — which is correct, and why the
+    settings panel also holds its open tab *above* the `$each`.
+  */
+  const rowCache = new Map<string, { signature: string; location: unknown; row: SpaceListEntry }>();
+  const stableRow = (row: SpaceListEntry): SpaceListEntry => {
+    const { location, ...rest } = row;
+    const signature = JSON.stringify(rest);
+    const cached = rowCache.get(row.uuid);
+    if (cached && cached.signature === signature && cached.location === location) return cached.row;
+    rowCache.set(row.uuid, { signature, location, row });
+    return row;
+  };
+
   /**
    * The spaces list: one row per joined dataset the agent can act on.
    *
@@ -970,7 +995,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   const spaceList = createMemo<SpaceListEntry[]>(() =>
     datasetStore.orderedDatasets().map((ds) => {
       const space = mySpaces().find((s) => isSpaceSelf(s, ds));
-      return {
+      return stableRow({
         uuid: ds.id,
         // A foreign dataset has no Space record to name it, so the dataset's own name stands in.
         name: space?.name || ds.name,
@@ -992,7 +1017,7 @@ export function SpaceStoreProvider(props: ParentProps) {
         themeOverride: themeOverrideFor(ds.id),
         shareLink: shareLinkFor(ds),
         guestLink: guestLinkFor(ds),
-      };
+      });
     }),
   );
 

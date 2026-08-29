@@ -1045,50 +1045,66 @@ export function spaceSettingsBody(uuid: SchemaProp, chrome: SchemaNode[], fill?:
   // minimum is its content, so without this the column grows past the panel instead of scrolling.
   const fills = fill ? { flex: '1', minHeight: '0' } : {};
   return {
-    type: '$each',
-    props: {
-      items: expr`filter(spaceStore.spaceList, { uuid: ${uuid} })`,
-      as: 'space',
-    },
+    /*
+      The wrapper exists for one reason: the open tab must outlive the row.
+
+      `spaceStore.spaceList` builds a fresh object per row on every recompute, and `$each` renders
+      through a reference-keyed `<For>` — so *any* write to the space rebuilds this whole subtree.
+      With the tab declared inside the loop, flicking a view or an extraction target destroyed the
+      `$localState` holding it and re-created it at `'about'`: the settings panel jumped back to the
+      first tab on every toggle.
+
+      Above the loop it survives, and it belongs there anyway — which tab is open is a fact about
+      the panel, not about the row the filter happens to return.
+    */
+    type: 'Column',
+    props: { width: '100%', ...fills },
+    $localState: { tab: { type: 'string', initial: 'about' } },
     children: [
       {
-        type: 'Column',
-        props: { gap: '400', width: '100%', ...fills },
-        $localState: { tab: { type: 'string', initial: 'about' } },
+        type: '$each',
+        props: {
+          items: expr`filter(spaceStore.spaceList, { uuid: ${uuid} })`,
+          as: 'space',
+        },
         children: [
-          ...chrome,
           {
-            type: '$if',
-            props: {
-              condition: { $: 'space.isWeSpace' },
-              then: {
-                type: 'Column',
-                props: { gap: '400', width: '100%', ...fills },
-                children: [
-                  {
-                    type: 'we-tabs',
-                    props: {
-                      selectedKey: { $: 'local.tab' },
-                      gap: '100',
-                      width: '100%',
-                      // Never squeezed by the scroll region beside it: the strip is how you reach
-                      // the other tabs, so it is the last thing that should give up height.
-                      flex: '0 0 auto',
-                      // Dragged narrow, four tabs do not fit — and a panel clips rather than
-                      // scrolling, so without these the last tab is simply unreachable.
-                      // `minWidth` releases the flex item's automatic minimum size, which is
-                      // otherwise the tabs' own content width — so the strip would refuse to
-                      // narrow and overflow the panel instead of scrolling inside it.
-                      minWidth: '0',
-                      overflowX: 'auto',
-                    },
-                    children: TABS.map((tab) => ({
-                      type: 'we-tab',
-                      props: { key: tab.key, label: tab.label, onClick: { $setLocal: 'tab', value: tab.key } },
-                    })),
-                  },
+            type: 'Column',
+            props: { gap: '400', width: '100%', ...fills },
+            children: [
+              ...chrome,
+              {
+                type: '$if',
+                props: {
+                  condition: { $: 'space.isWeSpace' },
+                  then: {
+                    type: 'Column',
+                    props: { gap: '400', width: '100%', ...fills },
+                    children: [
+                      {
+                        type: 'we-tabs',
+                        props: {
+                          selectedKey: { $: 'local.tab' },
+                          gap: '100',
+                          width: '100%',
+                          // Never squeezed by the scroll region beside it: the strip is how you reach
+                          // the other tabs, so it is the last thing that should give up height.
+                          flex: '0 0 auto',
+                          // Dragged narrow, four tabs do not fit — and a panel clips rather than
+                          // scrolling, so without these the last tab is simply unreachable.
+                          // `minWidth` releases the flex item's automatic minimum size, which is
+                          // otherwise the tabs' own content width — so the strip would refuse to
+                          // narrow and overflow the panel instead of scrolling inside it.
+                          minWidth: '0',
+                          overflowX: 'auto',
+                        },
+                        children: TABS.map((tab) => ({
+                          type: 'we-tab',
+                          props: { key: tab.key, label: tab.label, onClick: { $setLocal: 'tab', value: tab.key } },
+                        })),
+                      },
 
-                  /*
+                      /*
                     About — the space's own identity, and the link that gets someone else into it.
 
                     Community-owned throughout, which is why the note says so once rather than each
@@ -1096,17 +1112,17 @@ export function spaceSettingsBody(uuid: SchemaProp, chrome: SchemaNode[], fill?:
                     administer, so a member who cannot sees the invite link alone: correct, if
                     sparse, and the note explains the sparseness.
                   */
-                  tabPanel(
-                    'about',
-                    [
-                      audienceNote('Everyone in this space sees these.', { $: 'space.canAdminister' }),
-                      communitySection,
-                      shareSection,
-                    ],
-                    fill,
-                  ),
+                      tabPanel(
+                        'about',
+                        [
+                          audienceNote('Everyone in this space sees these.', { $: 'space.canAdminister' }),
+                          communitySection,
+                          shareSection,
+                        ],
+                        fill,
+                      ),
 
-                  /*
+                      /*
                     Appearance — the two audiences meet here, so the group headings stay.
 
                     The space's defaults are what a member gets on arrival; the overrides below are
@@ -1114,20 +1130,20 @@ export function spaceSettingsBody(uuid: SchemaProp, chrome: SchemaNode[], fill?:
                     answers to "who sees this", one card apart, and the headings are the only thing
                     saying so.
                   */
-                  tabPanel(
-                    'appearance',
-                    [
-                      groupHeading('Everyone in this space', 'What members get when they open this space.', {
-                        $: 'space.canAdminister',
-                      }),
-                      spaceDefaultsSection,
-                      groupHeading('Just for you, here', 'Nobody else is affected by anything in this group.'),
-                      personalAppearanceSection,
-                    ],
-                    fill,
-                  ),
+                      tabPanel(
+                        'appearance',
+                        [
+                          groupHeading('Everyone in this space', 'What members get when they open this space.', {
+                            $: 'space.canAdminister',
+                          }),
+                          spaceDefaultsSection,
+                          groupHeading('Just for you, here', 'Nobody else is affected by anything in this group.'),
+                          personalAppearanceSection,
+                        ],
+                        fill,
+                      ),
 
-                  /*
+                      /*
                     Features — what the space runs, and what you personally see of it.
 
                     The first heading carries both answers at once rather than splitting each row
@@ -1139,41 +1155,43 @@ export function spaceSettingsBody(uuid: SchemaProp, chrome: SchemaNode[], fill?:
                     a community decision with a cost attached, and it would read as a third switch on
                     the module list otherwise.
                   */
-                  tabPanel(
-                    'features',
-                    [
-                      groupHeading('What this space has', 'Two answers per row: yours, and the community’s.'),
-                      spaceSectionsSection,
-                      modulesSection,
-                      groupHeading('Everyone in this space', 'What this space does on its own, for every member.', {
-                        $: 'space.canAdminister',
-                      }),
-                      autoInterpretSection,
-                      extractionTargetsSection,
-                      shareExtractionDetailSection,
-                    ],
-                    fill,
-                  ),
+                      tabPanel(
+                        'features',
+                        [
+                          groupHeading('What this space has', 'Two answers per row: yours, and the community’s.'),
+                          spaceSectionsSection,
+                          modulesSection,
+                          groupHeading('Everyone in this space', 'What this space does on its own, for every member.', {
+                            $: 'space.canAdminister',
+                          }),
+                          autoInterpretSection,
+                          extractionTargetsSection,
+                          shareExtractionDetailSection,
+                        ],
+                        fill,
+                      ),
 
-                  /*
+                      /*
                     Vocabulary — what this community has decided things mean.
 
                     The one tab that can refuse: it reads from the open dataset, so from the spaces
                     list it can only answer for the space you are already in. In the panel that
                     refusal is unreachable, since the panel is always about the open space.
                   */
-                  tabPanel(
-                    'vocabulary',
-                    [
-                      audienceNote('Everyone in this space sees these.', { $: 'space.canAdminister' }),
-                      spaceVocabularySection,
+                      tabPanel(
+                        'vocabulary',
+                        [
+                          audienceNote('Everyone in this space sees these.', { $: 'space.canAdminister' }),
+                          spaceVocabularySection,
+                        ],
+                        fill,
+                      ),
                     ],
-                    fill,
-                  ),
-                ],
+                  },
+                  else: notAWeSpaceNotice,
+                },
               },
-              else: notAWeSpaceNotice,
-            },
+            ],
           },
         ],
       },
