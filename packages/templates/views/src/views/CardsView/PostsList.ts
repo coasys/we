@@ -1,5 +1,13 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { agentByline, cardList, cardShell, composerModal, confirmModal, emptyState } from '@we/template-kit';
+import {
+  agentByline,
+  cardList,
+  cardShell,
+  composerModal,
+  confirmModal,
+  emptyState,
+  recordLink,
+} from '@we/template-kit';
 
 export const postsList: SchemaNode = {
   type: 'Column',
@@ -88,64 +96,74 @@ export const postsList: SchemaNode = {
                   },
                 },
                 {
-                  type: '$if',
-                  props: {
-                    condition: { $: 'post.author == me.did' },
-                    then: {
-                      type: 'Row',
-                      props: { gap: '100' },
-                      children: [
-                        {
-                          type: 'we-button',
-                          props: {
-                            variant: 'ghost',
-                            size: 'sm',
-                            square: true,
-                            // Opening the composer says so to everyone: an `edit` activity on the
-                            // post, which a peer's card shows as "X is editing" (below). The soft
-                            // lock a peer-to-peer store can offer — a refusal it cannot.
-                            onClick: [
-                              { $setLocal: 'editPostOpen', value: true },
-                              {
-                                $action: 'presenceStore.setActivity',
-                                args: [{ type: 'edit', nodeId: { $: 'post.id' } }],
+                  type: 'Row',
+                  props: { gap: '100', ay: 'center' },
+                  children: [
+                    // Outside the authorship gate below: opening a record is reading, and everyone
+                    // who can see the card can already read it. Gating it would hide the only
+                    // address the post has from everyone but its author.
+                    recordLink({ $: "'CollectionBlock'" }, { $: 'post.id' }),
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $: 'post.author == me.did' },
+                        then: {
+                          type: 'Row',
+                          props: { gap: '100' },
+                          children: [
+                            {
+                              type: 'we-button',
+                              props: {
+                                variant: 'ghost',
+                                size: 'sm',
+                                square: true,
+                                // Opening the composer says so to everyone: an `edit` activity on the
+                                // post, which a peer's card shows as "X is editing" (below). The soft
+                                // lock a peer-to-peer store can offer — a refusal it cannot.
+                                onClick: [
+                                  { $setLocal: 'editPostOpen', value: true },
+                                  {
+                                    $action: 'presenceStore.setActivity',
+                                    args: [{ type: 'edit', nodeId: { $: 'post.id' } }],
+                                  },
+                                ],
                               },
-                            ],
-                          },
-                          children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],
+                              children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],
+                            },
+                            // No `$if` here: the fragment mounts only while `editPostOpen` is set,
+                            // which is what resets the composer between edits.
+                            composerModal({
+                              title: 'Edit Post',
+                              openLocal: 'editPostOpen',
+                              editorState: { $: 'post.editorState' },
+                              // `'$arg'` second: `updatePost(postId, json)`.
+                              saveAction: { $action: 'spaceStore.updatePost', args: [{ $: 'post.id' }, { $: 'arg' }] },
+                              saveLabel: 'Save',
+                              onClose: [{ $action: 'presenceStore.clearActivity', args: ['edit', { $: 'post.id' }] }],
+                            }),
+                            {
+                              type: 'we-button',
+                              props: {
+                                variant: 'ghost',
+                                size: 'sm',
+                                square: true,
+                                onClick: { $setLocal: 'confirmDeleteOpen', value: true },
+                              },
+                              children: [{ type: 'we-icon', props: { name: 'trash' } }],
+                            },
+                            confirmModal({
+                              open: { $: 'local.confirmDeleteOpen' },
+                              close: { $setLocal: 'confirmDeleteOpen', value: false },
+                              title: 'Delete post?',
+                              body: 'This will permanently delete the post and everything inside it. This cannot be undone.',
+                              confirmLabel: 'Delete',
+                              confirm: { $action: 'spaceStore.deleteCollection', args: [{ $: 'post.id' }] },
+                            }),
+                          ],
                         },
-                        // No `$if` here: the fragment mounts only while `editPostOpen` is set,
-                        // which is what resets the composer between edits.
-                        composerModal({
-                          title: 'Edit Post',
-                          openLocal: 'editPostOpen',
-                          editorState: { $: 'post.editorState' },
-                          // `'$arg'` second: `updatePost(postId, json)`.
-                          saveAction: { $action: 'spaceStore.updatePost', args: [{ $: 'post.id' }, { $: 'arg' }] },
-                          saveLabel: 'Save',
-                          onClose: [{ $action: 'presenceStore.clearActivity', args: ['edit', { $: 'post.id' }] }],
-                        }),
-                        {
-                          type: 'we-button',
-                          props: {
-                            variant: 'ghost',
-                            size: 'sm',
-                            square: true,
-                            onClick: { $setLocal: 'confirmDeleteOpen', value: true },
-                          },
-                          children: [{ type: 'we-icon', props: { name: 'trash' } }],
-                        },
-                        confirmModal({
-                          open: { $: 'local.confirmDeleteOpen' },
-                          close: { $setLocal: 'confirmDeleteOpen', value: false },
-                          title: 'Delete post?',
-                          body: 'This will permanently delete the post and everything inside it. This cannot be undone.',
-                          confirmLabel: 'Delete',
-                          confirm: { $action: 'spaceStore.deleteCollection', args: [{ $: 'post.id' }] },
-                        }),
-                      ],
+                      },
                     },
-                  },
+                  ],
                 },
               ],
             },

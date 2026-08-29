@@ -291,6 +291,7 @@ export const storeEntries: StoreEntry[] = [
       personalSpaces: { type: 'array', model: 'Space' },
       sharedSpaces: { type: 'array', model: 'Space' },
       routeSpaceUnjoined: { type: 'boolean' },
+      spacePath: { type: 'string' },
       joiningSpace: { type: 'string' },
       joinSlow: { type: 'boolean' },
       joinError: { type: 'object', properties: ['spaceId', 'message'] },
@@ -925,6 +926,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           'boolean — whether extraction passes in this space broadcast their prompt and response to every member, so interpretationStore.activity rows carry detail for everyone. A community decision, off by default',
         personalSpaces: 'array of Space objects (local/personal spaces; all Space fields)',
         sharedSpaces: 'array of Space objects (shared/neighbourhood spaces; all Space fields)',
+        spacePath:
+          "string — the path a space's own pages hang off (`/space/<segment>`), empty outside a space. What a link to one record is built from: an href has to be absolute, since a browser resolves a relative one against the current URL rather than against the route tree, and the segment is the neighbourhood CID for a shared space and the dataset id for a personal one — only the URL says which",
         routeSpaceUnjoined:
           'boolean — the current route points at a space this agent has not joined, as a settled fact. What a join gate should read: `currentDataset` being null is also true for the first frames of a refresh, so gating on that flashes a join prompt at someone already inside. False while the answer is still unknown',
         spaceList:

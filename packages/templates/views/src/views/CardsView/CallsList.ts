@@ -9,9 +9,8 @@ import {
   field,
   formModal,
   peopleRow,
+  recordLink,
 } from '@we/template-kit';
-
-import { recordLink } from '../RecordPage';
 
 /**
  * Recorded calls in this space.
@@ -276,23 +275,14 @@ export const callsList: SchemaNode = {
                               ],
                             },
                             {
-                              type: 'Row',
-                              props: { gap: '200', ay: 'center' },
+                              type: 'we-text',
+                              props: { fontSize: '200', color: 'text' },
+                              // Relative, because what matters about a call is how long ago it was. The
+                              // end is not stored — it is the last utterance's timestamp, derived rather
+                              // than written so nobody has to remember to close the record and it cannot
+                              // go wrong when the agent who started it is the first to leave.
                               children: [
-                                {
-                                  type: 'we-text',
-                                  props: { fontSize: '200', color: 'text' },
-                                  // Relative, because what matters about a call is how long ago it was. The
-                                  // end is not stored — it is the last utterance's timestamp, derived rather
-                                  // than written so nobody has to remember to close the record and it cannot
-                                  // go wrong when the agent who started it is the first to leave.
-                                  children: [
-                                    { type: 'we-timestamp', props: { value: { $: 'call.createdAt' }, relative: true } },
-                                  ],
-                                },
-                                // The way to this call's own page. A real link, so middle-click, "open in
-                                // new tab" and "copy link address" all do what they say — see `recordLink`.
-                                recordLink({ $: "'CollectionBlock'" }, { $: 'call.id' }),
+                                { type: 'we-timestamp', props: { value: { $: 'call.createdAt' }, relative: true } },
                               ],
                             },
                           ],
@@ -672,20 +662,28 @@ export const callsList: SchemaNode = {
                           of the two honest options.
                         */
                             {
-                              type: '$if',
-                              props: {
-                                condition: { $: 'call.author == me.did' },
-                                then: {
-                                  type: 'Row',
-                                  props: { gap: '100' },
-                                  children: [
-                                    {
-                                      type: 'we-button',
-                                      props: {
-                                        variant: 'ghost',
-                                        size: 'sm',
-                                        square: true,
-                                        /*
+                              type: 'Row',
+                              props: { gap: '100', ay: 'center' },
+                              children: [
+                                // Outside the authorship gate below: opening a record is reading, and
+                                // everyone who can see the card can already read it. Gating it would
+                                // hide the only address the thing has from everyone but its author.
+                                recordLink({ $: "'CollectionBlock'" }, { $: 'call.id' }),
+                                {
+                                  type: '$if',
+                                  props: {
+                                    condition: { $: 'call.author == me.did' },
+                                    then: {
+                                      type: 'Row',
+                                      props: { gap: '100' },
+                                      children: [
+                                        {
+                                          type: 'we-button',
+                                          props: {
+                                            variant: 'ghost',
+                                            size: 'sm',
+                                            square: true,
+                                            /*
                                       Re-seed the drafts from the record on the way in, so a modal
                                       that was opened, edited and cancelled does not reopen holding
                                       the abandoned edit. The `initial` values only run at mount.
@@ -697,27 +695,29 @@ export const callsList: SchemaNode = {
                                       path does not start with `$event`. Same trap as the `$concat`
                                       wrapper on the avatar hash above.
                                     */
-                                        onClick: [
-                                          { $setLocal: 'titleDraft', value: { $: 'call.title' } },
-                                          { $setLocal: 'descriptionDraft', value: { $: 'call.description' } },
-                                          { $setLocal: 'editOpen', value: true },
-                                        ],
-                                      },
-                                      children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],
+                                            onClick: [
+                                              { $setLocal: 'titleDraft', value: { $: 'call.title' } },
+                                              { $setLocal: 'descriptionDraft', value: { $: 'call.description' } },
+                                              { $setLocal: 'editOpen', value: true },
+                                            ],
+                                          },
+                                          children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],
+                                        },
+                                        {
+                                          type: 'we-button',
+                                          props: {
+                                            variant: 'ghost',
+                                            size: 'sm',
+                                            square: true,
+                                            onClick: { $setLocal: 'confirmDeleteOpen', value: true },
+                                          },
+                                          children: [{ type: 'we-icon', props: { name: 'trash' } }],
+                                        },
+                                      ],
                                     },
-                                    {
-                                      type: 'we-button',
-                                      props: {
-                                        variant: 'ghost',
-                                        size: 'sm',
-                                        square: true,
-                                        onClick: { $setLocal: 'confirmDeleteOpen', value: true },
-                                      },
-                                      children: [{ type: 'we-icon', props: { name: 'trash' } }],
-                                    },
-                                  ],
+                                  },
                                 },
-                              },
+                              ],
                             },
                             /*
                         Editing writes the two fields straight onto the CollectionBlock with

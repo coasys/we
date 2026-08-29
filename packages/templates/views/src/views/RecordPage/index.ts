@@ -370,27 +370,3 @@ export const recordPage: SchemaNode = {
     },
   ],
 };
-
-/**
- * A link to a record's own page — the affordance that makes the route reachable.
- *
- * A real `href` rather than a click handler, because everything people expect of a link depends on
- * it: middle-click, open in a new tab, copy link address, and the browser's own idea of what has
- * been visited. A `we-button` with `onClick: routeStore.navigate` looks identical and supports none
- * of them.
- *
- * Takes the entity and the id as expressions so it can be dropped into any `$each` — the row names
- * differ per list, and this has no business knowing them.
- */
-export function recordLink(entity: unknown, id: unknown): SchemaNode {
-  return {
-    type: 'we-button',
-    props: {
-      variant: 'ghost',
-      size: 'sm',
-      title: 'Open',
-      href: { $: `\`/record/\${${(entity as { $: string }).$}}/\${${(id as { $: string }).$}}\`` },
-    },
-    children: [{ type: 'we-icon', props: { name: 'arrows-out-simple' } }],
-  };
-}

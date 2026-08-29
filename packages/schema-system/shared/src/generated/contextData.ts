@@ -2562,6 +2562,7 @@ export const contextData: ContextData = {
           ],
         },
         routeSpaceUnjoined: { type: 'boolean' },
+        spacePath: { type: 'string' },
         creatingSpace: { type: 'boolean' },
         joiningSpace: { type: 'string' },
         joinSlow: { type: 'boolean' },

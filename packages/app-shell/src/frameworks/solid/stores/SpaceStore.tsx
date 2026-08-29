@@ -404,6 +404,8 @@ export interface SpaceStore {
    * a refresh, so gating on that flashes "Join this Space" at someone already inside.
    */
   routeSpaceUnjoined: Accessor<boolean>;
+  /** `/space/<segment>` for the space on screen, or empty outside one. */
+  spacePath: Accessor<string>;
   creatingSpace: Accessor<boolean>;
   /**
    * The space a join is running for right now — its shared id — or `''` when none is.
@@ -3077,6 +3079,24 @@ export function SpaceStoreProvider(props: ParentProps) {
    * matching the route — because a matching dataset that has not been switched to yet is also not
    * grounds for asking someone to join.
    */
+  /**
+   * The path a space's own pages hang off — `/space/<segment>`, or empty outside a space.
+   *
+   * Exists because a template cannot build one. A link to a record has to be absolute (a browser
+   * resolves a relative `href` against the current *URL*, which is wrong the moment a section has
+   * sub-routes of its own), and the space's segment is not a value a schema can reach: for a shared
+   * space it is the neighbourhood CID, for a personal one the dataset id, and only the URL says
+   * which this is.
+   *
+   * The segment as it currently appears rather than one recomputed from the dataset, so a link
+   * built here lands in the same space the reader is already looking at — following the shape
+   * `TemplateProvider` itself uses when it redirects to a space's first section.
+   */
+  const spacePath = createMemo<string>(() => {
+    const segs = routeStore.segments();
+    return segs[0] === 'space' && segs[1] ? `/space/${segs[1]}` : '';
+  });
+
   const routeSpaceUnjoined = createMemo<boolean>(() => {
     const segs = routeStore.segments();
     if (segs[0] !== 'space' || !segs[1]) return false;
@@ -3161,6 +3181,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     sharedSpaces,
     spaceList,
     routeSpaceUnjoined,
+    spacePath,
     creatingSpace,
     joiningSpace,
     joinSlow,

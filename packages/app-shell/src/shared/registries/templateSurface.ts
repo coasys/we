@@ -423,6 +423,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     sharedSpaces: state('navigation'),
     orderedSidebarItems: state('navigation'),
     routeSpaceUnjoined: state('navigation'),
+    spacePath: state('navigation'),
     joiningSpace: state('navigation'),
     joinSlow: state('navigation'),
     joinError: state('navigation'),

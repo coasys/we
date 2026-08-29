@@ -70,7 +70,10 @@ const emptyCallsToggle: SchemaNode = {
     title: { $: "local.showEmptyCalls ? 'Hide calls nobody spoke in' : 'Show calls nobody spoke in'" },
     onClick: { $toggleLocal: 'showEmptyCalls' },
   },
-  children: [{ type: 'we-icon', props: { name: 'eye-slash' } }],
+  // The icon says what is on screen, not what the press would do: eye when the empties are showing,
+  // eye-slash when they are hidden. Fixed as an icon that never changed, which read as a control
+  // that had not worked.
+  children: [{ type: 'we-icon', props: { name: { $: "local.showEmptyCalls ? 'eye' : 'eye-slash'" } } }],
 };
 
 const contentTypeOptions = [
