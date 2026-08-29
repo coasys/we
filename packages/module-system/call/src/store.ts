@@ -186,6 +186,30 @@ export type CallDockEdge = 'left' | 'right' | 'top' | 'bottom';
 /** The call topology in use — mesh (peer-to-peer) or sfu (relay server). */
 export type CallTopology = 'mesh' | 'sfu';
 
+/**
+ * Summary of relay (SFU) availability for the current call.
+ *
+ * Surfaced to the UI so it can show relevant hints without
+ * exposing any technical terminology to end users.
+ */
+export interface RelayInfo {
+  /** Whether a relay server handled this call's media. */
+  relayActive: boolean;
+  /** Total participants (including self). */
+  participantCount: number;
+  /**
+   * True when the call runs peer-to-peer and the participant count
+   * exceeds the comfortable mesh limit (6).  The UI can surface a
+   * hint like "Call quality may degrade with more participants."
+   */
+  meshLimitReached: boolean;
+}
+
+/** Participant thresholds for auto-quality and mesh warnings. */
+const MESH_LIMIT = 6;
+const AUTO_QUALITY_MEDIUM = 5;
+const AUTO_QUALITY_LOW = 9;
+
 export interface CallStoreDeps extends ModuleStoreDeps {
   /** Overridable for tests; defaults to the browser's WebRTC and media APIs. */
   createPeerConnection?: () => RTCPeerConnection;
@@ -290,6 +314,8 @@ export function createCallStore(deps: CallStoreDeps) {
   const [topology, setTopology] = signal<CallTopology>('mesh');
   /** The SFU quality layer this agent prefers. Only meaningful when `topology() === 'sfu'`. */
   const [qualityPreference, setQualityPreferenceSignal] = signal<BackendQuality>('high');
+  /** Whether the user explicitly chose a quality preference, disabling auto. */
+  let qualityIsManual = false;
 
   /**
    * Named, because it is the one problem that can resolve itself.
@@ -496,6 +522,22 @@ export function createCallStore(deps: CallStoreDeps) {
 
     setTiles(next);
     setTileStates(states.map((state) => ({ ...state, focused: state.id === focus })));
+
+    // ── Auto quality ──────────────────────────────────────────────────
+    //
+    // Adjusts the SFU simulcast layer based on participant count when
+    // the user has not explicitly chosen a preference.  More
+    // participants → lower quality → less bandwidth per stream.
+    if (topology() === 'sfu' && backend && !qualityIsManual) {
+      const count = next.length;
+      let target: BackendQuality = 'high';
+      if (count >= AUTO_QUALITY_LOW) target = 'low';
+      else if (count >= AUTO_QUALITY_MEDIUM) target = 'medium';
+      if (target !== qualityPreference()) {
+        setQualityPreferenceSignal(target);
+        void backend.setQualityPreference(target);
+      }
+    }
   }
 
   /**
@@ -565,6 +607,7 @@ export function createCallStore(deps: CallStoreDeps) {
     if (id) presence?.clearActivity('call', id);
     setCallId(null);
     setTopology('mesh');
+    qualityIsManual = false;
     anchor = undefined;
     setVisible(false);
     setFocusedId(null);
@@ -887,6 +930,17 @@ export function createCallStore(deps: CallStoreDeps) {
     topology,
     /** The SFU quality layer this agent prefers. Only meaningful when `topology() === 'sfu'`. */
     qualityPreference,
+    /**
+     * Relay availability summary — signals the UI without exposing
+     * any SFU terminology.  `meshLimitReached` turns true when the
+     * call runs peer-to-peer and exceeds the comfortable participant
+     * limit; the UI can surface a hint about call quality.
+     */
+    relayInfo: (): RelayInfo => ({
+      relayActive: topology() === 'sfu',
+      participantCount: tiles().length,
+      meshLimitReached: topology() === 'mesh' && tiles().length > MESH_LIMIT,
+    }),
 
     // ── What the host reads to place the stage ────────────────────────────────
     /**
@@ -1334,6 +1388,7 @@ export function createCallStore(deps: CallStoreDeps) {
      * every forwarded stream. Silently accepted on a mesh call (no simulcast layers).
      */
     setQualityPreference: async (quality: BackendQuality) => {
+      qualityIsManual = true;
       setQualityPreferenceSignal(quality);
       if (backend) await backend.setQualityPreference(quality);
     },
