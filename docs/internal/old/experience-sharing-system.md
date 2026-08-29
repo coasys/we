@@ -147,15 +147,15 @@ import { TextBlock } from './block-types/TextBlock';
 import { ImageBlock } from './block-types/ImageBlock';
 import { CollectionBlock } from './block-types/CollectionBlock';
 
-export const modelRegistry: Record<string, typeof Ad4mModel> = {
+export const entityRegistry: Record<string, typeof Ad4mModel> = {
   TextBlock,
   ImageBlock,
   CollectionBlock,
 };
 
 // App stores can register additional models
-export function registerModel(name: string, modelClass: typeof Ad4mModel) {
-  modelRegistry[name] = modelClass;
+export function registerEntity(name: string, modelClass: typeof Ad4mModel) {
+  entityRegistry[name] = modelClass;
 }
 ```
 

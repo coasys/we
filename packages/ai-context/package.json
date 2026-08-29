@@ -20,7 +20,7 @@
   "dependencies": {
     "@we/design-utils": "workspace:*",
     "@we/schema-shared": "workspace:*",
-    "@we/models": "workspace:*"
+    "@we/entities": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^26.3.0",

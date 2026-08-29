@@ -523,86 +523,74 @@ const settledSection: SchemaNode = {
 };
 
 /**
- * The bar itself.
+ * The disclosures a pass carries, and the state that opens them.
  *
- * Absent entirely when nothing is happening — not empty, absent. A permanently reserved strip under
- * the call bar would be a piece of chrome whose only job is to report, sitting there reporting
- * nothing, and it would push the rest of the call's furniture down to do it.
+ * Split out from the chrome node because the two now live in different places — see
+ * {@link extractionActivity} and {@link extractionSignal} below.
  */
-export const extractionStatus: SchemaNode = {
+const activityLocalState = {
+  /**
+   * Which rows are open, as a set of pass ids.
+   *
+   * An array rather than a boolean each, because the rows come from data: `$localState` names
+   * are fixed when the template is written, and there is no name to give a row that does not
+   * exist yet. `$toggleLocalIn` writes it and `$in` reads it back.
+   */
+  openPasses: { type: 'array', initial: [] },
+  /**
+   * Which prompts are open, separately from which rows are.
+   *
+   * Its own set because the two disclosures answer different questions: opening a row asks
+   * "what happened", opening a prompt asks "what exactly was sent". The second is reference
+   * material and mostly shape definitions identical on every pass, so it stays closed until
+   * somebody asks — otherwise it fills the screen above the response they opened the row for.
+   */
+  openPrompts: { type: 'array', initial: [] },
+  /** Which responses have been closed — see `responsePane` on why this one is inverted. */
+  closedResponses: { type: 'array', initial: [] },
+  /**
+   * Whether the finished-passes history is open.
+   *
+   * Starts closed, and stays closed as passes complete. Opening it is a deliberate act — the
+   * bar's job is to report what is happening, and a history that unfolded itself every time
+   * something finished would be the growth this collapse exists to stop.
+   */
+  historyOpen: { type: 'boolean', initial: false },
+};
+
+/**
+ * Everything a pass did, and everything anyone may read about it.
+ *
+ * ## Why this is in the transcript panel and not the call bar
+ *
+ * It used to be the whole of the chrome contribution, and that was one surface answering two
+ * questions of very different sizes. "Is something happening?" is a glance, is wanted by everybody
+ * in the call, and must not move the chrome around while somebody is using it. "What exactly was
+ * sent to the model?" is reading — a prompt pane and a response pane, hundreds of pixels of
+ * monospace — and is wanted occasionally, by one person, who is by then not looking at the call at
+ * all.
+ *
+ * Putting both in a floating strip under the call bar meant the second kept winning: opening one
+ * row took the strip to 520px and pushed the call's own controls around, and a bar that grew a row
+ * per concurrent pass would have kept doing it. So the reading moves to the panel that is already
+ * about the transcript, where there is room and where opening something costs the call nothing, and
+ * the glance stays in the chrome as one line.
+ *
+ * The original argument for the chrome — that a pass outlives the panel that started it, and that
+ * the four people who did *not* start it are the ones most likely to want the readout — is what
+ * {@link extractionSignal} still satisfies. It says who and how long, for everybody, without
+ * needing the panel open.
+ */
+export const extractionActivity: SchemaNode = {
   type: '$if',
   props: {
     condition: { $: 'modules.transcribe.hasActivity' },
-    // Slides down from behind the bar rather than appearing. The bar is a fixed object somebody is
-    // already looking at, and something materialising a few pixels under it reads as a glitch.
-    enterTransition: [
-      { type: 'reveal', duration: 220 },
-      { type: 'fade', duration: 160 },
-    ],
     then: {
       type: 'Column',
-      $localState: {
-        /**
-         * Which rows are open, as a set of pass ids.
-         *
-         * An array rather than a boolean each, because the rows come from data: `$localState` names
-         * are fixed when the template is written, and there is no name to give a row that does not
-         * exist yet. `$toggleLocalIn` writes it and `$in` reads it back.
-         */
-        openPasses: { type: 'array', initial: [] },
-        /**
-         * Which prompts are open, separately from which rows are.
-         *
-         * Its own set because the two disclosures answer different questions: opening a row asks
-         * "what happened", opening a prompt asks "what exactly was sent". The second is reference
-         * material and mostly shape definitions identical on every pass, so it stays closed until
-         * somebody asks — otherwise it fills the screen above the response they opened the row for.
-         */
-        openPrompts: { type: 'array', initial: [] },
-        /** Which responses have been closed — see `responsePane` on why this one is inverted. */
-        closedResponses: { type: 'array', initial: [] },
-        /**
-         * Whether the finished-passes history is open.
-         *
-         * Starts closed, and stays closed as passes complete. Opening it is a deliberate act — the
-         * bar's job is to report what is happening, and a history that unfolded itself every time
-         * something finished would be the growth this collapse exists to stop.
-         */
-        historyOpen: { type: 'boolean', initial: false },
-      },
+      $localState: activityLocalState,
       props: {
-        ...STATUS_SURFACE,
-        r: STATUS_RADIUS,
-        px: '300',
-        py: '200',
         gap: '200',
-        // Wide enough for a name and a clause, capped so a long failure message wraps rather than
-        // stretching the bar past the one above it.
-        minWidth: '260px',
-        maxWidth: '520px',
-        /*
-          Full width as soon as anything is open, rather than growing with each pane.
-
-          Sized to content, the bar stepped wider every time a disclosure was opened — expand a row
-          and it jumps, open the prompt beneath it and it jumps again. Each step moves a floating
-          object somebody is reading.
-
-          Taking the cap the moment the first row opens makes it one movement instead of several:
-          every pane after that renders into space the bar already has. Closed, it still shrinks to
-          whatever the rows need, which is the point of the cap being a maximum in the first place.
-        */
-        width: { $: "count(local.openPasses) ? '520px' : 'auto'" },
-        /*
-          Glide rather than snap, matching the reveals inside it.
-
-          Every vertical change here is a `reveal` transition, so the one horizontal change being
-          instant read as a glitch beside them. An animation token rather than `300ms`: a theme's
-          reduced-motion setting overrides the token and cannot touch a hardcoded duration.
-
-          Only `width` — the bar's other properties have no business animating, and a blanket
-          transition would drag the surface colour through a fade every time a theme changed.
-        */
-        transition: 'width 300 ease-in-out',
+        width: '100%',
       },
       children: [
         runningList,
@@ -633,6 +621,86 @@ export const extractionStatus: SchemaNode = {
               children: ['Prompts stay on each person’s machine — share them in space settings.'],
             },
           },
+        },
+      ],
+    },
+  },
+};
+
+/**
+ * The glance: one line under the call bar saying something is happening.
+ *
+ * ## Why anything stays in the chrome at all
+ *
+ * A pass runs for minutes — almost all of it one LLM call, and on a local model several minutes —
+ * and it outlives the panel that started it. The person most likely to want to know it is running
+ * is one of the four in five who did *not* start it and has no reason to have the transcript panel
+ * open. Reporting it only in the panel would mean the app silently spends two minutes of somebody's
+ * node on something nobody in the call can see.
+ *
+ * So the fact stays; the reading moves. This says who and for how long, in a line that cannot grow,
+ * and {@link extractionActivity} in the transcript panel holds everything else.
+ *
+ * ## Why it cannot grow
+ *
+ * The version this replaces was the whole readout, and it moved the call's furniture to do its job:
+ * opening one pass widened the strip to 520px, and each concurrent pass added a row. A floating
+ * object that reflows while somebody is reaching for a control under it is worse than one that says
+ * less. So concurrent passes collapse to a count here rather than to a list, and there is nothing to
+ * open.
+ *
+ * Absent entirely when nothing is happening — not empty, absent. A permanently reserved strip would
+ * be chrome whose only job is to report, sitting there reporting nothing, and pushing the rest of
+ * the call's furniture down to do it.
+ */
+export const extractionSignal: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'modules.transcribe.runningCount' },
+    // Slides down from behind the bar rather than appearing. The bar is a fixed object somebody is
+    // already looking at, and something materialising a few pixels under it reads as a glitch.
+    enterTransition: [
+      { type: 'reveal', duration: 220 },
+      { type: 'fade', duration: 160 },
+    ],
+    then: {
+      type: 'Row',
+      props: {
+        ...STATUS_SURFACE,
+        r: STATUS_RADIUS,
+        px: '300',
+        py: '200',
+        gap: '200',
+        ay: 'center',
+        // Capped, and with nothing inside it that can outgrow the cap: the label truncates and the
+        // count is a number. This is the whole of "cannot grow".
+        maxWidth: '320px',
+      },
+      children: [
+        { type: 'we-spinner', props: { size: 'xs' } },
+        {
+          type: '$if',
+          props: {
+            // One pass reads as itself — the label is already a whole clause ("Anna is waiting on
+            // the model"). Several collapse to a count, because naming them all is the growth this
+            // exists to avoid.
+            condition: { $: 'modules.transcribe.runningCount == 1' },
+            then: {
+              type: 'we-text',
+              props: { variant: 'label', truncate: true },
+              children: [{ $: 'first(modules.transcribe.activity).label' }],
+            },
+            else: {
+              type: 'we-text',
+              props: { variant: 'label', truncate: true },
+              children: [{ $: '`${modules.transcribe.runningCount} extractions running`' }],
+            },
+          },
+        },
+        {
+          type: 'we-text',
+          props: { variant: 'footnote', color: 'text-muted' },
+          children: [{ $: 'first(modules.transcribe.activity).elapsed' }],
         },
       ],
     },

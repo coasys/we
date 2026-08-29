@@ -9,12 +9,12 @@
  * compile path mints its own type flag; models needing the rest stay decorated).
  */
 import type { Ad4mModel, SHACLShape } from '@coasys/ad4m';
-import { FILE_STORAGE_LANGUAGE, getModelPredicates } from '@we/models';
+import { FILE_STORAGE_LANGUAGE, getEntityPredicates } from '@we/entities';
 import { describe, expect, it } from 'vitest';
 
-import { buildModelFromEntry, compileManifest, CORE_VOCABULARY, manifestToEntries } from '../src/manifestCompiler';
-import { buildModelManifest } from '../src/perspectiveHelpers';
-import { ROOT_MODELS, SPACE_MODELS } from '../src/sdnaModels';
+import { buildEntityFromEntry, compileManifest, CORE_VOCABULARY, manifestToEntries } from '../src/manifestCompiler';
+import { buildEntityManifest } from '../src/perspectiveHelpers';
+import { ROOT_MODELS, SPACE_MODELS } from '../src/sdnaEntities';
 
 type Shaped = { generateSHACL: () => { shape: SHACLShape | null } };
 
@@ -23,7 +23,7 @@ const ALL_MODELS = [...new Set<unknown>([...ROOT_MODELS, ...SPACE_MODELS])] as A
 function entryOf(model: { name: string } & Shaped) {
   const shape = model.generateSHACL().shape;
   if (!shape) throw new Error(`${model.name}: no shape generated`);
-  return buildModelManifest([{ name: model.name, shape }])[0];
+  return buildEntityManifest([{ name: model.name, shape }])[0];
 }
 
 describe('manifest compiler — golden round-trip over every hand-written model', () => {
@@ -34,9 +34,9 @@ describe('manifest compiler — golden round-trip over every hand-written model'
       // Compile from the projection alone. Relations resolve back to the hand-written classes so
       // conformance metadata derives from the same targets the original used.
       // sh:class URIs use the node-shape name ("SignalShape") — resolve both forms, exactly as
-      // the runtime's buildModelClasses does.
+      // the runtime's buildEntityClasses does.
       const byName = new Map(ALL_MODELS.map((m) => [m.name, m]));
-      const compiled = buildModelFromEntry(original, {
+      const compiled = buildEntityFromEntry(original, {
         classResolver: (name) => byName.get(name) ?? byName.get(name.replace(/Shape$/, '')),
       });
 
@@ -220,7 +220,7 @@ describe('compileManifest — module-declared entities', () => {
 
     // Every predicate the compiled class writes is inside the module subtree or core vocabulary —
     // i.e. it would pass the module registry's predicate enforcement.
-    const predicates = getModelPredicates(classes.Note);
+    const predicates = getEntityPredicates(classes.Note);
     for (const predicate of predicates) {
       const allowed = predicate.startsWith('we://module/notes/') || /^we:\/\/[a-z_]+$/.test(predicate);
       expect(allowed, `unexpected predicate ${predicate}`).toBe(true);

@@ -72,7 +72,7 @@ describe('the surface manifest describes the stores that exist', () => {
     const stale: string[] = [];
     for (const [store, spec] of Object.entries(TEMPLATE_SURFACE)) {
       const members = declared.get(store);
-      if (!members) continue; // `model` is assembled in the provider, not declared as an interface.
+      if (!members) continue; // `record` is assembled in the provider, not declared as an interface.
       for (const member of Object.keys(spec)) {
         if (!members.includes(member)) stale.push(`${store}.${member}`);
       }
@@ -169,7 +169,7 @@ describe('what the space tier can reach', () => {
       'routeStore.navigate',
       'routeStore.setParam',
       'profileStore.profiles',
-      'model.create',
+      'record.create',
     ]) {
       expect(reaches(spaceBag, path), path).toBe(true);
     }

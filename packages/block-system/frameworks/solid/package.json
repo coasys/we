@@ -28,7 +28,7 @@
   ],
   "dependencies": {
     "@we/block-shared": "workspace:*",
-    "@we/models": "workspace:*",
+    "@we/entities": "workspace:*",
     "prosemirror-commands": "^1.7.2",
     "prosemirror-dropcursor": "^1.8.3",
     "prosemirror-gapcursor": "^1.4.1",

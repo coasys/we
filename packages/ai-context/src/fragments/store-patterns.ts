@@ -104,7 +104,7 @@ Nesting works to any depth: "include": { "messages": { "include": { "reactions":
 
 Relational drill-down (master-detail navigation across entity relations):
 Use routes + a $query \`scope\` when you navigate to a detail route and need only that record's children.
-scope.anchor is the parent entity type; scope.via is its HasMany relation (see externalModels) whose targets
+scope.anchor is the parent entity type; scope.via is its HasMany relation (see externalEntities) whose targets
 are the query's entity; scope.anchorId is the parent record's id. The adapter resolves the relation to a
 backend handle, so no protocol details live in the template.
 routeStore.segments.N extracts the Nth dynamic path segment (segments splits currentPath by "/").

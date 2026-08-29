@@ -8,7 +8,7 @@
  *
  * Dataset lifecycle (list/create/remove/subscribe) runs through the session's
  * `DatasetLifecyclePort`. The coupling that remains is the model layer: schema install and
- * model reads operate on the handles (typed `DatasetProxy` via @we/models) — that half
+ * model reads operate on the handles (typed `DatasetProxy` via @we/entities) — that half
  * neutralizes when compiled models bridge onto the neutral query engine.
  *
  * Space-model concerns (the `Space` entities that *describe* shared datasets) live in SpaceStore,
@@ -16,17 +16,17 @@
  * `currentDataset` signal.
  */
 import { sameDataset } from '@shared/datasetIdentity';
-import { containmentPredicate, gatherTranscriptTurns, type TurnModel } from '@shared/interpretation/transcriptTurns';
+import { containmentPredicate, gatherTranscriptTurns, type TurnRecord } from '@shared/interpretation/transcriptTurns';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { moduleRegistry } from '@shared/registries/moduleRegistry';
 import { getSeed } from '@shared/seedRegistry';
-import type { DatasetRef, ModelManifestEntry } from '@we/backend-shared';
-import { AgentSettings, type DatasetProxy, getModelForPerspective } from '@we/models';
+import type { DatasetRef, EntityManifestEntry } from '@we/backend-shared';
+import { AgentSettings, type DatasetProxy, getEntitiesForPerspective } from '@we/entities';
 import { Accessor, batch, createContext, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
 import { useSessionStore } from './SessionStore';
 
-export type { ModelManifestEntry, ModelManifestProperty } from '@we/backend-shared';
+export type { EntityManifestEntry, EntityManifestProperty } from '@we/backend-shared';
 
 /**
  * A DatasetRef whose handle is narrowed to the model layer's dataset type — cast once where refs
@@ -46,7 +46,7 @@ export interface DatasetStore {
   currentDataset: Accessor<AppDataset | null>;
   currentDatasetUri: Accessor<string | undefined>;
   currentDatasetCid: Accessor<string | undefined>;
-  currentDatasetModels: Accessor<ModelManifestEntry[]>;
+  currentDatasetEntities: Accessor<EntityManifestEntry[]>;
   /** True once the current dataset is confirmed to have WE's `Space` schema installed. */
   isWeSpace: Accessor<boolean>;
   joinedSpaceCids: Accessor<string[]>;
@@ -99,6 +99,26 @@ export interface DatasetStore {
   getDatasetOrder: () => string[];
   /** SpaceStore supplies "does this space want calls interpreted automatically". Unset reads off. */
   provideAutoInterpretGate: (gate: () => boolean) => void;
+  /**
+   * ShapeStore supplies "which entities *could* be extracted here" — core vocabulary that declares
+   * itself extractable, plus this space's adopted shapes. Unset reads as none.
+   */
+  provideExtractionCandidates: (candidates: () => string[]) => void;
+  /**
+   * SpaceStore supplies the two layers under that: what one call extracts, and how to change it.
+   *
+   * Both take a collection id, because the answer is per call — `forCall` resolves the call's own
+   * list if its participants set one, else the space's default. Injected for the reason
+   * `provideAutoInterpretGate` is: the answer lives on `Space` and on a record in the space, and
+   * SpaceStore mounts below this one.
+   *
+   * Unset, `forCall` reads as the candidates — which keeps a host that has not wired this yet
+   * behaving as it did rather than silently extracting nothing.
+   */
+  provideCallExtraction: (access: {
+    forCall: (collectionId: string) => string[];
+    setForCall: (collectionId: string, entity: string, on: boolean) => Promise<void>;
+  }) => void;
 }
 
 const DatasetContext = createContext<DatasetStore>();
@@ -124,7 +144,7 @@ export function DatasetStoreProvider(props: ParentProps) {
    * See {@link sameDataset} for what counts as the same.
    */
   const [currentDataset, setCurrentDataset] = createSignal<AppDataset | null>(null, { equals: sameDataset });
-  const [currentDatasetModels, setCurrentDatasetModels] = createSignal<ModelManifestEntry[]>([]);
+  const [currentDatasetEntities, setCurrentDatasetEntities] = createSignal<EntityManifestEntry[]>([]);
   const [isWeSpace, setIsWeSpace] = createSignal<boolean>(false);
   const [rootDataset, setRootDataset] = createSignal<AppDataset | null>(null);
   const [testDataset, setTestDataset] = createSignal<AppDataset | null>(null);
@@ -142,6 +162,50 @@ export function DatasetStoreProvider(props: ParentProps) {
   let autoInterpretGate: (() => boolean) | null = null;
   const provideAutoInterpretGate = (gate: () => boolean) => {
     autoInterpretGate = gate;
+  };
+
+  /*
+    What an extraction pass may write here — the same arrangement, one layer along.
+
+    A space's own models are compiled and registered for its dataset by ShapeStore, which also sits
+    above this one, so the list it computes has to arrive the same way the auto-extract setting
+    does. Unset reads as *none* rather than as the two core classes: this replaced a constant, and a
+    silent fallback to that constant would make a wiring failure look exactly like a space whose
+    community had turned everything off.
+  */
+  let extractionCandidatesGate: (() => string[]) | null = null;
+  const provideExtractionCandidates = (candidates: () => string[]) => {
+    extractionCandidatesGate = candidates;
+  };
+
+  /*
+    What one call extracts, and how to change it — the two layers below candidacy.
+
+    Injected from SpaceStore, which owns `Space.extractionTargets` and the `CallExtraction` records
+    and mounts below this store. Unset, `forCall` falls back to the candidates rather than to
+    nothing: a host that has not wired this in should behave as it did before the layer existed.
+  */
+  let callExtraction: {
+    forCall: (collectionId: string) => string[];
+    setForCall: (collectionId: string, entity: string, on: boolean) => Promise<void>;
+  } | null = null;
+  const provideCallExtraction = (access: NonNullable<typeof callExtraction>) => {
+    callExtraction = access;
+  };
+
+  /**
+   * The class list one pass over this collection should ask for.
+   *
+   * Always intersected with the candidates, and that is not tidiness: a name the perspective has no
+   * shape for fails `assertShapesInstalled` and takes the whole pass down, so a space default naming
+   * a model since deleted, or a call list naming one whose `extractable` was withdrawn, has to
+   * narrow the request rather than break it.
+   */
+  const targetsForCollection = (collectionId: string): string[] => {
+    const candidates = extractionCandidatesGate?.() ?? [];
+    const chosen = callExtraction?.forCall(collectionId);
+    if (!chosen) return candidates;
+    return candidates.filter((entity) => chosen.includes(entity));
   };
 
   // Lend feature modules the neutral ports the host owns. Published rather than imported so a
@@ -181,31 +245,51 @@ export function DatasetStoreProvider(props: ParentProps) {
         (await session.backendPorts()?.interpretation?.reject(dataset, id, property)) ?? false,
     },
 
+    /*
+      What this call extracts, and what else it could — for a module that offers the choice.
+
+      One list of `{ entity, selected }` rather than two arrays, because the surface that renders it
+      is a row of toggles and a schema cannot join two lists to decide which are ticked. The module
+      never sees the resolution: candidacy, the space's default and the call's own list are three
+      questions it has no business knowing about, and it is handed the answer.
+    */
+    extractionTargets: (collectionId: string) => {
+      const active = targetsForCollection(collectionId);
+      return (extractionCandidatesGate?.() ?? []).map((entity) => ({ entity, selected: active.includes(entity) }));
+    },
+    setExtractionTarget: async (collectionId: string, entity: string, on: boolean) => {
+      if (!callExtraction) throw new Error('interpretation: this host cannot record a call’s extraction targets');
+      await callExtraction.setForCall(collectionId, entity, on);
+    },
+
     // Gathering the turns is the host's half of the job: the port takes turns, and a module has no
     // read with which to produce them. Parenting what comes back onto the same collection is not
     // optional dressing — an unparented TaskBlock is a real record that no route lists, so an
     // extraction that skipped it would look exactly like one that found nothing.
-    interpretCollection: async (collectionId, request) => {
+    interpretCollection: async (collectionId) => {
       const port = session.backendPorts()?.interpretation;
       if (!port) throw new Error('interpretation: this backend cannot interpret');
       const dataset = currentDataset();
       if (!dataset) throw new Error('interpretation: no dataset to interpret into');
 
-      const modelFor = (entity: string) => getModelForPerspective(entity, dataset.handle);
-      const predicate = containmentPredicate(modelFor, currentDatasetModels());
+      const modelFor = (entity: string) => getEntitiesForPerspective(entity, dataset.handle);
+      const predicate = containmentPredicate(modelFor, currentDatasetEntities());
       if (!predicate) throw new Error('interpretation: this space has no collection schema to read a transcript from');
 
       const turns = await gatherTranscriptTurns(
         {
-          modelFor: (entity) => modelFor(entity) as TurnModel | undefined,
+          modelFor: (entity) => modelFor(entity) as TurnRecord | undefined,
           handle: dataset.handle,
           containmentPredicate: predicate,
         },
         collectionId,
       );
 
+      // The host resolves the class list, because the three layers that decide it — candidacy, the
+      // space's default, this call's own — are all host state. A module names a collection and
+      // nothing else, exactly as it does for the watch id and the containment predicate.
       return port.interpret(dataset.handle, turns, {
-        classes: request.classes,
+        classes: targetsForCollection(collectionId),
         parent: { id: collectionId, predicate },
       });
     },
@@ -224,7 +308,7 @@ export function DatasetStoreProvider(props: ParentProps) {
       than two. The engine reads its processors out of the perspective graph, so this is idempotent
       in the place it matters: whichever peer registers first wins and the rest write the same row.
     */
-    watchCollection: async (collectionId, request) => {
+    watchCollection: async (collectionId) => {
       const port = session.backendPorts()?.interpretation;
       if (!port?.watch) throw new Error('interpretation: this backend cannot run a standing watch');
       // The community's decision, read through a gate SpaceStore supplies — this store sits below
@@ -234,13 +318,18 @@ export function DatasetStoreProvider(props: ParentProps) {
       const dataset = currentDataset();
       if (!dataset) throw new Error('interpretation: no dataset to interpret into');
 
-      const modelFor = (entity: string) => getModelForPerspective(entity, dataset.handle);
-      const predicate = containmentPredicate(modelFor, currentDatasetModels());
+      const modelFor = (entity: string) => getEntitiesForPerspective(entity, dataset.handle);
+      const predicate = containmentPredicate(modelFor, currentDatasetEntities());
       if (!predicate) throw new Error('interpretation: this space has no collection schema to read a transcript from');
+
+      const classes = targetsForCollection(collectionId);
+      // Refused rather than registered empty: the executor rejects a processor with no classes, and
+      // "this space has marked nothing for extraction" is a sentence worth saying in its own words.
+      if (!classes.length) throw new Error('interpretation: nothing in this space is marked for AI extraction');
 
       await port.watch(dataset.handle, {
         watchId: watchIdFor(collectionId),
-        classes: request.classes,
+        classes,
         parent: { id: collectionId, predicate },
       });
     },
@@ -252,17 +341,17 @@ export function DatasetStoreProvider(props: ParentProps) {
       about to look: the records exist either way, and what is missing is only their place in the
       call. Returns the count so a caller can say nothing when there was nothing to do.
     */
-    reconcileCollection: async (collectionId, request) => {
+    reconcileCollection: async (collectionId) => {
       const port = session.backendPorts()?.interpretation;
       const dataset = currentDataset();
       if (!port?.reconcile || !dataset) return 0;
 
-      const modelFor = (entity: string) => getModelForPerspective(entity, dataset.handle);
-      const predicate = containmentPredicate(modelFor, currentDatasetModels());
+      const modelFor = (entity: string) => getEntitiesForPerspective(entity, dataset.handle);
+      const predicate = containmentPredicate(modelFor, currentDatasetEntities());
       if (!predicate) return 0;
 
       return port.reconcile(dataset.handle, {
-        classes: request.classes,
+        classes: targetsForCollection(collectionId),
         parent: { id: collectionId, predicate },
       });
     },
@@ -601,10 +690,10 @@ export function DatasetStoreProvider(props: ParentProps) {
       void (async () => {
         try {
           const manifest = await schemas.foreignSchemas(handle);
-          if (currentDataset()?.id === uuid) setCurrentDatasetModels(manifest);
+          if (currentDataset()?.id === uuid) setCurrentDatasetEntities(manifest);
         } catch (err) {
           console.warn('DatasetStore: foreignSchemas failed', err);
-          if (currentDataset()?.id === uuid) setCurrentDatasetModels([]);
+          if (currentDataset()?.id === uuid) setCurrentDatasetEntities([]);
         }
       })();
     } catch (error) {
@@ -646,7 +735,7 @@ export function DatasetStoreProvider(props: ParentProps) {
     currentDataset,
     currentDatasetUri,
     currentDatasetCid,
-    currentDatasetModels,
+    currentDatasetEntities,
     isWeSpace,
     joinedSpaceCids,
     datasetsLoaded,
@@ -679,6 +768,8 @@ export function DatasetStoreProvider(props: ParentProps) {
     subscribeToChanges,
     getDatasetOrder,
     provideAutoInterpretGate,
+    provideExtractionCandidates,
+    provideCallExtraction,
   };
 
   return <DatasetContext.Provider value={store}>{props.children}</DatasetContext.Provider>;

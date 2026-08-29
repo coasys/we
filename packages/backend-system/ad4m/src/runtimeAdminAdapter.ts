@@ -331,7 +331,7 @@ export function createAd4mRuntimeAdmin(backendClient: unknown, options: Ad4mRunt
   const aiRead: RuntimeAdminPort = {
     /**
      * Defaults are read per kind rather than carried on the record. AD4M keeps one default per
-     * model type and `getModels` does not say which, so the launcher asked for the LLM default only
+     * model type and `getEntities` does not say which, so the launcher asked for the LLM default only
      * and no other kind could ever show as default. Three calls answer it for all of them.
      */
     async aiModels() {

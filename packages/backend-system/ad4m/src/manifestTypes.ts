@@ -1,2 +1,2 @@
 // Moved to the contract — kept as a compat alias for internal imports.
-export type { ModelManifestEntry, ModelManifestProperty } from '@we/backend-shared';
+export type { EntityManifestEntry, EntityManifestProperty } from '@we/backend-shared';

@@ -143,9 +143,9 @@ describe('buildValidationContext', () => {
 
   it('builds model names', () => {
     const c = ctx();
-    expect(c.modelNames.has('TaskBlock')).toBe(true);
-    expect(c.modelNames.has('PostBlock')).toBe(true);
-    expect(c.modelNames.has('Unknown')).toBe(false);
+    expect(c.entityNames.has('TaskBlock')).toBe(true);
+    expect(c.entityNames.has('PostBlock')).toBe(true);
+    expect(c.entityNames.has('Unknown')).toBe(false);
   });
 
   it('builds prop type map', () => {

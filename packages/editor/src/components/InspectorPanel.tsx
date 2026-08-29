@@ -831,7 +831,7 @@ function NodeProperties(props: {
         </Show>
 
         {/* Spacing — always-visible box model for padding + margin */}
-        <BoxModel meta={meta()} currentProps={currentProps()} onPropChange={props.onPropChange} />
+        <BoxRecord meta={meta()} currentProps={currentProps()} onPropChange={props.onPropChange} />
 
         {/* Used props — always visible */}
         <Show when={usedProps().size > 0}>
@@ -1876,7 +1876,7 @@ function BgImagePicker(props: {
 }
 
 // -----------------------------------------------------------------------
-// BoxModel — Chrome DevTools-style nested rectangle spacing diagram
+// BoxRecord — Chrome DevTools-style nested rectangle spacing diagram
 // -----------------------------------------------------------------------
 
 const BOX_MARGIN = {
@@ -1901,7 +1901,7 @@ const BOX_ELEMENT = {
   text: 'var(--we-color-primary-800)',
 };
 
-function BoxModel(props: {
+function BoxRecord(props: {
   meta: ComponentMeta | null;
   currentProps: Record<string, unknown>;
   onPropChange: (key: string, value: unknown) => void;

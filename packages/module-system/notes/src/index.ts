@@ -39,7 +39,7 @@
  *
  * - **The notes themselves** — a live `$query` in the fragment. No store method, no manual
  *   subscription; the renderer's reactivity does it.
- * - **Creating one** — `model.create`, already in the stores bag. The module ships no CRUD wrapper.
+ * - **Creating one** — `record.create`, already in the stores bag. The module ships no CRUD wrapper.
  * - **The collection** — found by `$query`, not held anywhere. Deriving it every time is what keeps
  *   it correct across a space switch; a cached id would write this space's notes into the last one.
  * - **Panel open/closed** — the store, because this is *chrome*. `$localState` is per-node and would
@@ -87,7 +87,7 @@ const noteCard = (entity: string): SchemaNode => ({
       props: {
         variant: 'ghost',
         size: 'xs',
-        onClick: { $action: 'model.delete', args: [entity, { $: 'note.id' }] },
+        onClick: { $action: 'record.delete', args: [entity, { $: 'note.id' }] },
       },
       children: [{ type: 'we-icon', props: { name: 'trash' } }],
     },
@@ -163,7 +163,7 @@ const panel: SchemaNode = {
               list — a `$if` whose arms are action arrays would work, but "what does this button do"
               stops being answerable by reading it, and this is the file people will copy.
 
-              No CRUD wrapper either way: `model.create` is already in the stores bag, and a module
+              No CRUD wrapper either way: `record.create` is already in the stores bag, and a module
               reaching for its own persistence layer would be duplicating the data port.
             */
             {
@@ -176,7 +176,7 @@ const panel: SchemaNode = {
                     size: 'sm',
                     onClick: [
                       {
-                        $action: 'model.create',
+                        $action: 'record.create',
                         args: [
                           'TextBlock',
                           { text: { $: 'local.draft' } },
@@ -197,14 +197,14 @@ const panel: SchemaNode = {
                     size: 'sm',
                     onClick: [
                       {
-                        $action: 'model.create',
+                        $action: 'record.create',
                         // `mode: 'feed'` is what stops `reconcileBlocks` ever running here: notes
                         // accumulate from whoever is in the space, so treating one writer's tree
                         // as the whole truth would delete everyone else's.
                         args: ['CollectionBlock', { kind: NOTES_KIND, type: 'collection', mode: 'feed' }],
                         onSuccess: [
                           {
-                            $action: 'model.create',
+                            $action: 'record.create',
                             args: [
                               'TextBlock',
                               { text: { $: 'local.draft' } },

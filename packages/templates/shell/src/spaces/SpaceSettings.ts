@@ -761,7 +761,13 @@ const autoInterpretSection: SchemaNode = {
               props: { variant: 'footnote', color: 'text-faint' },
               children: [
                 {
-                  $: "space.canAdminister ? 'Tasks and events are written down as a call happens, without anyone pressing Extract. Runs on a member’s node and costs them an AI call each time.' : 'Tasks and events are written down as a call happens. Changing this needs someone who administers the space.'",
+                  /*
+                    "Tasks and events" was right while those were the only two classes extraction
+                    could produce. What it looks for is now whichever of this space's models are
+                    marked for it — including any the community defined — so the sentence names the
+                    act rather than enumerating a list that is no longer fixed.
+                  */
+                  $: "space.canAdminister ? 'Whatever this space’s models are marked for is written down as a call happens, without anyone pressing Extract. Runs on a member’s node and costs them an AI call each time.' : 'What this space’s models are marked for is written down as a call happens. Changing this needs someone who administers the space.'",
                 },
               ],
             },
@@ -795,6 +801,107 @@ const autoInterpretSection: SchemaNode = {
  * it is simply tens of KB per pass on a transport meant for small messages, which is a poor
  * standing default and a very reasonable thing to switch on while working on extraction.
  */
+/**
+ * Which models this community's calls extract into.
+ *
+ * The middle of three layers, and the only one a community owns. The codebase decides what is a
+ * *candidate* — an entity earns that by having AI hints, a dedup key and no required field a model
+ * cannot satisfy, which is why no image or file block is one. This decides which candidates a call
+ * here starts with. A call's participants then add or remove for that conversation.
+ *
+ * That middle layer exists because the alternative is WE asserting what every community's calls are
+ * about. Tasks and events as a fixed default is an assumption about meeting culture; a space that
+ * runs birdwatching walks wants its own model on and tasks off, and only it can know that.
+ *
+ * A space that has never touched this keeps what was hardcoded before the setting existed, so
+ * nothing changes underneath anyone — the first toggle writes the whole resolved list and the
+ * community owns it from then on.
+ *
+ * Administer-only, like the switches above: what a space extracts is written into everyone's copy
+ * and spends whichever member's node runs the pass.
+ */
+const extractionTargetsSection: SchemaNode = {
+  type: 'Column',
+  props: { gap: '300', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+  children: [
+    {
+      type: 'Column',
+      props: { gap: '100' },
+      children: [
+        { type: 'we-text', props: { variant: 'label' }, children: ['What calls extract'] },
+        {
+          type: 'we-text',
+          props: { variant: 'footnote', color: 'text-faint' },
+          children: [
+            {
+              $: "space.canAdminister ? 'The models a call in this space starts out looking for. Participants can add or remove them for one call. Every model named costs tokens on every pass, so keep the list to what this community actually talks about.' : 'The models a call in this space starts out looking for. Changing this needs someone who administers the space.'",
+            },
+          ],
+        },
+      ],
+    },
+    /*
+      Every candidate, ticked or not — rather than only what is on.
+
+      A list of what is enabled cannot be turned into a list of what could be, so a settings page
+      that showed only the current targets would give a community no way to add one. The rows come
+      from `shapeStore.extractionCandidates`, which is core vocabulary marked extractable plus this
+      space's own adopted models.
+    */
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'count(shapeStore.extractionCandidates)' },
+        then: {
+          type: 'Column',
+          props: { gap: '100' },
+          children: [
+            {
+              type: '$each',
+              props: { items: { $: 'shapeStore.extractionCandidates' }, as: 'candidate' },
+              children: [
+                {
+                  type: 'Row',
+                  props: { width: '100%', gap: '300', ay: 'center' },
+                  children: [
+                    { type: 'we-text', props: { flex: '1' }, children: [{ $: 'candidate' }] },
+                    {
+                      type: 'we-switch',
+                      props: {
+                        size: 'sm',
+                        checked: { $: 'candidate in spaceStore.extractionTargets' },
+                        disabled: { $: '!space.canAdminister' },
+                        // Bare `event.detail` — an operator around it would resolve at render time,
+                        // before the event exists.
+                        onChange: {
+                          $action: 'spaceStore.setExtractionTarget',
+                          args: [{ $: 'candidate' }, { $: 'event.detail' }, { $: 'space.uuid' }],
+                        },
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        /*
+          Not an error, and the one place it can be acted on.
+
+          A space has candidates unless somebody has been through the vocabulary; a community that
+          defines its own model marks it here by ticking the wizard's switch, which enrols it in
+          this list on save.
+        */
+        else: {
+          type: 'we-text',
+          props: { variant: 'footnote', color: 'text-faint' },
+          children: ['Nothing in this space can be extracted yet. Models declare it, in Vocabulary.'],
+        },
+      },
+    },
+  ],
+};
+
 const shareExtractionDetailSection: SchemaNode = {
   type: 'Column',
   props: { gap: '200', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
@@ -938,50 +1045,66 @@ export function spaceSettingsBody(uuid: SchemaProp, chrome: SchemaNode[], fill?:
   // minimum is its content, so without this the column grows past the panel instead of scrolling.
   const fills = fill ? { flex: '1', minHeight: '0' } : {};
   return {
-    type: '$each',
-    props: {
-      items: expr`filter(spaceStore.spaceList, { uuid: ${uuid} })`,
-      as: 'space',
-    },
+    /*
+      The wrapper exists for one reason: the open tab must outlive the row.
+
+      `spaceStore.spaceList` builds a fresh object per row on every recompute, and `$each` renders
+      through a reference-keyed `<For>` — so *any* write to the space rebuilds this whole subtree.
+      With the tab declared inside the loop, flicking a view or an extraction target destroyed the
+      `$localState` holding it and re-created it at `'about'`: the settings panel jumped back to the
+      first tab on every toggle.
+
+      Above the loop it survives, and it belongs there anyway — which tab is open is a fact about
+      the panel, not about the row the filter happens to return.
+    */
+    type: 'Column',
+    props: { width: '100%', ...fills },
+    $localState: { tab: { type: 'string', initial: 'about' } },
     children: [
       {
-        type: 'Column',
-        props: { gap: '400', width: '100%', ...fills },
-        $localState: { tab: { type: 'string', initial: 'about' } },
+        type: '$each',
+        props: {
+          items: expr`filter(spaceStore.spaceList, { uuid: ${uuid} })`,
+          as: 'space',
+        },
         children: [
-          ...chrome,
           {
-            type: '$if',
-            props: {
-              condition: { $: 'space.isWeSpace' },
-              then: {
-                type: 'Column',
-                props: { gap: '400', width: '100%', ...fills },
-                children: [
-                  {
-                    type: 'we-tabs',
-                    props: {
-                      selectedKey: { $: 'local.tab' },
-                      gap: '100',
-                      width: '100%',
-                      // Never squeezed by the scroll region beside it: the strip is how you reach
-                      // the other tabs, so it is the last thing that should give up height.
-                      flex: '0 0 auto',
-                      // Dragged narrow, four tabs do not fit — and a panel clips rather than
-                      // scrolling, so without these the last tab is simply unreachable.
-                      // `minWidth` releases the flex item's automatic minimum size, which is
-                      // otherwise the tabs' own content width — so the strip would refuse to
-                      // narrow and overflow the panel instead of scrolling inside it.
-                      minWidth: '0',
-                      overflowX: 'auto',
-                    },
-                    children: TABS.map((tab) => ({
-                      type: 'we-tab',
-                      props: { key: tab.key, label: tab.label, onClick: { $setLocal: 'tab', value: tab.key } },
-                    })),
-                  },
+            type: 'Column',
+            props: { gap: '400', width: '100%', ...fills },
+            children: [
+              ...chrome,
+              {
+                type: '$if',
+                props: {
+                  condition: { $: 'space.isWeSpace' },
+                  then: {
+                    type: 'Column',
+                    props: { gap: '400', width: '100%', ...fills },
+                    children: [
+                      {
+                        type: 'we-tabs',
+                        props: {
+                          selectedKey: { $: 'local.tab' },
+                          gap: '100',
+                          width: '100%',
+                          // Never squeezed by the scroll region beside it: the strip is how you reach
+                          // the other tabs, so it is the last thing that should give up height.
+                          flex: '0 0 auto',
+                          // Dragged narrow, four tabs do not fit — and a panel clips rather than
+                          // scrolling, so without these the last tab is simply unreachable.
+                          // `minWidth` releases the flex item's automatic minimum size, which is
+                          // otherwise the tabs' own content width — so the strip would refuse to
+                          // narrow and overflow the panel instead of scrolling inside it.
+                          minWidth: '0',
+                          overflowX: 'auto',
+                        },
+                        children: TABS.map((tab) => ({
+                          type: 'we-tab',
+                          props: { key: tab.key, label: tab.label, onClick: { $setLocal: 'tab', value: tab.key } },
+                        })),
+                      },
 
-                  /*
+                      /*
                     About — the space's own identity, and the link that gets someone else into it.
 
                     Community-owned throughout, which is why the note says so once rather than each
@@ -989,17 +1112,17 @@ export function spaceSettingsBody(uuid: SchemaProp, chrome: SchemaNode[], fill?:
                     administer, so a member who cannot sees the invite link alone: correct, if
                     sparse, and the note explains the sparseness.
                   */
-                  tabPanel(
-                    'about',
-                    [
-                      audienceNote('Everyone in this space sees these.', { $: 'space.canAdminister' }),
-                      communitySection,
-                      shareSection,
-                    ],
-                    fill,
-                  ),
+                      tabPanel(
+                        'about',
+                        [
+                          audienceNote('Everyone in this space sees these.', { $: 'space.canAdminister' }),
+                          communitySection,
+                          shareSection,
+                        ],
+                        fill,
+                      ),
 
-                  /*
+                      /*
                     Appearance — the two audiences meet here, so the group headings stay.
 
                     The space's defaults are what a member gets on arrival; the overrides below are
@@ -1007,20 +1130,20 @@ export function spaceSettingsBody(uuid: SchemaProp, chrome: SchemaNode[], fill?:
                     answers to "who sees this", one card apart, and the headings are the only thing
                     saying so.
                   */
-                  tabPanel(
-                    'appearance',
-                    [
-                      groupHeading('Everyone in this space', 'What members get when they open this space.', {
-                        $: 'space.canAdminister',
-                      }),
-                      spaceDefaultsSection,
-                      groupHeading('Just for you, here', 'Nobody else is affected by anything in this group.'),
-                      personalAppearanceSection,
-                    ],
-                    fill,
-                  ),
+                      tabPanel(
+                        'appearance',
+                        [
+                          groupHeading('Everyone in this space', 'What members get when they open this space.', {
+                            $: 'space.canAdminister',
+                          }),
+                          spaceDefaultsSection,
+                          groupHeading('Just for you, here', 'Nobody else is affected by anything in this group.'),
+                          personalAppearanceSection,
+                        ],
+                        fill,
+                      ),
 
-                  /*
+                      /*
                     Features — what the space runs, and what you personally see of it.
 
                     The first heading carries both answers at once rather than splitting each row
@@ -1032,40 +1155,43 @@ export function spaceSettingsBody(uuid: SchemaProp, chrome: SchemaNode[], fill?:
                     a community decision with a cost attached, and it would read as a third switch on
                     the module list otherwise.
                   */
-                  tabPanel(
-                    'features',
-                    [
-                      groupHeading('What this space has', 'Two answers per row: yours, and the community’s.'),
-                      spaceSectionsSection,
-                      modulesSection,
-                      groupHeading('Everyone in this space', 'What this space does on its own, for every member.', {
-                        $: 'space.canAdminister',
-                      }),
-                      autoInterpretSection,
-                      shareExtractionDetailSection,
-                    ],
-                    fill,
-                  ),
+                      tabPanel(
+                        'features',
+                        [
+                          groupHeading('What this space has', 'Two answers per row: yours, and the community’s.'),
+                          spaceSectionsSection,
+                          modulesSection,
+                          groupHeading('Everyone in this space', 'What this space does on its own, for every member.', {
+                            $: 'space.canAdminister',
+                          }),
+                          autoInterpretSection,
+                          extractionTargetsSection,
+                          shareExtractionDetailSection,
+                        ],
+                        fill,
+                      ),
 
-                  /*
+                      /*
                     Vocabulary — what this community has decided things mean.
 
                     The one tab that can refuse: it reads from the open dataset, so from the spaces
                     list it can only answer for the space you are already in. In the panel that
                     refusal is unreachable, since the panel is always about the open space.
                   */
-                  tabPanel(
-                    'vocabulary',
-                    [
-                      audienceNote('Everyone in this space sees these.', { $: 'space.canAdminister' }),
-                      spaceVocabularySection,
+                      tabPanel(
+                        'vocabulary',
+                        [
+                          audienceNote('Everyone in this space sees these.', { $: 'space.canAdminister' }),
+                          spaceVocabularySection,
+                        ],
+                        fill,
+                      ),
                     ],
-                    fill,
-                  ),
-                ],
+                  },
+                  else: notAWeSpaceNotice,
+                },
               },
-              else: notAWeSpaceNotice,
-            },
+            ],
           },
         ],
       },

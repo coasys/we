@@ -1,7 +1,7 @@
 import type { ImageCropRef } from '@we/components/solid';
 import { Column, ImageCrop, Row } from '@we/components/solid';
-import type { FileData } from '@we/models';
-import { compressImageToFileData } from '@we/models';
+import type { FileData } from '@we/entities';
+import { compressImageToFileData } from '@we/entities';
 import { createSignal, For, Show } from 'solid-js';
 import { Portal } from 'solid-js/web';
 

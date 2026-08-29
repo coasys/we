@@ -1,9 +1,9 @@
-import { gatherTranscriptTurns, type TurnModel } from '@shared/interpretation/transcriptTurns';
+import { gatherTranscriptTurns, type TurnRecord } from '@shared/interpretation/transcriptTurns';
 import { containmentPredicate } from '@shared/interpretation/transcriptTurns';
-import type { ModelManifestEntry } from '@we/backend-shared';
+import type { EntityManifestEntry } from '@we/backend-shared';
 import { describe, expect, it } from 'vitest';
 
-function model(rows: Record<string, unknown>[], spy?: (options: Record<string, unknown>) => void): TurnModel {
+function model(rows: Record<string, unknown>[], spy?: (options: Record<string, unknown>) => void): TurnRecord {
   return {
     async findAll(_handle, options) {
       spy?.(options);
@@ -97,7 +97,7 @@ describe('containmentPredicate', () => {
     generateSHACL: () => ({ shape: { properties: [{ name: 'children', path: 'we://children' }] } }),
   };
 
-  const foreignManifest: ModelManifestEntry[] = [
+  const foreignManifest: EntityManifestEntry[] = [
     {
       name: 'CollectionBlock',
       targetClass: 'other://CollectionBlock',

@@ -90,13 +90,13 @@ Glossary (these terms pervade stores, models, and `$query`/`perspective` in sche
 | `@we/schema-shared` | schema-system/shared | Schema semantics: prop resolvers, validation, indexer, registry types, reactivity port | **Agnostic** |
 | `@we/schema-solid` | schema-system/frameworks/solid | The schema renderer (walks the tree, mounts components) | Solid (thin adapter) |
 | `@we/backend-shared` | backend-system/shared | The backend contract: `DataSource`, query IR + engine, ephemeral, presence & transcription ports, model manifest | **Agnostic** |
-| `@we/backend-ad4m` | backend-system/ad4m | The AD4M adapter: query adapter, ports, agent identity, SDNA install — and the AD4M model classes, generated from @we/models' manifest (src/models) | Agnostic |
+| `@we/backend-ad4m` | backend-system/ad4m | The AD4M adapter: query adapter, ports, agent identity, SDNA install — and the AD4M model classes, generated from @we/entities' manifest (src/models) | Agnostic |
 | `@we/backend-inmemory` | backend-system/inmemory | In-memory adapter — the reference implementation, and how stores test without an executor | Agnostic |
 | `@we/module-shared` | module-system/shared | The feature-module contract — what a module author installs | Agnostic |
 | `@we/module-globe` · `-call` · `-notes` · `-transcribe` · `-graph` | module-system/* | Bundled feature modules; globe is a *family* (module · protocol · layers · widget) | Agnostic (components injected) |
 | `@we/graph-protocol` · `-core` · `-expanders` · `-layouts` · `-solid` | graph-system/* | The graph engine: expander/layout/renderer contracts, the neutral engine, first-party plugins, and the Solid adapter | **Agnostic** (Solid only in the adapter) |
 | `@we/block-shared` | block-system/shared | Block content types + serialization | Agnostic |
-| `@we/models` | packages/models | WE's domain models: the authored neutral manifest (src/manifest, the source of truth), the neutral type contract, and the entity proxies backends register into | **Agnostic** |
+| `@we/entities` | packages/entities | WE's domain models: the authored neutral manifest (src/manifest, the source of truth), the neutral type contract, and the entity proxies backends register into | **Agnostic** |
 | `@we/app-shell` | packages/app-shell | App shell, stores, registries, built-in template schemas | Solid |
 | `@we/ai-context` | packages/ai-context | Generates this reference (CLAUDE.md et al.) from code + fragments | Build tool |
 
@@ -106,7 +106,7 @@ Each supplies two things: a `PlatformAdapter` (where am I running) and a `Backen
 
 **Dependency direction:** `templates → shell → backend-shared ← backend-ad4m`, and
 `modules → shell → backend-shared`. Dependencies point inward toward the contract packages; there are
-no sideways edges. `@coasys/*` may be imported by `@we/backend-ad4m`, `@we/models`, and any module
+no sideways edges. `@coasys/*` may be imported by `@we/backend-ad4m`, `@we/entities`, and any module
 that declares `backends: ['ad4m']` — nothing else. See `docs/architecture/package-conventions.md`.
 
 ### The Three Seams (why the layering holds)
@@ -156,7 +156,7 @@ that declares `backends: ['ad4m']` — nothing else. See `docs/architecture/pack
 - The backend contract (ports, query IR) → `packages/backend-system/shared/src/`.
 - AD4M wiring (query adapter, SDNA install, agent identity) → `packages/backend-system/ad4m/src/`.
 - The feature-module contract → `packages/module-system/shared/src/module.ts`; a module → `packages/module-system/<id>/`.
-- Data models (Space, blocks) → `packages/models/src/` (see packages/models/CONVENTIONS.md).
+- Data models (Space, blocks) → `packages/entities/src/` (see packages/entities/CONVENTIONS.md).
 - A space's sections (views) → `packages/templates/views/`; how they resolve →
   `packages/app-shell/src/shared/viewResolution.ts` (see docs/architecture/views.md).
 - Graph engine (expanders, layouts, expansion state) → `packages/graph-system/` (see its README);
@@ -210,7 +210,7 @@ The spine of every one of these decisions is a single rule, from `packages/templ
 | A new kind of content composed into a page | **Block type** |
 | A stateful capability a community turns on | **Feature module** |
 | A new source of nodes, or arrangement, in a graph | **Graph plugin** |
-| A new kind of thing that gets stored | **Model** |
+| A new kind of thing that gets stored | **Entity** |
 | State or an action a template needs to reach | **Store** |
 | A differently-shaped deployment | **Seed** (write nothing — select what exists) |
 
@@ -258,7 +258,7 @@ the seed's list is correct code that never appears.
 | Block type | `block-system/shared/` + `frameworks/solid/` | `block-system/CONVENTIONS.md` | `registerBlock()` in `core-blocks.ts` | `--filter @we/block-shared test` |
 | Expression function | `schema-system/shared/src/expressions/functions.ts` | `schema-system/CONVENTIONS.md` ("Adding a function") | `defineFunction()` — the registry feeds the validator, the evaluator and the generated context | `--filter @we/schema-shared test`, then `generate-context` |
 | Store | `app-shell/src/frameworks/solid/stores/` | `app-shell/CONVENTIONS.md` | classify in `templateSurface.ts` **and** describe in `fragments/stores.ts` — both fail the build if you don't | `--filter @we/app-shell test`, then `generate-context` |
-| Model | `models/src/manifest/entities/` | `models/CONVENTIONS.md` + `docs/architecture/relations.md` | `--filter @we/models generate:types` **and** `--filter @we/backend-ad4m generate:classes` | `--filter @we/backend-ad4m test` |
+| Entity | `entities/src/manifest/` | `entities/CONVENTIONS.md` + `docs/architecture/relations.md` | `--filter @we/entities generate:types` **and** `--filter @we/backend-ad4m generate:classes` | `--filter @we/backend-ad4m test` |
 | Feature module | `module-system/<id>/` | `module-system/shared/src/module.ts` (the contract is the documentation) | `bundledModules.ts` + seed `modules` | `--filter @we/module-shared test`, `validate:schemas` |
 | Graph plugin | `graph-system/expanders/src/`, `layouts/src/` | `graph-system/CONVENTIONS.md` | package index **and** `GRAPH_PLUGIN_CATALOG` in `module-system/graph/src/catalog.ts` | `--filter @we/graph-core test`, then `generate-context` |
 | Globe layer | `module-system/globe/layers/src/` | its `README.md` / `EXAMPLES.md` | export from `index.ts` | `--filter @we/globe-layers typecheck` |
@@ -358,20 +358,28 @@ Example — close modal after async submission:
 Example — navigate to newly created item:
 { "$action": "spaceStore.createSpace", "args": [...], "onSuccess": [{ "$setLocal": "modalOpen", "value": false }, { "$action": "routeStore.navigate", "args": [{ "$": "`/space/${result.uuid}`" }] }] }
 
-Model mutations via $action (use these for creating/updating/deleting model instances):
-model.create — creates a model instance in the current perspective (default) or a specified one:
-{ "$action": "model.create", "args": ["ModelName", { "field": "value" }, { "perspective": "datasetStore.rootDataset" }] }
+Record mutations via $action (use these for creating/updating/deleting records):
+A RECORD is one stored thing; an ENTITY is its type. Every one of these takes the entity name first
+and acts on a record of it.
+
+record.create — creates a record in the current perspective (default) or a specified one:
+{ "$action": "record.create", "args": ["EntityName", { "field": "value" }, { "perspective": "datasetStore.rootDataset" }] }
 The third argument is an options object. Omit it to use the current space perspective.
 
-model.update — updates a model instance:
-{ "$action": "model.update", "args": ["ModelName", { "$": "item.id" }, { "field": "newValue" }] }
-To target a non-current perspective: { "$action": "model.update", "args": ["ModelName", { "$": "item.id" }, { "field": "value" }, { "perspective": "datasetStore.rootDataset" }] }
+record.update — updates one record:
+{ "$action": "record.update", "args": ["EntityName", { "$": "item.id" }, { "field": "newValue" }] }
+To target a non-current perspective: { "$action": "record.update", "args": ["EntityName", { "$": "item.id" }, { "field": "value" }, { "perspective": "datasetStore.rootDataset" }] }
 
-model.delete — deletes a model instance:
-{ "$action": "model.delete", "args": ["ModelName", { "$": "item.id" }] }
+record.delete — deletes one record:
+{ "$action": "record.delete", "args": ["EntityName", { "$": "item.id" }] }
 
-Use perspective: 'datasetStore.rootDataset' for we-root models (AgentSettings, ChatSession, etc.).
-Use the default (no perspective) for space-scoped models (Space, Signal, etc.).
+Use perspective: 'datasetStore.rootDataset' for we-root entities (AgentSettings, ChatSession, etc.).
+Use the default (no perspective) for space-scoped entities (Space, Signal, etc.).
+
+record.* writes directly; recordStore is the form surface over the same job — it derives a form from
+the entity's own declaration, so a community's newest entity is creatable with no schema written for
+it. Reach for record.create when the template knows the fields, recordStore when a person is filling
+them in.
 
 Expressions:
 { "$": "<expression>" }
@@ -492,13 +500,33 @@ Rules:
   the host registers, catalogued under "Host functions" above.
 
 Query (data retrieval):
-{ "$query": { "entity": "ModelName", "where": { "field": "value" }, "limit": 10, "order": { "field": "asc" } } }
+{ "$query": { "entity": "EntityName", "where": { "field": "value" }, "limit": 10, "order": { "field": "asc" } } }
 Queries the current dataset for entity instances. Always returns an array.
 Options: entity (required), where, order, limit, offset, include, scope, dataset, subscribe.
 subscribe defaults to true — reactive live updates. Set subscribe: false to do a one-time fetch.
 By default $query targets the current dataset. Use dataset to query a different dataset — required
 when reading entities from an external app (e.g. Flux) that is open as a WE space:
 { "$query": { "entity": "Channel", "dataset": { "$": "currentDataset" } } }
+
+entity may be an expression rather than a literal name — what lets a list render records of a type
+the template was not written for. Put the query inside an $each over a list of model names and read
+the row:
+{
+  "type": "$each",
+  "props": { "items": { "$": "shapeStore.extractionTargets" }, "as": "target" },
+  "children": [{
+    "type": "Column",
+    "$queries": { "found": { "entity": { "$": "target" }, "order": { "createdAt": "asc" } } },
+    "children": ["…one group per model, each with its own subscription…"]
+  }]
+}
+Pair it with recordStore.displays[target] to draw the rows, and the group renders a model a
+community defined this morning with no template change (see "A record of any type").
+USE A LITERAL WHEREVER THE TYPE IS KNOWN. The validator cannot check a name it only sees at
+runtime, so a typo fails as a silently empty list rather than as an error — and a name that has not
+resolved yet reads as "not ready", so the query simply waits. Note the counts of such a set cannot
+be totalled: each group is its own subscription and a schema cannot sum a list of queries whose
+length it does not know, so put a count inside each group rather than above them.
 
 Backend-neutral identity & dataset refs — prefer these over backend-store paths inside $query and conditions:
 - currentDataset — the currently active dataset (an AD4M perspective, in the AD4M backend). Use as a dataset value.
@@ -509,7 +537,7 @@ Backend-neutral identity & dataset refs — prefer these over backend-store path
 
 Eager-loading relations with include (most common relational pattern):
 include hydrates related model instances in the same query — no extra fetches needed.
-Relation names come from the HasMany relations listed for each model in externalModels.
+Relation names come from the HasMany relations listed for each model in externalEntities.
 
 Simple include — hydrate all related instances:
 { "$query": { "entity": "Channel", "include": { "conversations": true } } }
@@ -564,14 +592,14 @@ Single-item projection — add a derived field that resolves to one instance or 
 With limit: 1 the field unwraps to T | null instead of an array.
 
 include only works with typed relations — ones where the target model class is known.
-For WE models this is always the case. For external models, check the externalModels listing:
-relations marked "→ ModelName" are typed (safe for include); relations marked "parent query only"
+For WE models this is always the case. For external models, check the externalEntities listing:
+relations marked "→ EntityName" are typed (safe for include); relations marked "parent query only"
 are untyped and will crash at runtime if used with include — use a scope drill-down instead.
 
 Relational queries — fetch a parent record's children (drill-down navigation):
 { "$query": { "entity": "Conversation", "scope": { "anchor": "Channel", "via": "conversations", "anchorId": { "$": "channel.id" } } } }
 scope.anchor is the parent entity type; scope.via is its relation whose targets are this query's entity (the
-HasMany relation listed for that entity in externalModels); scope.anchorId is the parent record's id (typically
+HasMany relation listed for that entity in externalEntities); scope.anchorId is the parent record's id (typically
 from a $each context variable or a route segment). The adapter resolves the relation to a backend handle —
 no protocol details live in the template.
 Use this pattern when navigating to a detail route and loading only that record's children.
@@ -897,7 +925,7 @@ Single model item (load one record, render children with it in context):
 {
   "type": "$single",
   "props": {
-    "item": { "$query": { "entity": "ModelName", "params": { ... }, "subscribe": true } },
+    "item": { "$query": { "entity": "EntityName", "params": { ... }, "subscribe": true } },
     "as": "profile"   // context key for children — default: 'item'
   },
   "children": [{ "type": "we-text", "children": [{ "$": "profile.username" }] }]
@@ -1763,6 +1791,11 @@ CalloutBlock extends WeNode:
   - icon: string [we://icon]
   - version: number [we://version]
 
+CallExtraction extends WeNode:
+  Fields:
+  - callId: string [we://call_id]
+  - entities: string [we://extraction_targets]
+
 ChatMessage extends WeNode:
   Fields:
   - role: string [we://role]
@@ -1881,6 +1914,7 @@ ReadMarker extends WeNode:
 
 Relationship extends WeNode:
   Fields:
+  - connection: string [we://connection]
   - relationshipTypeId: string [we://relationship_type_id]
   - label: string [we://title]
   - description: string [we://description]
@@ -1946,7 +1980,8 @@ Space extends WeNode:
   - defaultThemeId: string [we://default_theme_id]
   - enabledModules: string [we://enabled_modules]
   - enabledViews: string [we://enabled_views]
-  - autoInterpret: boolean = false [we://auto_interpret]
+  - extractionTargets: string [we://extraction_targets]
+  - autoInterpret: boolean = true [we://auto_interpret]
   - shareExtractionDetail: boolean = false [we://share_extraction_detail]
   Relations:
   - location: HasOne → LocationBlock [we://location]
@@ -2088,7 +2123,7 @@ DatasetStore:
   - currentDataset: dataset handle | null (the dataset currently being viewed)
   - currentDatasetUri: string | undefined — the shared URL of the current dataset with its scheme (neighbourhood://…), or undefined for a personal one. Prefer currentDatasetCid for comparisons; this is the form a share link carries
   - currentDatasetCid: string | undefined — the neighbourhood CID of the current dataset (prefix stripped)
-  - currentDatasetModels: ModelManifestEntry[] (non-WE SHACL models from the current dataset; injected as externalModels into AI messages)
+  - currentDatasetEntities: EntityManifestEntry[] (non-WE SHACL models from the current dataset; injected as externalEntities into AI messages)
   - isWeSpace: boolean — true once the current dataset is confirmed to have WE's Space SDNA installed (false for a joined-but-foreign dataset, e.g. one synced in from Flux)
   - joinedSpaceCids: string[] — CIDs of every joined shared dataset
   - datasetsLoaded: boolean — the backend has answered with the dataset list. An empty list is otherwise indistinguishable from "not fetched yet", so anything asking "have I joined this?" reads the boot frame as "no". The same reason accountStore.accountsLoaded exists
@@ -2102,7 +2137,7 @@ DatasetStore:
   - marketplaceId: string | null — the dataset id of the seed-configured marketplace, or null when it is not configured or not joined. The marketplace counterpart of globalSpaceId
   - marketplaceJoined: boolean — the marketplace dataset is joined locally
 - Actions:
-  - switchDataset(uuid: string): switches to a dataset by UUID, registers its SHACL models as dynamic model classes, and populates currentDatasetModels
+  - switchDataset(uuid: string): switches to a dataset by UUID, registers its SHACL models as dynamic model classes, and populates currentDatasetEntities
   - reorderDatasets(newOrder: string[]): reorders the sidebar items by UUID array
   - removeDataset(uuid: string): removes a dataset from the backend and from local state. The low-level half of spaceStore.removeSpace, which also clears the global-discovery listing — call that from a template, and this only for a dataset that is not a space
   - cleanupSpaceSdna(uuid?: string): one-time remediation for a space that accumulated duplicate SDNA installs — removes the redundant duplicate link copies. Defaults to the current dataset. Returns a display-ready summary string naming how many links were removed and the DIDs that authored them (your own DID annotated with "(you)"), or an empty string if nothing needed cleaning up
@@ -2247,6 +2282,7 @@ RouteStore:
 - Actions:
   - navigate(to: string, options?): navigates to a route (a bare path restores that route's remembered query string)
   - setParam(name: string, value: string | null, options?: { push?: boolean }): writes one query parameter (null removes); replaceState by default, push: true for changes that deserve a Back entry. Prefer $localState syncParam over calling this directly
+  - back(): goes back one entry, the browser's own way. Use it on a page reached from several places — a record page is opened from a list, from a search and from a link somebody sent, and only one of those has a parent worth guessing. Does nothing at the start of the session's history
 
 RuntimeStore:
 - State:
@@ -2348,10 +2384,12 @@ ShapeStore:
   - aiAvailable: boolean — AI model generation is available (the agent has a Claude API key configured)
   - generating: boolean — an AI generation is in flight
   - hintEntities: { entity, source: 'core' | 'shape' }[] — entities offering AI-hint tuning in this space: core interpretable vocabulary (TaskBlock, EventBlock) plus the space's own shapes
+  - extractionCandidates: unknown
   - relationshipTargets: { label, value }[] — what a relationship may point at here, ready for a we-select: this space's own models, then block types, then other apps' models. Core infrastructure entities are deliberately absent
   - identityOptions: { label, value }[] — "None" plus every named property of the open draft, for the identity picker. Built in the store because a schema can map options but cannot prepend one
   - hintEditor: the hint editor state ({ entity, classHint, defaultClassHint, rows: { name, predicate, hint, defaultHint }[], customized }) or null while closed — non-nullness mounts the hint editor modal
   - hintBusy: boolean — the hint editor is loading or saving
+  - extractionNeedsIdentity: unknown
   - memberOptions: { rowId, options }[] — each member's default-value picker entries. Read with find(shapeStore.memberOptions, { rowId: member.rowId }) rather than off member: rows are mutated in place while typing, so values hanging off the row cannot be reactive
   - expandedMembers: string[] — rowIds whose detail panel is open. Read with { $: 'member.rowId in shapeStore.expandedMembers' }; a new row and any row an error names open themselves. Generation leaves rows closed — a collapsed row shows its hint, so what was generated is readable without opening anything
   - generateIntent: 'none' | 'generate' | 'regenerate' | 'replace' — what the generate button would do right now, given what the draft holds. Label it "Regenerate" on 'regenerate' and 'replace' and "Generate" otherwise — 'none' is an empty draft, which has nothing to re-run, so testing for 'generate' alone labels a fresh form wrongly. Disable only on 'none', and route the click through requestGenerateFields, which decides whether to ask first
@@ -2362,6 +2400,7 @@ ShapeStore:
   - cancelShapeWizard(): closes the wizard, discarding the draft
   - setShapeField(field: 'name' | 'description' | 'icon' | 'classHint', value): sets one top-level draft field
   - setIdentityMember(rowId): chooses which member identifies duplicates for AI extraction; 'none' clears it. At most one, which is why it is a picker rather than a per-row flag
+  - setExtractable(): unknown
   - addProperty(): appends an empty property (scalar field) row to the draft
   - addRelationship(): appends an empty relationship (edge to another model) row to the draft
   - removeMember(rowId): removes one member row
@@ -2433,6 +2472,7 @@ SpaceStore:
   - sharedSpaces: array of Space objects (shared/neighbourhood spaces; all Space fields)
   - spaceList: { uuid, name, description, avatar, kind: 'shared' | 'personal' | 'foreign', isWeSpace, canAdminister }[] — one row per joined dataset the agent can act on, ordered like the sidebar and excluding the system datasets. Includes datasets that are not WE spaces (kind 'foreign', isWeSpace false), which are waiting to be initialized. `uuid` is the dataset id, so it keys navigation and settings whether or not a Space record exists
   - routeSpaceUnjoined: boolean — the current route points at a space this agent has not joined, as a settled fact. What a join gate should read: `currentDataset` being null is also true for the first frames of a refresh, so gating on that flashes a join prompt at someone already inside. False while the answer is still unknown
+  - spacePath: string — the path a space's own pages hang off (`/space/<segment>`), empty outside a space. What a link to one record is built from: an href has to be absolute, since a browser resolves a relative one against the current URL rather than against the route tree, and the segment is the neighbourhood CID for a shared space and the dataset id for a personal one — only the URL says which
   - creatingSpace: boolean (true while a new space is being created)
   - joiningSpace: string — the shared id of the space a join is running for, '' when none is. The id rather than a flag so a list can spin only the row being joined; a gate compares it against its own route segment. Stays set for the whole join, which outlives the network call that starts it
   - joinSlow: boolean — that join has been going long enough to be worth mentioning. Joining a shared space has to fetch and install it before it exists anywhere, so a first join routinely takes a minute; pair with joiningSpace to say so instead of spinning in silence
@@ -2460,6 +2500,7 @@ SpaceStore:
   - myMentions: { id, author, createdAt }[] — nodes in this space that mention this agent, newest first. createdAt is the backend’s comparable timestamp. Filtered client-side, so right for a space and wrong for an inbox across many
   - autoInterpret: boolean — whether this space has calls interpreted (extracted into records) as they happen. A community decision, off by default. Readable by every member; writing it is space-settings
   - shareExtractionDetail: boolean — whether extraction passes in this space broadcast their prompt and response to every member, so interpretationStore.activity rows carry detail for everyone. A community decision, off by default
+  - extractionTargets: string[] — the models a call in this space starts out extracting. The middle of three layers: shapeStore.extractionCandidates says what COULD be extracted, this says which of them a call begins with, and the call's own participants add or remove from there (modules.transcribe.extractionTargets). Unset falls back to the two classes that were hardcoded before the setting existed, so no space silently stops extracting. Writing it is space-settings
 - Actions:
   - createSpace(name, description, access: 'personal' | 'shared', discovery: 'hidden' | 'listed', avatarFile?, coverImageFile?, location?): creates a new space with full setup
   - joinSpace(id: string, focus = true): joins a shared space by share link, neighbourhood URL or CID, or focuses it if already joined. Pass focus: false to join without navigating there — for a caller that needs the dataset present rather than open, which is how the marketplace reads its own dataset without moving you out of the space you are in. Rejects when the join could not be completed, so onSuccess means what it says; watch joiningSpace/joinSlow/joinError for what to show while it runs. A join whose network call times out keeps going: the backend usually finishes anyway, and this waits for that before believing the failure
@@ -2480,6 +2521,7 @@ SpaceStore:
   - setModuleEnabled(moduleId: string, enabled: boolean, spaceUuid?): turns a feature module on or off for a space; writes the resolved list, so the first toggle also pins whatever was on by fallback. Omit spaceUuid for the space on screen
   - setAutoInterpret(enabled: boolean, spaceUuid?): turns automatic call interpretation on or off for a space. Omit spaceUuid for the space on screen
   - setShareExtractionDetail(enabled: boolean, spaceUuid?): turns broadcasting of extraction prompts and responses on or off for a space. Omit spaceUuid for the space on screen
+  - setExtractionTarget(entity: string, on: boolean, spaceUuid?): adds or removes one model from what this space's calls start out extracting. Writes the resolved list, so the first toggle also pins whatever was on by fallback. The community's decision; a call's participants override it per call
   - setModuleInstalled(moduleId: string, installed: boolean): turns a module on or off for this agent in every space. Personal — writes AgentSettings.installedModules in the root dataset, so no other member sees it
   - setModuleVisible(moduleId: string, visible: boolean, spaceUuid?): shows or hides a module for this agent in one space, without changing what the community runs. Private: written to the root dataset, never to the space. Phrased positively so a switch can pass `event.detail` bare — wrapping it in another token would evaluate at render time and send a constant
   - setViewEnabled(viewId: string, enabled: boolean, spaceUuid?): adds or removes a section from a space. The community’s decision — every member sees it. Omit spaceUuid for the space on screen
@@ -2582,12 +2624,12 @@ ThemeStore:
   - publishToSpace(perspectiveUuid: string, spaceName: string): copies the current theme into that space, so its members get it. Resolves true on success
   - refreshSpaceThemes(): re-reads the current space's themes. The list follows the space on its own; call this after a publish the subscription might have missed
 
-Model:
+Record:
 - State:
 - Actions:
-  - create(entity: string, fields: object, options?: { perspective?: string }): creates a model instance in the current space, or in the dataset a store path names ('datasetStore.rootDataset' for we-root models). See "Model mutations via $action" above
-  - update(entity: string, id: string, fields: object, options?: { perspective?: string }): updates the named fields of one instance, leaving the rest
-  - delete(entity: string, id: string, options?: { perspective?: string }): deletes one instance. Irreversible
+  - create(entity: string, fields: object, options?: { perspective?: string }): creates a record in the current space, or in the dataset a store path names ('datasetStore.rootDataset' for we-root entities). See "Record mutations via $action" above
+  - update(entity: string, id: string, fields: object, options?: { perspective?: string }): updates the named fields of one record, leaving the rest
+  - delete(entity: string, id: string, options?: { perspective?: string }): deletes one record. Irreversible
 
 ---
 
@@ -2691,7 +2733,7 @@ Nesting works to any depth: "include": { "messages": { "include": { "reactions":
 
 Relational drill-down (master-detail navigation across entity relations):
 Use routes + a $query `scope` when you navigate to a detail route and need only that record's children.
-scope.anchor is the parent entity type; scope.via is its HasMany relation (see externalModels) whose targets
+scope.anchor is the parent entity type; scope.via is its HasMany relation (see externalEntities) whose targets
 are the query's entity; scope.anchorId is the parent record's id. The adapter resolves the relation to a
 backend handle, so no protocol details live in the template.
 routeStore.segments.N extracts the Nth dynamic path segment (segments splits currentPath by "/").
@@ -3104,7 +3146,7 @@ formModal({
   children: [field({ name: 'draftTitle', label: 'What needs doing?', placeholder: 'Ship the docs' })],
   disabled: { $: '!local.draftTitle' },
   submitLabel: 'Add task',
-  submit: { $action: 'model.create', args: ['TaskBlock', { title: { $: 'local.draftTitle' } }] },
+  submit: { $action: 'record.create', args: ['TaskBlock', { title: { $: 'local.draftTitle' } }] },
 })
 ```
 
@@ -4130,14 +4172,15 @@ Key packages with conventions files:
   roles pinned only where the parametric default is wrong. Several roles are *derived at apply time*
   — foregrounds, fills and interaction states all correct themselves — so pinning them is overruling
   a measurement, which is occasionally right and usually not.
-- `packages/models/CONVENTIONS.md` — model authoring: entities vs blocks, predicates, @Flag, WeNode, Model.create() pattern
+- `packages/entities/CONVENTIONS.md` — entity authoring: what makes one a block, predicates, @Flag, WeNode, the Entity.create() pattern
 - `packages/templates/kit/CONVENTIONS.md` — fragment authoring: what belongs in the kit, extraction threshold, options-object API, body style
 
 ---
 
-### Model CRUD Patterns
+### Record CRUD Patterns
 
-Use the static factory method for creation. **Never** use `new Model() + manual property assignment + save()`.
+A record is written through its entity's class. Use the static factory method for creation —
+**never** `new Entity() + manual property assignment + save()`.
 
 **Create**
 ```ts

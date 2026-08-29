@@ -24,9 +24,9 @@ Strategy for implementing link metadata scraping across Tauri and Electron apps 
 ├── /electron
 │   └── index.ts                # Electron-specific bindings (thin wrapper)
 └── /models
-    └── LinkBlock.ts            # Move from @we/models if link-specific
+    └── LinkBlock.ts            # Move from @we/entities if link-specific
 
-packages/models/
+packages/entities/
 └── Block.ts                    # Keep base Block model here
 ```
 

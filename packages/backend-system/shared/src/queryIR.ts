@@ -4,7 +4,7 @@
  * the IR only ever holds concrete values), and what a backend adapter compiles to its native query.
  *
  * One grammar: this is both what an author writes and what an adapter consumes (bindings resolved).
- * Defined against a `ModelManifest` (see manifest.ts) — the entity/field/relation names here are
+ * Defined against a `EntityManifest` (see manifest.ts) — the entity/field/relation names here are
  * expected to resolve there; that cross-check is a separate validation pass.
  */
 import { z } from 'zod';

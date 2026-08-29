@@ -251,7 +251,10 @@ export function TemplateLayout(
   onCleanup(() => setTemplatePanels([], ''));
 
   createEffect(() => stores.routeStore.setNavigateFunction(() => navigate));
-  createEffect(() => stores.routeStore.setCurrentPath(location.pathname));
+  // Both halves, and `search` is not incidental: it is a separate signal on the router's location,
+  // so reading it here is what makes this effect re-run when a link changes only the query — one
+  // record page to the next. See `setCurrentPath`.
+  createEffect(() => stores.routeStore.setCurrentPath(location.pathname, location.search));
 
   // Exit template editing when a shell view (settings, profile, marketplace) opens.
   createEffect(() => {

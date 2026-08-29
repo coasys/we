@@ -16,16 +16,16 @@
  * diarization is involved. That is a property of how transcription was built, and it is what makes
  * speaker attribution here free and correct rather than inferred.
  */
-import type { ModelManifestEntry, TranscriptTurn } from '@we/backend-shared';
+import type { EntityManifestEntry, TranscriptTurn } from '@we/backend-shared';
 
 /** The model statics this needs, narrowed so callers can pass an ORM class without a cast. */
-export interface TurnModel {
+export interface TurnRecord {
   findAll(handle: unknown, options: Record<string, unknown>): Promise<Record<string, unknown>[]>;
 }
 
 export interface GatherTurnsDeps {
   /** Resolve an entity name to its model class for the dataset being read. */
-  modelFor(entity: string): TurnModel | undefined;
+  modelFor(entity: string): TurnRecord | undefined;
   /** The dataset handle the models take. */
   handle: unknown;
   /**
@@ -65,7 +65,7 @@ interface ShapeBearing {
  */
 export function containmentPredicate(
   modelFor: (entity: string) => unknown,
-  manifest: ModelManifestEntry[],
+  manifest: EntityManifestEntry[],
   container = 'CollectionBlock',
   relation = 'children',
 ): string | undefined {

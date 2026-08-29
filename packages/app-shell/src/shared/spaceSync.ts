@@ -1,6 +1,6 @@
 /**
  * Holonic space sync — generic "copy a Space entity into a parent dataset" logic, plus the
- * self-record predicates. Model-layer code (it speaks @we/models, not any backend SDK); schema
+ * self-record predicates. Model-layer code (it speaks @we/entities, not any backend SDK); schema
  * presence is ensured through the `SchemaPort` the caller holds.
  *
  * Each sync function is a write-through mirror: upsert if the record already exists, create if it
@@ -8,7 +8,7 @@
  * holarchy (global, community, sub-space, …).
  */
 import type { SchemaPort } from '@we/backend-shared';
-import { type DatasetProxy, type FileData, LocationBlock, Space } from '@we/models';
+import { type DatasetProxy, type FileData, LocationBlock, Space } from '@we/entities';
 
 export interface LocationData {
   latitude: number;

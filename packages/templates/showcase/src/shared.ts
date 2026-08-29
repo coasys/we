@@ -88,7 +88,7 @@ export function composerModal(opts: {
 /**
  * A modal that creates a bare named container — a channel, a category, a board column.
  *
- * `model.create` rather than the composer: these have a title and no content, so putting them
+ * `record.create` rather than the composer: these have a title and no content, so putting them
  * through a block editor would ask for a document nobody wants to write. `mode` is written here
  * because that is the whole reason feed containers are safe — see the reconcile guard.
  */
@@ -119,7 +119,7 @@ export function newContainerModal(opts: {
     busyLocal: 'creating',
     submitLabel: 'Create',
     submit: {
-      $action: 'model.create',
+      $action: 'record.create',
       args: [
         'CollectionBlock',
         {

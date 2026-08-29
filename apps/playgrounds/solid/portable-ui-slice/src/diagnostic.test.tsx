@@ -19,7 +19,7 @@ function seed() {
 describe('diagnostics', () => {
   it('A: backend query().subscribe delivers rows (pure, no renderer)', async () => {
     const backend = seed();
-    const model = backend.stores.$getModel('Post');
+    const model = backend.stores.$getEntity('Post');
     let got: unknown[] = [];
     model.query({ id: 'ds' }, {}).subscribe((rows) => (got = rows));
     await tick();

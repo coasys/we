@@ -18,6 +18,8 @@
 import { type SchemaNode } from '@we/schema-shared';
 import { expr } from '@we/schema-shared';
 
+import { extractionActivity } from './ExtractionStatus.schema';
+
 /**
  * A message shown for exactly one status.
  *
@@ -302,10 +304,75 @@ const extract: SchemaNode = {
               props: { gap: '050' },
               children: [
                 { type: 'we-text', props: { variant: 'footnote', fontWeight: '600' }, children: ['Extract'] },
+                /*
+                  What this press will look for — the models, not a fixed sentence.
+
+                  It read "Find the tasks and events in what was said", which was true while those
+                  two classes were compiled into this module and is a lie in a space that defined
+                  its own. The chips below both say what will be looked for and let this agent
+                  narrow it; the sentence would have to be rewritten every time a community adopts
+                  a model, so it becomes a lead-in instead.
+                */
                 {
-                  type: 'we-text',
-                  props: { variant: 'footnote', color: 'text-muted' },
-                  children: ['Find the tasks and events in what was said.'],
+                  type: '$if',
+                  props: {
+                    condition: { $: 'count(modules.transcribe.extractionTargets)' },
+                    then: {
+                      type: 'we-text',
+                      props: { variant: 'footnote', color: 'text-muted' },
+                      children: ['Look through what was said for:'],
+                    },
+                    /*
+                      Not a failure, and phrased as the one thing a person can act on.
+
+                      Every other reason extraction is unavailable is about this node — no model
+                      configured, an executor that cannot interpret — and none of them can be fixed
+                      from here. This one can: it is a decision the community has not made yet, and
+                      the place to make it is the space's own models.
+                    */
+                    else: {
+                      type: 'we-text',
+                      props: { variant: 'footnote', color: 'text-muted' },
+                      children: [
+                        'No models are set up for AI extraction here. A space chooses its own in its settings.',
+                      ],
+                    },
+                  },
+                },
+                /*
+                  One chip per model, ticked when this call is looking for it.
+
+                  A group decision rather than a private one, and it has to be: the same list drives
+                  the standing watch, whose registration is one row every peer shares. Two members
+                  holding different lists would each remove-then-add over the other's in a loop.
+
+                  Changing it applies from here on, because a watch keeps a processed-turn cursor —
+                  the note under the button says so, since the answer for the rest of the
+                  conversation is the button itself.
+                */
+                {
+                  type: 'Row',
+                  props: { gap: '100', wrap: true },
+                  children: [
+                    {
+                      type: '$each',
+                      props: { items: { $: 'modules.transcribe.extractionTargets' }, as: 'target' },
+                      children: [
+                        {
+                          type: 'we-button',
+                          props: {
+                            size: 'xs',
+                            variant: { $: "target.selected ? 'secondary' : 'ghost'" },
+                            text: { $: 'target.label' },
+                            onClick: {
+                              $action: 'modules.transcribe.toggleExtractionTarget',
+                              args: [{ $: 'target.entity' }],
+                            },
+                          },
+                        },
+                      ],
+                    },
+                  ],
                 },
               ],
             },
@@ -322,6 +389,30 @@ const extract: SchemaNode = {
               children: [{ $: "modules.transcribe.extractStatus == 'running' ? 'Reading…' : 'Extract'" }],
             },
           ],
+        },
+        /*
+          The one thing about mid-call changes that is not guessable.
+
+          A standing watch keeps a processed-turn cursor, so a model switched on part-way through is
+          applied to what is said next and not to what was said before it. The one-shot pass carries
+          no cursor — it hands the executor the whole transcript — so pressing Extract is the
+          backfill, and the executor's dedup means what was already found returns as updates rather
+          than as second copies.
+
+          Shown only where it applies: a call nobody has changed the list for has nothing to backfill.
+        */
+        {
+          type: '$if',
+          props: {
+            condition: { $: 'count(modules.transcribe.extractionTargets)' },
+            then: {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-faint' },
+              children: [
+                'A model switched on mid-call applies from here — press Extract to sweep what was said before.',
+              ],
+            },
+          },
         },
         {
           type: '$if',
@@ -361,9 +452,20 @@ const extract: SchemaNode = {
               children: [
                 { type: 'we-icon', props: { name: 'info', color: 'text-faint' } },
                 {
+                  /*
+                    The reason, not a guess at it.
+
+                    This was one fixed sentence — "not running on this node" — while `watchProblem`
+                    held the actual cause, composed for exactly this. So a space that had simply
+                    switched automatic extraction off was told its node could not do it: untrue, and
+                    unactionable, and the setting is two clicks away.
+
+                    The store owns the wording because it is the only thing that knows which of four
+                    cases happened; this adds the clause that is true in all of them.
+                  */
                   type: 'we-text',
                   props: { variant: 'footnote', color: 'text-muted' },
-                  children: ['Automatic extraction is not running on this node — press Extract instead.'],
+                  children: [{ $: '`${modules.transcribe.watchProblem} Press Extract instead.`' }],
                 },
               ],
             },
@@ -405,6 +507,20 @@ const extract: SchemaNode = {
           },
         },
         proposals,
+
+        /*
+          What the passes did, in full.
+
+          This used to be the whole of the call bar's readout, and it moved the call's furniture
+          every time somebody opened a row — see `extractionActivity`. It belongs here: this panel is
+          already the surface about extraction, opening something in it costs the call nothing, and
+          there is room for a prompt pane without a floating strip growing to 520px over the controls
+          somebody is reaching for.
+
+          A one-line signal stays in the call chrome so the four people in five who did not start a
+          pass can still see one is running without opening anything.
+        */
+        extractionActivity,
       ],
     },
   },
@@ -435,9 +551,9 @@ const extract: SchemaNode = {
  * template can place it by name.
  *
  * The capture controls are deliberately *not* split out to match — nothing places them separately,
- * and a fragment with no second caller is an extraction waiting to be got wrong. `extractionStatus`
- * is already its own file for a different reason: it is contributed to the call bar rather than
- * composed into this panel.
+ * and a fragment with no second caller is an extraction waiting to be got wrong. The extraction
+ * schemas are already their own file for a different reason: one of the two nodes there is
+ * contributed to the call bar rather than composed into this panel.
  */
 export const transcriptFeed: SchemaNode = {
   type: 'we-scroll-area',

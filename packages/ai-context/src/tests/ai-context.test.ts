@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 import { assembleReference } from '../assembler.js';
 import { extractPrimitives } from '../extractors/cem.js';
-import { extractModels } from '../extractors/models.js';
+import { extractEntities } from '../extractors/entities.js';
 import { extractTokens } from '../extractors/tokens.js';
 import { extractComponentProps } from '../extractors/typescript.js';
 import { contributionSurfaces } from '../fragments/contribution-surfaces.js';
@@ -27,7 +27,7 @@ const paths = {
   components: resolve(designSystemRoot, '4-components/src'),
   widgets: resolve(repoRoot, 'packages/graph-system/frameworks/solid/src'),
   tokens: resolve(designSystemRoot, '1-tokens/src'),
-  models: resolve(repoRoot, 'packages/models/src'),
+  models: resolve(repoRoot, 'packages/entities/src'),
 };
 
 describe('extractPrimitives', () => {
@@ -84,9 +84,9 @@ describe('extractTokens', () => {
   });
 });
 
-describe('extractModels', () => {
+describe('extractEntities', () => {
   it('extracts models from source', async () => {
-    const models = await extractModels(paths.models);
+    const models = await extractEntities(paths.models);
     expect(models.length).toBeGreaterThan(0);
 
     const textBlock = models.find((m) => m.name === 'TextBlock');
@@ -95,7 +95,7 @@ describe('extractModels', () => {
   });
 
   it('extracts HasMany relations', async () => {
-    const models = await extractModels(paths.models);
+    const models = await extractEntities(paths.models);
     const collection = models.find((m) => m.name === 'CollectionBlock');
     expect(collection).toBeDefined();
     expect(collection!.relations.some((r) => r.kind === 'HasMany' && r.name === 'children')).toBe(true);
@@ -110,7 +110,7 @@ describe('assembleReference', () => {
         ...extractComponentProps(paths.components, 'components'),
         ...extractComponentProps(paths.widgets, 'widgets'),
       ],
-      models: await extractModels(paths.models),
+      models: await extractEntities(paths.models),
       tokens: extractTokens(paths.tokens),
       storeEntries: [],
       fragments: {
@@ -146,7 +146,7 @@ describe('assembleReference', () => {
         ...extractComponentProps(paths.components, 'components'),
         ...extractComponentProps(paths.widgets, 'widgets'),
       ],
-      models: await extractModels(paths.models),
+      models: await extractEntities(paths.models),
       tokens: extractTokens(paths.tokens),
       storeEntries: [],
       fragments: {

@@ -105,20 +105,28 @@ Example — close modal after async submission:
 Example — navigate to newly created item:
 { "$action": "spaceStore.createSpace", "args": [...], "onSuccess": [{ "$setLocal": "modalOpen", "value": false }, { "$action": "routeStore.navigate", "args": [{ "$": "\`/space/\${result.uuid}\`" }] }] }
 
-Model mutations via $action (use these for creating/updating/deleting model instances):
-model.create — creates a model instance in the current perspective (default) or a specified one:
-{ "$action": "model.create", "args": ["ModelName", { "field": "value" }, { "perspective": "datasetStore.rootDataset" }] }
+Record mutations via $action (use these for creating/updating/deleting records):
+A RECORD is one stored thing; an ENTITY is its type. Every one of these takes the entity name first
+and acts on a record of it.
+
+record.create — creates a record in the current perspective (default) or a specified one:
+{ "$action": "record.create", "args": ["EntityName", { "field": "value" }, { "perspective": "datasetStore.rootDataset" }] }
 The third argument is an options object. Omit it to use the current space perspective.
 
-model.update — updates a model instance:
-{ "$action": "model.update", "args": ["ModelName", { "$": "item.id" }, { "field": "newValue" }] }
-To target a non-current perspective: { "$action": "model.update", "args": ["ModelName", { "$": "item.id" }, { "field": "value" }, { "perspective": "datasetStore.rootDataset" }] }
+record.update — updates one record:
+{ "$action": "record.update", "args": ["EntityName", { "$": "item.id" }, { "field": "newValue" }] }
+To target a non-current perspective: { "$action": "record.update", "args": ["EntityName", { "$": "item.id" }, { "field": "value" }, { "perspective": "datasetStore.rootDataset" }] }
 
-model.delete — deletes a model instance:
-{ "$action": "model.delete", "args": ["ModelName", { "$": "item.id" }] }
+record.delete — deletes one record:
+{ "$action": "record.delete", "args": ["EntityName", { "$": "item.id" }] }
 
-Use perspective: 'datasetStore.rootDataset' for we-root models (AgentSettings, ChatSession, etc.).
-Use the default (no perspective) for space-scoped models (Space, Signal, etc.).
+Use perspective: 'datasetStore.rootDataset' for we-root entities (AgentSettings, ChatSession, etc.).
+Use the default (no perspective) for space-scoped entities (Space, Signal, etc.).
+
+record.* writes directly; recordStore is the form surface over the same job — it derives a form from
+the entity's own declaration, so a community's newest entity is creatable with no schema written for
+it. Reach for record.create when the template knows the fields, recordStore when a person is filling
+them in.
 
 Expressions:
 { "$": "<expression>" }
@@ -209,13 +217,33 @@ Rules:
   the host registers, catalogued under "Host functions" above.
 
 Query (data retrieval):
-{ "$query": { "entity": "ModelName", "where": { "field": "value" }, "limit": 10, "order": { "field": "asc" } } }
+{ "$query": { "entity": "EntityName", "where": { "field": "value" }, "limit": 10, "order": { "field": "asc" } } }
 Queries the current dataset for entity instances. Always returns an array.
 Options: entity (required), where, order, limit, offset, include, scope, dataset, subscribe.
 subscribe defaults to true — reactive live updates. Set subscribe: false to do a one-time fetch.
 By default $query targets the current dataset. Use dataset to query a different dataset — required
 when reading entities from an external app (e.g. Flux) that is open as a WE space:
 { "$query": { "entity": "Channel", "dataset": { "$": "currentDataset" } } }
+
+entity may be an expression rather than a literal name — what lets a list render records of a type
+the template was not written for. Put the query inside an $each over a list of model names and read
+the row:
+{
+  "type": "$each",
+  "props": { "items": { "$": "shapeStore.extractionTargets" }, "as": "target" },
+  "children": [{
+    "type": "Column",
+    "$queries": { "found": { "entity": { "$": "target" }, "order": { "createdAt": "asc" } } },
+    "children": ["…one group per model, each with its own subscription…"]
+  }]
+}
+Pair it with recordStore.displays[target] to draw the rows, and the group renders a model a
+community defined this morning with no template change (see "A record of any type").
+USE A LITERAL WHEREVER THE TYPE IS KNOWN. The validator cannot check a name it only sees at
+runtime, so a typo fails as a silently empty list rather than as an error — and a name that has not
+resolved yet reads as "not ready", so the query simply waits. Note the counts of such a set cannot
+be totalled: each group is its own subscription and a schema cannot sum a list of queries whose
+length it does not know, so put a count inside each group rather than above them.
 
 Backend-neutral identity & dataset refs — prefer these over backend-store paths inside $query and conditions:
 - currentDataset — the currently active dataset (an AD4M perspective, in the AD4M backend). Use as a dataset value.
@@ -226,7 +254,7 @@ Backend-neutral identity & dataset refs — prefer these over backend-store path
 
 Eager-loading relations with include (most common relational pattern):
 include hydrates related model instances in the same query — no extra fetches needed.
-Relation names come from the HasMany relations listed for each model in externalModels.
+Relation names come from the HasMany relations listed for each model in externalEntities.
 
 Simple include — hydrate all related instances:
 { "$query": { "entity": "Channel", "include": { "conversations": true } } }
@@ -281,14 +309,14 @@ Single-item projection — add a derived field that resolves to one instance or 
 With limit: 1 the field unwraps to T | null instead of an array.
 
 include only works with typed relations — ones where the target model class is known.
-For WE models this is always the case. For external models, check the externalModels listing:
-relations marked "→ ModelName" are typed (safe for include); relations marked "parent query only"
+For WE models this is always the case. For external models, check the externalEntities listing:
+relations marked "→ EntityName" are typed (safe for include); relations marked "parent query only"
 are untyped and will crash at runtime if used with include — use a scope drill-down instead.
 
 Relational queries — fetch a parent record's children (drill-down navigation):
 { "$query": { "entity": "Conversation", "scope": { "anchor": "Channel", "via": "conversations", "anchorId": { "$": "channel.id" } } } }
 scope.anchor is the parent entity type; scope.via is its relation whose targets are this query's entity (the
-HasMany relation listed for that entity in externalModels); scope.anchorId is the parent record's id (typically
+HasMany relation listed for that entity in externalEntities); scope.anchorId is the parent record's id (typically
 from a $each context variable or a route segment). The adapter resolves the relation to a backend handle —
 no protocol details live in the template.
 Use this pattern when navigating to a detail route and loading only that record's children.
@@ -614,7 +642,7 @@ Single model item (load one record, render children with it in context):
 {
   "type": "$single",
   "props": {
-    "item": { "$query": { "entity": "ModelName", "params": { ... }, "subscribe": true } },
+    "item": { "$query": { "entity": "EntityName", "params": { ... }, "subscribe": true } },
     "as": "profile"   // context key for children — default: 'item'
   },
   "children": [{ "type": "we-text", "children": [{ "$": "profile.username" }] }]

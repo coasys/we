@@ -183,7 +183,7 @@ formModal({
   children: [field({ name: 'draftTitle', label: 'What needs doing?', placeholder: 'Ship the docs' })],
   disabled: { $: '!local.draftTitle' },
   submitLabel: 'Add task',
-  submit: { $action: 'model.create', args: ['TaskBlock', { title: { $: 'local.draftTitle' } }] },
+  submit: { $action: 'record.create', args: ['TaskBlock', { title: { $: 'local.draftTitle' } }] },
 })
 \`\`\`
 

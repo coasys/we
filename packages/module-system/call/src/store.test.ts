@@ -155,6 +155,7 @@ describe('transport and device lifetime', () => {
     };
 
     const disposers: Array<() => void> = [];
+    let created = 0;
     const store = createCallStore({
       signal,
       dataset: () => ({ id: 'ds' }),
@@ -163,6 +164,8 @@ describe('transport and device lifetime', () => {
       ephemeral: () => scope,
       presence: { peers: () => [], setActivity: () => {}, clearActivity: () => {} },
       onDispose: (fn: () => void) => disposers.push(fn),
+      // Starting a call now writes its record first, so the harness has to answer for one.
+      createEntity: async () => `rec-${++created}`,
       createPeerConnection: () => ({}) as RTCPeerConnection,
     } as never) as ReturnType<typeof createCallStore> & Record<string, (...args: unknown[]) => unknown>;
 
@@ -175,7 +178,7 @@ describe('transport and device lifetime', () => {
     // routes to a visible stage were controls that read as ways to change something already there.
     const { store } = callable();
 
-    store.joinSpaceCall();
+    await store.startCall();
     await Promise.resolve();
 
     expect(store.stageOpen()).toBe(true);
@@ -188,7 +191,7 @@ describe('transport and device lifetime', () => {
     // "This call is showing", not a preference that outlives the call it was made in.
     const { store } = callable();
 
-    store.joinSpaceCall();
+    await store.startCall();
     await Promise.resolve();
     store.leave();
 
@@ -199,7 +202,7 @@ describe('transport and device lifetime', () => {
   it('gives the transport scope back when the call ends', async () => {
     const { store, scopeDisposals } = callable();
 
-    store.joinSpaceCall();
+    await store.startCall();
     await Promise.resolve();
     expect(scopeDisposals()).toBe(0);
 
@@ -210,7 +213,7 @@ describe('transport and device lifetime', () => {
   it('does not accumulate scopes across repeated joins', async () => {
     const { store, scopeDisposals } = callable();
 
-    store.joinSpaceCall();
+    await store.startCall();
     store.joinAnchoredCall('node-a');
     store.joinAnchoredCall('node-b');
     await Promise.resolve();
@@ -224,7 +227,7 @@ describe('transport and device lifetime', () => {
   it('tears the call down when the module is disposed', async () => {
     const { store, scopeDisposals, disposers } = callable();
 
-    store.joinSpaceCall();
+    await store.startCall();
     await Promise.resolve();
     expect(disposers).toHaveLength(1);
 
@@ -264,6 +267,7 @@ describe('a call and the space it happens in', () => {
       channel: () => ({ publish: () => {}, onMessage: () => () => {} }),
       dispose: () => {},
     };
+    let created = 0;
 
     const store = createCallStore({
       signal,
@@ -278,6 +282,7 @@ describe('a call and the space it happens in', () => {
         clearActivity: () => {},
       },
       onDispose: () => {},
+      createEntity: async () => `rec-${++created}`,
       createPeerConnection: () => ({}) as RTCPeerConnection,
     } as never) as ReturnType<typeof createCallStore> & Record<string, (...args: unknown[]) => unknown>;
 
@@ -298,7 +303,7 @@ describe('a call and the space it happens in', () => {
     // was enough only while a call could exist solely in the space you were standing in.
     const { store, activities } = navigable();
 
-    store.joinSpaceCall();
+    await store.startCall();
     await Promise.resolve();
 
     const call = activities.find((a) => a.type === 'call');
@@ -310,7 +315,7 @@ describe('a call and the space it happens in', () => {
   it('stays in the call after moving to another space', async () => {
     const { store, goTo } = navigable();
 
-    store.joinSpaceCall();
+    await store.startCall();
     await Promise.resolve();
     expect(store.active()).toBe(true);
 
@@ -325,7 +330,7 @@ describe('a call and the space it happens in', () => {
     // spaces as much as it is anything final, so ending a call on it ended calls for no reason.
     const { store, goTo } = navigable();
 
-    store.joinSpaceCall();
+    await store.startCall();
     await Promise.resolve();
 
     goTo(null, null);
@@ -337,7 +342,7 @@ describe('a call and the space it happens in', () => {
     // The other half: nothing above should have made a call harder to leave.
     const { store, goTo } = navigable();
 
-    store.joinSpaceCall();
+    await store.startCall();
     await Promise.resolve();
     goTo({ id: 'elsewhere' }, 'inmemory://elsewhere');
 
@@ -350,7 +355,7 @@ describe('a call and the space it happens in', () => {
     // being one call, and a second live call would be a second space pinned indefinitely.
     const { store } = navigable();
 
-    store.joinSpaceCall();
+    await store.startCall();
     await Promise.resolve();
     const first = store.callId();
 
@@ -365,7 +370,7 @@ describe('a call and the space it happens in', () => {
 /**
  * The rail's call button — one promise across every state it can be pressed in.
  *
- * It used to be wired straight to `joinSpaceCall`, which made it three different things: a no-op in
+ * It used to be wired straight to a bare join, which made it three different things: a no-op in
  * the space call (`join` returns early on a matching id), and a silent teardown of any *other* call,
  * including one running in a space the user had merely navigated away from. A button in permanent
  * chrome is pressed by accident; neither outcome is one it should be able to produce.
@@ -390,6 +395,7 @@ describe('going to the call', () => {
       channel: () => ({ publish: () => {}, onMessage: () => () => {} }),
       dispose: () => {},
     };
+    let created = 0;
 
     const store = createCallStore({
       signal,
@@ -401,6 +407,7 @@ describe('going to the call', () => {
       presence: { peers: () => [], setActivity: () => {}, clearActivity: () => {} },
       datasets: { get: () => undefined, open: (target: string) => opened.push(target) },
       onDispose: () => {},
+      createEntity: async () => `rec-${++created}`,
       createPeerConnection: () => ({}) as RTCPeerConnection,
     } as never) as ReturnType<typeof createCallStore> & Record<string, (...args: unknown[]) => unknown>;
 

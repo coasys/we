@@ -44,7 +44,7 @@ export const signalTypeCard: SchemaNode = {
               props: {
                 variant: 'ghost',
                 size: 'sm',
-                onClick: { $action: 'model.delete', args: ['SignalType', { $: 'signalType.id' }] },
+                onClick: { $action: 'record.delete', args: ['SignalType', { $: 'signalType.id' }] },
               },
               children: [{ type: 'we-icon', props: { name: 'trash', color: 'danger-text' } }],
             },

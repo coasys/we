@@ -16,7 +16,7 @@ import { EDITOR_STORE_ID } from '@shared/registries/editorDocks';
 import { deepClone } from '@shared/utils';
 import { type EditingTheme, useDatasetStore, useTemplateStore, useThemeStore } from '@solid/stores';
 import { toastService } from '@we/components/solid';
-import { ChatMessage as ChatMessageModel, ChatSession as ChatSessionModel } from '@we/models';
+import { ChatMessage as ChatMessageRecord, ChatSession as ChatSessionRecord } from '@we/entities';
 import type { DockEdge, DockSize } from '@we/module-shared';
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { contextData, setLocalWarningSink } from '@we/schema-shared';
@@ -75,7 +75,7 @@ export interface EditorStore {
   pickerShowDestination: Accessor<boolean>;
 
   // --- Session management ---
-  sessions: Accessor<ChatSessionModel[]>;
+  sessions: Accessor<ChatSessionRecord[]>;
   activeSessionId: Accessor<string | null>;
   newChat: () => void;
   switchSession: (sessionId: string) => void;
@@ -203,14 +203,14 @@ export function EditorStoreProvider(props: ParentProps) {
 
   // Reactive validation context — perspective-accurate model allowlist.
   // When a perspective is active its full manifest (WE + external) is used to
-  // narrow modelNames to only what is actually registered there.  WE models
+  // narrow entityNames to only what is actually registered there.  WE models
   // not present in the manifest (e.g. CollectionBlock in we-root) are excluded.
   // Falls back to the all-WE base context when no perspective is set.
   const getValidationCtx = createMemo(() => {
-    const manifest = datasetStore.currentDatasetModels();
+    const manifest = datasetStore.currentDatasetEntities();
     if (manifest.length === 0) return baseValidationCtx;
-    const perspectiveModelNames = new Set(manifest.map((m) => m.name));
-    return { ...baseValidationCtx, modelNames: perspectiveModelNames };
+    const perspectiveEntityNames = new Set(manifest.map((m) => m.name));
+    return { ...baseValidationCtx, entityNames: perspectiveEntityNames };
   });
 
   // --- Chat state ---
@@ -223,10 +223,10 @@ export function EditorStoreProvider(props: ParentProps) {
   const apiKeyConfigured = () => apiKey().length > 0;
 
   // --- Session management ---
-  const [sessions, setSessions] = createSignal<ChatSessionModel[]>([]);
+  const [sessions, setSessions] = createSignal<ChatSessionRecord[]>([]);
   const [activeSessionId, setActiveSessionId] = createSignal<string | null>(null);
   // Track the AD4M ChatSession model instance for the active session
-  let activeSessionModel: ChatSessionModel | null = null;
+  let activeSessionRecord: ChatSessionRecord | null = null;
 
   // --- Content mode (preview / visual / code) ---
   const [contentMode, setContentModeSignal] = createSignal<'preview' | 'visual'>('preview');
@@ -359,16 +359,16 @@ export function EditorStoreProvider(props: ParentProps) {
     if (templateStore.isBuiltInTemplate(templateId)) {
       setSessions([]);
       setActiveSessionId(null);
-      activeSessionModel = null;
+      activeSessionRecord = null;
       setMessages([]);
       return;
     }
 
-    const templateModel = templateStore.getTemplateModel(templateId);
-    if (!templateModel) {
+    const templateRecord = templateStore.getTemplateRecord(templateId);
+    if (!templateRecord) {
       setSessions([]);
       setActiveSessionId(null);
-      activeSessionModel = null;
+      activeSessionRecord = null;
       setMessages([]);
       return;
     }
@@ -378,8 +378,8 @@ export function EditorStoreProvider(props: ParentProps) {
 
     try {
       // Single query: sessions for this template with messages already hydrated
-      const templateSessions = await ChatSessionModel.findAll(perspective, {
-        where: { templateId: templateModel.id },
+      const templateSessions = await ChatSessionRecord.findAll(perspective, {
+        where: { templateId: templateRecord.id },
         order: { updatedAt: 'DESC' },
         include: { messages: { order: { createdAt: 'ASC' } } },
       });
@@ -390,18 +390,18 @@ export function EditorStoreProvider(props: ParentProps) {
       if (templateSessions.length > 0) {
         const latest = templateSessions[0];
         setActiveSessionId(latest.id);
-        activeSessionModel = latest;
+        activeSessionRecord = latest;
         setMessages((latest.messages as ChatMessage[]) || []);
       } else {
         setActiveSessionId(null);
-        activeSessionModel = null;
+        activeSessionRecord = null;
         setMessages([]);
       }
     } catch (err) {
       console.error('Failed to load sessions for template', templateId, err);
       setSessions([]);
       setActiveSessionId(null);
-      activeSessionModel = null;
+      activeSessionRecord = null;
       setMessages([]);
     }
   }
@@ -416,20 +416,20 @@ export function EditorStoreProvider(props: ParentProps) {
       return;
     }
 
-    const templateModel = templateStore.getTemplateModel(templateId);
+    const templateRecord = templateStore.getTemplateRecord(templateId);
     const perspective = datasetStore.rootDataset()?.handle;
-    if (!templateModel || !perspective) return;
+    if (!templateRecord || !perspective) return;
 
     try {
       const sessionName = `Chat ${sessions().length + 1}`;
       const now = new Date().toISOString();
-      const session = await ChatSessionModel.create(perspective, {
+      const session = await ChatSessionRecord.create(perspective, {
         name: sessionName,
-        templateId: templateModel.id,
+        templateId: templateRecord.id,
         updatedAt: now,
       });
 
-      activeSessionModel = session;
+      activeSessionRecord = session;
       setActiveSessionId(session.id);
       setMessages([]);
       setSessions((prev) => [session, ...prev]);
@@ -445,7 +445,7 @@ export function EditorStoreProvider(props: ParentProps) {
     const target = sessions().find((s) => s.id === sessionId);
     if (!target) return;
 
-    activeSessionModel = target;
+    activeSessionRecord = target;
     setActiveSessionId(sessionId);
     setMessages((target.messages as ChatMessage[]) || []);
   }
@@ -455,9 +455,9 @@ export function EditorStoreProvider(props: ParentProps) {
     const templateId = templateStore.currentTemplate.id;
     if (!templateId) return;
 
-    const templateModel = templateStore.getTemplateModel(templateId);
+    const templateRecord = templateStore.getTemplateRecord(templateId);
     const perspective = datasetStore.rootDataset()?.handle;
-    if (!templateModel || !perspective) return;
+    if (!templateRecord || !perspective) return;
 
     try {
       const target = sessions().find((s) => s.id === sessionId);
@@ -465,7 +465,7 @@ export function EditorStoreProvider(props: ParentProps) {
 
       // Delete all hydrated messages in the session
       for (const msg of target.messages || []) {
-        await (msg as ChatMessageModel).delete();
+        await (msg as ChatMessageRecord).delete();
       }
 
       await target.delete();
@@ -477,12 +477,12 @@ export function EditorStoreProvider(props: ParentProps) {
         const remaining = sessions();
         if (remaining.length > 0) {
           const next = remaining[0];
-          activeSessionModel = next;
+          activeSessionRecord = next;
           setActiveSessionId(next.id);
           setMessages((next.messages as ChatMessage[]) || []);
         } else {
           setActiveSessionId(null);
-          activeSessionModel = null;
+          activeSessionRecord = null;
           setMessages([]);
         }
       }
@@ -493,16 +493,16 @@ export function EditorStoreProvider(props: ParentProps) {
 
   /** Persist a message to AD4M and link it to the active session */
   async function persistMessage(role: 'user' | 'assistant', content: string) {
-    if (!activeSessionModel) return;
+    if (!activeSessionRecord) return;
 
     const perspective = datasetStore.rootDataset()?.handle;
     if (!perspective) return;
 
     try {
-      await ChatMessageModel.create(
+      await ChatMessageRecord.create(
         perspective,
         { role, content },
-        { parent: { model: ChatSessionModel, id: activeSessionModel.id } },
+        { parent: { model: ChatSessionRecord, id: activeSessionRecord.id } },
       );
     } catch (err) {
       console.error('Failed to persist message', err);
@@ -807,7 +807,7 @@ export function EditorStoreProvider(props: ParentProps) {
   async function sendMessage(text: string) {
     // Lazy session creation for custom templates: if no active session, create one
     const templateId = templateStore.currentTemplate.id;
-    if (templateId && !templateStore.isBuiltInTemplate(templateId) && !activeSessionModel) {
+    if (templateId && !templateStore.isBuiltInTemplate(templateId) && !activeSessionRecord) {
       await newChat();
     }
 
@@ -816,7 +816,7 @@ export function EditorStoreProvider(props: ParentProps) {
     setMessages((prev) => [...prev, userMsg]);
 
     // Persist user message to AD4M (custom templates only)
-    if (activeSessionModel) {
+    if (activeSessionRecord) {
       persistMessage('user', text);
     }
 
@@ -1139,20 +1139,20 @@ export function EditorStoreProvider(props: ParentProps) {
 
     // Add current message with latest schema (with node IDs for ID-based patching)
     const schemaWithIds = ensureNodeIds(deepClone(templateStore.currentTemplate) as SchemaNode);
-    const manifest = datasetStore.currentDatasetModels();
+    const manifest = datasetStore.currentDatasetEntities();
     const payload: Record<string, unknown> = {
       request: latestText,
       currentSchema: schemaWithIds,
     };
     if (manifest.length > 0) {
-      const weModelNames = new Set(baseValidationCtx.modelNames);
-      const weInPerspective = manifest.filter((m) => weModelNames.has(m.name)).map((m) => m.name);
-      const externalInPerspective = manifest.filter((m) => !weModelNames.has(m.name));
+      const weEntityNames = new Set(baseValidationCtx.entityNames);
+      const weInPerspective = manifest.filter((m) => weEntityNames.has(m.name)).map((m) => m.name);
+      const externalInPerspective = manifest.filter((m) => !weEntityNames.has(m.name));
       // WE models: send only names — AI already has their full structure in schemaContext
-      if (weInPerspective.length > 0) payload.availableWeModels = weInPerspective;
+      if (weInPerspective.length > 0) payload.availableWeEntities = weInPerspective;
       // External models: send full property descriptions — AI has no other knowledge of them
       if (externalInPerspective.length > 0)
-        payload.externalModels = formatExternalManifestForPrompt(externalInPerspective);
+        payload.externalEntities = formatExternalManifestForPrompt(externalInPerspective);
     }
     history.push({
       role: 'user',
@@ -1171,7 +1171,7 @@ export function EditorStoreProvider(props: ParentProps) {
     }
 
     // Persist to AD4M (fire-and-forget for custom templates)
-    if (activeSessionModel) {
+    if (activeSessionRecord) {
       persistMessage('assistant', content);
     }
   }
@@ -1199,14 +1199,14 @@ export function EditorStoreProvider(props: ParentProps) {
   // ----------------------------------------------------------------
   async function clearHistory() {
     // If persisted session, delete messages from AD4M
-    if (activeSessionModel) {
+    if (activeSessionRecord) {
       try {
         // Messages are already hydrated on the session model
-        for (const msg of activeSessionModel.messages || []) {
-          await activeSessionModel.removeMessages(msg as ChatMessageModel);
-          await (msg as ChatMessageModel).delete();
+        for (const msg of activeSessionRecord.messages || []) {
+          await activeSessionRecord.removeMessages(msg as ChatMessageRecord);
+          await (msg as ChatMessageRecord).delete();
         }
-        activeSessionModel.messages = [];
+        activeSessionRecord.messages = [];
       } catch (err) {
         console.error('Failed to clear persisted messages', err);
       }

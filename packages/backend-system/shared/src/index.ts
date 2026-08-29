@@ -17,7 +17,7 @@ export type {
   DatasetHandle,
   QueryOptions,
   QuerySubscription,
-  ModelClass,
+  EntityClass,
   MutationApi,
   DataSource,
   QueryAdapter,
@@ -69,9 +69,17 @@ export type {
 export { setTraceSink, trace, tracing } from './trace';
 export type { TraceSink } from './trace';
 
-export { modelManifestSchema, validateManifest, getEntity, getProperty, getRelation } from './manifest';
+export {
+  blockableEntities,
+  extractableEntities,
+  getEntity,
+  getProperty,
+  getRelation,
+  modelManifestSchema,
+  validateManifest,
+} from './manifest';
 export type {
-  ModelManifest,
+  EntityManifest,
   EntitySchema,
   PropertySchema,
   RelationSchema,
@@ -110,7 +118,7 @@ export type {
   DatasetRef,
 } from './lifecycle';
 export { manifestEntries } from './manifestEntry';
-export type { ModelManifestEntry, ModelManifestProperty } from './manifestEntry';
+export type { EntityManifestEntry, EntityManifestProperty } from './manifestEntry';
 export { ANONYMOUS_AGENT_NAME, displayName, isProfileEmpty } from './profileTypes';
 export type { AgentProfileSummary, PublishProfileFields } from './profileTypes';
 export type {
@@ -138,21 +146,21 @@ export type {
 export type {
   IncludeExtras,
   IncludeOf,
-  ModelDataKeys,
-  ModelInstance,
-  ModelStatic,
+  RecordDataKeys,
+  RecordInstance,
+  EntityStatic,
   PropertyKeysOf,
-  RelatedModel,
+  RelatedEntity,
   RelationKeysOf,
   TypedIncludeMap,
   TypedIncludeProjection,
-  TypedModelQuery,
+  TypedEntityQuery,
   TypedOrder,
   TypedWhere,
   WriteProperties,
-} from './modelContract';
+} from './recordContract';
 export type { LanguageModelPort } from './languageModel';
-export type { TranscriptionModel, TranscriptionPort, TranscriptionStream, TranscriptionTuning } from './transcription';
+export type { TranscriptionRecord, TranscriptionPort, TranscriptionStream, TranscriptionTuning } from './transcription';
 export type {
   InterpretationPort,
   InterpretationProposal,

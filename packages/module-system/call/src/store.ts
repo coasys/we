@@ -25,7 +25,7 @@ import { planEphemeral } from '@we/module-shared';
 import { devPeers, devPeersAvailable, readDevPeerCount, stopDevPeers, writeDevPeerCount } from './devPeers';
 import { createMediaController, type MediaController } from './media';
 import { type CallMesh, createCallMesh } from './mesh';
-import { anchoredCallId, spaceCallId } from './protocol';
+import { CALL_KIND, CALL_PREDICATE, recordCallId } from './protocol';
 import { solveStrip } from './strip';
 
 /**
@@ -153,7 +153,19 @@ function hasLiveVideo(stream: MediaStream | null): boolean {
 }
 
 export function createCallStore(deps: CallStoreDeps) {
-  const { signal, effect, dataset, datasetUri, selfId, ephemeral, presence, identities, datasets, onDispose } = deps;
+  const {
+    signal,
+    effect,
+    dataset,
+    datasetUri,
+    selfId,
+    ephemeral,
+    presence,
+    identities,
+    datasets,
+    onDispose,
+    createEntity,
+  } = deps;
 
   /**
    * The transport scope this call holds, so leaving can give it back.
@@ -482,11 +494,28 @@ export function createCallStore(deps: CallStoreDeps) {
     if (callId() && uri) datasets?.open(uri);
   }
 
+  /**
+   * The call record this call is about — see `recordCallId`.
+   *
+   * Held beside `anchor` and for the same reason: it is republished on every activity, so reading it
+   * from one place is what stops a later `publishActivity` dropping it.
+   */
+  let callRecord: string | null = null;
+
   /** Republish the call activity so peers see mute/camera/screen changes. */
   function publishActivity() {
     const id = callId();
     if (!id || !presence) return;
-    presence.setActivity({ type: 'call', id, media: media(), ...(anchor ? { anchor } : {}) });
+    presence.setActivity({
+      type: 'call',
+      id,
+      media: media(),
+      ...(anchor ? { anchor } : {}),
+      // What lets transcribe write into the right record without electing a creator, and what a
+      // joining peer adopts rather than deriving. Every participant republishes it, so the record
+      // survives the starter leaving.
+      ...(callRecord ? { record: callRecord } : {}),
+    });
   }
 
   function teardown() {
@@ -503,6 +532,7 @@ export function createCallStore(deps: CallStoreDeps) {
     if (id) presence?.clearActivity('call', id);
     setCallId(null);
     anchor = undefined;
+    callRecord = null;
     setVisible(false);
     setFocusedId(null);
     focusIsManual = false;
@@ -510,7 +540,58 @@ export function createCallStore(deps: CallStoreDeps) {
     setTiles([]);
   }
 
-  async function join(id: string, joinAnchor?: Focus) {
+  /**
+   * Start a call: make its record, then join it.
+   *
+   * ## Why the record comes first, and is never cleaned up
+   *
+   * The record used to be made by whichever agent's transcriber flushed an utterance first, which
+   * meant a call had no identity of its own until somebody spoke. Everything a live call needs to
+   * hold — which entities to extract, what it is called, who is in it — had nowhere to live in the
+   * meantime, and two agents speaking at once (the ordinary way a meeting begins) raced to create
+   * two records for one call. That race was fought with a distributed election, which is now
+   * deleted along with the reason for it.
+   *
+   * Nothing deletes an empty one. A call that produced no transcript still happened, and the only
+   * agent who could decide it was worth discarding is one who can see the whole call — which in a
+   * partition is nobody. That is the same trap as `mode: 'feed'`: a peer who cannot see the other
+   * half of the conversation must never conclude the conversation was empty. The Calls list folds
+   * empties away instead, which is a display decision and reversible.
+   *
+   * A failure to create is a refusal to start, not a call without a record: half a call is worse
+   * than an error, because the transcript would silently go nowhere.
+   */
+  async function startCall(anchorNodeId?: string) {
+    const uri = datasetUri?.() ?? null;
+    if (!uri) {
+      setProblem('A call needs a space.');
+      return;
+    }
+    if (!createEntity) {
+      setProblem('This host cannot record calls.');
+      return;
+    }
+    setProblem(null);
+    let recordId: string | null = null;
+    try {
+      recordId = await createEntity(
+        'CollectionBlock',
+        // Feed mode: every participant's transcriber appends to this one record, so it has no single
+        // authoring agent and must never be reconciled.
+        { kind: CALL_KIND, type: 'collection', mode: 'feed' },
+        anchorNodeId ? { parent: { id: anchorNodeId, predicate: CALL_PREDICATE } } : undefined,
+      );
+    } catch (cause) {
+      console.error('call: could not create the call record', cause);
+    }
+    if (!recordId) {
+      setProblem('Could not start the call.');
+      return;
+    }
+    await join(recordCallId(recordId), anchorNodeId ? { datasetUri: uri, nodeId: anchorNodeId } : undefined, recordId);
+  }
+
+  async function join(id: string, joinAnchor?: Focus, recordId?: string) {
     if (callId() === id) return;
     // One call at a time, and this is where that is decided: joining a second tears the first down
     // rather than running both. Everything below assumes a single mesh, a single scope and a single
@@ -536,6 +617,10 @@ export function createCallStore(deps: CallStoreDeps) {
       anchor it replaces.
     */
     anchor = joinAnchor ?? (uri ? { datasetUri: uri } : undefined);
+    // Given by `startCall`, otherwise read off whoever is already in this call. A call with neither
+    // is one whose starter has left and whose record nobody republished, which the roster cannot
+    // happen while anyone is in it.
+    callRecord = recordId ?? liveCalls().find((call) => call.id === id)?.recordId ?? null;
     if (!handle || !me) {
       setProblem('A call needs a space and a signed-in agent.');
       return;
@@ -631,7 +716,13 @@ export function createCallStore(deps: CallStoreDeps) {
     publishActivity();
     rebuildTiles();
 
-    await controller.start();
+    const started = controller;
+    await started.start();
+
+    // The call can end while the permission prompt is up — a hot reload, a second join, somebody
+    // pressing leave. `teardown` nulls the controller, so the check below has to be against the one
+    // this join created rather than against whatever is current.
+    if (controller !== started) return;
 
     /*
       Say why there is no picture, rather than showing an avatar and leaving them to guess.
@@ -642,7 +733,7 @@ export function createCallStore(deps: CallStoreDeps) {
       because a refused camera that fell back to audio is a different outcome from a refused
       *request*, and only the second one leaves nothing at all.
     */
-    if (!controller.localStream()) setProblem(MEDIA_BLOCKED);
+    if (!started.localStream()) setProblem(MEDIA_BLOCKED);
   }
 
   // Reconcile the mesh against the roster. This is the whole membership mechanism — see mesh.ts.
@@ -726,15 +817,84 @@ export function createCallStore(deps: CallStoreDeps) {
   /** The strip's own solve, against the box the grid last reported — see `solveStrip`. */
   const stripLayout = () => solveStrip(stripCount(), stageBox(), { aspect: TILE_ASPECT, gap: STAGE_GAP_PX });
 
-  /** Everyone in the space-wide call, whether or not this agent has joined — so the bar can offer
+  /**
+   * Every call running in this space right now, whichever this agent is in — the join surface.
+   *
+   * This replaced a single derived id. While a space could hold exactly one call, "is there a call
+   * on?" was a membership test against `spaceCallId(uri)` and a prompt could say *the* call. Calls
+   * are now identified by their own record, so there can be several, and the question a person is
+   * actually asking is "which of these do I want" — a list, not a boolean.
+   *
+   * Assembled from presence alone, so a call appears here the instant its starter publishes and
+   * disappears on TTL when the last participant goes, with no store of its own to keep in step.
+   * Peers in a call whose record nobody has republished are still listed: an unnamed call you can
+   * join is better than a call that is invisible.
+   */
+  const liveCalls = () => {
+    const uri = datasetUri?.() ?? null;
+    const me = selfId?.() ?? null;
+    if (!uri || !presence) return [];
+    const byCall = new Map<
+      string,
+      { id: string; recordId: string | null; anchorNodeId: string | null; peers: string[] }
+    >();
+    for (const { peer, activity } of activitiesOfType(presence.peers(), 'call')) {
+      const anchorOf = (activity as { anchor?: Focus }).anchor;
+      if (anchorOf?.datasetUri && anchorOf.datasetUri !== uri) continue;
+      const recordId = (activity as { record?: string }).record ?? null;
+      const existing = byCall.get(activity.id);
+      if (existing) {
+        if (!existing.peers.includes(peer.agentId)) existing.peers.push(peer.agentId);
+        existing.recordId ??= recordId;
+        continue;
+      }
+      byCall.set(activity.id, {
+        id: activity.id,
+        recordId,
+        anchorNodeId: anchorOf?.nodeId ?? null,
+        peers: [peer.agentId],
+      });
+    }
+    return [...byCall.values()].map((call) => {
+      const faces = call.peers.map((agentId) => {
+        const face = faceOf(agentId);
+        return { image: face.image, hash: face.hash, initials: face.name, did: agentId };
+      });
+      /*
+        What the call is called, derived rather than stored.
+
+        A list of calls needs each row to be tellable from the others, and the honest answer is who
+        is in it — which is live, so it needs no writing and cannot go stale. Writing a title at
+        creation would have to guess: the only agent present when the record is made is the one
+        starting it, so "Anna's call" would be the name of a meeting of six.
+
+        Falls back to "Call" rather than to a timestamp: a row already sits beside its own faces and
+        a count, and a clock reading would be the least distinguishing thing on it.
+      */
+      const names = call.peers
+        .map((agentId) => identities?.get(agentId)?.name)
+        .filter((name): name is string => !!name);
+      return {
+        ...call,
+        faces,
+        count: call.peers.length,
+        mine: !!me && call.peers.includes(me),
+        label: names.length ? names.join(', ') : 'Call',
+      };
+    });
+  };
+
+  /** Everyone in a call in this space, whether or not this agent has joined — so the bar can offer
    *  "3 in a call · Join" rather than only appearing once you are already in one. */
   const ongoingPeers = () => {
     const uri = datasetUri?.() ?? null;
     if (!uri || !presence) return [];
-    const id = spaceCallId(uri);
     return (
       activitiesOfType(presence.peers(), 'call')
-        .filter(({ activity }) => activity.id === id)
+        .filter(({ activity }) => {
+          const anchorOf = (activity as { anchor?: Focus }).anchor;
+          return !anchorOf?.datasetUri || anchorOf.datasetUri === uri;
+        })
         // Faces, not peers. This feeds an `AvatarStack`, which reads `image`/`hash`/`initials` and
         // draws a generic person glyph for anything else — so handing it raw presence records, which
         // carry an agent id and no profile at all, drew one grey silhouette per participant.
@@ -751,6 +911,9 @@ export function createCallStore(deps: CallStoreDeps) {
   return {
     // ── State ────────────────────────────────────────────────────────────────
     callId,
+    /** The call record this agent's call writes into — what transcribe and the panels read. */
+    callRecordId: () => callRecord ?? '',
+    liveCalls,
     tiles,
     tileStates,
     focusedId,
@@ -1100,7 +1263,7 @@ export function createCallStore(deps: CallStoreDeps) {
     /**
      * The rail's call button, in every state it can be pressed in. One promise: *go to the call.*
      *
-     * The launcher used to be `joinSpaceCall` outright, which made it three different things
+     * The launcher used to be a bare join outright, which made it three different things
      * depending on what you were already doing, two of them wrong:
      *
      * - In this space's call, `join` returns early on the matching id — so the button was silently
@@ -1113,7 +1276,7 @@ export function createCallStore(deps: CallStoreDeps) {
      * all three states — bring me to the call — and it costs nothing when there is no call, because
      * starting one is how you get to it.
      *
-     * Switching between calls is still expressible; it just is not this button. `joinSpaceCall` and
+     * Switching between calls is still expressible; it just is not this button. `joinCall` and
      * `joinAnchoredCall` keep their replace-the-current-call semantics for the template controls that
      * mean it — a card's Continue, a post's call button — where the target is named and the intent
      * is explicit.
@@ -1133,12 +1296,15 @@ export function createCallStore(deps: CallStoreDeps) {
      */
     goToCall: () => {
       if (!callId()) {
-        const uri = datasetUri?.() ?? null;
-        if (!uri) {
-          setProblem('A call needs a space.');
+        // Join whatever is already running here rather than starting a second one beside it. With
+        // one call per space this was the same act; now that it is not, a launcher that always
+        // started a new call would split a meeting in two every time somebody arrived late.
+        const ongoing = liveCalls()[0];
+        if (ongoing) {
+          void join(ongoing.id, undefined, ongoing.recordId ?? undefined);
           return;
         }
-        void join(spaceCallId(uri));
+        void startCall();
         return;
       }
       // The call is somewhere else: take the user to it, and show it when they land. `returnToCall`
@@ -1153,13 +1319,14 @@ export function createCallStore(deps: CallStoreDeps) {
       setVisible(true);
     },
 
-    joinSpaceCall: () => {
-      const uri = datasetUri?.() ?? null;
-      if (!uri) {
-        setProblem('A call needs a space.');
-        return;
-      }
-      void join(spaceCallId(uri));
+    /** Start a new call here, whether or not one is already running. Resolves once it is joined. */
+    startCall: (anchorNodeId?: string) => startCall(anchorNodeId),
+
+    /** Join a call somebody else started, by the id the roster carries. */
+    joinCall: (id: string) => {
+      if (!id) return;
+      const ongoing = liveCalls().find((call) => call.id === id);
+      void join(id, undefined, ongoing?.recordId ?? undefined);
     },
 
     /**
@@ -1180,14 +1347,25 @@ export function createCallStore(deps: CallStoreDeps) {
       publishActivity();
     },
 
-    /** "Call on this post" — a second call in the same space, which `callRosters` groups for free. */
+    /**
+     * "Call on this post" — join the call already happening about that node, or start one.
+     *
+     * A node can now host several calls over its life, and more than one at a time, because the id
+     * is the call's own record rather than the node's. What it must not do is start a *second* call
+     * on a post while one is running, which is what pressing the same button twice used to be safe
+     * from only because the derived id made it the same call.
+     */
     joinAnchoredCall: (nodeId: string) => {
-      const uri = datasetUri?.() ?? null;
-      if (!uri || !nodeId) {
+      if (!nodeId) {
         setProblem('A call needs a space and something to anchor to.');
         return;
       }
-      void join(anchoredCallId(uri, nodeId), { datasetUri: uri, nodeId });
+      const ongoing = liveCalls().find((call) => call.anchorNodeId === nodeId);
+      if (ongoing) {
+        void join(ongoing.id, undefined, ongoing.recordId ?? undefined);
+        return;
+      }
+      void startCall(nodeId);
     },
 
     leave: teardown,

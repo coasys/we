@@ -17,7 +17,7 @@ export interface RouteStore {
 
   // Setters
   setNavigateFunction: (navigate: NavigateFunction) => void;
-  setCurrentPath: (path: string) => void;
+  setCurrentPath: (path: string, search?: string) => void;
 
   // Actions
   navigate: (to: string, options?: Record<string, unknown>) => void;
@@ -27,13 +27,25 @@ export interface RouteStore {
    * changes that deserve a Back entry (a content-type switch).
    */
   setParam: (name: string, value: string | null, options?: { push?: boolean }) => void;
+  /**
+   * Go back one entry, the browser's own way.
+   *
+   * `history.back()` rather than navigating to a computed parent, because "where did I come from"
+   * is not derivable from a path: a record page is reached from a list, from a search, from a link
+   * somebody sent, and only one of those has a parent worth guessing. A guessed destination is worse
+   * than none — it silently sends people somewhere they have never been.
+   *
+   * Does nothing at the start of the session's history, which is the honest outcome: there is
+   * nowhere back to go, and inventing a destination would be the same guess.
+   */
+  back: () => void;
 }
 
 const RouteContext = createContext<RouteStore>();
 
-function readParams(): Record<string, string> {
-  if (typeof window === 'undefined') return {};
-  return Object.fromEntries(new URLSearchParams(window.location.search));
+function readParams(search?: string): Record<string, string> {
+  if (search === undefined && typeof window === 'undefined') return {};
+  return Object.fromEntries(new URLSearchParams(search ?? window.location.search));
 }
 
 export function RouteStoreProvider(props: ParentProps) {
@@ -62,9 +74,20 @@ export function RouteStoreProvider(props: ParentProps) {
   // the params there keeps them in sync with router-driven navigation, and the
   // popstate listener covers Back/Forward over param-only history entries the
   // router never sees (setParam writes those directly).
-  function setCurrentPath(path: string) {
+  /**
+   * The router reporting where it is. `search` is separate because it is a separate signal there,
+   * and taking it as an argument is what makes the caller's effect depend on it.
+   *
+   * A location change that alters only the query is one the router makes and nothing else here sees
+   * — the popstate listener below covers Back/Forward over `setParam`'s own history entries, which
+   * the router never sees, and the two gaps are not the same one. Missing this leaves
+   * `routeStore.params` describing the page you came from: two record pages differ only by `?id=`,
+   * so following a link from one to another rendered the first record's content under the second
+   * record's URL.
+   */
+  function setCurrentPath(path: string, search?: string) {
     setCurrentPathSignal(path);
-    setParamsSignal(readParams());
+    setParamsSignal(readParams(search));
     rememberCurrentSearch();
   }
 
@@ -117,6 +140,7 @@ export function RouteStoreProvider(props: ParentProps) {
     // Actions
     navigate,
     setParam,
+    back: () => window.history.back(),
   };
 
   return <RouteContext.Provider value={store}>{props.children}</RouteContext.Provider>;

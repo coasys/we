@@ -1,6 +1,27 @@
 import { describe, expect, it } from 'vitest';
 
-import { pruneUnresolvedWhere } from './query';
+import { pruneUnresolvedWhere, resolveQueryProp } from './query';
+
+describe('resolveQueryProp', () => {
+  it('passes a plain entity name through', () => {
+    expect(resolveQueryProp({ $query: { entity: 'TaskBlock' } }).entity).toBe('TaskBlock');
+  });
+
+  /*
+    An entity may be an expression, and this resolver must leave it alone.
+
+    Resolving it needs stores and the row's bindings, which only the framework layer holds — the
+    same reason `where` and `order` values travel through as tokens. Casting it to a string here is
+    what it used to do, and it is why a feed could not list records of a type its author had never
+    heard of: the name had to be known before the template ran.
+  */
+  it('leaves an expression entity unresolved, for the framework layer to answer', () => {
+    const descriptor = resolveQueryProp({ $query: { entity: { $: 'target' }, limit: 5 } });
+    expect(descriptor.entity).toEqual({ $: 'target' });
+    // And nothing else about the query is disturbed by it.
+    expect(descriptor.params).toEqual({ limit: 5 });
+  });
+});
 
 describe('pruneUnresolvedWhere', () => {
   it('drops operator conditions whose operand is unresolved', () => {

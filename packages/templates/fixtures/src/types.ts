@@ -8,7 +8,7 @@
  * how a long message wraps — which is most of what makes a UI recognisable.
  *
  * The format is deliberately expressed in *model* terms (a `CollectionBlock` with a `kind`, a body,
- * an author, a timestamp) rather than in rows, because `@we/models` compiles from one manifest into
+ * an author, a timestamp) rather than in rows, because `@we/entities` compiles from one manifest into
  * row-backed classes on the in-memory backend and triple-backed ones on AD4M, and the difference is
  * invisible to a caller. So the same fixture can serve three consumers:
  *

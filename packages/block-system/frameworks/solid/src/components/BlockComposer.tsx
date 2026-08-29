@@ -4,7 +4,7 @@ import {
   contentHash,
   decodeEditorState,
   emptyContent,
-  getRegisteredBlockModels,
+  getRegisteredBlockEntities,
   registerCoreBlocks,
   resolveExpressionAddresses,
 } from '@we/block-shared';
@@ -45,7 +45,7 @@ registerCoreBlockComponents();
 /** The custom block types the registry knows, for building a schema. */
 function registeredCustomTypes(): string[] {
   const types = new Set<string>();
-  for (const reg of getRegisteredBlockModels()) for (const t of reg.nodeTypes) types.add(t);
+  for (const reg of getRegisteredBlockEntities()) for (const t of reg.nodeTypes) types.add(t);
   types.delete('root');
   types.delete('collection');
   types.delete('block');

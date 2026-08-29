@@ -1,7 +1,7 @@
 import type { SchemaNode } from '@we/schema-shared';
 import { agentByline, cardList, cardShell, emptyState } from '@we/template-kit';
 
-const hasMessageModel = { $: "find(datasetStore.currentDatasetModels, { name: 'Message' })" };
+const hasMessageRecord = { $: "find(datasetStore.currentDatasetEntities, { name: 'Message' })" };
 
 /*
   Two ways this list can be empty, one sentence for both.
@@ -11,13 +11,13 @@ const hasMessageModel = { $: "find(datasetStore.currentDatasetModels, { name: 'M
   nothing. The distinction is real but not the reader's problem: what they asked was whether this
   space has Flux messages, and the answer is no either way.
 */
-const noModel: SchemaNode = emptyState({ icon: 'envelope-simple', label: 'Flux messages', delay: 0 });
+const noRecord: SchemaNode = emptyState({ icon: 'envelope-simple', label: 'Flux messages', delay: 0 });
 const noRows: SchemaNode = emptyState({ icon: 'envelope-simple', label: 'Flux messages', searchable: true });
 
 export const fluxMessagesList: SchemaNode = {
   type: '$if',
   props: {
-    condition: hasMessageModel,
+    condition: hasMessageRecord,
     then: cardList({
       query: {
         entity: 'Message',
@@ -35,6 +35,6 @@ export const fluxMessagesList: SchemaNode = {
         }),
       ],
     }),
-    else: noModel,
+    else: noRecord,
   },
 };

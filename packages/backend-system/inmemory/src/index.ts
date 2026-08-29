@@ -53,7 +53,7 @@ export function createInMemoryBackend(config: BackendConfig) {
     return executeQueryIR(ir, dataset) as Row[];
   }
 
-  function getModel(name: string) {
+  function getEntity(name: string) {
     return {
       query(_dataset: unknown, opts: QueryOpts) {
         let push: ((rows: Row[]) => void) | null = null;
@@ -78,7 +78,7 @@ export function createInMemoryBackend(config: BackendConfig) {
 
   const stores = {
     $currentDataset: () => ({ id: config.id }),
-    $getModel: (name: string) => getModel(name),
+    $getEntity: (name: string) => getEntity(name),
     $queryAdapter: inMemoryQueryAdapter,
   };
 

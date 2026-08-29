@@ -25,23 +25,6 @@ const MAX_CHARS = 1000;
 /** Silence after which whatever has accumulated is written, so a short remark is not held forever. */
 const FLUSH_AFTER_MS = 3_000;
 
-/**
- * The `CollectionBlock.kind` marking a collection as one call's record.
- *
- * **The whole shape is written down in `docs/architecture/transcripts.md`**, along with the four
- * readers that spell `'call'` themselves because no dependency edge lets them import this. Change
- * the shape and every one of them has to change with it.
- *
- * Replaces the old `TRANSCRIPT_TAG`, which wrote `'transcript'` into `TextBlock.tag` — a field that
- * carries the *Lexical* tag (`ul`, `h1`). Two things were wrong with that beyond the collision: the
- * value was written and never read back, and the blocks stayed loose in the space, so transcripts
- * turned up in the Cards route's Text list mixed in with authored prose.
- */
-export const CALL_KIND = 'call';
-
-/** The predicate `WeNode.calls` is minted under — how a call attaches to the node it is about. */
-export const CALL_PREDICATE = 'we://call';
-
 /** The predicate `CollectionBlock.children` is minted under — how an utterance attaches to its call. */
 export const CHILDREN_PREDICATE = 'we://children';
 
@@ -56,20 +39,40 @@ export const CHILDREN_PREDICATE = 'we://children';
 export const TRANSCRIBE_ACTIVITY = 'transcribe';
 
 /**
- * What extraction is allowed to produce from a transcript.
+ * What extraction is allowed to produce from a transcript — **asked, no longer declared.**
  *
- * Two classes, and short on purpose. Every class named here puts its whole shape into the model's
- * prompt, so the list is the cost *and* the quality control — a longer one is slower, dearer and
- * vaguer, not more capable. These two also survive the test that matters: every field on them is
- * something a person says out loud, so there is nothing the model has to invent to fill them.
+ * This was `EXTRACT_CLASSES = ['TaskBlock', 'EventBlock']`, and the list is now
+ * `interpretation.targets()`: core vocabulary that declares itself `extractable`, plus every model
+ * the space's own community defined and marked so. The constant is gone because it was the reason a
+ * community could write careful AI hints for a `Sighting` and never have anything extract one —
+ * the hints were stored, synced and editable, and the list that decided what to look for named two
+ * classes this module had been compiled with.
  *
- * `TextBlock` is deliberately absent despite being what a transcript is made of. Its shape is mostly
- * Lexical serialization — `indent`, `textFormat`, `listType` — and offering those to a model is
- * offering it a dozen fields it can only fill with noise. `CollectionBlock` is absent for a stronger
- * reason: it carries `mode`, and a machine-written collection with no mode reads as legacy, which
- * makes `reconcileBlocks` willing to delete children it did not author — other agents' utterances.
+ * The argument for keeping that list *short* is not gone, it moved. Every entity named puts its
+ * **whole shape** into the prompt, so the list is the cost and the quality control: a longer one is
+ * slower, dearer and vaguer rather than more capable. That is now the case for `extractable` being
+ * opt-in — see `EntitySchema.extractable`, which also records why `TextBlock` must never carry it
+ * (its shape is mostly serialization — `indent`, `textFormat`, `listType` — a dozen fields a model
+ * can only fill with noise) and why `CollectionBlock` must not either (it carries `mode`, and a
+ * machine-written collection with no mode reads as legacy, which makes `reconcileBlocks` willing to
+ * delete children it did not author — other agents' utterances).
  */
-export const EXTRACT_CLASSES = ['TaskBlock', 'EventBlock'];
+
+/**
+ * An entity name as a person would say it — `TaskBlock` → "Task", `BirdSighting` → "Bird sighting".
+ *
+ * A module cannot reach `recordStore.displays`, where a model's real display name lives, and should
+ * not: this list is a row of toggles in a call panel, not a record surface. The two rules cover
+ * everything that can appear here — WE's own extraction targets are `*Block` classes, and a
+ * community's shape is named the way its author typed it.
+ *
+ * Presentation only. Every write and every request uses the entity name.
+ */
+function humanise(entity: string): string {
+  const bare = entity.endsWith('Block') ? entity.slice(0, -'Block'.length) : entity;
+  const spaced = bare.replace(/([a-z0-9])([A-Z])/g, '$1 $2');
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1).toLowerCase();
+}
 
 /** How an extraction pass is going. `done` holds until the next run, so the result stays readable. */
 export type ExtractStatus = 'idle' | 'running' | 'done' | 'error';
@@ -101,31 +104,20 @@ function summarise(values: Record<string, unknown>): string {
 }
 
 /**
- * How long a non-elected agent will hold its first utterance waiting for the creator's record.
+ * The height of the extraction signal under the call bar, in pixels.
  *
- * The election needs a way out, because the agent it picks may simply never speak: whoever is
- * elected only creates the record on *their* first flush, and a silent creator would otherwise leave
- * everyone else buffering into a call that produces nothing. After this, whoever is waiting creates
- * one itself and announces it — a duplicate is recoverable, a lost transcript is not.
+ * One line of text in a strip padded `200` a side, and — unlike the readout this replaced — a strip
+ * that cannot grow: the label truncates and concurrent passes collapse to a count, so this is the
+ * real height rather than a collapsed one somebody has to reason about.
  *
- * Generous relative to a presence round trip and short relative to a conversation: long enough that
- * the ordinary case (creator speaks within a few seconds) converges on one record, short enough that
- * nobody notices the delay on the one utterance it applies to.
+ * Reserved at the *bottom*, because that is the edge the call bar took and this is mounted into its
+ * column. The edge is the anchor's, not this module's choice: it contributes to `call-status` and
+ * lands wherever that column is.
  */
-const ELECTION_WAIT_MS = 5_000;
+const STATUS_RESERVE_PX = 40;
 
-/**
- * The collapsed height of the extraction status panel, in pixels — see `chromeReserve` below for
- * why it is the collapsed one and not the real one.
- *
- * Reserved at the *bottom*, because that is the edge the call bar took and this panel is mounted
- * into its column. The edge is the anchor's, not this module's choice: it contributes to
- * `call-status` and lands wherever that column is.
- */
-const STATUS_RESERVE_PX = 56;
-
-/** Its widest, which the panel itself caps — see `maxWidth` in `ExtractionStatus.schema`. */
-const STATUS_WIDTH_PX = 520;
+/** Its widest, which the signal itself caps — see `maxWidth` in `ExtractionStatus.schema`. */
+const STATUS_WIDTH_PX = 320;
 
 /**
  * Flux's *effective* voice-activity thresholds, which are not the ones in its defaults file.
@@ -208,7 +200,7 @@ type CollectionSlot = { state: 'ready'; id: string } | { state: 'waiting' } | { 
  *
  * ## What it writes
  *
- * A `CollectionBlock` with `kind: '{@link CALL_KIND}'` per call, holding the utterances as `children`.
+ * A `CollectionBlock` with `kind: 'call'` per call, holding the utterances as `children`. The call
  * Not posts: a transcript is not authored content and should not arrive in a feed as though it were.
  *
  * The collection is what makes the transcript a *thing* rather than loose text — it groups one call's
@@ -334,16 +326,6 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * that key, and why the set is never cleared when a call ends.
    */
   const recordedParticipants = new Set<string>();
-  /** Guards the create, so two flushes racing at the start cannot produce two collections. */
-  let creating: Promise<string | null> | null = null;
-  /**
-   * When this agent first deferred to an elected creator, or null when it is not waiting.
-   *
-   * Held rather than derived because the wait is bounded from the moment it *began*, not from the
-   * current attempt — otherwise every retry would restart the clock and a silent creator would keep
-   * a speaker waiting forever.
-   */
-  let deferredSince: number | null = null;
   /**
    * This agent has taken itself out of this call's transcript.
    *
@@ -376,7 +358,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * A record this agent has been asked to continue, held until there is a call to continue it in.
    *
    * Deferred rather than applied on the spot because the two halves of "continue this call" cannot
-   * be sequenced from a schema: joining is fire-and-forget — `joinSpaceCall` returns nothing, so an
+   * be sequenced from a schema: joining is fire-and-forget — `joinCall` returns nothing, so an
    * `onSuccess` never fires — and it publishes the call activity several awaits deep. Pinning
    * immediately would therefore land before there was any call to pin to, and be dropped.
    */
@@ -411,25 +393,19 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * agent's own state in the roster. So "which call am I in, and what is it about" is answerable
    * locally, from data that is already there, without either module knowing the other exists.
    */
-  function myCall(): { id: string; anchorNodeId: string | null } | null {
+  function myCall(): { id: string; anchorNodeId: string | null; recordId: string | null } | null {
     const me = selfId?.() ?? null;
     if (!me || !presence) return null;
     const mine = activitiesOfType(presence.peers(), 'call').find(({ peer }) => peer.agentId === me);
     if (!mine) return null;
     const anchor = (mine.activity as { anchor?: { nodeId?: string } }).anchor;
-    return { id: mine.activity.id, anchorNodeId: anchor?.nodeId ?? null };
-  }
-
-  /** A collection some other agent has already announced for this same call, if any. */
-  function announcedCollection(callId: string): string | null {
-    if (!presence) return null;
-    const me = selfId?.() ?? null;
-    const claims = activitiesOfType(presence.peers(), TRANSCRIBE_ACTIVITY)
-      .filter(({ peer, activity }) => peer.agentId !== me && (activity as { id?: string }).id === callId)
-      .map(({ activity }) => (activity as { collection?: string }).collection)
-      .filter((id): id is string => typeof id === 'string' && id.length > 0);
-    // Lowest id wins, so two agents adopting in the same heartbeat still pick the same one.
-    return claims.sort()[0] ?? null;
+    return {
+      id: mine.activity.id,
+      anchorNodeId: anchor?.nodeId ?? null,
+      // Published by the call module from the moment the call starts — see `recordCallId`. This is
+      // what replaced electing a creator among the transcribers.
+      recordId: (mine.activity as { record?: string }).record ?? null,
+    };
   }
 
   /**
@@ -480,13 +456,14 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    *
    * One activity carrying two separate facts, because they have different lifetimes. `recording` is
    * live — it goes true on the button press, which is what gives peers something to react to before
-   * anybody has spoken, and false again on stop. `collection` is a claim about the call: once this
-   * agent knows which record the call's transcript lives in, that stays published even after
-   * recording stops, so a peer who starts later still adopts it rather than creating a second one.
+   * anybody has spoken, and false again on stop. `collection` says which record this agent is
+   * writing into, and stays published after recording stops.
    *
-   * Publishing `recording` at the press rather than at the first flush is also what makes the
-   * election below deterministic in the ordinary case: by the time anyone speaks, everybody
-   * recording already knows who else is.
+   * `collection` used to be load-bearing: it was how peers found the record one of them had created,
+   * and adopting an announced one was the alternative to creating a second. The call's own activity
+   * now carries the record from the moment it starts, so this is no longer how anybody finds it — it
+   * remains because `resume` writes a *different* record than the call names, and a peer has to be
+   * able to see that somebody continued an old transcript.
    */
   function announce(callId: string, recording: boolean, collection?: string | null): void {
     const claim = collection ?? collectionId();
@@ -544,86 +521,42 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   }
 
   /**
-   * The collection to write into — adopted, or created if this agent is first to speak.
+   * The record to write into — the one the call itself names.
    *
-   * Serialised through `creating` so two flushes arriving together cannot each create one. Returns
-   * null when there is nothing to attach to, in which case the caller writes nothing: an utterance
-   * with nowhere to belong is better dropped than scattered loose into the space.
+   * ## Adopting, not electing
+   *
+   * This used to create the record, and everything hard about it followed from that. A call had no
+   * identity of its own until somebody spoke, so the first transcriber to flush minted the
+   * `CollectionBlock` — and two agents flushing together minted two, for one meeting. That race was
+   * fought with a distributed election among the recorders, a five-second timeout for an elected
+   * creator who might never speak, and a documented failure mode where a partition still produced
+   * two records.
+   *
+   * All of it is gone. A call now creates its record when it *starts* and publishes the id on its
+   * presence activity, so every transcriber is told the answer before anyone has said a word. There
+   * is nothing left to agree about, which is the only way to be safe under partition: the id was
+   * decided by one agent, before the network could disagree, and it travels with the roster.
+   *
+   * `waiting` survives, and is the only interesting state left: the call is real but its record id
+   * has not reached this agent yet, which is a presence round trip. The words are still good, so the
+   * caller re-buffers rather than dropping them.
    */
   async function ensureCollection(): Promise<CollectionSlot> {
     const call = myCall();
-    if (!call || !createEntity) return { state: 'nowhere' };
+    if (!call) return { state: 'nowhere' };
 
     const existing = collectionId();
     if (existing && collectionCallId === call.id) return { state: 'ready', id: existing };
-    if (creating) {
-      const id = await creating;
-      return id ? { state: 'ready', id } : { state: 'nowhere' };
-    }
 
-    /*
-      Whoever is recording and sorts first creates the record; everyone else waits for them to
-      announce it. Deterministic, because `recording` is published at the button press rather than at
-      the first flush — so by the time anybody speaks, every recorder already knows who else is
-      recording, and they all sort the same list.
+    // In a call whose record has not arrived yet. Come back for it — see above.
+    if (!call.recordId) return { state: 'waiting' };
 
-      It replaces "whoever writes first creates", whose race was not the heartbeat the old comment
-      described but the whole span before anyone had finished an utterance. Two agents starting
-      together and then speaking together — the ordinary way a call begins — landed in it every time,
-      and produced two records for one meeting.
-
-      Losing the election is not refusing to write, only refusing to *create*: the caller re-buffers
-      and tries again, and `ELECTION_WAIT_MS` is the point at which it gives up waiting for a creator
-      who may never speak. A partition can still produce two records, and nothing here can prevent
-      that — two agents who cannot see each other cannot agree on anything.
-    */
-    if (!announcedCollection(call.id)) {
-      const me = selfId?.() ?? null;
-      const recorders = recordersOf(call.id);
-      const elected = recorders[0] ?? me;
-      if (me && elected !== me) {
-        if (deferredSince === null) deferredSince = Date.now();
-        if (Date.now() - deferredSince < ELECTION_WAIT_MS) return { state: 'waiting' };
-      }
-    }
-    deferredSince = null;
-
-    creating = (async () => {
-      // A different call from the one the current record belongs to — start clean rather than
-      // appending this meeting's words to the last one's transcript.
-
-      const adopted = announcedCollection(call.id);
-      if (adopted) {
-        useCollection(adopted);
-        collectionCallId = call.id;
-        announce(call.id, enabled(), adopted);
-        return adopted;
-      }
-
-      // Parented straight onto the node the call is about, so `WeNode.calls` is written in the same
-      // operation that creates the record — no window where a crash leaves the call orphaned. A
-      // space-wide call has no anchor and simply lives in the space, found by `kind`.
-      const created = await createEntity(
-        'CollectionBlock',
-        // Feed mode: every participant's transcriber appends to this one record, so it has no
-        // single authoring agent and must never be reconciled.
-        { kind: CALL_KIND, type: 'collection', mode: 'feed' },
-        call.anchorNodeId ? { parent: { id: call.anchorNodeId, predicate: CALL_PREDICATE } } : undefined,
-      );
-      if (created) {
-        useCollection(created);
-        collectionCallId = call.id;
-        announce(call.id, enabled(), created);
-      }
-      return created;
-    })();
-
-    try {
-      const id = await creating;
-      return id ? { state: 'ready', id } : { state: 'nowhere' };
-    } finally {
-      creating = null;
-    }
+    // A different call from the one the current record belongs to — start clean rather than
+    // appending this meeting's words to the last one's transcript.
+    useCollection(call.recordId);
+    collectionCallId = call.id;
+    announce(call.id, enabled());
+    return { state: 'ready', id: call.recordId };
   }
 
   /** Write what has accumulated, if anything. Safe to call at any point, including teardown. */
@@ -647,6 +580,53 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       setProposals([]);
     }
   }
+
+  /*
+    Re-read the staged suggestions whenever a pass settles — anybody's, not just a press of ours.
+
+    The one-shot path reloads on its own, because it has the result in hand. A *standing* pass has
+    nobody waiting on it: it runs on whichever peer won the election, stages what it found in the
+    shared graph, and announces nothing this client acts on. So auto-extraction produced proposals
+    that were really there and never appeared — the review list only ever filled after somebody
+    pressed Extract, which reads as "automatic extraction cannot propose anything".
+
+    Keyed on how many passes have *settled* rather than on the feed itself: a running pass emits a
+    step every few seconds and reloading on each would be a round trip per phase, for an answer that
+    cannot have changed until the pass finishes. Counting settled passes fires once per completion,
+    which is exactly when there is something new to fetch.
+
+    Peers' passes count too, and must: proposals live in the shared graph, so a pass run on somebody
+    else's node stages rows this agent is being asked to review.
+  */
+  let settledSeen = 0;
+  effect?.(() => {
+    // Feature-tested per method, like `syncWatch` and `targetsFor`: the host publishes a forwarding
+    // wrapper that is always present, so `interpretation?.` only answers "is there a wrapper" — and
+    // this runs at construction, where a host without an activity feed would otherwise throw.
+    const feed = typeof interpretation?.activity === 'function' ? interpretation.activity() : [];
+    const settled = feed.filter((pass) => !pass.running).length;
+    if (settled === settledSeen) return;
+    settledSeen = settled;
+    void loadProposals();
+  });
+
+  /**
+   * What this call extracts, and what else it could — the host's answer, not this module's.
+   *
+   * Three layers decide it and none of them is a module's business: the codebase says what is a
+   * candidate, the space says what its calls start with, the call's participants say what this one
+   * is doing. This used to be a constant naming two classes, which is why a community could write
+   * careful hints for a `Sighting` and never have anything extract one.
+   *
+   * Feature-tested per method rather than per object, the same way `syncWatch` tests its two: the
+   * host publishes a forwarding wrapper that is always present, so `interpretation?.` only answers
+   * "is there a wrapper" — and a host predating this list has one without a `targets` on it.
+   */
+  const targetsFor = (collection: string): { entity: string; selected: boolean }[] =>
+    typeof interpretation?.targets === 'function' ? interpretation.targets(collection) : [];
+
+  /** Whether a pass over this collection has anything to look for. */
+  const hasTargets = (collection: string): boolean => targetsFor(collection).some((t) => t.selected);
 
   /**
    * One extraction pass over a named collection.
@@ -672,7 +652,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     setExtractError('');
     try {
       if (collection === collectionId()) await flush();
-      const result = await interpretation.runOnCollection(collection, { classes: EXTRACT_CLASSES });
+      const result = await interpretation.runOnCollection(collection);
       setExtractCount(result.ids.length);
       setExtractTurns(result.turns);
       setExtractedId(collection);
@@ -927,8 +907,8 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * that space is a different meeting, but leaves no way back into one that ended by accident.
    *
    * Announcing it is what makes this converge for everyone else: peers adopt an announced record in
-   * preference to creating one, so a single agent pressing Continue is enough to pull the whole call
-   * back onto the old transcript.
+   * preference to the one the call names, so a single agent pressing Continue is enough to pull the
+   * whole call back onto the old transcript.
    *
    * Deliberately does not start recording. Continuing a call is a decision about *which record* the
    * words go into; whether this agent's microphone is producing any is a separate decision, and the
@@ -949,7 +929,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   effect?.(() => {
     const call = myCall();
     if (!call) return;
-    const collection = collectionId() ?? announcedCollection(call.id);
+    const collection = collectionId() ?? call.recordId;
     if (collection) void recordSelfParticipation(collection);
   });
 
@@ -975,24 +955,73 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * Set the collection, and move the watch with it.
    *
    * One function rather than an effect over the signal, because the watch has to follow every
-   * assignment — adopting somebody else's collection, creating one, resuming, and the call ending
-   * are four separate paths, and an effect that missed any of them would leave a watch pointed at a
+   * assignment — adopting the call's record, resuming onto an older one, and the call ending are
+   * three separate paths, and an effect that missed any of them would leave a watch pointed at a
    * call that is over. Pairing the two here makes that structural rather than remembered.
    */
   function useCollection(next: string | null): void {
+    // Nothing to reset: what a call extracts is recorded beside the call, so a different
+    // conversation reads its own list — or the space's, when nobody has touched it.
     setCollectionId(next);
     void syncWatch(next);
     // Repair anything a standing pass minted while nobody was here to attach it — see
     // `reconcileCollection`. Adopting a collection is the moment somebody is about to look at it.
     if (next && typeof interpretation?.reconcileCollection === 'function') {
-      void interpretation.reconcileCollection(next, { classes: EXTRACT_CLASSES }).catch(() => 0);
+      // The host resolves what to repair, as it does for every other pass over this collection.
+      void interpretation.reconcileCollection(next).catch(() => 0);
+      // And whatever a standing pass staged while nobody was here to see it. The settled-pass effect
+      // covers a call being watched right now; the activity feed expires, so opening an older call
+      // needs its own read.
+      void loadProposals();
     }
   }
 
+  /**
+   * The class list the live watch was last registered with, joined — see {@link syncWatch}.
+   *
+   * Kept because the list is no longer a constant: a community adopting a model changes what this
+   * space may extract, mid-call, and a watch registered before that would go on looking for the old
+   * set forever. Joined rather than held as an array so the comparison is a string equality against
+   * a list the host already returns in a stable order.
+   */
+  let watchedClasses = '';
+
+  /**
+   * Whether this community has automatic extraction on.
+   *
+   * Feature-tested like every other interpretation call — the host publishes a forwarding wrapper
+   * that is always present, so `interpretation?.` only answers "is there a wrapper". A host that
+   * predates this reads as *on*, which keeps its behaviour exactly as it was: the host's own gate
+   * still refuses the registration, and the panel still reports it.
+   */
+  const autoEnabled = (): boolean =>
+    typeof interpretation?.autoEnabled === 'function' ? interpretation.autoEnabled() : true;
+
   async function syncWatch(next: string | null): Promise<void> {
-    if (watched === next) return;
+    // Keyed on what this call currently extracts, so a group changing it mid-call moves the watch.
+    // The host owns the list; this only has to notice when the answer changed.
+    const key = next
+      ? targetsFor(next)
+          .filter((t) => t.selected)
+          .map((t) => t.entity)
+          .join(',')
+      : '';
+    if (watched === next && watchedClasses === key) return;
     const previous = watched;
+    /*
+      A class-set change re-registers the *same* collection, so the teardown below has to run for it.
+
+      Not an optimisation — a correctness requirement of the executor's own contract.
+      `addAutoProcessor` writes `interpretationClasses` through the shape's `addLink` setter, so
+      registering twice under one processor id **unions** the two lists rather than replacing them.
+      Re-registering to narrow a set would therefore widen it, permanently, for the whole
+      neighbourhood, with no way back. The counterpart is `removeAutoProcessor`
+      (`coasys/ad4m` #931), and `unwatchCollection` is how this host reaches it — so remove-then-add
+      is the only way to change what a running watch looks for.
+    */
+    const reregistering = previous !== null && previous === next;
     watched = next;
+    watchedClasses = next ? key : '';
 
     /*
       Two independent attempts, and that separation is the whole point.
@@ -1012,13 +1041,30 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       } catch (error) {
         // A watch left running keeps interpreting a call that is over, which costs an LLM call per
         // pass — worth a warning, and worth not letting it block what comes next.
-        console.warn('[transcribe] could not stop the watch on the previous call', error);
+        // On a re-registration the stakes are higher: a removal that did not happen leaves the old
+        // class list to be unioned with the new one, so say which case this was.
+        console.warn(
+          reregistering
+            ? '[transcribe] could not clear this call’s watch before re-registering it'
+            : '[transcribe] could not stop the watch on the previous call',
+          error,
+        );
       }
     }
 
-    if (next && typeof interpretation?.watchCollection === 'function') {
+    if (next && !autoEnabled()) {
+      // Not a failure and not a capability — a decision, stated as one. The host would refuse the
+      // registration anyway; saying it here is what makes the sentence on screen the true one, and
+      // what stops a pointless call to a backend that is going to throw. The unwatch above has
+      // already run, so switching the setting off mid-call stops the watch rather than leaving it
+      // spending an LLM call per pass for a community that just said stop.
+      setWatchProblem('Automatic extraction is off for this space.');
+      return;
+    }
+
+    if (next && key && typeof interpretation?.watchCollection === 'function') {
       try {
-        await interpretation.watchCollection(next, { classes: EXTRACT_CLASSES });
+        await interpretation.watchCollection(next);
         setWatchProblem('');
         console.debug('[transcribe] watching collection for auto-extraction', next);
       } catch (error) {
@@ -1037,11 +1083,52 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
         setWatchProblem(error instanceof Error ? error.message : String(error));
         console.warn('[transcribe] could not watch this call for auto-extraction', error);
       }
+    } else if (next && !key) {
+      // Not a failure, and worth saying in its own words: the node can watch perfectly well and
+      // this space has declared nothing for it to look for. The fix is in the space's own models,
+      // which is somewhere a person can go — unlike every other reason a watch does not run.
+      setWatchProblem('This space has no models marked for AI extraction.');
+      console.info('[transcribe] no extraction targets in this space — nothing to watch for');
     } else if (next) {
       setWatchProblem('This host cannot run a standing extraction watch.');
       console.info('[transcribe] host has no watchCollection — auto-extraction unavailable');
     }
   }
+
+  /*
+    Move the watch when what this call extracts changes, not only when the call does.
+
+    Two things change it mid-meeting and both have to land: a community adopting a model, and the
+    participants toggling one for this conversation. Until this existed the watch registered at the
+    start of a call went on looking for the old set for the rest of it. `syncWatch` short-circuits
+    when the answer has not changed, so this is a no-op on every other re-run.
+
+    The list is a *group* fact rather than this agent's, and it has to be: the registration is one
+    row in the shared perspective and whichever peer runs the pass spends its own LLM call writing
+    into everyone's copy, so every peer must compute the same list or they would each
+    remove-then-add over the other's in a loop.
+  */
+  effect?.(() => {
+    const live = collectionId();
+    if (!live) return;
+    // Read inside the effect so a change to the list re-runs it.
+    void targetsFor(live);
+    /*
+      And the space's own switch, for the same reason and a longer story.
+
+      Nothing used to read it here. The only thing that did was a throw inside the host's
+      `watchCollection`, so turning automatic extraction *on* during a call changed nothing at all:
+      the watch had already failed to register, no effect depended on the setting, and the panel went
+      on saying auto-extraction was unavailable until everybody left the call and rejoined. Turning
+      it off mid-call was worse — the watch stayed registered and kept spending an LLM call per pass
+      on a community that had just said stop.
+
+      Read here, both directions land while the call is running, which is the only behaviour anybody
+      would predict from a switch.
+    */
+    void autoEnabled();
+    void syncWatch(live);
+  });
 
   effect?.(() => {
     const wanted = pendingResume();
@@ -1050,7 +1137,6 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     setPendingResume('');
     useCollection(wanted);
     collectionCallId = call.id;
-    deferredSince = null;
     announce(call.id, enabled(), wanted);
   });
 
@@ -1060,9 +1146,6 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     presence?.clearActivity(TRANSCRIBE_ACTIVITY);
     useCollection(null);
     collectionCallId = null;
-    // Belongs to the call that just ended: an election deferred in it must not bound the wait in
-    // the next one.
-    deferredSince = null;
   });
 
   /**
@@ -1131,8 +1214,8 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
 
     setAutoJoined(true);
     setEnabled(true);
-    // Published straight away, exactly as the button press is, so this agent takes part in the
-    // election rather than arriving to it late and creating a second record for the same call.
+    // Published straight away, exactly as the button press is, so peers see this agent recording
+    // before it has anything to show for it.
     announce(call.id, true);
   });
 
@@ -1316,7 +1399,39 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * no port means this node has no LLM. The panel tells those apart; this is the guard that stops
      * the button being offered when neither can be fixed by pressing it.
      */
-    canExtract: () => Boolean(collectionId()) && (interpretation?.available() ?? false),
+    canExtract: () =>
+      Boolean(collectionId()) && (interpretation?.available() ?? false) && hasTargets(collectionId() ?? ''),
+    /**
+     * What this call can have extracted, and whether each is on — `{ entity, label, selected }`.
+     *
+     * One list rather than two, because a schema renders it as a row of toggles and cannot join two
+     * lists to decide which are ticked. Empty in a space that has marked no models for extraction,
+     * which is a real state worth saying rather than an error.
+     */
+    extractionTargets: () =>
+      targetsFor(collectionId() ?? '').map((target) => ({ ...target, label: humanise(target.entity) })),
+    /**
+     * Include or exclude one model from what **this call** extracts, for everyone in it.
+     *
+     * A group decision recorded beside the call, not a private preference: the standing watch is one
+     * registration the whole neighbourhood shares, so per-agent lists would have peers overwriting
+     * each other's. Turning the last one off is allowed and leaves `canExtract` false, so the button
+     * says what is wrong rather than running a pass that asks the model for nothing.
+     *
+     * Applies to what is said from here on — a watch keeps a processed-turn cursor. The one-shot
+     * button carries none, so pressing Extract is how the rest of the conversation gets swept with
+     * the new list.
+     */
+    toggleExtractionTarget: async (entity: string) => {
+      const live = collectionId();
+      if (!live || typeof interpretation?.setTarget !== 'function') return;
+      const current = targetsFor(live).find((target) => target.entity === entity);
+      try {
+        await interpretation.setTarget(live, entity, !current?.selected);
+      } catch (error) {
+        console.warn('[transcribe] could not change what this call extracts', error);
+      }
+    },
     /** True when the backend could interpret but there is no transcript yet — a waiting state. */
     extractable: () => interpretation?.available() ?? false,
     /**
@@ -1406,14 +1521,18 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * Its **collapsed** height, deliberately, and this is the one number here that is a judgement
      * rather than a measurement. The panel is a set of disclosures: open a pass and it grows, open
      * the prompt inside it and it grows again. Reporting its live height would push any panel
-     * snapped below it down the screen on every one of those, which is the same jumping this
-     * panel's own width rule exists to avoid — so the common case is reserved and an expanded row is
-     * allowed to overlap something the person expanding it is looking straight at.
+     * snapped below it down the screen on every one of those.
      *
-     * The column's `300` gap (12px), plus `200` of padding a side (16px), plus a line of status.
+     * That is no longer a compromise, because the signal cannot change size: what used to expand is
+     * in the transcript panel now. So this reserves the whole of it, and a panel snapped beneath the
+     * call bar never overlaps it.
+     *
+     * Gated on a pass actually *running* rather than on any activity existing, matching what the
+     * signal shows — reserving a band for settled rows nobody can see would push panels down for a
+     * strip that is not on screen.
      */
     chromeReserve: () =>
-      (interpretation?.activity() ?? []).length > 0
+      (interpretation?.activity() ?? []).some((pass) => pass.running)
         ? { bottom: STATUS_RESERVE_PX, width: STATUS_WIDTH_PX }
         : { bottom: 0, width: 0 },
 

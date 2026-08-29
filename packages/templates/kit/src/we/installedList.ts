@@ -2,6 +2,8 @@ import { cardList, cardShell, emptyState } from '@we/schema-kit';
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 import { expr } from '@we/schema-shared';
 
+import { recordLink } from './recordLink.ts';
+
 export interface InstalledListOptions {
   /** What the space holds — `Template` or `Theme`. */
   entity: string;
@@ -89,6 +91,9 @@ export function installedList(opts: InstalledListOptions): SchemaNode {
                 type: 'Row',
                 props: { gap: '100' },
                 children: [
+                  // The row's own page. Renders itself away outside a space, which this list also
+                  // appears in — see `recordLink`.
+                  recordLink({ $: `'${opts.entity}'` }, { $: `${opts.as}.id` }),
                   // Apply — switch to this one (hidden if already active)
                   {
                     type: '$if',
@@ -119,7 +124,7 @@ export function installedList(opts: InstalledListOptions): SchemaNode {
                           variant: 'outline',
                           size: 'sm',
                           onClick: {
-                            $action: 'model.update',
+                            $action: 'record.update',
                             args: ['Space', { $: 'spaceStore.currentSpace.id' }, { [opts.defaultField]: opts.key }],
                           },
                         },
@@ -138,7 +143,7 @@ export function installedList(opts: InstalledListOptions): SchemaNode {
                           variant: 'ghost',
                           size: 'sm',
                           onClick: {
-                            $action: 'model.delete',
+                            $action: 'record.delete',
                             args: [opts.entity, { $: `${opts.as}.id` }],
                             onSuccess: [{ $action: opts.refreshAction }],
                           },

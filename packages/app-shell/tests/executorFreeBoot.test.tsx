@@ -12,7 +12,7 @@
  */
 import { render } from '@solidjs/testing-library';
 import { createInMemoryBackendPorts, type InMemoryAgentOptions, type InMemoryLifecycle } from '@we/backend-inmemory';
-import { AgentSettings, Space } from '@we/models';
+import { AgentSettings, Space } from '@we/entities';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
@@ -83,6 +83,7 @@ import { AppStoreProvider } from '../src/frameworks/solid/stores/AppStore';
 import { type DatasetStore, DatasetStoreProvider, useDatasetStore } from '../src/frameworks/solid/stores/DatasetStore';
 import { ProfileStoreProvider } from '../src/frameworks/solid/stores/ProfileStore';
 import { type SessionStore, SessionStoreProvider, useSessionStore } from '../src/frameworks/solid/stores/SessionStore';
+import { ShapeStoreProvider } from '../src/frameworks/solid/stores/ShapeStore';
 import { ShellStoreProvider } from '../src/frameworks/solid/stores/ShellStore';
 import { type SpaceStore, SpaceStoreProvider, useSpaceStore } from '../src/frameworks/solid/stores/SpaceStore';
 import { provideSeed } from '../src/shared/seedRegistry';
@@ -110,16 +111,20 @@ function mountShell(): Stores {
       <AccountStoreProvider>
         <SessionStoreProvider>
           <DatasetStoreProvider>
-            <ProfileStoreProvider>
-              {/* SpaceStore hands the installed-module set down to AppStore, so it must mount
+            {/* SpaceStore reads the extraction candidates off ShapeStore and hands the wizard back
+                an enroller, so the two mount in the order the real StoreProvider uses. */}
+            <ShapeStoreProvider>
+              <ProfileStoreProvider>
+                {/* SpaceStore hands the installed-module set down to AppStore, so it must mount
                   inside one — the same nesting the real StoreProvider uses. */}
-              <AppStoreProvider>
-                <SpaceStoreProvider>
-                  <BootController />
-                  <Capture />
-                </SpaceStoreProvider>
-              </AppStoreProvider>
-            </ProfileStoreProvider>
+                <AppStoreProvider>
+                  <SpaceStoreProvider>
+                    <BootController />
+                    <Capture />
+                  </SpaceStoreProvider>
+                </AppStoreProvider>
+              </ProfileStoreProvider>
+            </ShapeStoreProvider>
           </DatasetStoreProvider>
         </SessionStoreProvider>
       </AccountStoreProvider>

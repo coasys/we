@@ -16,18 +16,27 @@ CollectionBlock                    ← one call's transcript
   ↑ parented to the call's anchor node through `we://call` (WeNode.calls)
 ```
 
-Written by `@we/module-transcribe`; the constants are `CALL_KIND` and `CALL_PREDICATE` in its
-`store.ts`.
+Created by `@we/module-call`, which owns `CALL_KIND` and `CALL_PREDICATE` in its `protocol.ts`;
+the utterances inside it are written by `@we/module-transcribe`.
 
 ## The three behaviours that are not in the shape
 
-- **The record is created on the first thing anyone says**, not when recording starts. A call nobody
-  speaks in leaves no trace.
-- **Whoever speaks first creates it and announces it over presence**, and everyone else adopts that
-  id rather than making a second one. A duplicate is recoverable; a lost transcript is not, so an
-  agent that has waited long enough creates one anyway.
+- **The record is created when the call starts**, and it _is_ the call's identity: the call id is
+  `call:<recordId>`, published on the call's presence activity. That is what lets a space hold
+  several calls at once, and what gives a live call somewhere to keep its extraction targets before
+  anybody has spoken.
+- **Nothing deletes an empty one.** A call somebody opened and closed leaves a record behind, and
+  that is deliberate: telling "nobody spoke" from "I cannot see what they said" needs a view of the
+  whole call, which under a partition no agent has. The Cards route folds them away instead
+  (`showEmptyCalls`), which is a display decision and reversible.
 - **Utterances are batched at roughly 1000 characters**, not one block per sentence. One block per
   utterance would be truer to the source and writes a record per breath.
+
+There used to be a fourth, and its absence is the point: the record was created by whoever spoke
+first, so two agents speaking at once made two transcripts of one meeting. That race was fought with
+an election among the recorders and a timeout for an elected creator who might never speak, and it
+still had a documented partition failure. Creating the record before the call is announced removes
+the thing there was to disagree about.
 
 ## Attribution needs no diarization
 
@@ -50,7 +59,7 @@ collection must set it.
 
 ## Who reads this shape
 
-Four consumers, and none of them can import the constants from the module that writes them:
+Five consumers, and none of them can import the constants from the module that writes them:
 `templates → modules` and `modules → modules` are both sideways edges (see
 `package-conventions.md`), so each spells `'call'` itself.
 
@@ -58,7 +67,8 @@ Four consumers, and none of them can import the constants from the module that w
 | --------------------------------- | ----------------------------------------------------- |
 | `@we/module-transcribe`'s panel   | the live transcript, drilled down from the collection |
 | `CardsView/CallsList`             | a finished meeting, with its findings                 |
-| `CardsView/Header`                | creates a call collection                             |
+| `CardsView/Header`                | starts a call, which creates the collection           |
+| `views/RecordPage`                | one call's own page, at `/record/CollectionBlock/:id` |
 | `@we/module-graph`'s fragments    | styles a call node on a graph                         |
 | `spaceStore.exportCallTranscript` | writes a `.txt` with real speaker names               |
 

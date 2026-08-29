@@ -19,7 +19,7 @@
   },
   "dependencies": {
     "@we/backend-shared": "workspace:*",
-    "@we/models": "workspace:*"
+    "@we/entities": "workspace:*"
   },
   "peerDependencies": {
     "@coasys/ad4m": "*"

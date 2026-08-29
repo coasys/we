@@ -75,7 +75,7 @@ export const spacesList: SchemaNode = cardList({
                       title: 'Remove from discovery?',
                       body: 'This will remove this space from the global discovery listing. The space and all its content will remain intact.',
                       confirmLabel: 'Remove',
-                      confirm: { $action: 'model.delete', args: ['Space', { $: 'space.id' }] },
+                      confirm: { $action: 'record.delete', args: ['Space', { $: 'space.id' }] },
                     }),
                   ],
                 },

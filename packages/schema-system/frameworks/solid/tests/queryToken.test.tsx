@@ -10,7 +10,7 @@ import { RenderSchema } from '../src/SchemaRenderer';
 import type { ComponentRegistry } from '../src/types';
 
 /**
- * Mocks are deliberately loose (vitest stubs don't structurally match `ModelClass`). The
+ * Mocks are deliberately loose (vitest stubs don't structurally match `EntityClass`). The
  * `RendererStores` contract exists to type-check real hosts at the boundary, not test doubles.
  */
 const asStores = (s: object): RendererStores => s as unknown as RendererStores;
@@ -65,10 +65,10 @@ describe('$query token', () => {
 
   it('subscribes and renders initial empty array', async () => {
     const builder = createMockBuilder();
-    const MockModel = { query: vi.fn(() => builder), findAll: vi.fn() };
+    const MockEntity = { query: vi.fn(() => builder), findAll: vi.fn() };
     const stores = {
       $currentDataset: () => ({ uuid: 'test-perspective' }),
-      $getModel: () => MockModel,
+      $getEntity: () => MockEntity,
     };
 
     const node: SchemaNode = {
@@ -81,7 +81,7 @@ describe('$query token', () => {
     await tick();
 
     // Should have called query with the perspective and subscribe
-    expect(MockModel.query).toHaveBeenCalledOnce();
+    expect(MockEntity.query).toHaveBeenCalledOnce();
     expect(builder.subscribe).toHaveBeenCalledOnce();
 
     // Initially empty
@@ -91,10 +91,10 @@ describe('$query token', () => {
 
   it('updates when subscription pushes new results', async () => {
     const builder = createMockBuilder();
-    const MockModel = { query: vi.fn(() => builder), findAll: vi.fn() };
+    const MockEntity = { query: vi.fn(() => builder), findAll: vi.fn() };
     const stores = {
       $currentDataset: () => ({ uuid: 'test-perspective' }),
-      $getModel: () => MockModel,
+      $getEntity: () => MockEntity,
     };
 
     const node: SchemaNode = {
@@ -121,10 +121,10 @@ describe('$query token', () => {
 
   it('disposes builder on cleanup', async () => {
     const builder = createMockBuilder();
-    const MockModel = { query: vi.fn(() => builder), findAll: vi.fn() };
+    const MockEntity = { query: vi.fn(() => builder), findAll: vi.fn() };
     const stores = {
       $currentDataset: () => ({ uuid: 'test-perspective' }),
-      $getModel: () => MockModel,
+      $getEntity: () => MockEntity,
     };
 
     const node: SchemaNode = {
@@ -153,7 +153,7 @@ describe('$query token', () => {
     const builder1 = createMockBuilder();
     const builder2 = createMockBuilder();
     let callCount = 0;
-    const MockModel = {
+    const MockEntity = {
       query: vi.fn(() => (callCount++ === 0 ? builder1 : builder2)),
       findAll: vi.fn(),
     };
@@ -161,7 +161,7 @@ describe('$query token', () => {
     const [perspective, setPerspective] = createSignal<unknown>({ uuid: 'perspective-1' });
     const stores = {
       $currentDataset: perspective,
-      $getModel: () => MockModel,
+      $getEntity: () => MockEntity,
     };
 
     const node: SchemaNode = {
@@ -190,10 +190,10 @@ describe('$query token', () => {
   });
 
   it('returns empty array when perspective is null', async () => {
-    const MockModel = { query: vi.fn(), findAll: vi.fn() };
+    const MockEntity = { query: vi.fn(), findAll: vi.fn() };
     const stores = {
       $currentDataset: () => null,
-      $getModel: () => MockModel,
+      $getEntity: () => MockEntity,
     };
 
     const node: SchemaNode = {
@@ -205,7 +205,7 @@ describe('$query token', () => {
     await tick();
 
     // Should NOT have called query — no perspective
-    expect(MockModel.query).not.toHaveBeenCalled();
+    expect(MockEntity.query).not.toHaveBeenCalled();
 
     const el = container.querySelector('[data-testid="data"]');
     expect(el?.textContent).toBe('[]');
@@ -214,13 +214,13 @@ describe('$query token', () => {
   // ---- Non-subscribe (one-shot) mode ----
 
   it('uses findAll instead of subscribe when subscribe is false', async () => {
-    const MockModel = {
+    const MockEntity = {
       query: vi.fn(),
       findAll: vi.fn(() => Promise.resolve([{ id: 1 }])),
     };
     const stores = {
       $currentDataset: () => ({ uuid: 'p1' }),
-      $getModel: () => MockModel,
+      $getEntity: () => MockEntity,
     };
 
     const node: SchemaNode = {
@@ -231,8 +231,8 @@ describe('$query token', () => {
     const { container } = render(() => <RenderSchema node={node} stores={asStores(stores)} registry={registry} />);
     await tick();
 
-    expect(MockModel.findAll).toHaveBeenCalledOnce();
-    expect(MockModel.query).not.toHaveBeenCalled();
+    expect(MockEntity.findAll).toHaveBeenCalledOnce();
+    expect(MockEntity.query).not.toHaveBeenCalled();
 
     const el = container.querySelector('[data-testid="data"]');
     expect(JSON.parse(el?.textContent ?? '[]')).toEqual([{ id: 1 }]);
@@ -242,7 +242,7 @@ describe('$query token', () => {
 
   it('passes an AbortSignal to findAll and aborts it on unmount', async () => {
     let capturedSignal: AbortSignal | undefined;
-    const MockModel = {
+    const MockEntity = {
       query: vi.fn(),
       findAll: vi.fn((_p: unknown, _q: unknown, opts: { signal?: AbortSignal } = {}) => {
         capturedSignal = opts.signal;
@@ -251,7 +251,7 @@ describe('$query token', () => {
     };
     const stores = {
       $currentDataset: () => ({ uuid: 'p1' }),
-      $getModel: () => MockModel,
+      $getEntity: () => MockEntity,
     };
 
     const node: SchemaNode = {
@@ -262,7 +262,7 @@ describe('$query token', () => {
     const { unmount } = render(() => <RenderSchema node={node} stores={asStores(stores)} registry={registry} />);
     await tick();
 
-    expect(MockModel.findAll).toHaveBeenCalledOnce();
+    expect(MockEntity.findAll).toHaveBeenCalledOnce();
     expect(capturedSignal).toBeInstanceOf(AbortSignal);
     expect(capturedSignal!.aborted).toBe(false);
 
@@ -273,7 +273,7 @@ describe('$query token', () => {
 
   it('aborts a stale findAll when the effect re-runs', async () => {
     const signals: AbortSignal[] = [];
-    const MockModel = {
+    const MockEntity = {
       query: vi.fn(),
       findAll: vi.fn((_p: unknown, _q: unknown, opts: { signal?: AbortSignal } = {}) => {
         if (opts.signal) signals.push(opts.signal);
@@ -285,7 +285,7 @@ describe('$query token', () => {
     const [perspective, setPerspective] = createSignal<{ uuid: string } | null>({ uuid: 'p1' });
     const stores = {
       $currentDataset: perspective,
-      $getModel: () => MockModel,
+      $getEntity: () => MockEntity,
     };
 
     const node: SchemaNode = {
@@ -309,13 +309,13 @@ describe('$query token', () => {
   });
 
   it('swallows AbortError from findAll without surfacing it', async () => {
-    const MockModel = {
+    const MockEntity = {
       query: vi.fn(),
       findAll: vi.fn(() => Promise.reject(new DOMException('Aborted', 'AbortError'))),
     };
     const stores = {
       $currentDataset: () => ({ uuid: 'p1' }),
-      $getModel: () => MockModel,
+      $getEntity: () => MockEntity,
     };
 
     const node: SchemaNode = {
@@ -327,17 +327,17 @@ describe('$query token', () => {
     // would surface as a test failure.
     render(() => <RenderSchema node={node} stores={asStores(stores)} registry={registry} />);
     await tick();
-    expect(MockModel.findAll).toHaveBeenCalledOnce();
+    expect(MockEntity.findAll).toHaveBeenCalledOnce();
   });
 
   // ---- Query params forwarding ----
 
   it('forwards where/order/limit params to query builder', async () => {
     const builder = createMockBuilder();
-    const MockModel = { query: vi.fn(() => builder), findAll: vi.fn() };
+    const MockEntity = { query: vi.fn(() => builder), findAll: vi.fn() };
     const stores = {
       $currentDataset: () => ({ uuid: 'p1' }),
-      $getModel: () => MockModel,
+      $getEntity: () => MockEntity,
     };
 
     const node: SchemaNode = {
@@ -358,24 +358,24 @@ describe('$query token', () => {
     render(() => <RenderSchema node={node} stores={asStores(stores)} registry={registry} />);
     await tick();
 
-    expect(MockModel.query).toHaveBeenCalledWith(
+    expect(MockEntity.query).toHaveBeenCalledWith(
       { uuid: 'p1' },
       { where: { status: 'published' }, order: { createdAt: 'desc' }, limit: 10 },
     );
   });
 
-  // ---- Missing $getModel ----
+  // ---- Missing $getEntity ----
 
-  it('is quietly empty without $getModel, then goes live when the binding arrives', async () => {
+  it('is quietly empty without $getEntity, then goes live when the binding arrives', async () => {
     // The reload case: the template mounts before the backend's data bindings
     // land. The binding is read reactively inside the query effect, so the
-    // subscription must start on its own when $getModel appears — previously
+    // subscription must start on its own when $getEntity appears — previously
     // the query was stranded empty until a route change remounted the tree.
-    const [getModelSignal, setGetModelSignal] = createSignal<((name: string) => unknown) | undefined>(undefined);
+    const [getEntitySignal, setGetEntitySignal] = createSignal<((name: string) => unknown) | undefined>(undefined);
     const stores = {
       $currentDataset: () => ({ uuid: 'p1' }),
-      get $getModel() {
-        return getModelSignal();
+      get $getEntity() {
+        return getEntitySignal();
       },
     };
 
@@ -392,8 +392,8 @@ describe('$query token', () => {
 
     // Backend connects: the binding appears, the query starts unprompted.
     const builder = createMockBuilder();
-    const MockModel = { query: vi.fn(() => builder), findAll: vi.fn() };
-    setGetModelSignal(() => () => MockModel);
+    const MockEntity = { query: vi.fn(() => builder), findAll: vi.fn() };
+    setGetEntitySignal(() => () => MockEntity);
     await tick();
     expect(builder.subscribe).toHaveBeenCalledOnce();
 

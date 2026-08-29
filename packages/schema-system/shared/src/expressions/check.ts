@@ -61,8 +61,12 @@ export function checkExpression(expr: Expr, scope: ExpressionScope): ExpressionI
     }
 
     // A name the enclosing nodes bound wins over a store of the same name, as it does at runtime —
-    // `$each … as: 'model'` over the AI models makes `model.isDefault` the row's field, not a
-    // member of the `model` pseudo-store.
+    // `$each … as: 'record'` over a list of rows makes `record.title` the row's field, not a member
+    // of the `record` pseudo-store.
+    //
+    // This used to read `as: 'model'` over the AI models, which was the same rule demonstrated on a
+    // genuine collision: `model` meant both an LLM and a WE type. That is what the entity/record
+    // naming settled — the shadowing rule stays, the ambiguity it was illustrating does not.
     if (scope.contextNames.has(root)) continue;
 
     if (scope.storeNames.has(root)) {

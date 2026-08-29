@@ -15,7 +15,9 @@ export function resolveQueryProp(value: unknown): QueryDescriptor {
   // `limit` flow through in `params`, compiled to the IR downstream.
   const { entity, subscribe: sub, dataset, include, ...params } = $query;
   return {
-    entity: entity as string,
+    // Left as authored. A name goes through untouched; an expression is resolved by the framework
+    // layer, which is the only place a row's bindings exist — see `QueryDescriptor.entity`.
+    entity,
     params,
     subscribe: sub !== false,
     dataset: dataset as string | undefined,

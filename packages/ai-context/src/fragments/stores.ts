@@ -175,7 +175,7 @@ export const storeEntries: StoreEntry[] = [
       orderedDatasets: { type: 'array', properties: ['id', 'name', 'sharedUri', 'sharedId', 'handle'] },
       currentDataset: { type: 'object', properties: ['id', 'name', 'sharedUri', 'sharedId', 'handle'] },
       currentDatasetCid: { type: 'string' },
-      currentDatasetModels: { type: 'array' },
+      currentDatasetEntities: { type: 'array' },
       isWeSpace: { type: 'boolean' },
       joinedSpaceCids: { type: 'array' },
       datasetsLoaded: { type: 'boolean' },
@@ -224,7 +224,7 @@ export const storeEntries: StoreEntry[] = [
       segments: { type: 'array' },
       params: { type: 'object' },
     },
-    actions: ['navigate', 'setParam'],
+    actions: ['navigate', 'setParam', 'back'],
   },
   {
     name: 'themeStore',
@@ -291,6 +291,7 @@ export const storeEntries: StoreEntry[] = [
       personalSpaces: { type: 'array', model: 'Space' },
       sharedSpaces: { type: 'array', model: 'Space' },
       routeSpaceUnjoined: { type: 'boolean' },
+      spacePath: { type: 'string' },
       joiningSpace: { type: 'string' },
       joinSlow: { type: 'boolean' },
       joinError: { type: 'object', properties: ['spaceId', 'message'] },
@@ -408,6 +409,8 @@ export const storeEntries: StoreEntry[] = [
       aiAvailable: { type: 'boolean' },
       generating: { type: 'boolean' },
       hintEntities: { type: 'array', properties: ['entity', 'source'] },
+      extractionCandidates: { type: 'array' },
+      extractionNeedsIdentity: { type: 'boolean' },
       relationshipTargets: { type: 'array', properties: ['label', 'value'] },
       identityOptions: { type: 'array', properties: ['label', 'value'] },
       hintEditor: {
@@ -504,13 +507,13 @@ export const storeEntries: StoreEntry[] = [
     },
     actions: ['activateApp', 'deactivateApp'],
   },
-  // Pseudo-store for model.create / model.update / model.delete $action tokens.
+  // Pseudo-store for record.create / record.update / record.delete $action tokens.
   // Not a real store (no `descriptions` entry below, so it's omitted from the
   // generated "## Stores" doc section) — it's already documented separately
-  // under "Model mutations via $action" in rules.ts. Wired at runtime in
-  // TemplateProvider.tsx as `modelStore`, not through the store registry.
+  // under "Record mutations via $action" in rules.ts. Wired at runtime in
+  // TemplateProvider.tsx as `recordActions`, not through the store registry.
   {
-    name: 'model',
+    name: 'record',
     state: {},
     actions: ['create', 'update', 'delete'],
   },
@@ -680,8 +683,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
         orderedDatasets: 'datasets sorted by user-defined sidebar order, system datasets excluded',
         currentDataset: 'dataset handle | null (the dataset currently being viewed)',
         currentDatasetCid: 'string | undefined — the neighbourhood CID of the current dataset (prefix stripped)',
-        currentDatasetModels:
-          'ModelManifestEntry[] (non-WE SHACL models from the current dataset; injected as externalModels into AI messages)',
+        currentDatasetEntities:
+          'EntityManifestEntry[] (non-WE SHACL models from the current dataset; injected as externalEntities into AI messages)',
         isWeSpace:
           "boolean — true once the current dataset is confirmed to have WE's Space SDNA installed (false for a joined-but-foreign dataset, e.g. one synced in from Flux)",
         joinedSpaceCids: 'string[] — CIDs of every joined shared dataset',
@@ -705,7 +708,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         removeDataset:
           '(uuid: string): removes a dataset from the backend and from local state. The low-level half of spaceStore.removeSpace, which also clears the global-discovery listing — call that from a template, and this only for a dataset that is not a space',
         switchDataset:
-          '(uuid: string): switches to a dataset by UUID, registers its SHACL models as dynamic model classes, and populates currentDatasetModels',
+          '(uuid: string): switches to a dataset by UUID, registers its SHACL models as dynamic model classes, and populates currentDatasetEntities',
         reorderDatasets: '(newOrder: string[]): reorders the sidebar items by UUID array',
         cleanupSpaceSdna:
           '(uuid?: string): one-time remediation for a space that accumulated duplicate SDNA installs — removes the redundant duplicate link copies. Defaults to the current dataset. Returns a display-ready summary string naming how many links were removed and the DIDs that authored them (your own DID annotated with "(you)"), or an empty string if nothing needed cleaning up',
@@ -755,6 +758,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
           "(to: string, options?): navigates to a route (a bare path restores that route's remembered query string)",
         setParam:
           '(name: string, value: string | null, options?: { push?: boolean }): writes one query parameter (null removes); replaceState by default, push: true for changes that deserve a Back entry. Prefer $localState syncParam over calling this directly',
+        back: "(): goes back one entry, the browser's own way. Use it on a page reached from several places — a record page is opened from a list, from a search and from a link somebody sent, and only one of those has a parent worth guessing. Does nothing at the start of the session's history",
       },
     },
     themeStore: {
@@ -916,10 +920,14 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '{ id, author, createdAt }[] — nodes in this space that mention this agent, newest first. createdAt is the backend’s comparable timestamp. Filtered client-side, so right for a space and wrong for an inbox across many',
         autoInterpret:
           'boolean — whether this space has calls interpreted (extracted into records) as they happen. A community decision, off by default. Readable by every member; writing it is space-settings',
+        extractionTargets:
+          "string[] — the models a call in this space starts out extracting. The middle of three layers: shapeStore.extractionCandidates says what COULD be extracted, this says which of them a call begins with, and the call's own participants add or remove from there (modules.transcribe.extractionTargets). Unset falls back to the two classes that were hardcoded before the setting existed, so no space silently stops extracting. Writing it is space-settings",
         shareExtractionDetail:
           'boolean — whether extraction passes in this space broadcast their prompt and response to every member, so interpretationStore.activity rows carry detail for everyone. A community decision, off by default',
         personalSpaces: 'array of Space objects (local/personal spaces; all Space fields)',
         sharedSpaces: 'array of Space objects (shared/neighbourhood spaces; all Space fields)',
+        spacePath:
+          "string — the path a space's own pages hang off (`/space/<segment>`), empty outside a space. What a link to one record is built from: an href has to be absolute, since a browser resolves a relative one against the current URL rather than against the route tree, and the segment is the neighbourhood CID for a shared space and the dataset id for a personal one — only the URL says which",
         routeSpaceUnjoined:
           'boolean — the current route points at a space this agent has not joined, as a settled fact. What a join gate should read: `currentDataset` being null is also true for the first frames of a refresh, so gating on that flashes a join prompt at someone already inside. False while the answer is still unknown',
         spaceList:
@@ -976,6 +984,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(enabled: boolean, spaceUuid?): turns automatic call interpretation on or off for a space. Omit spaceUuid for the space on screen',
         setShareExtractionDetail:
           '(enabled: boolean, spaceUuid?): turns broadcasting of extraction prompts and responses on or off for a space. Omit spaceUuid for the space on screen',
+        setExtractionTarget:
+          "(entity: string, on: boolean, spaceUuid?): adds or removes one model from what this space's calls start out extracting. Writes the resolved list, so the first toggle also pins whatever was on by fallback. The community's decision; a call's participants override it per call",
         setViewEnabled:
           '(viewId: string, enabled: boolean, spaceUuid?): adds or removes a section from a space. The community’s decision — every member sees it. Omit spaceUuid for the space on screen',
         reorderViews:
@@ -1111,6 +1121,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
         generating: 'boolean — an AI generation is in flight',
         hintEntities:
           "{ entity, source: 'core' | 'shape' }[] — entities offering AI-hint tuning in this space: core interpretable vocabulary (TaskBlock, EventBlock) plus the space's own shapes",
+        extractionTargets:
+          'string[] — entity names an AI extraction pass may write in this space: core vocabulary marked extractable (TaskBlock, EventBlock) plus every adopted shape that is. What COULD be found here, not what a given pass will look for — a call may narrow it and the space may have auto-extraction off. Drive a findings list off this rather than off any per-call selection, so a card shows a record another member extracted',
         relationshipTargets:
           "{ label, value }[] — what a relationship may point at here, ready for a we-select: this space's own models, then block types, then other apps' models. Core infrastructure entities are deliberately absent",
         identityOptions:
@@ -1343,14 +1355,14 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(type: string, id?: string): withdraws a published activity; omit id to withdraw every one of that type',
       },
     },
-    model: {
+    record: {
       state: {},
       actions: {
         create:
-          '(entity: string, fields: object, options?: { perspective?: string }): creates a model instance in the current space, or in the dataset a store path names (\'datasetStore.rootDataset\' for we-root models). See "Model mutations via $action" above',
+          '(entity: string, fields: object, options?: { perspective?: string }): creates a record in the current space, or in the dataset a store path names (\'datasetStore.rootDataset\' for we-root entities). See "Record mutations via $action" above',
         update:
-          '(entity: string, id: string, fields: object, options?: { perspective?: string }): updates the named fields of one instance, leaving the rest',
-        delete: '(entity: string, id: string, options?: { perspective?: string }): deletes one instance. Irreversible',
+          '(entity: string, id: string, fields: object, options?: { perspective?: string }): updates the named fields of one record, leaving the rest',
+        delete: '(entity: string, id: string, options?: { perspective?: string }): deletes one record. Irreversible',
       },
     },
     interpretationStore: {

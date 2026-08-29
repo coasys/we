@@ -1,7 +1,7 @@
 import { AudioVisualiser } from '@we/components/solid';
 import { Column, Row } from '@we/components/solid';
-import type { FileData } from '@we/models';
-import { readFileAsFileData } from '@we/models';
+import type { FileData } from '@we/entities';
+import { readFileAsFileData } from '@we/entities';
 import { createSignal, Show } from 'solid-js';
 import { Portal } from 'solid-js/web';
 

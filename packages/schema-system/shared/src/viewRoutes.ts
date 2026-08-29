@@ -123,6 +123,18 @@ export type ViewGate = {
   activeIds: string;
   /** Rendered in place of a section the space does not offer. */
   notInSpace: SchemaNode;
+  /**
+   * Routes the host wants beside the sections — a record's own page, and anything like it.
+   *
+   * Placed at the marker rather than appended to the tree, because that is the one position that is
+   * right for every shell: a shell decides where its sections live, and whatever nests them (a
+   * layout route, a space id) is exactly what a record page needs nesting under too. A host that
+   * appended at the root would put the record page outside the space it belongs to.
+   *
+   * Supplied rather than written here for the same reason `notInSpace` is: this file has no business
+   * inventing UI no template could restyle.
+   */
+  extraRoutes?: RouteSchema[];
 };
 
 /**
@@ -177,6 +189,9 @@ export function expandViewRoutes(routes: RouteSchema[], views: ResolvedView[], g
   for (const route of routes) {
     if (route.path === VIEWS_MARKER) {
       for (const view of views) out.push(viewAsRoute(view, gate));
+      // After the sections, so a section that happens to be segmented `record` still wins its own
+      // path — a community's own section is more theirs than the host's page is.
+      for (const extra of gate?.extraRoutes ?? []) out.push(extra);
       continue;
     }
 

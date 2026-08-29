@@ -3821,6 +3821,26 @@
       "relations": []
     },
     {
+      "name": "CallExtraction",
+      "className": "CallExtraction",
+      "extends": "WeNode",
+      "fields": [
+        {
+          "name": "callId",
+          "type": "string",
+          "predicate": "we://call_id",
+          "required": false
+        },
+        {
+          "name": "entities",
+          "type": "string",
+          "predicate": "we://extraction_targets",
+          "required": false
+        }
+      ],
+      "relations": []
+    },
+    {
       "name": "ChatMessage",
       "className": "ChatMessage",
       "extends": "WeNode",
@@ -4369,6 +4389,12 @@
       "extends": "WeNode",
       "fields": [
         {
+          "name": "connection",
+          "type": "string",
+          "predicate": "we://connection",
+          "required": false
+        },
+        {
           "name": "relationshipTypeId",
           "type": "string",
           "predicate": "we://relationship_type_id",
@@ -4715,11 +4741,17 @@
           "required": false
         },
         {
+          "name": "extractionTargets",
+          "type": "string",
+          "predicate": "we://extraction_targets",
+          "required": false
+        },
+        {
           "name": "autoInterpret",
           "type": "boolean",
           "predicate": "we://auto_interpret",
           "required": false,
-          "default": "false"
+          "default": "true"
         },
         {
           "name": "shareExtractionDetail",
@@ -5550,7 +5582,7 @@
         "currentDatasetCid": {
           "type": "string"
         },
-        "currentDatasetModels": {
+        "currentDatasetEntities": {
           "type": "array"
         },
         "isWeSpace": {
@@ -5862,7 +5894,7 @@
           "type": "object"
         }
       },
-      "actions": ["navigate", "setParam"]
+      "actions": ["navigate", "setParam", "back"]
     },
     {
       "name": "runtimeStore",
@@ -6125,6 +6157,9 @@
           "type": "array",
           "properties": ["entity", "source"]
         },
+        "extractionCandidates": {
+          "type": "array"
+        },
         "relationshipTargets": {
           "type": "array",
           "properties": ["label", "value"]
@@ -6138,6 +6173,9 @@
           "properties": ["entity", "classHint", "defaultClassHint", "rows", "customized"]
         },
         "hintBusy": {
+          "type": "boolean"
+        },
+        "extractionNeedsIdentity": {
           "type": "boolean"
         },
         "memberOptions": {
@@ -6162,6 +6200,7 @@
         "cancelShapeWizard",
         "setShapeField",
         "setIdentityMember",
+        "setExtractable",
         "addProperty",
         "addRelationship",
         "removeMember",
@@ -6308,6 +6347,9 @@
         "routeSpaceUnjoined": {
           "type": "boolean"
         },
+        "spacePath": {
+          "type": "string"
+        },
         "creatingSpace": {
           "type": "boolean"
         },
@@ -6396,6 +6438,9 @@
         },
         "shareExtractionDetail": {
           "type": "boolean"
+        },
+        "extractionTargets": {
+          "type": "array"
         }
       },
       "actions": [
@@ -6418,6 +6463,7 @@
         "setModuleEnabled",
         "setAutoInterpret",
         "setShareExtractionDetail",
+        "setExtractionTarget",
         "setModuleInstalled",
         "setModuleVisible",
         "setViewEnabled",
@@ -6609,7 +6655,7 @@
       ]
     },
     {
-      "name": "model",
+      "name": "record",
       "state": {},
       "actions": ["create", "update", "delete"]
     }
