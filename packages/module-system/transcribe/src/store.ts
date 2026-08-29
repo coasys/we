@@ -668,6 +668,35 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     }
   }
 
+  /*
+    Re-read the staged suggestions whenever a pass settles — anybody's, not just a press of ours.
+
+    The one-shot path reloads on its own, because it has the result in hand. A *standing* pass has
+    nobody waiting on it: it runs on whichever peer won the election, stages what it found in the
+    shared graph, and announces nothing this client acts on. So auto-extraction produced proposals
+    that were really there and never appeared — the review list only ever filled after somebody
+    pressed Extract, which reads as "automatic extraction cannot propose anything".
+
+    Keyed on how many passes have *settled* rather than on the feed itself: a running pass emits a
+    step every few seconds and reloading on each would be a round trip per phase, for an answer that
+    cannot have changed until the pass finishes. Counting settled passes fires once per completion,
+    which is exactly when there is something new to fetch.
+
+    Peers' passes count too, and must: proposals live in the shared graph, so a pass run on somebody
+    else's node stages rows this agent is being asked to review.
+  */
+  let settledSeen = 0;
+  effect?.(() => {
+    // Feature-tested per method, like `syncWatch` and `targetsFor`: the host publishes a forwarding
+    // wrapper that is always present, so `interpretation?.` only answers "is there a wrapper" — and
+    // this runs at construction, where a host without an activity feed would otherwise throw.
+    const feed = typeof interpretation?.activity === 'function' ? interpretation.activity() : [];
+    const settled = feed.filter((pass) => !pass.running).length;
+    if (settled === settledSeen) return;
+    settledSeen = settled;
+    void loadProposals();
+  });
+
   /**
    * What this call extracts, and what else it could — the host's answer, not this module's.
    *
@@ -1027,6 +1056,10 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     if (next && typeof interpretation?.reconcileCollection === 'function') {
       // The host resolves what to repair, as it does for every other pass over this collection.
       void interpretation.reconcileCollection(next).catch(() => 0);
+      // And whatever a standing pass staged while nobody was here to see it. The settled-pass effect
+      // covers a call being watched right now; the activity feed expires, so opening an older call
+      // needs its own read.
+      void loadProposals();
     }
   }
 
