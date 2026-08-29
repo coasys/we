@@ -86,21 +86,24 @@ describe('a floating panel is glass', () => {
   });
 
   /**
-   * A panel is never painted as a hole.
+   * A panel is the app's own ground, extended — not a hole in it and not a card on it.
    *
-   * Both branches used to be `surface-sunken`, and it was the wrong role twice: sunken is `page`
-   * *minus* lightness — a well recessed into a surface, which is what an input trough and a code
-   * block are — so every docked panel came out darker than the page beside it. Nothing failed,
-   * because a role that resolves is a role that paints.
+   * It was `surface-sunken`, which is `page` *minus* lightness: the role for a well recessed into a
+   * surface, so every docked panel came out darker than the page beside it. `surface` and
+   * `surface-raised` are the other error, `page` *plus* lightness — the relationship a card wants
+   * when the page is still visible around it, which for a panel that abuts or covers the content it
+   * never is. Nothing failed in either direction, because a role that resolves is a role that
+   * paints; this is the assertion instead.
    */
-  it('paints a surface rather than a well, in whichever state', () => {
+  it('paints the page, not a well and not a card', () => {
     const bg = (surface!.bg as { $: string }).$;
 
-    expect(bg).not.toContain('sunken');
-    // Floating: it lies over the app with a radius and a shadow, which is what `surface-raised` is
-    // for. Displacing: it has taken its room and meets the content edge to edge, which is `surface`.
-    expect(bg).toContain('surface-raised');
-    expect(bg).toContain("'surface'");
+    // The *roles* named, not the string: the glass branch legitimately reads the theme's
+    // `--we-theme-surface-opacity`, which is a knob rather than a surface.
+    expect(bg).not.toContain('--we-role-surface');
+    expect(bg).not.toMatch(/'surface(-\w+)?'/);
+    expect(bg).toContain('--we-role-page');
+    expect(bg).toContain("'page'");
   });
 
   it('carries the titlebar with it, so the card is one piece of glass', () => {

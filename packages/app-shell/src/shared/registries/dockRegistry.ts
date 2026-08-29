@@ -243,20 +243,23 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
                 reads as being *over* something rather than as a hole cut in the window. The theme
                 owns how far — see `glassBg` — and `isGlass` owns when.
 
-                **Two roles, and neither is `surface-sunken`.** Both cases used to be, and it was
-                the wrong role twice: `surface-sunken` is `page` minus lightness — a *well recessed
-                into* a surface, which is what an input trough or a code block is — so every docked
-                panel was painted darker than the page it sits beside. A panel is not a hole.
+                **`page`, and not `surface-sunken`.** It was sunken, and that is `page` minus
+                lightness — the role for a *well recessed into* a surface, which is what an input
+                trough or a code block is. So every docked panel came out darker than the page it
+                sits beside, and read as a hole cut in the window rather than as part of it.
 
-                A floating panel has a radius and a shadow and lies over the app, which is the role
-                table's own description of `surface-raised` (down to "a docked rail with a shadow").
-                A displacing one has taken its room and meets the content edge to edge, which is
-                `surface`. Both are lighter than the page rather than darker, and both follow a
-                theme's idea of those relationships instead of pinning a step of the neutral scale.
+                `surface` and `surface-raised` were tried in between and are both too light: they are
+                `page` *plus* lightness, which is the relationship a card wants when it sits **on**
+                the page with the page still visible around it. A docked panel has no page showing
+                around it — it either abuts the content or covers it — so lifting it off a
+                background nobody can see just makes it paler than everything near it.
+
+                A panel is the app's own ground, extended. Same role, and the frame's border is what
+                separates it from the content beside it. Note this makes the panel body and its
+                titlebar the same colour, which is deliberate: the bar's bottom border is the line
+                between them, so a panel reads as one surface rather than as a header stuck on a box.
               */
-              bg: {
-                $: `${glass} ? '${glassBg('surface-raised')}' : (${dockGeometryPath(entry.id, 'floating')} ? 'surface-raised' : 'surface')`,
-              },
+              bg: { $: `${glass} ? '${glassBg('page')}' : 'page'` },
               // Backdrop blur belongs with the transparency and goes when it does: it is expensive,
               // it makes the element a containing block for fixed descendants, and over an opaque
               // background it would cost both of those for nothing visible.
