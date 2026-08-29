@@ -133,7 +133,7 @@ export default [
       '**/old/**',
       '**/target/**',
       '**/dist-electron/**',
-      // Machine-generated sources (e.g. packages/models/src/generated/coreManifest.ts,
+      // Machine-generated sources (e.g. packages/entities/src/generated/coreManifest.ts,
       // written by generateCoreManifest.mjs) — emitted JSON-style, not prettier-style.
       '**/src/generated/**',
       // Same, from we-seed.json via apps/we-electron/scripts/generate-seed-config.cjs. The
@@ -211,8 +211,8 @@ export default [
     // adding HasManyMethods types to Ad4mModel subclasses without triggering
     // Babel's declare-field ordering issues. The interface body is intentionally
     // empty — it inherits all members from HasManyMethods<Keys>.
-    name: 'ad4m-models/declaration-merging',
-    files: ['**/models/**/*.ts', '**/src/block-types/**/*.ts'],
+    name: 'ad4m-entities/declaration-merging',
+    files: ['**/backend-system/ad4m/src/entities/**/*.ts', '**/src/block-types/**/*.ts'],
     rules: {
       '@typescript-eslint/no-unsafe-declaration-merging': 'off',
       '@typescript-eslint/no-empty-object-type': 'off',

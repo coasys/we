@@ -131,7 +131,7 @@ class AudioBlock extends WeNode {
 
 Key benefit: once a block type is added to a perspective, AD4M's SHACL system **automatically generates MCP tools** for it (`audioblock_create`, `audioblock_query`, `audioblock_get`, etc.). An AI agent can immediately CRUD instances without additional work.
 
-**Distribution:** Block models live in `@we/models`, editor components in `@we/components`/`@we/widgets`, and editor wiring in `@we/block-system`. Community block packages ship model + component and call `registerBlock()` from `@we/block-system`. See [block-model-migration](../prs/block-model-migration.md) for the three-layer architecture. Community block types via npm initially, AD4M-native later.
+**Distribution:** Block models live in `@we/entities`, editor components in `@we/components`/`@we/widgets`, and editor wiring in `@we/block-system`. Community block packages ship model + component and call `registerBlock()` from `@we/block-system`. See [block-model-migration](../prs/block-model-migration.md) for the three-layer architecture. Community block types via npm initially, AD4M-native later.
 
 ### Tier 3: Components & Widgets (JS bundles) — rare if core is strong
 
@@ -265,18 +265,18 @@ Note: subscription deduplication is **already handled by AD4M's backend** — id
 `$query` references models by name. A name→class mapping is needed:
 
 ```typescript
-const modelRegistry: Record<string, typeof Ad4mModel> = {
+const entityRegistry: Record<string, typeof Ad4mModel> = {
   TextBlock,
   ImageBlock,
   CollectionBlock,
 };
 
-export function registerModel(name: string, modelClass: typeof Ad4mModel) {
-  modelRegistry[name] = modelClass;
+export function registerEntity(name: string, modelClass: typeof Ad4mModel) {
+  entityRegistry[name] = modelClass;
 }
 ```
 
-Ships with the 3 existing block types (imported from `@we/models/blocks`). Community block type packages call `registerModel()` when installed.
+Ships with the 3 existing block types (imported from `@we/entities/blocks`). Community block type packages call `registerEntity()` when installed.
 
 ### Mutations via `$action`
 
@@ -417,7 +417,7 @@ for (const block of manifest.blocks ?? []) {
   registerBlock(block); // registers model + editor component
 }
 for (const [name, model] of Object.entries(manifest.models ?? {})) {
-  registerModel(name, model); // query-only, no editor component
+  registerEntity(name, model); // query-only, no editor component
 }
 for (const [name, component] of Object.entries(manifest.components ?? {})) {
   registerComponent(name, component);
@@ -828,7 +828,7 @@ Each new block type automatically gets SHACL MCP tools, so AI agents can immedia
 | [mcp-tools](mcp-tools.md)                                                 | Exposes knowledge tools + section CRUD tools for AI agents. SHACL auto-generates block CRUD tools.                    |
 | [core-block-types](../prs/core-block-types.md)                            | Expands block set from 3 to 13. Defines new models + editor components. Prerequisite for rich app archetypes.         |
 | [component-library-expansion](../prs/component-library-expansion.md)      | Fills gaps in the core component library. P0 set (Select, Table, Grid, Card, etc.) needed for schema-first viability. |
-| [block-model-migration](../prs/block-model-migration.md)                  | Moves existing 3 blocks to `@we/models`. Prerequisite for core-block-types and `$query`.                              |
+| [block-model-migration](../prs/block-model-migration.md)                  | Moves existing 3 blocks to `@we/entities`. Prerequisite for core-block-types and `$query`.                            |
 | [query-service](../prs/query-service.md)                                  | Implements `$query` token and reactive query service. The keystone data binding layer for the apps ecosystem.         |
 | [schema-validation](../prs/schema-validation.md)                          | Extends existing Zod validation from structural to semantic. AI feedback loop — prevents broken schemas.              |
 | [concat-remove-expr](../prs/concat-remove-expr.md)                        | Adds `$concat` token, removes `$expr`. Eliminates `new Function()` from schema system.                                |

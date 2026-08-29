@@ -5582,7 +5582,7 @@
         "currentDatasetCid": {
           "type": "string"
         },
-        "currentDatasetModels": {
+        "currentDatasetEntities": {
           "type": "array"
         },
         "isWeSpace": {

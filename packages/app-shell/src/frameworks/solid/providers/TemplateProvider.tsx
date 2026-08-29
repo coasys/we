@@ -28,9 +28,9 @@ import { Route, Router } from '@solidjs/router';
 import { manifestEntries } from '@we/backend-shared';
 import { BlockHostProvider, colorFor } from '@we/block-solid';
 import { toastService } from '@we/components/solid';
-import type { DatasetProxy } from '@we/models';
-import { getModel } from '@we/models';
-import { CORE_MANIFEST } from '@we/models/manifest';
+import type { DatasetProxy } from '@we/entities';
+import { getEntity } from '@we/entities';
+import { CORE_MANIFEST } from '@we/entities/manifest';
 import type { TemplateSchema } from '@we/schema-shared';
 import { expandViewRoutes, hasViewsMarker } from '@we/schema-shared';
 import type { VisualEditorContextValue } from '@we/schema-solid';
@@ -187,8 +187,8 @@ export default function TemplateProvider() {
   /**
    * What the backend ports see: the synced foreign schemas, plus WE's own.
    *
-   * `datasetStore.currentDatasetModels` holds *only* foreign schemas, and deliberately — it is also
-   * what the AI layer injects as `externalModels`, where core entities would be a duplicate of what
+   * `datasetStore.currentDatasetEntities` holds *only* foreign schemas, and deliberately — it is also
+   * what the AI layer injects as `externalEntities`, where core entities would be a duplicate of what
    * the generated reference already documents. But an adapter resolving `scope` looks `via` up in
    * this same list, so with foreign models alone a drill-down through core vocabulary could never
    * resolve: `{ anchor: 'CollectionBlock', via: 'children' }` failed with "no such relation in the
@@ -202,13 +202,13 @@ export default function TemplateProvider() {
    * Foreign first, so nothing that resolves today changes: `resolveScopeToParent` takes the first
    * match by name, and core is purely a fallback behind it.
    */
-  const modelsForBindings = () => [...datasetStore.currentDatasetModels(), ...coreEntries];
+  const modelsForBindings = () => [...datasetStore.currentDatasetEntities(), ...coreEntries];
 
   const boundBindings = createMemo(() =>
     sessionStore.backendPorts()?.dataBindings({
       // The backend's own handle, not the shell's ref — these bindings feed model calls.
       currentDataset: () => datasetStore.currentDataset()?.handle ?? null,
-      currentDatasetModels: modelsForBindings,
+      currentDatasetEntities: modelsForBindings,
       profiles: profileStore.profiles,
       fetchProfile: profileStore.fetchProfile,
       ephemeral: sessionStore.ephemeralPort,
@@ -224,8 +224,8 @@ export default function TemplateProvider() {
   stores.$sources = hostSourceBag();
 
   const BINDING_KEYS = [
-    '$getModel',
-    '$getModelForPerspective',
+    '$getEntity',
+    '$getEntitiesForPerspective',
     '$currentDataset',
     '$identities',
     '$queryAdapter',
@@ -254,9 +254,9 @@ export default function TemplateProvider() {
 
   // Mutations need the raw model class (create/update/delete), not the renderer's read-only
   // handle — resolved through the model layer's own registry.
-  function resolve(modelName: string, opts?: { perspective?: string }) {
+  function resolve(entityName: string, opts?: { perspective?: string }) {
     return [
-      getModel(modelName),
+      getEntity(entityName),
       resolvePerspective(opts?.perspective) ?? datasetStore.currentDataset()!.handle,
     ] as const;
   }

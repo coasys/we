@@ -2125,7 +2125,7 @@ export const contextData: ContextData = {
         currentDataset: { type: 'object', properties: ['id', 'name', 'sharedUri', 'sharedId', 'handle'] },
         currentDatasetUri: { type: 'string' },
         currentDatasetCid: { type: 'string' },
-        currentDatasetModels: { type: 'array' },
+        currentDatasetEntities: { type: 'array' },
         isWeSpace: { type: 'boolean' },
         joinedSpaceCids: { type: 'array' },
         datasetsLoaded: { type: 'boolean' },

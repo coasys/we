@@ -241,7 +241,7 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
               condition: { $: '!recordStore.pendingLink && count(recordStore.creatableEntities) > 1' },
               then: {
                 type: 'we-form-field',
-                props: { label: 'Model', width: '100%' },
+                props: { label: 'Entity', width: '100%' },
                 children: [
                   {
                     type: 'we-select',

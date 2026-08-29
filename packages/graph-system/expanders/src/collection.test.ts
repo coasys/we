@@ -94,7 +94,7 @@ describe('collectionExpander', () => {
 
   it('skips child types the dataset does not declare', async () => {
     const { context, query } = contextWith(() => []);
-    await collectionExpander({ children: ['NotAModel', 'TextBlock'] }).expand(
+    await collectionExpander({ children: ['NotARecord', 'TextBlock'] }).expand(
       { id: COLLECTION, direction: 'out' },
       context,
     );

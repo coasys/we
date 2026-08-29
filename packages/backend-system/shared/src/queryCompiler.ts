@@ -3,7 +3,7 @@
  *
  * `compileQuery` lifts the flat, post-resolution `$query` (the neutral authoring DSL — `entity`
  * mapped to `model`, plus `where`/`order`/`include`/`limit`) up into the IR. `irToFlatQuery` is the
- * inverse: it lowers the IR back down to the flat query dialect a `ModelClass` ORM consumes (AD4M's
+ * inverse: it lowers the IR back down to the flat query dialect a `EntityClass` ORM consumes (AD4M's
  * `Ad4mModel.query`, the in-memory harness backend). Both are neutral — the AD4M-*specific* pieces
  * (capability profile, scope→predicate resolution) live in the adapter that composes these.
  *
@@ -172,9 +172,9 @@ export function compileQuery(query: FlatQuery): CompileResult {
   return { ir, unsupported };
 }
 
-// ─── IR → flat $query (the inverse; lower the IR to the flat ModelClass dialect) ──
+// ─── IR → flat $query (the inverse; lower the IR to the flat EntityClass dialect) ──
 //
-// A `ModelClass` ORM (AD4M's `Ad4mModel.query`/`findAll`, the in-memory harness backend) speaks the
+// A `EntityClass` ORM (AD4M's `Ad4mModel.query`/`findAll`, the in-memory harness backend) speaks the
 // flat `$query` dialect (`{ where, order, limit, offset, include, parent }`), so lowering the IR is
 // just this projection back to it. It only emits shapes that dialect expresses; a feature it can't (a
 // non-native operator, a to-many relation filter, a non-`count` aggregate) throws, because the adapter
@@ -279,7 +279,7 @@ function flatIncludeFromMap(include: IncludeMap): Record<string, unknown> {
   return out;
 }
 
-/** Lower a `QueryIR` to the flat `$query` dialect a `ModelClass` ORM consumes. */
+/** Lower a `QueryIR` to the flat `$query` dialect a `EntityClass` ORM consumes. */
 export function irToFlatQuery(ir: QueryIR): FlatQuery {
   const flat: FlatQuery = { entity: ir.entity };
   if (ir.filter) flat.where = whereFromFilter(ir.filter);

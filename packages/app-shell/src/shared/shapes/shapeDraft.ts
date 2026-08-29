@@ -1,6 +1,6 @@
 /**
  * The wizard's editable form of a content model, and its conversion to and from the stored
- * `ModelManifest` — pure data logic, shared by the structured editor and the LLM flow (both
+ * `EntityManifest` — pure data logic, shared by the structured editor and the LLM flow (both
  * produce a draft; everything downstream of the draft is one code path).
  *
  * A draft holds one **member** per row the wizard shows, of one of two kinds mirroring the IR's own
@@ -14,7 +14,7 @@
  * when editing so a rename can never re-mint the storage key existing data lives under) and the
  * type flag.
  */
-import type { Cardinality, EntitySchema, ModelManifest, PropertySchema } from '@we/backend-shared';
+import type { Cardinality, EntityManifest, EntitySchema, PropertySchema } from '@we/backend-shared';
 
 /** UI-level scalar types — what the property row's type dropdown offers. */
 export type ShapeDraftPropertyType = 'text' | 'number' | 'boolean' | 'date' | 'select';
@@ -306,7 +306,7 @@ export function authoredFields(draft: ShapeDraft, last: GeneratedOutput | null):
 }
 
 export type DraftLowering =
-  | { ok: true; manifest: ModelManifest }
+  | { ok: true; manifest: EntityManifest }
   /**
    * `rows` names the members an error was raised against, so a collapsed row carrying a mistake can
    * be opened rather than leaving its message pointing at something the reader cannot see.
@@ -314,7 +314,7 @@ export type DraftLowering =
   | { ok: false; errors: string[]; rows: string[] };
 
 /**
- * Lower a draft onto the stored form: a single-entity `ModelManifest` with every predicate and the
+ * Lower a draft onto the stored form: a single-entity `EntityManifest` with every predicate and the
  * type flag resolved. Form-level validation (identifier rules, duplicates, per-kind requirements)
  * happens here with wizard-facing messages; the structural/referential gate (`validateManifest`)
  * still runs on the result — this cannot replace it, only precede it.
@@ -411,7 +411,7 @@ export function draftToManifest(draft: ShapeDraft, shapeUuid: string): DraftLowe
 /** The inverse: a stored definition back into the wizard's editable form. */
 export function manifestToDraft(
   entityName: string,
-  manifest: ModelManifest,
+  manifest: EntityManifest,
   meta: { description?: string; icon?: string } = {},
 ): ShapeDraft {
   const entity = manifest.entities[entityName];
@@ -468,7 +468,7 @@ type MemberFacts =
   | { kind: 'property'; where: string; type: PropertySchema['type'] }
   | { kind: 'relationship'; where: string; target: string; cardinality: Cardinality };
 
-function factsByPredicate(manifest: ModelManifest): Map<string, MemberFacts> {
+function factsByPredicate(manifest: EntityManifest): Map<string, MemberFacts> {
   const facts = new Map<string, MemberFacts>();
   for (const [entityName, entity] of Object.entries(manifest.entities)) {
     for (const [name, spec] of Object.entries(entity.properties)) {
@@ -501,7 +501,7 @@ function factsByPredicate(manifest: ModelManifest): Map<string, MemberFacts> {
  * have to perform. The one widening allowed is `one` → `many`: an existing single link is already
  * a valid member of a to-many set.
  */
-export function additiveViolations(previous: ModelManifest, next: ModelManifest): string[] {
+export function additiveViolations(previous: EntityManifest, next: EntityManifest): string[] {
   const before = factsByPredicate(previous);
   const after = factsByPredicate(next);
   const violations: string[] = [];

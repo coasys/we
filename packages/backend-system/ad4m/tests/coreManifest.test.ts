@@ -10,11 +10,11 @@
  * is exhaustive rather than a spot check.
  */
 import type { SHACLShape } from '@coasys/ad4m';
-import { CORE_MANIFEST } from '@we/models/manifest';
+import { CORE_MANIFEST } from '@we/entities/manifest';
 import { describe, expect, it } from 'vitest';
 
+import * as Classes from '../src/entities';
 import { compileManifest } from '../src/manifestCompiler';
-import * as Classes from '../src/models';
 
 type Shaped = { generateSHACL: () => { shape: SHACLShape | null } };
 

@@ -1,5 +1,5 @@
 import { buildGuestLink } from '@shared/guestLink';
-import { containmentPredicate, gatherTranscriptTurns, type TurnModel } from '@shared/interpretation/transcriptTurns';
+import { containmentPredicate, gatherTranscriptTurns, type TurnRecord } from '@shared/interpretation/transcriptTurns';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { moduleRegistry, moduleStores, type ModuleSurface, moduleSurface } from '@shared/registries/moduleRegistry';
 import { defaultViewOrder, viewRegistry } from '@shared/registries/viewRegistry';
@@ -41,7 +41,7 @@ import {
   dataURIToFileData,
   type FileData,
   FOLLOW_SPACE,
-  getModelForPerspective,
+  getEntitiesForPerspective,
   LocationBlock,
   MutedAgent,
   PREDICATES,
@@ -51,7 +51,7 @@ import {
   SignalType,
   Space,
   SpacePreference,
-} from '@we/models';
+} from '@we/entities';
 import type { ResolvedView, TemplateSchema } from '@we/schema-shared';
 import { hasViewsMarker } from '@we/schema-shared';
 import {
@@ -1131,12 +1131,12 @@ export function SpaceStoreProvider(props: ParentProps) {
     space: SpaceInput,
     location?: Partial<LocationBlock>,
   ): Promise<Space> {
-    const spaceModel = await Space.create(dataset, space as Partial<Space>);
+    const spaceRecord = await Space.create(dataset, space as Partial<Space>);
     if (location) {
-      const locationModel = await LocationBlock.create(dataset, location);
-      await spaceModel.setLocation(locationModel);
+      const locationRecord = await LocationBlock.create(dataset, location);
+      await spaceRecord.setLocation(locationRecord);
     }
-    return spaceModel;
+    return spaceRecord;
   }
 
   async function createSpace(
@@ -1198,16 +1198,16 @@ export function SpaceStoreProvider(props: ParentProps) {
       const locationData = location ?? undefined;
 
       // Write to own dataset
-      const spaceModel = await addSpaceToDataset(spaceHandle, spaceData, locationData);
-      console.log('SpaceStore: created space model for new dataset', spaceModel);
+      const spaceRecord = await addSpaceToDataset(spaceHandle, spaceData, locationData);
+      console.log('SpaceStore: created space model for new dataset', spaceRecord);
 
       // Sync to global discovery space when the user opted in.
       // Space.create returns relations unhydrated, so we pass avatarData, coverImageData,
-      // and locationData directly rather than reading them back from spaceModel.
+      // and locationData directly rather than reading them back from spaceRecord.
       if (discovery === 'listed') {
         const globalDs = datasetStore.globalDataset();
         if (globalDs) {
-          await syncSpaceToParent(spaceModel, globalDs.handle, session.backendPorts()!.schemas, {
+          await syncSpaceToParent(spaceRecord, globalDs.handle, session.backendPorts()!.schemas, {
             locationData,
             avatarData,
             coverImageData,
@@ -1218,7 +1218,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       // Track locally so the sidebar updates with the action rather than with the backend's
       // change event (which may lag, or on web may not fire at all).
       await datasetStore.trackDataset(spaceRef);
-      setMySpaces((prev) => [...prev, spaceModel]);
+      setMySpaces((prev) => [...prev, spaceRecord]);
     } catch (error) {
       console.error('SpaceStore: createSpace error', error);
       toastService.error('Could not create the space.');
@@ -1271,19 +1271,19 @@ export function SpaceStoreProvider(props: ParentProps) {
       ...(avatarData && { avatar: avatarData }),
     };
 
-    const spaceModel = await addSpaceToDataset(ds.handle, spaceData);
+    const spaceRecord = await addSpaceToDataset(ds.handle, spaceData);
 
-    if (!mySpaces().some((s) => s.uuid === spaceModel.uuid)) {
-      setMySpaces((prev) => [...prev, spaceModel]);
+    if (!mySpaces().some((s) => s.uuid === spaceRecord.uuid)) {
+      setMySpaces((prev) => [...prev, spaceRecord]);
     }
 
     // Re-run switchDataset on the same uuid rather than hand-duplicating its
-    // classes/registerDynamicModels/manifest refresh: this atomically flips isWeSpace,
+    // classes/registerDynamicEntities/manifest refresh: this atomically flips isWeSpace,
     // refreshes the dynamic model registry, and hands this store a new dataset handle
     // so its currentSpace effect re-fires now that a Space instance exists.
     await datasetStore.switchDataset(ds.id);
 
-    return spaceModel;
+    return spaceRecord;
   }
 
   /**
@@ -1353,11 +1353,11 @@ export function SpaceStoreProvider(props: ParentProps) {
 
     // Load the Space model and push into mySpaces so the sidebar shows the correct
     // name immediately, without requiring a reboot.
-    const joinedSpaceModel = joinedRef.sharedId
+    const joinedSpaceRecord = joinedRef.sharedId
       ? await Space.findOne(joinedHandle, { where: { url: joinedRef.sharedId } }).catch(() => null)
       : null;
-    if (joinedSpaceModel && !mySpaces().some((s) => s.url === joinedSpaceModel.url)) {
-      setMySpaces((prev) => [...prev, joinedSpaceModel]);
+    if (joinedSpaceRecord && !mySpaces().some((s) => s.url === joinedSpaceRecord.url)) {
+      setMySpaces((prev) => [...prev, joinedSpaceRecord]);
     }
 
     if (focus) await datasetStore.switchDataset(joinedRef.id);
@@ -1488,9 +1488,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     const sharedCid = ds.sharedId;
     if (untrack(mySpaces).some((s) => s.url === sharedCid)) return;
     void (async () => {
-      const spaceModel = await Space.findOne(ds.handle, { where: { url: sharedCid } }).catch(() => null);
-      if (spaceModel && !untrack(mySpaces).some((s) => s.url === spaceModel.url)) {
-        setMySpaces((prev) => [...prev, spaceModel]);
+      const spaceRecord = await Space.findOne(ds.handle, { where: { url: sharedCid } }).catch(() => null);
+      if (spaceRecord && !untrack(mySpaces).some((s) => s.url === spaceRecord.url)) {
+        setMySpaces((prev) => [...prev, spaceRecord]);
       }
     })();
   });
@@ -1680,17 +1680,17 @@ export function SpaceStoreProvider(props: ParentProps) {
       field === 'avatar' ? 'space-image' : 'space-cover',
       field === 'avatar' ? SPACE_AVATAR_PX : undefined,
     );
-    const [spaceModel] = await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) });
-    if (!spaceModel) return;
-    await Space.update(ds.handle, spaceModel.id, { [field]: fileData });
+    const [spaceRecord] = await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) });
+    if (!spaceRecord) return;
+    await Space.update(ds.handle, spaceRecord.id, { [field]: fileData });
     // Only the current space has a live subscription refreshing it; every other row in the spaces
     // list is served from this cache, so without it the change would not appear until a reload.
     updateSpaceInCache(ds, { [field]: fileData } as never);
-    if (spaceModel.discovery === 'listed') {
+    if (spaceRecord.discovery === 'listed') {
       const globalDs = datasetStore.globalDataset();
       if (globalDs) {
         const imageOpt = field === 'avatar' ? { avatarData: fileData } : { coverImageData: fileData };
-        await syncSpaceToParent(spaceModel, globalDs.handle, session.backendPorts()!.schemas, imageOpt).catch((err) =>
+        await syncSpaceToParent(spaceRecord, globalDs.handle, session.backendPorts()!.schemas, imageOpt).catch((err) =>
           console.error('SpaceStore: sync image to global failed', err),
         );
       }
@@ -1702,18 +1702,18 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (!ds) return;
     const currentDataset = ds.handle;
 
-    const [spaceModel] = await Space.findAll(currentDataset, {
+    const [spaceRecord] = await Space.findAll(currentDataset, {
       where: spaceSelfWhere(ds),
       include: { location: true },
     });
-    if (!spaceModel) return;
+    if (!spaceRecord) return;
 
-    const previousDiscovery = spaceModel.discovery;
+    const previousDiscovery = spaceRecord.discovery;
 
-    if (updates.name !== undefined) spaceModel.name = updates.name;
-    if (updates.description !== undefined) spaceModel.description = updates.description;
-    if (updates.discovery !== undefined) spaceModel.discovery = updates.discovery;
-    await spaceModel.save();
+    if (updates.name !== undefined) spaceRecord.name = updates.name;
+    if (updates.description !== undefined) spaceRecord.description = updates.description;
+    if (updates.discovery !== undefined) spaceRecord.discovery = updates.discovery;
+    await spaceRecord.save();
     // See updateSpaceImage — only the current space is refreshed by a live subscription.
     const { location: _location, ...scalars } = updates;
     updateSpaceInCache(ds, scalars as never);
@@ -1744,7 +1744,7 @@ export function SpaceStoreProvider(props: ParentProps) {
           ...(loc.country && { country: loc.country }),
           ...(loc.countryCode && { countryCode: loc.countryCode }),
         });
-        await spaceModel.setLocation(newLoc);
+        await spaceRecord.setLocation(newLoc);
       }
       /*
         The cached row carries the location now, and the write above deliberately excluded it from
@@ -1760,14 +1760,14 @@ export function SpaceStoreProvider(props: ParentProps) {
 
     const effectiveDiscovery = updates.discovery ?? previousDiscovery;
     if (effectiveDiscovery === 'listed') {
-      // Pass locationData explicitly when location changed — the included spaceModel.location
+      // Pass locationData explicitly when location changed — the included spaceRecord.location
       // snapshot is stale after our delete+recreate. null signals explicit removal to syncSpaceToParent.
       const syncOpts = updates.location !== undefined ? { locationData: updates.location } : {};
-      await syncSpaceToParent(spaceModel, globalDs.handle, session.backendPorts()!.schemas, syncOpts).catch((err) =>
+      await syncSpaceToParent(spaceRecord, globalDs.handle, session.backendPorts()!.schemas, syncOpts).catch((err) =>
         console.error('SpaceStore: sync meta to global failed', err),
       );
     } else if (previousDiscovery === 'listed') {
-      await removeSpaceFromParent(spaceModel.uuid, globalDs.handle).catch((err) =>
+      await removeSpaceFromParent(spaceRecord.uuid, globalDs.handle).catch((err) =>
         console.error('SpaceStore: remove from global failed', err),
       );
     }
@@ -1841,12 +1841,12 @@ export function SpaceStoreProvider(props: ParentProps) {
       // turn is — which entities can be one, which rows are too broken to keep, and the ordering
       // that makes a transcript a transcript rather than a bag of sentences — is one decision, and
       // an export that answered it differently would disagree with what the model was shown.
-      const modelFor = (entity: string) => getModelForPerspective(entity, p);
-      const predicate = containmentPredicate(modelFor, datasetStore.currentDatasetModels());
+      const modelFor = (entity: string) => getEntitiesForPerspective(entity, p);
+      const predicate = containmentPredicate(modelFor, datasetStore.currentDatasetEntities());
       const turns = predicate
         ? await gatherTranscriptTurns(
             {
-              modelFor: (entity) => modelFor(entity) as TurnModel | undefined,
+              modelFor: (entity) => modelFor(entity) as TurnRecord | undefined,
               handle: p,
               containmentPredicate: predicate,
             },
@@ -3121,9 +3121,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     const ds = datasetStore.currentDataset();
     const weSpace = datasetStore.isWeSpace();
     // Force a re-run once the dataset's foreign schemas have been registered — that happens in
-    // switchDataset's background pass, strictly before currentDatasetModels is set, so tracking
+    // switchDataset's background pass, strictly before currentDatasetEntities is set, so tracking
     // it here guarantees a second run right when model resolution is ready.
-    void datasetStore.currentDatasetModels();
+    void datasetStore.currentDatasetEntities();
 
     if (!ds || weSpace) {
       setForeignSpacePrefill(null);
@@ -3131,7 +3131,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const CommunityClass = getModelForPerspective('Community', ds.handle) as any;
+    const CommunityClass = getEntitiesForPerspective('Community', ds.handle) as any;
     if (!CommunityClass) {
       setForeignSpacePrefill(null);
       return;

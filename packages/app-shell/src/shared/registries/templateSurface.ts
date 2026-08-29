@@ -302,7 +302,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     currentDataset: state('content'),
     currentDatasetUri: state('content'),
     currentDatasetCid: state('content'),
-    currentDatasetModels: state('content'),
+    currentDatasetEntities: state('content'),
     isWeSpace: state('navigation'),
     joinedSpaceCids: state('navigation'),
     datasetsLoaded: state('navigation'),
@@ -766,7 +766,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     loadSpaceTemplates: WIRING,
     refreshSpaceTemplates: action('appearance'),
     clearSpaceTemplates: WIRING,
-    getTemplateModel: WIRING,
+    getTemplateRecord: WIRING,
   },
 
   routeStore: {
@@ -1015,15 +1015,15 @@ const ALWAYS_PRESENT = new Set([
   '$useQueryIR',
   '$me',
   '$currentDataset',
-  '$getModel',
-  '$getModelForPerspective',
+  '$getEntity',
+  '$getEntitiesForPerspective',
   '$queryAdapter',
   '$identities',
   '$ephemeral',
   /*
     The host-source registry — computed rows and values a template may call on.
 
-    Present in every bag for the same reason `$getModel` is: it is a host-provided capability that
+    Present in every bag for the same reason `$getEntity` is: it is a host-provided capability that
     templates are meant to reach, not store state anyone needs protecting from. Its members are pure
     synchronous functions the host chose to register, so there is nothing here to gate — a template
     that can call `calendarMonth` can compute a month, which is the entire point of registering it.
@@ -1106,7 +1106,7 @@ export function buildTemplateBag<T extends Record<string, unknown>>(stores: T, o
     /*
       Renderer bindings, by descriptor rather than by value.
 
-      `$getModel`, `$currentDataset`, `$queryAdapter` and the rest are defined on the host's bag as
+      `$getEntity`, `$currentDataset`, `$queryAdapter` and the rest are defined on the host's bag as
       *getters* that delegate to a memo, because the connector's ports do not exist until after
       connect. Reading them here would have captured their pre-connect value — `undefined` — and
       pinned it, which is not a subtle failure: every `$query` in every template resolves to nothing

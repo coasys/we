@@ -30,7 +30,7 @@ import {
   extractWiringMembers,
 } from './extractors/appShell.js';
 import { extractPrimitives } from './extractors/cem.js';
-import { extractModels } from './extractors/models.js';
+import { extractEntities } from './extractors/entities.js';
 import { extractPluginCatalog } from './extractors/plugins.js';
 import { extractTokens } from './extractors/tokens.js';
 import { extractComponentProps } from './extractors/typescript.js';
@@ -202,7 +202,7 @@ async function discoverFragments(): Promise<ContextFragment[]> {
         fragments.push({ tokens: extractTokens(src) });
         break;
       case 'models':
-        fragments.push({ models: await extractModels(src) });
+        fragments.push({ models: await extractEntities(src) });
         break;
       case 'plugins':
         fragments.push({ pluginCatalogs: await extractPluginCatalog(src) });

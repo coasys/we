@@ -19,7 +19,7 @@
  */
 
 /** A transcription model the backend can run. */
-export interface TranscriptionModel {
+export interface TranscriptionRecord {
   id: string;
   name: string;
   /** True for the one the backend uses when asked for transcription without naming a model. */
@@ -75,7 +75,7 @@ export interface TranscriptionPort {
    */
   available?(): boolean;
   /** Transcription models this backend can run. Empty when none is installed. */
-  models(): Promise<TranscriptionModel[]>;
+  models(): Promise<TranscriptionRecord[]>;
   /**
    * Begin a session. `onText` fires once per utterance the backend resolves.
    *

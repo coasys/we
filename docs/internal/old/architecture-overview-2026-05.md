@@ -254,12 +254,12 @@ All query logic stays in Ad4mModel where it belongs. The service is a bridge, no
 ```typescript
 // Conceptual implementation
 const queryService = {
-  subscribe: (ModelClass, queryParams) => {
-    const cacheKey = hash(ModelClass.name, queryParams);
+  subscribe: (EntityClass, queryParams) => {
+    const cacheKey = hash(EntityClass.name, queryParams);
     if (cache.has(cacheKey)) return cache.get(cacheKey).signal;
 
     const [data, setData] = createSignal([]);
-    const builder = ModelClass.query(currentPerspective())
+    const builder = EntityClass.query(currentPerspective())
       .where(queryParams.where)
       .order(queryParams.order)
       .limit(queryParams.limit);
@@ -269,8 +269,8 @@ const queryService = {
     return data;
   },
 
-  find: (ModelClass, id) => ModelClass.find(currentPerspective(), id),
-  create: (ModelClass, props) => ModelClass.create(currentPerspective(), props),
+  find: (EntityClass, id) => EntityClass.find(currentPerspective(), id),
+  create: (EntityClass, props) => EntityClass.create(currentPerspective(), props),
 };
 ```
 

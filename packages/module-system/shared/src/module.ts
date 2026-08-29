@@ -24,10 +24,10 @@
 import type {
   Activity,
   DatasetHandle,
+  EntityManifest,
   EphemeralPort,
   InterpretationProposal,
   InterpretationResult,
-  ModelManifest,
   Peer,
   TranscriptionPort,
 } from '@we/backend-shared';
@@ -386,7 +386,7 @@ export interface ModuleDefinition {
    * data written under a different name.
    */
   entities?: {
-    manifest: ModelManifest;
+    manifest: EntityManifest;
     /** Explicit predicate bindings, keyed `"Entity.property"`. */
     predicates?: Record<string, string>;
   };

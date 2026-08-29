@@ -69,7 +69,7 @@ What doesn't exist:
 │                  Package Registry (runtime)                      │
 │  Built-in: core components, framework stores, block models      │
 │  Installed: component packages (loaded at runtime)              │
-│  Provides: resolveComponent(), resolveStore(), resolveModel()   │
+│  Provides: resolveComponent(), resolveStore(), resolveRecord()   │
 └──────────┬───────────────────────────────────────────────────────┘
            │ fetched from                  │ resolved by
            ▼                               ▼
@@ -99,25 +99,25 @@ import { TextBlock } from './block-types/TextBlock';
 import { ImageBlock } from './block-types/ImageBlock';
 import { CollectionBlock } from './block-types/CollectionBlock';
 
-const modelRegistry: Record<string, typeof Ad4mModel> = {
+const entityRegistry: Record<string, typeof Ad4mModel> = {
   TextBlock,
   ImageBlock,
   CollectionBlock,
 };
 
-export function resolveModel(name: string): typeof Ad4mModel | undefined {
-  return modelRegistry[name];
+export function resolveRecord(name: string): typeof Ad4mModel | undefined {
+  return entityRegistry[name];
 }
 
-export function registerModel(name: string, modelClass: typeof Ad4mModel) {
-  if (modelRegistry[name]) {
+export function registerEntity(name: string, modelClass: typeof Ad4mModel) {
+  if (entityRegistry[name]) {
     throw new Error(`Model "${name}" is already registered`);
   }
-  modelRegistry[name] = modelClass;
+  entityRegistry[name] = modelClass;
 }
 ```
 
-~20 lines. Ships with the 3 existing block types. Third-party packages can register additional models via `registerModel()`.
+~20 lines. Ships with the 3 existing block types. Third-party packages can register additional models via `registerEntity()`.
 
 ### 1b. Reactive query service
 
@@ -154,7 +154,7 @@ Three responsibilities:
 
    ```typescript
    const [data, setData] = createSignal<T[]>([]);
-   ModelClass.query(perspective)
+   EntityClass.query(perspective)
      .where(params.where)
      .order(params.order)
      .limit(params.limit)
@@ -485,7 +485,7 @@ Experience opened with dependency "@we-pkg/music"
   ├── User confirms → register:
   │   ├── registerComponent() for each component
   │   ├── registerStore() for each store
-  │   ├── registerModel() for each model
+  │   ├── registerEntity() for each model
   │   └── Cache bundle locally (IndexedDB, keyed by name@version+hash)
   │
   └── Re-render → MissingComponent placeholders replaced with real components

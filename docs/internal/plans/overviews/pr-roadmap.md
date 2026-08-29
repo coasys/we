@@ -244,16 +244,16 @@ Added 34 components (25 Lit primitives + 9 SolidJS components) bringing the tota
 **Depends on:** nothing (but strategically placed here as prerequisite for Phases B and C)
 **Unblocks:** `$query` service, AI context extraction, clean model imports, core block types
 
-Moved TextBlock, ImageBlock, CollectionBlock from `@we/block-system/shared/src/models/` to `@we/models/src/blocks/`. Updated imports in serialization, AdamStore, SpaceStore, CreateSpaceModal. Re-exported from `@we/block-shared` for back-compat. Editor infrastructure (registry, GenericBlockNode) deferred to #5b.
+Moved TextBlock, ImageBlock, CollectionBlock from `@we/block-system/shared/src/models/` to `@we/entities/src/blocks/`. Updated imports in serialization, AdamStore, SpaceStore, CreateSpaceModal. Re-exported from `@we/block-shared` for back-compat. Editor infrastructure (registry, GenericBlockNode) deferred to #5b.
 
 ### 5b. Core Block Types ✅
 
 **Plan:** [core-block-types](../prs/core-block-types.md)
 **Status:** Complete (branch `feat/core-block-types`, 4 commits, 24 files)
-**Depends on:** Block Model Migration (#5) — new models go in `@we/models`
+**Depends on:** Block Model Migration (#5) — new models go in `@we/entities`
 **Unblocks:** block persistence & rendering (#5d), richer `$query` data, semantic block rendering outside editor, template diversity
 
-Expanded block model set from 3 to 15. Added 12 new models: AudioBlock, VideoBlock, FileBlock, EventBlock, TaskBlock, LocationBlock, LinkBlock, CodeBlock, TagBlock, EmbedBlock, CalloutBlock, DividerBlock. Created block type registry (`registerBlock`/`getBlockModel`) with idempotent `registerCoreBlocks()`. Refactored serialization from hardcoded if-branches to registry-based using `getPropertiesMetadata()` + `ModelClass.create()`. Added `createBlockNodeClass` factory for generic Lexical DecoratorNode creation. Migrated existing models to simplified URI convention (`we://field_name`), removed blanket `required: true`, removed `type` field from ImageBlock/CollectionBlock, added `columns`/`gap` to CollectionBlock. Renamed CSS class `we-block-composer-block` → `we-block`.
+Expanded block model set from 3 to 15. Added 12 new models: AudioBlock, VideoBlock, FileBlock, EventBlock, TaskBlock, LocationBlock, LinkBlock, CodeBlock, TagBlock, EmbedBlock, CalloutBlock, DividerBlock. Created block type registry (`registerBlock`/`getBlockRecord`) with idempotent `registerCoreBlocks()`. Refactored serialization from hardcoded if-branches to registry-based using `getPropertiesMetadata()` + `EntityClass.create()`. Added `createBlockNodeClass` factory for generic Lexical DecoratorNode creation. Migrated existing models to simplified URI convention (`we://field_name`), removed blanket `required: true`, removed `type` field from ImageBlock/CollectionBlock, added `columns`/`gap` to CollectionBlock. Renamed CSS class `we-block-composer-block` → `we-block`.
 
 ### 5d. Block Persistence & Rendering ✅
 
@@ -268,10 +268,10 @@ Implements parent-child linking via `@HasMany({ through: 'we://children' })` on 
 
 **Plan:** [query-service](../prs/query-service.md)
 **Status:** Complete (branch `feat/query-service`, 4 commits, 17 files)
-**Depends on:** Block Model Migration (#5) — model registry imports from `@we/models`
+**Depends on:** Block Model Migration (#5) — model registry imports from `@we/entities`
 **Unblocks:** declarative data binding in schemas, `$action: "model.*"` mutations, reactive shared data across templates
 
-Implements `$query` as a prop-level schema token with descriptor pattern (shared resolver returns pure `QueryDescriptor`, framework layer handles subscription lifecycle). Read side: `QueryToken` type + `zQueryToken` Zod schema, `resolveQueryProp` shared resolver, SchemaRenderer `$query` handling with `createSignal` + `createEffect` + `onCleanup`. Write side: `modelRegistry` (`registerModel`/`getModel`), `modelStore` in TemplateProvider (create/update/delete), `$getModel` passed to SchemaRenderer stores. Also refactored `processArgTokens` to recursive for nested `$arg` tokens. 8 integration tests covering subscribe lifecycle, perspective reactivity, cleanup, one-shot mode, params forwarding, and graceful fallback. Fixed pre-existing ImageBlock barrel import in block-system.
+Implements `$query` as a prop-level schema token with descriptor pattern (shared resolver returns pure `QueryDescriptor`, framework layer handles subscription lifecycle). Read side: `QueryToken` type + `zQueryToken` Zod schema, `resolveQueryProp` shared resolver, SchemaRenderer `$query` handling with `createSignal` + `createEffect` + `onCleanup`. Write side: `entityRegistry` (`registerEntity`/`getEntity`), `modelStore` in TemplateProvider (create/update/delete), `$getEntity` passed to SchemaRenderer stores. Also refactored `processArgTokens` to recursive for nested `$arg` tokens. 8 integration tests covering subscribe lifecycle, perspective reactivity, cleanup, one-shot mode, params forwarding, and graceful fallback. Fixed pre-existing ImageBlock barrel import in block-system.
 
 ---
 
@@ -282,7 +282,7 @@ Implements `$query` as a prop-level schema token with descriptor pattern (shared
 **Plan:** [schema-customization-architecture](../prs/schema-customization-architecture.md) | [review](../prs/schema-customization-review.md)
 **Decision:** [template-storage-architecture](../../../decisions/template-storage-architecture.md)
 **Status:** Complete (branch `feat/schema-customization`, 5 commits, 12 files)
-**Depends on:** Block Model Migration (#5) — `Template` model goes in `@we/models`
+**Depends on:** Block Model Migration (#5) — `Template` model goes in `@we/entities`
 **Unblocks:** template gallery, per-section AI editing, section sharing, SHACL auto-generated section tools
 
 **Architecture pivot:** Original plan called for physically split `SchemaSection` models with `$section` tokens. Review identified section drift, naming fragility, and structural rigidity issues. Pivoted to **monolith + stored index** — single `StoredTemplate` blob (schema + pre-computed section index) stored in AD4M via file-storage language. Index is generated at creation and structural edits, travels with shared copies for cross-client consistency.

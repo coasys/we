@@ -55,8 +55,8 @@ Each user message is a JSON object:
 {
   "request": "<user's natural language request>",
   "currentSchema": { ... current TemplateSchema with id fields on every node ... },
-  "availableWeModels": "<optional — present when a perspective is active; lists the WE model names registered in this perspective (subset of the full WE model catalogue in the schema context above). Only use $query with WE models from this list>",
-  "externalModels": "<optional — present when the active perspective has non-WE SHACL models; lists their names, properties and types for $query usage>"
+  "availableWeEntities": "<optional — present when a perspective is active; lists the WE model names registered in this perspective (subset of the full WE model catalogue in the schema context above). Only use $query with WE models from this list>",
+  "externalEntities": "<optional — present when the active perspective has non-WE SHACL models; lists their names, properties and types for $query usage>"
 }
 
 ---

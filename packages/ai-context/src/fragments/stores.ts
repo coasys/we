@@ -175,7 +175,7 @@ export const storeEntries: StoreEntry[] = [
       orderedDatasets: { type: 'array', properties: ['id', 'name', 'sharedUri', 'sharedId', 'handle'] },
       currentDataset: { type: 'object', properties: ['id', 'name', 'sharedUri', 'sharedId', 'handle'] },
       currentDatasetCid: { type: 'string' },
-      currentDatasetModels: { type: 'array' },
+      currentDatasetEntities: { type: 'array' },
       isWeSpace: { type: 'boolean' },
       joinedSpaceCids: { type: 'array' },
       datasetsLoaded: { type: 'boolean' },
@@ -682,8 +682,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
         orderedDatasets: 'datasets sorted by user-defined sidebar order, system datasets excluded',
         currentDataset: 'dataset handle | null (the dataset currently being viewed)',
         currentDatasetCid: 'string | undefined — the neighbourhood CID of the current dataset (prefix stripped)',
-        currentDatasetModels:
-          'ModelManifestEntry[] (non-WE SHACL models from the current dataset; injected as externalModels into AI messages)',
+        currentDatasetEntities:
+          'EntityManifestEntry[] (non-WE SHACL models from the current dataset; injected as externalEntities into AI messages)',
         isWeSpace:
           "boolean — true once the current dataset is confirmed to have WE's Space SDNA installed (false for a joined-but-foreign dataset, e.g. one synced in from Flux)",
         joinedSpaceCids: 'string[] — CIDs of every joined shared dataset',
@@ -707,7 +707,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         removeDataset:
           '(uuid: string): removes a dataset from the backend and from local state. The low-level half of spaceStore.removeSpace, which also clears the global-discovery listing — call that from a template, and this only for a dataset that is not a space',
         switchDataset:
-          '(uuid: string): switches to a dataset by UUID, registers its SHACL models as dynamic model classes, and populates currentDatasetModels',
+          '(uuid: string): switches to a dataset by UUID, registers its SHACL models as dynamic model classes, and populates currentDatasetEntities',
         reorderDatasets: '(newOrder: string[]): reorders the sidebar items by UUID array',
         cleanupSpaceSdna:
           '(uuid?: string): one-time remediation for a space that accumulated duplicate SDNA installs — removes the redundant duplicate link copies. Defaults to the current dataset. Returns a display-ready summary string naming how many links were removed and the DIDs that authored them (your own DID annotated with "(you)"), or an empty string if nothing needed cleaning up',
@@ -1351,14 +1351,14 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(type: string, id?: string): withdraws a published activity; omit id to withdraw every one of that type',
       },
     },
-    model: {
+    record: {
       state: {},
       actions: {
         create:
-          '(entity: string, fields: object, options?: { perspective?: string }): creates a model instance in the current space, or in the dataset a store path names (\'datasetStore.rootDataset\' for we-root models). See "Model mutations via $action" above',
+          '(entity: string, fields: object, options?: { perspective?: string }): creates a record in the current space, or in the dataset a store path names (\'datasetStore.rootDataset\' for we-root entities). See "Record mutations via $action" above',
         update:
-          '(entity: string, id: string, fields: object, options?: { perspective?: string }): updates the named fields of one instance, leaving the rest',
-        delete: '(entity: string, id: string, options?: { perspective?: string }): deletes one instance. Irreversible',
+          '(entity: string, id: string, fields: object, options?: { perspective?: string }): updates the named fields of one record, leaving the rest',
+        delete: '(entity: string, id: string, options?: { perspective?: string }): deletes one record. Irreversible',
       },
     },
     interpretationStore: {

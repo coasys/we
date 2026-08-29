@@ -8,10 +8,10 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { type ModelManifest } from './manifest';
+import { type EntityManifest } from './manifest';
 import { manifestEntries } from './manifestEntry';
 
-const manifest: ModelManifest = {
+const manifest: EntityManifest = {
   version: '1',
   entities: {
     Node: {
@@ -52,11 +52,11 @@ describe('manifestEntries', () => {
       type: 'uri',
       isCollection: true,
     });
-    expect(prop('Collection', 'children')).not.toHaveProperty('relatedModel');
+    expect(prop('Collection', 'children')).not.toHaveProperty('relatedEntity');
   });
 
   it('names the target of a typed relation, so include has something to hydrate into', () => {
-    expect(prop('Collection', 'cover')).toMatchObject({ relatedModel: 'Image', isCollection: false });
+    expect(prop('Collection', 'cover')).toMatchObject({ relatedEntity: 'Image', isCollection: false });
   });
 
   it('carries inherited relations onto the child, since scope resolves on the child name', () => {

@@ -50,7 +50,7 @@ The spine of every one of these decisions is a single rule, from \`packages/temp
 | A new kind of content composed into a page | **Block type** |
 | A stateful capability a community turns on | **Feature module** |
 | A new source of nodes, or arrangement, in a graph | **Graph plugin** |
-| A new kind of thing that gets stored | **Model** |
+| A new kind of thing that gets stored | **Entity** |
 | State or an action a template needs to reach | **Store** |
 | A differently-shaped deployment | **Seed** (write nothing — select what exists) |
 
@@ -98,7 +98,7 @@ the seed's list is correct code that never appears.
 | Block type | \`block-system/shared/\` + \`frameworks/solid/\` | \`block-system/CONVENTIONS.md\` | \`registerBlock()\` in \`core-blocks.ts\` | \`--filter @we/block-shared test\` |
 | Expression function | \`schema-system/shared/src/expressions/functions.ts\` | \`schema-system/CONVENTIONS.md\` ("Adding a function") | \`defineFunction()\` — the registry feeds the validator, the evaluator and the generated context | \`--filter @we/schema-shared test\`, then \`generate-context\` |
 | Store | \`app-shell/src/frameworks/solid/stores/\` | \`app-shell/CONVENTIONS.md\` | classify in \`templateSurface.ts\` **and** describe in \`fragments/stores.ts\` — both fail the build if you don't | \`--filter @we/app-shell test\`, then \`generate-context\` |
-| Model | \`models/src/manifest/entities/\` | \`models/CONVENTIONS.md\` + \`docs/architecture/relations.md\` | \`--filter @we/models generate:types\` **and** \`--filter @we/backend-ad4m generate:classes\` | \`--filter @we/backend-ad4m test\` |
+| Entity | \`entities/src/manifest/\` | \`entities/CONVENTIONS.md\` + \`docs/architecture/relations.md\` | \`--filter @we/entities generate:types\` **and** \`--filter @we/backend-ad4m generate:classes\` | \`--filter @we/backend-ad4m test\` |
 | Feature module | \`module-system/<id>/\` | \`module-system/shared/src/module.ts\` (the contract is the documentation) | \`bundledModules.ts\` + seed \`modules\` | \`--filter @we/module-shared test\`, \`validate:schemas\` |
 | Graph plugin | \`graph-system/expanders/src/\`, \`layouts/src/\` | \`graph-system/CONVENTIONS.md\` | package index **and** \`GRAPH_PLUGIN_CATALOG\` in \`module-system/graph/src/catalog.ts\` | \`--filter @we/graph-core test\`, then \`generate-context\` |
 | Globe layer | \`module-system/globe/layers/src/\` | its \`README.md\` / \`EXAMPLES.md\` | export from \`index.ts\` | \`--filter @we/globe-layers typecheck\` |

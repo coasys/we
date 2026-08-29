@@ -31,7 +31,7 @@ import type {
   TranscriptTurn,
   WatchRequest,
 } from '@we/backend-shared';
-import { getModel, getModelForPerspective, getModelTargetClass, getRegisteredModelNames } from '@we/models';
+import { getEntitiesForPerspective, getEntity, getEntityTargetClass, getRegisteredEntityNames } from '@we/entities';
 
 const proxy = (dataset: DatasetHandle) => dataset as PerspectiveProxy;
 
@@ -138,9 +138,9 @@ function withTime(turns: TranscriptTurn[]): { speaker: string; text: string }[] 
 async function predicateNames(perspective: PerspectiveProxy): Promise<Map<string, string>> {
   const map = new Map<string, string>();
 
-  for (const name of getRegisteredModelNames()) {
+  for (const name of getRegisteredEntityNames()) {
     const shape = (
-      getModel(name) as unknown as { generateSHACL?: () => { shape: { properties?: unknown[] } } }
+      getEntity(name) as unknown as { generateSHACL?: () => { shape: { properties?: unknown[] } } }
     ).generateSHACL?.().shape;
     for (const p of (shape?.properties ?? []) as { path?: string; name?: string }[]) {
       if (p.path && p.name && !map.has(p.path)) map.set(p.path, p.name);
@@ -151,7 +151,7 @@ async function predicateNames(perspective: PerspectiveProxy): Promise<Map<string
   // failure here costs a proposal its readable field names, which is worth degrading over rather
   // than failing the whole review list for.
   try {
-    const native = new Set(getRegisteredModelNames());
+    const native = new Set(getRegisteredEntityNames());
     for (const shapeName of await perspective.getShaclNames()) {
       if (native.has(shapeName)) continue; // already covered above, without the round trip
       const shape = await perspective.getShacl(shapeName);
@@ -187,7 +187,7 @@ function decode(value: unknown): unknown {
  * Whether the connected runtime actually implements interpretation.
  *
  * The methods are declared as part of `PerspectiveProxy` (see `interpretationOptions.d.ts` in
- * `@we/models`) so the repo builds against a runtime that predates them — which means the type
+ * `@we/entities`) so the repo builds against a runtime that predates them — which means the type
  * system can no longer answer this and something has to ask at run time. One probe is enough:
  * the four arrived together.
  *
@@ -827,14 +827,14 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
         /*
           Perspective-scoped, and the `continue` below now means something.
 
-          This read the global registry through `getModel`, which *throws* for an unregistered name
+          This read the global registry through `getEntity`, which *throws* for an unregistered name
           rather than returning undefined — so the guard beneath it was unreachable, and one
           community shape in the list took the whole repair pass down before it reached the classes
           it could have repaired. Skipping is the right answer here in a way it is not on the watch
           path: this attaches what a pass already minted, so a name it cannot resolve has nothing to
           find and nothing to lose.
         */
-        const model = getModelForPerspective(name, perspective) as unknown as
+        const model = getEntitiesForPerspective(name, perspective) as unknown as
           { findAll(p: PerspectiveProxy, o?: unknown): Promise<{ id: string }[]> } | undefined;
         if (!model) continue;
         for (const instance of await model.findAll(perspective)) {
@@ -979,15 +979,15 @@ async function deleteProcessorConfig(perspective: PerspectiveProxy, watchId: str
  * behind it would otherwise silently narrow what a watch extracts.
  *
  * **Resolved against the perspective, not the global registry.** A community's own shape is compiled
- * and registered *for its dataset only* (`mergeDynamicModels`), so `getModel` — which reads the
+ * and registered *for its dataset only* (`mergeDynamicEntities`), so `getEntity` — which reads the
  * global map and throws rather than answering — could not see one and took the whole watch down
  * with it. That was invisible while the target list was a constant naming two core classes; it is
  * the ordinary case the moment a space can add to it.
  */
 function targetClasses(perspective: PerspectiveProxy, names: readonly string[]): string[] {
   return names.map((name) => {
-    const model = getModelForPerspective(name, perspective);
-    const targetClass = model ? getModelTargetClass(model as never) : undefined;
+    const model = getEntitiesForPerspective(name, perspective);
+    const targetClass = model ? getEntityTargetClass(model as never) : undefined;
     if (!targetClass) throw new Error(`interpretation: no target class for "${name}" — is the model registered?`);
     return targetClass;
   });

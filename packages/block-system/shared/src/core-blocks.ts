@@ -14,7 +14,7 @@ import {
   TaskBlock,
   TextBlock,
   VideoBlock,
-} from '@we/models';
+} from '@we/entities';
 
 import { registerBlock } from './registry';
 

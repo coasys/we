@@ -19,7 +19,7 @@ import type { Fixture } from '../src/types';
 function recorder() {
   const writes: Array<{ model: string; data: Record<string, unknown> }> = [];
   const links: Array<[string, string]> = [];
-  const getModel = (model: string) => ({
+  const getEntity = (model: string) => ({
     async create(_handle: unknown, data: Record<string, unknown>) {
       writes.push({ model, data });
       const id = (data.id as string) ?? `minted-${writes.length}`;
@@ -32,13 +32,13 @@ function recorder() {
       };
     },
   });
-  return { writes, links, getModel };
+  return { writes, links, getEntity };
 }
 
 const apply = async (fixture: Fixture) => {
-  const { writes, links, getModel } = recorder();
+  const { writes, links, getEntity } = recorder();
   const result = await applyFixture(
-    { getModel, dataset: {}, datasetId: datasetIdFor(fixture), sharedId: datasetIdFor(fixture) },
+    { getEntity, dataset: {}, datasetId: datasetIdFor(fixture), sharedId: datasetIdFor(fixture) },
     fixture,
   );
   return { writes, links, result };

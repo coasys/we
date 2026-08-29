@@ -113,5 +113,5 @@ pnpm test    # converter round-trips and composer/renderer DOM parity (happy-dom
 ## Related Packages
 
 - `@we/block-shared` — framework-agnostic content model and persistence
-- `@we/models` — data models for all block types
+- `@we/entities` — data models for all block types
 - `@we/schema-solid` — schema-driven UI system that hosts `BlockComposer` in document views

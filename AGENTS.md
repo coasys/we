@@ -90,13 +90,13 @@ Glossary (these terms pervade stores, models, and `$query`/`perspective` in sche
 | `@we/schema-shared` | schema-system/shared | Schema semantics: prop resolvers, validation, indexer, registry types, reactivity port | **Agnostic** |
 | `@we/schema-solid` | schema-system/frameworks/solid | The schema renderer (walks the tree, mounts components) | Solid (thin adapter) |
 | `@we/backend-shared` | backend-system/shared | The backend contract: `DataSource`, query IR + engine, ephemeral, presence & transcription ports, model manifest | **Agnostic** |
-| `@we/backend-ad4m` | backend-system/ad4m | The AD4M adapter: query adapter, ports, agent identity, SDNA install — and the AD4M model classes, generated from @we/models' manifest (src/models) | Agnostic |
+| `@we/backend-ad4m` | backend-system/ad4m | The AD4M adapter: query adapter, ports, agent identity, SDNA install — and the AD4M model classes, generated from @we/entities' manifest (src/models) | Agnostic |
 | `@we/backend-inmemory` | backend-system/inmemory | In-memory adapter — the reference implementation, and how stores test without an executor | Agnostic |
 | `@we/module-shared` | module-system/shared | The feature-module contract — what a module author installs | Agnostic |
 | `@we/module-globe` · `-call` · `-notes` · `-transcribe` · `-graph` | module-system/* | Bundled feature modules; globe is a *family* (module · protocol · layers · widget) | Agnostic (components injected) |
 | `@we/graph-protocol` · `-core` · `-expanders` · `-layouts` · `-solid` | graph-system/* | The graph engine: expander/layout/renderer contracts, the neutral engine, first-party plugins, and the Solid adapter | **Agnostic** (Solid only in the adapter) |
 | `@we/block-shared` | block-system/shared | Block content types + serialization | Agnostic |
-| `@we/models` | packages/models | WE's domain models: the authored neutral manifest (src/manifest, the source of truth), the neutral type contract, and the entity proxies backends register into | **Agnostic** |
+| `@we/entities` | packages/entities | WE's domain models: the authored neutral manifest (src/manifest, the source of truth), the neutral type contract, and the entity proxies backends register into | **Agnostic** |
 | `@we/app-shell` | packages/app-shell | App shell, stores, registries, built-in template schemas | Solid |
 | `@we/ai-context` | packages/ai-context | Generates this reference (CLAUDE.md et al.) from code + fragments | Build tool |
 
@@ -106,7 +106,7 @@ Each supplies two things: a `PlatformAdapter` (where am I running) and a `Backen
 
 **Dependency direction:** `templates → shell → backend-shared ← backend-ad4m`, and
 `modules → shell → backend-shared`. Dependencies point inward toward the contract packages; there are
-no sideways edges. `@coasys/*` may be imported by `@we/backend-ad4m`, `@we/models`, and any module
+no sideways edges. `@coasys/*` may be imported by `@we/backend-ad4m`, `@we/entities`, and any module
 that declares `backends: ['ad4m']` — nothing else. See `docs/architecture/package-conventions.md`.
 
 ### The Three Seams (why the layering holds)
@@ -156,7 +156,7 @@ that declares `backends: ['ad4m']` — nothing else. See `docs/architecture/pack
 - The backend contract (ports, query IR) → `packages/backend-system/shared/src/`.
 - AD4M wiring (query adapter, SDNA install, agent identity) → `packages/backend-system/ad4m/src/`.
 - The feature-module contract → `packages/module-system/shared/src/module.ts`; a module → `packages/module-system/<id>/`.
-- Data models (Space, blocks) → `packages/models/src/` (see packages/models/CONVENTIONS.md).
+- Data models (Space, blocks) → `packages/entities/src/` (see packages/entities/CONVENTIONS.md).
 - A space's sections (views) → `packages/templates/views/`; how they resolve →
   `packages/app-shell/src/shared/viewResolution.ts` (see docs/architecture/views.md).
 - Graph engine (expanders, layouts, expansion state) → `packages/graph-system/` (see its README);
@@ -210,7 +210,7 @@ The spine of every one of these decisions is a single rule, from `packages/templ
 | A new kind of content composed into a page | **Block type** |
 | A stateful capability a community turns on | **Feature module** |
 | A new source of nodes, or arrangement, in a graph | **Graph plugin** |
-| A new kind of thing that gets stored | **Model** |
+| A new kind of thing that gets stored | **Entity** |
 | State or an action a template needs to reach | **Store** |
 | A differently-shaped deployment | **Seed** (write nothing — select what exists) |
 
@@ -258,7 +258,7 @@ the seed's list is correct code that never appears.
 | Block type | `block-system/shared/` + `frameworks/solid/` | `block-system/CONVENTIONS.md` | `registerBlock()` in `core-blocks.ts` | `--filter @we/block-shared test` |
 | Expression function | `schema-system/shared/src/expressions/functions.ts` | `schema-system/CONVENTIONS.md` ("Adding a function") | `defineFunction()` — the registry feeds the validator, the evaluator and the generated context | `--filter @we/schema-shared test`, then `generate-context` |
 | Store | `app-shell/src/frameworks/solid/stores/` | `app-shell/CONVENTIONS.md` | classify in `templateSurface.ts` **and** describe in `fragments/stores.ts` — both fail the build if you don't | `--filter @we/app-shell test`, then `generate-context` |
-| Model | `models/src/manifest/entities/` | `models/CONVENTIONS.md` + `docs/architecture/relations.md` | `--filter @we/models generate:types` **and** `--filter @we/backend-ad4m generate:classes` | `--filter @we/backend-ad4m test` |
+| Entity | `entities/src/manifest/` | `entities/CONVENTIONS.md` + `docs/architecture/relations.md` | `--filter @we/entities generate:types` **and** `--filter @we/backend-ad4m generate:classes` | `--filter @we/backend-ad4m test` |
 | Feature module | `module-system/<id>/` | `module-system/shared/src/module.ts` (the contract is the documentation) | `bundledModules.ts` + seed `modules` | `--filter @we/module-shared test`, `validate:schemas` |
 | Graph plugin | `graph-system/expanders/src/`, `layouts/src/` | `graph-system/CONVENTIONS.md` | package index **and** `GRAPH_PLUGIN_CATALOG` in `module-system/graph/src/catalog.ts` | `--filter @we/graph-core test`, then `generate-context` |
 | Globe layer | `module-system/globe/layers/src/` | its `README.md` / `EXAMPLES.md` | export from `index.ts` | `--filter @we/globe-layers typecheck` |
@@ -500,7 +500,7 @@ Rules:
   the host registers, catalogued under "Host functions" above.
 
 Query (data retrieval):
-{ "$query": { "entity": "ModelName", "where": { "field": "value" }, "limit": 10, "order": { "field": "asc" } } }
+{ "$query": { "entity": "EntityName", "where": { "field": "value" }, "limit": 10, "order": { "field": "asc" } } }
 Queries the current dataset for entity instances. Always returns an array.
 Options: entity (required), where, order, limit, offset, include, scope, dataset, subscribe.
 subscribe defaults to true — reactive live updates. Set subscribe: false to do a one-time fetch.
@@ -537,7 +537,7 @@ Backend-neutral identity & dataset refs — prefer these over backend-store path
 
 Eager-loading relations with include (most common relational pattern):
 include hydrates related model instances in the same query — no extra fetches needed.
-Relation names come from the HasMany relations listed for each model in externalModels.
+Relation names come from the HasMany relations listed for each model in externalEntities.
 
 Simple include — hydrate all related instances:
 { "$query": { "entity": "Channel", "include": { "conversations": true } } }
@@ -592,14 +592,14 @@ Single-item projection — add a derived field that resolves to one instance or 
 With limit: 1 the field unwraps to T | null instead of an array.
 
 include only works with typed relations — ones where the target model class is known.
-For WE models this is always the case. For external models, check the externalModels listing:
-relations marked "→ ModelName" are typed (safe for include); relations marked "parent query only"
+For WE models this is always the case. For external models, check the externalEntities listing:
+relations marked "→ EntityName" are typed (safe for include); relations marked "parent query only"
 are untyped and will crash at runtime if used with include — use a scope drill-down instead.
 
 Relational queries — fetch a parent record's children (drill-down navigation):
 { "$query": { "entity": "Conversation", "scope": { "anchor": "Channel", "via": "conversations", "anchorId": { "$": "channel.id" } } } }
 scope.anchor is the parent entity type; scope.via is its relation whose targets are this query's entity (the
-HasMany relation listed for that entity in externalModels); scope.anchorId is the parent record's id (typically
+HasMany relation listed for that entity in externalEntities); scope.anchorId is the parent record's id (typically
 from a $each context variable or a route segment). The adapter resolves the relation to a backend handle —
 no protocol details live in the template.
 Use this pattern when navigating to a detail route and loading only that record's children.
@@ -925,7 +925,7 @@ Single model item (load one record, render children with it in context):
 {
   "type": "$single",
   "props": {
-    "item": { "$query": { "entity": "ModelName", "params": { ... }, "subscribe": true } },
+    "item": { "$query": { "entity": "EntityName", "params": { ... }, "subscribe": true } },
     "as": "profile"   // context key for children — default: 'item'
   },
   "children": [{ "type": "we-text", "children": [{ "$": "profile.username" }] }]
@@ -2123,7 +2123,7 @@ DatasetStore:
   - currentDataset: dataset handle | null (the dataset currently being viewed)
   - currentDatasetUri: string | undefined — the shared URL of the current dataset with its scheme (neighbourhood://…), or undefined for a personal one. Prefer currentDatasetCid for comparisons; this is the form a share link carries
   - currentDatasetCid: string | undefined — the neighbourhood CID of the current dataset (prefix stripped)
-  - currentDatasetModels: ModelManifestEntry[] (non-WE SHACL models from the current dataset; injected as externalModels into AI messages)
+  - currentDatasetEntities: EntityManifestEntry[] (non-WE SHACL models from the current dataset; injected as externalEntities into AI messages)
   - isWeSpace: boolean — true once the current dataset is confirmed to have WE's Space SDNA installed (false for a joined-but-foreign dataset, e.g. one synced in from Flux)
   - joinedSpaceCids: string[] — CIDs of every joined shared dataset
   - datasetsLoaded: boolean — the backend has answered with the dataset list. An empty list is otherwise indistinguishable from "not fetched yet", so anything asking "have I joined this?" reads the boot frame as "no". The same reason accountStore.accountsLoaded exists
@@ -2137,7 +2137,7 @@ DatasetStore:
   - marketplaceId: string | null — the dataset id of the seed-configured marketplace, or null when it is not configured or not joined. The marketplace counterpart of globalSpaceId
   - marketplaceJoined: boolean — the marketplace dataset is joined locally
 - Actions:
-  - switchDataset(uuid: string): switches to a dataset by UUID, registers its SHACL models as dynamic model classes, and populates currentDatasetModels
+  - switchDataset(uuid: string): switches to a dataset by UUID, registers its SHACL models as dynamic model classes, and populates currentDatasetEntities
   - reorderDatasets(newOrder: string[]): reorders the sidebar items by UUID array
   - removeDataset(uuid: string): removes a dataset from the backend and from local state. The low-level half of spaceStore.removeSpace, which also clears the global-discovery listing — call that from a template, and this only for a dataset that is not a space
   - cleanupSpaceSdna(uuid?: string): one-time remediation for a space that accumulated duplicate SDNA installs — removes the redundant duplicate link copies. Defaults to the current dataset. Returns a display-ready summary string naming how many links were removed and the DIDs that authored them (your own DID annotated with "(you)"), or an empty string if nothing needed cleaning up
@@ -2625,9 +2625,9 @@ ThemeStore:
 Record:
 - State:
 - Actions:
-  - create(): unknown
-  - update(): unknown
-  - delete(): unknown
+  - create(entity: string, fields: object, options?: { perspective?: string }): creates a record in the current space, or in the dataset a store path names ('datasetStore.rootDataset' for we-root entities). See "Record mutations via $action" above
+  - update(entity: string, id: string, fields: object, options?: { perspective?: string }): updates the named fields of one record, leaving the rest
+  - delete(entity: string, id: string, options?: { perspective?: string }): deletes one record. Irreversible
 
 ---
 
@@ -2731,7 +2731,7 @@ Nesting works to any depth: "include": { "messages": { "include": { "reactions":
 
 Relational drill-down (master-detail navigation across entity relations):
 Use routes + a $query `scope` when you navigate to a detail route and need only that record's children.
-scope.anchor is the parent entity type; scope.via is its HasMany relation (see externalModels) whose targets
+scope.anchor is the parent entity type; scope.via is its HasMany relation (see externalEntities) whose targets
 are the query's entity; scope.anchorId is the parent record's id. The adapter resolves the relation to a
 backend handle, so no protocol details live in the template.
 routeStore.segments.N extracts the Nth dynamic path segment (segments splits currentPath by "/").
@@ -4170,14 +4170,15 @@ Key packages with conventions files:
   roles pinned only where the parametric default is wrong. Several roles are *derived at apply time*
   — foregrounds, fills and interaction states all correct themselves — so pinning them is overruling
   a measurement, which is occasionally right and usually not.
-- `packages/models/CONVENTIONS.md` — model authoring: entities vs blocks, predicates, @Flag, WeNode, Model.create() pattern
+- `packages/entities/CONVENTIONS.md` — entity authoring: what makes one a block, predicates, @Flag, WeNode, the Entity.create() pattern
 - `packages/templates/kit/CONVENTIONS.md` — fragment authoring: what belongs in the kit, extraction threshold, options-object API, body style
 
 ---
 
-### Model CRUD Patterns
+### Record CRUD Patterns
 
-Use the static factory method for creation. **Never** use `new Model() + manual property assignment + save()`.
+A record is written through its entity's class. Use the static factory method for creation —
+**never** `new Entity() + manual property assignment + save()`.
 
 **Create**
 ```ts

@@ -5,5 +5,5 @@ export default defineConfig({
   format: ['esm'],
   dts: true,
   clean: true,
-  external: ['@we/models', '@we/backend-shared'],
+  external: ['@we/entities', '@we/backend-shared'],
 });

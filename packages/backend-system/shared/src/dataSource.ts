@@ -20,7 +20,7 @@ import type { QueryIR } from './queryIR';
  *
  * **Genuinely opaque: the renderer never looks inside one.** It obtains a handle from
  * `$currentDataset` (or a `dataset:` path), checks it is present, and hands it back to the host via
- * `ModelClass.query` / `findAll` and `$getModelForPerspective`. Only the host that minted a handle
+ * `EntityClass.query` / `findAll` and `$getEntitiesForPerspective`. Only the host that minted a handle
  * ever interprets it.
  *
  * Typed `unknown` rather than a structural `{ id, uri }` on purpose. A structural shape would force
@@ -54,10 +54,10 @@ export interface QuerySubscription<T = unknown> {
 }
 
 /**
- * A queryable model handle — what `$getModel(name)` returns. The two methods are the entire read
+ * A queryable model handle — what `$getEntity(name)` returns. The two methods are the entire read
  * contract the renderer depends on.
  */
-export interface ModelClass<T = unknown> {
+export interface EntityClass<T = unknown> {
   query(dataset: DatasetHandle, opts: QueryOptions): QuerySubscription<T>;
   findAll(dataset: DatasetHandle, opts: QueryOptions, ctl?: { signal?: AbortSignal }): Promise<T[]>;
 }
@@ -75,8 +75,8 @@ export interface MutationApi {
  */
 export interface DataSource {
   currentDataset(): DatasetHandle | null;
-  getModel(name: string): ModelClass;
-  getModelForDataset?(name: string, datasetId?: string): ModelClass | undefined;
+  getEntity(name: string): EntityClass;
+  getEntityForDataset?(name: string, datasetId?: string): EntityClass | undefined;
   mutations?: MutationApi;
 }
 
@@ -99,7 +99,7 @@ export interface QueryAdapter {
    * OR/AND/NOT, and a projection/relation-path sort needs a `limit`.
    */
   plan(ir: QueryIR): QueryPlan;
-  /** Lower a fully-native IR to the flat query options this backend's {@link ModelClass} consumes. */
+  /** Lower a fully-native IR to the flat query options this backend's {@link EntityClass} consumes. */
   lower(ir: QueryIR): QueryOptions;
 }
 
@@ -112,14 +112,14 @@ export interface RendererDataBindings {
   /** The dataset queries run against unless a `dataset:` path overrides it. Opaque to the renderer. */
   $currentDataset?: () => DatasetHandle | null;
   /** Resolve a model name to its queryable handle. */
-  $getModel?: (name: string) => ModelClass;
+  $getEntity?: (name: string) => EntityClass;
   /**
    * Dataset-scoped model resolution, for backends whose model classes are per-dataset (AD4M
    * synthesises them from a perspective's SHACL). Receives the dataset **handle**, not an id
    * extracted from it — deriving a key is the host's job, since only the host knows the concrete
    * type. This is what lets the renderer treat a handle as fully opaque.
    */
-  $getModelForPerspective?: (name: string, dataset?: DatasetHandle) => ModelClass | undefined;
+  $getEntitiesForPerspective?: (name: string, dataset?: DatasetHandle) => EntityClass | undefined;
   /** Surface a data-layer error to the host UI. */
   $onError?: (message: string) => void;
   /** Mutation surface for `record.create` / `update` / `delete` actions. */

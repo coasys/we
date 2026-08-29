@@ -7,7 +7,7 @@
  * It is a *separate* artifact from any query and from any backend. A third-party host authors a
  * manifest for its own entities; the AD4M adapter produces one from its own models.
  *
- * Relationship to the AD4M-specific manifest (`ModelManifestEntry` in `@we/app-shell`): that one
+ * Relationship to the AD4M-specific manifest (`EntityManifestEntry` in `@we/app-shell`): that one
  * is the AD4M adapter's richer, flatter form — properties and relations in one list, plus RDF
  * binding (`predicate`, `resolveLanguage`, `targetClass`). This neutral form is the semantic
  * projection it maps onto: scalars vs relations separated, keyed by name, no backend binding. The
@@ -60,7 +60,7 @@ export interface PropertySchema {
 
   /**
    * What an LLM is told about this property when the entity is an interpretation/extraction
-   * target. Prompt payload, not documentation (see TaskBlock's rationale in `@we/models`): the two
+   * target. Prompt payload, not documentation (see TaskBlock's rationale in `@we/entities`): the two
    * things it must carry that the type cannot are closed vocabularies and exact value formats.
    * Declared here so a hint survives the definition being data rather than a decorated class —
    * without this field, the one path that makes an entity *declarable* was also the one path that
@@ -102,7 +102,7 @@ export interface PropertySchema {
 
 export interface RelationSchema {
   /**
-   * Target entity name — must be a key in `ModelManifest.entities`, or empty for an untyped
+   * Target entity name — must be a key in `EntityManifest.entities`, or empty for an untyped
    * reference (a relation that links to whatever, like a node's comments).
    */
   target: string;
@@ -193,6 +193,37 @@ export interface EntitySchema {
   extractable?: boolean;
 
   /**
+   * A person can author one of these inline, as a unit of content inside a composed document.
+   *
+   * ## Why this is a flag and not a second kind of thing
+   *
+   * "Entity" and "block" read as alternatives — they were two sibling directories in `@we/entities`
+   * for a long time — but the manifest has only ever had one map, and every block is in it. A block
+   * is not a different sort of declaration; it is an entity that answers yes to one extra question:
+   * *can somebody make one of these fresh, inline, while writing a document?* `TaskBlock` says yes
+   * and is also perfectly usable standalone on a board; `Space` says no, because creating one has
+   * infrastructure consequences that inline authoring cannot carry.
+   *
+   * Expressing that as a flag rather than a folder is what lets the rule below be checked. It also
+   * stops the vocabulary implying a split that the data never had.
+   *
+   * ## What it obliges
+   *
+   * A `version`, checked by {@link validateManifest}. Blocks are edited collaboratively inside a
+   * document, so conflict resolution needs a counter to compare; entities that are not composed
+   * are written by one owner at a time and need none. That rule predates this flag — it was prose
+   * in CONVENTIONS.md that nothing enforced, and the folder it keyed off could not enforce it.
+   *
+   * ## What it does not decide
+   *
+   * Whether the block editor can *render* one. That needs Display and Input components, registered
+   * through `registerBlock()` in `@we/block-shared`. This flag is the data half of the same fact,
+   * and the two are deliberately separate: a backend reading the manifest learns which entities are
+   * composable without having to load any UI at all.
+   */
+  blockable?: boolean;
+
+  /**
    * A person can create one of these by hand, filling in these fields in this order.
    *
    * Two facts in one, because they are the same fact. Most entities are not hand-authored at all —
@@ -238,7 +269,7 @@ export interface EntitySchema {
   };
 }
 
-export interface ModelManifest {
+export interface EntityManifest {
   version: string;
   /** Entities keyed by name (the key IS the entity name). */
   entities: Record<string, EntitySchema>;
@@ -275,6 +306,7 @@ const entitySchema = z.object({
   abstract: z.boolean().optional(),
   interpretationHint: z.string().optional(),
   extractable: z.boolean().optional(),
+  blockable: z.boolean().optional(),
   authoring: z.object({ fields: z.array(z.string()) }).optional(),
   display: z
     .object({
@@ -311,7 +343,7 @@ export interface ManifestError {
 export function validateManifest(
   input: unknown,
   opts?: { externalEntities?: Iterable<string> },
-): { valid: true; manifest: ModelManifest } | { valid: false; errors: ManifestError[] } {
+): { valid: true; manifest: EntityManifest } | { valid: false; errors: ManifestError[] } {
   const parsed = modelManifestSchema.safeParse(input);
   if (!parsed.success) {
     return {
@@ -319,7 +351,7 @@ export function validateManifest(
       errors: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
     };
   }
-  const manifest = parsed.data as ModelManifest;
+  const manifest = parsed.data as EntityManifest;
   const errors: ManifestError[] = [];
   const entityNames = new Set(Object.keys(manifest.entities));
   const external = new Set(opts?.externalEntities ?? []);
@@ -348,6 +380,16 @@ export function validateManifest(
       errors.push({
         path: `entities.${entityName}.extractable`,
         message: 'an abstract entity cannot be an extraction target — nothing is ever an instance of it',
+      });
+    }
+    // A block is edited collaboratively inside a document, so resolving two concurrent edits needs
+    // a counter to compare. This was a rule in CONVENTIONS.md that nothing checked, because the
+    // thing it keyed off was which directory the file sat in.
+    if (entity.blockable && !entity.abstract && !entity.properties.version) {
+      errors.push({
+        path: `entities.${entityName}.blockable`,
+        message:
+          'a blockable entity needs a `version` property — it is what resolves concurrent edits inside a document',
       });
     }
     for (const [propName, spec] of Object.entries(entity.properties)) {
@@ -398,15 +440,15 @@ export function validateManifest(
 
 // ─── Lookup helpers (used by the query engine / IR compiler) ────────────────────
 
-export function getEntity(manifest: ModelManifest, name: string): EntitySchema | undefined {
+export function getEntity(manifest: EntityManifest, name: string): EntitySchema | undefined {
   return manifest.entities[name];
 }
 
-export function getProperty(manifest: ModelManifest, entity: string, property: string): PropertySchema | undefined {
+export function getProperty(manifest: EntityManifest, entity: string, property: string): PropertySchema | undefined {
   return manifest.entities[entity]?.properties[property];
 }
 
-export function getRelation(manifest: ModelManifest, entity: string, relation: string): RelationSchema | undefined {
+export function getRelation(manifest: EntityManifest, entity: string, relation: string): RelationSchema | undefined {
   return manifest.entities[entity]?.relations[relation];
 }
 
@@ -421,9 +463,23 @@ export function getRelation(manifest: ModelManifest, entity: string, relation: s
  * own shapes are both manifests, so "what may be extracted here" is this run twice and concatenated
  * — which is exactly what keeps a shape defined this morning on equal footing with `TaskBlock`.
  */
-export function extractableEntities(manifest: ModelManifest): string[] {
+export function extractableEntities(manifest: EntityManifest): string[] {
   return Object.entries(manifest.entities)
     .filter(([, entity]) => entity.extractable && !entity.abstract)
+    .map(([name]) => name)
+    .sort();
+}
+
+/**
+ * Names of the entities whose records can be authored inline in a document — see
+ * {@link EntitySchema.blockable}.
+ *
+ * Sorted for the same reason {@link extractableEntities} is: the answer is compared between peers
+ * and between runs, and two orderings of one set read as a change.
+ */
+export function blockableEntities(manifest: EntityManifest): string[] {
+  return Object.entries(manifest.entities)
+    .filter(([, entity]) => entity.blockable && !entity.abstract)
     .map(([name]) => name)
     .sort();
 }

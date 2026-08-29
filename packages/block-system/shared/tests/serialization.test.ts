@@ -9,20 +9,20 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('@we/models', () => ({
+vi.mock('@we/entities', () => ({
   asFileField: (fileData: unknown) => fileData,
   dataURIToFileData: (uri: string, name: string) => ({
     data_base64: uri.slice(uri.indexOf(',') + 1),
     name,
     file_type: uri.slice(5, uri.indexOf(';')),
   }),
-  runModelTransaction: (_dataset: unknown, fn: (tx: { batchId: string }) => unknown) => fn({ batchId: 'batch-1' }),
+  runEntityTransaction: (_dataset: unknown, fn: (tx: { batchId: string }) => unknown) => fn({ batchId: 'batch-1' }),
   // No file store registered: these fakes declare no file-format fields, so the upload and
   // resolve passes must short-circuit — which a null store is the honest way to exercise.
   getFileStore: () => null,
 }));
 
-vi.mock('@we/models/manifest', () => ({
+vi.mock('@we/entities/manifest', () => ({
   CORE_MANIFEST: {
     version: '1',
     entities: {
@@ -50,7 +50,7 @@ vi.mock('@we/models/manifest', () => ({
 }));
 
 import type { ContentBlock, ContentDocument, TextContentBlock } from '../src/content';
-import { type BlockModelStatic, registerBlock } from '../src/registry';
+import { type BlockEntityStatic, registerBlock } from '../src/registry';
 import {
   createBlocks,
   extractBlockData,
@@ -131,13 +131,13 @@ class FakeCollection extends FakeBlock {
   }
 }
 
-registerBlock({ nodeTypes: ['block'], model: FakeText as unknown as BlockModelStatic, entity: 'TextBlock' });
+registerBlock({ nodeTypes: ['block'], model: FakeText as unknown as BlockEntityStatic, entity: 'TextBlock' });
 registerBlock({
   nodeTypes: ['root', 'collection'],
-  model: FakeCollection as unknown as BlockModelStatic,
+  model: FakeCollection as unknown as BlockEntityStatic,
   entity: 'CollectionBlock',
 });
-registerBlock({ nodeTypes: ['image'], model: FakeImage as unknown as BlockModelStatic, entity: 'ImageBlock' });
+registerBlock({ nodeTypes: ['image'], model: FakeImage as unknown as BlockEntityStatic, entity: 'ImageBlock' });
 
 // The dataset handle is opaque to the pipeline — an empty object is a complete fake.
 const perspective = {};

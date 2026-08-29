@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import type { ModelManifest } from './manifest';
+import type { EntityManifest } from './manifest';
 import type { QueryIR } from './queryIR';
 import { validateQueryAgainstManifest } from './queryValidation';
 
 // A small WE-ish manifest to validate queries against.
-const manifest: ModelManifest = {
+const manifest: EntityManifest = {
   version: '1',
   entities: {
     Post: {

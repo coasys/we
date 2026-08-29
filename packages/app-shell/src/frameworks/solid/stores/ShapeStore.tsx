@@ -20,10 +20,10 @@
  *    EventBlock) and space shapes alike, through `SchemaPort.interpretationHints` — with the
  *    customized/reset lifecycle that decides whether release improvements still flow.
  */
-import { extractableEntities, manifestEntries, type ModelManifest, validateManifest } from '@we/backend-shared';
+import { type EntityManifest, extractableEntities, manifestEntries, validateManifest } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
-import { asFileField, decodeFileAsJson, encodeJsonFileData, Shape } from '@we/models';
-import { CORE_MANIFEST } from '@we/models/manifest';
+import { asFileField, decodeFileAsJson, encodeJsonFileData, Shape } from '@we/entities';
+import { CORE_MANIFEST } from '@we/entities/manifest';
 import {
   Accessor,
   batch,
@@ -101,7 +101,7 @@ export interface SpaceShapeView {
   propertyCount: number;
   /** Why this shape could not be adopted, empty for a healthy one. */
   problems: string[];
-  manifest: ModelManifest | null;
+  manifest: EntityManifest | null;
 }
 
 /**
@@ -398,7 +398,7 @@ export function ShapeStoreProvider(props: ParentProps) {
     excluded by `manifest` being null — an entity that is not queryable cannot be minted into
     either, and offering it would produce a pass that fails on a name the executor has no shape for.
 
-    Deduplicated, because a space may name a shape after core vocabulary: `getModelForPerspective`
+    Deduplicated, because a space may name a shape after core vocabulary: `getEntitiesForPerspective`
     prefers the native class, so the two names resolve to one class and requesting it twice would
     put the same shape in the prompt twice at the community's expense.
   */
@@ -457,7 +457,7 @@ export function ShapeStoreProvider(props: ParentProps) {
           .filter((name) => name.endsWith('Block'))
           .map((name) => entry(name, 'Blocks', BLOCK_ICONS[name] ?? 'cube')),
       ),
-      ...dedupeSort(datasetStore.currentDatasetModels().map((m) => entry(m.name, 'Other models in this space'))),
+      ...dedupeSort(datasetStore.currentDatasetEntities().map((m) => entry(m.name, 'Other models in this space'))),
     ];
   });
 
@@ -471,7 +471,7 @@ export function ShapeStoreProvider(props: ParentProps) {
   /** Entity names a shape may legitimately reference: core + foreign + this space's other shapes. */
   const knownEntityNames = (excludeShapeRecordId?: string) => [
     ...Object.keys(CORE_MANIFEST.entities),
-    ...datasetStore.currentDatasetModels().map((m) => m.name),
+    ...datasetStore.currentDatasetEntities().map((m) => m.name),
     ...spaceShapes()
       .filter((s) => s.id !== excludeShapeRecordId)
       .map((s) => s.name),
@@ -479,7 +479,7 @@ export function ShapeStoreProvider(props: ParentProps) {
 
   // ── The adoption rail ─────────────────────────────────────────────────────────
 
-  async function adoptShape(view: { name: string; shapeId: string }, manifest: ModelManifest): Promise<void> {
+  async function adoptShape(view: { name: string; shapeId: string }, manifest: EntityManifest): Promise<void> {
     const ports = schemas();
     const dataset = handle();
     if (!ports || !dataset) return;
@@ -520,7 +520,7 @@ export function ShapeStoreProvider(props: ParentProps) {
           manifest: null,
         };
         const decoded = record.definition ? decodeFileAsJson(record.definition) : {};
-        const manifest = Object.keys(decoded).length ? (decoded as unknown as ModelManifest) : null;
+        const manifest = Object.keys(decoded).length ? (decoded as unknown as EntityManifest) : null;
         if (!manifest) {
           view.problems = ['definition document missing or unreadable'];
           views.push(view);
@@ -530,7 +530,7 @@ export function ShapeStoreProvider(props: ParentProps) {
         // earlier in this same pass, so sibling references resolve whatever the record order.
         const external = [
           ...Object.keys(CORE_MANIFEST.entities),
-          ...datasetStore.currentDatasetModels().map((m) => m.name),
+          ...datasetStore.currentDatasetEntities().map((m) => m.name),
           ...records.map((r) => r.name).filter((n) => n !== record.name),
         ];
         const gate = validateManifest(manifest, { externalEntities: external });

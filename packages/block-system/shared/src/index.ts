@@ -42,9 +42,9 @@ export {
 } from './marks';
 export type { BlockRegistration } from './registry';
 export {
-  getBlockModel,
+  getBlockRecord,
   getBlockRegistration,
-  getRegisteredBlockModels,
+  getRegisteredBlockEntities,
   registerBlock,
   updateBlockRegistration,
 } from './registry';
@@ -69,4 +69,4 @@ export {
 export { contentFromValue, decodeEditorState, encodeBase64Utf8 } from './utils';
 
 // Back-compat: consumers importing blocks from @we/block-shared still work
-export { CollectionBlock, ImageBlock, TextBlock } from '@we/models';
+export { CollectionBlock, ImageBlock, TextBlock } from '@we/entities';

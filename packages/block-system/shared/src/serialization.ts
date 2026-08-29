@@ -1,7 +1,7 @@
-import type { ModelInstance } from '@we/backend-shared';
-import type { FileData } from '@we/models';
-import { asFileField, dataURIToFileData, getFileStore, runModelTransaction } from '@we/models';
-import { CORE_MANIFEST } from '@we/models/manifest';
+import type { RecordInstance } from '@we/backend-shared';
+import type { FileData } from '@we/entities';
+import { asFileField, dataURIToFileData, getFileStore, runEntityTransaction } from '@we/entities';
+import { CORE_MANIFEST } from '@we/entities/manifest';
 
 import type { CollectionContentBlock, ContentBlock, ContentDocument, TextContentBlock } from './content';
 import {
@@ -15,7 +15,7 @@ import {
 import { mentionedDids, parseMarks, serializeMarks } from './marks';
 import type { CollectionMode } from './modes';
 import { isReconcilable } from './modes';
-import { getBlockRegistration, getRegisteredBlockModels } from './registry';
+import { getBlockRegistration, getRegisteredBlockEntities } from './registry';
 import { encodeBase64Utf8 } from './utils';
 
 /**
@@ -27,7 +27,7 @@ import { encodeBase64Utf8 } from './utils';
 type BlockDataset = unknown;
 
 /** A block instance as this module handles it: the contract base plus whatever fields its type declares. */
-type BlockModel = ModelInstance & Record<string, unknown>;
+type BlockRecord = RecordInstance & Record<string, unknown>;
 
 /** What a save may hand over — see {@link normalizeInput}. */
 export type ContentInput = ContentBlock[] | ContentDocument;
@@ -139,14 +139,14 @@ function modelData(entity: string, block: ContentBlock): Record<string, unknown>
 function nodeTypeForEntity(entity: string): string | undefined {
   if (entity === 'TextBlock') return TEXT_TYPE;
   if (entity === 'CollectionBlock') return 'collection';
-  for (const reg of getRegisteredBlockModels()) {
+  for (const reg of getRegisteredBlockEntities()) {
     if (reg.entity === entity) return reg.nodeTypes.find((t) => t !== 'root') ?? reg.nodeTypes[0];
   }
   return undefined;
 }
 
 /** A persisted record as a content block, without its children. */
-function recordToBlock(record: BlockModel, entity: string): ContentBlock {
+function recordToBlock(record: BlockRecord, entity: string): ContentBlock {
   if (entity === 'TextBlock') return recordToTextBlock(record);
   const nodeType = nodeTypeForEntity(entity) ?? entity;
   const block: ContentBlock = { _type: nodeType, _key: record.id };
@@ -243,18 +243,18 @@ export function encodeEditorState(blocks: readonly ContentBlock[]): {
 // ── Model helpers ────────────────────────────────────────────────────────────
 
 /** Block model instance that has a children to-many relation */
-interface BlockWithChildren extends ModelInstance {
+interface BlockWithChildren extends RecordInstance {
   children: string[];
   // Promise<unknown>, matching the neutral accessor contract — a caller of addChildren gets a
   // completion signal, not a value.
   addChildren: (id: string, batch?: string) => Promise<unknown>;
 }
 
-function hasChildrenRelation(block: ModelInstance): block is BlockWithChildren {
+function hasChildrenRelation(block: RecordInstance): block is BlockWithChildren {
   return 'addChildren' in block && typeof (block as BlockWithChildren).addChildren === 'function';
 }
 
-function hasChildren(block: ModelInstance): block is BlockWithChildren {
+function hasChildren(block: RecordInstance): block is BlockWithChildren {
   return Array.isArray((block as BlockWithChildren).children);
 }
 
@@ -285,7 +285,7 @@ function normalizeInput(input: ContentInput): { blocks: ContentBlock[]; base?: s
 
 /**
  * Upload any `FileData` values (or data: URIs round-tripped from {@link resolveExpressionAddresses}
- * — see `dataURIToFileData` in @we/models) on file-format properties to file storage, and return a
+ * — see `dataURIToFileData` in @we/entities) on file-format properties to file storage, and return a
  * patched copy where those values are replaced with the resulting expression addresses (e.g.
  * "QmLang://QmHash"). This keeps the blob small (CIDs instead of raw base64 payloads) and ensures a
  * model's create() path receives a string it can store directly rather than a FileData object.
@@ -384,7 +384,7 @@ interface NodeWithMentions {
   removeMentions(target: string | string[], batch?: string): Promise<void>;
 }
 
-function hasMentions(model: unknown): model is ModelInstance & NodeWithMentions {
+function hasMentions(model: unknown): model is RecordInstance & NodeWithMentions {
   return typeof (model as NodeWithMentions)?.addMentions === 'function';
 }
 
@@ -400,7 +400,7 @@ function hasMentions(model: unknown): model is ModelInstance & NodeWithMentions 
  * for the mentions it kept — each removed link is a network write, and an unchanged edge should
  * cost nothing.
  */
-async function writeMentions(root: ModelInstance, blocks: readonly ContentBlock[], batchId?: string): Promise<void> {
+async function writeMentions(root: RecordInstance, blocks: readonly ContentBlock[], batchId?: string): Promise<void> {
   if (!hasMentions(root)) return;
 
   const wanted = extractMentions(blocks);
@@ -462,7 +462,7 @@ export interface CreateBlocksOptions {
 }
 
 /**
- * Create the block models for a composition, in one write group via runModelTransaction — if any
+ * Create the block models for a composition, in one write group via runEntityTransaction — if any
  * block creation or linking fails, commitBatch() is never called.
  *
  * Parent-child relationships are established via the `children` relation on the root and on any
@@ -486,13 +486,13 @@ export async function createBlocks(
   perspective: BlockDataset,
   input: ContentInput,
   options: CreateBlocksOptions = {},
-): Promise<BlockModel | undefined> {
+): Promise<BlockRecord | undefined> {
   const { kind, mode = kind ? 'document' : undefined, anchor, batchId } = options;
   const { blocks } = normalizeInput(input);
   const registration = getBlockRegistration('root') ?? getBlockRegistration('collection');
   if (!registration) throw new Error('createBlocks: no collection model is registered');
 
-  return runModelTransaction(
+  return runEntityTransaction(
     perspective,
     async (tx) => {
       // The file store wants addresses, not payloads; upload before anything is written so the
@@ -503,7 +503,7 @@ export async function createBlocks(
       const root = (await registration.model.create(perspective, rootData, {
         batchId: tx.batchId,
         ...(anchor && { parent: { id: anchor.id, predicate: anchor.predicate } }),
-      })) as BlockModel;
+      })) as BlockRecord;
 
       // Models are written from the author's blocks (file payloads), the blob from the uploaded
       // copies (file addresses); the two walk in lockstep so every key lands on both.
@@ -538,13 +538,13 @@ async function persistBlock(
   batchId: string | undefined,
   block: ContentBlock,
   uploaded: ContentBlock | undefined,
-  parent: ModelInstance,
-): Promise<BlockModel | undefined> {
+  parent: RecordInstance,
+): Promise<BlockRecord | undefined> {
   const registration = getBlockRegistration(isTextBlock(block) ? TEXT_TYPE : block._type);
   if (!registration) return undefined;
 
   const data = modelData(registration.entity, block);
-  const model = (await registration.model.create(perspective, data, { batchId })) as BlockModel;
+  const model = (await registration.model.create(perspective, data, { batchId })) as BlockRecord;
   block._key = model.id;
   if (uploaded) uploaded._key = model.id;
   if (hasChildrenRelation(parent)) await parent.addChildren(model.id, batchId);
@@ -572,10 +572,10 @@ async function persistBlock(
 async function resolveBlockInstance(
   perspective: BlockDataset,
   uri: string,
-): Promise<{ model: BlockModel; entity: string } | undefined> {
-  for (const registration of getRegisteredBlockModels()) {
+): Promise<{ model: BlockRecord; entity: string } | undefined> {
+  for (const registration of getRegisteredBlockEntities()) {
     const block = await registration.model.findOne(perspective, { where: { id: uri } });
-    if (block) return { model: block as BlockModel, entity: registration.entity };
+    if (block) return { model: block as BlockRecord, entity: registration.entity };
   }
   return undefined;
 }
@@ -593,7 +593,7 @@ export async function loadBlocks(perspective: BlockDataset, rootUri: string): Pr
 }
 
 /** The blocks of a hydrated collection's children, recursing into nested collections. */
-export async function childrenToBlocks(perspective: BlockDataset, collection: ModelInstance): Promise<ContentBlock[]> {
+export async function childrenToBlocks(perspective: BlockDataset, collection: RecordInstance): Promise<ContentBlock[]> {
   if (!hasChildren(collection)) return [];
   const blocks: ContentBlock[] = [];
   for (const childUri of collection.children) {
@@ -616,7 +616,7 @@ export async function childrenToBlocks(perspective: BlockDataset, collection: Mo
  * transaction so a failure partway through doesn't leave the tree half-deleted.
  */
 export async function deleteBlocks(perspective: BlockDataset, rootUri: string): Promise<void> {
-  await runModelTransaction(perspective, async (tx) => {
+  await runEntityTransaction(perspective, async (tx) => {
     async function deleteNode(uri: string): Promise<void> {
       const resolved = await resolveBlockInstance(perspective, uri);
       if (!resolved) return;
@@ -631,7 +631,7 @@ export async function deleteBlocks(perspective: BlockDataset, rootUri: string): 
 
 // ── Reconcile ────────────────────────────────────────────────────────────────
 
-type Resolved = { model: BlockModel; entity: string };
+type Resolved = { model: BlockRecord; entity: string };
 
 /**
  * Hydrates every descendant of `childUris` (recursively), keyed by id. Shared by `reconcileBlocks`
@@ -689,7 +689,7 @@ export async function reconcileBlocks(
   perspective: BlockDataset,
   existingRoot: BlockWithChildren,
   input: ContentInput,
-): Promise<ModelInstance> {
+): Promise<RecordInstance> {
   // Read structurally rather than through `CollectionBlock`: the parameter is typed as a generic
   // block root, and `Partial<CollectionBlock>` does not overlap it enough for a direct cast.
   const root = existingRoot as BlockWithChildren & { kind?: string; mode?: string };
@@ -703,14 +703,14 @@ export async function reconcileBlocks(
 
   const { blocks: authored, base: baseKeys } = normalizeInput(input);
 
-  return runModelTransaction(perspective, async (tx) => {
+  return runEntityTransaction(perspective, async (tx) => {
     const existing = await collectDescendants(perspective, existingRoot.children);
     const base = new Set(baseKeys ?? [...existing.keys()]);
     const claimed = new Set<string>();
     const uploaded = await preUploadFileAssets(perspective, authored);
 
     /** The blob's view of a parent's final children: the author's blocks, then anything kept. */
-    const finalBlocks = new Map<ModelInstance, ContentBlock[]>();
+    const finalBlocks = new Map<RecordInstance, ContentBlock[]>();
 
     async function reconcileList(
       blocks: ContentBlock[],
@@ -746,13 +746,13 @@ export async function reconcileBlocks(
     async function reconcileOne(
       block: ContentBlock,
       uploaded: ContentBlock | undefined,
-    ): Promise<BlockModel | undefined> {
+    ): Promise<BlockRecord | undefined> {
       const registration = getBlockRegistration(isTextBlock(block) ? TEXT_TYPE : block._type);
       if (!registration) return undefined;
 
       const data = modelData(registration.entity, block);
       const existingId = typeof block._key === 'string' ? block._key : undefined;
-      let model: BlockModel | undefined;
+      let model: BlockRecord | undefined;
       if (existingId && !claimed.has(existingId)) {
         const found = existing.get(existingId);
         if (found) {
@@ -767,7 +767,7 @@ export async function reconcileBlocks(
         }
       }
       if (!model) {
-        model = (await registration.model.create(perspective, data, { batchId: tx.batchId })) as BlockModel;
+        model = (await registration.model.create(perspective, data, { batchId: tx.batchId })) as BlockRecord;
       }
       block._key = model.id;
       if (uploaded) uploaded._key = model.id;
@@ -799,7 +799,7 @@ export async function reconcileBlocks(
     return existingRoot;
 
     /** The blocks a parent ends up with, kept additions included, recursively. */
-    function withFinalChildren(fallback: ContentBlock[], parent: ModelInstance): ContentBlock[] {
+    function withFinalChildren(fallback: ContentBlock[], parent: RecordInstance): ContentBlock[] {
       const list = finalBlocks.get(parent) ?? fallback;
       return list.map((block) => {
         if (!isCollectionBlock(block) || !block._key) return block;
@@ -808,7 +808,7 @@ export async function reconcileBlocks(
       });
     }
 
-    function findCreated(id: string): ModelInstance | undefined {
+    function findCreated(id: string): RecordInstance | undefined {
       for (const parent of finalBlocks.keys()) if (parent.id === id) return parent;
       return undefined;
     }

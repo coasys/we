@@ -20,13 +20,13 @@
 */
 import '@we/graph-solid/styles';
 
-import type { ModelClass, ModelManifestEntry, QueryOptions } from '@we/backend-shared';
+import type { EntityClass, EntityManifestEntry, QueryOptions } from '@we/backend-shared';
 import { manifestEntries } from '@we/backend-shared';
 import { BlockRenderer } from '@we/block-solid';
+import { CORE_MANIFEST } from '@we/entities/manifest';
 import { placementStyle } from '@we/graph-expanders';
 import type { EntityShape, GraphNode, GraphValue } from '@we/graph-protocol';
 import { GraphView, type GraphViewProps } from '@we/graph-solid';
-import { CORE_MANIFEST } from '@we/models/manifest';
 import { createMemo, Show } from 'solid-js';
 
 import { useDatasetStore } from '../stores/DatasetStore';
@@ -56,15 +56,15 @@ interface ScopeRequest {
 }
 
 /** Translate a backend model manifest entry into the neutral shape the graph reads. */
-function toEntityShape(entry: ModelManifestEntry): EntityShape {
+function toEntityShape(entry: EntityManifestEntry): EntityShape {
   const properties: EntityShape['properties'] = [];
   const relations: EntityShape['relations'] = [];
 
   for (const property of entry.properties) {
-    if (property.relatedModel) {
+    if (property.relatedEntity) {
       relations.push({
         name: property.name,
-        target: property.relatedModel,
+        target: property.relatedEntity,
         cardinality: property.isCollection ? 'many' : 'one',
       });
     } else {
@@ -124,7 +124,7 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
   const bindings = createMemo(() =>
     sessionStore.backendPorts()?.dataBindings({
       currentDataset: () => datasetStore.currentDataset()?.handle ?? null,
-      currentDatasetModels: () => datasetStore.currentDatasetModels(),
+      currentDatasetEntities: () => datasetStore.currentDatasetEntities(),
       profiles: profileStore.profiles,
       fetchProfile: profileStore.fetchProfile,
       ephemeral: sessionStore.ephemeralPort,
@@ -135,7 +135,7 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
    * Every entity the graph may draw or traverse — WE's own vocabulary *and* whatever else the
    * dataset holds.
    *
-   * `currentDatasetModels` is **foreign schemas only**: everything WE knows natively is deliberately
+   * `currentDatasetEntities` is **foreign schemas only**: everything WE knows natively is deliberately
    * absent from it, because a native model is already registered globally and re-fetching its shape
    * would be wasted work. Reading it as "the dataset's models" is a mistake this codebase has now
    * made three times, and here it broke two things at once. The schema map showed only the classes
@@ -148,10 +148,10 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
   const manifest = createMemo(() => {
     const core = manifestEntries(CORE_MANIFEST);
     const known = new Set(core.map((entry) => entry.name));
-    return [...core, ...datasetStore.currentDatasetModels().filter((entry) => !known.has(entry.name))];
+    return [...core, ...datasetStore.currentDatasetEntities().filter((entry) => !known.has(entry.name))];
   });
 
-  function modelFor(entity: string, dataset?: string): ModelClass | undefined {
+  function modelFor(entity: string, dataset?: string): EntityClass | undefined {
     const bound = bindings();
     if (!bound) return undefined;
     // Dataset-scoped resolution first: a foreign shape only exists as a class synthesised for the
@@ -161,7 +161,7 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
       dataset && dataset !== datasetStore.currentDataset()?.id
         ? datasetStore.datasets().find((d) => d.id === dataset || d.sharedId === dataset)?.handle
         : datasetStore.currentDataset()?.handle;
-    return bound.$getModelForPerspective?.(entity, handle) ?? bound.$getModel?.(entity);
+    return bound.$getEntitiesForPerspective?.(entity, handle) ?? bound.$getEntity?.(entity);
   }
 
   /** Resolve a neutral drill-down to the parent handle the ORM takes. Mirrors the query adapter. */
@@ -236,7 +236,7 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
     /**
      * Tell the graph when records of a type change here.
      *
-     * The same live path `$query` uses — `ModelClass.query(...).subscribe(...)` — which is why a
+     * The same live path `$query` uses — `EntityClass.query(...).subscribe(...)` — which is why a
      * post appears in the cards route the moment it is written. The graph took `findAll` instead,
      * so it read once and never again; that is the whole difference between a map of a space and a
      * picture of one.

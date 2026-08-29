@@ -18,16 +18,16 @@ import type {
   DatasetChangeHandlers,
   DatasetLifecyclePort,
   DatasetRef,
+  EntityManifest,
   EphemeralPort,
-  ModelManifest,
   PresenceState,
   ProfileDirectoryPort,
   RendererDataBindings,
   SchemaPort,
 } from '@we/backend-shared';
 import { createInMemoryEphemeralPort, InMemoryBus } from '@we/backend-shared';
-import { getModel, getModelForPerspective, registerFileStore, registerModel } from '@we/models';
-import { CORE_MANIFEST } from '@we/models/manifest';
+import { getEntitiesForPerspective, getEntity, registerEntity, registerFileStore } from '@we/entities';
+import { CORE_MANIFEST } from '@we/entities/manifest';
 
 import { compileEntities, type EntityRuntime } from './entities';
 import { inMemoryQueryAdapter } from './queryAdapter';
@@ -239,7 +239,7 @@ export function createInMemorySchemaPort(runtime: EntityRuntime): SchemaPort {
     declare: (manifest) => {
       seedDeclaredHints(manifest);
       const compiled = compileEntities(manifest, runtime);
-      for (const [name, cls] of Object.entries(compiled)) registerModel(name, cls as never);
+      for (const [name, cls] of Object.entries(compiled)) registerEntity(name, cls as never);
       return compiled;
     },
 
@@ -249,7 +249,7 @@ export function createInMemorySchemaPort(runtime: EntityRuntime): SchemaPort {
       void dataset;
       seedDeclaredHints(manifest);
       const compiled = compileEntities(manifest, runtime);
-      for (const [name, cls] of Object.entries(compiled)) registerModel(name, cls as never);
+      for (const [name, cls] of Object.entries(compiled)) registerEntity(name, cls as never);
       return compiled;
     },
 
@@ -344,7 +344,7 @@ export interface InMemoryBackendPortsOptions {
    * The entity vocabulary to compile and register on connect. Defaults to the host's own core
    * manifest, which is what makes `Space.findAll(...)` work in a test with no executor running.
    */
-  entities?: ModelManifest | null;
+  entities?: EntityManifest | null;
   /**
    * Other agents' published profiles, by DID. See {@link createInMemoryProfileDirectory} — the
    * directory can only publish the *self* profile, so peers have no other way to exist.
@@ -447,7 +447,7 @@ function release(beats: Map<string, PresenceBeat>, key: string): void {
  * backend supplied them, never because a module was imported.
  *
  * The data plane is real, not stubbed: `dataBindings` exposes the same binding surface the AD4M
- * adapter does ($getModel, $queryAdapter, model mutations, $identities, $ephemeral), backed by the
+ * adapter does ($getEntity, $queryAdapter, model mutations, $identities, $ephemeral), backed by the
  * row-backed entities and the shared query engine, and `ephemeral` is the shared in-process bus.
  * That is what makes this bundle a conformance surface rather than a boot-only stub — a suite
  * running against these ports can exercise queries and mutations, not just lifecycle.
@@ -507,12 +507,12 @@ export function createInMemoryBackendPorts(
     ephemeral,
     dataBindings: (deps) => ({
       $currentDataset: deps.currentDataset,
-      // @we/models' ModelClass and the contract's ModelClass<unknown> are structurally
+      // @we/entities' EntityClass and the contract's EntityClass<unknown> are structurally
       // compatible but declared separately; the cast bridges the two declarations.
-      $getModel: (name) => getModel(name) as unknown as ReturnType<NonNullable<RendererDataBindings['$getModel']>>,
-      $getModelForPerspective: (name, dataset) =>
-        getModelForPerspective(name, dataset) as ReturnType<
-          NonNullable<RendererDataBindings['$getModelForPerspective']>
+      $getEntity: (name) => getEntity(name) as unknown as ReturnType<NonNullable<RendererDataBindings['$getEntity']>>,
+      $getEntitiesForPerspective: (name, dataset) =>
+        getEntitiesForPerspective(name, dataset) as ReturnType<
+          NonNullable<RendererDataBindings['$getEntitiesForPerspective']>
         >,
       $queryAdapter: inMemoryQueryAdapter,
       $identities: {
@@ -522,19 +522,19 @@ export function createInMemoryBackendPorts(
       $ephemeral: deps.ephemeral,
       model: {
         async create(model, data, mutationOpts) {
-          const cls = getModel(model) as unknown as {
+          const cls = getEntity(model) as unknown as {
             create(dataset: unknown, data?: Record<string, unknown>): Promise<{ id: string }>;
           };
           return cls.create(mutationDataset(deps, mutationOpts), data);
         },
         async update(model, id, data, mutationOpts) {
-          const cls = getModel(model) as unknown as {
+          const cls = getEntity(model) as unknown as {
             update(dataset: unknown, id: string, data: Record<string, unknown>): Promise<unknown>;
           };
           return cls.update(mutationDataset(deps, mutationOpts), id, data);
         },
         async delete(model, id, mutationOpts) {
-          const cls = getModel(model) as unknown as {
+          const cls = getEntity(model) as unknown as {
             findOne(dataset: unknown, query?: Record<string, unknown>): Promise<{ delete(): Promise<void> } | null>;
           };
           const instance = await cls.findOne(mutationDataset(deps, mutationOpts), { where: { id } });

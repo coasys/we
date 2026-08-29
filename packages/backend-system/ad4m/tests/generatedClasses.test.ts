@@ -13,8 +13,8 @@ import { resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-const MANIFEST = resolve(__dirname, '../../../models/src/manifest');
-const SRC = resolve(__dirname, '../src/models');
+const MANIFEST = resolve(__dirname, '../../../entities/src/manifest');
+const SRC = resolve(__dirname, '../src/entities');
 
 const REGENERATE = 'Generated classes are stale: run `pnpm --filter @we/backend-ad4m generate:classes`.';
 
@@ -46,17 +46,16 @@ function docBodies(source: string): string[] {
   return [...source.matchAll(/\/\*\*((?:[^*]|\*(?!\/))*)\*\//g)].map((m) => normalise(m[1]));
 }
 
-const cases: { name: string; kind: 'entities' | 'blocks' }[] = [];
-for (const kind of ['entities', 'blocks'] as const) {
-  for (const file of readdirSync(resolve(MANIFEST, kind))) {
-    cases.push({ name: file.replace('.ts', ''), kind });
-  }
-}
+// Every authored entity module, less the shared machinery that declares no entity of its own.
+const SUPPORT = new Set(['base.ts', 'defs.ts', 'index.ts', 'shared.ts', 'types.ts']);
+const cases = readdirSync(MANIFEST)
+  .filter((file) => file.endsWith('.ts') && !SUPPORT.has(file))
+  .map((file) => ({ name: file.replace('.ts', '') }));
 
 describe('generated classes carry the manifest prose', () => {
-  it.each(cases)('$kind/$name', ({ name, kind }) => {
-    const manifestSrc = readFileSync(resolve(MANIFEST, kind, `${name}.ts`), 'utf8');
-    const classNormalised = docBodies(readFileSync(resolve(SRC, kind, `${name}.ts`), 'utf8')).join('\n');
+  it.each(cases)('$name', ({ name }) => {
+    const manifestSrc = readFileSync(resolve(MANIFEST, `${name}.ts`), 'utf8');
+    const classNormalised = docBodies(readFileSync(resolve(SRC, `${name}.ts`), 'utf8')).join('\n');
     for (const body of liftedDocs(name, manifestSrc)) {
       expect(classNormalised, `${name}: missing doc "${body.slice(0, 60)}…"\n${REGENERATE}`).toContain(body);
     }

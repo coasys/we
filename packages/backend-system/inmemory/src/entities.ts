@@ -14,14 +14,14 @@
  * filtering, ordering, paging, relation hydration and count projections are the engine's semantics
  * rather than a second implementation of them.
  */
-import type { IncludeExtras, IncludeOf, ModelInstance, ModelStatic, TypedModelQuery } from '@we/backend-shared';
+import type { EntityStatic, IncludeExtras, IncludeOf, RecordInstance, TypedEntityQuery } from '@we/backend-shared';
 import {
   compileQuery,
+  type EntityManifest,
   type EntitySchema,
   executeQueryIR,
   type InMemoryDataset,
   type InMemoryRelation,
-  type ModelManifest,
   type Row,
 } from '@we/backend-shared';
 
@@ -87,27 +87,27 @@ function normalizeOrder(order: unknown): Record<string, 'asc' | 'desc'> | undefi
  * with id/author/createdAt/updatedAt at creation and hydration attaches save/delete — plus the
  * manifest-declared fields, which are dynamic here and so typed as the open remainder.
  */
-export type InMemoryInstance = ModelInstance & Record<string, unknown>;
+export type InMemoryInstance = RecordInstance & Record<string, unknown>;
 
 /**
  * A query as this backend takes it: the contract's typed shape, or the untyped record a dynamic
  * caller (the schema renderer, a space-defined entity) passes. The union rather than only the
- * record because `TypedModelQuery` is an interface — it carries no implicit index signature, so it
+ * record because `TypedEntityQuery` is an interface — it carries no implicit index signature, so it
  * is not assignable *to* a record type, and the contract's callers must be accepted as they come.
  */
-type AnyQuery = Record<string, unknown> | TypedModelQuery<ModelInstance>;
+type AnyQuery = Record<string, unknown> | TypedEntityQuery<RecordInstance>;
 
 export interface EntityClassLike {
   new (): Record<string, unknown>;
   entityName: string;
-  findAll<Q extends TypedModelQuery<ModelInstance>>(
+  findAll<Q extends TypedEntityQuery<RecordInstance>>(
     dataset: unknown,
     query?: Q | AnyQuery,
-  ): Promise<(InMemoryInstance & IncludeExtras<ModelInstance, IncludeOf<Q>>)[]>;
-  findOne<Q extends TypedModelQuery<ModelInstance>>(
+  ): Promise<(InMemoryInstance & IncludeExtras<RecordInstance, IncludeOf<Q>>)[]>;
+  findOne<Q extends TypedEntityQuery<RecordInstance>>(
     dataset: unknown,
     query?: Q | AnyQuery,
-  ): Promise<(InMemoryInstance & IncludeExtras<ModelInstance, IncludeOf<Q>>) | null>;
+  ): Promise<(InMemoryInstance & IncludeExtras<RecordInstance, IncludeOf<Q>>) | null>;
   create(dataset: unknown, data?: Record<string, unknown>): Promise<InMemoryInstance>;
   update(dataset: unknown, id: string, data: Record<string, unknown>): Promise<InMemoryInstance | null>;
   delete(dataset: unknown, id: string): Promise<unknown>;
@@ -126,7 +126,7 @@ export interface EntityClassLike {
  * end to end.)
  */
 type Satisfies<A extends B, B> = A;
-export type AssertEntityClassSatisfiesContract = Satisfies<EntityClassLike, ModelStatic<ModelInstance>>;
+export type AssertEntityClassSatisfiesContract = Satisfies<EntityClassLike, EntityStatic<RecordInstance>>;
 
 /**
  * Compile a manifest into entity classes backed by in-memory rows.
@@ -135,7 +135,7 @@ export type AssertEntityClassSatisfiesContract = Satisfies<EntityClassLike, Mode
  * table-shaped backend identifies it by column name. A manifest that only made sense as triples
  * would not be a declaration, it would be a dialect.
  */
-export function compileEntities(manifest: ModelManifest, runtime: EntityRuntime): Record<string, EntityClassLike> {
+export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime): Record<string, EntityClassLike> {
   const classes: Record<string, EntityClassLike> = {};
 
   /** Everything an entity declares, including whatever it inherits. */

@@ -8,7 +8,7 @@
  *
  * Dataset lifecycle (list/create/remove/subscribe) runs through the session's
  * `DatasetLifecyclePort`. The coupling that remains is the model layer: schema install and
- * model reads operate on the handles (typed `DatasetProxy` via @we/models) — that half
+ * model reads operate on the handles (typed `DatasetProxy` via @we/entities) — that half
  * neutralizes when compiled models bridge onto the neutral query engine.
  *
  * Space-model concerns (the `Space` entities that *describe* shared datasets) live in SpaceStore,
@@ -16,17 +16,17 @@
  * `currentDataset` signal.
  */
 import { sameDataset } from '@shared/datasetIdentity';
-import { containmentPredicate, gatherTranscriptTurns, type TurnModel } from '@shared/interpretation/transcriptTurns';
+import { containmentPredicate, gatherTranscriptTurns, type TurnRecord } from '@shared/interpretation/transcriptTurns';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { moduleRegistry } from '@shared/registries/moduleRegistry';
 import { getSeed } from '@shared/seedRegistry';
-import type { DatasetRef, ModelManifestEntry } from '@we/backend-shared';
-import { AgentSettings, type DatasetProxy, getModelForPerspective } from '@we/models';
+import type { DatasetRef, EntityManifestEntry } from '@we/backend-shared';
+import { AgentSettings, type DatasetProxy, getEntitiesForPerspective } from '@we/entities';
 import { Accessor, batch, createContext, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
 import { useSessionStore } from './SessionStore';
 
-export type { ModelManifestEntry, ModelManifestProperty } from '@we/backend-shared';
+export type { EntityManifestEntry, EntityManifestProperty } from '@we/backend-shared';
 
 /**
  * A DatasetRef whose handle is narrowed to the model layer's dataset type — cast once where refs
@@ -46,7 +46,7 @@ export interface DatasetStore {
   currentDataset: Accessor<AppDataset | null>;
   currentDatasetUri: Accessor<string | undefined>;
   currentDatasetCid: Accessor<string | undefined>;
-  currentDatasetModels: Accessor<ModelManifestEntry[]>;
+  currentDatasetEntities: Accessor<EntityManifestEntry[]>;
   /** True once the current dataset is confirmed to have WE's `Space` schema installed. */
   isWeSpace: Accessor<boolean>;
   joinedSpaceCids: Accessor<string[]>;
@@ -144,7 +144,7 @@ export function DatasetStoreProvider(props: ParentProps) {
    * See {@link sameDataset} for what counts as the same.
    */
   const [currentDataset, setCurrentDataset] = createSignal<AppDataset | null>(null, { equals: sameDataset });
-  const [currentDatasetModels, setCurrentDatasetModels] = createSignal<ModelManifestEntry[]>([]);
+  const [currentDatasetEntities, setCurrentDatasetEntities] = createSignal<EntityManifestEntry[]>([]);
   const [isWeSpace, setIsWeSpace] = createSignal<boolean>(false);
   const [rootDataset, setRootDataset] = createSignal<AppDataset | null>(null);
   const [testDataset, setTestDataset] = createSignal<AppDataset | null>(null);
@@ -272,13 +272,13 @@ export function DatasetStoreProvider(props: ParentProps) {
       const dataset = currentDataset();
       if (!dataset) throw new Error('interpretation: no dataset to interpret into');
 
-      const modelFor = (entity: string) => getModelForPerspective(entity, dataset.handle);
-      const predicate = containmentPredicate(modelFor, currentDatasetModels());
+      const modelFor = (entity: string) => getEntitiesForPerspective(entity, dataset.handle);
+      const predicate = containmentPredicate(modelFor, currentDatasetEntities());
       if (!predicate) throw new Error('interpretation: this space has no collection schema to read a transcript from');
 
       const turns = await gatherTranscriptTurns(
         {
-          modelFor: (entity) => modelFor(entity) as TurnModel | undefined,
+          modelFor: (entity) => modelFor(entity) as TurnRecord | undefined,
           handle: dataset.handle,
           containmentPredicate: predicate,
         },
@@ -318,8 +318,8 @@ export function DatasetStoreProvider(props: ParentProps) {
       const dataset = currentDataset();
       if (!dataset) throw new Error('interpretation: no dataset to interpret into');
 
-      const modelFor = (entity: string) => getModelForPerspective(entity, dataset.handle);
-      const predicate = containmentPredicate(modelFor, currentDatasetModels());
+      const modelFor = (entity: string) => getEntitiesForPerspective(entity, dataset.handle);
+      const predicate = containmentPredicate(modelFor, currentDatasetEntities());
       if (!predicate) throw new Error('interpretation: this space has no collection schema to read a transcript from');
 
       const classes = targetsForCollection(collectionId);
@@ -346,8 +346,8 @@ export function DatasetStoreProvider(props: ParentProps) {
       const dataset = currentDataset();
       if (!port?.reconcile || !dataset) return 0;
 
-      const modelFor = (entity: string) => getModelForPerspective(entity, dataset.handle);
-      const predicate = containmentPredicate(modelFor, currentDatasetModels());
+      const modelFor = (entity: string) => getEntitiesForPerspective(entity, dataset.handle);
+      const predicate = containmentPredicate(modelFor, currentDatasetEntities());
       if (!predicate) return 0;
 
       return port.reconcile(dataset.handle, {
@@ -690,10 +690,10 @@ export function DatasetStoreProvider(props: ParentProps) {
       void (async () => {
         try {
           const manifest = await schemas.foreignSchemas(handle);
-          if (currentDataset()?.id === uuid) setCurrentDatasetModels(manifest);
+          if (currentDataset()?.id === uuid) setCurrentDatasetEntities(manifest);
         } catch (err) {
           console.warn('DatasetStore: foreignSchemas failed', err);
-          if (currentDataset()?.id === uuid) setCurrentDatasetModels([]);
+          if (currentDataset()?.id === uuid) setCurrentDatasetEntities([]);
         }
       })();
     } catch (error) {
@@ -735,7 +735,7 @@ export function DatasetStoreProvider(props: ParentProps) {
     currentDataset,
     currentDatasetUri,
     currentDatasetCid,
-    currentDatasetModels,
+    currentDatasetEntities,
     isWeSpace,
     joinedSpaceCids,
     datasetsLoaded,

@@ -1,4 +1,4 @@
-import type { FlatQuery, ModelClass, QueryAdapter, RendererStores } from '@we/backend-shared';
+import type { EntityClass, FlatQuery, QueryAdapter, RendererStores } from '@we/backend-shared';
 import { compileQuery } from '@we/backend-shared';
 import type {
   LocalFieldMeta,
@@ -211,9 +211,9 @@ function createQuerySignal(
     // mounted before the backend connects (a reload straight into a data route)
     // re-runs and subscribes when the bindings land — previously it was stranded
     // with an empty result until a route change happened to remount it.
-    const getModel = stores.$getModel;
-    const getModelForPerspective = stores.$getModelForPerspective;
-    if (!getModel) {
+    const getEntity = stores.$getEntity;
+    const getEntitiesForPerspective = stores.$getEntitiesForPerspective;
+    if (!getEntity) {
       setItems(reconcile([]));
       return;
     }
@@ -250,10 +250,10 @@ function createQuerySignal(
     // registry.
     // The dataset stays opaque here: the host derives whatever key its per-dataset model registry
     // needs, since only it knows the concrete handle type.
-    const dynamicCls = getModelForPerspective ? getModelForPerspective(entity, p) : undefined;
-    let Model: ModelClass;
+    const dynamicCls = getEntitiesForPerspective ? getEntitiesForPerspective(entity, p) : undefined;
+    let Model: EntityClass;
     try {
-      Model = dynamicCls ?? getModel(entity);
+      Model = dynamicCls ?? getEntity(entity);
     } catch {
       const onError = stores.$onError;
       onError?.(`Model "${entity}" is not available in this perspective`);
@@ -564,7 +564,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
   if (node.$queries) {
     // Always created, even before the backend's data bindings land (a reload
     // straight into a data route, or a presentation-only host): the accessor
-    // reads $getModel reactively inside its own effect and starts the real
+    // reads $getEntity reactively inside its own effect and starts the real
     // subscription the moment the bindings arrive. Each entry also exposes
     // `<name>Loaded` — false until the first result set (or error) — so a
     // template can hold a skeleton instead of flashing its empty state.
@@ -706,7 +706,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     const rawItems = node.props?.items;
     if (hasToken(rawItems, '$query', 'object')) {
       const descriptor = resolveQueryProp(rawItems);
-      // The accessor reads $getModel reactively inside its own effect — empty
+      // The accessor reads $getEntity reactively inside its own effect — empty
       // until the backend bindings land, live from then on.
       itemsArray = createQuerySignal(descriptor, stores, effectiveContext);
     } else {
@@ -765,9 +765,9 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
         createEffect(() => {
           // Read inside the effect — reactive, so a mount before the backend
           // connects self-heals when the bindings land (see createQuerySignal).
-          const getModelFn = stores.$getModel;
-          const getModelForPerspective = stores.$getModelForPerspective;
-          if (!getModelFn) {
+          const getEntityFn = stores.$getEntity;
+          const getEntitiesForPerspective = stores.$getEntitiesForPerspective;
+          if (!getEntityFn) {
             setHasItem(false);
             return;
           }
@@ -796,10 +796,10 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
             return;
           }
 
-          const dynamicCls = getModelForPerspective ? getModelForPerspective(entity, p) : undefined;
-          let Model: ModelClass;
+          const dynamicCls = getEntitiesForPerspective ? getEntitiesForPerspective(entity, p) : undefined;
+          let Model: EntityClass;
           try {
-            Model = dynamicCls ?? getModelFn(entity);
+            Model = dynamicCls ?? getEntityFn(entity);
           } catch {
             const onError = stores.$onError;
             onError?.(`Model "${entity}" is not available in this perspective`);

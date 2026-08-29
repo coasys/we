@@ -294,11 +294,11 @@ either invisible or dangerous.
 A kind of thing that gets stored. The **manifest is the source of truth** and the decorated AD4M
 classes are build artifacts — edit the manifest, then run both generators.
 
-- **Lives in** `packages/models/src/manifest/entities/` (or `blocks/`)
-- **Conventions** [models/CONVENTIONS.md](../../packages/models/CONVENTIONS.md), and
-  [docs/architecture/relations.md](../architecture/relations.md) **before adding any relation between two models**
-- **Copy** `packages/models/src/manifest/entities/Signal.ts`
-- **Register** `pnpm --filter @we/models generate:types` **and** `pnpm --filter @we/backend-ad4m generate:classes`
+- **Lives in** `packages/entities/src/manifest/`
+- **Conventions** [entities/CONVENTIONS.md](../../packages/entities/CONVENTIONS.md), and
+  [docs/architecture/relations.md](../architecture/relations.md) **before adding any relation between two entities**
+- **Copy** `packages/entities/src/manifest/Signal.ts`
+- **Register** `pnpm --filter @we/entities generate:types` **and** `pnpm --filter @we/backend-ad4m generate:classes`
 - **Verify** `pnpm --filter @we/backend-ad4m test` — `coreManifest.test.ts` holds the generated classes and the manifest in exhaustive agreement, so a stale generation fails there
 
 ---

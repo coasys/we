@@ -1,13 +1,13 @@
 import { Ad4mModel, type PerspectiveProxy, type SHACLShape } from '@coasys/ad4m';
-import { getModel, getModelTargetClass, getRegisteredModelNames, type ModelClass } from '@we/models';
+import { type EntityClass, getEntity, getEntityTargetClass, getRegisteredEntityNames } from '@we/entities';
 
-import type { ModelManifestEntry, ModelManifestProperty } from './manifestTypes';
+import type { EntityManifestEntry, EntityManifestProperty } from './manifestTypes';
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
 /**
  * Map a SHACL datatype URI / nodeKind to one of the four scalar slot types
- * used in `ModelManifestProperty.type`.
+ * used in `EntityManifestProperty.type`.
  */
 function normaliseShaclType(datatype?: string, nodeKind?: string): 'string' | 'number' | 'boolean' | 'uri' {
   if (nodeKind === 'IRI') return 'uri';
@@ -39,7 +39,7 @@ export type ForeignShape = { name: string; shape: SHACLShape };
 
 /**
  * Fetch SHACL shapes only for models the perspective has that WE doesn't already
- * know about natively. `getModelForPerspective` always prefers the globally
+ * know about natively. `getEntitiesForPerspective` always prefers the globally
  * registered (WE-native) class over a per-perspective synthesised one, so fully
  * resolving a WE-native model's shape here — a multi-round-trip fetch via
  * `getShacl()` — would be pure wasted work: the result is never consulted.
@@ -57,14 +57,14 @@ export type ForeignShape = { name: string; shape: SHACLShape };
  * `getShaclTargetClass` disambiguation (two round trips, no property walk)
  * before deciding whether they're genuinely WE's own or a foreign namesake.
  *
- * Callers that need both the model classes (`buildModelClasses`) and the AI
- * manifest (`buildModelManifest`) for the same perspective should fetch here
+ * Callers that need both the model classes (`buildEntityClasses`) and the AI
+ * manifest (`buildEntityManifest`) for the same perspective should fetch here
  * once and pass the result to both — they're pure, synchronous transforms of
  * this data, not separate fetches.
  */
 export async function getForeignShacl(perspective: PerspectiveProxy): Promise<ForeignShape[]> {
   const names = await perspective.getShaclNames();
-  const nativeNames = new Set(getRegisteredModelNames());
+  const nativeNames = new Set(getRegisteredEntityNames());
   const definitelyForeign = names.filter((name) => !nativeNames.has(name));
   const ambiguous = names.filter((name) => nativeNames.has(name));
 
@@ -82,7 +82,7 @@ export async function getForeignShacl(perspective: PerspectiveProxy): Promise<Fo
     Promise.all(
       ambiguous.map(async (name) => {
         const shapeTargetClass = await perspective.getShaclTargetClass(name);
-        const nativeTargetClass = getModelTargetClass(getModel(name));
+        const nativeTargetClass = getEntityTargetClass(getEntity(name));
         if (!shapeTargetClass || shapeTargetClass === nativeTargetClass) return null;
         // Genuinely foreign despite the bare-name collision — now pay for the full fetch.
         const shape = await perspective.getShacl(name);
@@ -107,15 +107,15 @@ export async function getForeignShacl(perspective: PerspectiveProxy): Promise<Fo
  * during the loop), and `target` is only evaluated at query time, this
  * correctly handles all cross-model references without ordering concerns.
  *
- * The returned record can be passed directly to `registerDynamicModels()`.
+ * The returned record can be passed directly to `registerDynamicEntities()`.
  */
-export function buildModelClasses(shapes: ForeignShape[]): Record<string, ModelClass> {
-  const result: Record<string, ModelClass> = {};
+export function buildEntityClasses(shapes: ForeignShape[]): Record<string, EntityClass> {
+  const result: Record<string, EntityClass> = {};
   // classResolver supports both "Message" and "MessageShape" keys so that
   // sh:class URIs (which use nodeShapeUri = "flux://MessageShape") resolve correctly.
   const classResolver = (localName: string) => result[localName] as typeof Ad4mModel | undefined;
   for (const { name, shape } of shapes) {
-    const cls = Ad4mModel.fromSHACL(shape, name, classResolver) as unknown as ModelClass;
+    const cls = Ad4mModel.fromSHACL(shape, name, classResolver) as unknown as EntityClass;
     result[name] = cls;
     // Also register under nodeShapeUri-style name (e.g. "MessageShape") so that
     // sh:class URI local-names resolve even when they include the "Shape" suffix.
@@ -129,16 +129,16 @@ export function buildModelClasses(shapes: ForeignShape[]): Record<string, ModelC
  * (WE-native models are already fully documented in the AI's own system prompt,
  * so they're excluded — see `getForeignShacl`, whose result this expects). Flag
  * properties (`hasValue`) and unnamed properties are excluded. Suitable for
- * injection into an AI system prompt as `externalModels`.
+ * injection into an AI system prompt as `externalEntities`.
  */
-export function buildModelManifest(shapes: ForeignShape[]): ModelManifestEntry[] {
+export function buildEntityManifest(shapes: ForeignShape[]): EntityManifestEntry[] {
   return shapes.map(({ name, shape }) => ({
     name,
     targetClass: shape.targetClass ?? '',
     ...(shape.interpretationHint !== undefined && { interpretationHint: shape.interpretationHint }),
     properties: shape.properties
       .filter((p) => p.hasValue === undefined && p.name !== undefined)
-      .map((p): ModelManifestProperty => ({
+      .map((p): EntityManifestProperty => ({
         name: p.name!,
         predicate: p.path,
         type: normaliseShaclType(p.datatype, p.nodeKind),
@@ -146,7 +146,7 @@ export function buildModelManifest(shapes: ForeignShape[]): ModelManifestEntry[]
         required: (p.minCount ?? 0) >= 1,
         writable: p.writable ?? true,
         ...(p.resolveLanguage !== undefined && { resolveLanguage: p.resolveLanguage }),
-        ...(p.class !== undefined && { relatedModel: shaclClassToLocalName(p.class) }),
+        ...(p.class !== undefined && { relatedEntity: shaclClassToLocalName(p.class) }),
         ...(p.interpretationHint !== undefined && { interpretationHint: p.interpretationHint }),
         ...(p.identity ? { identity: true } : {}),
       })),

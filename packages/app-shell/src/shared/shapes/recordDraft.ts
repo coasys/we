@@ -16,7 +16,7 @@
  * the mapping from a declaration to a set of controls is the part with rules in it, and it is worth
  * testing without mounting anything.
  */
-import type { EntitySchema, ModelManifest, PropertySchema } from '@we/backend-shared';
+import type { EntityManifest, EntitySchema, PropertySchema } from '@we/backend-shared';
 
 /** Which control a field is edited with. Resolved once, here, so no consumer re-derives it. */
 export type RecordControl = 'text' | 'textarea' | 'number' | 'switch' | 'select' | 'date' | 'datetime' | 'color';
@@ -163,7 +163,7 @@ export function emptyRecordDraft(source: DraftSource): RecordDraft {
 }
 
 /** Find an entity in a shape's own manifest — a shape manifest holds exactly one entity of interest. */
-export function schemaFromManifest(manifest: ModelManifest, entity: string): EntitySchema | undefined {
+export function schemaFromManifest(manifest: EntityManifest, entity: string): EntitySchema | undefined {
   return manifest.entities[entity];
 }
 

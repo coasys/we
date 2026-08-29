@@ -2,7 +2,7 @@ import { templateRegistry } from '@shared/registries/templateRegistry';
 import { profileTemplate, settingsTemplate } from '@shared/schemas';
 import { deepClone } from '@shared/utils';
 import { toastService } from '@we/components/solid';
-import type { FileData } from '@we/models';
+import type { FileData } from '@we/entities';
 import {
   AGENT_DEFAULT,
   asFileField,
@@ -13,7 +13,7 @@ import {
   SpacePreference,
   SpaceTemplatePreference,
   Template,
-} from '@we/models';
+} from '@we/entities';
 import type { SchemaNode, StoredTemplate, TemplateMeta, TemplateSchema } from '@we/schema-shared';
 import { createStoredTemplate, ensureNodeIds } from '@we/schema-shared';
 import { updateSchema } from '@we/schema-solid';
@@ -119,7 +119,7 @@ export interface TemplateStore {
   // Queries
   isBuiltInTemplate: (templateId: string) => boolean;
   isInstalled: (templateId: string) => boolean;
-  getTemplateModel: (templateId: string) => Template | undefined;
+  getTemplateRecord: (templateId: string) => Template | undefined;
 }
 
 /**
@@ -1070,8 +1070,8 @@ export function TemplateStoreProvider(props: ParentProps) {
       // AD4M's file storage hasn't resolved the schema blob yet
       setAllTemplates((prev) => {
         if (prev.some((t) => t.id === templateId)) return prev;
-        const savedModel = savedTemplateMap.get(templateId);
-        return [...prev, { ...deepClone(schemaToSave), templateVersion: savedModel?.version ?? 1 }];
+        const savedRecord = savedTemplateMap.get(templateId);
+        return [...prev, { ...deepClone(schemaToSave), templateVersion: savedRecord?.version ?? 1 }];
       });
       setInstalledIds((prev) => {
         if (prev.has(templateId)) return prev;
@@ -1333,7 +1333,7 @@ export function TemplateStoreProvider(props: ParentProps) {
   }
 
   /** Get the AD4M Template model instance by slug ID */
-  function getTemplateModel(templateId: string): Template | undefined {
+  function getTemplateRecord(templateId: string): Template | undefined {
     return savedTemplateMap.get(templateId) ?? spaceTemplateMap.get(templateId);
   }
 
@@ -1408,7 +1408,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     // Queries
     isBuiltInTemplate,
     isInstalled,
-    getTemplateModel,
+    getTemplateRecord,
   };
 
   return <TemplateContext.Provider value={store}>{props.children}</TemplateContext.Provider>;

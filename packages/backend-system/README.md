@@ -8,11 +8,11 @@ requirement of the project, and this directory is where it is enforced.
 
 ## Packages
 
-| Package               | Role                                                                                                                                                                     | Depends on            |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------- |
-| `@we/backend-shared`  | The contract: `BackendPorts` (agent session, dataset lifecycle, schemas, profiles, ephemeral, data bindings), the query IR + engine, presence/transcription ports, model manifest | nothing backend-y     |
-| `@we/backend-ad4m`    | The AD4M adapter: query adapter, SDNA install, agent identity, ephemeral/transcription ports, the local-executor connector the desktop apps use                            | shared, `@coasys/*`   |
-| `@we/backend-inmemory`| The reference implementation: row-backed entities over the shared query engine, the full ports bundle the boot/conformance suites run against — no executor needed         | shared                |
+| Package                | Role                                                                                                                                                                              | Depends on          |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
+| `@we/backend-shared`   | The contract: `BackendPorts` (agent session, dataset lifecycle, schemas, profiles, ephemeral, data bindings), the query IR + engine, presence/transcription ports, model manifest | nothing backend-y   |
+| `@we/backend-ad4m`     | The AD4M adapter: query adapter, SDNA install, agent identity, ephemeral/transcription ports, the local-executor connector the desktop apps use                                   | shared, `@coasys/*` |
+| `@we/backend-inmemory` | The reference implementation: row-backed entities over the shared query engine, the full ports bundle the boot/conformance suites run against — no executor needed                | shared              |
 
 ## The seams that matter
 
@@ -20,7 +20,7 @@ requirement of the project, and this directory is where it is enforced.
   `BackendConnector.initialize()` returns. The app shell wires it into stores;
   a second backend is a second implementation of this interface, nothing more.
 - **`RendererDataBindings`** (`shared/src/dataSource.ts`) is the exact set of
-  `$`-bindings the schema renderer reads (`$getModel`, `$queryAdapter`,
+  `$`-bindings the schema renderer reads (`$getEntity`, `$queryAdapter`,
   `$identities`, `$ephemeral`, `model` mutations, …). The in-memory bundle's
   conformance suite (`inmemory/tests/portsConformance.test.ts`) pins that both
   adapters expose the same surface — a missing binding is a named test
@@ -29,7 +29,7 @@ requirement of the project, and this directory is where it is enforced.
   dialect; `compileQuery` lifts it to a neutral IR, each adapter's
   `QueryAdapter` plans and lowers it to whatever its backend natively speaks,
   and the engine computes up whatever the backend can't.
-- **`@coasys/*` is imported only here** (the ad4m package), by `@we/models`,
+- **`@coasys/*` is imported only here** (the ad4m package), by `@we/entities`,
   and by modules that declare `backends: ['ad4m']`. Nothing else.
 
 ## Where things are

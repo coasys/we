@@ -1,12 +1,12 @@
 /**
- * The flat, per-entity manifest form — richer than the neutral `ModelManifest` (it carries the
+ * The flat, per-entity manifest form — richer than the neutral `EntityManifest` (it carries the
  * storage binding: predicate, resolveLanguage, related model) but still backend-agnostic in
  * shape. The AD4M adapter builds these from SHACL; `toNeutralManifest` projects them onto the
  * neutral form; the AI layer formats them into prompts.
  */
-import type { EntitySchema, ModelManifest } from './manifest';
+import type { EntityManifest, EntitySchema } from './manifest';
 
-export type ModelManifestProperty = {
+export type EntityManifestProperty = {
   name: string;
   predicate: string;
   type: 'string' | 'number' | 'boolean' | 'uri';
@@ -14,23 +14,23 @@ export type ModelManifestProperty = {
   required: boolean;
   writable: boolean;
   resolveLanguage?: string;
-  relatedModel?: string;
+  relatedEntity?: string;
   /** LLM guidance for this property when the entity is an interpretation target. */
   interpretationHint?: string;
   /** This property is the entity's interpretation dedup key — see `PropertySchema.identity`. */
   identity?: boolean;
 };
 
-export type ModelManifestEntry = {
+export type EntityManifestEntry = {
   name: string;
   targetClass: string;
-  properties: ModelManifestProperty[];
+  properties: EntityManifestProperty[];
   /** Class-level LLM guidance — see `EntitySchema.interpretationHint`. */
   interpretationHint?: string;
 };
 
 /**
- * Project a declared {@link ModelManifest} onto the flat entry form — the inverse of
+ * Project a declared {@link EntityManifest} onto the flat entry form — the inverse of
  * `toNeutralManifest`, and neutral in both directions.
  *
  * Here rather than in an adapter because the *host* needs it: the entries it hands the ports are
@@ -48,7 +48,7 @@ export type ModelManifestEntry = {
  * produce an entry that resolves to a predicate nothing was ever written under — a drill-down that
  * silently returns nothing, which is worse than one that fails loudly.
  */
-export function manifestEntries(manifest: ModelManifest): ModelManifestEntry[] {
+export function manifestEntries(manifest: EntityManifest): EntityManifestEntry[] {
   /** Flatten `extends` so an entry carries what it inherits — `scope` resolves on the child's name. */
   const resolved = (name: string): EntitySchema => {
     const entity = manifest.entities[name];
@@ -95,7 +95,7 @@ export function manifestEntries(manifest: ModelManifest): ModelManifestEntry[] {
             // Absent for an untyped relation, which is the normal case for a heterogeneous edge like
             // a collection's children. `scope` needs only the predicate, so it resolves either way —
             // it is `include` that requires a target class to hydrate into.
-            ...(spec.target ? { relatedModel: spec.target } : {}),
+            ...(spec.target ? { relatedEntity: spec.target } : {}),
           })),
       ],
     };
