@@ -156,6 +156,22 @@ export function createPocketStore(deps: ModuleStoreDeps) {
     return !!parsed && openable(parsed.datasetKey);
   }
 
+  /**
+   * Open the panel, and make sure it has somewhere to put things.
+   *
+   * The root folder used to be created by the first *gather*, which left an open-but-empty Pocket
+   * offering a "New folder" button whose write had no parent — an empty link source, which the
+   * executor refuses. Creating it on open costs one record in the agent's own dataset, at the
+   * moment somebody has said they want a Pocket, and it means every write the panel offers has an
+   * anchor from the first frame.
+   */
+  function openPanel(): void {
+    setOpen(true);
+    void rootFolder()
+      .then(() => reload())
+      .catch(() => setLastError('Could not open your Pocket.'));
+  }
+
   async function gatherOne(input: GatherInput, into?: string): Promise<string> {
     const data = agentData();
     const ref = referenceFor(input);
@@ -196,9 +212,9 @@ export function createPocketStore(deps: ModuleStoreDeps) {
     dockEdge: () => (open() ? 'right' : null),
     dockSize: () => 'md',
     dockFloat: () => false,
-    toggle: () => setOpen(!open()),
+    toggle: () => (open() ? setOpen(false) : openPanel()),
     close: () => setOpen(false),
-    show: () => setOpen(true),
+    show: openPanel,
 
     // ── Where in the Pocket you are ──────────────────────────────────────────
     folderId,

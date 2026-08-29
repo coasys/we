@@ -28,8 +28,15 @@ const ROOT = 'datasetStore.rootDataset';
  * The root is found rather than remembered, for the reason the notes module finds its collection
  * rather than remembering it — a held id is a value that has to be invalidated, and getting that
  * wrong writes into the wrong container.
+ *
+ * **A ternary, not `||`.** WE's `||` answers with a *boolean*, never with an operand — so the
+ * obvious JavaScript spelling of this resolves to `true`, and `true` is what then reached the
+ * executor as an `anchorId` ("data did not match any variant of untagged enum Scope") and as a
+ * link source ("Link source must not be empty"). Every fallback in this file was written that way
+ * and every one of them was wrong; `??` is no use either, since these all default to `''` rather
+ * than to null.
  */
-const currentFolder = { $: 'modules.pocket.folderId || first(local.rootFolder).id' };
+const currentFolder = { $: 'modules.pocket.folderId ? modules.pocket.folderId : first(local.rootFolder).id' };
 
 /** A row's own drag payload — the parts of its reference, written out when it was gathered. */
 const itemRow: SchemaNode = {
@@ -55,7 +62,7 @@ const itemRow: SchemaNode = {
       children: [
         {
           type: 'we-icon',
-          props: { name: { $: "item.icon || 'bookmark-simple'" }, color: 'text-muted' },
+          props: { name: { $: "item.icon ? item.icon : 'bookmark-simple'" }, color: 'text-muted' },
         },
         {
           type: 'Column',
@@ -64,7 +71,7 @@ const itemRow: SchemaNode = {
             {
               type: 'we-text',
               props: { truncate: true },
-              children: [{ $: "item.label || item.entity || 'Untitled'" }],
+              children: [{ $: "item.label ? item.label : (item.entity ? item.entity : 'Untitled')" }],
             },
             {
               type: 'Row',
@@ -73,7 +80,7 @@ const itemRow: SchemaNode = {
                 {
                   type: 'we-text',
                   props: { variant: 'footnote', color: 'text-faint', truncate: true },
-                  children: [{ $: "item.sourceName || 'Somewhere else'" }],
+                  children: [{ $: "item.sourceName ? item.sourceName : 'Somewhere else'" }],
                 },
                 {
                   type: 'we-timestamp',
@@ -132,8 +139,8 @@ const folderRow: SchemaNode = {
     onClick: { $action: 'modules.pocket.enter', args: [{ $: 'folder.id' }, { $: 'folder.name' }] },
   },
   children: [
-    { type: 'we-icon', props: { name: { $: "folder.icon || 'folder'" } } },
-    { type: 'we-text', props: { truncate: true }, children: [{ $: "folder.name || 'Folder'" }] },
+    { type: 'we-icon', props: { name: { $: "folder.icon ? folder.icon : 'folder'" } } },
+    { type: 'we-text', props: { truncate: true }, children: [{ $: "folder.name ? folder.name : 'Folder'" }] },
   ],
 };
 

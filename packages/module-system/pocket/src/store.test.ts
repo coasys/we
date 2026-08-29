@@ -144,6 +144,30 @@ describe('gathering twice', () => {
   });
 });
 
+describe('opening the panel', () => {
+  it('makes the root folder, so every write it offers has an anchor', async () => {
+    // Before this, the folder was made by the first *gather* — leaving an open, empty Pocket whose
+    // "New folder" button wrote with no parent, which the executor refuses as an empty link source.
+    const { deps: d, data } = deps();
+    const store = createPocketStore(d);
+
+    store.show();
+    await vi.waitFor(() => expect(data.rows.PocketFolder).toHaveLength(1));
+    expect(store.open()).toBe(true);
+  });
+
+  it('makes it once, however many times the panel is opened', async () => {
+    const { deps: d, data } = deps();
+    const store = createPocketStore(d);
+
+    store.show();
+    await vi.waitFor(() => expect(data.rows.PocketFolder).toHaveLength(1));
+    store.close();
+    store.toggle();
+    await vi.waitFor(() => expect(data.rows.PocketFolder).toHaveLength(1));
+  });
+});
+
 describe('the root folder', () => {
   it('is made on the first gather, and only once', async () => {
     const { deps: d, data } = deps();
