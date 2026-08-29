@@ -26,7 +26,7 @@ A styled "Community Feed" (real `Card`/`Column`/`Row` + `we-text`/`we-avatar`):
 
 - The renderer package (`@we/schema-solid`) never imports AD4M; here it runs against
   `src/inMemoryBackend.ts`, which implements the injected `stores` contract (`$currentDataset()` →
-  `{ id }`, `$getModel(name)` → `{ query, findAll }`).
+  `{ id }`, `$getEntity(name)` → `{ query, findAll }`).
 - Verified objectively: `pnpm why @coasys/ad4m` in this package resolves to **nothing**, and the
   built bundle contains no `@coasys` / `PerspectiveProxy` (only the renderer's inert `adamStore`
   fallback string, never executed here).
@@ -55,13 +55,13 @@ container-relative is the next step for editing inside a panel.
 
 ## Files
 
-| File                     | Role                                                                                     |
-| ------------------------ | ---------------------------------------------------------------------------------------- |
-| `src/inMemoryBackend.ts` | the non-AD4M `DataSource` (query engine over plain arrays)                               |
-| `src/registry.ts`        | design-system component registry (`Column`/`Row`/`Card`; `we-*` are custom-element tags) |
-| `src/feedTemplate.ts`    | a real WE template: `$each` over `$query` with filter/order/include                      |
-| `src/standaloneEditorHost.ts` | a complete `EditorHost` from plain signals — the embedding proof |
-| `src/main.tsx`           | mounts `RenderSchema({ node, stores, registry })` + the reactivity demo button           |
+| File                          | Role                                                                                     |
+| ----------------------------- | ---------------------------------------------------------------------------------------- |
+| `src/inMemoryBackend.ts`      | the non-AD4M `DataSource` (query engine over plain arrays)                               |
+| `src/registry.ts`             | design-system component registry (`Column`/`Row`/`Card`; `we-*` are custom-element tags) |
+| `src/feedTemplate.ts`         | a real WE template: `$each` over `$query` with filter/order/include                      |
+| `src/standaloneEditorHost.ts` | a complete `EditorHost` from plain signals — the embedding proof                         |
+| `src/main.tsx`                | mounts `RenderSchema({ node, stores, registry })` + the reactivity demo button           |
 
 > Duplicated `inMemoryBackend.ts` (twin of the headless test's copy) is a candidate to consolidate
 > into a shared `@we/backend-inmemory` package.

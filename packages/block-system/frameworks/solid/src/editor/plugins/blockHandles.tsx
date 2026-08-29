@@ -10,8 +10,8 @@
  */
 import { formatRef, HERE } from '@we/backend-shared';
 import { type DragPayload, dragSession } from '@we/drag';
-import type { FileData } from '@we/models';
-import { compressImageToFileData, readFileAsFileData } from '@we/models';
+import type { FileData } from '@we/entities';
+import { compressImageToFileData, readFileAsFileData } from '@we/entities';
 import type { Node as PMNode } from 'prosemirror-model';
 import type { EditorView } from 'prosemirror-view';
 import { createEffect, createMemo, createSignal, For, onCleanup } from 'solid-js';

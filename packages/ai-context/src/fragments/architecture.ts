@@ -92,13 +92,13 @@ Glossary (these terms pervade stores, models, and \`$query\`/\`perspective\` in 
 | \`@we/schema-shared\` | schema-system/shared | Schema semantics: prop resolvers, validation, indexer, registry types, reactivity port | **Agnostic** |
 | \`@we/schema-solid\` | schema-system/frameworks/solid | The schema renderer (walks the tree, mounts components) | Solid (thin adapter) |
 | \`@we/backend-shared\` | backend-system/shared | The backend contract: \`DataSource\`, query IR + engine, ephemeral, presence & transcription ports, model manifest | **Agnostic** |
-| \`@we/backend-ad4m\` | backend-system/ad4m | The AD4M adapter: query adapter, ports, agent identity, SDNA install — and the AD4M model classes, generated from @we/models' manifest (src/models) | Agnostic |
+| \`@we/backend-ad4m\` | backend-system/ad4m | The AD4M adapter: query adapter, ports, agent identity, SDNA install — and the AD4M model classes, generated from @we/entities' manifest (src/models) | Agnostic |
 | \`@we/backend-inmemory\` | backend-system/inmemory | In-memory adapter — the reference implementation, and how stores test without an executor | Agnostic |
 | \`@we/module-shared\` | module-system/shared | The feature-module contract — what a module author installs | Agnostic |
 | \`@we/module-globe\` · \`-call\` · \`-notes\` · \`-transcribe\` · \`-graph\` | module-system/* | Bundled feature modules; globe is a *family* (module · protocol · layers · widget) | Agnostic (components injected) |
 | \`@we/graph-protocol\` · \`-core\` · \`-expanders\` · \`-layouts\` · \`-solid\` | graph-system/* | The graph engine: expander/layout/renderer contracts, the neutral engine, first-party plugins, and the Solid adapter | **Agnostic** (Solid only in the adapter) |
 | \`@we/block-shared\` | block-system/shared | Block content types + serialization | Agnostic |
-| \`@we/models\` | packages/models | WE's domain models: the authored neutral manifest (src/manifest, the source of truth), the neutral type contract, and the entity proxies backends register into | **Agnostic** |
+| \`@we/entities\` | packages/entities | WE's domain models: the authored neutral manifest (src/manifest, the source of truth), the neutral type contract, and the entity proxies backends register into | **Agnostic** |
 | \`@we/app-shell\` | packages/app-shell | App shell, stores, registries, built-in template schemas | Solid |
 | \`@we/ai-context\` | packages/ai-context | Generates this reference (CLAUDE.md et al.) from code + fragments | Build tool |
 
@@ -108,7 +108,7 @@ Each supplies two things: a \`PlatformAdapter\` (where am I running) and a \`Bac
 
 **Dependency direction:** \`templates → shell → backend-shared ← backend-ad4m\`, and
 \`modules → shell → backend-shared\`. Dependencies point inward toward the contract packages; there are
-no sideways edges. \`@coasys/*\` may be imported by \`@we/backend-ad4m\`, \`@we/models\`, and any module
+no sideways edges. \`@coasys/*\` may be imported by \`@we/backend-ad4m\`, \`@we/entities\`, and any module
 that declares \`backends: ['ad4m']\` — nothing else. See \`docs/architecture/package-conventions.md\`.
 
 ### The Three Seams (why the layering holds)
@@ -158,7 +158,7 @@ that declares \`backends: ['ad4m']\` — nothing else. See \`docs/architecture/p
 - The backend contract (ports, query IR) → \`packages/backend-system/shared/src/\`.
 - AD4M wiring (query adapter, SDNA install, agent identity) → \`packages/backend-system/ad4m/src/\`.
 - The feature-module contract → \`packages/module-system/shared/src/module.ts\`; a module → \`packages/module-system/<id>/\`.
-- Data models (Space, blocks) → \`packages/models/src/\` (see packages/models/CONVENTIONS.md).
+- Data models (Space, blocks) → \`packages/entities/src/\` (see packages/entities/CONVENTIONS.md).
 - A space's sections (views) → \`packages/templates/views/\`; how they resolve →
   \`packages/app-shell/src/shared/viewResolution.ts\` (see docs/architecture/views.md).
 - Graph engine (expanders, layouts, expansion state) → \`packages/graph-system/\` (see its README);

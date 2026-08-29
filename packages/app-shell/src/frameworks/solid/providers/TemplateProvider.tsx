@@ -28,14 +28,15 @@ import { Route, Router } from '@solidjs/router';
 import { manifestEntries } from '@we/backend-shared';
 import { BlockHostProvider, colorFor } from '@we/block-solid';
 import { toastService } from '@we/components/solid';
-import type { DatasetProxy } from '@we/models';
-import { getModel } from '@we/models';
-import { CORE_MANIFEST } from '@we/models/manifest';
+import type { DatasetProxy } from '@we/entities';
+import { getEntity } from '@we/entities';
+import { CORE_MANIFEST } from '@we/entities/manifest';
 import type { TemplateSchema } from '@we/schema-shared';
 import { expandViewRoutes, hasViewsMarker } from '@we/schema-shared';
 import type { VisualEditorContextValue } from '@we/schema-solid';
 import { RenderSchema, VisualEditorProvider } from '@we/schema-solid';
 import { CHROME_RAIL_WIDTH } from '@we/template-shell';
+import { RECORD_ROUTE_PATH, recordPage } from '@we/template-views';
 import { createEffect, createMemo, createSignal, onCleanup, onMount, Show, untrack } from 'solid-js';
 
 import { createCollabSession } from '../collab/collabSession';
@@ -90,26 +91,26 @@ export default function TemplateProvider() {
    */
   const ROOT_PERSPECTIVE = 'datasetStore.rootDataset';
 
-  // Model store — wraps Ad4m static model methods with automatic perspective injection.
-  // Pass `{ perspective: 'store.path' }` in options to target a different perspective
-  // (e.g. 'datasetStore.rootDataset' for we-root models like AgentProfile).
-  const modelStore = {
-    create: (modelName: string, data: Record<string, unknown> = {}, options?: Record<string, unknown>) => {
-      const [Model, p] = resolve(modelName, options as { perspective?: string });
+  // Record mutations — one instance of an entity, written through the entity's registered class
+  // with the perspective injected. Pass `{ perspective: 'store.path' }` in options to target a
+  // different one (e.g. 'datasetStore.rootDataset' for we-root entities like AgentSettings).
+  const recordActions = {
+    create: (entity: string, data: Record<string, unknown> = {}, options?: Record<string, unknown>) => {
+      const [Entity, p] = resolve(entity, options as { perspective?: string });
       const rest = Object.fromEntries(Object.entries(options ?? {}).filter(([k]) => k !== 'perspective'));
-      return Model.create(p, data, Object.keys(rest).length ? rest : undefined);
+      return Entity.create(p, data, Object.keys(rest).length ? rest : undefined);
     },
-    update: (modelName: string, id: string, data: Record<string, unknown>, options?: { perspective?: string }) => {
-      const [Model, p] = resolve(modelName, options);
-      return Model.update(p, id, data);
+    update: (entity: string, id: string, data: Record<string, unknown>, options?: { perspective?: string }) => {
+      const [Entity, p] = resolve(entity, options);
+      return Entity.update(p, id, data);
     },
-    delete: (modelName: string, id: string, options?: { perspective?: string }) => {
-      const [Model, p] = resolve(modelName, options);
-      return Model.delete(p, id);
+    delete: (entity: string, id: string, options?: { perspective?: string }) => {
+      const [Entity, p] = resolve(entity, options);
+      return Entity.delete(p, id);
     },
   };
 
-  // The same capability schemas get as `model.create`, lent to module stores that must write
+  // The same capability schemas get as `record.create`, lent to module stores that must write
   // without a click to hang a schema action on — a transcript appears because somebody spoke.
   provideModuleHostServices({
     // `options` is forwarded rather than swallowed so a module can parent its write — a transcript
@@ -117,14 +118,14 @@ export default function TemplateProvider() {
     // afterwards leaves a window where a crash orphans the block into the space.
     createEntity: async (entity, fields, options) => {
       if (!datasetStore.currentDataset()) return null;
-      const created = (await modelStore.create(entity, fields, { ...options })) as { id?: string } | undefined;
+      const created = (await recordActions.create(entity, fields, { ...options })) as { id?: string } | undefined;
       return created?.id ?? null;
     },
 
     /*
       This agent's own records, in the root dataset — the write half of `entities: { scope: 'agent' }`.
 
-      Everything goes through `modelStore` with the root perspective named, so there is one place
+      Everything goes through `recordActions` with the root perspective named, so there is one place
       that knows how a perspective path is resolved and an agent-scoped module cannot reach a space
       by accident: the path is fixed here rather than passed in.
     */
@@ -132,7 +133,7 @@ export default function TemplateProvider() {
       ready: () => !!datasetStore.rootDataset(),
       create: async (entity, fields, options) => {
         if (!datasetStore.rootDataset()) return null;
-        const created = (await modelStore.create(entity, fields, {
+        const created = (await recordActions.create(entity, fields, {
           ...options,
           perspective: ROOT_PERSPECTIVE,
         })) as { id?: string } | undefined;
@@ -146,7 +147,7 @@ export default function TemplateProvider() {
       },
       remove: async (entity, id) => {
         if (!datasetStore.rootDataset()) return;
-        await modelStore.delete(entity, id, { perspective: ROOT_PERSPECTIVE });
+        await recordActions.delete(entity, id, { perspective: ROOT_PERSPECTIVE });
       },
     },
 
@@ -191,7 +192,7 @@ export default function TemplateProvider() {
     // missing `modules` key rather than returning undefined.
     modules: moduleStores,
     consoleStore,
-    model: modelStore,
+    record: recordActions,
     // Host wiring, not backend adaptation — any backend would wire these the same way, so they stay
     // here rather than pretending to be AD4M-specific.
     $onError: (msg: string) => toastService.error(msg),
@@ -224,8 +225,8 @@ export default function TemplateProvider() {
   /**
    * What the backend ports see: the synced foreign schemas, plus WE's own.
    *
-   * `datasetStore.currentDatasetModels` holds *only* foreign schemas, and deliberately — it is also
-   * what the AI layer injects as `externalModels`, where core entities would be a duplicate of what
+   * `datasetStore.currentDatasetEntities` holds *only* foreign schemas, and deliberately — it is also
+   * what the AI layer injects as `externalEntities`, where core entities would be a duplicate of what
    * the generated reference already documents. But an adapter resolving `scope` looks `via` up in
    * this same list, so with foreign models alone a drill-down through core vocabulary could never
    * resolve: `{ anchor: 'CollectionBlock', via: 'children' }` failed with "no such relation in the
@@ -239,13 +240,13 @@ export default function TemplateProvider() {
    * Foreign first, so nothing that resolves today changes: `resolveScopeToParent` takes the first
    * match by name, and core is purely a fallback behind it.
    */
-  const modelsForBindings = () => [...datasetStore.currentDatasetModels(), ...coreEntries];
+  const modelsForBindings = () => [...datasetStore.currentDatasetEntities(), ...coreEntries];
 
   const boundBindings = createMemo(() =>
     sessionStore.backendPorts()?.dataBindings({
       // The backend's own handle, not the shell's ref — these bindings feed model calls.
       currentDataset: () => datasetStore.currentDataset()?.handle ?? null,
-      currentDatasetModels: modelsForBindings,
+      currentDatasetEntities: modelsForBindings,
       profiles: profileStore.profiles,
       fetchProfile: profileStore.fetchProfile,
       ephemeral: sessionStore.ephemeralPort,
@@ -261,8 +262,8 @@ export default function TemplateProvider() {
   stores.$sources = hostSourceBag();
 
   const BINDING_KEYS = [
-    '$getModel',
-    '$getModelForPerspective',
+    '$getEntity',
+    '$getEntitiesForPerspective',
     '$currentDataset',
     '$identities',
     '$queryAdapter',
@@ -291,9 +292,9 @@ export default function TemplateProvider() {
 
   // Mutations need the raw model class (create/update/delete), not the renderer's read-only
   // handle — resolved through the model layer's own registry.
-  function resolve(modelName: string, opts?: { perspective?: string }) {
+  function resolve(entityName: string, opts?: { perspective?: string }) {
     return [
-      getModel(modelName),
+      getEntity(entityName),
       resolvePerspective(opts?.perspective) ?? datasetStore.currentDataset()!.handle,
     ] as const;
   }
@@ -427,12 +428,28 @@ export default function TemplateProvider() {
     },
   };
 
+  /**
+   * Routes the host puts beside a space's sections, wherever the shell mounts them.
+   *
+   * One list, because two things read it: `expandViewRoutes` injects it at the `$views` marker, and
+   * the index redirect below has to know these segments are not sections. Written out twice, the
+   * redirect bounced every one of them to the space's first section — see there.
+   *
+   * A page for one record is the only member so far, and it is here rather than in each template
+   * because every space wants it and no template should have to remember to include it.
+   */
+  const HOST_ROUTES = [{ ...recordPage, path: RECORD_ROUTE_PATH }];
+
+  /** Their first path segment — what the redirect compares a URL against. */
+  const HOST_ROUTE_SEGMENTS = new Set(HOST_ROUTES.map((route) => route.path.split('/')[1]));
+
   const routesWithViews = createMemo(() => {
     const routes = templateSchema.routes ?? [];
     if (!hasViewsMarker(routes)) return routes;
     return expandViewRoutes(routes, spaceStore.routableViews(), {
       activeIds: 'spaceStore.enabledViewIds',
       notInSpace: noSectionsNode,
+      extraRoutes: HOST_ROUTES as unknown as (typeof routes)[number][],
     });
   });
 
@@ -476,6 +493,12 @@ export default function TemplateProvider() {
    * - A segment the community does not have here — a link to a section since removed, or the one you
    *   were reading when somebody removed it.
    *
+   * **Not every segment at that level is a section.** The host injects its own routes beside them —
+   * a record's own page — and those are not in any view list, so this read them as sections the
+   * community had removed and bounced every one of them to the first section in the nav. Every
+   * expand button appeared to navigate to About. The exemption is derived from the same list that is
+   * injected rather than written out again, so a second host route cannot reintroduce it.
+   *
    * **Membership is tested against the community's list, but the landing place comes from the nav.**
    * Those differ by this agent's own hidden sections, and conflating them would bounce somebody off
    * a section they had merely hidden from their own nav — a refusal nobody asked for. Hidden means
@@ -497,6 +520,7 @@ export default function TemplateProvider() {
     if (!nav.length) return;
 
     const current = segments[2];
+    if (current && HOST_ROUTE_SEGMENTS.has(current)) return;
     if (current && spaceStore.enabledViewIds().some((id) => id === viewIdForSegment(current))) return;
     routeStore.navigate(`/space/${segments[1]}/${nav[0].segment}`, { replace: true });
   });

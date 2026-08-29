@@ -1,7 +1,7 @@
 import type { LocalStateField, SchemaNode } from '@we/schema-shared';
 import { agentByline, cardList, cardShell, emptyState, peopleRow } from '@we/template-kit';
 
-const hasConversationModel = { $: "find(datasetStore.currentDatasetModels, { name: 'Conversation' })" };
+const hasConversationRecord = { $: "find(datasetStore.currentDatasetEntities, { name: 'Conversation' })" };
 
 /*
   Two ways this list can be empty, one sentence for both.
@@ -11,7 +11,7 @@ const hasConversationModel = { $: "find(datasetStore.currentDatasetModels, { nam
   nothing. The distinction is real but not the reader's problem: what they asked was whether this
   space has Flux conversations, and the answer is no either way.
 */
-const noModel: SchemaNode = emptyState({ icon: 'chats-circle', label: 'Flux conversations', delay: 0 });
+const noRecord: SchemaNode = emptyState({ icon: 'chats-circle', label: 'Flux conversations', delay: 0 });
 const noRows: SchemaNode = emptyState({ icon: 'chats-circle', label: 'Flux conversations', searchable: true });
 
 /** Merges extra $localState fields onto a node that may already declare some (e.g. cardShell's own). */
@@ -195,7 +195,7 @@ const conversationSubgroupsList: SchemaNode = {
 export const fluxConversationsNestedList: SchemaNode = {
   type: '$if',
   props: {
-    condition: hasConversationModel,
+    condition: hasConversationRecord,
     then: cardList({
       query: {
         entity: 'Conversation',
@@ -262,6 +262,6 @@ export const fluxConversationsNestedList: SchemaNode = {
         ),
       ],
     }),
-    else: noModel,
+    else: noRecord,
   },
 };

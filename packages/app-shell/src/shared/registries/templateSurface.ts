@@ -302,7 +302,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     currentDataset: state('content'),
     currentDatasetUri: state('content'),
     currentDatasetCid: state('content'),
-    currentDatasetModels: state('content'),
+    currentDatasetEntities: state('content'),
     isWeSpace: state('navigation'),
     joinedSpaceCids: state('navigation'),
     datasetsLoaded: state('navigation'),
@@ -359,6 +359,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     clearCurrentDataset: WIRING,
     trackDataset: WIRING,
     provideAutoInterpretGate: WIRING,
+    provideExtractionCandidates: WIRING,
+    provideCallExtraction: WIRING,
     onDatasetRemoved: WIRING,
     initSystemDatasets: WIRING,
     loadDatasets: WIRING,
@@ -421,6 +423,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     sharedSpaces: state('navigation'),
     orderedSidebarItems: state('navigation'),
     routeSpaceUnjoined: state('navigation'),
+    spacePath: state('navigation'),
     joiningSpace: state('navigation'),
     joinSlow: state('navigation'),
     joinError: state('navigation'),
@@ -474,6 +477,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       indicator that silently never rendered.
     */
     autoInterpret: state('space-settings'),
+    extractionTargets: state('space-settings'),
+    setExtractionTarget: action('space-settings'),
     shareExtractionDetail: state('space-settings'),
     setShareExtractionDetail: action('space-settings'),
     templateOverrideOptions: state('space-admin'),
@@ -540,6 +545,17 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     aiAvailable: state('space-settings'),
     generating: state('space-settings'),
     hintEntities: state('space-settings'),
+    /*
+      'content' rather than 'space-settings', unlike everything else on this store.
+
+      Capability groups name what a template is being trusted with, and this is read to *render*: a
+      feed showing what an extraction pass found on a call needs the list of models it could have
+      found, the same way it needs `recordStore.displays` to draw one. Grouping it with the model
+      wizard would make an ordinary card list ask for the capability that edits a space's vocabulary.
+    */
+    extractionCandidates: state('content'),
+    provideExtractionEnroller: WIRING,
+    extractionNeedsIdentity: state('space-settings'),
     relationshipTargets: state('space-settings'),
     identityOptions: state('space-settings'),
     hintEditor: state('space-settings'),
@@ -548,6 +564,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     cancelShapeWizard: action('space-settings'),
     setShapeField: action('space-settings'),
     setIdentityMember: action('space-settings'),
+    setExtractable: action('space-settings'),
     addProperty: action('space-settings'),
     addRelationship: action('space-settings'),
     removeMember: action('space-settings'),
@@ -750,7 +767,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     loadSpaceTemplates: WIRING,
     refreshSpaceTemplates: action('appearance'),
     clearSpaceTemplates: WIRING,
-    getTemplateModel: WIRING,
+    getTemplateRecord: WIRING,
   },
 
   routeStore: {
@@ -759,6 +776,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     params: state('view-state'),
     navigate: action('navigation'),
     setParam: action('view-state'),
+    back: action('navigation'),
 
     setNavigateFunction: WIRING,
     setCurrentPath: WIRING,
@@ -979,10 +997,11 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
   },
 
   /**
-   * Model mutations. Reads need no entry — `$query` goes through the renderer's own bindings, and a
-   * template that can render a space's data is the entire point.
+   * Record mutations — writing one instance of an entity. Reads need no entry: `$query` goes
+   * through the renderer's own bindings, and a template that can render a space's data is the
+   * entire point.
    */
-  model: {
+  record: {
     create: action('content'),
     update: action('content'),
     delete: destructive('content'),
@@ -998,15 +1017,15 @@ const ALWAYS_PRESENT = new Set([
   '$useQueryIR',
   '$me',
   '$currentDataset',
-  '$getModel',
-  '$getModelForPerspective',
+  '$getEntity',
+  '$getEntitiesForPerspective',
   '$queryAdapter',
   '$identities',
   '$ephemeral',
   /*
     The host-source registry — computed rows and values a template may call on.
 
-    Present in every bag for the same reason `$getModel` is: it is a host-provided capability that
+    Present in every bag for the same reason `$getEntity` is: it is a host-provided capability that
     templates are meant to reach, not store state anyone needs protecting from. Its members are pure
     synchronous functions the host chose to register, so there is nothing here to gate — a template
     that can call `calendarMonth` can compute a month, which is the entire point of registering it.
@@ -1089,7 +1108,7 @@ export function buildTemplateBag<T extends Record<string, unknown>>(stores: T, o
     /*
       Renderer bindings, by descriptor rather than by value.
 
-      `$getModel`, `$currentDataset`, `$queryAdapter` and the rest are defined on the host's bag as
+      `$getEntity`, `$currentDataset`, `$queryAdapter` and the rest are defined on the host's bag as
       *getters* that delegate to a memo, because the connector's ports do not exist until after
       connect. Reading them here would have captured their pre-connect value — `undefined` — and
       pinned it, which is not a subtle failure: every `$query` in every template resolves to nothing

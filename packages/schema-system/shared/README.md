@@ -11,7 +11,7 @@ framework's reactivity primitive rather than importing one.
 - `propResolvers/` — `{ $ }` expressions, `$action`, `$setLocal`, the handler `$if`, `$query`, …
 - validation — structural, semantic, field-level
 - `indexer` / `sections` — addressing and patching a stored template
-- `componentMeta`, `scope`, `conditionModel`, `themeStyles`
+- `componentMeta`, `scope`, `conditionRecord`, `themeStyles`
 
 ## What doesn't
 

@@ -17,7 +17,7 @@ export type ValidationContext = {
   storeNames: Set<string>;
   storeMembers: Map<string, Set<string>>;
   storeMemberMeta: Map<string, Map<string, StateMemberMeta>>;
-  modelNames: Set<string>;
+  entityNames: Set<string>;
   dsPropToLayer: Map<string, string>;
   /** Functions the host lends to expressions, from the generated context's `sources`. */
   hostFunctions: Set<string>;
@@ -351,9 +351,9 @@ export function buildValidationContext(data: ContextData): ValidationContext {
   storeNames.add('modules');
 
   // Models
-  const modelNames = new Set<string>();
+  const entityNames = new Set<string>();
   for (const model of data.models) {
-    modelNames.add(model.name);
+    entityNames.add(model.name);
   }
 
   for (const name of data.shellComponents ?? []) {
@@ -371,7 +371,7 @@ export function buildValidationContext(data: ContextData): ValidationContext {
     storeNames,
     storeMembers,
     storeMemberMeta,
-    modelNames,
+    entityNames,
     dsPropToLayer,
     hostFunctions,
   };
@@ -975,7 +975,7 @@ function checkTokenValue(
   if ('$query' in obj && typeof obj.$query === 'object' && obj.$query !== null) {
     const query = obj.$query as Record<string, unknown>;
     if (typeof query.entity === 'string' && entityIsCheckable(query)) {
-      checkModelRef(query.entity, `${path}.$query.entity`, ctx, errors);
+      checkEntityRef(query.entity, `${path}.$query.entity`, ctx, errors);
     }
     checkQueryInternals(query, `${path}.$query`, ctx, state, errors);
   }
@@ -1052,7 +1052,7 @@ function checkHoistedQueries(
     if (!query || typeof query !== 'object') continue;
     const q = query as Record<string, unknown>;
     const qPath = `${path}.$queries.${name}`;
-    if (typeof q.entity === 'string' && entityIsCheckable(q)) checkModelRef(q.entity, `${qPath}.entity`, ctx, errors);
+    if (typeof q.entity === 'string' && entityIsCheckable(q)) checkEntityRef(q.entity, `${qPath}.entity`, ctx, errors);
     checkQueryInternals(q, qPath, ctx, state, errors);
   }
 }
@@ -1203,7 +1203,7 @@ function checkActionRef(ref: string, path: string, ctx: ValidationContext, error
  * `dataset` names where the data lives, and naming one is the author saying the entity belongs to a
  * schema this validator has no manifest for: a foreign app's models synced into the space (Flux's
  * `Channel`, `Conversation`) or a manifest installed at runtime (the query test page's `TestItem`).
- * Both are real entities that resolve fine against the *perspective's* manifest; only `@we/models`
+ * Both are real entities that resolve fine against the *perspective's* manifest; only `@we/entities`
  * is knowable statically.
  *
  * So the rule is the one the schema docs already state — external data carries `dataset` — and
@@ -1215,9 +1215,9 @@ function entityIsCheckable(query: Record<string, unknown>): boolean {
   return query.dataset === undefined;
 }
 
-function checkModelRef(name: string, path: string, ctx: ValidationContext, errors: ValidationError[]): void {
-  if (!ctx.modelNames.has(name)) {
-    const suggestion = suggest(name, ctx.modelNames);
+function checkEntityRef(name: string, path: string, ctx: ValidationContext, errors: ValidationError[]): void {
+  if (!ctx.entityNames.has(name)) {
+    const suggestion = suggest(name, ctx.entityNames);
     const didYouMean = suggestion ? ` Did you mean "${suggestion}"?` : '';
     errors.push({
       path,

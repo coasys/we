@@ -53,6 +53,21 @@ export const cardsView: TemplateSchema = {
     sortField: { type: 'string', initial: 'date', syncParam: 'sort' },
     displayMode: { type: 'string', initial: 'expanded', persist: 'cards.displayMode' },
     searchText: { type: 'string', initial: '', syncParam: 'q' },
+    /*
+      Whether the Calls list shows calls nobody said anything in.
+
+      A call's record is now created when the call *starts* rather than when somebody first speaks,
+      which is what gives a live call an identity to hang its settings and its roster on — and the
+      cost is that a call somebody opened and closed leaves a record behind. Nothing deletes it: the
+      only agent who could judge an empty call discardable is one who can see the whole call, and
+      under a partition that is nobody, so a delete would eventually eat a transcript that existed
+      on the other side of the split.
+
+      So it is folded rather than removed, which is a display decision and reversible. Persisted
+      rather than synced: it is a preference about how much noise you want, not something a shared
+      link should impose.
+    */
+    showEmptyCalls: { type: 'boolean', initial: false, persist: 'cards.showEmptyCalls' },
   },
   ...pageShell({
     gap: '400',

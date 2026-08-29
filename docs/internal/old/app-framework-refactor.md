@@ -267,7 +267,7 @@ P1 must come first since P3 simplifies `initializeIntegrations.ts` which P1 modi
     deps: @coasys/ad4m, solid-js, @solidjs/router, zod
     deps: @we/tokens, @we/themes, @we/primitives, @we/components
     deps: @we/schema-shared, @we/schema-solid
-    deps: @we/models, @we/widgets, @we/cesium-layers, three, gsap
+    deps: @we/entities, @we/widgets, @we/cesium-layers, three, gsap
 
 we-iframe (in @we/primitives — enhanced)
 ├── AD4M credential sharing  (postMessage on load when ad4m=true)

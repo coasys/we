@@ -54,7 +54,7 @@ WE's data layer is [AD4M](https://ad4m.dev): agent-centric, local-first, peer-to
   (e.g. image uploads → FILE_STORAGE_LANGUAGE → an expression URL published to a perspective).
 - **Model (Ad4mModel)** — WE's ORM over perspective links (`Space.create`, `findAll`, `findOne`,
   `include`, relation accessors). CRUD conventions are in the generated **Developer Patterns**
-  section; model authoring rules are in `packages/models/CONVENTIONS.md`.
+  section; model authoring rules are in `packages/entities/CONVENTIONS.md`.
 
 The Solid app (`@we/app-shell`) reaches AD4M through the **backend contract** rather than
 directly: `@we/backend-shared` declares the ports (`DataSource` + `QueryAdapter`, ephemeral,

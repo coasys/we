@@ -2,7 +2,7 @@ import type { SchemaNode } from '@we/schema-shared';
 import { sectionCard } from '@we/template-kit';
 
 import { createSignalTypeModal } from './vocabulary/CreateSignalTypeModal.ts';
-import { modelsSection } from './vocabulary/ModelsSection.ts';
+import { modelsSection } from './vocabulary/EntitiesSection.ts';
 import { relationshipTypesSection } from './vocabulary/RelationshipTypesSection.ts';
 import { signalTypeCard } from './vocabulary/SignalTypeCard.ts';
 

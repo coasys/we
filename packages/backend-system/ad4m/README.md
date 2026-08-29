@@ -10,15 +10,15 @@ The AD4M implementation of `@we/backend-shared`.
   inventory, including the two upstream bugs it degrades around
 - `createAd4mEphemeralPort` — the ephemeral port over perspective signals
 - `agentHelpers` — agent profiles, the identity surface
-- `sdnaModels` — SDNA install and idempotent registration
+- `sdnaEntities` — SDNA install and idempotent registration
 - `perspectiveHelpers` — foreign SHACL shapes → synthesised model classes
-- `modelRegistry` — the AD4M model class registry
-- `neutralManifest` — AD4M manifest entries → the neutral `ModelManifest`
+- `entityRegistry` — the AD4M model class registry
+- `neutralManifest` — AD4M manifest entries → the neutral `EntityManifest`
 
 ## Dependency direction
 
 **This package is imported by the shell and imports nothing from it.** Where that edge previously ran
-backwards it has been inverted: `installSpaceSdna(p, moduleModels)` takes the module-owned models as
+backwards it has been inverted: `installSpaceSdna(p, moduleEntities)` takes the module-owned models as
 an argument rather than reading the host's module registry. The caller already holds the registry, so
 passing them costs nothing, and the alternative would have been the single edge pointing the wrong
 way through the whole tree.

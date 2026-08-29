@@ -87,7 +87,7 @@ describe('call module — contributions', () => {
 
   it('never points the rail at an action that could end a call', () => {
     /*
-      The reason `goToCall` exists rather than the rail calling `joinSpaceCall` directly. `join`
+      The reason `goToCall` exists rather than the rail calling `joinCall`/`startCall` directly. `join`
       returns early on a matching id and tears the current call down on any other, so wiring the rail
       to it made one button silently dead in the space call and a silent hang-up in every other —
       including a call running in a different space, reached by a button the user pressed to *look*
@@ -96,7 +96,8 @@ describe('call module — contributions', () => {
       Asserted on the declaration because that is the whole of the coupling: it is a string, and
       nothing else would notice it being changed back.
     */
-    expect(callModule.launcher!.action).not.toBe('joinSpaceCall');
+    expect(callModule.launcher!.action).not.toBe('joinCall');
+    expect(callModule.launcher!.action).not.toBe('startCall');
     expect(callModule.launcher!.action).not.toBe('joinAnchoredCall');
   });
 
@@ -234,10 +235,10 @@ describe('call module — contributions', () => {
     // `ModuleStoreDeps` past `signal` is all optional, so a host with no transport must still be
     // able to construct the store — the module simply cannot do anything.
     moduleRegistry.register(callModule, host, { signal: storeDeps.signal });
-    const store = moduleStores.call as { active: () => boolean; joinSpaceCall: () => void };
+    const store = moduleStores.call as { active: () => boolean; startCall: () => Promise<void> };
 
     expect(store.active()).toBe(false);
-    expect(() => store.joinSpaceCall()).not.toThrow();
+    expect(() => store.startCall()).not.toThrow();
   });
 });
 

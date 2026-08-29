@@ -7,11 +7,11 @@ the shell and feature modules consume them.
 
 **Anything about getting data in and out, or talking to peers.**
 
-- `DataSource` / `ModelClass` / `MutationApi` — the read and write surface
+- `DataSource` / `EntityClass` / `MutationApi` — the read and write surface
 - `QueryAdapter` + the query layer — `QueryIR`, validation, capability planning, the compute-up engine
 - `EphemeralPort` — peer-to-peer transport for coordination that isn't stored
 - presence — roster, liveness, activities
-- `ModelManifest` — the neutral description of an entity's shape
+- `EntityManifest` — the neutral description of an entity's shape
 
 ## What doesn't
 

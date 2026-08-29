@@ -3,7 +3,7 @@ import type { AgentProfileSummary, PublishProfileFields } from '@we/backend-shar
 
 export { isProfileEmpty } from '@we/backend-shared';
 export type { AgentProfileSummary, PublishProfileFields } from '@we/backend-shared';
-import { FILE_STORAGE_LANGUAGE } from '@we/models';
+import { FILE_STORAGE_LANGUAGE } from '@we/entities';
 
 export const WE_PROFILE_SOURCE = 'we://profile';
 export const WE_LOCATION_SOURCE = 'we://location';

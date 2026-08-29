@@ -56,7 +56,7 @@ is ever rewritten in place; a post converges when it is next saved.
 
 A block is a composable unit of content. Each block type is:
 
-- An **AD4M model** (`@we/models`, in `src/manifest/blocks/`) — the persistence-level representation
+- An **AD4M model** (`@we/entities`, in `src/manifest/blocks/`) — the persistence-level representation
 - A **registration** (`registerBlock({ nodeTypes, model, entity })`) binding the `_type` to it
 - A **display component** (read-only render) and an **input component** (edit-mode render)
 - In the editor, a **schema node** derived from the registration by `createBlockSchema` — an atom
@@ -66,8 +66,8 @@ A block is a composable unit of content. Each block type is:
 
 ## Adding a New Block Type
 
-1. **Create the model** in `@we/models/src/manifest/blocks/` (extend `WeNode`, add `version: number`
-   — see `@we/models` CONVENTIONS), then `generate:types` and `generate:classes`.
+1. **Create the model** in `@we/entities/src/manifest/blocks/` (extend `WeNode`, add `version: number`
+   — see `@we/entities` CONVENTIONS), then `generate:types` and `generate:classes`.
 
 2. **Register the model** in `@we/block-shared`'s `registerCoreBlocks()` (`shared/src/core-blocks.ts`):
 

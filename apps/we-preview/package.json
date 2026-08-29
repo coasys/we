@@ -17,7 +17,7 @@
     "@we/backend-inmemory": "workspace:*",
     "@we/backend-shared": "workspace:*",
     "@we/components": "workspace:*",
-    "@we/models": "workspace:*",
+    "@we/entities": "workspace:*",
     "@we/template-fixtures": "workspace:*",
     "solid-js": "^1.9.15"
   },

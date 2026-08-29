@@ -13,8 +13,8 @@ import type { EphemeralPort } from './ephemeral';
 import type { InterpretationPort } from './interpretation';
 import type { LanguageModelPort } from './languageModel';
 import type { AgentSessionPort, DatasetLifecyclePort } from './lifecycle';
-import type { ModelManifest } from './manifest';
-import type { ModelManifestEntry } from './manifestEntry';
+import type { EntityManifest } from './manifest';
+import type { EntityManifestEntry } from './manifestEntry';
 import type { AgentProfileSummary, PublishProfileFields } from './profileTypes';
 import type { RuntimeAdminPort } from './runtimeAdmin';
 import type { TranscriptionPort } from './transcription';
@@ -64,7 +64,7 @@ export interface SchemaPort {
    * Discover schemas foreign to the host (another app's entities synced into the dataset),
    * registering them for name-based query resolution and returning their manifest entries.
    */
-  foreignSchemas(dataset: DatasetHandle): Promise<ModelManifestEntry[]>;
+  foreignSchemas(dataset: DatasetHandle): Promise<EntityManifestEntry[]>;
   /**
    * Compile a declared manifest into this backend's installable schema payloads, registered for
    * name-based query resolution. Keys are entity names. `resolveExternal` resolves relation
@@ -72,7 +72,7 @@ export interface SchemaPort {
    * payloads — pass through what the backend previously minted, never construct one.
    */
   declare(
-    manifest: ModelManifest,
+    manifest: EntityManifest,
     opts: { moduleId: string; predicates?: Record<string, string>; resolveExternal?: (name: string) => unknown },
   ): Record<string, unknown>;
   /**
@@ -84,7 +84,7 @@ export interface SchemaPort {
    */
   declareInDataset(
     dataset: DatasetHandle,
-    manifest: ModelManifest,
+    manifest: EntityManifest,
     opts: { moduleId: string },
   ): Record<string, unknown>;
   /**
@@ -137,7 +137,7 @@ export interface ProfileDirectoryPort {
 /** What the host hands the backend to build the renderer's data bindings. */
 export interface DataBindingDeps {
   currentDataset(): DatasetHandle | null;
-  currentDatasetModels(): ModelManifestEntry[];
+  currentDatasetEntities(): EntityManifestEntry[];
   /** Reactive profile cache read — must be read inside the accessor (see `$identities`). */
   profiles(): Array<{ did?: string }>;
   fetchProfile(id: string): Promise<void> | void;

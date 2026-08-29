@@ -13,7 +13,7 @@ import { OperandInput } from './ValueRefPicker';
  * style props next).
  *
  * Conditions the grammar can't represent exactly fall back to the JSON editor rather
- * than being approximated — see `conditionModel.ts`. The JSON editor is also always
+ * than being approximated — see `conditionRecord.ts`. The JSON editor is also always
  * reachable from the toggle, so the builder never becomes a ceiling.
  */
 

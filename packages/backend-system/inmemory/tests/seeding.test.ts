@@ -11,7 +11,7 @@
  * Presence is a *message*, so it has to arrive over the bus the way a heartbeat would, and keep
  * arriving, because presence ages itself out on a TTL by design.
  */
-import { getModel } from '@we/models';
+import { getEntity } from '@we/entities';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createInMemoryBackendPorts } from '../src/lifecycle';
@@ -148,7 +148,7 @@ describe('scope drill-down', () => {
     const dataset = (await ports.lifecycle.get('ds-main'))!;
     const handle = dataset.handle;
 
-    const CollectionBlock = getModel('CollectionBlock') as unknown as {
+    const CollectionBlock = getEntity('CollectionBlock') as unknown as {
       create(h: unknown, d: Record<string, unknown>): Promise<{ id: string; addChildren(x: unknown): Promise<void> }>;
       findAll(h: unknown, q?: Record<string, unknown>): Promise<Array<{ id: string }>>;
     };

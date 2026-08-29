@@ -1,7 +1,9 @@
 import type { SchemaNode } from '@we/schema-shared';
 import { cardList, cardShell, emptyState, peopleRow } from '@we/template-kit';
 
-const hasConversationSubgroupModel = { $: "find(datasetStore.currentDatasetModels, { name: 'ConversationSubgroup' })" };
+const hasConversationSubgroupRecord = {
+  $: "find(datasetStore.currentDatasetEntities, { name: 'ConversationSubgroup' })",
+};
 
 /*
   Two ways this list can be empty, one sentence for both.
@@ -11,13 +13,13 @@ const hasConversationSubgroupModel = { $: "find(datasetStore.currentDatasetModel
   nothing. The distinction is real but not the reader's problem: what they asked was whether this
   space has Flux conversation subgroups, and the answer is no either way.
 */
-const noModel: SchemaNode = emptyState({ icon: 'chat-dots', label: 'Flux conversation subgroups', delay: 0 });
+const noRecord: SchemaNode = emptyState({ icon: 'chat-dots', label: 'Flux conversation subgroups', delay: 0 });
 const noRows: SchemaNode = emptyState({ icon: 'chat-dots', label: 'Flux conversation subgroups', searchable: true });
 
 export const fluxConversationSubgroupsList: SchemaNode = {
   type: '$if',
   props: {
-    condition: hasConversationSubgroupModel,
+    condition: hasConversationSubgroupRecord,
     then: cardList({
       query: {
         entity: 'ConversationSubgroup',
@@ -64,6 +66,6 @@ export const fluxConversationSubgroupsList: SchemaNode = {
         }),
       ],
     }),
-    else: noModel,
+    else: noRecord,
   },
 };

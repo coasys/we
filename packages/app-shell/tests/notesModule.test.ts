@@ -5,7 +5,7 @@
  * install path, and the predicate namespace that becomes the convention the moment it ships. It is
  * fully solo-testable, since a personal perspective is local-only and needs no neighbourhood sync.
  */
-import { createAd4mSchemaPort, getModel } from '@we/backend-ad4m';
+import { createAd4mSchemaPort, getEntity } from '@we/backend-ad4m';
 import { createInMemorySchemaPort } from '@we/backend-inmemory';
 import { NOTE_PREDICATES, notesModule } from '@we/module-notes';
 import { checkModuleCompatibility, modulePredicatePrefix, modulePredicateViolations } from '@we/module-shared';
@@ -102,9 +102,9 @@ describe('notes module — contributions', () => {
     expect(store.open()).toBe(false);
   });
 
-  it('resolves its entity by name once the host compiles it, so model.create can write a note', () => {
+  it('resolves its entity by name once the host compiles it, so record.create can write a note', () => {
     // Two things have to happen and they fail at different moments: install puts the *schema* in the
-    // dataset, and compiling puts the *class* where `model.create('Note', …)` and `$query` resolve
+    // dataset, and compiling puts the *class* where `record.create('Note', …)` and `$query` resolve
     // it. Missing the second, the panel renders fine and only adding a note throws — the bug the
     // first version of this module shipped with. Registration alone no longer does it: the class
     // exists only once a backend has compiled the declaration.
@@ -113,10 +113,10 @@ describe('notes module — contributions', () => {
 
     const payloads = moduleRegistry.moduleSchemas(schemas);
     expect(payloads).toHaveLength(1);
-    expect(() => getModel('Note')).not.toThrow();
+    expect(() => getEntity('Note')).not.toThrow();
 
     moduleRegistry.unregister('notes');
-    expect(() => getModel('Note')).toThrow(/not found in registry/);
+    expect(() => getEntity('Note')).toThrow(/not found in registry/);
   });
 
   it('is a working entity on a backend that stores nothing like the first one', async () => {
@@ -128,7 +128,7 @@ describe('notes module — contributions', () => {
     moduleRegistry.register(notesModule, host, storeDeps);
     moduleRegistry.moduleSchemas(schemas);
 
-    const Note = getModel('Note') as unknown as {
+    const Note = getEntity('Note') as unknown as {
       create(d: unknown, data: Record<string, unknown>): Promise<{ text: string; author: string }>;
       findAll(d: unknown, q?: Record<string, unknown>): Promise<{ text: string }[]>;
     };
@@ -149,7 +149,7 @@ describe('notes module — contributions', () => {
     moduleRegistry.moduleSchemas(schemas);
 
     const shape = (
-      getModel('Note') as unknown as { generateSHACL(): { shape: { properties: { name?: string; path: string }[] } } }
+      getEntity('Note') as unknown as { generateSHACL(): { shape: { properties: { name?: string; path: string }[] } } }
     ).generateSHACL().shape.properties;
     expect(shape.find((p) => p.name === 'text')?.path).toBe(NOTE_PREDICATES.text);
   });
@@ -161,7 +161,7 @@ describe('notes module — contributions', () => {
     expect(moduleStores.notes).toBeUndefined();
     expect(slotRegistry.get('notes:0')).toBeUndefined();
     expect(moduleRegistry.models()).toHaveLength(0);
-    expect(() => getModel('Note')).toThrow(/not found in registry/);
+    expect(() => getEntity('Note')).toThrow(/not found in registry/);
   });
 });
 

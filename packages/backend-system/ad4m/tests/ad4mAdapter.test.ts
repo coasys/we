@@ -2,13 +2,13 @@
  * The AD4M QueryAdapter — focus on the logic that isn't just `planQuery`/`irToFlatQuery`: the two
  * conditional degradations `plan()` folds in, and the `scope`→`parent` predicate resolution.
  */
-import type { ModelManifestEntry } from '@we/backend-ad4m';
+import type { EntityManifestEntry } from '@we/backend-ad4m';
 import { createAd4mQueryAdapter } from '@we/backend-ad4m';
 import type { QueryIR } from '@we/backend-shared';
 import { describe, expect, it } from 'vitest';
 
 // A minimal perspective manifest: Conversation has a `subgroupEntities` relation bound to a predicate.
-const MODELS: ModelManifestEntry[] = [
+const MODELS: EntityManifestEntry[] = [
   {
     name: 'Conversation',
     targetClass: 'flux://conversation',
@@ -20,7 +20,7 @@ const MODELS: ModelManifestEntry[] = [
         isCollection: true,
         required: false,
         writable: true,
-        relatedModel: 'ConversationSubgroup',
+        relatedEntity: 'ConversationSubgroup',
       },
     ],
   },
@@ -134,7 +134,7 @@ describe('adapter.plan — AD4M conditional degradations', () => {
 });
 
 describe('adapter.lower', () => {
-  it('lowers to the flat dialect and omits `model` (selected via getModel separately)', () => {
+  it('lowers to the flat dialect and omits `model` (selected via getEntity separately)', () => {
     const opts = adapter.lower(base({ filter: { field: 'status', op: 'eq', value: 'active' }, page: { limit: 5 } }));
     expect(opts).not.toHaveProperty('model');
     expect(opts).toMatchObject({ where: { status: 'active' }, limit: 5 });

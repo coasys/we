@@ -1,4 +1,4 @@
-import type { ModelManifest } from '@we/backend-shared';
+import type { EntityManifest } from '@we/backend-shared';
 
 /**
  * A note, scoped to whichever space it was written in — *declared*, not written against a backend.
@@ -38,7 +38,7 @@ import type { ModelManifest } from '@we/backend-shared';
  * above warns about. So the panel reads both shapes and writes only the new one, and this can be
  * removed in a later release once there is nothing left under it.
  */
-export const NOTE_MANIFEST: ModelManifest = {
+export const NOTE_MANIFEST: EntityManifest = {
   version: '1',
   entities: {
     Note: {

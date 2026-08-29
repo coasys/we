@@ -1,5 +1,5 @@
 import { type EditorHost, EditorHostProvider } from '@we/editor/runtime';
-import { compressImageToFileData, ImageBlock } from '@we/models';
+import { compressImageToFileData, ImageBlock } from '@we/entities';
 import type { ParentProps } from 'solid-js';
 
 import { useDatasetStore } from '../stores/DatasetStore';

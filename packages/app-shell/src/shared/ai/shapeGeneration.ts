@@ -16,7 +16,7 @@ import { validateManifest } from '@we/backend-shared';
 import { draftMember, draftToManifest, type ShapeDraft, type ShapeDraftMember } from '../shapes/shapeDraft';
 
 /** The tool the model must call — mirrors the wizard draft, not the stored manifest. */
-const defineModelTool = {
+const defineEntityTool = {
   name: 'define_model',
   description: 'Define a content model (a record type) for a community space: its name, what it means, and its fields.',
   input_schema: {
@@ -147,6 +147,11 @@ function toolInputToDraft(input: ToolInput): ShapeDraft {
     icon: input.icon ?? '',
     classHint: input.classHint ?? '',
     identityMember: identity?.rowId ?? '',
+    // Off, even though the generation writes interpretation hints. Whether an interpreter may mint
+    // rows into a model is the author's decision and not a property of the description they typed —
+    // the wizard offers the switch beside the hint the generation just wrote, which is where the
+    // question belongs. `generateShapeFields` merges over an existing draft and leaves this alone.
+    extractable: false,
     members,
   };
 }
@@ -215,7 +220,7 @@ async function anthropicTurn(apiKey: string, history: ChatTurn[]): Promise<ToolI
       model: 'claude-sonnet-4-6',
       max_tokens: 4096,
       system: SYSTEM,
-      tools: [defineModelTool],
+      tools: [defineEntityTool],
       tool_choice: { type: 'tool', name: 'define_model' },
       messages: history.map((t) => ({ role: t.role, content: t.text })),
     }),
@@ -245,7 +250,7 @@ async function backendTurn(
 ): Promise<ToolInput> {
   const system =
     `${SYSTEM}\n\nRespond with ONLY a JSON object — no code fences, no commentary — matching this JSON Schema:\n` +
-    JSON.stringify(defineModelTool.input_schema);
+    JSON.stringify(defineEntityTool.input_schema);
   const input = history.map((t) => `${t.role === 'user' ? 'USER' : 'YOUR PREVIOUS ANSWER'}:\n${t.text}`).join('\n\n');
   const raw = await port.prompt(system, input);
   return parseJsonObject(raw);

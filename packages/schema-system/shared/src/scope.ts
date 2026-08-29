@@ -12,7 +12,7 @@
  * the same question and could be rebased on this later.
  */
 
-import type { ModelEntry, StateMemberMeta, StoreEntry } from './contextTypes';
+import type { EntityEntry, StateMemberMeta, StoreEntry } from './contextTypes';
 import type { Expr } from './expressions';
 import { isExpressionToken, parseExpression } from './expressions';
 import { isPropsSchemaNode, isSchemaChild } from './treeUtils';
@@ -53,7 +53,7 @@ export interface ScopeGroup {
 export interface ScopeOptions {
   storeEntries?: StoreEntry[];
   /** Model registry — used to infer item fields for `$each` over a `$query`. */
-  models?: ModelEntry[];
+  models?: EntityEntry[];
 }
 
 // ── Context refs (backend-neutral, always in scope) ──────────────────────────
@@ -141,7 +141,7 @@ export function findNodeChain(root: SchemaNode, nodeId: string): SchemaNode[] | 
  */
 const MODEL_BASE_FIELDS = ['id', 'author', 'createdAt', 'updatedAt'];
 
-function modelProperties(models: ModelEntry[] | undefined, entity: string): string[] | undefined {
+function modelProperties(models: EntityEntry[] | undefined, entity: string): string[] | undefined {
   const model = models?.find((m) => m.name === entity || m.className === entity);
   if (!model) return undefined;
   return [...MODEL_BASE_FIELDS, ...model.fields.map((f) => f.name), ...model.relations.map((r) => r.name)];
@@ -152,11 +152,11 @@ function modelProperties(models: ModelEntry[] | undefined, entity: string): stri
  * instances, unioned with any explicitly declared ones (a store may expose computed
  * fields the model doesn't have).
  */
-function memberProperties(meta: StateMemberMeta, models: ModelEntry[] | undefined): string[] | undefined {
-  const fromModel = meta.model ? modelProperties(models, meta.model) : undefined;
-  if (!fromModel) return meta.properties;
-  if (!meta.properties) return fromModel;
-  return [...new Set([...fromModel, ...meta.properties])];
+function memberProperties(meta: StateMemberMeta, models: EntityEntry[] | undefined): string[] | undefined {
+  const fromRecord = meta.model ? modelProperties(models, meta.model) : undefined;
+  if (!fromRecord) return meta.properties;
+  if (!meta.properties) return fromRecord;
+  return [...new Set([...fromRecord, ...meta.properties])];
 }
 
 function storeMemberMeta(

@@ -1,7 +1,7 @@
 import type {
   AssembledContext,
   ComponentEntry,
-  ModelEntry,
+  EntityEntry,
   PluginCatalog,
   PrimitiveEntry,
   TokenCategory,
@@ -38,7 +38,7 @@ export function assembleReference(ctx: AssembledContext): string {
 
   // Models
   if (context.models.length > 0) {
-    sections.push(formatModels(context.models));
+    sections.push(formatEntities(context.models));
   }
 
   // Stores
@@ -184,7 +184,7 @@ function formatTokens(tokens: TokenCategory[]): string {
   return lines.join('\n');
 }
 
-function formatModels(models: ModelEntry[]): string {
+function formatEntities(models: EntityEntry[]): string {
   const lines: string[] = ['## Block & Entity Models', '', 'Available data models for $query and store data:'];
 
   for (const model of models) {

@@ -13,7 +13,7 @@ import { POCKET_PREDICATES } from './entities';
  * ## Where its data comes from
  *
  * The root dataset, read straight from the fragments with `dataset: 'datasetStore.rootDataset'` and
- * written with `model.create`'s `perspective` option. That surface already existed; what the module
+ * written with `record.create`'s `perspective` option. That surface already existed; what the module
  * contract was missing was permission for a *module's own* entities to be installed there, which is
  * what `entities: { scope: 'agent' }` adds. Only the parts a template genuinely cannot do — building
  * a reference, asking whether one is already held, going to one — are in the store.
@@ -212,7 +212,7 @@ const newFolderForm: SchemaNode = {
             disabled: { $: '!trim(local.newFolderName)' },
             onClick: [
               {
-                $action: 'model.create',
+                $action: 'record.create',
                 args: [
                   'PocketFolder',
                   { name: { $: 'local.newFolderName' } },

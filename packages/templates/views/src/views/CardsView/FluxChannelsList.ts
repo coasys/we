@@ -2,10 +2,10 @@ import type { SchemaNode } from '@we/schema-shared';
 import { cardList, cardShell, emptyState, statChip } from '@we/template-kit';
 
 // Flux's Channel model only exists in perspectives where Flux SDNA is installed (e.g. a
-// Flux community synced into WE). Guard on presence in currentPerspectiveModels so a plain
+// Flux community synced into WE). Guard on presence in currentPerspectiveEntities so a plain
 // WE space just shows the empty-state message instead of firing a query for a model that
 // isn't registered here (which would otherwise surface as an error toast).
-const hasChannelModel = { $: "find(datasetStore.currentDatasetModels, { name: 'Channel' })" };
+const hasChannelRecord = { $: "find(datasetStore.currentDatasetEntities, { name: 'Channel' })" };
 
 /*
   Two ways this list can be empty, one sentence for both.
@@ -15,13 +15,13 @@ const hasChannelModel = { $: "find(datasetStore.currentDatasetModels, { name: 'C
   nothing. The distinction is real but not the reader's problem: what they asked was whether this
   space has Flux channels, and the answer is no either way.
 */
-const noModel: SchemaNode = emptyState({ icon: 'hash', label: 'Flux channels', delay: 0 });
+const noRecord: SchemaNode = emptyState({ icon: 'hash', label: 'Flux channels', delay: 0 });
 const noRows: SchemaNode = emptyState({ icon: 'hash', label: 'Flux channels', searchable: true });
 
 export const fluxChannelsList: SchemaNode = {
   type: '$if',
   props: {
-    condition: hasChannelModel,
+    condition: hasChannelRecord,
     then: cardList({
       query: {
         entity: 'Channel',
@@ -90,6 +90,6 @@ export const fluxChannelsList: SchemaNode = {
         }),
       ],
     }),
-    else: noModel,
+    else: noRecord,
   },
 };

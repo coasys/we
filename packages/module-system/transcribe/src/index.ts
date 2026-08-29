@@ -60,14 +60,14 @@
 import { defineModule, type ModuleStoreDeps } from '@we/module-shared';
 
 import { CALL_CONTROLS_ANCHOR, callControl } from './CallControl.schema';
-import { CALL_STATUS_ANCHOR, extractionStatus } from './ExtractionStatus.schema';
+import { CALL_STATUS_ANCHOR, extractionSignal } from './ExtractionStatus.schema';
 import { panel, transcriptFeed } from './Panel.schema';
 import { createTranscribeStore } from './store';
 
 export { CALL_CONTROLS_ANCHOR, callControl } from './CallControl.schema';
-export { CALL_STATUS_ANCHOR, extractionStatus } from './ExtractionStatus.schema';
+export { CALL_STATUS_ANCHOR, extractionActivity, extractionSignal } from './ExtractionStatus.schema';
 export { panel, transcriptFeed } from './Panel.schema';
-export { CALL_KIND, CALL_PREDICATE, createTranscribeStore, TRANSCRIBE_ACTIVITY, type TranscribeStatus } from './store';
+export { createTranscribeStore, TRANSCRIBE_ACTIVITY, type TranscribeStatus } from './store';
 export { WORKLET_NAME, WORKLET_SOURCE } from './workletSource';
 
 export const transcribeModule = defineModule({
@@ -107,7 +107,7 @@ export const transcribeModule = defineModule({
       a call is what this module is for, and the host has no opinion about where a readout of it
       belongs. A deployment without the call module gets no bar and loses nothing else.
     */
-    { anchor: CALL_STATUS_ANCHOR, node: extractionStatus, order: 10 },
+    { anchor: CALL_STATUS_ANCHOR, node: extractionSignal, order: 10 },
   ],
 
   /**

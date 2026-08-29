@@ -66,7 +66,7 @@ if (meta.polymorphic) {
   const grouped = groupBy(childUris, (uri) => typeMap.get(uri));
   // 4. Hydrate each group with its concrete class from the model registry
   for (const [typeName, uris] of grouped) {
-    const ConcreteClass = modelRegistry.get(typeName) ?? TargetClass;
+    const ConcreteClass = entityRegistry.get(typeName) ?? TargetClass;
     const results = await ConcreteClass.findAll(perspective, { id: { in: uris } });
     for (const r of results) hydrated.set(r.id, r);
   }
@@ -101,7 +101,7 @@ Option 1 (SurrealDB) is preferred for performance.
 
 - CRDT ordering (separate feature)
 - `@HasOne` polymorphic support (can follow same pattern later)
-- Automatic model registry population (consumers call `registerModel()` or models self-register via `@Model`)
+- Automatic model registry population (consumers call `registerEntity()` or models self-register via `@Model`)
 
 ---
 
@@ -131,8 +131,8 @@ change how a step should be done, and one adds a second consumer.
 ### 1. There is no model registry in AD4M core — and there should not be one
 
 The scope list says "Add model registry lookup (**may already exist** — check `Ad4mModel` class
-registry)". It does not: nothing in `core/src/model/*.ts` matches `registerModel` / `modelRegistry` /
-`classRegistry`. WE has one (`@we/models/modelRegistry`); AD4M has none.
+registry)". It does not: nothing in `core/src/model/*.ts` matches `registerEntity` / `entityRegistry` /
+`classRegistry`. WE has one (`@we/entities/entityRegistry`); AD4M has none.
 
 Rather than introduce a global registry upstream, **take a resolver in the same shape
 `fromSHACL` already uses**:
@@ -148,7 +148,7 @@ awkward across multiple perspectives and a hot reload. The consumer passes its r
 or the decorator holds one:
 
 ```ts
-@HasMany(() => WeNode, { through: 'we://children', polymorphic: true, classResolver: getBlockModel })
+@HasMany(() => WeNode, { through: 'we://children', polymorphic: true, classResolver: getBlockRecord })
 ```
 
 ### 2. `sh:class` now survives the round trip — but that is the _declared_ target, not the instance's
@@ -175,7 +175,7 @@ What survives TS-side is **class instantiation**, and that is the interesting pa
 `jsonToModelInstance` (`core/src/model/Ad4mModel.ts:38`) does:
 
 ```ts
-const instance = new ModelClass(perspective, json.id || json.baseExpression);
+const instance = new EntityClass(perspective, json.id || json.baseExpression);
 ```
 
 and at line ~105 instantiates each nested relation item with the single declared `TargetClass`. **That
@@ -202,12 +202,12 @@ The one thing genuinely absent is a **URI → concrete class name** lookup. Its 
 `perspective.isSubjectInstance(uri, className)` answers _"is this URI an instance of class X"_. What
 nothing answers is _"what class is this URI"_, in one call, for many URIs.
 
-That absence is already costing WE, independently of this feature. `resolveBlockModel`
+That absence is already costing WE, independently of this feature. `resolveBlockRecord`
 (`packages/block-system/shared/src/serialization.ts:447`) is:
 
 ```ts
-for (const ModelClass of getRegisteredBlockModels()) {
-  if (await perspective.isSubjectInstance(uri, className)) return ModelClass;
+for (const EntityClass of getRegisteredBlockEntities()) {
+  if (await perspective.isSubjectInstance(uri, className)) return EntityClass;
 }
 ```
 

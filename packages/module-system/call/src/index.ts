@@ -41,7 +41,14 @@ import { createCallStore } from './store';
 
 export { createCallMesh, type CallMesh, type SignallingChannel } from './mesh';
 export { createMediaController, type MediaController, type MediaState } from './media';
-export { anchoredCallId, CALL_PROTOCOL_VERSION, parseCallMessage, spaceCallId } from './protocol';
+export {
+  CALL_KIND,
+  CALL_PREDICATE,
+  CALL_PROTOCOL_VERSION,
+  callRecordId,
+  parseCallMessage,
+  recordCallId,
+} from './protocol';
 export { type CallDockEdge, type CallTile, type CallTileState, createCallStore } from './store';
 
 /**
@@ -1141,24 +1148,67 @@ const bar: SchemaNode = {
             ay: 'center',
             zIndex: 'sticky',
           },
+          /*
+            One row per call, because a space can now hold several.
+
+            This was a single line — "3 in a call · Join" — which was exactly right while a space had
+            one call and is a lie the moment it has two: the count summed strangers into one number
+            and the button joined whichever the derived id happened to name. A person arriving at a
+            space with two conversations in it is choosing, not confirming, so the prompt has to show
+            them the choice.
+
+            It stays a bar rather than becoming a modal: it is ambient, it must not take the screen
+            away from what somebody came here to do, and one call — still the common case — reads as
+            the same single line it always did.
+          */
           children: [
             {
-              type: 'AvatarStack',
-              // `ongoing` returns faces rather than presence records — see the store. Handing an
-              // avatar something with no `image` or `hash` gets the generic person glyph, once per
-              // participant, which is what this used to be.
-              props: { avatars: { $: 'modules.call.ongoing' }, size: 'sm', max: 4 },
+              type: '$each',
+              props: { items: { $: 'modules.call.liveCalls' }, as: 'live' },
+              children: [
+                {
+                  type: 'Row',
+                  props: { gap: '300', ay: 'center' },
+                  children: [
+                    {
+                      type: 'AvatarStack',
+                      // Faces rather than presence records — see the store. Handing an avatar
+                      // something with no `image` or `hash` gets the generic person glyph, once per
+                      // participant, which is what this used to be.
+                      props: { avatars: { $: 'live.faces' }, size: 'sm', max: 4 },
+                    },
+                    {
+                      type: 'we-text',
+                      // One line, for the same reason the in-call readout keeps one — see
+                      // `participants`. Truncated rather than wrapped: the bar is chrome, and a call
+                      // with six named people in it must not push the button off the screen.
+                      props: { variant: 'label', truncate: true, maxWidth: '18ch' },
+                      children: [{ $: 'live.label' }],
+                    },
+                    {
+                      type: 'we-button',
+                      props: {
+                        size: 'sm',
+                        onClick: { $action: 'modules.call.joinCall', args: [{ $: 'live.id' }] },
+                      },
+                      children: ['Join'],
+                    },
+                  ],
+                },
+              ],
             },
             {
-              type: 'we-text',
-              // One line, for the same reason the in-call readout keeps one — see `participants`.
-              props: { variant: 'label', styles: { whiteSpace: 'nowrap' } },
-              children: [{ type: 'we-number', props: { value: { $: 'count(modules.call.ongoing)' } } }, ' in a call'],
-            },
-            {
+              // Starting a second call beside one already running is a real thing to want — a
+              // breakout, a different subject — and the only control that used to exist for it
+              // joined the call that was already there.
               type: 'we-button',
-              props: { size: 'sm', onClick: { $action: 'modules.call.joinSpaceCall' } },
-              children: ['Join'],
+              props: {
+                variant: 'ghost',
+                size: 'sm',
+                title: 'Start another call',
+                onClick: { $action: 'modules.call.startCall' },
+              },
+              children: [{ type: 'we-icon', props: { name: 'plus' } }],
             },
           ],
         }),
@@ -1417,7 +1467,7 @@ const anchoredCallButton: SchemaNode = {
 /** A bare "start a call here" trigger, for templates that want one in their own chrome. */
 const startCallButton: SchemaNode = {
   type: 'we-button',
-  props: { variant: 'ghost', size: 'sm', onClick: { $action: 'modules.call.joinSpaceCall' } },
+  props: { variant: 'ghost', size: 'sm', onClick: { $action: 'modules.call.startCall' } },
   children: [{ type: 'we-icon', props: { name: 'phone-call' } }],
 };
 

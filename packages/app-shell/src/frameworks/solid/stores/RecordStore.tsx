@@ -25,9 +25,9 @@
 import type { EntitySchema } from '@we/backend-shared';
 import { createBlocks } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
+import { getEntity, Placement, PREDICATES, runEntityTransaction, TypeStyle } from '@we/entities';
+import { CORE_MANIFEST } from '@we/entities/manifest';
 import { PLACEMENT_UNSET } from '@we/graph-expanders';
-import { getModel, Placement, PREDICATES, runModelTransaction, TypeStyle } from '@we/models';
-import { CORE_MANIFEST } from '@we/models/manifest';
 import { Accessor, batch, createContext, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
 import { dropAllPending, dropPending, holdPending, type PendingWrites } from '../../../shared/shapes/pendingWrites';
@@ -494,7 +494,7 @@ export function RecordStoreProvider(props: ParentProps) {
    * Compose a card onto a board and place it, in one write group.
    *
    * `createBlocks` transacts internally, so it takes the batch rather than opening its own — see
-   * `runModelTransaction`'s `join`. Everything here lands as a single commit, which is the whole
+   * `runEntityTransaction`'s `join`. Everything here lands as a single commit, which is the whole
    * point: the board never observes a card that exists but is not yet anywhere.
    */
   async function createCardOnBoard(
@@ -506,7 +506,7 @@ export function RecordStoreProvider(props: ParentProps) {
     const parent = { id: options.board, predicate: PREDICATES.CHILDREN };
 
     try {
-      await runModelTransaction(dataset.handle, async (tx) => {
+      await runEntityTransaction(dataset.handle, async (tx) => {
         const root = (await createBlocks(dataset.handle as never, editorState as never, {
           kind: 'card',
           anchor: parent,
@@ -714,7 +714,7 @@ export function RecordStoreProvider(props: ParentProps) {
 
     setSavingRecord(true);
     try {
-      const Model = getModel(draft.entity);
+      const Model = getEntity(draft.entity);
       const link = pendingLink();
       /*
         The endpoint *types* go in with the fields; the endpoints themselves are linked after.

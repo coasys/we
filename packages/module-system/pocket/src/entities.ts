@@ -1,4 +1,4 @@
-import type { ModelManifest } from '@we/backend-shared';
+import type { EntityManifest } from '@we/backend-shared';
 
 /**
  * What the Pocket stores, declared rather than written against a backend.
@@ -35,7 +35,7 @@ import type { ModelManifest } from '@we/backend-shared';
  *
  * Re-resolution is best-effort and on demand — see the store's `refresh`.
  */
-export const POCKET_MANIFEST: ModelManifest = {
+export const POCKET_MANIFEST: EntityManifest = {
   version: '1',
   entities: {
     PocketFolder: {

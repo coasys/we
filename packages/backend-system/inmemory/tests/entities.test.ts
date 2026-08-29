@@ -9,7 +9,7 @@
  * Where a manifest turns out to be missing something, this is where it shows up, because nothing
  * here can fall back on knowledge the AD4M classes happen to encode.
  */
-import { CORE_MANIFEST } from '@we/models/manifest';
+import { CORE_MANIFEST } from '@we/entities/manifest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { compileEntities } from '../src/entities';

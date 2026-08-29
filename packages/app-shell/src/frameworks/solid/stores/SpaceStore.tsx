@@ -1,5 +1,5 @@
 import { buildGuestLink } from '@shared/guestLink';
-import { containmentPredicate, gatherTranscriptTurns, type TurnModel } from '@shared/interpretation/transcriptTurns';
+import { containmentPredicate, gatherTranscriptTurns, type TurnRecord } from '@shared/interpretation/transcriptTurns';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { moduleRegistry, moduleStores, type ModuleSurface, moduleSurface } from '@shared/registries/moduleRegistry';
 import { defaultViewOrder, viewRegistry } from '@shared/registries/viewRegistry';
@@ -34,13 +34,14 @@ import {
 import { toastService } from '@we/components/solid';
 import {
   AGENT_DEFAULT,
+  CallExtraction,
   CollectionBlock,
   compressImageToFileData,
   type DatasetProxy,
   dataURIToFileData,
   type FileData,
   FOLLOW_SPACE,
-  getModelForPerspective,
+  getEntitiesForPerspective,
   LocationBlock,
   MutedAgent,
   PREDICATES,
@@ -50,7 +51,7 @@ import {
   SignalType,
   Space,
   SpacePreference,
-} from '@we/models';
+} from '@we/entities';
 import type { ResolvedView, TemplateSchema } from '@we/schema-shared';
 import { hasViewsMarker } from '@we/schema-shared';
 import {
@@ -70,6 +71,7 @@ import { type AppDataset, useDatasetStore } from './DatasetStore';
 import { useProfileStore } from './ProfileStore';
 import { useRouteStore } from './RouteStore';
 import { useSessionStore } from './SessionStore';
+import { useShapeStore } from './ShapeStore';
 import { useShellStore } from './ShellStore';
 import { useTemplateStore } from './TemplateStore';
 import { useThemeStore } from './ThemeStore';
@@ -163,6 +165,29 @@ export interface SpaceListEntry {
  * A plain function over the stored string rather than a memo over the current space, because the
  * settings page answers this for spaces the agent is not standing in.
  */
+/**
+ * What a space extracts before anybody decides — the two classes that were hardcoded until this
+ * setting existed.
+ *
+ * A migration floor, not a default anybody chose. `Space.extractionTargets` follows the
+ * `enabledModules` rule that empty means "not decided", and reading it as "none" would make every
+ * space that predates the field silently stop extracting with nothing on screen to say why. The
+ * first toggle writes the resolved list and the community owns it from then on.
+ */
+const LEGACY_EXTRACTION_TARGETS = ['TaskBlock', 'EventBlock'];
+
+/** A JSON array of entity names as stored on `Space.extractionTargets` / `CallExtraction.entities`. */
+function parseEntityList(raw: string | undefined): string[] | null {
+  if (raw === undefined || raw === '') return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((name): name is string => typeof name === 'string') : null;
+  } catch {
+    console.warn('extraction targets are not valid JSON; falling back');
+    return null;
+  }
+}
+
 function resolveEnabledModules(raw: string | undefined): string[] {
   if (raw) {
     try {
@@ -379,6 +404,8 @@ export interface SpaceStore {
    * a refresh, so gating on that flashes "Join this Space" at someone already inside.
    */
   routeSpaceUnjoined: Accessor<boolean>;
+  /** `/space/<segment>` for the space on screen, or empty outside one. */
+  spacePath: Accessor<string>;
   creatingSpace: Accessor<boolean>;
   /**
    * The space a join is running for right now — its shared id — or `''` when none is.
@@ -607,6 +634,19 @@ export interface SpaceStore {
    */
   shareExtractionDetail: Accessor<boolean>;
   setShareExtractionDetail: (enabled: boolean, spaceUuid?: string) => Promise<void>;
+  /**
+   * Which models this community's calls start out extracting.
+   *
+   * The middle of three layers: the codebase says what is a *candidate*
+   * (`shapeStore.extractionCandidates`), this says which of them a call here begins with, and a
+   * call's participants may add or remove for themselves. Always intersected with the candidates,
+   * so a model since deleted cannot reach a pass and fail it.
+   *
+   * A community decision, readable by every member; writing it is space-settings. Unset falls back
+   * to the two classes that were hardcoded before the setting existed, so nothing regresses.
+   */
+  extractionTargets: Accessor<string[]>;
+  setExtractionTarget: (entity: string, on: boolean, spaceUuid?: string) => Promise<void>;
   /** Turn a module on or off for this agent everywhere. */
   setModuleInstalled: (moduleId: string, installed: boolean) => Promise<void>;
   /** Show or hide a module for this agent in one space. Private to this agent. */
@@ -680,6 +720,7 @@ const SPACE_AVATAR_PX = 512;
 export function SpaceStoreProvider(props: ParentProps) {
   const session = useSessionStore();
   const datasetStore = useDatasetStore();
+  const shapeStore = useShapeStore();
   const profileStore = useProfileStore();
   const routeStore = useRouteStore();
   const templateStore = useTemplateStore();
@@ -921,6 +962,31 @@ export function SpaceStoreProvider(props: ParentProps) {
   /** `installedModules` as a set — the shape both the list and the intersection want. */
   const installedSet = createMemo(() => new Set(installedModules()));
 
+  /*
+    Row identity, held stable while a row's *content* is unchanged.
+
+    `<For>` — which is what `$each` renders through — keys by reference, so handing it a fresh
+    object for every row on every recompute destroys and rebuilds the whole subtree. That is not a
+    render-cost point: everything below it loses its `$localState`, so toggling any one setting in
+    the space-settings panel reset the open tab and threw away a half-typed name and description.
+    The query path solved this long ago with `reconcile({ key: 'id' })`; a store-backed list has no
+    such protection, so it is done here.
+
+    `location` is compared by reference because `updateSpaceInCache` clones the space and carries it
+    through untouched; everything else is plain data and compares as JSON. A row whose content
+    genuinely changed still gets a new object, and still remounts — which is correct, and why the
+    settings panel also holds its open tab *above* the `$each`.
+  */
+  const rowCache = new Map<string, { signature: string; location: unknown; row: SpaceListEntry }>();
+  const stableRow = (row: SpaceListEntry): SpaceListEntry => {
+    const { location, ...rest } = row;
+    const signature = JSON.stringify(rest);
+    const cached = rowCache.get(row.uuid);
+    if (cached && cached.signature === signature && cached.location === location) return cached.row;
+    rowCache.set(row.uuid, { signature, location, row });
+    return row;
+  };
+
   /**
    * The spaces list: one row per joined dataset the agent can act on.
    *
@@ -931,7 +997,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   const spaceList = createMemo<SpaceListEntry[]>(() =>
     datasetStore.orderedDatasets().map((ds) => {
       const space = mySpaces().find((s) => isSpaceSelf(s, ds));
-      return {
+      return stableRow({
         uuid: ds.id,
         // A foreign dataset has no Space record to name it, so the dataset's own name stands in.
         name: space?.name || ds.name,
@@ -953,7 +1019,7 @@ export function SpaceStoreProvider(props: ParentProps) {
         themeOverride: themeOverrideFor(ds.id),
         shareLink: shareLinkFor(ds),
         guestLink: guestLinkFor(ds),
-      };
+      });
     }),
   );
 
@@ -1067,12 +1133,12 @@ export function SpaceStoreProvider(props: ParentProps) {
     space: SpaceInput,
     location?: Partial<LocationBlock>,
   ): Promise<Space> {
-    const spaceModel = await Space.create(dataset, space as Partial<Space>);
+    const spaceRecord = await Space.create(dataset, space as Partial<Space>);
     if (location) {
-      const locationModel = await LocationBlock.create(dataset, location);
-      await spaceModel.setLocation(locationModel);
+      const locationRecord = await LocationBlock.create(dataset, location);
+      await spaceRecord.setLocation(locationRecord);
     }
-    return spaceModel;
+    return spaceRecord;
   }
 
   async function createSpace(
@@ -1134,16 +1200,16 @@ export function SpaceStoreProvider(props: ParentProps) {
       const locationData = location ?? undefined;
 
       // Write to own dataset
-      const spaceModel = await addSpaceToDataset(spaceHandle, spaceData, locationData);
-      console.log('SpaceStore: created space model for new dataset', spaceModel);
+      const spaceRecord = await addSpaceToDataset(spaceHandle, spaceData, locationData);
+      console.log('SpaceStore: created space model for new dataset', spaceRecord);
 
       // Sync to global discovery space when the user opted in.
       // Space.create returns relations unhydrated, so we pass avatarData, coverImageData,
-      // and locationData directly rather than reading them back from spaceModel.
+      // and locationData directly rather than reading them back from spaceRecord.
       if (discovery === 'listed') {
         const globalDs = datasetStore.globalDataset();
         if (globalDs) {
-          await syncSpaceToParent(spaceModel, globalDs.handle, session.backendPorts()!.schemas, {
+          await syncSpaceToParent(spaceRecord, globalDs.handle, session.backendPorts()!.schemas, {
             locationData,
             avatarData,
             coverImageData,
@@ -1154,7 +1220,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       // Track locally so the sidebar updates with the action rather than with the backend's
       // change event (which may lag, or on web may not fire at all).
       await datasetStore.trackDataset(spaceRef);
-      setMySpaces((prev) => [...prev, spaceModel]);
+      setMySpaces((prev) => [...prev, spaceRecord]);
     } catch (error) {
       console.error('SpaceStore: createSpace error', error);
       toastService.error('Could not create the space.');
@@ -1207,19 +1273,19 @@ export function SpaceStoreProvider(props: ParentProps) {
       ...(avatarData && { avatar: avatarData }),
     };
 
-    const spaceModel = await addSpaceToDataset(ds.handle, spaceData);
+    const spaceRecord = await addSpaceToDataset(ds.handle, spaceData);
 
-    if (!mySpaces().some((s) => s.uuid === spaceModel.uuid)) {
-      setMySpaces((prev) => [...prev, spaceModel]);
+    if (!mySpaces().some((s) => s.uuid === spaceRecord.uuid)) {
+      setMySpaces((prev) => [...prev, spaceRecord]);
     }
 
     // Re-run switchDataset on the same uuid rather than hand-duplicating its
-    // classes/registerDynamicModels/manifest refresh: this atomically flips isWeSpace,
+    // classes/registerDynamicEntities/manifest refresh: this atomically flips isWeSpace,
     // refreshes the dynamic model registry, and hands this store a new dataset handle
     // so its currentSpace effect re-fires now that a Space instance exists.
     await datasetStore.switchDataset(ds.id);
 
-    return spaceModel;
+    return spaceRecord;
   }
 
   /**
@@ -1289,11 +1355,11 @@ export function SpaceStoreProvider(props: ParentProps) {
 
     // Load the Space model and push into mySpaces so the sidebar shows the correct
     // name immediately, without requiring a reboot.
-    const joinedSpaceModel = joinedRef.sharedId
+    const joinedSpaceRecord = joinedRef.sharedId
       ? await Space.findOne(joinedHandle, { where: { url: joinedRef.sharedId } }).catch(() => null)
       : null;
-    if (joinedSpaceModel && !mySpaces().some((s) => s.url === joinedSpaceModel.url)) {
-      setMySpaces((prev) => [...prev, joinedSpaceModel]);
+    if (joinedSpaceRecord && !mySpaces().some((s) => s.url === joinedSpaceRecord.url)) {
+      setMySpaces((prev) => [...prev, joinedSpaceRecord]);
     }
 
     if (focus) await datasetStore.switchDataset(joinedRef.id);
@@ -1424,9 +1490,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     const sharedCid = ds.sharedId;
     if (untrack(mySpaces).some((s) => s.url === sharedCid)) return;
     void (async () => {
-      const spaceModel = await Space.findOne(ds.handle, { where: { url: sharedCid } }).catch(() => null);
-      if (spaceModel && !untrack(mySpaces).some((s) => s.url === spaceModel.url)) {
-        setMySpaces((prev) => [...prev, spaceModel]);
+      const spaceRecord = await Space.findOne(ds.handle, { where: { url: sharedCid } }).catch(() => null);
+      if (spaceRecord && !untrack(mySpaces).some((s) => s.url === spaceRecord.url)) {
+        setMySpaces((prev) => [...prev, spaceRecord]);
       }
     })();
   });
@@ -1616,17 +1682,17 @@ export function SpaceStoreProvider(props: ParentProps) {
       field === 'avatar' ? 'space-image' : 'space-cover',
       field === 'avatar' ? SPACE_AVATAR_PX : undefined,
     );
-    const [spaceModel] = await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) });
-    if (!spaceModel) return;
-    await Space.update(ds.handle, spaceModel.id, { [field]: fileData });
+    const [spaceRecord] = await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) });
+    if (!spaceRecord) return;
+    await Space.update(ds.handle, spaceRecord.id, { [field]: fileData });
     // Only the current space has a live subscription refreshing it; every other row in the spaces
     // list is served from this cache, so without it the change would not appear until a reload.
     updateSpaceInCache(ds, { [field]: fileData } as never);
-    if (spaceModel.discovery === 'listed') {
+    if (spaceRecord.discovery === 'listed') {
       const globalDs = datasetStore.globalDataset();
       if (globalDs) {
         const imageOpt = field === 'avatar' ? { avatarData: fileData } : { coverImageData: fileData };
-        await syncSpaceToParent(spaceModel, globalDs.handle, session.backendPorts()!.schemas, imageOpt).catch((err) =>
+        await syncSpaceToParent(spaceRecord, globalDs.handle, session.backendPorts()!.schemas, imageOpt).catch((err) =>
           console.error('SpaceStore: sync image to global failed', err),
         );
       }
@@ -1638,18 +1704,18 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (!ds) return;
     const currentDataset = ds.handle;
 
-    const [spaceModel] = await Space.findAll(currentDataset, {
+    const [spaceRecord] = await Space.findAll(currentDataset, {
       where: spaceSelfWhere(ds),
       include: { location: true },
     });
-    if (!spaceModel) return;
+    if (!spaceRecord) return;
 
-    const previousDiscovery = spaceModel.discovery;
+    const previousDiscovery = spaceRecord.discovery;
 
-    if (updates.name !== undefined) spaceModel.name = updates.name;
-    if (updates.description !== undefined) spaceModel.description = updates.description;
-    if (updates.discovery !== undefined) spaceModel.discovery = updates.discovery;
-    await spaceModel.save();
+    if (updates.name !== undefined) spaceRecord.name = updates.name;
+    if (updates.description !== undefined) spaceRecord.description = updates.description;
+    if (updates.discovery !== undefined) spaceRecord.discovery = updates.discovery;
+    await spaceRecord.save();
     // See updateSpaceImage — only the current space is refreshed by a live subscription.
     const { location: _location, ...scalars } = updates;
     updateSpaceInCache(ds, scalars as never);
@@ -1680,7 +1746,7 @@ export function SpaceStoreProvider(props: ParentProps) {
           ...(loc.country && { country: loc.country }),
           ...(loc.countryCode && { countryCode: loc.countryCode }),
         });
-        await spaceModel.setLocation(newLoc);
+        await spaceRecord.setLocation(newLoc);
       }
       /*
         The cached row carries the location now, and the write above deliberately excluded it from
@@ -1696,14 +1762,14 @@ export function SpaceStoreProvider(props: ParentProps) {
 
     const effectiveDiscovery = updates.discovery ?? previousDiscovery;
     if (effectiveDiscovery === 'listed') {
-      // Pass locationData explicitly when location changed — the included spaceModel.location
+      // Pass locationData explicitly when location changed — the included spaceRecord.location
       // snapshot is stale after our delete+recreate. null signals explicit removal to syncSpaceToParent.
       const syncOpts = updates.location !== undefined ? { locationData: updates.location } : {};
-      await syncSpaceToParent(spaceModel, globalDs.handle, session.backendPorts()!.schemas, syncOpts).catch((err) =>
+      await syncSpaceToParent(spaceRecord, globalDs.handle, session.backendPorts()!.schemas, syncOpts).catch((err) =>
         console.error('SpaceStore: sync meta to global failed', err),
       );
     } else if (previousDiscovery === 'listed') {
-      await removeSpaceFromParent(spaceModel.uuid, globalDs.handle).catch((err) =>
+      await removeSpaceFromParent(spaceRecord.uuid, globalDs.handle).catch((err) =>
         console.error('SpaceStore: remove from global failed', err),
       );
     }
@@ -1777,12 +1843,12 @@ export function SpaceStoreProvider(props: ParentProps) {
       // turn is — which entities can be one, which rows are too broken to keep, and the ordering
       // that makes a transcript a transcript rather than a bag of sentences — is one decision, and
       // an export that answered it differently would disagree with what the model was shown.
-      const modelFor = (entity: string) => getModelForPerspective(entity, p);
-      const predicate = containmentPredicate(modelFor, datasetStore.currentDatasetModels());
+      const modelFor = (entity: string) => getEntitiesForPerspective(entity, p);
+      const predicate = containmentPredicate(modelFor, datasetStore.currentDatasetEntities());
       const turns = predicate
         ? await gatherTranscriptTurns(
             {
-              modelFor: (entity) => modelFor(entity) as TurnModel | undefined,
+              modelFor: (entity) => modelFor(entity) as TurnRecord | undefined,
               handle: p,
               containmentPredicate: predicate,
             },
@@ -1869,6 +1935,95 @@ export function SpaceStoreProvider(props: ParentProps) {
   const autoInterpret = createMemo<boolean>(() => currentSpace()?.autoInterpret === true);
   const shareExtractionDetail = createMemo<boolean>(() => currentSpace()?.shareExtractionDetail === true);
   datasetStore.provideAutoInterpretGate(() => autoInterpret());
+
+  /*
+    Which candidates this space's calls start with.
+
+    Intersected with the candidates rather than trusted as stored, and that is load bearing: a name
+    the perspective has no shape for fails `assertShapesInstalled` and takes the whole pass down, so
+    a list naming a model since deleted — or one whose `extractable` was withdrawn in a release —
+    has to narrow quietly instead of breaking extraction for the space.
+
+    Order follows the candidates, so a settings list reads the same way every time rather than in
+    whatever order somebody happened to tick things.
+  */
+  const extractionTargets = createMemo<string[]>(() => {
+    const candidates = shapeStore.extractionCandidates();
+    const chosen = parseEntityList(currentSpace()?.extractionTargets) ?? LEGACY_EXTRACTION_TARGETS;
+    return candidates.filter((entity) => chosen.includes(entity));
+  });
+
+  /**
+   * What one call extracts, where its participants asked for something other than the default.
+   *
+   * One subscription for the space rather than a read per call: a list of calls asks this question
+   * once per card, and the records are few — one per call that has been customised. Same shape as
+   * `readMarkers`.
+   */
+  const [callExtractions, setCallExtractions] = createSignal<CallExtraction[]>([]);
+
+  createEffect(() => {
+    const dataset = datasetStore.currentDataset();
+    if (!dataset || !datasetStore.isWeSpace()) {
+      setCallExtractions([]);
+      return;
+    }
+    void CallExtraction.findAll(dataset.handle)
+      .then(setCallExtractions)
+      .catch(() => setCallExtractions([]));
+  });
+
+  /**
+   * The models one call extracts: its own list if it has one, else the space's default.
+   *
+   * A record with `entities: '[]'` is a group that turned everything off, and answers `[]`. A call
+   * with no record has not been touched and answers the space's list — which is exactly the
+   * distinction the record exists to make, and why this cannot be a set of links.
+   */
+  const extractionTargetsForCall = (collectionId: string): string[] => {
+    const candidates = shapeStore.extractionCandidates();
+    const own = parseEntityList(callExtractions().find((row) => row.callId === collectionId)?.entities);
+    if (!own) return extractionTargets();
+    return candidates.filter((entity) => own.includes(entity));
+  };
+
+  /**
+   * Add or remove one model from what a call extracts, for everyone in it.
+   *
+   * Writes the *resolved* list rather than a diff, so the first toggle also pins whatever the space
+   * default was at that moment — a model added to the space's defaults later does not silently join
+   * a call whose participants have already decided. The same rule `setModuleEnabled` follows.
+   */
+  async function setCallExtractionTarget(collectionId: string, entity: string, on: boolean): Promise<void> {
+    const dataset = datasetStore.currentDataset();
+    if (!dataset || !collectionId) return;
+    const next = new Set(extractionTargetsForCall(collectionId));
+    if (on) next.add(entity);
+    else next.delete(entity);
+    const entities = JSON.stringify([...next]);
+    const existing = callExtractions().find((row) => row.callId === collectionId);
+    try {
+      if (existing) await CallExtraction.update(dataset.handle, existing.id, { entities });
+      else await CallExtraction.create(dataset.handle, { callId: collectionId, entities });
+      setCallExtractions(await CallExtraction.findAll(dataset.handle));
+    } catch (error) {
+      console.error('SpaceStore: could not save what this call extracts', error);
+      toastService.error('Could not save what this call extracts.');
+      throw error;
+    }
+  }
+
+  datasetStore.provideExtractionCandidates(shapeStore.extractionCandidates);
+  datasetStore.provideCallExtraction({
+    forCall: extractionTargetsForCall,
+    setForCall: setCallExtractionTarget,
+  });
+  /*
+    Ticking "let AI create these" in the model wizard is this space saying yes — see
+    `ShapeStore.provideExtractionEnroller`. Handed upward because ShapeStore mounts above this one
+    and cannot reach a `Space`, the mirror of how `autoInterpret` is handed down.
+  */
+  shapeStore.provideExtractionEnroller((entity) => setExtractionTarget(entity, true));
 
   /**
    * What actually renders here, for this agent: the three layers intersected, minus personal mutes.
@@ -2595,6 +2750,46 @@ export function SpaceStoreProvider(props: ParentProps) {
     );
   }
 
+  /**
+   * Add or remove one model from what this community's calls start out extracting.
+   *
+   * Writes the resolved list, exactly as `setModuleEnabled` does and for the same two reasons: the
+   * first toggle pins whatever was on by fallback — so a space that had never touched the setting
+   * keeps `TaskBlock` and `EventBlock` rather than being reduced to the one thing just ticked — and
+   * a model that becomes a candidate in a later release does not silently join a space that has
+   * already decided.
+   */
+  async function setExtractionTarget(entity: string, on: boolean, spaceUuid?: string) {
+    const ds = targetDataset(spaceUuid);
+    const space = ds ? mySpaces().find((s) => isSpaceSelf(s, ds)) : undefined;
+    if (!ds || !space) return;
+    const current = parseEntityList(space.extractionTargets) ?? LEGACY_EXTRACTION_TARGETS;
+    const next = new Set(current);
+    if (on) next.add(entity);
+    else next.delete(entity);
+    const extractionTargetsJson = JSON.stringify([...next]);
+    try {
+      await Space.update(ds.handle, space.id, { extractionTargets: extractionTargetsJson });
+    } catch (error) {
+      console.error('SpaceStore: could not persist extractionTargets', error);
+      toastService.error('Could not save this change for the space.');
+      throw error;
+    }
+    updateSpaceInCache(ds, { extractionTargets: extractionTargetsJson } as never);
+    if (!isCurrent(ds)) return;
+    // Republished as a *new* instance, the `setModuleEnabled` idiom: `currentSpace` is a plain
+    // signal and Solid dedupes on `===`, so handing back the object just written through notifies
+    // nothing — and the settings list, and every call's resolved target list, would keep reading the
+    // previous value until something else refetched the space.
+    setCurrentSpace((prev) =>
+      prev
+        ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, {
+            extractionTargets: extractionTargetsJson,
+          }) as Space)
+        : prev,
+    );
+  }
+
   async function setModuleEnabled(moduleId: string, enabled: boolean, spaceUuid?: string) {
     const ds = targetDataset(spaceUuid);
     // Read the space from the cache rather than `currentSpace`, so this answers for a space being
@@ -2900,6 +3095,24 @@ export function SpaceStoreProvider(props: ParentProps) {
    * matching the route — because a matching dataset that has not been switched to yet is also not
    * grounds for asking someone to join.
    */
+  /**
+   * The path a space's own pages hang off — `/space/<segment>`, or empty outside a space.
+   *
+   * Exists because a template cannot build one. A link to a record has to be absolute (a browser
+   * resolves a relative `href` against the current *URL*, which is wrong the moment a section has
+   * sub-routes of its own), and the space's segment is not a value a schema can reach: for a shared
+   * space it is the neighbourhood CID, for a personal one the dataset id, and only the URL says
+   * which this is.
+   *
+   * The segment as it currently appears rather than one recomputed from the dataset, so a link
+   * built here lands in the same space the reader is already looking at — following the shape
+   * `TemplateProvider` itself uses when it redirects to a space's first section.
+   */
+  const spacePath = createMemo<string>(() => {
+    const segs = routeStore.segments();
+    return segs[0] === 'space' && segs[1] ? `/space/${segs[1]}` : '';
+  });
+
   const routeSpaceUnjoined = createMemo<boolean>(() => {
     const segs = routeStore.segments();
     if (segs[0] !== 'space' || !segs[1]) return false;
@@ -2944,9 +3157,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     const ds = datasetStore.currentDataset();
     const weSpace = datasetStore.isWeSpace();
     // Force a re-run once the dataset's foreign schemas have been registered — that happens in
-    // switchDataset's background pass, strictly before currentDatasetModels is set, so tracking
+    // switchDataset's background pass, strictly before currentDatasetEntities is set, so tracking
     // it here guarantees a second run right when model resolution is ready.
-    void datasetStore.currentDatasetModels();
+    void datasetStore.currentDatasetEntities();
 
     if (!ds || weSpace) {
       setForeignSpacePrefill(null);
@@ -2954,7 +3167,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const CommunityClass = getModelForPerspective('Community', ds.handle) as any;
+    const CommunityClass = getEntitiesForPerspective('Community', ds.handle) as any;
     if (!CommunityClass) {
       setForeignSpacePrefill(null);
       return;
@@ -2984,6 +3197,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     sharedSpaces,
     spaceList,
     routeSpaceUnjoined,
+    spacePath,
     creatingSpace,
     joiningSpace,
     joinSlow,
@@ -3032,6 +3246,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     setAutoInterpret,
     shareExtractionDetail,
     setShareExtractionDetail,
+    extractionTargets,
+    setExtractionTarget,
     setModuleInstalled,
     setModuleVisible,
     setViewEnabled,

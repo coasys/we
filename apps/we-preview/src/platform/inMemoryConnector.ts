@@ -1,6 +1,6 @@
 import type { BackendConnector, BackendInitResult } from '@we/app-shell/shared';
 import { createInMemoryBackendPorts, type SeededPeer } from '@we/backend-inmemory';
-import { getModel } from '@we/models';
+import { getEntity } from '@we/entities';
 import { applyFixture, datasetIdFor, type Fixture, type FixtureId, FIXTURES } from '@we/template-fixtures';
 
 /**
@@ -59,7 +59,7 @@ export const inMemoryConnector: BackendConnector = {
     if (!dataset) throw new Error(`[we-preview] seeded dataset '${datasetId}' is missing`);
 
     const applied = await applyFixture(
-      { getModel, dataset: dataset.handle, datasetId, sharedId: dataset.sharedId },
+      { getEntity, dataset: dataset.handle, datasetId, sharedId: dataset.sharedId },
       fixture,
     );
 

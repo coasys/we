@@ -105,7 +105,7 @@ const portable: Record<string, SchemaNode> = {
     localState: { thingName: { type: 'string', initial: '' } },
     children: [field({ name: 'thingName', label: 'Name' })],
     discardWhen: { $: 'local.thingName' },
-    submit: { $action: 'model.create', args: ['CollectionBlock', { title: { $: 'local.thingName' } }] },
+    submit: { $action: 'record.create', args: ['CollectionBlock', { title: { $: 'local.thingName' } }] },
   }),
   formModal: formModal({
     open: { $: 'local.formOpen' },
@@ -118,7 +118,7 @@ const portable: Record<string, SchemaNode> = {
     children: [field({ name: 'thingName', label: 'Name' })],
     disabled: { $: '!local.thingName' },
     busyLocal: 'creating',
-    submit: { $action: 'model.create', args: ['CollectionBlock', { title: { $: 'local.thingName' } }] },
+    submit: { $action: 'record.create', args: ['CollectionBlock', { title: { $: 'local.thingName' } }] },
   }),
   field: field({ name: 'name', label: 'Name', validated: true, touchOnBlur: true }),
   'field (select)': field({ name: 'mode', control: 'select', props: { options: [] } }),

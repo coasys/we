@@ -9,7 +9,7 @@
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { type AgentProfileSummary, displayName, isProfileEmpty, type PublishProfileFields } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
-import { compressImageToFileData, dataURIToFileData, shrinkDataUri } from '@we/models';
+import { compressImageToFileData, dataURIToFileData, shrinkDataUri } from '@we/entities';
 import { Accessor, createContext, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
 import { useAccountStore } from './AccountStore';

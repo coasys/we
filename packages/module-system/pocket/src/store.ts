@@ -63,7 +63,7 @@ interface DroppedPayload {
  * 4. **The panel's own open/closed state**, which is chrome and must survive navigation — the
  *    reason every docked module has a store at all.
  *
- * Folder creation, deletion and the listing itself stay in the fragments, through `model.create`
+ * Folder creation, deletion and the listing itself stay in the fragments, through `record.create`
  * and `$query`. This module ships no CRUD wrapper for them, for the reason notes ships none.
  */
 export function createPocketStore(deps: ModuleStoreDeps) {

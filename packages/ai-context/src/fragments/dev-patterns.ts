@@ -291,14 +291,15 @@ Key packages with conventions files:
   roles pinned only where the parametric default is wrong. Several roles are *derived at apply time*
   — foregrounds, fills and interaction states all correct themselves — so pinning them is overruling
   a measurement, which is occasionally right and usually not.
-- \`packages/models/CONVENTIONS.md\` — model authoring: entities vs blocks, predicates, @Flag, WeNode, Model.create() pattern
+- \`packages/entities/CONVENTIONS.md\` — entity authoring: what makes one a block, predicates, @Flag, WeNode, the Entity.create() pattern
 - \`packages/templates/kit/CONVENTIONS.md\` — fragment authoring: what belongs in the kit, extraction threshold, options-object API, body style
 
 ---
 
-### Model CRUD Patterns
+### Record CRUD Patterns
 
-Use the static factory method for creation. **Never** use \`new Model() + manual property assignment + save()\`.
+A record is written through its entity's class. Use the static factory method for creation —
+**never** \`new Entity() + manual property assignment + save()\`.
 
 **Create**
 \`\`\`ts

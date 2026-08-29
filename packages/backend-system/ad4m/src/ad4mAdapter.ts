@@ -32,8 +32,8 @@ import type {
   AdapterCapabilities,
   CapabilityGap,
   DatasetHandle,
+  EntityClass as RendererEntityClass,
   EphemeralPort,
-  ModelClass as RendererModelClass,
   QueryAdapter,
   QueryIR,
   QueryOptions,
@@ -42,12 +42,12 @@ import type {
   Scope,
 } from '@we/backend-shared';
 import { irToFlatQuery, planQuery, whereUsesCombinator } from '@we/backend-shared';
-import { getModel, getModelForPerspective, type ModelClass as Ad4mModelClass } from '@we/models';
+import { type EntityClass as Ad4mEntityClass, getEntitiesForPerspective, getEntity } from '@we/entities';
 
-import type { ModelManifestEntry } from './manifestTypes';
+import type { EntityManifestEntry } from './manifestTypes';
 
 /**
- * Adapt an AD4M model class to the renderer's neutral {@link RendererModelClass}.
+ * Adapt an AD4M model class to the renderer's neutral {@link RendererEntityClass}.
  *
  * `Ad4mModel`'s statics are `query(perspective: PerspectiveProxy, query?: TypedQuery<T>)` — the same
  * two operations the renderer needs, under a backend-specific signature. This is the mapping every
@@ -74,11 +74,11 @@ function asPerspective(dataset: DatasetHandle): PerspectiveProxy {
   return dataset as PerspectiveProxy;
 }
 
-export function toRendererModel(Model: Ad4mModelClass): RendererModelClass {
+export function toRendererEntity(Model: Ad4mEntityClass): RendererEntityClass {
   return {
     query: (dataset, opts) =>
       Model.query(asPerspective(dataset), opts as Parameters<typeof Model.query>[1]) as ReturnType<
-        RendererModelClass['query']
+        RendererEntityClass['query']
       >,
     findAll: (dataset, opts, ctl) =>
       // Called through a widened signature on purpose: `@coasys/ad4m` types `findAll` as
@@ -89,7 +89,7 @@ export function toRendererModel(Model: Ad4mModelClass): RendererModelClass {
       // in-flight queries. Worth confirming against the executor — if it is genuinely unsupported,
       // the abort is already a no-op and the renderer's AbortController buys nothing.
       (Model.findAll as unknown as (p: unknown, q: unknown, c?: unknown) => unknown)(dataset, opts, ctl) as ReturnType<
-        RendererModelClass['findAll']
+        RendererEntityClass['findAll']
       >,
   };
 }
@@ -105,7 +105,7 @@ export interface Ad4mAdapterDeps {
   /** The perspective queries run against — handed to the renderer as an opaque dataset handle. */
   currentPerspective: () => PerspectiveProxy | null;
   /** SHACL models of the current perspective, incl. synced foreign ones; used to resolve `scope`. */
-  currentPerspectiveModels: () => ModelManifestEntry[];
+  currentPerspectiveEntities: () => EntityManifestEntry[];
   /**
    * Reactive agent-profile cache. Must be *read inside* the accessor so `$agent`'s effect re-runs
    * when a fetched profile lands. Typed by the only field this adapter needs — a `did` to match on —
@@ -132,21 +132,21 @@ export interface Ad4mAdapterDeps {
  * the app rather than pretending to be AD4M-specific.
  *
  * Note what is *not* here: no query lowering, no capability quirks, no model-shape mapping. Those are
- * `createAd4mQueryAdapter` and `toRendererModel` above — this only composes them.
+ * `createAd4mQueryAdapter` and `toRendererEntity` above — this only composes them.
  */
 export function createAd4mDataBindings(
   deps: Ad4mAdapterDeps,
 ): Pick<
   RendererDataBindings,
-  '$getModel' | '$getModelForPerspective' | '$currentDataset' | '$identities' | '$queryAdapter' | '$ephemeral'
+  '$getEntity' | '$getEntitiesForPerspective' | '$currentDataset' | '$identities' | '$queryAdapter' | '$ephemeral'
 > {
   return {
     // Adapted, not raw: AD4M's model statics take a `PerspectiveProxy` and AD4M's own query shape,
-    // so `toRendererModel` maps them onto the neutral `query`/`findAll` the renderer depends on.
-    $getModel: (name) => toRendererModel(getModel(name)),
-    $getModelForPerspective: (name, dataset) => {
-      const model = getModelForPerspective(name, dataset);
-      return model ? toRendererModel(model) : undefined;
+    // so `toRendererEntity` maps them onto the neutral `query`/`findAll` the renderer depends on.
+    $getEntity: (name) => toRendererEntity(getEntity(name)),
+    $getEntitiesForPerspective: (name, dataset) => {
+      const model = getEntitiesForPerspective(name, dataset);
+      return model ? toRendererEntity(model) : undefined;
     },
     // The renderer treats this as opaque and hands it straight back, so the proxy passes through
     // untouched — no flattening to an id, no re-resolution on the way in.
@@ -156,7 +156,7 @@ export function createAd4mDataBindings(
       get: (did) => deps.agents().find((a) => a.did === did) as Record<string, unknown> | undefined,
       fetch: (did) => void deps.fetchAgent(did),
     },
-    $queryAdapter: createAd4mQueryAdapter(deps.currentPerspectiveModels),
+    $queryAdapter: createAd4mQueryAdapter(deps.currentPerspectiveEntities),
     // Named in the contract so *distributable* code can reach it — a marketplace feature module
     // cannot import this adapter, nor know the name of a host store to call.
     $ephemeral: deps.ephemeralPort,
@@ -185,9 +185,9 @@ function sortNeedsLimit(by: string, aggregateAliases: Set<string>): boolean {
  * anchor entity's `via` relation in the perspective's model manifest and read its RDF `predicate`,
  * then hand AD4M the `{ id, predicate }` form directly — which sidesteps AD4M's own relation-name
  * resolver (`resolveParentPredicate`, broken for synced dynamic models). The predicate is available on
- * every relation (WE + synced) via `ModelManifestProperty.predicate`.
+ * every relation (WE + synced) via `EntityManifestProperty.predicate`.
  */
-function resolveScopeToParent(models: ModelManifestEntry[], scope: Scope): { id: unknown; predicate: string } {
+function resolveScopeToParent(models: EntityManifestEntry[], scope: Scope): { id: unknown; predicate: string } {
   const entry = scope.anchor ? models.find((m) => m.name === scope.anchor) : undefined;
   const prop = entry?.properties.find((p) => p.name === scope.via);
   if (!prop?.predicate) {
@@ -201,7 +201,7 @@ function resolveScopeToParent(models: ModelManifestEntry[], scope: Scope): { id:
 
 /**
  * Build the AD4M {@link QueryAdapter}. A factory (not a singleton) because `lower` needs the current
- * perspective's model manifest to resolve a `scope` drill-down — so `getModels` returns the SHACL model
+ * perspective's model manifest to resolve a `scope` drill-down — so `getEntities` returns the SHACL model
  * entries (including synced ones, e.g. Flux's) at call time.
  *
  * `plan` is `planQuery` over `ad4mCapabilities` plus AD4M's two conditional degradations, which no
@@ -209,7 +209,7 @@ function resolveScopeToParent(models: ModelManifestEntry[], scope: Scope): { id:
  * projection/relation-path sort silently no-ops without a `limit`. `lower` is the neutral `irToFlatQuery`,
  * plus resolving `scope` → `parent` here (AD4M-specific; `irToFlatQuery` throws on `scope` by design).
  */
-export function createAd4mQueryAdapter(getModels: () => ModelManifestEntry[]): QueryAdapter {
+export function createAd4mQueryAdapter(getEntities: () => EntityManifestEntry[]): QueryAdapter {
   return {
     capabilities: ad4mCapabilities,
 
@@ -243,12 +243,12 @@ export function createAd4mQueryAdapter(getModels: () => ModelManifestEntry[]): Q
 
     lower(ir: QueryIR): QueryOptions {
       // `scope` is AD4M-resolved here (irToFlatQuery throws on it); everything else lowers neutrally.
-      // `entity` is selected via getModel(entity) separately, so the options carry only the query.
+      // `entity` is selected via getEntity(entity) separately, so the options carry only the query.
       const { scope, ...rest } = ir;
       const { entity: _entity, ...opts } = irToFlatQuery(rest);
       void _entity;
       if (scope) {
-        (opts as Record<string, unknown>).parent = resolveScopeToParent(getModels(), scope);
+        (opts as Record<string, unknown>).parent = resolveScopeToParent(getEntities(), scope);
       }
       return opts as QueryOptions;
     },

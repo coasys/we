@@ -279,9 +279,9 @@ importers:
       '@we/components':
         specifier: workspace:*
         version: link:../../packages/design-system/4-components
-      '@we/models':
+      '@we/entities':
         specifier: workspace:*
-        version: link:../../packages/models
+        version: link:../../packages/entities
       '@we/template-fixtures':
         specifier: workspace:*
         version: link:../../packages/templates/fixtures
@@ -381,9 +381,9 @@ importers:
       '@we/design-utils':
         specifier: workspace:*
         version: link:../design-system/utils
-      '@we/models':
+      '@we/entities':
         specifier: workspace:*
-        version: link:../models
+        version: link:../entities
       '@we/schema-shared':
         specifier: workspace:*
         version: link:../schema-system/shared
@@ -442,6 +442,9 @@ importers:
       '@we/editor':
         specifier: workspace:*
         version: link:../editor
+      '@we/entities':
+        specifier: workspace:*
+        version: link:../entities
       '@we/globe-widget':
         specifier: workspace:*
         version: link:../module-system/globe/widget
@@ -454,9 +457,6 @@ importers:
       '@we/graph-solid':
         specifier: workspace:*
         version: link:../graph-system/frameworks/solid
-      '@we/models':
-        specifier: workspace:*
-        version: link:../models
       '@we/module-call':
         specifier: workspace:*
         version: link:../module-system/call
@@ -563,9 +563,9 @@ importers:
       '@we/backend-shared':
         specifier: workspace:*
         version: link:../shared
-      '@we/models':
+      '@we/entities':
         specifier: workspace:*
-        version: link:../../models
+        version: link:../../entities
     devDependencies:
       '@coasys/ad4m':
         specifier: 0.13.0-test-interpretation-2
@@ -591,9 +591,9 @@ importers:
       '@we/backend-shared':
         specifier: workspace:*
         version: link:../shared
-      '@we/models':
+      '@we/entities':
         specifier: workspace:*
-        version: link:../../models
+        version: link:../../entities
     devDependencies:
       '@types/node':
         specifier: ^26.3.0
@@ -641,9 +641,9 @@ importers:
       '@we/drag':
         specifier: workspace:*
         version: link:../../../design-system/drag
-      '@we/models':
+      '@we/entities':
         specifier: workspace:*
-        version: link:../../../models
+        version: link:../../../entities
       prosemirror-commands:
         specifier: ^1.7.2
         version: 1.7.2
@@ -726,9 +726,9 @@ importers:
       '@we/design-types':
         specifier: workspace:*
         version: link:../../design-system/types
-      '@we/models':
+      '@we/entities':
         specifier: workspace:*
-        version: link:../../models
+        version: link:../../entities
     devDependencies:
       '@we/cli':
         specifier: workspace:*
@@ -1049,6 +1049,25 @@ importers:
         specifier: ^4.1.11
         version: 4.1.11(@types/node@26.3.0)(@vitest/coverage-v8@4.1.11)(happy-dom@20.11.6)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.2.2(@types/node@26.3.0)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.103.1)(tsx@4.23.12)(yaml@2.9.0))
 
+  packages/entities:
+    dependencies:
+      '@we/backend-shared':
+        specifier: workspace:*
+        version: link:../backend-system/shared
+    devDependencies:
+      '@we/cli':
+        specifier: workspace:*
+        version: link:../cli
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.12)(typescript@5.9.3)(yaml@2.9.0)
+      tsx:
+        specifier: ^4.23.12
+        version: 4.23.12
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.11(@types/node@26.3.0)(@vitest/coverage-v8@4.1.11)(happy-dom@20.11.6)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.2.2(@types/node@26.3.0)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.103.1)(tsx@4.23.12)(yaml@2.9.0))
+
   packages/graph-system/core:
     devDependencies:
       '@types/node':
@@ -1188,25 +1207,6 @@ importers:
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
-      vitest:
-        specifier: ^4.1.11
-        version: 4.1.11(@types/node@26.3.0)(@vitest/coverage-v8@4.1.11)(happy-dom@20.11.6)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.2.2(@types/node@26.3.0)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.103.1)(tsx@4.23.12)(yaml@2.9.0))
-
-  packages/models:
-    dependencies:
-      '@we/backend-shared':
-        specifier: workspace:*
-        version: link:../backend-system/shared
-    devDependencies:
-      '@we/cli':
-        specifier: workspace:*
-        version: link:../cli
-      tsup:
-        specifier: ^8.5.1
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.12)(typescript@5.9.3)(yaml@2.9.0)
-      tsx:
-        specifier: ^4.23.12
-        version: 4.23.12
       vitest:
         specifier: ^4.1.11
         version: 4.1.11(@types/node@26.3.0)(@vitest/coverage-v8@4.1.11)(happy-dom@20.11.6)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.2.2(@types/node@26.3.0)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.103.1)(tsx@4.23.12)(yaml@2.9.0))

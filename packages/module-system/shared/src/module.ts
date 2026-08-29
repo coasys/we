@@ -24,10 +24,10 @@
 import type {
   Activity,
   DatasetHandle,
+  EntityManifest,
   EphemeralPort,
   InterpretationProposal,
   InterpretationResult,
-  ModelManifest,
   Peer,
   TranscriptionPort,
 } from '@we/backend-shared';
@@ -414,7 +414,7 @@ export interface ModuleDefinition {
    * data written under a different name.
    */
   entities?: {
-    manifest: ModelManifest;
+    manifest: EntityManifest;
     /** Explicit predicate bindings, keyed `"Entity.property"`. */
     predicates?: Record<string, string>;
     /**
@@ -677,7 +677,7 @@ export interface ModuleStoreDeps {
   /**
    * Write a record into the current dataset.
    *
-   * The imperative twin of the `model.create` a schema already has. A module that creates data in
+   * The imperative twin of the `record.create` a schema already has. A module that creates data in
    * response to a click does not need this — the schema action is better, and notes deliberately
    * ships no CRUD wrapper because of it. This is for data that arrives without a click: a transcript
    * appears because somebody spoke, and there is no event to hang a schema action on.
@@ -848,6 +848,58 @@ export interface ModuleInterpretationAccess {
   /** Whether interpretation can run at all — false when the backend has no model configured. */
   available: () => boolean;
   /**
+   * Whether this community has automatic extraction switched on.
+   *
+   * A different question from {@link available}, and both have to be asked: `available` is what this
+   * *node* can do, this is what the space has *decided*. Conflating them produced the wrong sentence
+   * on screen — a space with the setting off reported that the node could not auto-extract, which is
+   * neither true nor actionable.
+   *
+   * Reactive, and that is the point of exposing it rather than letting the host refuse the call: a
+   * standing watch has to follow the setting while a call is running. Toggling it used to change
+   * nothing until everybody left the call and rejoined, because the only thing that read it was a
+   * throw inside `watchCollection`, and nothing re-ran that.
+   */
+  autoEnabled: () => boolean;
+  /**
+   * What this call extracts, and what else it could — one row per model, ticked when it is on.
+   *
+   * Here because a module cannot work it out, and should not try. Three layers decide it: the
+   * codebase says which entities are candidates at all, the space says which of them its calls
+   * start with, and the call's own participants add or remove from there. A module has no read
+   * surface, no dataset handle, and no business knowing that a space carries models — so it is
+   * handed the answer rather than the inputs.
+   *
+   * One list of `{ entity, selected }` rather than two, because the surface that renders it is a
+   * row of toggles and a schema cannot join two lists to work out which are ticked.
+   *
+   * Reactive, and read on every call rather than captured: a community adopting a model makes it a
+   * candidate a moment later, and a module store outlives a space switch. Empty means nothing here
+   * may be extracted — an honest answer, and one to render as such rather than as a failure.
+   *
+   * The class list itself never reaches a module. It used to, and the module held the constant that
+   * decided it — which is why a community could write careful hints for a `Sighting` and never have
+   * anything extract one.
+   */
+  targets: (collectionId: string) => { entity: string; selected: boolean }[];
+  /**
+   * Add or remove one model from what this call extracts.
+   *
+   * A **group** decision, not this agent's: it is recorded in the space beside the call, and the
+   * standing watch re-registers against it, so it changes what the whole neighbourhood extracts
+   * from this conversation. That is what it has to be — the watch is one registration every peer
+   * shares, and per-agent lists would have peers overwriting each other's in a loop.
+   *
+   * Takes effect from here on. A watch keeps a processed-turn cursor, so a model switched on
+   * part-way through a call is applied to what is said *next*; the one-shot pass carries no cursor,
+   * so pressing Extract is how the rest of the conversation gets swept with the new list. Worth
+   * saying wherever this is offered, because it is not guessable.
+   *
+   * Rejects on a host that cannot record it, so a module can offer the affordance only where it
+   * means something rather than silently dropping a press.
+   */
+  setTarget: (collectionId: string, entity: string, on: boolean) => Promise<void>;
+  /**
    * Interpret a collection's children, attaching what is created back onto that same collection.
    *
    * Takes an id rather than the turns themselves, and that follows from the contract rather than
@@ -859,7 +911,7 @@ export interface ModuleInterpretationAccess {
    * Rejects when there is no usable model, so a caller can tell "no LLM here" from "nothing worth
    * extracting was said" — the two are identical from an empty result and only one is worth saying.
    */
-  runOnCollection: (collectionId: string, request: { classes: string[] }) => Promise<InterpretationResult>;
+  runOnCollection: (collectionId: string) => Promise<InterpretationResult>;
   /**
    * Keep interpreting a collection as it grows, without anyone pressing anything.
    *
@@ -874,7 +926,7 @@ export interface ModuleInterpretationAccess {
    * Rejects on a backend that can interpret but cannot coordinate a shared watch, so a module can
    * offer the affordance only where it means something.
    */
-  watchCollection: (collectionId: string, request: { classes: string[] }) => Promise<void>;
+  watchCollection: (collectionId: string) => Promise<void>;
   /** Stop the watch on a collection. Safe to call when none was registered. */
   unwatchCollection: (collectionId: string) => Promise<void>;
   /**
@@ -884,7 +936,7 @@ export interface ModuleInterpretationAccess {
    * writes the edge, and the client that would have done it may not have been running. Returns 0
    * where there was nothing to repair, including on a backend that parents its own results.
    */
-  reconcileCollection: (collectionId: string, request: { classes: string[] }) => Promise<number>;
+  reconcileCollection: (collectionId: string) => Promise<number>;
   /**
    * What extraction is doing in this space right now — this agent's passes and its peers'.
    *

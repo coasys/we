@@ -64,7 +64,7 @@ import {
   sortByPresence,
   trace,
 } from '@we/backend-shared';
-import type { DatasetProxy } from '@we/models';
+import type { DatasetProxy } from '@we/entities';
 import {
   type Accessor,
   createContext,

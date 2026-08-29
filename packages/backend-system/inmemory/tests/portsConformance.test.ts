@@ -5,7 +5,7 @@
  * until now the in-memory bundle stubbed its data plane (`ephemeral: () =>
  * null`, two bindings) — so a suite running against it could exercise
  * lifecycle and nothing else, while the AD4M adapter shipped a full
- * $getModel/$queryAdapter/mutations/$identities surface nothing compared
+ * $getEntity/$queryAdapter/mutations/$identities surface nothing compared
  * against. These tests pin the bundle to the full binding surface and run a
  * create → query → update → delete round-trip plus the ephemeral bus through
  * it — the contract exercised end to end with no executor.
@@ -29,7 +29,7 @@ async function makeBindings(ports: ReturnType<typeof makePorts>) {
   const fetched: string[] = [];
   const bindings = ports.dataBindings({
     currentDataset: () => dataset.handle as never,
-    currentDatasetModels: () => [],
+    currentDatasetEntities: () => [],
     profiles: () => profiles,
     fetchProfile: (id) => void fetched.push(id),
     ephemeral: ports.ephemeral,
@@ -45,8 +45,8 @@ describe('binding-surface conformance', () => {
     // or "runs on the in-memory backend" quietly means "boot only".
     for (const key of [
       '$currentDataset',
-      '$getModel',
-      '$getModelForPerspective',
+      '$getEntity',
+      '$getEntitiesForPerspective',
       '$queryAdapter',
       '$identities',
       '$ephemeral',
@@ -81,7 +81,7 @@ describe('data plane through the bundle', () => {
     const created = await bindings.model!.create('Space', { name: 'Test space', description: 'd' });
     expect(created.id).toBeTruthy();
 
-    const Space = bindings.$getModel!('Space') as unknown as {
+    const Space = bindings.$getEntity!('Space') as unknown as {
       findAll(dataset: unknown, q?: Record<string, unknown>): Promise<Array<Record<string, unknown>>>;
     };
     const dataset = bindings.$currentDataset!();

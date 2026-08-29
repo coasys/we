@@ -11,14 +11,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const stored: Array<{ name: string; file_type: string; data_base64: string }> = [];
 
-vi.mock('@we/models', () => ({
+vi.mock('@we/entities', () => ({
   asFileField: (fileData: unknown) => fileData,
   dataURIToFileData: (uri: string, name: string) => ({
     data_base64: uri.slice(uri.indexOf(',') + 1),
     name,
     file_type: uri.slice(5, uri.indexOf(';')),
   }),
-  runModelTransaction: (_dataset: unknown, fn: (tx: { batchId: string }) => unknown) => fn({ batchId: 'batch-1' }),
+  runEntityTransaction: (_dataset: unknown, fn: (tx: { batchId: string }) => unknown) => fn({ batchId: 'batch-1' }),
   getFileStore: () => ({
     store: async (_dataset: unknown, file: { name: string; file_type: string; data_base64: string }) => {
       stored.push(file);
@@ -31,7 +31,7 @@ vi.mock('@we/models', () => ({
   }),
 }));
 
-vi.mock('@we/models/manifest', () => ({
+vi.mock('@we/entities/manifest', () => ({
   CORE_MANIFEST: {
     version: '1',
     entities: {
@@ -43,7 +43,7 @@ vi.mock('@we/models/manifest', () => ({
 }));
 
 import type { ContentBlock } from '../src/content';
-import { type BlockModelStatic, registerBlock } from '../src/registry';
+import { type BlockEntityStatic, registerBlock } from '../src/registry';
 import { createBlocks, reconcileBlocks, resolveExpressionAddresses } from '../src/serialization';
 import { decodeEditorState } from '../src/utils';
 
@@ -84,13 +84,13 @@ class FakeCollection extends Fake {
   async removeMentions() {}
 }
 
-registerBlock({ nodeTypes: ['block'], model: FakeText as unknown as BlockModelStatic, entity: 'TextBlock' });
+registerBlock({ nodeTypes: ['block'], model: FakeText as unknown as BlockEntityStatic, entity: 'TextBlock' });
 registerBlock({
   nodeTypes: ['root', 'collection'],
-  model: FakeCollection as unknown as BlockModelStatic,
+  model: FakeCollection as unknown as BlockEntityStatic,
   entity: 'CollectionBlock',
 });
-registerBlock({ nodeTypes: ['image'], model: FakeImage as unknown as BlockModelStatic, entity: 'ImageBlock' });
+registerBlock({ nodeTypes: ['image'], model: FakeImage as unknown as BlockEntityStatic, entity: 'ImageBlock' });
 
 const perspective = {};
 const fileData = { data_base64: 'QUJD', name: 'image-block', file_type: 'image/png' };

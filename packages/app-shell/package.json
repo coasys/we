@@ -52,7 +52,7 @@
     "@we/graph-expanders": "workspace:*",
     "@we/graph-protocol": "workspace:*",
     "@we/graph-solid": "workspace:*",
-    "@we/models": "workspace:*",
+    "@we/entities": "workspace:*",
     "@we/module-call": "workspace:*",
     "@we/module-globe": "workspace:*",
     "@we/module-graph": "workspace:*",

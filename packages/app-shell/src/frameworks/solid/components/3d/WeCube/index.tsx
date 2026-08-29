@@ -2,7 +2,7 @@ import { createSignal, mergeProps, onCleanup, onMount } from 'solid-js';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
-import wecubeModel from '../../../../../shared/assets/wecube-2.glb';
+import wecubeRecord from '../../../../../shared/assets/wecube-2.glb';
 
 // Ensure Three.js treats hex/CSS colors as sRGB (not raw linear), matching the browser.
 THREE.ColorManagement.enabled = true;
@@ -158,7 +158,7 @@ export function WeCube(rawProps: WeCubeProps) {
     // Load model
     let pivotGroup: THREE.Group | undefined;
     const loader = new GLTFLoader();
-    loader.load(wecubeModel, (gltf) => {
+    loader.load(wecubeRecord, (gltf) => {
       const model = gltf.scene;
       const mesh = model.children[0] as THREE.Mesh;
       if (mesh) {

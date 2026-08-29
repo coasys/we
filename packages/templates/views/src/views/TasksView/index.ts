@@ -52,7 +52,7 @@ const rowsOf = (status: string) => `${status.replace(/-(\w)/g, (_, c: string) =>
 const rows = (status: string) => ({ $: `local.${rowsOf(status)}` });
 
 /**
- * Moving a card is a `model.update` of one scalar.
+ * Moving a card is a `record.update` of one scalar.
  *
  * Cheap precisely because status is the truth here: no relinking, no read-modify-write, and two
  * people moving the same card concurrently converge on whichever wrote last rather than dropping
@@ -69,7 +69,7 @@ const moveMenu: SchemaNode = {
     items: COLUMNS.map((spec) => ({
       id: spec.status,
       label: `Move to ${spec.label}`,
-      onAction: { $action: 'model.update', args: ['TaskBlock', { $: 'task.id' }, { status: spec.status }] },
+      onAction: { $action: 'record.update', args: ['TaskBlock', { $: 'task.id' }, { status: spec.status }] },
     })),
   },
 };
@@ -202,7 +202,7 @@ const column = (spec: (typeof COLUMNS)[number]): SchemaNode => ({
     /*
         The cards, in a drop zone.
 
-        `zone` is the status, which is what makes the drop handler a one-line `model.update`: the
+        `zone` is the status, which is what makes the drop handler a one-line `record.update`: the
         event says which zone an item landed in, and here a zone *is* a status. A containment board
         would read the same event and relink instead — the primitive reports intent and stays out of
         it.
@@ -221,7 +221,7 @@ const column = (spec: (typeof COLUMNS)[number]): SchemaNode => ({
         group: 'tasks',
         gap: 'var(--we-space-300)',
         onMoved: {
-          $action: 'model.update',
+          $action: 'record.update',
           args: ['TaskBlock', { $: 'arg.detail.id' }, { status: { $: 'arg.detail.to' } }],
         },
       },
@@ -270,7 +270,7 @@ const composer: SchemaNode = formModal({
   discardWhen: { $: 'local.draftTitle || local.draftDescription' },
   submitLabel: 'Add task',
   submit: {
-    $action: 'model.create',
+    $action: 'record.create',
     args: [
       'TaskBlock',
       {

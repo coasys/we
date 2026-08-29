@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { ModelEntry, StoreEntry } from './contextTypes';
+import type { EntityEntry, StoreEntry } from './contextTypes';
 import { findNodeChain, findScopeRef, getScopeAtNode, inferRefKind, scopeRefToToken } from './scope';
 import type { SchemaNode } from './types';
 
@@ -16,7 +16,7 @@ const storeEntries: StoreEntry[] = [
   },
 ];
 
-const models: ModelEntry[] = [
+const models: EntityEntry[] = [
   {
     name: 'Space',
     className: 'Space',

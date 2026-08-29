@@ -199,7 +199,7 @@ const kindRow: SchemaNode = {
         // Removing a kind leaves the connections that used it: they keep their label and lose their
         // colour, which is the right degradation. Deleting them with it would delete claims people
         // made because somebody tidied a vocabulary.
-        onClick: { $action: 'model.delete', args: ['RelationshipType', { $: 'kind.id' }] },
+        onClick: { $action: 'record.delete', args: ['RelationshipType', { $: 'kind.id' }] },
       },
       children: [{ type: 'we-icon', props: { name: 'trash' } }],
     },

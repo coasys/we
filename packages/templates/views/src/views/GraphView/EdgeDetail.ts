@@ -230,7 +230,7 @@ const editing: SchemaNode = {
                     // Nothing about a label is locally judgeable beyond its presence.
                     disabled: { $: '!local.draftLabel' },
                     onClick: {
-                      $action: 'model.update',
+                      $action: 'record.update',
                       args: [
                         'Relationship',
                         { $: 'link.id' },
@@ -327,7 +327,7 @@ export const edgeDetailModal: SchemaNode = {
                         color: 'danger-text',
                         ml: 'auto',
                         onClick: {
-                          $action: 'model.delete',
+                          $action: 'record.delete',
                           args: ['Relationship', { $: 'link.id' }],
                           onSuccess: [close, { $setLocal: 'revision', value: { $: 'local.revision + 1' } }],
                         },

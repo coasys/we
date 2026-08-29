@@ -90,23 +90,47 @@ export function parseCallMessage(payload: unknown): CallMessage | null {
 }
 
 /**
- * The id of the space-wide call in a dataset.
+ * A `CollectionBlock` with `kind: 'call'` is the record a call leaves behind: it holds the
+ * transcript as `children`, and everything extracted from the call hangs off it.
  *
- * Derived rather than generated, so every peer computes the same id without having to agree on one
- * first — the chicken-and-egg a generated id would create (you cannot signal to agree on the channel
- * you would signal over).
+ * These live here rather than in `@we/module-transcribe`, which used to create the record, because
+ * the record is now made when the call *starts* — see {@link recordCallId}. Transcribe writes into
+ * one it is told about and never mints one.
  */
-export function spaceCallId(datasetUri: string): string {
-  return `space:${datasetUri}`;
-}
+export const CALL_KIND = 'call';
+
+/** Predicate joining a call record to the node it is about — `WeNode.calls`. */
+export const CALL_PREDICATE = 'we://call';
 
 /**
- * The id of a call anchored to a particular node — "the call on this post".
+ * The id of a call, derived from the record it is about.
  *
- * Same derivation, same reason. Anchoring is what lets several calls coexist in one space, which
- * `callRosters()` already groups for free because presence models activities as a list rather than a
- * single value.
+ * ## Why a call has a record before it has a participant
+ *
+ * The two ids this replaced were derived from where the call was rather than from the call itself:
+ * `space:<uri>`, one per space, and `node:<uri>:<id>`, one per anchor. Deriving them meant peers
+ * could agree on a channel without first signalling over it — a real problem, correctly solved —
+ * but it fixed the number of concurrent calls at one per place. Two groups in a space were one
+ * call, and a post could host exactly one conversation, ever.
+ *
+ * It also left a live call with no identity of its own until somebody spoke. The transcript record
+ * was created lazily by whichever agent's transcriber flushed first, so anything a call needed to
+ * *hold* — who is in it, what it is called, which entities to extract — had nowhere to live during
+ * the window before the first utterance. Choosing extraction targets before anyone speaks was
+ * simply impossible, because there was nothing to write them on.
+ *
+ * So the record comes first: starting a call creates its `CollectionBlock`, and the id is that
+ * record's. Joining does not derive anything — the id arrives on the presence activity of whoever
+ * is already in it, which is where every other call fact already comes from. The chicken-and-egg
+ * never appears because the answer is in the roster before the second peer needs it.
+ *
+ * The consequence: as many concurrent calls per space, and per post, as people start.
  */
-export function anchoredCallId(datasetUri: string, nodeId: string): string {
-  return `node:${datasetUri}:${nodeId}`;
+export function recordCallId(recordId: string): string {
+  return `call:${recordId}`;
+}
+
+/** The record id back out of a call id, or null for an id that is not one of ours. */
+export function callRecordId(callId: string): string | null {
+  return callId.startsWith('call:') ? callId.slice('call:'.length) || null : null;
 }

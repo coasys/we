@@ -1,7 +1,7 @@
 import type { ThemeKey } from '@shared/registries/themeRegistry';
 import { isValidThemeKey, themeRegistry } from '@shared/registries/themeRegistry';
 import { toastService } from '@we/components/solid';
-import type { ThemeData } from '@we/models';
+import type { ThemeData } from '@we/entities';
 import {
   asFileField,
   compressImageToFileData,
@@ -9,7 +9,7 @@ import {
   ImageBlock,
   modelToThemeData,
   Theme,
-} from '@we/models';
+} from '@we/entities';
 import type { ThemeOverrides } from '@we/schema-shared';
 import {
   applyThemeVars,
@@ -662,7 +662,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     allThemes().find((t) => t.id === currentThemeId()) ?? registryToThemeData('light');
 
   // Map theme AD4M model UUID → model instance for save/delete
-  const themeModelMap = new Map<string, Theme>();
+  const themeRecordMap = new Map<string, Theme>();
 
   async function loadSpaceThemes() {
     const perspective = datasetStore.currentDataset()?.handle;
@@ -672,7 +672,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     }
     try {
       const models = await Theme.findAll(perspective);
-      for (const model of models) themeModelMap.set(model.id, model);
+      for (const model of models) themeRecordMap.set(model.id, model);
       setSpaceThemes(models.map(modelToThemeData));
     } catch (e) {
       console.error('ThemeStore: failed to load space themes', e);
@@ -687,7 +687,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     if (!perspective) return;
     try {
       const models = await Theme.findAll(perspective);
-      for (const model of models) themeModelMap.set(model.id, model);
+      for (const model of models) themeRecordMap.set(model.id, model);
       setInstalledThemes(models.map(modelToThemeData));
       setThemesLoaded(true);
 
@@ -1036,7 +1036,7 @@ export function ThemeStoreProvider(props: ParentProps) {
   }
 
   async function setThemeInstalled(themeId: string, visible: boolean) {
-    const model = themeModelMap.get(themeId);
+    const model = themeRecordMap.get(themeId);
     const prefs = datasetStore.agentSettings();
     if (!model || !prefs) return;
 
@@ -1235,7 +1235,7 @@ export function ThemeStoreProvider(props: ParentProps) {
           : null,
         css: source?.css ? asFileField(encodeToFileData(source.css, 'theme.css', 'text/css')) : null,
       });
-      themeModelMap.set(model.id, model);
+      themeRecordMap.set(model.id, model);
       const data: ThemeData = {
         id: model.id,
         slug,
@@ -1295,7 +1295,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     if (!perspective) return null;
 
     try {
-      const existing = themeModelMap.get(editing.id);
+      const existing = themeRecordMap.get(editing.id);
       if (existing && existing.origin !== 'built-in') {
         existing.name = editing.name ?? '';
         existing.icon = editing.icon ?? '';
@@ -1357,7 +1357,7 @@ export function ThemeStoreProvider(props: ParentProps) {
           : null,
         css: editing.css ? asFileField(encodeToFileData(editing.css, 'theme.css', 'text/css')) : null,
       });
-      themeModelMap.set(model.id, model);
+      themeRecordMap.set(model.id, model);
       const data: ThemeData = {
         id: model.id,
         slug,
@@ -1381,11 +1381,11 @@ export function ThemeStoreProvider(props: ParentProps) {
   }
 
   async function deleteTheme(themeId: string) {
-    const model = themeModelMap.get(themeId);
+    const model = themeRecordMap.get(themeId);
     if (!model) return;
     try {
       await model.delete();
-      themeModelMap.delete(themeId);
+      themeRecordMap.delete(themeId);
       setInstalledThemes((prev) => prev.filter((t) => t.id !== themeId));
       // A space theme lives in spaceThemes, not installedThemes — drop it from
       // both lists so the deletion is visible without reloading the space.
@@ -1422,32 +1422,32 @@ export function ThemeStoreProvider(props: ParentProps) {
         Check if already installed by slug — update in place if so.
 
         Constrained to models that are actually *installed*, which means the ones living in the root
-        perspective. `themeModelMap` is also filled by `loadSpaceThemes`, from every space visited
-        this session and never pruned, so an unconstrained slug match could bind `existingModel` to a
+        perspective. `themeRecordMap` is also filled by `loadSpaceThemes`, from every space visited
+        this session and never pruned, so an unconstrained slug match could bind `existingRecord` to a
         theme belonging to a *space* — and `save()` would then publish marketplace content into that
         space, for every member, while the toast said "updated" and the installed list showed nothing
         new. Slugs are not unique across perspectives and were never meant to be.
       */
       const installedIds = new Set(installedThemes().map((theme) => theme.id));
-      let existingModel: Theme | undefined;
-      for (const model of themeModelMap.values()) {
+      let existingRecord: Theme | undefined;
+      for (const model of themeRecordMap.values()) {
         if (installedIds.has(model.id) && model.slug === sourceSlug) {
-          existingModel = model;
+          existingRecord = model;
           break;
         }
       }
 
-      if (existingModel) {
-        existingModel.name = source.name;
-        existingModel.icon = source.icon;
-        existingModel.version = source.version;
-        existingModel.overrides = sourceOverrides
+      if (existingRecord) {
+        existingRecord.name = source.name;
+        existingRecord.icon = source.icon;
+        existingRecord.version = source.version;
+        existingRecord.overrides = sourceOverrides
           ? asFileField(encodeToFileData(sourceOverrides, 'overrides.json', 'application/json'))
           : null;
-        existingModel.css = sourceCss ? asFileField(encodeToFileData(sourceCss, 'theme.css', 'text/css')) : null;
-        await existingModel.save();
-        const updated = modelToThemeData(existingModel);
-        setInstalledThemes((prev) => prev.map((t) => (t.id === existingModel!.id ? updated : t)));
+        existingRecord.css = sourceCss ? asFileField(encodeToFileData(sourceCss, 'theme.css', 'text/css')) : null;
+        await existingRecord.save();
+        const updated = modelToThemeData(existingRecord);
+        setInstalledThemes((prev) => prev.map((t) => (t.id === existingRecord!.id ? updated : t)));
         toastService.success(`Theme "${source.name}" updated to v${source.version}`);
         return;
       }
@@ -1463,7 +1463,7 @@ export function ThemeStoreProvider(props: ParentProps) {
           : null,
         css: sourceCss ? asFileField(encodeToFileData(sourceCss, 'theme.css', 'text/css')) : null,
       });
-      themeModelMap.set(model.id, model);
+      themeRecordMap.set(model.id, model);
       setInstalledThemes((prev) => [...prev, modelToThemeData(model)]);
 
       const settings = datasetStore.agentSettings();
@@ -1501,13 +1501,13 @@ export function ThemeStoreProvider(props: ParentProps) {
   }
 
   async function uninstallTheme(themeId: string) {
-    const model = themeModelMap.get(themeId);
+    const model = themeRecordMap.get(themeId);
     const settings = datasetStore.agentSettings();
     if (!model || !settings) return;
     try {
       await settings.removeInstalledThemes(model);
       await model.delete();
-      themeModelMap.delete(themeId);
+      themeRecordMap.delete(themeId);
       setInstalledThemes((prev) => prev.filter((t) => t.id !== themeId));
       if (currentThemeId() === themeId) setCurrentTheme('light');
       toastService.success('Theme uninstalled');

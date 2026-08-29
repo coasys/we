@@ -103,7 +103,7 @@ Use the **shortest unambiguous** name within the `@we/` scope.
 | `backend-system/ad4m`        | `@we/backend-ad4m`  | Needs prefix — "ad4m" alone says nothing about its role |
 | `design-system/1-tokens`     | `@we/tokens`        | Standalone identity — unambiguous without prefix        |
 | `design-system/3-primitives` | `@we/primitives`    | Standalone identity                                     |
-| `models`                     | `@we/models`        | Standalone package                                      |
+| `models`                     | `@we/entities`      | Standalone package                                      |
 
 ## Grouping directories
 
@@ -214,7 +214,7 @@ Load-bearing, and previously written nowhere.
 > injection, never by import.**
 
 `@we/module-globe` peer-depends on `@we/widgets` and takes `CesiumGlobe` as a constructor argument;
-`@we/models` peer-depends on `@coasys/ad4m`; every module peer-depends on `@we/module-shared`. The
+`@we/entities` peer-depends on `@coasys/ad4m`; every module peer-depends on `@we/module-shared`. The
 failure this prevents is documented in `bundledModules.ts`: a bundle carrying its own reactive
 runtime gets a _second_ one, and reactivity silently stops crossing the boundary.
 

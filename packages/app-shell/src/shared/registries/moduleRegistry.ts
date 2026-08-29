@@ -1,7 +1,7 @@
 /**
  * Module Registry — installed feature modules and what they contribute.
  *
- * The fourth registry alongside `appRegistry`, `modelRegistry`, `templateRegistry` and `themeRegistry`,
+ * The fourth registry alongside `appRegistry`, `entityRegistry`, `templateRegistry` and `themeRegistry`,
  * and deliberately the same shape: modules become the next thing that follows an existing pattern
  * rather than a new concept. Runtime only — the durable half (`AgentSettings.installedModules`,
  * `Space.enabledModules`) arrives with the marketplace, when modules become installable rather than
@@ -24,7 +24,7 @@
  * supported way for a template to depend on an optional module.
  */
 import { type SchemaPort, validateManifest } from '@we/backend-shared';
-import { getModelPredicates, type ModelClass, registerModel, unregisterModel } from '@we/models';
+import { type EntityClass, getEntityPredicates, registerEntity, unregisterEntity } from '@we/entities';
 import {
   checkModuleCompatibility,
   type ModuleDefinition,
@@ -201,7 +201,10 @@ export const moduleRegistry = {
     // can adjudicate. Refused at registration for the same reason an incompatible backend is.
     const badPredicates = [
       ...(definition.models ?? []).flatMap((model) =>
-        modulePredicateViolations(definition.id, getModelPredicates(model as Parameters<typeof getModelPredicates>[0])),
+        modulePredicateViolations(
+          definition.id,
+          getEntityPredicates(model as Parameters<typeof getEntityPredicates>[0]),
+        ),
       ),
       // Declared entities mint under the module's subtree by construction, so the only way a bad
       // predicate enters is an explicit override — which exists precisely to name something the
@@ -254,10 +257,10 @@ export const moduleRegistry = {
 
     // Two registrations are needed for a module-owned entity, and missing either fails at a
     // different moment: SDNA install (in `installSpaceSdna`) puts the *shape* in the perspective,
-    // while this puts the *class* where `model.create` / `$query` can resolve it by name. Without
+    // while this puts the *class* where `record.create` / `$query` can resolve it by name. Without
     // this one the panel renders and only writing a note fails.
-    for (const model of (definition.models ?? []) as ModelClass[]) {
-      registerModel((model as unknown as { className: string }).className, model);
+    for (const model of (definition.models ?? []) as EntityClass[]) {
+      registerEntity((model as unknown as { className: string }).className, model);
     }
 
     for (const [index, slot] of (definition.slots ?? []).entries()) {
@@ -316,14 +319,14 @@ export const moduleRegistry = {
       dockRegistry.remove(`${id}:${index}`);
       slotRegistry.remove(`dock:${id}:${index}`);
     }
-    for (const model of (entry.definition.models ?? []) as ModelClass[]) {
-      unregisterModel((model as unknown as { className: string }).className);
+    for (const model of (entry.definition.models ?? []) as EntityClass[]) {
+      unregisterEntity((model as unknown as { className: string }).className);
     }
     // Declared entities are compiled lazily and cached, so withdrawing a module has to drop both
     // the resolvable classes and the cache — otherwise re-registering it would reuse classes
     // compiled against the previous declaration.
     for (const entityName of Object.keys(entry.definition.entities?.manifest.entities ?? {})) {
-      unregisterModel(entityName);
+      unregisterEntity(entityName);
     }
     compiledEntities.delete(id);
     delete moduleStores[id];

@@ -1,7 +1,7 @@
 /**
  * Writing a fixture into a dataset, through the model layer the app itself writes through.
  *
- * Not raw rows. `@we/models` classes are compiled from one manifest into row-backed classes on the
+ * Not raw rows. `@we/entities` classes are compiled from one manifest into row-backed classes on the
  * in-memory backend and triple-backed ones on AD4M, so going through them is what makes a fixture
  * portable — and, more immediately, what stops a fixture from producing rows that no code path in
  * the app could have produced. A fixture that writes a shape the composer cannot create is a
@@ -18,15 +18,15 @@ import type { Fixture, FixtureNode } from './types';
 /** The pieces of the host a fixture needs. Passed in rather than imported, so this stays neutral. */
 export interface ApplyDeps {
   /**
-   * Resolves a model class by name — `getModel` from `@we/models`.
+   * Resolves a model class by name — `getEntity` from `@we/entities`.
    *
-   * Typed `unknown` rather than {@link ModelClass} because the registry's own type is a
+   * Typed `unknown` rather than {@link EntityClass} because the registry's own type is a
    * constructor plus an index signature (what a class satisfies is asserted where each backend
    * builds it, not in the registry), and an index signature does not satisfy a *declared* member:
-   * a dep typed as `ModelClass` rejects the real `getModel` outright. Narrowed once inside
+   * a dep typed as `EntityClass` rejects the real `getEntity` outright. Narrowed once inside
    * {@link applyFixture} instead, so no host has to cast.
    */
-  getModel(name: string): unknown;
+  getEntity(name: string): unknown;
   /** The dataset to write into, as the backend's own handle. */
   dataset: unknown;
   /** That dataset's id. Use {@link datasetIdFor} to know it before the dataset exists. */
@@ -44,14 +44,14 @@ export interface ApplyDeps {
 }
 
 /** Only what this file touches — what the loose registry type above is narrowed to on the way in. */
-interface ModelInstance {
+interface RecordInstance {
   id: string;
   addChildren?(related: unknown): Promise<void>;
   addSignals?(related: unknown): Promise<void>;
 }
 
-interface ModelClass {
-  create(handle: unknown, data: Record<string, unknown>): Promise<ModelInstance>;
+interface EntityClass {
+  create(handle: unknown, data: Record<string, unknown>): Promise<RecordInstance>;
 }
 
 export interface AppliedFixture {
@@ -87,12 +87,12 @@ const slug = (value: string) =>
 
 export async function applyFixture(deps: ApplyDeps, fixture: Fixture): Promise<AppliedFixture> {
   const { dataset, datasetId } = deps;
-  const getModel = (name: string) => deps.getModel(name) as ModelClass;
+  const getEntity = (name: string) => deps.getEntity(name) as EntityClass;
   const created: AppliedFixture['nodes'] = [];
   /** Per-kind counter, so a node with no title still gets a stable id from its position. */
   const counters = new Map<string, number>();
 
-  await getModel('Space').create(dataset, {
+  await getEntity('Space').create(dataset, {
     id: `${fixture.id}-space`,
     uuid: datasetId,
     ...(deps.sharedId ? { url: deps.sharedId } : {}),
@@ -111,7 +111,7 @@ export async function applyFixture(deps: ApplyDeps, fixture: Fixture): Promise<A
   // by slug through a hoisted query, precisely because the id is per-community.
   const signalTypeIds = new Map<string, string>();
   for (const type of fixture.signalTypes ?? []) {
-    const instance = await getModel('SignalType').create(dataset, {
+    const instance = await getEntity('SignalType').create(dataset, {
       id: `${fixture.id}-signal-${type.slug}`,
       name: type.name,
       slug: type.slug,
@@ -137,10 +137,10 @@ export async function applyFixture(deps: ApplyDeps, fixture: Fixture): Promise<A
     return `${fixture.id}-${node.kind}-${n}`;
   }
 
-  async function write(node: FixtureNode, parent?: ModelInstance): Promise<ModelInstance> {
+  async function write(node: FixtureNode, parent?: RecordInstance): Promise<RecordInstance> {
     const hasBody = Boolean(node.body?.length);
     const id = idFor(node);
-    const instance = await getModel('CollectionBlock').create(dataset, {
+    const instance = await getEntity('CollectionBlock').create(dataset, {
       id,
       type: 'collection',
       kind: node.kind,
@@ -166,7 +166,7 @@ export async function applyFixture(deps: ApplyDeps, fixture: Fixture): Promise<A
     // paragraph, keyed to match the blob, so a reader that walks `children` (the graph, a
     // transcript, a regeneration of the blob) finds the same content the blob carries.
     for (const [index, paragraph] of (node.body ?? []).entries()) {
-      const block = await getModel('TextBlock').create(dataset, {
+      const block = await getEntity('TextBlock').create(dataset, {
         id: textBlockId(id, index),
         style: 'normal',
         text: paragraph,
@@ -177,7 +177,7 @@ export async function applyFixture(deps: ApplyDeps, fixture: Fixture): Promise<A
     }
 
     for (const [index, image] of (node.images ?? []).entries()) {
-      const block = await getModel('ImageBlock').create(dataset, {
+      const block = await getEntity('ImageBlock').create(dataset, {
         id: `${id}-image-${index + 1}`,
         src: image.src,
         ...(image.alt ? { altText: image.alt } : {}),
@@ -195,7 +195,7 @@ export async function applyFixture(deps: ApplyDeps, fixture: Fixture): Promise<A
         throw new Error(`fixture '${fixture.id}': signal slug '${signal.slug}' has no matching signalTypes entry`);
       }
       for (const did of signal.by) {
-        const value = await getModel('Signal').create(dataset, {
+        const value = await getEntity('Signal').create(dataset, {
           id: `${id}-${signal.slug}-${slug(did)}`,
           signalTypeId,
           value: 1,
