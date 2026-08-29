@@ -21,6 +21,13 @@ view state either; it is a property of the space, stored on it and shared with
 every member. Each agent's private hiding of a section is tier 3. See
 `views.md`.
 
+**One record is tier 1 too**, at `/record/:entity/:id` — injected by the host
+wherever a shell puts its sections, so it nests under whatever the sections nest
+under. "Look at this one thing" is a location and needs an address; expanding a
+card is not one, and cannot be sent to anybody. The entity is in the path because
+a schema cannot ask what type an id is: `$query` needs an entity to query. See
+`views/RecordPage`.
+
 **2. View state — how it's arranged → query params, via `syncParam`.**
 Selected content type, sort field/direction, active filters, search text: the
 things a link's recipient should see exactly as the sender does. Declared on
