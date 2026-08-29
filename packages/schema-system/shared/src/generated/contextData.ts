@@ -1717,7 +1717,7 @@ export const contextData: ContextData = {
         { name: 'enabledModules', type: 'string', predicate: 'we://enabled_modules', required: false },
         { name: 'enabledViews', type: 'string', predicate: 'we://enabled_views', required: false },
         { name: 'extractionTargets', type: 'string', predicate: 'we://extraction_targets', required: false },
-        { name: 'autoInterpret', type: 'boolean', predicate: 'we://auto_interpret', required: false, default: 'false' },
+        { name: 'autoInterpret', type: 'boolean', predicate: 'we://auto_interpret', required: false, default: 'true' },
         {
           name: 'shareExtractionDetail',
           type: 'boolean',

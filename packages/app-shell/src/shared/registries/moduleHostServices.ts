@@ -84,6 +84,14 @@ export interface ModuleHostServices {
    */
   interpretationAvailable?: () => boolean;
   /**
+   * Whether this space has automatic extraction switched on — the community's decision, reactive.
+   *
+   * Separate from `interpretationAvailable`, which is what the *node* can do. Both are needed, and
+   * conflating them put the wrong sentence on screen: a space with the setting off reported that
+   * this node could not auto-extract, which is neither true nor something anybody can act on.
+   */
+  autoInterpretEnabled?: () => boolean;
+  /**
    * Whether this space shares the model exchange between peers — the space setting, reactive.
    *
    * What a module reads to explain a peer's row that cannot be opened. Separate from the rows
@@ -187,6 +195,10 @@ export function createModuleStoreDeps(framework: {
         services.interpretationAvailable?.() ??
         services.interpretation?.available?.() ??
         services.interpretation !== undefined,
+      // The community's decision, read through on every call so a module's standing watch follows a
+      // mid-call toggle. Absent reads as off, matching the gate in DatasetStore — the right way
+      // round for something that spends somebody's LLM budget.
+      autoEnabled: () => services.autoInterpretEnabled?.() ?? false,
       // Read through on every call rather than captured, like every accessor here: a module store
       // outlives a space switch, and a captured list would offer the previous space's models.
       targets: (collectionId) => services.extractionTargets?.(collectionId) ?? [],

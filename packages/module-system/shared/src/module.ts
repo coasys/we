@@ -754,6 +754,20 @@ export interface ModuleInterpretationAccess {
   /** Whether interpretation can run at all — false when the backend has no model configured. */
   available: () => boolean;
   /**
+   * Whether this community has automatic extraction switched on.
+   *
+   * A different question from {@link available}, and both have to be asked: `available` is what this
+   * *node* can do, this is what the space has *decided*. Conflating them produced the wrong sentence
+   * on screen — a space with the setting off reported that the node could not auto-extract, which is
+   * neither true nor actionable.
+   *
+   * Reactive, and that is the point of exposing it rather than letting the host refuse the call: a
+   * standing watch has to follow the setting while a call is running. Toggling it used to change
+   * nothing until everybody left the call and rejoined, because the only thing that read it was a
+   * throw inside `watchCollection`, and nothing re-ran that.
+   */
+  autoEnabled: () => boolean;
+  /**
    * What this call extracts, and what else it could — one row per model, ticked when it is on.
    *
    * Here because a module cannot work it out, and should not try. Three layers decide it: the

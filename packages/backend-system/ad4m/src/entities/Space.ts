@@ -98,8 +98,21 @@ export class Space extends WeNode {
   @Property({ through: 'we://extraction_targets' })
   extractionTargets: string = '';
 
+  /**
+   * Whether calls in this space are interpreted as they happen.
+   *
+   * On by default. It was off, on the reasoning that a pass spends somebody's LLM budget and a
+   * community should opt in — which reads well and played badly: extraction is the feature, and
+   * a space arrived with it silently disabled, so the ordinary first experience was a call that
+   * transcribed and extracted nothing, with the reason two screens away. Nobody turns on a thing
+   * they have not seen work.
+   *
+   * The budget argument survives where it is actually true: this is a *space* setting, so a
+   * community can switch it off for everyone, and it does nothing at all on a node with no model
+   * configured — `available` answers that separately and refuses first.
+   */
   @Property({ through: 'we://auto_interpret' })
-  autoInterpret: boolean = false;
+  autoInterpret: boolean = true;
 
   /**
    * Whether extraction passes broadcast their prompt and response to the rest of the space.

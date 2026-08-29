@@ -77,7 +77,20 @@ export const Space: CoreEntityDef = {
        * nothing in the perspective to point at. Same shape as `enabledModules` and `enabledViews`.
        */
       extractionTargets: { type: 'string', predicate: 'we://extraction_targets', default: '' },
-      autoInterpret: { type: 'boolean', predicate: 'we://auto_interpret', default: false },
+      /**
+       * Whether calls in this space are interpreted as they happen.
+       *
+       * On by default. It was off, on the reasoning that a pass spends somebody's LLM budget and a
+       * community should opt in — which reads well and played badly: extraction is the feature, and
+       * a space arrived with it silently disabled, so the ordinary first experience was a call that
+       * transcribed and extracted nothing, with the reason two screens away. Nobody turns on a thing
+       * they have not seen work.
+       *
+       * The budget argument survives where it is actually true: this is a *space* setting, so a
+       * community can switch it off for everyone, and it does nothing at all on a node with no model
+       * configured — `available` answers that separately and refuses first.
+       */
+      autoInterpret: { type: 'boolean', predicate: 'we://auto_interpret', default: true },
       /**
        * Whether extraction passes broadcast their prompt and response to the rest of the space.
        *

@@ -1981,7 +1981,7 @@ Space extends WeNode:
   - enabledModules: string [we://enabled_modules]
   - enabledViews: string [we://enabled_views]
   - extractionTargets: string [we://extraction_targets]
-  - autoInterpret: boolean = false [we://auto_interpret]
+  - autoInterpret: boolean = true [we://auto_interpret]
   - shareExtractionDetail: boolean = false [we://share_extraction_detail]
   Relations:
   - location: HasOne → LocationBlock [we://location]

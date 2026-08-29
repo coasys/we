@@ -4751,7 +4751,7 @@
           "type": "boolean",
           "predicate": "we://auto_interpret",
           "required": false,
-          "default": "false"
+          "default": "true"
         },
         {
           "name": "shareExtractionDetail",

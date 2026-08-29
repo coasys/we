@@ -452,9 +452,20 @@ const extract: SchemaNode = {
               children: [
                 { type: 'we-icon', props: { name: 'info', color: 'text-faint' } },
                 {
+                  /*
+                    The reason, not a guess at it.
+
+                    This was one fixed sentence — "not running on this node" — while `watchProblem`
+                    held the actual cause, composed for exactly this. So a space that had simply
+                    switched automatic extraction off was told its node could not do it: untrue, and
+                    unactionable, and the setting is two clicks away.
+
+                    The store owns the wording because it is the only thing that knows which of four
+                    cases happened; this adds the clause that is true in all of them.
+                  */
                   type: 'we-text',
                   props: { variant: 'footnote', color: 'text-muted' },
-                  children: ['Automatic extraction is not running on this node — press Extract instead.'],
+                  children: [{ $: '`${modules.transcribe.watchProblem} Press Extract instead.`' }],
                 },
               ],
             },

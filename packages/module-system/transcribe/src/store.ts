@@ -986,6 +986,17 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    */
   let watchedClasses = '';
 
+  /**
+   * Whether this community has automatic extraction on.
+   *
+   * Feature-tested like every other interpretation call — the host publishes a forwarding wrapper
+   * that is always present, so `interpretation?.` only answers "is there a wrapper". A host that
+   * predates this reads as *on*, which keeps its behaviour exactly as it was: the host's own gate
+   * still refuses the registration, and the panel still reports it.
+   */
+  const autoEnabled = (): boolean =>
+    typeof interpretation?.autoEnabled === 'function' ? interpretation.autoEnabled() : true;
+
   async function syncWatch(next: string | null): Promise<void> {
     // Keyed on what this call currently extracts, so a group changing it mid-call moves the watch.
     // The host owns the list; this only has to notice when the answer changed.
@@ -1041,6 +1052,16 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       }
     }
 
+    if (next && !autoEnabled()) {
+      // Not a failure and not a capability — a decision, stated as one. The host would refuse the
+      // registration anyway; saying it here is what makes the sentence on screen the true one, and
+      // what stops a pointless call to a backend that is going to throw. The unwatch above has
+      // already run, so switching the setting off mid-call stops the watch rather than leaving it
+      // spending an LLM call per pass for a community that just said stop.
+      setWatchProblem('Automatic extraction is off for this space.');
+      return;
+    }
+
     if (next && key && typeof interpretation?.watchCollection === 'function') {
       try {
         await interpretation.watchCollection(next);
@@ -1092,6 +1113,20 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     if (!live) return;
     // Read inside the effect so a change to the list re-runs it.
     void targetsFor(live);
+    /*
+      And the space's own switch, for the same reason and a longer story.
+
+      Nothing used to read it here. The only thing that did was a throw inside the host's
+      `watchCollection`, so turning automatic extraction *on* during a call changed nothing at all:
+      the watch had already failed to register, no effect depended on the setting, and the panel went
+      on saying auto-extraction was unavailable until everybody left the call and rejoined. Turning
+      it off mid-call was worse — the watch stayed registered and kept spending an LLM call per pass
+      on a community that had just said stop.
+
+      Read here, both directions land while the call is running, which is the only behaviour anybody
+      would predict from a switch.
+    */
+    void autoEnabled();
     void syncWatch(live);
   });
 

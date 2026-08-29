@@ -413,6 +413,16 @@ export function InterpretationStoreProvider(props: ParentProps) {
       synced — and gating an explanation of the *setting* on those showed it with sharing on.
     */
     interpretationDetailShared: () => shareDetail(),
+    /*
+      The community's decision about automatic extraction, published for the same reason the sharing
+      one is: a module has to be able to *react* to it.
+
+      Its only reader used to be a throw inside `datasetStore.watchCollection`, which meant switching
+      it on mid-call changed nothing — nothing re-ran the registration, so a call kept reporting that
+      auto-extraction was unavailable until everybody left and rejoined. Published here, a module's
+      watch effect depends on it and follows the toggle.
+    */
+    autoInterpretEnabled: () => spaceStore.autoInterpret(),
   });
 
   const store: InterpretationStore = {
