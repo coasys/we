@@ -384,6 +384,25 @@ export const recordPage: SchemaNode = {
                         'The record this link points at has been deleted, or belongs to a space you have not joined.',
                       ],
                     },
+                    /*
+                      What it looked for, said plainly.
+
+                      Not gated on a development build, and that is the second lesson from this
+                      route rather than a style choice: `sessionStore.devTools` is not granted at the
+                      space tier, so a diagnostic behind it renders for nobody — including whoever is
+                      debugging. A gate that silently never opens is worse than no gate.
+
+                      It earns its place unconditionally anyway. "This isn't here" leaves a reader
+                      with nothing to act on, and a broken link is usually a broken link *to
+                      something* — naming the type and the id is the difference between "the app is
+                      wrong" and "this was deleted", and it is the id that would otherwise be
+                      invisible when it is the empty one.
+                    */
+                    {
+                      type: 'we-text',
+                      props: { variant: 'footnote', color: 'text-faint', textAlign: 'center' },
+                      children: [{ $: "`Looked for ${local.entity} · ${routeStore.params.id ?? 'no id given'}`" }],
+                    },
                   ],
                 },
               },

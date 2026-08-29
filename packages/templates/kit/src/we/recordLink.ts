@@ -32,6 +32,7 @@ import type { SchemaNode } from '@we/schema-shared';
  * differ per list, and this has no business knowing them.
  */
 export function recordLink(entity: unknown, id: unknown): SchemaNode {
+  const target = `\`\${spaceStore.spacePath}/record/\${${(entity as { $: string }).$}}?id=\${${(id as { $: string }).$}}\``;
   return {
     /*
       Absent outside a space, rather than pointing nowhere.
@@ -50,10 +51,8 @@ export function recordLink(entity: unknown, id: unknown): SchemaNode {
           variant: 'ghost',
           size: 'sm',
           square: true,
+          href: { $: target },
           title: 'Open',
-          href: {
-            $: `\`\${spaceStore.spacePath}/record/\${${(entity as { $: string }).$}}/\${${(id as { $: string }).$}}\``,
-          },
         },
         children: [{ type: 'we-icon', props: { name: 'arrows-out-simple' } }],
       },
