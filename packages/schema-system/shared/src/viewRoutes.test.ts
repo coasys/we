@@ -41,6 +41,25 @@ describe('expandViewRoutes', () => {
     expect(out.some((r) => r.redirect)).toBe(false);
   });
 
+  it("places the host's own routes at the marker, after the sections", () => {
+    /*
+      A record's own page is a sibling of the sections rather than a route at the root, because
+      whatever nests them — a layout route, a space id — is exactly what it needs nesting under too.
+      A host that appended at the root would put the page outside the space it belongs to.
+
+      After the sections, so a community whose own section is segmented `record` still wins its own
+      path: their section is more theirs than the host's page is.
+    */
+    const extra = { path: '/record/:entity/:recordId' } as RouteSchema;
+    const out = expandViewRoutes([marker], [view('about', 'about')], {
+      activeIds: 'spaceStore.enabledViewIds',
+      notInSpace: { type: 'Column' },
+      extraRoutes: [extra],
+    });
+
+    expect(out.map((r) => r.path)).toEqual(['/about', '/record/:entity/:recordId']);
+  });
+
   it('uses the resolved segment, not the one the template suggested', () => {
     // Two views can offer the same default segment; the resolver decides who gets it.
     const feed = view('feed', 'cards', { segment: 'feed' });

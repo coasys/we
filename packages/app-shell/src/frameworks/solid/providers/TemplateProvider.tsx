@@ -36,7 +36,7 @@ import { expandViewRoutes, hasViewsMarker } from '@we/schema-shared';
 import type { VisualEditorContextValue } from '@we/schema-solid';
 import { RenderSchema, VisualEditorProvider } from '@we/schema-solid';
 import { CHROME_RAIL_WIDTH } from '@we/template-shell';
-import { recordPage } from '@we/template-views';
+import { RECORD_ROUTE_PATH, recordPage } from '@we/template-views';
 import { createEffect, createMemo, createSignal, onCleanup, onMount, Show, untrack } from 'solid-js';
 
 import { createCollabSession } from '../collab/collabSession';
@@ -391,6 +391,21 @@ export default function TemplateProvider() {
     },
   };
 
+  /**
+   * Routes the host puts beside a space's sections, wherever the shell mounts them.
+   *
+   * One list, because two things read it: `expandViewRoutes` injects it at the `$views` marker, and
+   * the index redirect below has to know these segments are not sections. Written out twice, the
+   * redirect bounced every one of them to the space's first section — see there.
+   *
+   * A page for one record is the only member so far, and it is here rather than in each template
+   * because every space wants it and no template should have to remember to include it.
+   */
+  const HOST_ROUTES = [{ ...recordPage, path: RECORD_ROUTE_PATH }];
+
+  /** Their first path segment — what the redirect compares a URL against. */
+  const HOST_ROUTE_SEGMENTS = new Set(HOST_ROUTES.map((route) => route.path.split('/')[1]));
+
   const routesWithViews = createMemo(() => {
     const routes = templateSchema.routes ?? [];
     if (!hasViewsMarker(routes)) return routes;
@@ -444,6 +459,12 @@ export default function TemplateProvider() {
    * - A segment the community does not have here — a link to a section since removed, or the one you
    *   were reading when somebody removed it.
    *
+   * **Not every segment at that level is a section.** The host injects its own routes beside them —
+   * a record's own page — and those are not in any view list, so this read them as sections the
+   * community had removed and bounced every one of them to the first section in the nav. Every
+   * expand button appeared to navigate to About. The exemption is derived from the same list that is
+   * injected rather than written out again, so a second host route cannot reintroduce it.
+   *
    * **Membership is tested against the community's list, but the landing place comes from the nav.**
    * Those differ by this agent's own hidden sections, and conflating them would bounce somebody off
    * a section they had merely hidden from their own nav — a refusal nobody asked for. Hidden means
@@ -465,6 +486,7 @@ export default function TemplateProvider() {
     if (!nav.length) return;
 
     const current = segments[2];
+    if (current && HOST_ROUTE_SEGMENTS.has(current)) return;
     if (current && spaceStore.enabledViewIds().some((id) => id === viewIdForSegment(current))) return;
     routeStore.navigate(`/space/${segments[1]}/${nav[0].segment}`, { replace: true });
   });

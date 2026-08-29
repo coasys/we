@@ -31,7 +31,7 @@ import { graphView } from './views/GraphView/index.ts';
 import { tasksView } from './views/TasksView/index.ts';
 
 export { aboutView, calendarView, cardsView, fluxView, globeView, graphView, tasksView };
-export { recordPage } from './views/RecordPage';
+export { RECORD_ROUTE_PATH, recordPage } from './views/RecordPage';
 
 /**
  * Every built-in view, by the id a space's section list names it with.

@@ -36,6 +36,16 @@ import type { SchemaNode } from '@we/schema-shared';
  * and wrong for the next. The last two segments are the entity and the id wherever the route was
  * mounted.
  */
+/**
+ * The route this page is mounted at.
+ *
+ * Exported rather than written at the injection site because the host reads it twice: once to place
+ * the route, and once to take its first segment, so the index redirect knows `record` is not a
+ * section it should bounce somebody off. That redirect did exactly that on the first attempt —
+ * silently, so every expand button appeared to navigate to About.
+ */
+export const RECORD_ROUTE_PATH = '/record/:entity/:recordId';
+
 const entityExpr = { $: 'routeStore.segments[count(routeStore.segments) - 2]' };
 const idExpr = { $: 'last(routeStore.segments)' };
 
