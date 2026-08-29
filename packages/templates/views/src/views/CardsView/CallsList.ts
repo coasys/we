@@ -546,16 +546,25 @@ export const callsList: SchemaNode = {
                       ],
                     },
                     /*
-                        What this call's pass is doing, or found.
+                        What this call's pass is doing, and — only when it found nothing — that it did.
 
                         A spinner inside a 32px button is not, on its own, an answer to "did my click
                         land" — the run takes tens of seconds against a remote model, which is long
                         enough to press again, or to conclude it is broken. So the state is also said
                         in words beside it.
 
-                        Zero is a real and common answer — a conversation with nothing decided in it
-                        — and saying so is the difference between "it worked, there was nothing" and
-                        "it silently failed". All three states are scoped to this card's id, so
+                        It used to say `${count} found` on a hit, and that has to go: the count came
+                        from `extractCount`, which is *this agent's last press* — so it ignored what
+                        auto-extraction wrote, it survived leaving and re-entering the route (the
+                        module store outlives navigation), and it sat directly above the findings
+                        groups, which count what is actually attached. Two numbers about the same
+                        card, disagreeing. The groups are the truthful one, so the press now says
+                        nothing on a hit and lets them answer.
+
+                        Zero is the case that still needs words, and is why this is not deleted
+                        outright: nothing renders below when nothing was found, so without a sentence
+                        "it worked, there was nothing in this conversation" and "it silently failed"
+                        look identical. Both remaining states are scoped to this card's id, so
                         nothing ever appears on a card that did not ask for it.
                       */
                     {
@@ -573,14 +582,14 @@ export const callsList: SchemaNode = {
                       type: '$if',
                       props: {
                         condition: {
-                          $: "modules.transcribe.extractedId == call.id && modules.transcribe.extractStatus == 'done'",
+                          $: "modules.transcribe.extractedId == call.id && modules.transcribe.extractStatus == 'done' && !modules.transcribe.extractCount",
                         },
                         then: {
                           type: 'we-text',
-                          props: { fontSize: '200', color: 'text' },
+                          props: { fontSize: '200', color: 'text-muted' },
                           children: [
                             {
-                              $: "modules.transcribe.extractTurns ? modules.transcribe.extractCount ? `${modules.transcribe.extractCount} found` : `Nothing found in ${modules.transcribe.extractTurns} turns` : 'No transcript to read'",
+                              $: "modules.transcribe.extractTurns ? `Nothing found in ${modules.transcribe.extractTurns} turns` : 'No transcript to read'",
                             },
                           ],
                         },
