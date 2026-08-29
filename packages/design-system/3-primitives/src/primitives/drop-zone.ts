@@ -7,8 +7,23 @@ import { LayoutElement } from '../shared/design-system-element';
 const CSS_STYLES = css`
   :host {
     --we-drop-zone-host-display: block;
+    /*
+      The containing block for the ring below, declared as the DS custom property rather than as a
+      plain position declaration.
+
+      It WAS a plain one, and it did nothing. Every DS element adopts a generated stylesheet *after*
+      its own Lit styles — last wins — and that sheet sets every host-layout property from a custom
+      property, position among them. Unset, the var is empty, the declaration is invalid at
+      computed-value time, and the host falls back to static.
+
+      So the ring laid itself out against the nearest ancestor that *was* positioned — the docked
+      panel's frame — and every zone in the panel drew its feedback over the whole panel. Hovering a
+      folder tinted the entire Pocket, which reads exactly like the folder not being a target at all.
+      Setting the property puts the value in the channel the generated rule reads, so a template
+      passing its own position still overrides it. See drop-zone.test.ts.
+    */
+    --we-drop-zone-position: relative;
     display: var(--we-drop-zone-host-display, block);
-    position: relative;
   }
 
   /*
@@ -46,13 +61,18 @@ const CSS_STYLES = css`
   }
 
   /*
-    Armed: a drag this zone would take is running somewhere. Deliberately faint, and deliberately
-    rare — see the noArm property. It answers "this panel is a place things go", which is worth
-    saying once about a container and not at all about each of the rows inside it.
+    Armed: a drag this zone would take is running somewhere. Deliberately rare — see the noArm
+    property. It answers "this panel is a place things go", which is worth saying once about a
+    container and not at all about each of the rows inside it.
+
+    The same ring weight as the target state, not a thinner one. The two states are already told
+    apart by the fill, which is the louder signal of the pair, so making the ring grow as well said
+    the same thing twice — and left the armed state too faint to read at panel size, where a hairline
+    around a large box reads as an artefact rather than as an outline.
   */
   :host([data-we-drop-armed])::after {
     opacity: 1;
-    box-shadow: inset 0 0 0 1px var(--we-role-accent, #93c5fd);
+    box-shadow: inset 0 0 0 var(--we-drop-zone-ring, 2px) var(--we-role-accent, #93c5fd);
   }
 
   /*
@@ -71,7 +91,7 @@ const CSS_STYLES = css`
   */
   :host([data-we-drop-target])::after {
     opacity: 1;
-    box-shadow: inset 0 0 0 2px var(--we-role-accent, #93c5fd);
+    box-shadow: inset 0 0 0 var(--we-drop-zone-ring, 2px) var(--we-role-accent, #93c5fd);
     background: color-mix(in srgb, var(--we-role-accent, #93c5fd) 14%, transparent);
   }
 
