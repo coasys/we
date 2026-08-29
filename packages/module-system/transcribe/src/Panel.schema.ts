@@ -18,6 +18,8 @@
 import { type SchemaNode } from '@we/schema-shared';
 import { expr } from '@we/schema-shared';
 
+import { extractionActivity } from './ExtractionStatus.schema';
+
 /**
  * A message shown for exactly one status.
  *
@@ -494,6 +496,20 @@ const extract: SchemaNode = {
           },
         },
         proposals,
+
+        /*
+          What the passes did, in full.
+
+          This used to be the whole of the call bar's readout, and it moved the call's furniture
+          every time somebody opened a row — see `extractionActivity`. It belongs here: this panel is
+          already the surface about extraction, opening something in it costs the call nothing, and
+          there is room for a prompt pane without a floating strip growing to 520px over the controls
+          somebody is reaching for.
+
+          A one-line signal stays in the call chrome so the four people in five who did not start a
+          pass can still see one is running without opening anything.
+        */
+        extractionActivity,
       ],
     },
   },
@@ -524,9 +540,9 @@ const extract: SchemaNode = {
  * template can place it by name.
  *
  * The capture controls are deliberately *not* split out to match — nothing places them separately,
- * and a fragment with no second caller is an extraction waiting to be got wrong. `extractionStatus`
- * is already its own file for a different reason: it is contributed to the call bar rather than
- * composed into this panel.
+ * and a fragment with no second caller is an extraction waiting to be got wrong. The extraction
+ * schemas are already their own file for a different reason: one of the two nodes there is
+ * contributed to the call bar rather than composed into this panel.
  */
 export const transcriptFeed: SchemaNode = {
   type: 'we-scroll-area',

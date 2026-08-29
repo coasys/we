@@ -104,17 +104,20 @@ function summarise(values: Record<string, unknown>): string {
 }
 
 /**
- * The collapsed height of the extraction status panel, in pixels — see `chromeReserve` below for
- * why it is the collapsed one and not the real one.
+ * The height of the extraction signal under the call bar, in pixels.
  *
- * Reserved at the *bottom*, because that is the edge the call bar took and this panel is mounted
- * into its column. The edge is the anchor's, not this module's choice: it contributes to
- * `call-status` and lands wherever that column is.
+ * One line of text in a strip padded `200` a side, and — unlike the readout this replaced — a strip
+ * that cannot grow: the label truncates and concurrent passes collapse to a count, so this is the
+ * real height rather than a collapsed one somebody has to reason about.
+ *
+ * Reserved at the *bottom*, because that is the edge the call bar took and this is mounted into its
+ * column. The edge is the anchor's, not this module's choice: it contributes to `call-status` and
+ * lands wherever that column is.
  */
-const STATUS_RESERVE_PX = 56;
+const STATUS_RESERVE_PX = 40;
 
-/** Its widest, which the panel itself caps — see `maxWidth` in `ExtractionStatus.schema`. */
-const STATUS_WIDTH_PX = 520;
+/** Its widest, which the signal itself caps — see `maxWidth` in `ExtractionStatus.schema`. */
+const STATUS_WIDTH_PX = 320;
 
 /**
  * Flux's *effective* voice-activity thresholds, which are not the ones in its defaults file.
@@ -1483,14 +1486,18 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * Its **collapsed** height, deliberately, and this is the one number here that is a judgement
      * rather than a measurement. The panel is a set of disclosures: open a pass and it grows, open
      * the prompt inside it and it grows again. Reporting its live height would push any panel
-     * snapped below it down the screen on every one of those, which is the same jumping this
-     * panel's own width rule exists to avoid — so the common case is reserved and an expanded row is
-     * allowed to overlap something the person expanding it is looking straight at.
+     * snapped below it down the screen on every one of those.
      *
-     * The column's `300` gap (12px), plus `200` of padding a side (16px), plus a line of status.
+     * That is no longer a compromise, because the signal cannot change size: what used to expand is
+     * in the transcript panel now. So this reserves the whole of it, and a panel snapped beneath the
+     * call bar never overlaps it.
+     *
+     * Gated on a pass actually *running* rather than on any activity existing, matching what the
+     * signal shows — reserving a band for settled rows nobody can see would push panels down for a
+     * strip that is not on screen.
      */
     chromeReserve: () =>
-      (interpretation?.activity() ?? []).length > 0
+      (interpretation?.activity() ?? []).some((pass) => pass.running)
         ? { bottom: STATUS_RESERVE_PX, width: STATUS_WIDTH_PX }
         : { bottom: 0, width: 0 },
 
