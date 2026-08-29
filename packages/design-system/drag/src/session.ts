@@ -94,6 +94,18 @@ function accepts(zone: DragZone, payload: DragPayload, from?: Element): boolean 
   // Never into the thing being dragged: nesting is DOM containment, so this needs no knowledge of
   // anybody's data model — the same check `we-sortable` makes for cycles.
   if (from && from.contains(zone.el)) return false;
+  /*
+    A container that refuses its own contents refuses them into its sub-zones too.
+
+    Picking up a row inside the Pocket lit the whole panel as though it were being dragged in, and
+    a release would have written nothing — the panel already holds it. Marking the panel `rejectsOwn`
+    says so once, for the panel and for every folder and crumb inside it, rather than each of them
+    having to work out where the drag came from.
+
+    Containment again, so it needs no data model: the flag applies where the marked zone contains
+    both the source and the candidate. `contains` is reflexive, so the marked zone covers itself.
+  */
+  if (from && registry.list().some((z) => z.rejectsOwn && z.el.contains(from) && z.el.contains(zone.el))) return false;
   return zone.accepts ? zone.accepts(payload) : true;
 }
 

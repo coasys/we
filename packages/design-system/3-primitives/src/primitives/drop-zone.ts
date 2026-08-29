@@ -162,6 +162,18 @@ export default class DropZone extends LayoutElement {
    */
   @property({ type: Boolean }) noArm = false;
 
+  /**
+   * Refuse anything picked up inside this zone, and inside any zone nested within it.
+   *
+   * For a container whose drop means "keep a copy of this": once it holds the thing, releasing
+   * changes nothing, so lighting up is a promise it cannot keep. The Pocket sets it — dragging one
+   * of its own rows used to arm the whole panel as though the row were being gathered in.
+   *
+   * Off by default, because the opposite is just as common: a board or a list takes its own items
+   * back constantly, and that is a move rather than a second copy.
+   */
+  @property({ type: Boolean }) noSelf = false;
+
   @state() private _armed = false;
 
   private _unregister: (() => void) | null = null;
@@ -200,10 +212,16 @@ export default class DropZone extends LayoutElement {
   private _zone(): DragZone {
     const emit = (name: string, detail?: unknown) =>
       this.dispatchEvent(new CustomEvent(name, { detail, bubbles: false, composed: true }));
+    const refusesOwn = () => this.noSelf;
 
     return {
       el: this,
       accepts: (payload) => this._accepts(payload),
+      // A getter, not a copy: the zone object is registered once at connect, and a template may
+      // bind this prop to an expression that changes long afterwards.
+      get rejectsOwn() {
+        return refusesOwn();
+      },
       onEnter: () => emit('dropenter'),
       onLeave: () => emit('dropleave'),
       onDrop: ({ payload }) => emit('dropped', payload),

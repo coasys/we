@@ -569,6 +569,20 @@ const panel: SchemaNode = {
       props: {
         width: '100%',
         height: '100%',
+        /*
+          The Pocket does not take back what it already holds.
+
+          Picking up one of its own rows used to arm the whole panel as though the row were being
+          gathered in, and a release would have written nothing — `gather` finds the reference
+          already stored and stops. `noSelf` covers the folders and the crumbs too, since the rule
+          is containment: while a drag that began in here is running, nothing in here is a target.
+
+          Re-filing an item into another folder is a *move*, and it is not built — it needs the
+          agent-data port to be able to relink a record, which it cannot. When it exists, the
+          folders and crumbs will want to accept again and this flag will need narrowing to the
+          panel's own empty space.
+        */
+        noSelf: true,
         onDropped: { $action: 'modules.pocket.gather', args: [{ $: 'event.detail' }] },
       },
       children: [

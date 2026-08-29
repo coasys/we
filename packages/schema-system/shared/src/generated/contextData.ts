@@ -181,6 +181,7 @@ export const contextData: ContextData = {
         { name: 'accepts', type: 'string', optional: false, default: "''" },
         { name: 'disabled', type: 'boolean', optional: false, default: 'false' },
         { name: 'noArm', type: 'boolean', optional: false, default: 'false' },
+        { name: 'noSelf', type: 'boolean', optional: false, default: 'false' },
       ],
     },
     {

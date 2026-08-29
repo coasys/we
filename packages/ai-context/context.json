@@ -448,6 +448,12 @@
           "type": "boolean",
           "optional": false,
           "default": "false"
+        },
+        {
+          "name": "noSelf",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
         }
       ]
     },

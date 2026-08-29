@@ -115,6 +115,14 @@ function cardFor(item: DragItem, deps: RecordGhostDeps): SchemaNode {
 
   return recordCard({
     ghost: true,
+    /*
+      Larger than the grid's tile, deliberately.
+
+      A ghost is one object under the pointer with the whole window behind it; a grid tile is one of
+      many in a docked panel a few hundred pixels wide. At 100px the ghost read as a chip with a
+      picture in it rather than as the thing being carried.
+    */
+    size: '160px',
     label: item.label,
     icon: item.icon ?? 'file',
     ...(preview.thumbnail && { thumbnail: preview.thumbnail }),

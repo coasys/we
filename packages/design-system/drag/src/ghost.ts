@@ -77,7 +77,23 @@ function buildGhost(spec: GhostSpec): HTMLElement {
  */
 function positionGhost(el: HTMLElement): HTMLElement {
   el.setAttribute('data-we-drag-ghost', '');
-  for (const rule of ['position:fixed', 'left:0', 'top:0', 'pointer-events:none', 'z-index:9999', ...POPOVER_RESETS]) {
+  for (const rule of [
+    'position:fixed',
+    'left:0',
+    'top:0',
+    'pointer-events:none',
+    'z-index:9999',
+    /*
+      The UA paints `[popover]` on an opaque `canvas` background, and this element is promoted to
+      the top layer to clear modals. Without this a rendered card sits on a filled rectangle, which
+      shows at every corner the card rounds off — the "darker square behind the edges".
+
+      `cloneGhost` has always carried the same line for the same reason; the chip paints its own
+      background so it never noticed.
+    */
+    'background:transparent',
+    ...POPOVER_RESETS,
+  ]) {
     const at = rule.indexOf(':');
     el.style.setProperty(rule.slice(0, at), rule.slice(at + 1));
   }

@@ -106,6 +106,17 @@ export interface DragZone {
    * Asked on every move rather than once, so a zone may refuse on state that changes mid-drag.
    */
   accepts?: (payload: DragPayload) => boolean;
+  /**
+   * Refuse anything picked up inside this zone — and inside any zone nested within it.
+   *
+   * For a container whose drop means "take a copy of this": once it holds the thing, a release
+   * changes nothing, so offering the target is a promise it cannot keep. The Pocket is the case —
+   * dragging one of its own rows lit the whole panel as though it were being gathered in.
+   *
+   * Not the default, because the opposite is just as common: a board or a sortable list takes its
+   * own items back all the time, and that is a move rather than a second copy.
+   */
+  rejectsOwn?: boolean;
   onEnter?: (ctx: DropContext) => void;
   onOver?: (ctx: DropContext) => void;
   onLeave?: () => void;

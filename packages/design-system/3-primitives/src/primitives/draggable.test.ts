@@ -23,6 +23,7 @@ interface DropZoneEl extends HTMLElement {
   accepts: string;
   disabled: boolean;
   noArm: boolean;
+  noSelf: boolean;
   updateComplete: Promise<unknown>;
 }
 
@@ -300,5 +301,68 @@ describe('staying quiet on pickup', () => {
     el.dispatchEvent(new PointerEvent('pointermove', { ...base, clientX: 100, clientY: 100 }));
     expect(zone.hasAttribute('data-we-drop-target')).toBe(true);
     el.dispatchEvent(new PointerEvent('pointerup', { ...base, clientX: 100, clientY: 100 }));
+  });
+});
+
+/**
+ * A container that will not take back what it already holds.
+ *
+ * Picking up a row inside the Pocket armed the whole panel as though the row were being gathered
+ * in — and a release would have written nothing, since the reference is already stored. The rule is
+ * containment, so one flag on the panel covers the folders and crumbs nested inside it too.
+ */
+describe('a zone that refuses its own', () => {
+  async function pocketLike() {
+    const panel = document.createElement('we-drop-zone') as DropZoneEl;
+    const folder = document.createElement('we-drop-zone') as DropZoneEl;
+    panel.noSelf = true;
+    panel.appendChild(folder);
+    document.body.appendChild(panel);
+    await panel.updateComplete;
+    await folder.updateComplete;
+    stubRect(panel, { top: 0, bottom: 300, left: 0, right: 300 });
+    stubRect(folder, { top: 0, bottom: 60, left: 0, right: 300 });
+    return { panel, folder };
+  }
+
+  it('refuses a drag that began inside it', async () => {
+    const { panel, folder } = await pocketLike();
+    // The source lives in the panel, as a Pocket row does.
+    const { el, card } = await makeSource();
+    panel.appendChild(el);
+
+    const drops: CustomEvent[] = [];
+    panel.addEventListener('dropped', (e) => drops.push(e as CustomEvent));
+    folder.addEventListener('dropped', (e) => drops.push(e as CustomEvent));
+
+    drag(el, card, { x: 150, y: 30 });
+
+    expect(drops).toHaveLength(0);
+    expect(panel.hasAttribute('data-we-drop-target')).toBe(false);
+    // The point of stating the rule as containment: the folder inside is covered by the panel's
+    // flag, without the folder knowing anything about where the drag came from.
+    expect(folder.hasAttribute('data-we-drop-target')).toBe(false);
+  });
+
+  it('still takes a drag from anywhere else', async () => {
+    const { panel } = await pocketLike();
+    const { el, card } = await makeSource();
+
+    const drops: CustomEvent[] = [];
+    panel.addEventListener('dropped', (e) => drops.push(e as CustomEvent));
+
+    drag(el, card, { x: 150, y: 200 });
+
+    expect(drops).toHaveLength(1);
+  });
+
+  it('leaves an ordinary zone taking its own back, which is what a reorder is', async () => {
+    const { el, card } = await makeSource();
+    const { el: zone, dropped } = await makeZone();
+    zone.appendChild(el);
+
+    drag(el, card, { x: 100, y: 100 });
+
+    expect(dropped).toHaveLength(1);
   });
 });
