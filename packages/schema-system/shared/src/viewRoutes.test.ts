@@ -50,14 +50,14 @@ describe('expandViewRoutes', () => {
       After the sections, so a community whose own section is segmented `record` still wins its own
       path: their section is more theirs than the host's page is.
     */
-    const extra = { path: '/record/:entity/:recordId' } as RouteSchema;
+    const extra = { path: '/record/:entity' } as RouteSchema;
     const out = expandViewRoutes([marker], [view('about', 'about')], {
       activeIds: 'spaceStore.enabledViewIds',
       notInSpace: { type: 'Column' },
       extraRoutes: [extra],
     });
 
-    expect(out.map((r) => r.path)).toEqual(['/about', '/record/:entity/:recordId']);
+    expect(out.map((r) => r.path)).toEqual(['/about', '/record/:entity']);
   });
 
   it('uses the resolved segment, not the one the template suggested', () => {

@@ -21,6 +21,13 @@ import type { SchemaNode } from '@we/schema-shared';
  * contains is not a value a schema can compute — for a shared space it is the neighbourhood CID and
  * for a personal one the dataset id.
  *
+ * ## Why the id is a query value
+ *
+ * Because a record's id is a URI — `ad4m://obj/<random>` — and a URI is not one path segment. As
+ * `/record/CollectionBlock/ad4m://obj/x` it is five, and the route does not match: the second
+ * version of this, which 404'd exactly as visibly as the first. A query value takes `:` and `/`
+ * literally, so nothing has to be encoded and nothing has to be decoded back.
+ *
  * Takes the entity and the id as expressions so it can be dropped into any `$each` — the row names
  * differ per list, and this has no business knowing them.
  */

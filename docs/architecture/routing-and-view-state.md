@@ -21,12 +21,19 @@ view state either; it is a property of the space, stored on it and shared with
 every member. Each agent's private hiding of a section is tier 3. See
 `views.md`.
 
-**One record is tier 1 too**, at `/record/:entity/:id` — injected by the host
+**One record is tier 1 too**, at `/record/:entity?id=…` — injected by the host
 wherever a shell puts its sections, so it nests under whatever the sections nest
 under. "Look at this one thing" is a location and needs an address; expanding a
 card is not one, and cannot be sent to anybody. The entity is in the path because
-a schema cannot ask what type an id is: `$query` needs an entity to query. See
-`views/RecordPage`.
+a schema cannot ask what type an id is: `$query` needs an entity to query.
+
+**The id is the one identity that lives in a query value, and the reason is not a
+preference.** A record's id is a URI — `ad4m://obj/<random>` — so as a path
+segment it is five segments and the route does not match. Percent-encoding it
+would work, and would need an encode in the schema layer and a matching decode
+on the way out (Solid Router does not decode route params), where a mismatch is
+another silently wrong page. A query value takes `:` and `/` literally. Read it
+with `routeStore.params.id`. See `views/RecordPage`.
 
 **2. View state — how it's arranged → query params, via `syncParam`.**
 Selected content type, sort field/direction, active filters, search text: the

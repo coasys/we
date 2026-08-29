@@ -20,7 +20,7 @@ import type { SchemaNode } from '@we/schema-shared';
  *
  * ## Why the entity is in the path
  *
- * `/record/:entity/:id` rather than `/record/:id`. A schema cannot ask "what type is this id?" —
+ * `/record/:entity` rather than `/record` alone. A schema cannot ask "what type is this id?" —
  * `$query` needs an entity to query, and there is no lookup that answers it without the backend
  * scanning every class. Carrying the type costs a path segment and buys a page that works for a
  * model this community defined this morning.
@@ -29,12 +29,26 @@ import type { SchemaNode } from '@we/schema-shared';
  * carry `recordType` beside `recordId`, and `recordStore.placeOnBoard` takes both. Nothing here is
  * inventing a convention.
  *
- * ## Why the segments are read from the end
+ * ## Why the id is *not* in the path
+ *
+ * It cannot be. A record's id is a URI — `ad4m://obj/<random>` — so as a path segment it is five
+ * segments, and `/record/:entity/:recordId` simply does not match. That was the first two attempts
+ * at this route, and the failure is silent in the worst way: the URL looks plausible and the
+ * template's not-found renders.
+ *
+ * Percent-encoding it would work and costs more than it buys: the schema layer has no encode
+ * function, Solid Router does not decode route params, so it would need a matching decode on the way
+ * out, and a mismatch between the two is another silent wrong-page. A query value takes `:` and `/`
+ * literally, and `URLSearchParams` hands it back exactly as written.
+ *
+ * This bends the tier rule in `routing-and-view-state.md`, which puts identity in the path — noted
+ * there, because the reason is a property of AD4M's ids rather than a preference.
+ *
+ * ## Why the entity is read from the end
  *
  * A shell decides where its sections live — the default template puts them under `/space/:spaceId`,
  * a showcase template may route at the root — so a fixed segment index would be right for one shell
- * and wrong for the next. The last two segments are the entity and the id wherever the route was
- * mounted.
+ * and wrong for the next. The last segment is the entity wherever the route was mounted.
  */
 /**
  * The route this page is mounted at.
@@ -44,10 +58,10 @@ import type { SchemaNode } from '@we/schema-shared';
  * section it should bounce somebody off. That redirect did exactly that on the first attempt —
  * silently, so every expand button appeared to navigate to About.
  */
-export const RECORD_ROUTE_PATH = '/record/:entity/:recordId';
+export const RECORD_ROUTE_PATH = '/record/:entity';
 
-const entityExpr = { $: 'routeStore.segments[count(routeStore.segments) - 2]' };
-const idExpr = { $: 'last(routeStore.segments)' };
+const entityExpr = { $: 'last(routeStore.segments)' };
+const idExpr = { $: 'routeStore.params.id' };
 
 /**
  * One detail field, drawn from what the model says it is.
