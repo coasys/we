@@ -87,17 +87,18 @@ describe('the rail launcher', () => {
 });
 
 describe('the Cards header Call button', () => {
-  it('does not create a call record while a call is running', () => {
+  it('does not create a call record itself, at all', () => {
     /*
-      The specific bug: the create fired on the click and the join afterwards, so pressing this
+      The bug this replaces: the create fired on the click and the join afterwards, so pressing this
       mid-call wrote an empty CollectionBlock and then no-opped the join it was created for —
-      leaving an orphaned card on the very list below it.
+      leaving an orphaned card on the very list below it. It was fixed with a guard.
 
-      Asserted as "the create is behind a condition" rather than by naming the condition's shape,
-      so a differently-spelled guard still passes and no guard at all does not.
+      The guard is gone because the reason for it is: starting a call creates its own record, so the
+      header has no business writing one. Asserted as the absence of any create in this view rather
+      than as the shape of a condition, which is both stronger and what makes the guard unnecessary.
     */
-    expect(view).toContain('record.create');
-    expect(view).not.toContain('"onClick":{"$action":"record.create"');
+    expect(view).not.toContain('record.create');
+    expect(actionsIn(cardsView)).toContain('modules.call.startCall');
   });
 
   it('offers the way back to a running call, and says so', () => {

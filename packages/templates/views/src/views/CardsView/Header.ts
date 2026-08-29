@@ -2,31 +2,20 @@ import type { SchemaNode } from '@we/schema-shared';
 import { expr } from '@we/schema-shared';
 
 /**
- * Start a call, and put its record on the list before a word is said.
+ * Start a call, or go to the one you are in.
  *
- * The transcript's record is normally created by the first thing spoken, so that a call nobody
- * recorded leaves no trace. That rule is about calls nobody *asked* for. Asking for one here is a
- * deliberate act, so the record is created up front and this agent's transcript pinned to it — which
- * is also what makes the call resumable, since a record is reachable afterwards only if it exists.
+ * ## It used to make the record itself
  *
- * It does mean a call created and never spoken in stays on the list as an empty card. That is the
- * cost of being able to set one up ahead of time, and it is deletable like any other.
+ * The transcript's record was created by the first thing spoken, so a button that wanted a call to
+ * be *set up ahead of time* had to write the `CollectionBlock` here and then pin this agent's
+ * transcript to it with `resume`. That worked, and it needed a guard: pressing it mid-call created
+ * an orphaned empty record and then no-opped the join it was created for.
  *
- * `resume` rather than a second create: pinning is the same operation Continue performs, and going
- * through it means the peers who join adopt this record instead of making their own.
- *
- * ## Once a call is running, this stops being a create
- *
- * Creating the record *up front* is what made this worth guarding. The create fired on the click
- * and the join afterwards, so pressing it while already in this space's call wrote an empty
- * `CollectionBlock` and then no-opped the join it was created for — an orphaned card on this very
- * list, from a button that appeared to do nothing. In any other call it was worse: the join tore
- * that call down.
- *
- * So mid-call it says what it now does, and does it. Same promise as the module rail and the cards
- * below: go to the call you are in. Starting a second call from here is not something to make
- * easier — there is one call at a time by construction, so it could only ever mean ending the
- * first.
+ * Both the create and the guard are gone. Starting a call creates its record — that is what a call's
+ * identity now *is* — so this is one action, `startCall` handles the record, and transcribe adopts
+ * it without being pinned. The mid-call branch stays, because the promise it makes is still worth
+ * making: pressing this while in a call should take you to it, not start a second one behind it.
+ * Starting a second is a real thing to want and it has its own control, in the join bar.
  */
 const startCallButton: SchemaNode = {
   type: '$if',
@@ -53,20 +42,35 @@ const startCallButton: SchemaNode = {
           {
             $if: {
               condition: { $: '!modules.call.active' },
-              then: {
-                $action: 'record.create',
-                args: ['CollectionBlock', { kind: 'call', type: 'collection' }],
-                onSuccess: [
-                  { $action: 'modules.call.goToCall' },
-                  { $action: 'modules.transcribe.resume', args: [{ $: 'result.id' }] },
-                ],
-              },
+              then: { $action: 'modules.call.startCall' },
             },
           },
         ],
       },
     },
   },
+};
+
+/**
+ * Show the calls nobody spoke in.
+ *
+ * A call's record exists from the moment the call starts, so opening one and closing it leaves an
+ * empty card. Nothing deletes it — an agent on one side of a partition cannot tell "nobody spoke"
+ * from "I cannot see what they said" — so the list folds those away and this is the way back to
+ * them. Off by default: the common reason to look at this list is to find what was said.
+ *
+ * A `we-button` rather than a switch, and only on the calls tab: it is a filter on this one list,
+ * and a switch in a header row reads as a setting for the whole view.
+ */
+const emptyCallsToggle: SchemaNode = {
+  type: 'we-button',
+  props: {
+    variant: { $: "local.showEmptyCalls ? 'secondary' : 'ghost'" },
+    size: 'sm',
+    title: { $: "local.showEmptyCalls ? 'Hide calls nobody spoke in' : 'Show calls nobody spoke in'" },
+    onClick: { $toggleLocal: 'showEmptyCalls' },
+  },
+  children: [{ type: 'we-icon', props: { name: 'eye-slash' } }],
 };
 
 const contentTypeOptions = [
@@ -222,7 +226,11 @@ export const cardsHeader: SchemaNode = {
       type: '$if',
       props: {
         condition: { $: "local.contentType == 'calls'" },
-        then: startCallButton,
+        then: {
+          type: 'Row',
+          props: { gap: '300', ay: 'center' },
+          children: [emptyCallsToggle, startCallButton],
+        },
         else: {
           type: 'Row',
           props: { gap: '300' },
