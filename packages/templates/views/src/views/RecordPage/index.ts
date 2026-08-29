@@ -1,4 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
+import { RECORD_ROUTE_PATH } from '@we/template-kit';
 
 /**
  * A page for one record.
@@ -58,7 +59,7 @@ import type { SchemaNode } from '@we/schema-shared';
  * section it should bounce somebody off. That redirect did exactly that on the first attempt —
  * silently, so every expand button appeared to navigate to About.
  */
-export const RECORD_ROUTE_PATH = '/record/:entity';
+export { RECORD_ROUTE_PATH };
 
 const entityExpr = { $: 'last(routeStore.segments)' };
 const idExpr = { $: 'routeStore.params.id' };

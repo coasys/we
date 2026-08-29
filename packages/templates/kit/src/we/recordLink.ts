@@ -31,8 +31,23 @@ import type { SchemaNode } from '@we/schema-shared';
  * Takes the entity and the id as expressions so it can be dropped into any `$each` — the row names
  * differ per list, and this has no business knowing them.
  */
+/**
+ * The route a record's page is mounted at, and the single source of the path in both directions.
+ *
+ * The link below builds its href *from* this rather than restating it, because restating it is what
+ * went wrong: the route said `/record/:entity/:recordId` and the link said `/record/:entity?id=…`
+ * for two rounds of testing, and nothing complained. TypeScript sees two strings, the schema
+ * validator never resolves an href, and the whole suite passes with a link that matches no route —
+ * the only symptom is the template's catch-all, which says nothing about why.
+ *
+ * The host reads it too, to place the route and to tell its index redirect that `record` is not a
+ * section. Three readers, one literal.
+ */
+export const RECORD_ROUTE_PATH = '/record/:entity';
+
 export function recordLink(entity: unknown, id: unknown): SchemaNode {
-  const target = `\`\${spaceStore.spacePath}/record/\${${(entity as { $: string }).$}}?id=\${${(id as { $: string }).$}}\``;
+  const path = RECORD_ROUTE_PATH.replace(':entity', `\${${(entity as { $: string }).$}}`);
+  const target = `\`\${spaceStore.spacePath}${path}?id=\${${(id as { $: string }).$}}\``;
   return {
     /*
       Absent outside a space, rather than pointing nowhere.

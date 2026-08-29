@@ -412,10 +412,7 @@ export default function TemplateProvider() {
     return expandViewRoutes(routes, spaceStore.routableViews(), {
       activeIds: 'spaceStore.enabledViewIds',
       notInSpace: noSectionsNode,
-      // A page for one record, wherever this shell puts its sections — see `recordPage`. Injected
-      // by the host rather than declared by each template because every space wants it and no
-      // template should have to remember to include it.
-      extraRoutes: [{ ...recordPage, path: '/record/:entity/:recordId' } as (typeof routes)[number]],
+      extraRoutes: HOST_ROUTES as unknown as (typeof routes)[number][],
     });
   });
 

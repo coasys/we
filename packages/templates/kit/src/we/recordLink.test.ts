@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { recordLink } from './recordLink.ts';
+import { RECORD_ROUTE_PATH, recordLink } from './recordLink.ts';
 
 /**
  * What the link actually points at.
@@ -17,6 +17,16 @@ describe('recordLink', () => {
 
   it('puts the id in the query, never in the path', () => {
     expect(button.href.$).toBe("`${spaceStore.spacePath}/record/${'CollectionBlock'}?id=${post.id}`");
+  });
+
+  it('builds its path out of the route it targets', () => {
+    /*
+      The drift this feature actually shipped, twice: the route said `/record/:entity/:recordId` and
+      the link said something else, and no layer of the toolchain can tell. They are one literal now
+      — this asserts the derivation still holds, so a change to the route moves the link with it.
+    */
+    const expected = RECORD_ROUTE_PATH.replace(':entity', "${'CollectionBlock'}");
+    expect(button.href.$).toContain(expected);
   });
 
   it('builds an absolute path from the space it is in', () => {
