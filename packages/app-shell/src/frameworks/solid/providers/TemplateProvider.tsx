@@ -82,26 +82,26 @@ export default function TemplateProvider() {
     info: (...args: unknown[]) => console.info(...args),
   };
 
-  // Model store — wraps Ad4m static model methods with automatic perspective injection.
-  // Pass `{ perspective: 'store.path' }` in options to target a different perspective
-  // (e.g. 'datasetStore.rootDataset' for we-root models like AgentProfile).
-  const modelStore = {
-    create: (modelName: string, data: Record<string, unknown> = {}, options?: Record<string, unknown>) => {
-      const [Model, p] = resolve(modelName, options as { perspective?: string });
+  // Record mutations — one instance of an entity, written through the entity's registered class
+  // with the perspective injected. Pass `{ perspective: 'store.path' }` in options to target a
+  // different one (e.g. 'datasetStore.rootDataset' for we-root entities like AgentSettings).
+  const recordActions = {
+    create: (entity: string, data: Record<string, unknown> = {}, options?: Record<string, unknown>) => {
+      const [Entity, p] = resolve(entity, options as { perspective?: string });
       const rest = Object.fromEntries(Object.entries(options ?? {}).filter(([k]) => k !== 'perspective'));
-      return Model.create(p, data, Object.keys(rest).length ? rest : undefined);
+      return Entity.create(p, data, Object.keys(rest).length ? rest : undefined);
     },
-    update: (modelName: string, id: string, data: Record<string, unknown>, options?: { perspective?: string }) => {
-      const [Model, p] = resolve(modelName, options);
-      return Model.update(p, id, data);
+    update: (entity: string, id: string, data: Record<string, unknown>, options?: { perspective?: string }) => {
+      const [Entity, p] = resolve(entity, options);
+      return Entity.update(p, id, data);
     },
-    delete: (modelName: string, id: string, options?: { perspective?: string }) => {
-      const [Model, p] = resolve(modelName, options);
-      return Model.delete(p, id);
+    delete: (entity: string, id: string, options?: { perspective?: string }) => {
+      const [Entity, p] = resolve(entity, options);
+      return Entity.delete(p, id);
     },
   };
 
-  // The same capability schemas get as `model.create`, lent to module stores that must write
+  // The same capability schemas get as `record.create`, lent to module stores that must write
   // without a click to hang a schema action on — a transcript appears because somebody spoke.
   provideModuleHostServices({
     // `options` is forwarded rather than swallowed so a module can parent its write — a transcript
@@ -109,7 +109,7 @@ export default function TemplateProvider() {
     // afterwards leaves a window where a crash orphans the block into the space.
     createEntity: async (entity, fields, options) => {
       if (!datasetStore.currentDataset()) return null;
-      const created = (await modelStore.create(entity, fields, { ...options })) as { id?: string } | undefined;
+      const created = (await recordActions.create(entity, fields, { ...options })) as { id?: string } | undefined;
       return created?.id ?? null;
     },
 
@@ -154,7 +154,7 @@ export default function TemplateProvider() {
     // missing `modules` key rather than returning undefined.
     modules: moduleStores,
     consoleStore,
-    model: modelStore,
+    record: recordActions,
     // Host wiring, not backend adaptation — any backend would wire these the same way, so they stay
     // here rather than pretending to be AD4M-specific.
     $onError: (msg: string) => toastService.error(msg),

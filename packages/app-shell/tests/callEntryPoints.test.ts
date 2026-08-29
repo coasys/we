@@ -96,8 +96,8 @@ describe('the Cards header Call button', () => {
       Asserted as "the create is behind a condition" rather than by naming the condition's shape,
       so a differently-spelled guard still passes and no guard at all does not.
     */
-    expect(view).toContain('model.create');
-    expect(view).not.toContain('"onClick":{"$action":"model.create"');
+    expect(view).toContain('record.create');
+    expect(view).not.toContain('"onClick":{"$action":"record.create"');
   });
 
   it('offers the way back to a running call, and says so', () => {

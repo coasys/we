@@ -358,20 +358,28 @@ Example — close modal after async submission:
 Example — navigate to newly created item:
 { "$action": "spaceStore.createSpace", "args": [...], "onSuccess": [{ "$setLocal": "modalOpen", "value": false }, { "$action": "routeStore.navigate", "args": [{ "$": "`/space/${result.uuid}`" }] }] }
 
-Model mutations via $action (use these for creating/updating/deleting model instances):
-model.create — creates a model instance in the current perspective (default) or a specified one:
-{ "$action": "model.create", "args": ["ModelName", { "field": "value" }, { "perspective": "datasetStore.rootDataset" }] }
+Record mutations via $action (use these for creating/updating/deleting records):
+A RECORD is one stored thing; an ENTITY is its type. Every one of these takes the entity name first
+and acts on a record of it.
+
+record.create — creates a record in the current perspective (default) or a specified one:
+{ "$action": "record.create", "args": ["EntityName", { "field": "value" }, { "perspective": "datasetStore.rootDataset" }] }
 The third argument is an options object. Omit it to use the current space perspective.
 
-model.update — updates a model instance:
-{ "$action": "model.update", "args": ["ModelName", { "$": "item.id" }, { "field": "newValue" }] }
-To target a non-current perspective: { "$action": "model.update", "args": ["ModelName", { "$": "item.id" }, { "field": "value" }, { "perspective": "datasetStore.rootDataset" }] }
+record.update — updates one record:
+{ "$action": "record.update", "args": ["EntityName", { "$": "item.id" }, { "field": "newValue" }] }
+To target a non-current perspective: { "$action": "record.update", "args": ["EntityName", { "$": "item.id" }, { "field": "value" }, { "perspective": "datasetStore.rootDataset" }] }
 
-model.delete — deletes a model instance:
-{ "$action": "model.delete", "args": ["ModelName", { "$": "item.id" }] }
+record.delete — deletes one record:
+{ "$action": "record.delete", "args": ["EntityName", { "$": "item.id" }] }
 
-Use perspective: 'datasetStore.rootDataset' for we-root models (AgentSettings, ChatSession, etc.).
-Use the default (no perspective) for space-scoped models (Space, Signal, etc.).
+Use perspective: 'datasetStore.rootDataset' for we-root entities (AgentSettings, ChatSession, etc.).
+Use the default (no perspective) for space-scoped entities (Space, Signal, etc.).
+
+record.* writes directly; recordStore is the form surface over the same job — it derives a form from
+the entity's own declaration, so a community's newest entity is creatable with no schema written for
+it. Reach for record.create when the template knows the fields, recordStore when a person is filling
+them in.
 
 Expressions:
 { "$": "<expression>" }
@@ -2614,12 +2622,12 @@ ThemeStore:
   - publishToSpace(perspectiveUuid: string, spaceName: string): copies the current theme into that space, so its members get it. Resolves true on success
   - refreshSpaceThemes(): re-reads the current space's themes. The list follows the space on its own; call this after a publish the subscription might have missed
 
-Model:
+Record:
 - State:
 - Actions:
-  - create(entity: string, fields: object, options?: { perspective?: string }): creates a model instance in the current space, or in the dataset a store path names ('datasetStore.rootDataset' for we-root models). See "Model mutations via $action" above
-  - update(entity: string, id: string, fields: object, options?: { perspective?: string }): updates the named fields of one instance, leaving the rest
-  - delete(entity: string, id: string, options?: { perspective?: string }): deletes one instance. Irreversible
+  - create(): unknown
+  - update(): unknown
+  - delete(): unknown
 
 ---
 
@@ -3136,7 +3144,7 @@ formModal({
   children: [field({ name: 'draftTitle', label: 'What needs doing?', placeholder: 'Ship the docs' })],
   disabled: { $: '!local.draftTitle' },
   submitLabel: 'Add task',
-  submit: { $action: 'model.create', args: ['TaskBlock', { title: { $: 'local.draftTitle' } }] },
+  submit: { $action: 'record.create', args: ['TaskBlock', { title: { $: 'local.draftTitle' } }] },
 })
 ```
 

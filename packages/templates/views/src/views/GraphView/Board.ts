@@ -306,7 +306,7 @@ export const boardBar: SchemaNode = {
   ],
 };
 
-/** Naming a board. `model.create` rather than the composer — a board is a container, not a document. */
+/** Naming a board. `record.create` rather than the composer — a board is a container, not a document. */
 const newBoardModal: SchemaNode = formModal({
   open: { $: 'local.newBoardOpen' },
   close: { $setLocal: 'newBoardOpen', value: false },
@@ -319,7 +319,7 @@ const newBoardModal: SchemaNode = formModal({
   disabled: { $: '!local.boardName' },
   submitLabel: 'Create',
   submit: {
-    $action: 'model.create',
+    $action: 'record.create',
     args: ['CollectionBlock', { kind: 'board', title: { $: 'local.boardName' } }],
     // Straight into the new board: making one and then having to find it in a picker is a step
     // nobody wanted.

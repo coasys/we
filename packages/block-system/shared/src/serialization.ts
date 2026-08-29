@@ -441,7 +441,7 @@ export interface CreateBlocksOptions {
    *
    * Defaults to `'document'` **when a `kind` is given**, because everything this function creates
    * is a composed artifact: it persists an editor's document, which is the definition of document
-   * mode. A feed container is not made here — it is made with `model.create` and named by its
+   * mode. A feed container is not made here — it is made with `record.create` and named by its
    * template — so the default is right for every caller of this function and wrong for none.
    *
    * Left unset when no `kind` is given, so a caller that opts out of the whole vocabulary writes

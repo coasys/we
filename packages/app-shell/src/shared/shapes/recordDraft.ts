@@ -35,7 +35,7 @@ export interface RecordField {
 }
 
 export interface RecordDraft {
-  /** Entity name — what `model.create` is given, and what `$query` resolves. */
+  /** Entity name — what `record.create` is given, and what `$query` resolves. */
   entity: string;
   /** The model's display name. Same as `entity` for core; a shape carries its own. */
   label: string;
@@ -203,7 +203,7 @@ function isBlank(value: string | number | boolean): boolean {
 }
 
 /**
- * The draft as the object `model.create` takes.
+ * The draft as the object `record.create` takes.
  *
  * Blank optional fields are dropped rather than written as empty strings. The ORM skips an empty
  * string on update, so writing one is not merely noise — it is a value that cannot later be

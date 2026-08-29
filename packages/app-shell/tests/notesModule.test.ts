@@ -102,9 +102,9 @@ describe('notes module — contributions', () => {
     expect(store.open()).toBe(false);
   });
 
-  it('resolves its entity by name once the host compiles it, so model.create can write a note', () => {
+  it('resolves its entity by name once the host compiles it, so record.create can write a note', () => {
     // Two things have to happen and they fail at different moments: install puts the *schema* in the
-    // dataset, and compiling puts the *class* where `model.create('Note', …)` and `$query` resolve
+    // dataset, and compiling puts the *class* where `record.create('Note', …)` and `$query` resolve
     // it. Missing the second, the panel renders fine and only adding a note throws — the bug the
     // first version of this module shipped with. Registration alone no longer does it: the class
     // exists only once a backend has compiled the declaration.

@@ -615,7 +615,7 @@ export interface ModuleStoreDeps {
   /**
    * Write a record into the current dataset.
    *
-   * The imperative twin of the `model.create` a schema already has. A module that creates data in
+   * The imperative twin of the `record.create` a schema already has. A module that creates data in
    * response to a click does not need this — the schema action is better, and notes deliberately
    * ships no CRUD wrapper because of it. This is for data that arrives without a click: a transcript
    * appears because somebody spoke, and there is no event to hang a schema action on.

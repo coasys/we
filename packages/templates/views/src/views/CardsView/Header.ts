@@ -54,7 +54,7 @@ const startCallButton: SchemaNode = {
             $if: {
               condition: { $: '!modules.call.active' },
               then: {
-                $action: 'model.create',
+                $action: 'record.create',
                 args: ['CollectionBlock', { kind: 'call', type: 'collection' }],
                 onSuccess: [
                   { $action: 'modules.call.joinSpaceCall' },

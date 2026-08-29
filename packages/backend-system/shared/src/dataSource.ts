@@ -122,7 +122,7 @@ export interface RendererDataBindings {
   $getModelForPerspective?: (name: string, dataset?: DatasetHandle) => ModelClass | undefined;
   /** Surface a data-layer error to the host UI. */
   $onError?: (message: string) => void;
-  /** Mutation surface for `model.create` / `update` / `delete` actions. */
+  /** Mutation surface for `record.create` / `update` / `delete` actions. */
   model?: MutationApi;
   /** Query-execution adapter — routes a neutral `QueryIR` to this backend (plan + lower). */
   $queryAdapter?: QueryAdapter;

@@ -995,10 +995,11 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
   },
 
   /**
-   * Model mutations. Reads need no entry — `$query` goes through the renderer's own bindings, and a
-   * template that can render a space's data is the entire point.
+   * Record mutations — writing one instance of an entity. Reads need no entry: `$query` goes
+   * through the renderer's own bindings, and a template that can render a space's data is the
+   * entire point.
    */
-  model: {
+  record: {
     create: action('content'),
     update: action('content'),
     delete: destructive('content'),

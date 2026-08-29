@@ -19,21 +19,21 @@ import type {
 import type { RendererStores } from '@we/backend-shared';
 import type { ModelInstance } from '@we/backend-shared';
 
-export type ModelStoreOptions = {
+export type RecordActionOptions = {
   perspective?: string;
   parent?: { model: string; id: string; field?: string };
   [k: string]: unknown;
 };
 
-export type ModelStore = {
-  create: (modelName: string, data?: Record<string, unknown>, options?: ModelStoreOptions) => Promise<ModelInstance>;
+export type RecordActions = {
+  create: (entity: string, data?: Record<string, unknown>, options?: RecordActionOptions) => Promise<ModelInstance>;
   update: (
-    modelName: string,
+    entity: string,
     id: string,
     data: Record<string, unknown>,
     options?: { perspective?: string },
   ) => Promise<ModelInstance>;
-  delete: (modelName: string, id: string, options?: { perspective?: string }) => Promise<void>;
+  delete: (entity: string, id: string, options?: { perspective?: string }) => Promise<void>;
 };
 
 /**
@@ -70,7 +70,7 @@ export interface Stores extends RendererStores {
   shellStore: ShellStore;
   presenceStore: PresenceStore;
   interpretationStore: InterpretationStore;
-  model?: ModelStore;
+  record?: RecordActions;
   /** Neutral identity — the current agent (templates read `$me.did`). Backed by `sessionStore.me`;
    *  typed `unknown` so the seam stays backend-agnostic. Host-specific: not part of the data contract. */
   $me?: () => unknown;

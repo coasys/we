@@ -119,7 +119,7 @@ export function installedList(opts: InstalledListOptions): SchemaNode {
                           variant: 'outline',
                           size: 'sm',
                           onClick: {
-                            $action: 'model.update',
+                            $action: 'record.update',
                             args: ['Space', { $: 'spaceStore.currentSpace.id' }, { [opts.defaultField]: opts.key }],
                           },
                         },
@@ -138,7 +138,7 @@ export function installedList(opts: InstalledListOptions): SchemaNode {
                           variant: 'ghost',
                           size: 'sm',
                           onClick: {
-                            $action: 'model.delete',
+                            $action: 'record.delete',
                             args: [opts.entity, { $: `${opts.as}.id` }],
                             onSuccess: [{ $action: opts.refreshAction }],
                           },

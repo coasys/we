@@ -223,7 +223,7 @@ export const moduleRegistry = {
 
     // Two registrations are needed for a module-owned entity, and missing either fails at a
     // different moment: SDNA install (in `installSpaceSdna`) puts the *shape* in the perspective,
-    // while this puts the *class* where `model.create` / `$query` can resolve it by name. Without
+    // while this puts the *class* where `record.create` / `$query` can resolve it by name. Without
     // this one the panel renders and only writing a note fails.
     for (const model of (definition.models ?? []) as ModelClass[]) {
       registerModel((model as unknown as { className: string }).className, model);

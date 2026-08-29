@@ -103,9 +103,9 @@ function mergeStoreEntries(
   /*
     A hand-authored entry with no interface behind it is kept, not dropped.
 
-    `model` is the case that matters: `model.create` / `.update` / `.delete` are bound by the
+    `model` is the case that matters: `record.create` / `.update` / `.delete` are bound by the
     template provider rather than declared as a store, so there is no `ModelStore` to read. Dropping
-    anything the extractor cannot see would have made every `model.create` in every schema an unknown
+    anything the extractor cannot see would have made every `record.create` in every schema an unknown
     method — a generator quietly deleting vocabulary is worse than one that keeps too much.
   */
   const pseudo = authored.filter((s) => !derived.some((d) => d.name === s.name));

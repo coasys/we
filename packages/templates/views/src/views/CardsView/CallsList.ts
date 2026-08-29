@@ -683,7 +683,7 @@ export const callsList: SchemaNode = {
                     },
                     /*
                       Editing writes the two fields straight onto the CollectionBlock with
-                      `model.update` — no store action, because there is nothing for one to do.
+                      `record.update` — no store action, because there is nothing for one to do.
                       `title` and `description` are plain scalars on the model, so this is the
                       whole of saving them.
 
@@ -722,7 +722,7 @@ export const callsList: SchemaNode = {
                         $: 'local.titleDraft != call.title || local.descriptionDraft != call.description',
                       },
                       submit: {
-                        $action: 'model.update',
+                        $action: 'record.update',
                         args: [
                           'CollectionBlock',
                           { $: 'call.id' },

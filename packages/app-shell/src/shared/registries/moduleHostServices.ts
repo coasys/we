@@ -95,7 +95,7 @@ export interface ModuleHostServices {
   identities?: ModuleIdentityAccess;
   /** Naming and reaching spaces, for a module whose state can outlive the space on screen. */
   datasets?: ModuleDatasetAccess;
-  /** Write a record into the current dataset — the host's `model.create`, in imperative form. */
+  /** Write a record into the current dataset — the host's `record.create`, in imperative form. */
   createEntity?: (
     entity: string,
     fields: Record<string, unknown>,

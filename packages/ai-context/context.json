@@ -6652,7 +6652,7 @@
       ]
     },
     {
-      "name": "model",
+      "name": "record",
       "state": {},
       "actions": ["create", "update", "delete"]
     }

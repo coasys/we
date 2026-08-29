@@ -2727,7 +2727,7 @@ export const contextData: ContextData = {
         'refreshSpaceThemes',
       ],
     },
-    { name: 'model', state: {}, actions: ['create', 'update', 'delete'] },
+    { name: 'record', state: {}, actions: ['create', 'update', 'delete'] },
   ],
   shellComponents: [
     'AiPanel',
