@@ -84,19 +84,28 @@ const itemRow: SchemaNode = {
           ],
         },
         /*
-          Going to a gathered thing means going to the space that holds it, and joining it first
-          where it has not been joined — which is why this is a store action rather than a route.
-          An agent has no space to go to, so the control is absent rather than dead.
+          Going to a gathered thing opens the record's own page, joining the space first where it
+          has not been joined — a sequence, which is why it is a store action rather than an href.
+
+          Absent for a person, who has no page: gated on the stored `datasetKey` rather than by
+          asking the store, because a store's actions are unreachable from an expression and the row
+          already carries the answer. A control that cannot work is worse than no control.
         */
         {
-          type: 'we-button',
+          type: '$if',
           props: {
-            variant: 'ghost',
-            size: 'sm',
-            title: 'Go to where this came from',
-            onClick: { $action: 'modules.pocket.goTo', args: [{ $: 'item.ref' }] },
+            condition: { $: "item.datasetKey != 'agent'" },
+            then: {
+              type: 'we-button',
+              props: {
+                variant: 'ghost',
+                size: 'sm',
+                title: 'Open',
+                onClick: { $action: 'modules.pocket.goTo', args: [{ $: 'item.ref' }] },
+              },
+              children: [{ type: 'we-icon', props: { name: 'arrow-square-out' } }],
+            },
           },
-          children: [{ type: 'we-icon', props: { name: 'arrow-square-out' } }],
         },
         {
           type: 'we-button',

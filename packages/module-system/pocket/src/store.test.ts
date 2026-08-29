@@ -56,7 +56,7 @@ function deps(overrides: Partial<ModuleStoreDeps> = {}): {
       agentData: data.port,
       datasetRefKey: () => 'n:QmSpace',
       datasetUri: () => 'neighbourhood://QmSpace',
-      datasets: { get: () => ({ name: 'Design' }), open: vi.fn() },
+      datasets: { get: () => ({ name: 'Design' }), open: vi.fn(), openRef: vi.fn() },
       ...overrides,
     } as ModuleStoreDeps,
   };
@@ -185,29 +185,49 @@ describe('taking something out', () => {
 });
 
 describe('going to what you gathered', () => {
-  it('opens the dataset the reference names, by its bare id', async () => {
-    const open = vi.fn();
-    const { deps: d } = deps({ datasets: { get: () => undefined, open } });
-    createPocketStore(d).goTo('we:n:QmElsewhere/CollectionBlock/ad4m://obj/abc');
+  const withNav = () => {
+    const openRef = vi.fn();
+    const { deps: d } = deps({ datasets: { get: () => undefined, open: vi.fn(), openRef } });
+    return { store: createPocketStore(d), openRef };
+  };
 
-    expect(open).toHaveBeenCalledWith('QmElsewhere');
+  it('hands the whole reference to the host, which knows where a record lives', () => {
+    // Not the dataset id: a module restating `/space/<segment>/record/<Entity>?id=<id>` would be a
+    // second copy of a route that has drifted from itself once already.
+    const { store, openRef } = withNav();
+    store.goTo('we:n:QmElsewhere/CollectionBlock/ad4m://obj/abc');
+
+    expect(openRef).toHaveBeenCalledWith('we:n:QmElsewhere/CollectionBlock/ad4m://obj/abc');
   });
 
-  it('offers nothing for a person, who has no space to go to', () => {
-    const open = vi.fn();
-    const { deps: d } = deps({ datasets: { get: () => undefined, open } });
-    const store = createPocketStore(d);
+  it('hands over a gathered space the same way — the host opens the space itself', () => {
+    const { store, openRef } = withNav();
+    store.goTo('we:n:QmElsewhere');
+
+    expect(openRef).toHaveBeenCalledWith('we:n:QmElsewhere');
+  });
+
+  it('offers nothing for a person, who has no page to go to', () => {
+    const { store, openRef } = withNav();
 
     expect(store.canOpen('we:agent/did:key:z6Mkabc')).toBe(false);
     store.goTo('we:agent/did:key:z6Mkabc');
-    expect(open).not.toHaveBeenCalled();
+    expect(openRef).not.toHaveBeenCalled();
+  });
+
+  it('offers nothing for a relative reference, which has no anchor here', () => {
+    // `we:./…` means "the dataset this is read in", and the Pocket is not a record.
+    const { store, openRef } = withNav();
+
+    expect(store.canOpen('we:./TextBlock/ad4m://obj/abc')).toBe(false);
+    store.goTo('we:./TextBlock/ad4m://obj/abc');
+    expect(openRef).not.toHaveBeenCalled();
   });
 
   it('does nothing at all for a reference it cannot read', () => {
-    const open = vi.fn();
-    const { deps: d } = deps({ datasets: { get: () => undefined, open } });
-    createPocketStore(d).goTo('not a reference');
-    expect(open).not.toHaveBeenCalled();
+    const { store, openRef } = withNav();
+    store.goTo('not a reference');
+    expect(openRef).not.toHaveBeenCalled();
   });
 });
 

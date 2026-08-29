@@ -366,6 +366,7 @@ export const storeEntries: StoreEntry[] = [
       'createSignalType',
       'upsertSignal',
       'navigateToSpace',
+      'openRecordRef',
       'canAdministerSpace',
       'copyShareLink',
       'copyGuestLink',
@@ -1023,6 +1024,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(nodeId: string, signalTypeId: string, value: number): adds or updates a signal on a node; value=0 deletes it',
         navigateToSpace:
           '(spaceId: string, view?: string): navigates to a space — accepts a perspective UUID or a neighbourhood CID (sharedUrl without the neighbourhood:// prefix); pre-loads space templates before switching so the template and data arrive together',
+        openRecordRef:
+          "(ref: string): goes to whatever a record reference names — the space, and the record's own page within it. Takes the whole `we:…` reference rather than its parts, so nothing outside the host restates where a record's page lives. A reference naming only a dataset opens the space; a relative one (`we:./…`) resolves against the space on screen; a person has no page, so nothing happens",
         updateSpaceMeta:
           '(updates: { name?, description?, discovery?, location? }, spaceUuid?): updates the space everyone sees. Omit spaceUuid to target the space on screen; pass one to configure a space from the spaces list without navigating to it',
         setSpaceDefaultTemplate:

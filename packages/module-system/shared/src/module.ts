@@ -1059,6 +1059,21 @@ export interface ModuleDatasetAccess {
   get: (datasetUri: string) => ModuleDataset | undefined;
   /** Go to that dataset, as clicking it in the host's own navigation would. */
   open: (datasetUri: string) => void;
+  /**
+   * Go to whatever a **record reference** names — the space, and the record's own page within it.
+   *
+   * Takes the reference whole rather than its parts, because parsing one is the host's job and
+   * routing to one certainly is: a module holding `we:n:<cid>/CollectionBlock/<id>` should not have
+   * to know that a record's page lives at `/space/<segment>/record/<Entity>?id=<id>`, nor that the
+   * segment is a CID for a shared space and a dataset id for a personal one. Restating that route
+   * in a module is how it drifts — see `RECORD_ROUTE_PATH`, which exists because two readers of one
+   * path had already disagreed silently.
+   *
+   * A reference naming only a dataset opens the space itself. A relative one (`we:./…`) resolves
+   * against the space on screen. A person has no page, so nothing happens. See
+   * `@we/backend-shared`'s `recordRef`.
+   */
+  openRef: (ref: string) => void;
 }
 
 /** What a module gets to know about a dataset. */

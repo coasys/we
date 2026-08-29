@@ -2,6 +2,8 @@ import { parseRef } from '@we/backend-shared';
 import { Column, Row } from '@we/components/solid';
 import { Show } from 'solid-js';
 
+import { useBlockHost } from '../BlockHost';
+
 interface EmbedDisplayProps {
   url: string | undefined;
   target: string | undefined;
@@ -10,7 +12,14 @@ interface EmbedDisplayProps {
   /** How the referenced thing was called when it was embedded — see the model. */
   label?: string;
   thumbnail?: string;
-  /** Go to the thing this points at. Absent outside a host that can navigate — the editor's preview. */
+  /**
+   * Go to the thing this points at.
+   *
+   * Rarely passed: the host provides it through `BlockHostValue.openRef`, so an embed inside a post
+   * is followable wherever the app renders one without any call site threading a handler. The prop
+   * wins where it is given — the same rule `perspective` follows, and what an editor previewing
+   * another space's content needs.
+   */
   onOpenRef?: (ref: string) => void;
 }
 
@@ -28,8 +37,15 @@ interface EmbedDisplayProps {
  * is honest — it says what kind of thing it is and offers the way to it.
  */
 export function EmbedDisplay(props: EmbedDisplayProps) {
+  const host = useBlockHost();
   const reference = () => parseRef(props.target);
   const externalUrl = () => (reference() ? '' : props.url || props.target);
+  /*
+    A reference is followable only where somebody can act on it — the prop where one was passed,
+    else whatever the host can do. Where neither exists (the editor's preview) the card below stays
+    plain content rather than becoming a control that absorbs a press and goes nowhere.
+  */
+  const open = () => props.onOpenRef ?? host.openRef;
 
   return (
     <div class="we-embed-block">
@@ -46,7 +62,7 @@ export function EmbedDisplay(props: EmbedDisplayProps) {
                   {ref().entity || 'Reference'}
                 </we-text>
               </Column>
-              <Show when={props.onOpenRef}>
+              <Show when={open()}>
                 <we-icon name="arrow-square-out" color="text-faint" />
               </Show>
             </Row>
@@ -55,10 +71,12 @@ export function EmbedDisplay(props: EmbedDisplayProps) {
           // than following. A plain card rather than a dead button: a control that cannot be pressed
           // still invites the press.
           return (
-            <Show when={props.onOpenRef} fallback={card}>
-              <we-button variant="bare" width="100%" onClick={() => props.onOpenRef?.(props.target ?? '')}>
-                {card}
-              </we-button>
+            <Show when={open()} fallback={card}>
+              {(follow) => (
+                <we-button variant="bare" width="100%" onClick={() => follow()(props.target ?? '')}>
+                  {card}
+                </we-button>
+              )}
             </Show>
           );
         }}

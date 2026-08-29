@@ -44,6 +44,23 @@ export interface BlockHostValue {
   collab: (nodeId: string) => CollabSession | null;
   /** How this agent appears to co-editors. */
   collabUser: () => CollabUser;
+  /**
+   * Go to whatever a record reference names — see `@we/backend-shared`'s `recordRef`.
+   *
+   * Host knowledge for the same reason `dataset` is: a block holding
+   * `we:n:<cid>/CollectionBlock/<id>` has exactly one sensible destination, and reaching it means
+   * knowing the route a record's page is mounted at, which side of a shared/personal space the URL
+   * segment comes from, and how to join a space that is not joined yet. None of that is a block's
+   * business, and a prop threaded from every call site would be the `perspective` string all over
+   * again.
+   *
+   * **Absent** where there is nowhere to go: the editor's preview, a screenshot harness, a host with
+   * no router. Absent rather than a no-op on purpose — a consumer has to be able to tell "follow
+   * this" from "this cannot be followed", and a function that silently does nothing looks like the
+   * first while behaving like the second. A reference card then renders as content rather than as a
+   * control that absorbs a press. See `EmbedDisplay`.
+   */
+  openRef?: (ref: string) => void;
 }
 
 const NONE: BlockHostValue = {
@@ -60,6 +77,7 @@ export function BlockHostProvider(props: {
   mentions?: () => MentionCandidate[];
   collab?: (nodeId: string) => CollabSession | null;
   collabUser?: () => CollabUser;
+  openRef?: (ref: string) => void;
   children: JSX.Element;
 }) {
   const parent = useContext(BlockHostContext);
@@ -68,6 +86,7 @@ export function BlockHostProvider(props: {
     mentions: () => (props.mentions ? props.mentions() : parent.mentions()),
     collab: (nodeId) => (props.collab ? props.collab(nodeId) : parent.collab(nodeId)),
     collabUser: () => (props.collabUser ? props.collabUser() : parent.collabUser()),
+    openRef: props.openRef ?? parent.openRef,
   };
   return <BlockHostContext.Provider value={value}>{props.children}</BlockHostContext.Provider>;
 }

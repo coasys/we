@@ -1,4 +1,4 @@
-import { datasetIdOf, formatAgentRef, formatRef, HERE, parseRef } from '@we/backend-shared';
+import { formatAgentRef, formatRef, HERE, parseRef } from '@we/backend-shared';
 import type { ModuleStoreDeps } from '@we/module-shared';
 
 import { POCKET_PREDICATES } from './entities';
@@ -150,6 +150,12 @@ export function createPocketStore(deps: ModuleStoreDeps) {
     return key !== 'agent' && key !== HERE;
   }
 
+  /** Whether a reference names somewhere this panel could send you. */
+  function canOpen(ref: string): boolean {
+    const parsed = parseRef(ref);
+    return !!parsed && openable(parsed.datasetKey);
+  }
+
   async function gatherOne(input: GatherInput, into?: string): Promise<string> {
     const data = agentData();
     const ref = referenceFor(input);
@@ -261,24 +267,21 @@ export function createPocketStore(deps: ModuleStoreDeps) {
 
     // ── Going to what you gathered ───────────────────────────────────────────
     /**
-     * Open a gathered thing.
+     * Open a gathered thing — the record's own page, not merely the space it is in.
      *
-     * Everything the Pocket holds lives in some dataset, so going to it is going to that space — and
-     * a space this agent has not joined has to be joined first, which the host's own navigation
-     * already does. A reference whose dataset is gone lands nowhere and says so rather than
-     * throwing.
+     * The reference goes to the host whole. Parsing one and knowing where a record's page lives are
+     * both the host's business: a module restating `/space/<segment>/record/<Entity>?id=<id>` is a
+     * second copy of a route that has already drifted from itself once.
+     *
+     * A gathered *space* is the case where there is no record — its identity is its dataset — and
+     * the host opens the space itself. Joining one this agent has not joined is the host's too.
      */
     goTo: (ref: string): void => {
-      const parsed = parseRef(ref);
-      if (!parsed || !openable(parsed.datasetKey)) return;
-      const id = datasetIdOf(parsed.datasetKey);
-      if (id) deps.datasets?.open(id);
+      if (!canOpen(ref)) return;
+      deps.datasets?.openRef(ref);
     },
 
-    /** Whether a reference can be opened at all — an agent has no space to go to. */
-    canOpen: (ref: string): boolean => {
-      const parsed = parseRef(ref);
-      return !!parsed && openable(parsed.datasetKey);
-    },
+    /** Whether a reference can be opened at all — an agent has no page, and a relative one no anchor. */
+    canOpen,
   };
 }

@@ -2660,6 +2660,7 @@ export const contextData: ContextData = {
         'createRelationshipType',
         'upsertSignal',
         'navigateToSpace',
+        'openRecordRef',
         'canAdministerSpace',
         'copyShareLink',
         'copyGuestLink',

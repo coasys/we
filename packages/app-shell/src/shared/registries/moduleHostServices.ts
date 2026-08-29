@@ -274,6 +274,7 @@ export function createModuleStoreDeps(framework: {
     datasets: {
       get: (uri) => services.datasets?.get(uri),
       open: (uri) => services.datasets?.open(uri),
+      openRef: (ref) => services.datasets?.openRef(ref),
     },
 
     identities: {

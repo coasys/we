@@ -639,6 +639,10 @@ export default function TemplateProvider() {
         const did = sessionStore.me()?.did ?? '';
         return { name: profileStore.ownProfile()?.name || 'Someone', color: colorFor(did) };
       }}
+      // Where a reference inside a composition goes when somebody follows it. The host's knowledge
+      // for the same reason the dataset is: a block cannot know where a record's page lives, and
+      // threading a handler from every call site is the `perspective` string all over again.
+      openRef={(ref) => void spaceStore.openRecordRef(ref)}
     >
       <VisualEditorProvider value={visualEditorCtx}>
         {/* Shell chrome — stable, never remounts. Chrome tier: this is host-authored. */}

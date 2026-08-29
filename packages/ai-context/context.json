@@ -6581,6 +6581,7 @@
         "createRelationshipType",
         "upsertSignal",
         "navigateToSpace",
+        "openRecordRef",
         "canAdministerSpace",
         "copyShareLink",
         "copyGuestLink",
