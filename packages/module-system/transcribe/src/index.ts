@@ -67,7 +67,7 @@ import { createTranscribeStore } from './store';
 export { CALL_CONTROLS_ANCHOR, callControl } from './CallControl.schema';
 export { CALL_STATUS_ANCHOR, extractionStatus } from './ExtractionStatus.schema';
 export { panel, transcriptFeed } from './Panel.schema';
-export { CALL_KIND, CALL_PREDICATE, createTranscribeStore, TRANSCRIBE_ACTIVITY, type TranscribeStatus } from './store';
+export { createTranscribeStore, TRANSCRIBE_ACTIVITY, type TranscribeStatus } from './store';
 export { WORKLET_NAME, WORKLET_SOURCE } from './workletSource';
 
 export const transcribeModule = defineModule({

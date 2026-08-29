@@ -25,23 +25,6 @@ const MAX_CHARS = 1000;
 /** Silence after which whatever has accumulated is written, so a short remark is not held forever. */
 const FLUSH_AFTER_MS = 3_000;
 
-/**
- * The `CollectionBlock.kind` marking a collection as one call's record.
- *
- * **The whole shape is written down in `docs/architecture/transcripts.md`**, along with the four
- * readers that spell `'call'` themselves because no dependency edge lets them import this. Change
- * the shape and every one of them has to change with it.
- *
- * Replaces the old `TRANSCRIPT_TAG`, which wrote `'transcript'` into `TextBlock.tag` — a field that
- * carries the *Lexical* tag (`ul`, `h1`). Two things were wrong with that beyond the collision: the
- * value was written and never read back, and the blocks stayed loose in the space, so transcripts
- * turned up in the Cards route's Text list mixed in with authored prose.
- */
-export const CALL_KIND = 'call';
-
-/** The predicate `WeNode.calls` is minted under — how a call attaches to the node it is about. */
-export const CALL_PREDICATE = 'we://call';
-
 /** The predicate `CollectionBlock.children` is minted under — how an utterance attaches to its call. */
 export const CHILDREN_PREDICATE = 'we://children';
 
@@ -119,20 +102,6 @@ function summarise(values: Record<string, unknown>): string {
   const rest = Object.keys(values).filter((field) => !SUMMARY_FIELDS.includes(field));
   return [...named, ...rest].map((field) => `${field}: ${String(values[field])}`).join(' · ');
 }
-
-/**
- * How long a non-elected agent will hold its first utterance waiting for the creator's record.
- *
- * The election needs a way out, because the agent it picks may simply never speak: whoever is
- * elected only creates the record on *their* first flush, and a silent creator would otherwise leave
- * everyone else buffering into a call that produces nothing. After this, whoever is waiting creates
- * one itself and announces it — a duplicate is recoverable, a lost transcript is not.
- *
- * Generous relative to a presence round trip and short relative to a conversation: long enough that
- * the ordinary case (creator speaks within a few seconds) converges on one record, short enough that
- * nobody notices the delay on the one utterance it applies to.
- */
-const ELECTION_WAIT_MS = 5_000;
 
 /**
  * The collapsed height of the extraction status panel, in pixels — see `chromeReserve` below for
@@ -228,7 +197,7 @@ type CollectionSlot = { state: 'ready'; id: string } | { state: 'waiting' } | { 
  *
  * ## What it writes
  *
- * A `CollectionBlock` with `kind: '{@link CALL_KIND}'` per call, holding the utterances as `children`.
+ * A `CollectionBlock` with `kind: 'call'` per call, holding the utterances as `children`. The call
  * Not posts: a transcript is not authored content and should not arrive in a feed as though it were.
  *
  * The collection is what makes the transcript a *thing* rather than loose text — it groups one call's
@@ -354,16 +323,6 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * that key, and why the set is never cleared when a call ends.
    */
   const recordedParticipants = new Set<string>();
-  /** Guards the create, so two flushes racing at the start cannot produce two collections. */
-  let creating: Promise<string | null> | null = null;
-  /**
-   * When this agent first deferred to an elected creator, or null when it is not waiting.
-   *
-   * Held rather than derived because the wait is bounded from the moment it *began*, not from the
-   * current attempt — otherwise every retry would restart the clock and a silent creator would keep
-   * a speaker waiting forever.
-   */
-  let deferredSince: number | null = null;
   /**
    * This agent has taken itself out of this call's transcript.
    *
@@ -396,7 +355,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * A record this agent has been asked to continue, held until there is a call to continue it in.
    *
    * Deferred rather than applied on the spot because the two halves of "continue this call" cannot
-   * be sequenced from a schema: joining is fire-and-forget — `joinSpaceCall` returns nothing, so an
+   * be sequenced from a schema: joining is fire-and-forget — `joinCall` returns nothing, so an
    * `onSuccess` never fires — and it publishes the call activity several awaits deep. Pinning
    * immediately would therefore land before there was any call to pin to, and be dropped.
    */
@@ -431,25 +390,19 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * agent's own state in the roster. So "which call am I in, and what is it about" is answerable
    * locally, from data that is already there, without either module knowing the other exists.
    */
-  function myCall(): { id: string; anchorNodeId: string | null } | null {
+  function myCall(): { id: string; anchorNodeId: string | null; recordId: string | null } | null {
     const me = selfId?.() ?? null;
     if (!me || !presence) return null;
     const mine = activitiesOfType(presence.peers(), 'call').find(({ peer }) => peer.agentId === me);
     if (!mine) return null;
     const anchor = (mine.activity as { anchor?: { nodeId?: string } }).anchor;
-    return { id: mine.activity.id, anchorNodeId: anchor?.nodeId ?? null };
-  }
-
-  /** A collection some other agent has already announced for this same call, if any. */
-  function announcedCollection(callId: string): string | null {
-    if (!presence) return null;
-    const me = selfId?.() ?? null;
-    const claims = activitiesOfType(presence.peers(), TRANSCRIBE_ACTIVITY)
-      .filter(({ peer, activity }) => peer.agentId !== me && (activity as { id?: string }).id === callId)
-      .map(({ activity }) => (activity as { collection?: string }).collection)
-      .filter((id): id is string => typeof id === 'string' && id.length > 0);
-    // Lowest id wins, so two agents adopting in the same heartbeat still pick the same one.
-    return claims.sort()[0] ?? null;
+    return {
+      id: mine.activity.id,
+      anchorNodeId: anchor?.nodeId ?? null,
+      // Published by the call module from the moment the call starts — see `recordCallId`. This is
+      // what replaced electing a creator among the transcribers.
+      recordId: (mine.activity as { record?: string }).record ?? null,
+    };
   }
 
   /**
@@ -500,13 +453,14 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    *
    * One activity carrying two separate facts, because they have different lifetimes. `recording` is
    * live — it goes true on the button press, which is what gives peers something to react to before
-   * anybody has spoken, and false again on stop. `collection` is a claim about the call: once this
-   * agent knows which record the call's transcript lives in, that stays published even after
-   * recording stops, so a peer who starts later still adopts it rather than creating a second one.
+   * anybody has spoken, and false again on stop. `collection` says which record this agent is
+   * writing into, and stays published after recording stops.
    *
-   * Publishing `recording` at the press rather than at the first flush is also what makes the
-   * election below deterministic in the ordinary case: by the time anyone speaks, everybody
-   * recording already knows who else is.
+   * `collection` used to be load-bearing: it was how peers found the record one of them had created,
+   * and adopting an announced one was the alternative to creating a second. The call's own activity
+   * now carries the record from the moment it starts, so this is no longer how anybody finds it — it
+   * remains because `resume` writes a *different* record than the call names, and a peer has to be
+   * able to see that somebody continued an old transcript.
    */
   function announce(callId: string, recording: boolean, collection?: string | null): void {
     const claim = collection ?? collectionId();
@@ -564,86 +518,42 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   }
 
   /**
-   * The collection to write into — adopted, or created if this agent is first to speak.
+   * The record to write into — the one the call itself names.
    *
-   * Serialised through `creating` so two flushes arriving together cannot each create one. Returns
-   * null when there is nothing to attach to, in which case the caller writes nothing: an utterance
-   * with nowhere to belong is better dropped than scattered loose into the space.
+   * ## Adopting, not electing
+   *
+   * This used to create the record, and everything hard about it followed from that. A call had no
+   * identity of its own until somebody spoke, so the first transcriber to flush minted the
+   * `CollectionBlock` — and two agents flushing together minted two, for one meeting. That race was
+   * fought with a distributed election among the recorders, a five-second timeout for an elected
+   * creator who might never speak, and a documented failure mode where a partition still produced
+   * two records.
+   *
+   * All of it is gone. A call now creates its record when it *starts* and publishes the id on its
+   * presence activity, so every transcriber is told the answer before anyone has said a word. There
+   * is nothing left to agree about, which is the only way to be safe under partition: the id was
+   * decided by one agent, before the network could disagree, and it travels with the roster.
+   *
+   * `waiting` survives, and is the only interesting state left: the call is real but its record id
+   * has not reached this agent yet, which is a presence round trip. The words are still good, so the
+   * caller re-buffers rather than dropping them.
    */
   async function ensureCollection(): Promise<CollectionSlot> {
     const call = myCall();
-    if (!call || !createEntity) return { state: 'nowhere' };
+    if (!call) return { state: 'nowhere' };
 
     const existing = collectionId();
     if (existing && collectionCallId === call.id) return { state: 'ready', id: existing };
-    if (creating) {
-      const id = await creating;
-      return id ? { state: 'ready', id } : { state: 'nowhere' };
-    }
 
-    /*
-      Whoever is recording and sorts first creates the record; everyone else waits for them to
-      announce it. Deterministic, because `recording` is published at the button press rather than at
-      the first flush — so by the time anybody speaks, every recorder already knows who else is
-      recording, and they all sort the same list.
+    // In a call whose record has not arrived yet. Come back for it — see above.
+    if (!call.recordId) return { state: 'waiting' };
 
-      It replaces "whoever writes first creates", whose race was not the heartbeat the old comment
-      described but the whole span before anyone had finished an utterance. Two agents starting
-      together and then speaking together — the ordinary way a call begins — landed in it every time,
-      and produced two records for one meeting.
-
-      Losing the election is not refusing to write, only refusing to *create*: the caller re-buffers
-      and tries again, and `ELECTION_WAIT_MS` is the point at which it gives up waiting for a creator
-      who may never speak. A partition can still produce two records, and nothing here can prevent
-      that — two agents who cannot see each other cannot agree on anything.
-    */
-    if (!announcedCollection(call.id)) {
-      const me = selfId?.() ?? null;
-      const recorders = recordersOf(call.id);
-      const elected = recorders[0] ?? me;
-      if (me && elected !== me) {
-        if (deferredSince === null) deferredSince = Date.now();
-        if (Date.now() - deferredSince < ELECTION_WAIT_MS) return { state: 'waiting' };
-      }
-    }
-    deferredSince = null;
-
-    creating = (async () => {
-      // A different call from the one the current record belongs to — start clean rather than
-      // appending this meeting's words to the last one's transcript.
-
-      const adopted = announcedCollection(call.id);
-      if (adopted) {
-        useCollection(adopted);
-        collectionCallId = call.id;
-        announce(call.id, enabled(), adopted);
-        return adopted;
-      }
-
-      // Parented straight onto the node the call is about, so `WeNode.calls` is written in the same
-      // operation that creates the record — no window where a crash leaves the call orphaned. A
-      // space-wide call has no anchor and simply lives in the space, found by `kind`.
-      const created = await createEntity(
-        'CollectionBlock',
-        // Feed mode: every participant's transcriber appends to this one record, so it has no
-        // single authoring agent and must never be reconciled.
-        { kind: CALL_KIND, type: 'collection', mode: 'feed' },
-        call.anchorNodeId ? { parent: { id: call.anchorNodeId, predicate: CALL_PREDICATE } } : undefined,
-      );
-      if (created) {
-        useCollection(created);
-        collectionCallId = call.id;
-        announce(call.id, enabled(), created);
-      }
-      return created;
-    })();
-
-    try {
-      const id = await creating;
-      return id ? { state: 'ready', id } : { state: 'nowhere' };
-    } finally {
-      creating = null;
-    }
+    // A different call from the one the current record belongs to — start clean rather than
+    // appending this meeting's words to the last one's transcript.
+    useCollection(call.recordId);
+    collectionCallId = call.id;
+    announce(call.id, enabled());
+    return { state: 'ready', id: call.recordId };
   }
 
   /** Write what has accumulated, if anything. Safe to call at any point, including teardown. */
@@ -994,8 +904,8 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * that space is a different meeting, but leaves no way back into one that ended by accident.
    *
    * Announcing it is what makes this converge for everyone else: peers adopt an announced record in
-   * preference to creating one, so a single agent pressing Continue is enough to pull the whole call
-   * back onto the old transcript.
+   * preference to the one the call names, so a single agent pressing Continue is enough to pull the
+   * whole call back onto the old transcript.
    *
    * Deliberately does not start recording. Continuing a call is a decision about *which record* the
    * words go into; whether this agent's microphone is producing any is a separate decision, and the
@@ -1016,7 +926,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   effect?.(() => {
     const call = myCall();
     if (!call) return;
-    const collection = collectionId() ?? announcedCollection(call.id);
+    const collection = collectionId() ?? call.recordId;
     if (collection) void recordSelfParticipation(collection);
   });
 
@@ -1042,8 +952,8 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * Set the collection, and move the watch with it.
    *
    * One function rather than an effect over the signal, because the watch has to follow every
-   * assignment — adopting somebody else's collection, creating one, resuming, and the call ending
-   * are four separate paths, and an effect that missed any of them would leave a watch pointed at a
+   * assignment — adopting the call's record, resuming onto an older one, and the call ending are
+   * three separate paths, and an effect that missed any of them would leave a watch pointed at a
    * call that is over. Pairing the two here makes that structural rather than remembered.
    */
   function useCollection(next: string | null): void {
@@ -1189,7 +1099,6 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     setPendingResume('');
     useCollection(wanted);
     collectionCallId = call.id;
-    deferredSince = null;
     announce(call.id, enabled(), wanted);
   });
 
@@ -1199,9 +1108,6 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     presence?.clearActivity(TRANSCRIBE_ACTIVITY);
     useCollection(null);
     collectionCallId = null;
-    // Belongs to the call that just ended: an election deferred in it must not bound the wait in
-    // the next one.
-    deferredSince = null;
   });
 
   /**
@@ -1270,8 +1176,8 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
 
     setAutoJoined(true);
     setEnabled(true);
-    // Published straight away, exactly as the button press is, so this agent takes part in the
-    // election rather than arriving to it late and creating a second record for the same call.
+    // Published straight away, exactly as the button press is, so peers see this agent recording
+    // before it has anything to show for it.
     announce(call.id, true);
   });
 

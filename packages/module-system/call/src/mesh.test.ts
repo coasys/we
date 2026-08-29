@@ -14,7 +14,7 @@ import { createInMemoryEphemeralPort, InMemoryBus } from '@we/backend-shared';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { createCallMesh } from './mesh';
-import { CALL_PROTOCOL_VERSION, parseCallMessage, spaceCallId } from './protocol';
+import { CALL_PROTOCOL_VERSION, parseCallMessage, recordCallId } from './protocol';
 
 // ── A fake RTCPeerConnection ────────────────────────────────────────────────
 
@@ -153,7 +153,7 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 describe('call mesh', () => {
   let bus: InMemoryBus;
   const dataset = { id: 'space-1' };
-  const callId = spaceCallId('neighbourhood://abc');
+  const callId = recordCallId('rec-abc');
 
   beforeEach(() => {
     bus = new InMemoryBus();
@@ -277,7 +277,7 @@ describe('call mesh', () => {
 
   it('ignores traffic for a different call in the same space', async () => {
     const alice = makeMesh(bus, dataset, 'did:alice', callId);
-    const other = spaceCallId('neighbourhood://other');
+    const other = recordCallId('rec-other');
     alice.mesh.setRoster(['did:alice', 'did:bob']);
     await settle();
 
@@ -416,8 +416,8 @@ describe('protocol parsing', () => {
 
   it('derives the same space call id on every peer', () => {
     // The whole point: no round trip is needed to agree on it, which would be circular.
-    expect(spaceCallId('neighbourhood://abc')).toBe(spaceCallId('neighbourhood://abc'));
-    expect(spaceCallId('neighbourhood://abc')).not.toBe(spaceCallId('neighbourhood://def'));
+    expect(recordCallId('rec-abc')).toBe(recordCallId('rec-abc'));
+    expect(recordCallId('rec-abc')).not.toBe(recordCallId('rec-def'));
   });
 });
 
@@ -431,7 +431,7 @@ describe('signalling that arrives before the roster', () => {
    */
   let bus: InMemoryBus;
   const dataset = { id: 'space-1' };
-  const callId = spaceCallId('neighbourhood://abc');
+  const callId = recordCallId('rec-abc');
 
   beforeEach(() => {
     bus = new InMemoryBus();

@@ -6,7 +6,7 @@
  * call running. Each one was wrong in its own way, and none of the three failures was visible from
  * the declaration:
  *
- * - `joinSpaceCall` returns early on the call you are already in, so the control was silently dead.
+ * - a bare join returns early on the call you are already in, so the control was silently dead.
  * - On any *other* call — one anchored to a post, or one in a space you had navigated away from —
  *   the ids differ, so it tore that call down to start a new one. No confirmation.
  * - `resume` does not fail quietly at all. It re-points the live transcript at the record it was
@@ -124,15 +124,13 @@ describe('the Continue button on a call card', () => {
     */
     expect(view).toContain('modules.transcribe.resume');
     // Both of the old unconditional pair, adjacent, is exactly the shape that had the bug.
-    expect(view).not.toContain(
-      '"onClick":[{"$action":"modules.call.joinSpaceCall"},{"$action":"modules.transcribe.resume"',
-    );
+    expect(view).not.toContain('"onClick":[{"$action":"modules.call.goToCall"},{"$action":"modules.transcribe.resume"');
   });
 
   it('still continues a finished call', () => {
     // The other half: none of this should have made the feature the button exists for harder.
     const actions = actionsIn(cardsView);
-    expect(actions).toContain('modules.call.joinSpaceCall');
+    expect(actions).toContain('modules.call.goToCall');
     expect(actions).toContain('modules.transcribe.resume');
   });
 

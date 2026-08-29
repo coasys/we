@@ -365,7 +365,7 @@ export const callsList: SchemaNode = {
                         ## Why it stops meaning "continue" the moment you are in a call
 
                         It used to be the two actions below unconditionally, and mid-call each one
-                        did something nobody asked for. `joinSpaceCall` is a no-op on the call you
+                        did something nobody asked for. `goToCall` is a no-op on the call you
                         are already in and a silent teardown of any other — the same hazard the
                         module rail's launcher had. `resume` is worse, because it does not fail
                         quietly: it re-points the live transcript at *this* record and announces the
@@ -439,12 +439,12 @@ export const callsList: SchemaNode = {
                                     $if: {
                                       condition: { $: '!modules.call.active' },
                                       // Two actions rather than one with an `onSuccess`, because
-                                      // `joinSpaceCall` returns nothing for a lifecycle key to hang
+                                      // `goToCall` returns nothing for a lifecycle key to hang
                                       // off. `resume` is built for that: it holds the record until
                                       // there is a call to attach it to, so the order these resolve
                                       // in does not matter.
                                       then: [
-                                        { $action: 'modules.call.joinSpaceCall' },
+                                        { $action: 'modules.call.goToCall' },
                                         { $action: 'modules.transcribe.resume', args: [{ $: 'call.id' }] },
                                       ],
                                     },

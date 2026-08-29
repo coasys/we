@@ -57,7 +57,7 @@ const startCallButton: SchemaNode = {
                 $action: 'record.create',
                 args: ['CollectionBlock', { kind: 'call', type: 'collection' }],
                 onSuccess: [
-                  { $action: 'modules.call.joinSpaceCall' },
+                  { $action: 'modules.call.goToCall' },
                   { $action: 'modules.transcribe.resume', args: [{ $: 'result.id' }] },
                 ],
               },
