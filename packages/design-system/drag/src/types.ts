@@ -107,11 +107,15 @@ export interface DragZone {
    */
   accepts?: (payload: DragPayload) => boolean;
   /**
-   * Refuse anything picked up inside this zone — and inside any zone nested within it.
+   * Refuse anything picked up inside this zone.
    *
    * For a container whose drop means "take a copy of this": once it holds the thing, a release
-   * changes nothing, so offering the target is a promise it cannot keep. The Pocket is the case —
-   * dragging one of its own rows lit the whole panel as though it were being gathered in.
+   * changes nothing, so offering the target is a promise it cannot keep. The Pocket's panel is the
+   * case — dragging one of its own rows lit the whole panel as though it were being gathered in.
+   *
+   * **This zone only.** Zones nested inside it decide for themselves, because a sub-zone is a
+   * different destination: dropping a Pocket row onto one of its folders is a re-file, and the panel
+   * refusing on the folder's behalf would make that unreachable.
    *
    * Not the default, because the opposite is just as common: a board or a sortable list takes its
    * own items back all the time, and that is a move rather than a second copy.

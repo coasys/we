@@ -21,7 +21,13 @@ function fakeAgentData() {
     parents,
     port: {
       ready: () => true,
-      create: async (entity: string, fields: Record<string, unknown>, options?: { parent?: { id: string } }) => {
+      // `string | null` as the port declares it, not the inferred `string`: a create that returns
+      // nothing is the case `refile` has to survive without losing the row it was moving.
+      create: async (
+        entity: string,
+        fields: Record<string, unknown>,
+        options?: { parent?: { id: string } },
+      ): Promise<string | null> => {
         const id = `${entity}-${++next}`;
         rows[entity] = [...(rows[entity] ?? []), { id, ...fields }];
         if (options?.parent) parents[id] = options.parent.id;
@@ -441,5 +447,93 @@ describe('the snapshot a row keeps', () => {
     await createPocketStore(d).gather(withPreview({ author: 'did:key:z6Mkabc' }));
 
     expect(data.rows.PocketItem[0].sourceAuthor).toBe('did:key:z6Mkabc');
+  });
+});
+
+/**
+ * Re-filing something already held.
+ *
+ * The port is `create`, `find` and `remove` — it cannot relink a record, and it cannot read one's
+ * parent. So a move is two writes, and the question "is this a re-file or a drop back where it
+ * already is" can only be answered by the row itself, which carries its folder in the drag.
+ */
+describe('moving an item between folders', () => {
+  const held = (origin?: { id?: string; folder?: string }) => ({
+    items: [
+      {
+        ref: { entity: 'CollectionBlock', id: 'ad4m://obj/abc' },
+        label: 'A post',
+        icon: 'newspaper',
+        ...(origin && { origin }),
+      },
+    ],
+  });
+
+  /** A store with one item already gathered into the root. */
+  const withItem = async () => {
+    const { deps: d, data } = deps();
+    const store = createPocketStore(d);
+    store.show();
+    await Promise.resolve();
+    await Promise.resolve();
+    await store.gather(held());
+    return { store, data, id: data.rows.PocketItem[0].id as string };
+  };
+
+  it('lands in the new folder and leaves the old row behind', async () => {
+    const { store, data, id } = await withItem();
+
+    await store.gatherInto('PocketFolder-9', held({ id, folder: 'PocketFolder-1' }));
+
+    expect(data.rows.PocketItem).toHaveLength(1);
+    const [row] = data.rows.PocketItem;
+    expect(row.id).not.toBe(id);
+    expect(data.parents[row.id as string]).toBe('PocketFolder-9');
+  });
+
+  it('carries the snapshot across, gatheredAt included', async () => {
+    // When you kept a thing does not change because you tidied it, and re-stamping would silently
+    // reorder a list sorted by exactly that.
+    const { store, data, id } = await withItem();
+    const before = { ...data.rows.PocketItem[0] };
+
+    await store.gatherInto('PocketFolder-9', held({ id, folder: 'PocketFolder-1' }));
+
+    const [row] = data.rows.PocketItem;
+    expect(row.gatheredAt).toBe(before.gatheredAt);
+    expect(row.ref).toBe(before.ref);
+    expect(row.label).toBe(before.label);
+  });
+
+  it('does nothing when dropped back on the folder it is already in', async () => {
+    // Without the folder on the origin this would churn: a create and a delete leaving an identical
+    // row under a new id.
+    const { store, data, id } = await withItem();
+
+    await store.gatherInto('PocketFolder-1', held({ id, folder: 'PocketFolder-1' }));
+
+    expect(data.rows.PocketItem).toHaveLength(1);
+    expect(data.rows.PocketItem[0].id).toBe(id);
+  });
+
+  it('leaves a drag from outside as a plain gather, not a move', async () => {
+    // No origin: the source is a card in a feed, and it has no Pocket row to move.
+    const { store, data } = await withItem();
+
+    await store.gatherInto('PocketFolder-9', held());
+
+    expect(data.rows.PocketItem).toHaveLength(1);
+    expect(data.parents[data.rows.PocketItem[0].id as string]).toBe('PocketFolder-1');
+  });
+
+  it('keeps the item where it was if the copy fails', async () => {
+    // Copy first, then delete: the other order loses the item outright when the write fails.
+    const { store, data, id } = await withItem();
+    data.port.create = async () => null;
+
+    await store.gatherInto('PocketFolder-9', held({ id, folder: 'PocketFolder-1' }));
+
+    expect(data.rows.PocketItem).toHaveLength(1);
+    expect(data.rows.PocketItem[0].id).toBe(id);
   });
 });

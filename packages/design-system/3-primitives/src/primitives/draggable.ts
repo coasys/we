@@ -95,6 +95,18 @@ export default class Draggable extends LayoutElement {
   @property({ attribute: false }) preview?: DragPreview;
 
   /**
+   * The source's own handle on this row, for a receiver that can *move* it rather than copy it.
+   *
+   * Opaque to the session and to every zone that does not recognise it — which is the point: a
+   * Pocket row carries its own record id and the folder it is sitting in, and only the Pocket knows
+   * what to do with that. Anything else keeps treating the drop as a copy.
+   *
+   * `attribute: false`, like `preview`: it is an object, and it means nothing outside the pair of
+   * surfaces that agreed on it.
+   */
+  @property({ attribute: false }) origin?: unknown;
+
+  /**
    * What the drop means to *this* end. `copy` (the default) is what gathering is: the thing stays
    * where it was.
    */
@@ -145,6 +157,7 @@ export default class Draggable extends LayoutElement {
       label: this.label || this.entity,
       ...(this.icon && { icon: this.icon }),
       ...(this._preview() && { preview: this._preview() }),
+      ...(this.origin !== undefined && { origin: this.origin }),
     };
   }
 

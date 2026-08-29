@@ -65,6 +65,15 @@ const dragProps = {
     author: { $: 'item.sourceAuthor' },
     date: { $: 'item.gatheredAt' },
   },
+  /*
+    The row's handle on itself, so a drop on another folder is a *move* rather than a second copy.
+
+    Both halves are needed and neither can be worked out by the receiver: the agent-data port cannot
+    read a record's parent, so without `folder` the store could not tell re-filing from dropping a
+    row back where it already sits. Meaningless to any other zone, which is why it rides in `origin`
+    — opaque by contract.
+  */
+  origin: { id: { $: 'item.id' }, folder: { $: 'modules.pocket.folderId' } },
 };
 
 /** Take this out of the Pocket. The thing itself is untouched — a Pocket holds references. */
@@ -570,17 +579,15 @@ const panel: SchemaNode = {
         width: '100%',
         height: '100%',
         /*
-          The Pocket does not take back what it already holds.
+          The panel itself does not take back what it already holds.
 
           Picking up one of its own rows used to arm the whole panel as though the row were being
           gathered in, and a release would have written nothing — `gather` finds the reference
-          already stored and stops. `noSelf` covers the folders and the crumbs too, since the rule
-          is containment: while a drag that began in here is running, nothing in here is a target.
+          already stored and stops.
 
-          Re-filing an item into another folder is a *move*, and it is not built — it needs the
-          agent-data port to be able to relink a record, which it cannot. When it exists, the
-          folders and crumbs will want to accept again and this flag will need narrowing to the
-          panel's own empty space.
+          This zone only. The folders and the crumbs inside it are different destinations and still
+          accept, because dropping a row on one of them is a re-file — see `refile` in the store, and
+          `origin` above for what makes it possible.
         */
         noSelf: true,
         onDropped: { $action: 'modules.pocket.gather', args: [{ $: 'event.detail' }] },

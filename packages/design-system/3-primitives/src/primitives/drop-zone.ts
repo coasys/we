@@ -177,10 +177,13 @@ export default class DropZone extends LayoutElement {
   @state() private _armed = false;
 
   private _unregister: (() => void) | null = null;
+  /** Kept so arming can ask the session about *this* zone, rather than guessing from its own props. */
+  private _zoneRef: DragZone | null = null;
 
   connectedCallback() {
     super.connectedCallback();
-    this._unregister = dragSession.registerZone(this._zone());
+    this._zoneRef = this._zone();
+    this._unregister = dragSession.registerZone(this._zoneRef);
     document.addEventListener(DRAG_CHANGE_EVENT, this._onDragChange);
   }
 
@@ -188,6 +191,7 @@ export default class DropZone extends LayoutElement {
     super.disconnectedCallback();
     this._unregister?.();
     this._unregister = null;
+    this._zoneRef = null;
     document.removeEventListener(DRAG_CHANGE_EVENT, this._onDragChange);
     this.removeAttribute('data-we-drop-armed');
   }
@@ -246,8 +250,14 @@ export default class DropZone extends LayoutElement {
    * starts, and one unmounted mid-drag simply stops listening.
    */
   private _onDragChange = () => {
-    const payload = dragSession.active();
-    const armed = !this.noArm && !!payload && this._accepts(payload);
+    /*
+      The session's verdict, not this element's own `accepts`.
+
+      It was the latter, and it could not see the rules the session applies on top — never into the
+      thing being dragged, and `rejectsOwn`. So a panel that had just refused a drag still drew its
+      ring around itself, advertising a target that would decline the drop.
+    */
+    const armed = !this.noArm && !!this._zoneRef && dragSession.wouldAccept(this._zoneRef);
     if (armed === this._armed) return;
     this._armed = armed;
     if (armed) this.setAttribute('data-we-drop-armed', '');

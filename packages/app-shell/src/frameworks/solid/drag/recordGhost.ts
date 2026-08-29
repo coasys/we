@@ -48,6 +48,18 @@ export interface RecordGhostDeps {
   registry: RenderProps['registry'];
   /** Whoever a payload names as author, from whatever cache the host keeps. */
   agent: (did: string) => GhostAgent | undefined;
+  /**
+   * The dataset a composed document's file addresses resolve against.
+   *
+   * `BlockRenderer` normally takes this from `BlockHostProvider`, and the ghost is rendered into the
+   * top layer — outside every provider in the app. Without it `resolveExpressionAddresses` is
+   * skipped and the raw stored address reaches `we-image`, which draws a broken image: a post with a
+   * picture in it produced a ghost with a torn-page icon where the picture should be.
+   *
+   * Typed as a prop value rather than `unknown` because it is passed straight into a schema node:
+   * the handle is opaque here, and the renderer hands it to `BlockRenderer` untouched.
+   */
+  dataset: () => Record<string, unknown> | undefined;
 }
 
 /** Where a Solid root's teardown is hung, for `createGhost`'s `destroy` to find. */
@@ -132,7 +144,11 @@ function cardFor(item: DragItem, deps: RecordGhostDeps): SchemaNode {
       the row the drag started from was already rendering this exact string.
     */
     ...(preview.content && {
-      content: { type: 'BlockRenderer', props: { editorState: preview.content } },
+      content: {
+        type: 'BlockRenderer',
+        // `perspective` explicitly: there is no BlockHostProvider above a ghost to take it from.
+        props: { editorState: preview.content, perspective: deps.dataset() },
+      },
     }),
     ...(preview.date && { date: preview.date }),
     ...(preview.author && {

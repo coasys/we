@@ -95,17 +95,17 @@ function accepts(zone: DragZone, payload: DragPayload, from?: Element): boolean 
   // anybody's data model — the same check `we-sortable` makes for cycles.
   if (from && from.contains(zone.el)) return false;
   /*
-    A container that refuses its own contents refuses them into its sub-zones too.
+    A container that will not take back what it already holds.
 
-    Picking up a row inside the Pocket lit the whole panel as though it were being dragged in, and
-    a release would have written nothing — the panel already holds it. Marking the panel `rejectsOwn`
-    says so once, for the panel and for every folder and crumb inside it, rather than each of them
-    having to work out where the drag came from.
+    Picking up a row inside the Pocket lit the whole panel as though it were being dragged in, and a
+    release there writes nothing — the panel already has it. Containment again, so it needs no data
+    model: the zone refuses a drag that began anywhere inside it.
 
-    Containment again, so it needs no data model: the flag applies where the marked zone contains
-    both the source and the candidate. `contains` is reflexive, so the marked zone covers itself.
+    Deliberately **not** transitive. It applied to nested zones too at first, which silenced the
+    folders and crumbs along with the panel — right while re-filing was impossible, wrong the moment
+    it worked. A sub-zone is a different destination, and whether it accepts is its own business.
   */
-  if (from && registry.list().some((z) => z.rejectsOwn && z.el.contains(from) && z.el.contains(zone.el))) return false;
+  if (from && zone.rejectsOwn && zone.el.contains(from)) return false;
   return zone.accepts ? zone.accepts(payload) : true;
 }
 
@@ -139,6 +139,20 @@ export const dragSession = {
   /** The zone a release would drop into right now, or `null`. */
   targetZone(): DragZone | null {
     return current?.zone ?? held?.zone ?? null;
+  },
+
+  /**
+   * Whether this zone would take what is in flight right now.
+   *
+   * For a zone deciding whether to show itself as available. It must be this rather than the zone's
+   * own `accepts`, because the session applies rules the zone cannot see — never into the thing
+   * being dragged, and `rejectsOwn`. A zone answering from its own predicate alone advertised itself
+   * as a target and then refused the drop.
+   */
+  wouldAccept(zone: DragZone): boolean {
+    const payload = this.active();
+    if (!payload) return false;
+    return accepts(zone, payload, current?.from ?? held?.from);
   },
 
   /**

@@ -340,6 +340,8 @@ export default function TemplateProvider() {
           const profile = profileStore.profiles().find((p) => p.did === did);
           return profile ? { name: profile.name ?? '', avatar: profile.avatar ?? '' } : undefined;
         },
+        // The same handle `BlockHostProvider` hands the composer — a ghost renders outside it.
+        dataset: () => datasetStore.currentDataset()?.handle as Record<string, unknown> | undefined,
       }),
     );
   });

@@ -158,6 +158,7 @@ export const contextData: ContextData = {
         { name: 'label', type: 'string', optional: false, default: "''" },
         { name: 'icon', type: 'string', optional: false, default: "''" },
         { name: 'preview', type: 'DragPreview | undefined', optional: true },
+        { name: 'origin', type: 'unknown | undefined', optional: true },
         { name: 'effect', type: "'move' | 'copy' | 'link'", optional: false, default: "'copy'" },
         { name: 'disabled', type: 'boolean', optional: false, default: 'false' },
       ],

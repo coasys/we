@@ -335,13 +335,53 @@ describe('a zone that refuses its own', () => {
     panel.addEventListener('dropped', (e) => drops.push(e as CustomEvent));
     folder.addEventListener('dropped', (e) => drops.push(e as CustomEvent));
 
-    drag(el, card, { x: 150, y: 30 });
+    // Over the panel's own body, clear of the folder.
+    drag(el, card, { x: 150, y: 200 });
 
     expect(drops).toHaveLength(0);
     expect(panel.hasAttribute('data-we-drop-target')).toBe(false);
-    // The point of stating the rule as containment: the folder inside is covered by the panel's
-    // flag, without the folder knowing anything about where the drag came from.
-    expect(folder.hasAttribute('data-we-drop-target')).toBe(false);
+  });
+
+  it('does not refuse on behalf of a zone nested inside it', async () => {
+    // The flag was transitive at first, which silenced the Pocket's folders and crumbs along with
+    // the panel. A sub-zone is a different destination: dropping a row on a folder is a re-file,
+    // and the panel refusing for it would make that unreachable.
+    const { panel, folder } = await pocketLike();
+    const { el, card } = await makeSource();
+    panel.appendChild(el);
+
+    const folderDrops: CustomEvent[] = [];
+    folder.addEventListener('dropped', (e) => folderDrops.push(e as CustomEvent));
+
+    drag(el, card, { x: 150, y: 30 });
+
+    expect(folderDrops).toHaveLength(1);
+  });
+
+  it('stops arming itself once it has refused', async () => {
+    // Arming asked this element's own `accepts`, which cannot see the session's rules — so a panel
+    // that had just refused a drag still drew a ring advertising itself as a target.
+    const { panel } = await pocketLike();
+    const { el, card } = await makeSource();
+    panel.appendChild(el);
+    const base = { bubbles: true, composed: true, button: 0, pointerId: 1, pointerType: 'mouse' };
+
+    card.dispatchEvent(new PointerEvent('pointerdown', { ...base, clientX: 500, clientY: 500 }));
+    el.dispatchEvent(new PointerEvent('pointermove', { ...base, clientX: 540, clientY: 540 }));
+
+    expect(panel.hasAttribute('data-we-drop-armed')).toBe(false);
+    el.dispatchEvent(new PointerEvent('pointerup', { ...base, clientX: 540, clientY: 540 }));
+  });
+
+  it('carries the source handle a move needs, and nothing when there is none', async () => {
+    const { el, card } = await makeSource();
+    const { dropped } = await makeZone();
+    (el as DraggableEl & { origin?: unknown }).origin = { id: 'PocketItem-3', folder: 'PocketFolder-1' };
+    await el.updateComplete;
+
+    drag(el, card, { x: 100, y: 100 });
+
+    expect(dropped[0].detail.items[0].origin).toEqual({ id: 'PocketItem-3', folder: 'PocketFolder-1' });
   });
 
   it('still takes a drag from anywhere else', async () => {

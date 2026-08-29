@@ -41,6 +41,23 @@ export interface GatherInput {
   ref?: string;
   /** What the source's own card drew with, so a gathered row can draw the same one. */
   preview?: DragPreviewLike;
+  /** Set only when the drag began on a row already in the Pocket — see {@link PocketOrigin}. */
+  origin?: PocketOrigin;
+}
+
+/**
+ * A Pocket row's handle on itself, carried by a drag that starts inside the panel.
+ *
+ * It is what turns a second gather into a **move**: without it the store can see that the reference
+ * is already held and nothing else — not which folder holds it, and so not whether the drop is a
+ * re-file or a no-op. `AgentDataAccess` cannot answer either question (it has create, find and
+ * remove, and no way to read a record's parent), so the source says it instead.
+ */
+interface PocketOrigin {
+  /** The `PocketItem` record's own id — the row to remove once the copy has landed. */
+  id?: string;
+  /** The folder it is sitting in, so dropping it back there is recognised as nothing at all. */
+  folder?: string;
 }
 
 /**
@@ -69,6 +86,7 @@ interface DroppedPayload {
     label?: string;
     icon?: string;
     preview?: DragPreviewLike;
+    origin?: PocketOrigin;
   }[];
 }
 
@@ -268,6 +286,54 @@ export function createPocketStore(deps: ModuleStoreDeps) {
       .catch(() => setLastError('Could not open your Pocket.'));
   }
 
+  /**
+   * Something already held, dropped on a folder: move it there rather than keeping it twice.
+   *
+   * ## Why this is a copy and a delete
+   *
+   * `AgentDataAccess` is `create`, `find` and `remove`. It cannot relink a record, so a move is the
+   * two writes that add up to one — the new row first, so a failure leaves the item where it was
+   * rather than nowhere. The id changes, which for a bookmark costs nothing: nothing references a
+   * `PocketItem` but the folder holding it.
+   *
+   * The snapshot is carried across verbatim, `gatheredAt` included. When you kept a thing does not
+   * change because you tidied it into a folder, and re-stamping it would silently reorder a list
+   * sorted by exactly that.
+   *
+   * ## Why the source has to say where it came from
+   *
+   * The port cannot read a record's parent, so "is this a re-file or a drop back where it already
+   * is" is unanswerable here. The row carries its own folder in the drag — see {@link PocketOrigin}.
+   * Without that the same-folder case would churn: a delete and a create leaving an identical row
+   * with a new id.
+   */
+  async function refile(row: PocketRow, origin: PocketOrigin | undefined, into?: string): Promise<string> {
+    const data = agentData();
+    const target = into;
+    // No target named (a drop on the panel itself), or it is already there: nothing to do.
+    if (!data?.ready() || !target || !origin?.id || origin.folder === target) return row.id;
+
+    const moved = await data.create(
+      'PocketItem',
+      {
+        ref: row.ref,
+        entity: row.entity,
+        datasetKey: row.datasetKey,
+        recordId: row.recordId,
+        label: row.label,
+        icon: row.icon,
+        thumbnail: row.thumbnail,
+        sourceAuthor: row.sourceAuthor,
+        sourceName: row.sourceName,
+        gatheredAt: row.gatheredAt,
+      },
+      { parent: { id: target, predicate: POCKET_PREDICATES.items } },
+    );
+    if (!moved) return row.id;
+    await data.remove('PocketItem', origin.id);
+    return moved;
+  }
+
   async function gatherOne(input: GatherInput, into?: string): Promise<string> {
     const data = agentData();
     const ref = referenceFor(input);
@@ -275,7 +341,7 @@ export function createPocketStore(deps: ModuleStoreDeps) {
     // Gathering the same thing twice is a no-op rather than a second row. A native equality on a
     // scalar, which is half the reason the reference is stored as one.
     const [already] = (await data.find('PocketItem', { where: { ref }, limit: 1 })) as unknown as PocketRow[];
-    if (already?.id) return already.id;
+    if (already?.id) return refile(already, input.origin, into);
 
     const parent = into || folderId() || (await rootFolder())?.id;
     if (!parent) return '';
@@ -321,6 +387,7 @@ export function createPocketStore(deps: ModuleStoreDeps) {
             // A source in another dataset says so; everything in the space on screen does not.
             datasetKey: item.ref?.dataset,
             preview: item.preview,
+            origin: item.origin,
           }))
         : [payload as GatherInput];
 

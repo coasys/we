@@ -394,6 +394,11 @@
           "optional": true
         },
         {
+          "name": "origin",
+          "type": "unknown | undefined",
+          "optional": true
+        },
+        {
           "name": "effect",
           "type": "'move' | 'copy' | 'link'",
           "optional": false,
