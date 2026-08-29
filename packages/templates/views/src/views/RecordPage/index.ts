@@ -1,5 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { RECORD_ROUTE_PATH } from '@we/template-kit';
+import { pageShell, RECORD_ROUTE_PATH } from '@we/template-kit';
 
 /**
  * A page for one record.
@@ -122,6 +122,35 @@ const genericBody: SchemaNode = {
   props: { gap: '400', width: '100%' },
   $localState: { display: { type: 'object', initial: { $: 'recordStore.displays[local.entity]' } } },
   children: [
+    /*
+      An entity with nothing to say about how it is shown.
+
+      `recordStore.displays` is derived from what a model declares under `authoring`, and plenty of
+      entities declare none — they are written by the app, or composed rather than filled in. Without
+      this the page rendered a blank heading over an empty box, which is what a post looked like
+      before `composedBody` existed and what any other undeclared entity would look like still.
+
+      Says which entity, because that is the actionable half: the record is fine, the model has not
+      been told how to present itself.
+    */
+    {
+      type: '$if',
+      props: {
+        condition: { $: '!local.display' },
+        then: {
+          type: 'Column',
+          props: { gap: '200', bg: 'surface-sunken', r: '400', p: '400' },
+          children: [
+            { type: 'we-text', props: { variant: 'heading-sm' }, children: [{ $: 'local.entity' }] },
+            {
+              type: 'we-text',
+              props: { color: 'text-muted' },
+              children: ['This model does not say how it should be shown, so there is nothing to lay out here.'],
+            },
+          ],
+        },
+      },
+    },
     {
       type: '$if',
       props: {
@@ -310,6 +339,58 @@ const callBody: SchemaNode = {
 };
 
 /**
+ * A composed document — a post — which is what most `CollectionBlock`s are.
+ *
+ * ## Why the generic body cannot draw one
+ *
+ * It reads `recordStore.displays`, which is derived from what a model declares under `authoring`:
+ * the properties a person fills in, in order, on a generated form. `CollectionBlock` declares none,
+ * and correctly — nobody types a post into a field list, they compose it in the block editor. So
+ * `displays['CollectionBlock']` is undefined and the generic body rendered a blank heading over an
+ * empty box, which is exactly what a post looked like here.
+ *
+ * A post's content is its `editorState`, and `BlockRenderer` is what draws it — the same component
+ * the card in the Cards route uses, so a post reads the same opened out as it does in the list.
+ */
+const composedBody: SchemaNode = {
+  type: 'Column',
+  props: { gap: '400', width: '100%' },
+  children: [
+    {
+      // Only when it has one. An untitled post is the ordinary case — the composer gives no title
+      // field — and a heading falling back to "CollectionBlock" would name the machinery.
+      type: '$if',
+      props: {
+        condition: { $: 'row.title' },
+        then: { type: 'we-text', props: { variant: 'heading-lg', tag: 'h1' }, children: [{ $: 'row.title' }] },
+      },
+    },
+    {
+      type: 'Row',
+      props: { gap: '300', ay: 'center' },
+      children: [
+        {
+          type: '$agent',
+          props: { did: { $: 'row.author' }, as: 'author' },
+          children: [
+            {
+              type: 'Row',
+              props: { gap: '200', ay: 'center' },
+              children: [
+                { type: 'we-avatar', props: { size: 'sm', image: { $: 'author.avatar' }, hash: { $: 'author.did' } } },
+                { type: 'we-text', props: { variant: 'label' }, children: [{ $: 'author.name' }] },
+              ],
+            },
+          ],
+        },
+        { type: 'we-timestamp', props: { value: { $: 'row.createdAt' }, relative: true, color: 'text-muted' } },
+      ],
+    },
+    { type: 'BlockRenderer', props: { editorState: { $: 'row.editorState' } } },
+  ],
+};
+
+/**
  * The route body: load the record the path names, then draw it.
  *
  * `$single` renders nothing until the record arrives, which is right for the ordinary case and wrong
@@ -318,74 +399,87 @@ const callBody: SchemaNode = {
  * that is still loading, which is the whole reason `<name>Loaded` exists.
  */
 export const recordPage: SchemaNode = {
-  type: 'Column',
-  props: { width: '100%', ax: 'center', bg: 'page', minHeight: '100%' },
-  $localState: {
-    entity: { type: 'string', initial: entityExpr },
-  },
-  $queries: {
-    found: {
-      entity: entityExpr,
-      where: { id: idExpr },
-      limit: 1,
-    },
-  },
-  children: [
-    {
-      type: 'Column',
-      props: { width: '100%', maxWidth: 'var(--we-layout-md)', gap: '500', px: '600', py: '500' },
-      children: [
-        {
-          type: 'we-button',
-          props: { variant: 'ghost', size: 'sm', alignSelf: 'start', onClick: { $action: 'routeStore.back' } },
-          children: [
-            { type: 'we-icon', props: { name: 'arrow-left' } },
-            { type: 'we-text', children: ['Back'] },
-          ],
+  ...pageShell({
+    minHeight: '100%',
+    children: [
+      /*
+          Flush with the content, not indented past it.
+
+          `bare` rather than `ghost`, and that is alignment rather than taste: a ghost button carries
+          its own horizontal padding, which adds to the page's gutter — so the word "Back" started
+          further in than every heading and paragraph below it, and further in than the nav above.
+          `bare` has no padding, no background and inherits its colour, so the text begins exactly on
+          the measure everything else is set to.
+
+          Still a real button — `bare` is the appearance-free variant, not a styled div — so it keeps
+          keyboard activation and the role a clickable Row would silently lose. The colour shift on
+          hover is the affordance a ghost's background was providing.
+        */
+      {
+        type: 'we-button',
+        props: {
+          variant: 'bare',
+          size: 'sm',
+          alignSelf: 'start',
+          color: 'text-muted',
+          hoverProps: { color: 'text' },
+          onClick: { $action: 'routeStore.back' },
         },
-        {
-          type: '$if',
-          props: {
-            condition: { $: 'count(local.found)' },
-            then: {
-              type: '$each',
-              props: { items: { $: 'local.found' }, as: 'row' },
-              children: [
-                {
-                  type: '$if',
-                  props: {
-                    // The per-type override. `kind` rather than the entity name: a call record is a
-                    // `CollectionBlock` like a post is, and what separates them is what it is a
-                    // collection *of*.
-                    condition: { $: "local.entity == 'CollectionBlock' && row.kind == 'call'" },
-                    then: callBody,
-                    else: genericBody,
+        children: [
+          { type: 'we-icon', props: { name: 'arrow-left' } },
+          { type: 'we-text', children: ['Back'] },
+        ],
+      },
+      {
+        type: '$if',
+        props: {
+          condition: { $: 'count(local.found)' },
+          then: {
+            type: '$each',
+            props: { items: { $: 'local.found' }, as: 'row' },
+            children: [
+              {
+                type: '$if',
+                props: {
+                  // The per-type override. `kind` rather than the entity name: a call record is a
+                  // `CollectionBlock` like a post is, and what separates them is what it is a
+                  // collection *of*.
+                  condition: { $: "local.entity == 'CollectionBlock' && row.kind == 'call'" },
+                  then: callBody,
+                  else: {
+                    type: '$if',
+                    props: {
+                      condition: { $: "local.entity == 'CollectionBlock'" },
+                      then: composedBody,
+                      else: genericBody,
+                    },
                   },
                 },
-              ],
-            },
-            else: {
-              type: '$if',
-              props: {
-                condition: { $: 'local.foundLoaded' },
-                then: {
-                  type: 'Column',
-                  props: { ax: 'center', ay: 'center', gap: '400', p: '600', flex: '1' },
-                  children: [
-                    { type: 'we-icon', props: { name: 'question', size: 'xl', color: 'text-faint' } },
-                    {
-                      type: 'we-text',
-                      props: { variant: 'heading-md', textAlign: 'center' },
-                      children: ["This isn't here"],
-                    },
-                    {
-                      type: 'we-text',
-                      props: { color: 'text-muted', textAlign: 'center', maxWidth: 'var(--we-layout-xs)' },
-                      children: [
-                        'The record this link points at has been deleted, or belongs to a space you have not joined.',
-                      ],
-                    },
-                    /*
+              },
+            ],
+          },
+          else: {
+            type: '$if',
+            props: {
+              condition: { $: 'local.foundLoaded' },
+              then: {
+                type: 'Column',
+                props: { ax: 'center', ay: 'center', gap: '400', p: '600', flex: '1' },
+                children: [
+                  { type: 'we-icon', props: { name: 'question', size: 'xl', color: 'text-faint' } },
+                  {
+                    type: 'we-text',
+                    props: { variant: 'heading-md', textAlign: 'center' },
+                    children: ["This isn't here"],
+                  },
+                  {
+                    type: 'we-text',
+                    props: { color: 'text-muted', textAlign: 'center', maxWidth: 'var(--we-layout-xs)' },
+                    children: [
+                      'The record this link points at has been deleted, or belongs to a space you have not joined.',
+                    ],
+                  },
+                  /*
                       What it looked for, said plainly.
 
                       Not gated on a development build, and that is the second lesson from this
@@ -399,18 +493,27 @@ export const recordPage: SchemaNode = {
                       wrong" and "this was deleted", and it is the id that would otherwise be
                       invisible when it is the empty one.
                     */
-                    {
-                      type: 'we-text',
-                      props: { variant: 'footnote', color: 'text-faint', textAlign: 'center' },
-                      children: [{ $: "`Looked for ${local.entity} · ${routeStore.params.id ?? 'no id given'}`" }],
-                    },
-                  ],
-                },
+                  {
+                    type: 'we-text',
+                    props: { variant: 'footnote', color: 'text-faint', textAlign: 'center' },
+                    children: [{ $: "`Looked for ${local.entity} · ${routeStore.params.id ?? 'no id given'}`" }],
+                  },
+                ],
               },
             },
           },
         },
-      ],
+      },
+    ],
+  }),
+  $localState: {
+    entity: { type: 'string', initial: entityExpr },
+  },
+  $queries: {
+    found: {
+      entity: entityExpr,
+      where: { id: idExpr },
+      limit: 1,
     },
-  ],
+  },
 };
