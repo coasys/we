@@ -234,14 +234,29 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
               left: geo('left'),
               width: geo('width'),
               height: geo('height'),
-              // The panel's own surface. A module's node fills it and need not paint a background, a
-              // border or a radius of its own — which is what stops two docked modules from looking
-              // like two different applications.
-              //
-              // Translucent while it is a card, so the app stays visible behind it and the panel
-              // reads as being *over* something rather than as a hole cut in the window. The theme
-              // owns how far — see `glassBg` — and `isGlass` owns when.
-              bg: { $: `${glass} ? '${glassBg('surface-sunken')}' : 'surface-sunken'` },
+              /*
+                The panel's own surface. A module's node fills it and need not paint a background, a
+                border or a radius of its own — which is what stops two docked modules from looking
+                like two different applications.
+
+                Translucent while it is a card, so the app stays visible behind it and the panel
+                reads as being *over* something rather than as a hole cut in the window. The theme
+                owns how far — see `glassBg` — and `isGlass` owns when.
+
+                **Two roles, and neither is `surface-sunken`.** Both cases used to be, and it was
+                the wrong role twice: `surface-sunken` is `page` minus lightness — a *well recessed
+                into* a surface, which is what an input trough or a code block is — so every docked
+                panel was painted darker than the page it sits beside. A panel is not a hole.
+
+                A floating panel has a radius and a shadow and lies over the app, which is the role
+                table's own description of `surface-raised` (down to "a docked rail with a shadow").
+                A displacing one has taken its room and meets the content edge to edge, which is
+                `surface`. Both are lighter than the page rather than darker, and both follow a
+                theme's idea of those relationships instead of pinning a step of the neutral scale.
+              */
+              bg: {
+                $: `${glass} ? '${glassBg('surface-raised')}' : (${dockGeometryPath(entry.id, 'floating')} ? 'surface-raised' : 'surface')`,
+              },
               // Backdrop blur belongs with the transparency and goes when it does: it is expensive,
               // it makes the element a containing block for fixed descendants, and over an opaque
               // background it would cost both of those for nothing visible.
@@ -299,6 +314,24 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
                   */
                   pt: geo('padTop'),
                   pb: geo('padBottom'),
+                  /*
+                    The frame's shape, published for anything inside that needs to hug it.
+
+                    A `we-drop-zone` filling a panel — the Pocket is one — draws its ring inset to
+                    its own bounds, and its own bounds are square. Inside a frame with a 16px radius
+                    and `overflow: hidden`, that ring loses its bottom corners exactly where the
+                    curve is. The frame is the only thing that knows its own radius, and it changes
+                    with the placement, so it says so rather than leaving every module to guess.
+
+                    Only the bottom corners are ever curved here — the titlebar has the top two —
+                    but a single radius is right anyway: the ring's top corners sit under the bar
+                    and are not visible to be wrong.
+                  */
+                  styles: {
+                    '--we-drop-zone-radius': {
+                      $: `${dockGeometryPath(entry.id, 'floating')} ? 'var(--we-radius-500)' : '0px'`,
+                    },
+                  },
                 },
                 /*
                   A panel is a surface of its own.

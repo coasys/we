@@ -28,6 +28,15 @@ const CSS_STYLES = css`
     content: '';
     position: absolute;
     inset: 0;
+    /*
+      The shape of whatever is clipping this, when it says so.
+
+      A zone that fills a rounded, overflow-hidden container — a docked panel is the case — has
+      square corners of its own, so a square ring inside a 16px radius gets its corners shaved off
+      exactly where the curve is. The container is the only thing that knows its own shape, so it
+      publishes it: the dock frame sets --we-drop-zone-radius on the region it hands a module, and
+      anything else falls back to a radius of its own.
+    */
     border-radius: var(--we-drop-zone-radius, var(--we-radius-400, 8px));
     pointer-events: none;
     opacity: 0;
@@ -47,17 +56,23 @@ const CSS_STYLES = css`
   }
 
   /*
-    Target: releasing now lands here. A tinted fill as well as a ring, because at this point the
+    Target: releasing now lands here. A tinted wash as well as a ring, because at this point the
     question is no longer "where could this go" but "is it going *there*" — and a ring alone is hard
     to attribute when zones are nested three deep, as they are in a folder inside a panel.
 
-    The same statement the dock's snap targets make when a panel is dragged over one (an accent-muted
-    fill behind an accent border), so the two gestures do not teach different vocabularies.
+    A wash mixed toward transparent, NOT the accent-muted role. This paints over the zone's
+    contents, so an opaque fill hides them: covering a whole panel with a flat colour is the one
+    thing a drop indicator must not do, since what is already in there is what you are deciding
+    against. The dock's snap targets can use the solid role because they float over empty screen.
+
+    color-mix toward transparent rather than an opacity on the box, for the same reason the panel
+    frame's glass does it that way: opacity would fade the ring along with the fill, and the ring is
+    the part that has to stay legible.
   */
   :host([data-we-drop-target])::after {
     opacity: 1;
     box-shadow: inset 0 0 0 2px var(--we-role-accent, #93c5fd);
-    background: var(--we-role-accent-muted, rgba(147, 197, 253, 0.18));
+    background: color-mix(in srgb, var(--we-role-accent, #93c5fd) 14%, transparent);
   }
 
   @media (prefers-reduced-motion: reduce) {

@@ -56,7 +56,6 @@ describe('a floating panel is glass', () => {
     const styles = gateOf((surface!.styles as Record<string, unknown>)['backdrop-filter']);
 
     expect(bg?.then).toContain('color-mix');
-    expect(bg?.else).toBe("'surface-sunken'");
     expect(styles?.then).toContain('blur(');
     expect(styles?.else).toBe("'none'");
 
@@ -84,6 +83,24 @@ describe('a floating panel is glass', () => {
     expect(condition).toBe(
       "shellStore.dockGeometry['call:0'].floating && !shellStore.dockGeometry['call:0'].maximised",
     );
+  });
+
+  /**
+   * A panel is never painted as a hole.
+   *
+   * Both branches used to be `surface-sunken`, and it was the wrong role twice: sunken is `page`
+   * *minus* lightness — a well recessed into a surface, which is what an input trough and a code
+   * block are — so every docked panel came out darker than the page beside it. Nothing failed,
+   * because a role that resolves is a role that paints.
+   */
+  it('paints a surface rather than a well, in whichever state', () => {
+    const bg = (surface!.bg as { $: string }).$;
+
+    expect(bg).not.toContain('sunken');
+    // Floating: it lies over the app with a radius and a shadow, which is what `surface-raised` is
+    // for. Displacing: it has taken its room and meets the content edge to edge, which is `surface`.
+    expect(bg).toContain('surface-raised');
+    expect(bg).toContain("'surface'");
   });
 
   it('carries the titlebar with it, so the card is one piece of glass', () => {
