@@ -29,8 +29,15 @@ import type { TranscriptionPort } from './transcription';
  * same rule as `DatasetHandle`.
  */
 export interface SchemaPort {
-  /** Install the host's root-dataset schemas (personal config entities). Idempotent. */
-  installRoot(dataset: DatasetHandle): Promise<void>;
+  /**
+   * Install the host's root-dataset schemas (personal config entities), plus any agent-scoped
+   * module entities. Idempotent.
+   *
+   * The module list is separate from `installSpace`'s and must stay that way: an agent-scoped
+   * entity installed into a shared space would sync one person's private records to the whole
+   * community. See `ModuleDefinition.entities.scope`.
+   */
+  installRoot(dataset: DatasetHandle, moduleSchemas?: readonly unknown[]): Promise<void>;
   /** Install the host's space schemas plus the given module schemas. Idempotent. */
   installSpace(dataset: DatasetHandle, moduleSchemas: readonly unknown[]): Promise<void>;
   /** Install only the given module schemas (runs on every space switch — diffs before writing). */
@@ -68,6 +75,24 @@ export interface SchemaPort {
     manifest: EntityManifest,
     opts: { moduleId: string; predicates?: Record<string, string>; resolveExternal?: (name: string) => unknown },
   ): Record<string, unknown>;
+  /**
+   * The same manifest, projected onto neutral entries — every property and relation with the
+   * predicate this backend actually minted for it.
+   *
+   * The read half of `declare`, and needed because a query's `scope` is resolved against a list of
+   * entries rather than against the compiled classes: an adapter looks `via` up by name and reads
+   * its predicate. A module declaring a relation and then drilling into it had no way to be in that
+   * list, so the drill-down failed with "no such relation in the current perspective's model
+   * manifest" — which is a true statement about a list the entity was never added to.
+   *
+   * A port rather than a rule the host reapplies, because *this backend* decides what a declared
+   * property is called on the wire — override, then core vocabulary, then minted under the module's
+   * subtree — and a second implementation of that ordering is a second chance to disagree with it.
+   */
+  entries(
+    manifest: EntityManifest,
+    opts: { moduleId: string; predicates?: Record<string, string> },
+  ): EntityManifestEntry[];
   /**
    * Compile a declared manifest and register its entities for name-based query resolution *in one
    * dataset only* — the space-shape path. A shape a space carries must resolve there and nowhere

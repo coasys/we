@@ -408,7 +408,7 @@ importers:
         version: 4.23.12
       vitest:
         specifier: ^4.1.11
-        version: 4.1.11(@types/node@26.3.0)(@vitest/coverage-v8@4.1.11)(happy-dom@20.11.6)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.2.2(@types/node@26.3.0)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.103.1)(tsx@4.23.12)(yaml@2.9.0))
+        version: 4.1.11(@types/node@26.3.0)(@vitest/coverage-v8@4.1.11)(happy-dom@20.11.6)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.2.2(@types/node@26.3.0)(esbuild@0.27.7)(jiti@2.7.0)(sass@1.103.1)(tsx@4.23.12)(yaml@2.9.0))
 
   packages/app-shell:
     dependencies:
@@ -439,9 +439,15 @@ importers:
       '@we/design-utils':
         specifier: workspace:*
         version: link:../design-system/utils
+      '@we/drag':
+        specifier: workspace:*
+        version: link:../design-system/drag
       '@we/editor':
         specifier: workspace:*
         version: link:../editor
+      '@we/entities':
+        specifier: workspace:*
+        version: link:../entities
       '@we/globe-widget':
         specifier: workspace:*
         version: link:../module-system/globe/widget
@@ -454,9 +460,6 @@ importers:
       '@we/graph-solid':
         specifier: workspace:*
         version: link:../graph-system/frameworks/solid
-      '@we/entities':
-        specifier: workspace:*
-        version: link:../entities
       '@we/module-call':
         specifier: workspace:*
         version: link:../module-system/call
@@ -469,6 +472,9 @@ importers:
       '@we/module-notes':
         specifier: workspace:*
         version: link:../module-system/notes
+      '@we/module-pocket':
+        specifier: workspace:*
+        version: link:../module-system/pocket
       '@we/module-shared':
         specifier: workspace:*
         version: link:../module-system/shared
@@ -478,6 +484,9 @@ importers:
       '@we/primitives':
         specifier: workspace:*
         version: link:../design-system/3-primitives
+      '@we/schema-kit':
+        specifier: workspace:*
+        version: link:../schema-system/kit
       '@we/schema-shared':
         specifier: workspace:*
         version: link:../schema-system/shared
@@ -629,9 +638,15 @@ importers:
 
   packages/block-system/frameworks/solid:
     dependencies:
+      '@we/backend-shared':
+        specifier: workspace:*
+        version: link:../../../backend-system/shared
       '@we/block-shared':
         specifier: workspace:*
         version: link:../../shared
+      '@we/drag':
+        specifier: workspace:*
+        version: link:../../../design-system/drag
       '@we/entities':
         specifier: workspace:*
         version: link:../../../entities
@@ -806,6 +821,9 @@ importers:
       '@we/design-utils':
         specifier: workspace:*
         version: link:../utils
+      '@we/drag':
+        specifier: workspace:*
+        version: link:../drag
       '@we/tokens':
         specifier: workspace:*
         version: link:../1-tokens
@@ -948,6 +966,24 @@ importers:
         specifier: ^4.1.11
         version: 4.1.11(@types/node@26.3.0)(@vitest/coverage-v8@4.1.11)(happy-dom@20.11.6)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.2.2(@types/node@26.3.0)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.103.1)(tsx@4.23.12)(yaml@2.9.0))
 
+  packages/design-system/drag:
+    devDependencies:
+      '@types/node':
+        specifier: ^26.3.0
+        version: 26.3.0
+      '@we/cli':
+        specifier: workspace:*
+        version: link:../../cli
+      jsdom:
+        specifier: ^30.0.1
+        version: 30.0.1(@noble/hashes@2.3.0)
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.12)(typescript@5.9.3)(yaml@2.9.0)
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.11(@types/node@26.3.0)(@vitest/coverage-v8@4.1.11)(happy-dom@20.11.6)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.2.2(@types/node@26.3.0)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.103.1)(tsx@4.23.12)(yaml@2.9.0))
+
   packages/design-system/types:
     devDependencies:
       '@we/cli':
@@ -1015,6 +1051,25 @@ importers:
       solid-js:
         specifier: ^1.9.15
         version: 1.9.15
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.11(@types/node@26.3.0)(@vitest/coverage-v8@4.1.11)(happy-dom@20.11.6)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.2.2(@types/node@26.3.0)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.103.1)(tsx@4.23.12)(yaml@2.9.0))
+
+  packages/entities:
+    dependencies:
+      '@we/backend-shared':
+        specifier: workspace:*
+        version: link:../backend-system/shared
+    devDependencies:
+      '@we/cli':
+        specifier: workspace:*
+        version: link:../cli
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.12)(typescript@5.9.3)(yaml@2.9.0)
+      tsx:
+        specifier: ^4.23.12
+        version: 4.23.12
       vitest:
         specifier: ^4.1.11
         version: 4.1.11(@types/node@26.3.0)(@vitest/coverage-v8@4.1.11)(happy-dom@20.11.6)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.2.2(@types/node@26.3.0)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.103.1)(tsx@4.23.12)(yaml@2.9.0))
@@ -1158,25 +1213,6 @@ importers:
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
-      vitest:
-        specifier: ^4.1.11
-        version: 4.1.11(@types/node@26.3.0)(@vitest/coverage-v8@4.1.11)(happy-dom@20.11.6)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.2.2(@types/node@26.3.0)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.103.1)(tsx@4.23.12)(yaml@2.9.0))
-
-  packages/entities:
-    dependencies:
-      '@we/backend-shared':
-        specifier: workspace:*
-        version: link:../backend-system/shared
-    devDependencies:
-      '@we/cli':
-        specifier: workspace:*
-        version: link:../cli
-      tsup:
-        specifier: ^8.5.1
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.12)(typescript@5.9.3)(yaml@2.9.0)
-      tsx:
-        specifier: ^4.23.12
-        version: 4.23.12
       vitest:
         specifier: ^4.1.11
         version: 4.1.11(@types/node@26.3.0)(@vitest/coverage-v8@4.1.11)(happy-dom@20.11.6)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.2.2(@types/node@26.3.0)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.103.1)(tsx@4.23.12)(yaml@2.9.0))
@@ -1325,6 +1361,34 @@ importers:
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
+
+  packages/module-system/pocket:
+    dependencies:
+      '@we/backend-shared':
+        specifier: workspace:*
+        version: link:../../backend-system/shared
+    devDependencies:
+      '@we/cli':
+        specifier: workspace:*
+        version: link:../../cli
+      '@we/module-shared':
+        specifier: workspace:*
+        version: link:../shared
+      '@we/schema-kit':
+        specifier: workspace:*
+        version: link:../../schema-system/kit
+      '@we/schema-shared':
+        specifier: workspace:*
+        version: link:../../schema-system/shared
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.12)(typescript@5.9.3)(yaml@2.9.0)
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.11(@types/node@26.3.0)(@vitest/coverage-v8@4.1.11)(happy-dom@20.11.6)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.2.2(@types/node@26.3.0)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.103.1)(tsx@4.23.12)(yaml@2.9.0))
 
   packages/module-system/shared:
     dependencies:
@@ -8068,6 +8132,14 @@ snapshots:
       chai: 6.2.2
       tinyrainbow: 3.1.1
 
+  '@vitest/mocker@4.1.11(vite@8.2.2(@types/node@26.3.0)(esbuild@0.27.7)(jiti@2.7.0)(sass@1.103.1)(tsx@4.23.12)(yaml@2.9.0))':
+    dependencies:
+      '@vitest/spy': 4.1.11
+      estree-walker: 3.0.3
+      magic-string: 0.30.21
+    optionalDependencies:
+      vite: 8.2.2(@types/node@26.3.0)(esbuild@0.27.7)(jiti@2.7.0)(sass@1.103.1)(tsx@4.23.12)(yaml@2.9.0)
+
   '@vitest/mocker@4.1.11(vite@8.2.2(@types/node@26.3.0)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.103.1)(tsx@4.23.12)(yaml@2.9.0))':
     dependencies:
       '@vitest/spy': 4.1.11
@@ -11555,6 +11627,22 @@ snapshots:
       tinyglobby: 0.2.17
       vite: 8.2.2(@types/node@26.3.0)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.103.1)(tsx@4.23.12)(yaml@2.9.0)
 
+  vite@8.2.2(@types/node@26.3.0)(esbuild@0.27.7)(jiti@2.7.0)(sass@1.103.1)(tsx@4.23.12)(yaml@2.9.0):
+    dependencies:
+      lightningcss: 1.33.0
+      picomatch: 4.0.5
+      postcss: 8.5.26
+      rolldown: 1.2.5
+      tinyglobby: 0.2.17
+    optionalDependencies:
+      '@types/node': 26.3.0
+      esbuild: 0.27.7
+      fsevents: 2.3.3
+      jiti: 2.7.0
+      sass: 1.103.1
+      tsx: 4.23.12
+      yaml: 2.9.0
+
   vite@8.2.2(@types/node@26.3.0)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.103.1)(tsx@4.23.12)(yaml@2.9.0):
     dependencies:
       lightningcss: 1.33.0
@@ -11574,6 +11662,36 @@ snapshots:
   vitefu@1.1.3(vite@8.2.2(@types/node@26.3.0)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.103.1)(tsx@4.23.12)(yaml@2.9.0)):
     optionalDependencies:
       vite: 8.2.2(@types/node@26.3.0)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.103.1)(tsx@4.23.12)(yaml@2.9.0)
+
+  vitest@4.1.11(@types/node@26.3.0)(@vitest/coverage-v8@4.1.11)(happy-dom@20.11.6)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.2.2(@types/node@26.3.0)(esbuild@0.27.7)(jiti@2.7.0)(sass@1.103.1)(tsx@4.23.12)(yaml@2.9.0)):
+    dependencies:
+      '@vitest/expect': 4.1.11
+      '@vitest/mocker': 4.1.11(vite@8.2.2(@types/node@26.3.0)(esbuild@0.27.7)(jiti@2.7.0)(sass@1.103.1)(tsx@4.23.12)(yaml@2.9.0))
+      '@vitest/pretty-format': 4.1.11
+      '@vitest/runner': 4.1.11
+      '@vitest/snapshot': 4.1.11
+      '@vitest/spy': 4.1.11
+      '@vitest/utils': 4.1.11
+      es-module-lexer: 2.3.2
+      expect-type: 1.4.0
+      magic-string: 0.30.21
+      obug: 2.1.4
+      pathe: 2.0.3
+      picomatch: 4.0.5
+      std-env: 4.2.0
+      tinybench: 2.9.0
+      tinyexec: 1.3.0
+      tinyglobby: 0.2.17
+      tinyrainbow: 3.1.1
+      vite: 8.2.2(@types/node@26.3.0)(esbuild@0.27.7)(jiti@2.7.0)(sass@1.103.1)(tsx@4.23.12)(yaml@2.9.0)
+      why-is-node-running: 2.3.0
+    optionalDependencies:
+      '@types/node': 26.3.0
+      '@vitest/coverage-v8': 4.1.11(vitest@4.1.11)
+      happy-dom: 20.11.6
+      jsdom: 30.0.1(@noble/hashes@2.3.0)
+    transitivePeerDependencies:
+      - msw
 
   vitest@4.1.11(@types/node@26.3.0)(@vitest/coverage-v8@4.1.11)(happy-dom@20.11.6)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.2.2(@types/node@26.3.0)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.103.1)(tsx@4.23.12)(yaml@2.9.0)):
     dependencies:

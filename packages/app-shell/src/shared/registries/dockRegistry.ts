@@ -234,14 +234,32 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
               left: geo('left'),
               width: geo('width'),
               height: geo('height'),
-              // The panel's own surface. A module's node fills it and need not paint a background, a
-              // border or a radius of its own — which is what stops two docked modules from looking
-              // like two different applications.
-              //
-              // Translucent while it is a card, so the app stays visible behind it and the panel
-              // reads as being *over* something rather than as a hole cut in the window. The theme
-              // owns how far — see `glassBg` — and `isGlass` owns when.
-              bg: { $: `${glass} ? '${glassBg('surface-sunken')}' : 'surface-sunken'` },
+              /*
+                The panel's own surface. A module's node fills it and need not paint a background, a
+                border or a radius of its own — which is what stops two docked modules from looking
+                like two different applications.
+
+                Translucent while it is a card, so the app stays visible behind it and the panel
+                reads as being *over* something rather than as a hole cut in the window. The theme
+                owns how far — see `glassBg` — and `isGlass` owns when.
+
+                **`page`, and not `surface-sunken`.** It was sunken, and that is `page` minus
+                lightness — the role for a *well recessed into* a surface, which is what an input
+                trough or a code block is. So every docked panel came out darker than the page it
+                sits beside, and read as a hole cut in the window rather than as part of it.
+
+                `surface` and `surface-raised` were tried in between and are both too light: they are
+                `page` *plus* lightness, which is the relationship a card wants when it sits **on**
+                the page with the page still visible around it. A docked panel has no page showing
+                around it — it either abuts the content or covers it — so lifting it off a
+                background nobody can see just makes it paler than everything near it.
+
+                A panel is the app's own ground, extended. Same role, and the frame's border is what
+                separates it from the content beside it. Note this makes the panel body and its
+                titlebar the same colour, which is deliberate: the bar's bottom border is the line
+                between them, so a panel reads as one surface rather than as a header stuck on a box.
+              */
+              bg: { $: `${glass} ? '${glassBg('page')}' : 'page'` },
               // Backdrop blur belongs with the transparency and goes when it does: it is expensive,
               // it makes the element a containing block for fixed descendants, and over an opaque
               // background it would cost both of those for nothing visible.
@@ -299,6 +317,24 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
                   */
                   pt: geo('padTop'),
                   pb: geo('padBottom'),
+                  /*
+                    The frame's shape, published for anything inside that needs to hug it.
+
+                    A `we-drop-zone` filling a panel — the Pocket is one — draws its ring inset to
+                    its own bounds, and its own bounds are square. Inside a frame with a 16px radius
+                    and `overflow: hidden`, that ring loses its bottom corners exactly where the
+                    curve is. The frame is the only thing that knows its own radius, and it changes
+                    with the placement, so it says so rather than leaving every module to guess.
+
+                    Only the bottom corners are ever curved here — the titlebar has the top two —
+                    but a single radius is right anyway: the ring's top corners sit under the bar
+                    and are not visible to be wrong.
+                  */
+                  styles: {
+                    '--we-drop-zone-radius': {
+                      $: `${dockGeometryPath(entry.id, 'floating')} ? 'var(--we-radius-500)' : '0px'`,
+                    },
+                  },
                 },
                 /*
                   A panel is a surface of its own.

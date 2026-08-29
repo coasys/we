@@ -20,7 +20,7 @@ import { containmentPredicate, gatherTranscriptTurns, type TurnRecord } from '@s
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { moduleRegistry } from '@shared/registries/moduleRegistry';
 import { getSeed } from '@shared/seedRegistry';
-import type { DatasetRef, EntityManifestEntry } from '@we/backend-shared';
+import { datasetKey, type DatasetRef, type EntityManifestEntry } from '@we/backend-shared';
 import { AgentSettings, type DatasetProxy, getEntitiesForPerspective } from '@we/entities';
 import { Accessor, batch, createContext, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
@@ -216,6 +216,12 @@ export function DatasetStoreProvider(props: ParentProps) {
     // The *global* uri, never the local uuid — a uuid is local per-agent, so a call id derived
     // from one would differ on every peer and each would join a call only they can see.
     datasetUri: () => currentDataset()?.sharedUri ?? null,
+    // The same dataset, named the way a stored reference names it: the CID where there is one, so
+    // the reference means the same record to every agent who joined, and the local uuid otherwise.
+    datasetRefKey: () => {
+      const ds = currentDataset();
+      return ds ? datasetKey({ cid: ds.sharedUri, uuid: ds.id }) : '';
+    },
     selfId: () => session.me()?.did ?? null,
     ephemeral: session.ephemeralPort,
     // Read through `backendPorts()` on every call rather than captured: the backend connects after
@@ -548,7 +554,8 @@ export function DatasetStoreProvider(props: ParentProps) {
 
       if (rootRef) {
         // Ensure all models are registered (handles new models added after initial creation)
-        await session.backendPorts()!.schemas.installRoot(rootRef.handle);
+        const rootSchemas = session.backendPorts()!.schemas;
+        await rootSchemas.installRoot(rootRef.handle, moduleRegistry.agentSchemas(rootSchemas));
         setRootDataset(rootRef);
 
         const settings = await AgentSettings.findOne(rootRef.handle);
@@ -568,7 +575,8 @@ export function DatasetStoreProvider(props: ParentProps) {
       // No root dataset exists — create one
       console.log('DatasetStore: creating root dataset');
       const rootCreated = toApp(await lifecycle.create('we-root'));
-      await session.backendPorts()!.schemas.installRoot(rootCreated.handle);
+      const newRootSchemas = session.backendPorts()!.schemas;
+      await newRootSchemas.installRoot(rootCreated.handle, moduleRegistry.agentSchemas(newRootSchemas));
 
       const settings = await AgentSettings.create(rootCreated.handle, {
         currentTemplateId: 'default',

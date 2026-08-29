@@ -199,6 +199,15 @@ export const callsList: SchemaNode = {
               props: {
                 condition: { $: 'local.showEmptyCalls || count(local.utterances)' },
                 then: cardShell({
+                  drag: {
+                    entity: 'CollectionBlock',
+                    id: { $: 'call.id' },
+                    label: { $: 'call.title' },
+                    icon: 'phone',
+                    // No content: a call record's composition is its transcript, which is a page of
+                    // text and unreadable at tile size. The icon says more.
+                    preview: { author: { $: 'call.author' }, date: { $: 'call.createdAt' } },
+                  },
                   localState: {
                     confirmDeleteOpen: { type: 'boolean', initial: false },
                     deleting: { type: 'boolean', initial: false },

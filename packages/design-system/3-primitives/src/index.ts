@@ -10,6 +10,8 @@ import './primitives/code';
 import './primitives/color-picker';
 import './primitives/date-picker';
 import './primitives/divider';
+import './primitives/draggable';
+import './primitives/drop-zone';
 import './primitives/drawer';
 import './primitives/file-upload';
 import './primitives/form-field';

@@ -1,6 +1,6 @@
 import { queryIRFlag } from '@shared/queryIRFlag';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
-import { moduleStores } from '@shared/registries/moduleRegistry';
+import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry';
 import { onSlotRegistryChanged, slotRegistry } from '@shared/registries/slotRegistry';
 import { buildTemplateBag, CHROME_TIER, SPACE_TIER } from '@shared/registries/templateSurface';
 import { hostSourceBag } from '@shared/sources';
@@ -40,6 +40,7 @@ import { RECORD_ROUTE_PATH, recordPage } from '@we/template-views';
 import { createEffect, createMemo, createSignal, onCleanup, onMount, Show, untrack } from 'solid-js';
 
 import { createCollabSession } from '../collab/collabSession';
+import { registerRecordGhost } from '../drag/recordGhost';
 import { PersistentAppFrames } from '../layouts/PersistentAppFrames';
 import { SHELL_SIDEBAR_WIDTH, TemplateLayout } from '../layouts/TemplateLayout';
 import { buildRoutes } from '../utils/buildRoutes';
@@ -83,6 +84,14 @@ export default function TemplateProvider() {
     info: (...args: unknown[]) => console.info(...args),
   };
 
+  /**
+   * Where a module's agent-scoped records live, named once.
+   *
+   * A literal in three call sites would be three chances to write a space's path by mistake, and the
+   * consequence of getting it wrong is one person's private collection synced to a community.
+   */
+  const ROOT_PERSPECTIVE = 'datasetStore.rootDataset';
+
   // Record mutations — one instance of an entity, written through the entity's registered class
   // with the perspective injected. Pass `{ perspective: 'store.path' }` in options to target a
   // different one (e.g. 'datasetStore.rootDataset' for we-root entities like AgentSettings).
@@ -112,6 +121,35 @@ export default function TemplateProvider() {
       if (!datasetStore.currentDataset()) return null;
       const created = (await recordActions.create(entity, fields, { ...options })) as { id?: string } | undefined;
       return created?.id ?? null;
+    },
+
+    /*
+      This agent's own records, in the root dataset — the write half of `entities: { scope: 'agent' }`.
+
+      Everything goes through `recordActions` with the root perspective named, so there is one place
+      that knows how a perspective path is resolved and an agent-scoped module cannot reach a space
+      by accident: the path is fixed here rather than passed in.
+    */
+    agentData: {
+      ready: () => !!datasetStore.rootDataset(),
+      create: async (entity, fields, options) => {
+        if (!datasetStore.rootDataset()) return null;
+        const created = (await recordActions.create(entity, fields, {
+          ...options,
+          perspective: ROOT_PERSPECTIVE,
+        })) as { id?: string } | undefined;
+        return created?.id ?? null;
+      },
+      find: async (entity, query) => {
+        if (!datasetStore.rootDataset()) return [];
+        const [Model, p] = resolve(entity, { perspective: ROOT_PERSPECTIVE });
+        const rows = (await Model.findAll(p, query as never)) as unknown as Record<string, unknown>[];
+        return rows ?? [];
+      },
+      remove: async (entity, id) => {
+        if (!datasetStore.rootDataset()) return;
+        await recordActions.delete(entity, id, { perspective: ROOT_PERSPECTIVE });
+      },
     },
 
     // Add-one on a to-many relation. An instance bound to an existing base expression is enough —
@@ -202,8 +240,18 @@ export default function TemplateProvider() {
    *
    * Foreign first, so nothing that resolves today changes: `resolveScopeToParent` takes the first
    * match by name, and core is purely a fallback behind it.
+   *
+   * Module-declared entities are the third source, and were missing for the same reason core was:
+   * they are in neither of the other two. A module that declares a relation and then drills into it
+   * — the Pocket, reading a folder's contents — got "no such relation in the current perspective's
+   * model manifest" on a completely correct query. Behind core, since a module may not shadow the
+   * host's vocabulary.
    */
-  const modelsForBindings = () => [...datasetStore.currentDatasetEntities(), ...coreEntries];
+  const moduleEntries = createMemo(() => {
+    const schemas = sessionStore.backendPorts()?.schemas;
+    return schemas ? moduleRegistry.entityEntries(schemas) : [];
+  });
+  const modelsForBindings = () => [...datasetStore.currentDatasetEntities(), ...coreEntries, ...moduleEntries()];
 
   const boundBindings = createMemo(() =>
     sessionStore.backendPorts()?.dataBindings({
@@ -276,6 +324,27 @@ export default function TemplateProvider() {
   */
   const chromeBag = buildTemplateBag(stores, { grants: CHROME_TIER });
   const templateBag = buildTemplateBag(stores, { grants: SPACE_TIER });
+
+  /*
+    What a drag looks like. Registered from here because it is the same kind of knowledge as
+    `openRef` below — the host's, provided once, so no source of a drag has to carry it.
+
+    The chrome bag rather than the template one: this card is host-authored, and a ghost is chrome.
+  */
+  onMount(() => {
+    onCleanup(
+      registerRecordGhost({
+        stores: chromeBag,
+        registry,
+        agent: (did) => {
+          const profile = profileStore.profiles().find((p) => p.did === did);
+          return profile ? { name: profile.name ?? '', avatar: profile.avatar ?? '' } : undefined;
+        },
+        // The same handle `BlockHostProvider` hands the composer — a ghost renders outside it.
+        dataset: () => datasetStore.currentDataset()?.handle as Record<string, unknown> | undefined,
+      }),
+    );
+  });
 
   /*
     Shell chrome — host slots plus anything feature modules or the interface itself contribute.
@@ -602,6 +671,10 @@ export default function TemplateProvider() {
         const did = sessionStore.me()?.did ?? '';
         return { name: profileStore.ownProfile()?.name || 'Someone', color: colorFor(did) };
       }}
+      // Where a reference inside a composition goes when somebody follows it. The host's knowledge
+      // for the same reason the dataset is: a block cannot know where a record's page lives, and
+      // threading a handler from every call site is the `perspective` string all over again.
+      openRef={(ref) => void spaceStore.openRecordRef(ref)}
     >
       <VisualEditorProvider value={visualEditorCtx}>
         {/* Shell chrome — stable, never remounts. Chrome tier: this is host-authored. */}

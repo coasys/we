@@ -37,6 +37,12 @@ export const fluxConversationSubgroupsList: SchemaNode = {
       empty: noRows,
       children: [
         cardShell({
+          drag: {
+            entity: 'ConversationSubgroup',
+            id: { $: 'subgroup.id' },
+            label: { $: 'subgroup.subgroupName' },
+            icon: 'chat-dots',
+          },
           header: [
             {
               type: 'Row',

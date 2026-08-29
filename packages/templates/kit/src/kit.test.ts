@@ -24,6 +24,7 @@ import {
   railGroup,
   railItem,
   railShell,
+  recordCard,
   sectionCard,
   statChip,
 } from './index.ts';
@@ -64,6 +65,21 @@ const portable: Record<string, SchemaNode> = {
     control: { type: 'we-switch' },
   }),
   statChip: statChip({ icon: 'chat-dots', count: { $: 'channel.$count' }, label: 'Conversations' }),
+  recordCard: recordCard({ label: { $: 'item.label' }, icon: 'bookmark-simple' }),
+  'recordCard (thumbnail)': recordCard({
+    label: { $: 'item.label' },
+    icon: 'image',
+    thumbnail: { $: 'item.thumbnail' },
+    byline: { hash: { $: 'item.sourceAuthor' } },
+    source: { $: 'item.sourceName' },
+    date: { $: 'item.gatheredAt' },
+  }),
+  'recordCard (content)': recordCard({
+    label: { $: 'post.textContent' },
+    icon: 'newspaper',
+    content: { type: 'BlockRenderer', props: { editorState: { $: 'post.editorState' } } },
+    ghost: true,
+  }),
   'statChip (value)': statChip({ icon: 'lock-simple', label: 'Access', value: 'Shared' }),
   cardShell: cardShell({ header: [{ type: 'we-text', children: ['h'] }], body: [] }),
   'cardList (query)': cardList({
@@ -494,5 +510,101 @@ describe('handler arrays are never nested', () => {
       confirm: [{ $setLocal: 'a', value: 1 }, { $action: 'x.y' }],
     });
     expect(nestedHandlerArrays(node)).toEqual([]);
+  });
+});
+
+/**
+ * The record tile — the square that follows the pointer during a drag, and the one a grid of
+ * gathered things is made of.
+ *
+ * One fragment for both, so what you saw yourself carrying is what you find afterwards. What is
+ * worth pinning is the order it draws in: each source hands it a different one of the three, and
+ * getting the precedence wrong shows an icon over a picture that was right there.
+ */
+describe('recordCard draws what the source had', () => {
+  const types = (node: SchemaNode): string[] => {
+    const found: string[] = [];
+    walk(node, (n) => {
+      if (typeof n.type === 'string') found.push(n.type);
+    });
+    return found;
+  };
+
+  it('shows the picture where there is one, and the fallback where there is not', () => {
+    // `thumbnail` is an expression, so which applies is only knowable at render time — hence a
+    // branch in the output rather than a decision taken here.
+    const node = recordCard({ icon: 'image', thumbnail: { $: 'item.thumbnail' } });
+
+    expect(types(node)).toContain('$if');
+    expect(types(node)).toContain('we-image');
+    expect(types(node)).toContain('we-icon');
+  });
+
+  it('draws the composition itself when given one, in place of the icon', () => {
+    const node = recordCard({
+      icon: 'newspaper',
+      content: { type: 'BlockRenderer', props: { editorState: { $: 'post.editorState' } } },
+    });
+
+    expect(types(node)).toContain('BlockRenderer');
+    // No branch: a node either exists or it does not, so this choice is made at authoring time.
+    expect(types(node)).not.toContain('$if');
+  });
+
+  it('scales the composition down rather than laying it out small', () => {
+    // Rendered into a 100px box, every paragraph re-flows into a column one word wide. Scaling keeps
+    // the shape of the document, which is the only thing legible at this size.
+    const node = recordCard({
+      size: '100px',
+      contentWidth: '320px',
+      content: { type: 'BlockRenderer', props: { editorState: 'x' } },
+    });
+
+    const scaled: Record<string, unknown>[] = [];
+    walk(node, (n) => {
+      const props = n.props as Record<string, unknown> | undefined;
+      if (props && typeof props.transform === 'string') scaled.push(props);
+    });
+
+    expect(scaled).toHaveLength(1);
+    expect(scaled[0].transform).toBe('scale(0.3125)');
+    expect(scaled[0].width).toBe('320px');
+  });
+
+  it('leaves the scale to CSS when the sizes are not plain pixels', () => {
+    const node = recordCard({ size: 'var(--tile)', content: { type: 'we-text', children: ['x'] } });
+
+    const found: string[] = [];
+    walk(node, (n) => {
+      const props = n.props as Record<string, unknown> | undefined;
+      if (props && typeof props.transform === 'string') found.push(props.transform);
+    });
+
+    expect(found).toEqual(['scale(calc(var(--tile) / 320px))']);
+  });
+
+  it('draws an identicon from a DID alone, rather than a blank disc', () => {
+    // A Pocket row keeps the author's DID and cannot resolve it — the panel names no store. Two
+    // unresolved people must not look like the same person.
+    const node = recordCard({ label: 'A post', byline: { hash: { $: 'item.sourceAuthor' } } });
+
+    expect(types(node)).toContain('we-avatar');
+  });
+
+  it('draws no caption at all when there is nothing to say', () => {
+    const node = recordCard({ icon: 'folder' });
+
+    expect(types(node)).not.toContain('we-text');
+    expect(types(node)).not.toContain('we-timestamp');
+  });
+
+  it('cannot take the pointer when it is a ghost', () => {
+    // It sits under the pointer for the whole gesture; a tile that accepted clicks would swallow
+    // the drop.
+    const ghost = recordCard({ label: 'A post', ghost: true }) as { props: Record<string, unknown> };
+    const tile = recordCard({ label: 'A post' }) as { props: Record<string, unknown> };
+
+    expect(ghost.props.pointerEvents).toBe('none');
+    expect(tile.props.pointerEvents).toBeUndefined();
   });
 });

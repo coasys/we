@@ -44,6 +44,12 @@ export const fluxChannelsList: SchemaNode = {
       empty: noRows,
       children: [
         cardShell({
+          drag: {
+            entity: 'Channel',
+            id: { $: 'channel.id' },
+            label: { $: "channel.conversations[0].conversationName ?? 'Channel'" },
+            icon: 'hash',
+          },
           header: [
             {
               type: 'Row',

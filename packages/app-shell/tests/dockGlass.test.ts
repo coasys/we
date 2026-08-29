@@ -56,7 +56,6 @@ describe('a floating panel is glass', () => {
     const styles = gateOf((surface!.styles as Record<string, unknown>)['backdrop-filter']);
 
     expect(bg?.then).toContain('color-mix');
-    expect(bg?.else).toBe("'surface-sunken'");
     expect(styles?.then).toContain('blur(');
     expect(styles?.else).toBe("'none'");
 
@@ -84,6 +83,27 @@ describe('a floating panel is glass', () => {
     expect(condition).toBe(
       "shellStore.dockGeometry['call:0'].floating && !shellStore.dockGeometry['call:0'].maximised",
     );
+  });
+
+  /**
+   * A panel is the app's own ground, extended — not a hole in it and not a card on it.
+   *
+   * It was `surface-sunken`, which is `page` *minus* lightness: the role for a well recessed into a
+   * surface, so every docked panel came out darker than the page beside it. `surface` and
+   * `surface-raised` are the other error, `page` *plus* lightness — the relationship a card wants
+   * when the page is still visible around it, which for a panel that abuts or covers the content it
+   * never is. Nothing failed in either direction, because a role that resolves is a role that
+   * paints; this is the assertion instead.
+   */
+  it('paints the page, not a well and not a card', () => {
+    const bg = (surface!.bg as { $: string }).$;
+
+    // The *roles* named, not the string: the glass branch legitimately reads the theme's
+    // `--we-theme-surface-opacity`, which is a knob rather than a surface.
+    expect(bg).not.toContain('--we-role-surface');
+    expect(bg).not.toMatch(/'surface(-\w+)?'/);
+    expect(bg).toContain('--we-role-page');
+    expect(bg).toContain("'page'");
   });
 
   it('carries the titlebar with it, so the card is one piece of glass', () => {

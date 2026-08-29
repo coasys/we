@@ -113,6 +113,8 @@ export interface EmbedBlockRecord extends WeNodeRecord {
   url: string;
   target: string;
   targetType: string;
+  label: string;
+  thumbnail: string;
   displayMode: string;
   version: number;
 }

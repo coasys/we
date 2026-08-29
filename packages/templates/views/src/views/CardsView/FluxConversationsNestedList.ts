@@ -221,6 +221,12 @@ export const fluxConversationsNestedList: SchemaNode = {
       children: [
         withLocalState(
           cardShell({
+            drag: {
+              entity: 'Conversation',
+              id: { $: 'conversation.id' },
+              label: { $: 'conversation.conversationName' },
+              icon: 'chats-circle',
+            },
             header: [
               {
                 type: 'Row',

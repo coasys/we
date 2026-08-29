@@ -429,6 +429,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     joinError: state('navigation'),
     joinSpace: action('navigation'),
     navigateToSpace: action('navigation'),
+    openRecordRef: action('navigation'),
     canAdministerSpace: action('navigation'),
     copyShareLink: action('navigation'),
     copyGuestLink: action('navigation'),

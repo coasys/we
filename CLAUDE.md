@@ -995,8 +995,72 @@ Most @we/primitives also accept Design System Props (see next section for detail
   Props: value: string = '', showTime: boolean = false, placeholder: string = 'Select date', disabled: boolean = false, name: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-divider (LayoutElement)
   Props: orientation: 'horizontal' | 'vertical' = 'horizontal', variant: 'solid' | 'dashed' | 'dotted' = 'solid', color?: string | undefined, thickness?: string | undefined
+- we-draggable (LayoutElement) — Makes whatever is inside it something that can be picked up and carried somewhere else.
+
+## Why this exists as a primitive
+
+A post card, a member row and a space in the sidebar are rendered by **templates**, which are
+data. If making one draggable were a code change, every future draggable surface would be a code
+change too, and the contribution ladder says arrangement stays data. This is the same rung
+`we-sortable` occupies: two custom elements and an existing `$action`, with no new prop resolver,
+no new operator, and nothing added to the expression grammar.
+
+```json
+{ "type": "we-draggable",
+  "props": { "entity": "CollectionBlock", "recordId": { "$": "post.id" }, "label": { "$": "post.title" } },
+  "children": [ "…the card…" ] }
+```
+
+## What it carries
+
+A **reference** — `{ dataset?, entity, id }` — never DOM, and never the row object. `dataset` is
+deliberately left empty here: a card fragment cannot name its own dataset without reading a
+store, and portable fragments name no store by construction. The receiver stamps it, from
+whichever dataset was current when the drop happened.
+
+## `display: contents`
+
+The wrapper must not exist as a box. A card inside a grid track, a row inside a flex column: a
+real element in between would take the track and leave the card laid out against the wrapper
+instead of the grid. What is dragged is therefore the *child*, which is also what the ghost and
+the geometry are measured from.
+  Props: entity: string = '', recordId: string = '', datasetKey: string = '', label: string = '', icon: string = '', preview?: DragPreview | undefined, origin?: unknown | undefined, effect: 'move' | 'copy' | 'link' = 'copy', disabled: boolean = false
 - we-drawer (OverlayElement)
   Props: hideclosebutton: boolean = false, close: () => void
+- we-drop-zone (LayoutElement) — Anything a `we-draggable` can be dropped into.
+
+The receiving half of the pair, and the same rung: two custom elements and an existing `$action`,
+so a template can make a region a drop target without a code change.
+
+```json
+{ "type": "we-drop-zone",
+  "props": { "accepts": "CollectionBlock,Space,Agent",
+             "onDropped": { "$action": "modules.pocket.gather", "args": [{ "$": "event.detail" }] } },
+  "children": [ "…the panel…" ] }
+```
+
+## It emits intent, it never mutates
+
+Exactly `we-sortable`'s rule, and for the same reason: what a drop *means* differs. A panel writes
+a record, a composer inserts a block, a board records a position. A primitive that assumed one of
+those would be useless to the others.
+
+## `accepts` is a list of entity names, as a string
+
+A comma-separated string rather than an array because that is what an HTML attribute is, and
+because a schema writing `"accepts": "CollectionBlock,Space"` needs no expression. Empty means
+"anything", which is right for a general-purpose tray and wrong for a composer — say what you
+take.
+
+## Zones nest, and the innermost one wins
+
+A folder inside a panel, a card inside a board. Hit-testing picks the innermost accepting zone
+and fires exactly one drop — and these events **do not bubble**, so that decision survives the
+DOM. See `_zone` for what happened when they did.
+
+Give every nested zone `noArm`, so picking something up speaks once about the container rather
+than once about every row inside it.
+  Props: accepts: string = '', disabled: boolean = false, noArm: boolean = false, noSelf: boolean = false
 - we-file-upload (DesignSystemElement)
   Props: accept: string = '', multiple: boolean = false, disabled: boolean = false, name: string = ''
 - we-form-field (DesignSystemElement)
@@ -1185,7 +1249,7 @@ when `relative` is enabled.
 - DividerInput
   Props: style: DividerVariant | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - EmbedDisplay
-  Props: url: string | undefined, target: string | undefined, targetType: string | undefined, displayMode: string | undefined
+  Props: url: string | undefined, target: string | undefined, targetType: string | undefined, displayMode: string | undefined, label?: string, thumbnail?: string, onOpenRef?: ((ref: string) => void)
 - EmbedInput
   Props: url: string | undefined, target: string | undefined, targetType: string | undefined, displayMode: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - EventDisplay
@@ -1838,6 +1902,8 @@ EmbedBlock extends WeNode:
   - url: string [we://url]
   - target: string [we://target]
   - targetType: string [we://target_type]
+  - label: string [we://title]
+  - thumbnail: string [we://thumbnail]
   - displayMode: string = 'card' [we://display_mode]
   - version: number [we://version]
 
@@ -2536,6 +2602,7 @@ SpaceStore:
   - createRelationshipType(config: Partial<RelationshipType>): names a kind of connection this community makes — "contradicts", "came out of". The counterpart to createSignalType; slug derived from name if blank
   - upsertSignal(nodeId: string, signalTypeId: string, value: number): adds or updates a signal on a node; value=0 deletes it
   - navigateToSpace(spaceId: string, view?: string): navigates to a space — accepts a perspective UUID or a neighbourhood CID (sharedUrl without the neighbourhood:// prefix); pre-loads space templates before switching so the template and data arrive together
+  - openRecordRef(ref: string): goes to whatever a record reference names — the space, and the record's own page within it. Takes the whole `we:…` reference rather than its parts, so nothing outside the host restates where a record's page lives. A reference naming only a dataset opens the space; a relative one (`we:./…`) resolves against the space on screen; a person has no page, so nothing happens
   - canAdministerSpace(uuid: string): whether this agent may change what every member of that space sees — true for a personal space, and for a shared one they authored. A UI affordance for deciding whether to offer the controls, NOT enforcement: a shared space is a neighbourhood every member can write to. Ask by name rather than comparing author to me.did, so the answer can grow (multiple admins, roles) without every template changing
   - copyShareLink(uuid: string): copies that space's share link to the clipboard, with a toast either way. No-op for a personal space, which has no global id and so no shareable link — read `spaceList[].shareLink` to decide whether to offer the control at all
   - copyGuestLink(uuid: string): copies that space's guest invite link — a URL that creates an account on the space's host and joins, with no sign-up and no download. Empty, and the control hidden, unless BOTH this app's origin and the node's URL are addresses a recipient could reach: a loopback address on either half resolves to the reader's own machine. Read `spaceList[].guestLink` to decide whether to offer it; `shareLink` is the one for somebody who already has WE

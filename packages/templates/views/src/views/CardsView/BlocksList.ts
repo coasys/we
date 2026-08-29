@@ -31,7 +31,32 @@ const blockSection = (opts: BlockSectionOptions): SchemaNode => ({
       // Not search-aware: these sections don't filter on `searchText`, so nothing here can be
       // hidden by the search box.
       empty: emptyState({ icon: opts.icon, label: opts.label }),
-      children: [cardShell({ header: blockHeader(opts.icon), body: opts.body, maxHeight: opts.maxHeight })],
+      children: [
+        cardShell({
+          // Thirteen sections, one shape: the entity and the icon are already parameters, and a
+          // block's name lives under a different property per type.
+          drag: {
+            entity: opts.entity,
+            id: { $: 'block.id' },
+            label: { $: 'block.title ?? block.name ?? block.text' },
+            icon: opts.icon,
+            /*
+              One expression for every block type this list renders, because the picture lives under
+              a different name depending on which: `src` on an image, `thumbnail` on a video or a
+              link, neither on a task, an event or a note. A row without one falls through to the
+              icon, which is what those should show anyway.
+            */
+            preview: {
+              thumbnail: { $: 'block.src ? block.src : block.thumbnail' },
+              author: { $: 'block.author' },
+              date: { $: 'block.createdAt' },
+            },
+          },
+          header: blockHeader(opts.icon),
+          body: opts.body,
+          maxHeight: opts.maxHeight,
+        }),
+      ],
     }),
   },
 });

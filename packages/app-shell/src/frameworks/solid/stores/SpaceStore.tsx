@@ -1,5 +1,6 @@
 import { buildGuestLink } from '@shared/guestLink';
 import { containmentPredicate, gatherTranscriptTurns, type TurnRecord } from '@shared/interpretation/transcriptTurns';
+import { resolveRecordRef } from '@shared/recordNavigation';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { moduleRegistry, moduleStores, type ModuleSurface, moduleSurface } from '@shared/registries/moduleRegistry';
 import { defaultViewOrder, viewRegistry } from '@shared/registries/viewRegistry';
@@ -680,6 +681,7 @@ export interface SpaceStore {
   createRelationshipType: (config: Partial<RelationshipType>) => Promise<void>;
   upsertSignal: (nodeId: string, signalTypeId: string, value: number) => Promise<void>;
   navigateToSpace: (spaceId: string, view?: string) => Promise<void>;
+  openRecordRef: (ref: string) => Promise<void>;
   /** Whether this agent may change what every member of that space sees. */
   canAdministerSpace: (uuid: string) => boolean;
   /** Copy a space's share link to the clipboard. No-op for a space that has none. */
@@ -1064,6 +1066,9 @@ export function SpaceStoreProvider(props: ParentProps) {
         const id = sharedIdOf(uri);
         if (id) void navigateToSpace(id);
       },
+      // The host parses the reference and knows where a record's page is; a module holding one
+      // should not have to restate either. See `ModuleDatasetAccess.openRef`.
+      openRef: (ref: string) => void openRecordRef(ref),
     },
   });
 
@@ -1645,6 +1650,34 @@ export function SpaceStoreProvider(props: ParentProps) {
     broadcastPerspectiveNavigation(spaceId);
   }
 
+  /**
+   * Go to whatever a record reference names.
+   *
+   * One implementation behind three surfaces — this store member, `ModuleDatasetAccess.openRef` for
+   * a feature module, and `BlockHostValue.openRef` for an embed inside a composition. All three are
+   * the same question, and answering it three times is how the route and the link came to disagree
+   * before `RECORD_ROUTE_PATH` was one literal.
+   *
+   * Four cases, and each is a decision rather than a fallthrough:
+   *
+   * - **A record** — the space, and its page within it.
+   * - **A dataset alone** — the space itself. What a gathered space is: its identity *is* its
+   *   dataset, so there is no record to open.
+   * - **Relative (`we:./…`)** — resolved against the space on screen, which is what "the dataset
+   *   this reference is read in" means. The segment comes off the route rather than from the
+   *   dataset, so following an embed cannot silently rewrite a shared space's URL from its CID to
+   *   its local id.
+   * - **A person** — nothing. An agent has no page yet; a profile route would be a real feature and
+   *   is not this one, and navigating somewhere arbitrary would be worse than staying put.
+   */
+  async function openRecordRef(ref: string): Promise<void> {
+    const segs = routeStore.segments();
+    const here = segs[0] === 'space' ? (segs[1] ?? '') : '';
+    const destination = resolveRecordRef(ref, here);
+    if (!destination) return;
+    return navigateToSpace(destination.datasetId, destination.view);
+  }
+
   function broadcastPerspectiveNavigation(communityId: string): void {
     const iframes = document.querySelectorAll('we-iframe') as NodeListOf<
       HTMLElement & { postMessage: (data: unknown, origin: string) => void }
@@ -2034,11 +2067,27 @@ export function SpaceStoreProvider(props: ParentProps) {
    *
    * This is what the chrome gate and the launcher rail read. `enabledModules` stays the community's
    * decision alone, because that is what the space settings edit and what other members share.
+   *
+   * A module declaring `scope: 'agent'` skips the community layer entirely — see below.
    */
   const activeModules = createMemo<string[]>(() => {
     const installed = installedSet();
     const muted = new Set(mutedModulesFor(datasetStore.currentDataset()?.id));
-    return enabledModules().filter((id) => installed.has(id) && !muted.has(id));
+    const bySpace = enabledModules().filter((id) => installed.has(id) && !muted.has(id));
+    /*
+      Agent-scoped modules are active wherever this agent is, including outside a space entirely.
+      There is no community whose decision could apply to a panel that gathers things from *across*
+      spaces, and intersecting it with `enabledModules` would make it — and whatever it is holding —
+      disappear the moment somebody walked out of a space that happened to have it on.
+
+      Still gated on `installed`: Settings → Modules is the person's own switch, and this widens who
+      decides rather than removing the decision.
+    */
+    const byAgent = moduleRegistry
+      .all()
+      .filter(({ definition }) => definition.scope === 'agent' && installed.has(definition.id))
+      .map(({ definition }) => definition.id);
+    return [...new Set([...bySpace, ...byAgent])];
   });
 
   /**
@@ -3246,6 +3295,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     createRelationshipType,
     upsertSignal,
     navigateToSpace,
+    openRecordRef,
     canAdministerSpace,
     copyShareLink,
     copyGuestLink,

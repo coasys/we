@@ -25,6 +25,26 @@ export const spacesList: SchemaNode = cardList({
   }),
   children: [
     cardShell({
+      /*
+        A space listed here is a *record in this dataset describing another one*, so the drag
+        carries that other dataset. The store keeps only the dataset for a Space — a directory's
+        copy has an id local to the directory, so naming it inside the space it describes would
+        name a record that is not there.
+      */
+      drag: {
+        entity: 'Space',
+        id: { $: 'space.id' },
+        label: { $: 'space.name' },
+        icon: 'users-three',
+        datasetKey: { $: 'space.url' },
+        preview: {
+          // The cover is the picture of a space; the avatar is its mark. Prefer the first, since a
+          // 100px square filled with a cropped avatar is a worse tile than one filled with a scene.
+          thumbnail: { $: 'space.coverImage ? space.coverImage : space.avatar' },
+          author: { $: 'space.author' },
+          date: { $: 'space.createdAt' },
+        },
+      },
       header: [
         {
           type: '$if',

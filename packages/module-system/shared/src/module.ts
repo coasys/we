@@ -40,6 +40,15 @@ import type { SchemaNode } from '@we/schema-shared';
 export type CoreSlotAnchor = 'overlay' | 'dock-left' | 'dock-right' | 'dock-bottom' | 'banner';
 
 /**
+ * Whose decision a module is, and therefore where its data lives and where its chrome appears.
+ *
+ * See {@link ModuleDefinition.scope} for the full argument. One word rather than two flags, because
+ * a module whose data is the agent's and whose chrome is the space's is a contradiction nobody
+ * should be able to spell.
+ */
+export type ModuleScope = 'space' | 'agent';
+
+/**
  * Where chrome attaches — a host anchor, or one a module opened up with {@link ModuleDefinition.anchors}.
  *
  * The open half exists because the fixed set answers "where on screen" and some chrome needs to
@@ -271,6 +280,25 @@ export interface ModuleDefinition {
   icon?: string;
   version?: string;
 
+  /**
+   * Whose module this is: a **space**'s, or the **agent**'s. Omit for `'space'`.
+   *
+   * Everything the module system was built for so far belongs to a community. A call, a transcript,
+   * a shared scratchpad: the space decides whether it is on, and the module's chrome is gated on
+   * `spaceStore.activeModules` — registered ∩ installed ∩ enabled here, less what this agent muted.
+   *
+   * Some capabilities are not about a community at all. A panel that gathers things from *across*
+   * spaces has no space to be enabled in, and the moment you leave one it would vanish taking what
+   * it held with it. `'agent'` says so: the chrome is gated on being **installed** by this agent and
+   * nothing else, and the launcher is in the rail wherever they are, including outside a space
+   * entirely.
+   *
+   * It is not an escape from the gate — Settings → Modules still decides. It is the honest reading
+   * of which of the two answers "should this be here": for a space module the community's, for an
+   * agent module the person's.
+   */
+  scope?: ModuleScope;
+
   /** Capabilities to display at install. See {@link ModuleCapability}. */
   capabilities?: ModuleCapability[];
 
@@ -389,6 +417,19 @@ export interface ModuleDefinition {
     manifest: EntityManifest;
     /** Explicit predicate bindings, keyed `"Entity.property"`. */
     predicates?: Record<string, string>;
+    /**
+     * Which dataset these are installed into. Omit for `'space'`.
+     *
+     * `'agent'` installs them into the **root dataset** instead — the agent's own, private, never
+     * synced. That is where a module's knowledge about *you* belongs rather than about a community:
+     * what you have gathered, a saved graph layout, a preference the space has no business holding.
+     *
+     * Before this existed a module could own entities in a space and nowhere else, so a personal
+     * capability had two options: write per-agent state into a shared neighbourhood, or not exist.
+     * Pair it with {@link ModuleDefinition.scope} — a module whose data is agent-scoped almost
+     * always renders that way too.
+     */
+    scope?: ModuleScope;
   };
 
   /**
@@ -543,6 +584,19 @@ export interface ModuleStoreDeps {
    */
   datasetUri?: () => string | null;
 
+  /**
+   * How the current dataset is named inside a **record reference** — `n:<cid>` or `p:<uuid>`.
+   *
+   * The host builds it rather than the module, because only the host knows a dataset has two names
+   * and which one applies: a neighbourhood is keyed by its CID, so the same string means the same
+   * record to every agent who joined it, and a personal dataset falls back to a local uuid that
+   * means nothing anywhere else. A module deriving this itself would get the second case wrong in
+   * the direction that matters — a reference that looks shareable and is not.
+   *
+   * Empty while no dataset is open. See `@we/backend-shared`'s `recordRef`.
+   */
+  datasetRefKey?: () => string;
+
   /** This agent's id in the host's identity scheme (a DID on AD4M). `null` before login. */
   selfId?: () => string | null;
 
@@ -578,6 +632,14 @@ export interface ModuleStoreDeps {
   identities?: ModuleIdentityAccess;
   /** Naming and reaching spaces — for a module whose state can outlive the space on screen. */
   datasets?: ModuleDatasetAccess;
+
+  /**
+   * This agent's own records, in the root dataset. See {@link AgentDataAccess}.
+   *
+   * The other half of `entities: { scope: 'agent' }` — declaring private entities without a way to
+   * write them would be half a feature. Nothing here reaches a space.
+   */
+  agentData?: AgentDataAccess;
 
   /**
    * Speech to text, for a module that listens. Absent when the backend cannot transcribe.
@@ -660,6 +722,38 @@ export interface CreateEntityOptions {
    * anything: a module has no access to the host's model classes, and should not.
    */
   parent?: { id: string; predicate: string };
+}
+
+/**
+ * Read and write this agent's **own** records — the ones a module declared `scope: 'agent'`.
+ *
+ * The write surface for the root dataset, and the counterpart of `createEntity`, which writes into
+ * whichever space is open. Two calls rather than one because the root dataset is where a module
+ * keeps what it knows about *you*, and knowing it usually means reading it back: "have I gathered
+ * this already" is a question about the agent's own collection, and it has to be answerable without
+ * a space being open at all.
+ *
+ * Deliberately not a general ORM. No update, no relations, no includes — the same restraint
+ * `createEntity` shows, and for the same reason: a module's data surface should be the smallest
+ * thing that does the job, not whatever the host's ORM happens to expose. A module that needs more
+ * than this from a schema already has it, through `$query` against
+ * `dataset: 'datasetStore.rootDataset'`.
+ *
+ * Absent where the host has no agent dataset — a presentation-only host, or the frames before boot
+ * finishes. A module must degrade rather than throw.
+ */
+export interface AgentDataAccess {
+  /** Whether the agent's dataset is reachable yet. False during boot. */
+  ready: () => boolean;
+  /** Create a record. Returns its id, or `null` if there was nowhere to write it. */
+  create: (entity: string, fields: Record<string, unknown>, options?: CreateEntityOptions) => Promise<string | null>;
+  /** Read records back. The same `where`/`order`/`limit` a `$query` takes. */
+  find: (
+    entity: string,
+    query?: { where?: Record<string, unknown>; order?: Record<string, 'asc' | 'desc'>; limit?: number },
+  ) => Promise<Record<string, unknown>[]>;
+  /** Delete one record. Irreversible, and only ever this agent's own. */
+  remove: (entity: string, id: string) => Promise<void>;
 }
 
 /** An application embedded in an iframe — see {@link ModuleDefinition.embed}. */
@@ -965,6 +1059,21 @@ export interface ModuleDatasetAccess {
   get: (datasetUri: string) => ModuleDataset | undefined;
   /** Go to that dataset, as clicking it in the host's own navigation would. */
   open: (datasetUri: string) => void;
+  /**
+   * Go to whatever a **record reference** names — the space, and the record's own page within it.
+   *
+   * Takes the reference whole rather than its parts, because parsing one is the host's job and
+   * routing to one certainly is: a module holding `we:n:<cid>/CollectionBlock/<id>` should not have
+   * to know that a record's page lives at `/space/<segment>/record/<Entity>?id=<id>`, nor that the
+   * segment is a CID for a shared space and a dataset id for a personal one. Restating that route
+   * in a module is how it drifts — see `RECORD_ROUTE_PATH`, which exists because two readers of one
+   * path had already disagreed silently.
+   *
+   * A reference naming only a dataset opens the space itself. A relative one (`we:./…`) resolves
+   * against the space on screen. A person has no page, so nothing happens. See
+   * `@we/backend-shared`'s `recordRef`.
+   */
+  openRef: (ref: string) => void;
 }
 
 /** What a module gets to know about a dataset. */

@@ -23,13 +23,14 @@
  * registers. That is exactly what makes `{ $: 'modules.notes' }` as a condition the
  * supported way for a template to depend on an optional module.
  */
-import { type SchemaPort, validateManifest } from '@we/backend-shared';
+import { type EntityManifestEntry, type SchemaPort, validateManifest } from '@we/backend-shared';
 import { type EntityClass, getEntityPredicates, registerEntity, unregisterEntity } from '@we/entities';
 import {
   checkModuleCompatibility,
   type ModuleDefinition,
   modulePredicatePrefix,
   modulePredicateViolations,
+  type ModuleScope,
   type ModuleStoreDeps,
 } from '@we/module-shared';
 import { collectComponentTypes, type SchemaNode } from '@we/schema-shared';
@@ -114,6 +115,13 @@ const modules = new Map<string, RegisteredModule>();
  * where it started, and gating its bar on the destination space took away the controls — hang-up
  * included — while the call carried on regardless. So the gate widens to "enabled here, or holding
  * something". See `ModuleDefinition.holdsWhen`.
+ *
+ * ## Chrome that is not about a space at all
+ *
+ * A module declaring `scope: 'agent'` needs no separate gate here, because `activeModules` already
+ * answers for it: its subject is the person rather than a community, so the community layer is
+ * skipped there and being installed is the whole test. One gate, one store member, and no way for
+ * the two to disagree. See `ModuleDefinition.scope` and `spaceStore.activeModules`.
  */
 function gateOnSpace(moduleId: string, node: SchemaNode, holdsWhen?: string): SchemaNode {
   const enabledHere = `'${moduleId}' in spaceStore.activeModules`;
@@ -151,6 +159,29 @@ export interface RegisterResult {
 }
 
 const compiledEntities = new Map<string, unknown[]>();
+
+/**
+ * Compile every module-declared entity of one scope, once.
+ *
+ * Memoised per module because install runs on every dataset switch and compiling produces fresh
+ * classes each time, which would churn the model registry underneath live queries.
+ */
+function declaredEntities(schemas: SchemaPort, scope: ModuleScope): unknown[] {
+  return moduleRegistry.all().flatMap(({ definition }) => {
+    if (!definition.entities) return [];
+    if ((definition.entities.scope ?? 'space') !== scope) return [];
+    const cached = compiledEntities.get(definition.id);
+    if (cached) return cached;
+    const compiled = Object.values(
+      schemas.declare(definition.entities.manifest, {
+        moduleId: definition.id,
+        predicates: definition.entities.predicates,
+      }),
+    );
+    compiledEntities.set(definition.id, compiled);
+    return compiled;
+  });
+}
 
 export const moduleRegistry = {
   /**
@@ -394,20 +425,48 @@ export const moduleRegistry = {
    * classes each time, which would otherwise churn the model registry underneath live queries.
    */
   moduleSchemas(schemas: SchemaPort): unknown[] {
-    const declared = moduleRegistry.all().flatMap(({ definition }) => {
-      if (!definition.entities) return [];
-      const cached = compiledEntities.get(definition.id);
-      if (cached) return cached;
-      const compiled = Object.values(
-        schemas.declare(definition.entities.manifest, {
-          moduleId: definition.id,
-          predicates: definition.entities.predicates,
-        }),
-      );
-      compiledEntities.set(definition.id, compiled);
-      return compiled;
-    });
-    return [...moduleRegistry.models(), ...declared];
+    return [...moduleRegistry.models(), ...declaredEntities(schemas, 'space')];
+  },
+
+  /**
+   * The same, for entities a module declared `scope: 'agent'` — installed into the **root dataset**
+   * rather than into every space.
+   *
+   * Separate from `moduleSchemas` rather than filtered by the caller, because the two go to
+   * different datasets and mixing them is the failure this split exists to prevent: an agent-scoped
+   * entity installed into a shared space would sync one person's private records to a whole
+   * community, and a space-scoped one installed into the root would be queryable nowhere useful.
+   *
+   * `models` are deliberately not offered here. They are backend-written classes, which predate
+   * the manifest path; a module wanting private per-agent storage declares its entities.
+   */
+  agentSchemas(schemas: SchemaPort): unknown[] {
+    return declaredEntities(schemas, 'agent');
+  },
+
+  /**
+   * Every module-declared entity as a neutral manifest entry, whatever scope it installs into.
+   *
+   * What a `scope` drill-down is resolved against: an adapter looks the anchor up by name and reads
+   * the `via` relation's predicate. Module entities were in neither list the host merged — not
+   * foreign schemas, not core vocabulary — so a module declaring a relation and then drilling into
+   * it failed with "no such relation in the current perspective's model manifest", which is a true
+   * statement about a list it was never added to. The Pocket is the first module to have its own
+   * relation to drill through; every one before it anchored on core vocabulary and resolved by luck.
+   *
+   * Both scopes, deliberately. Which dataset an entity is *installed* into says nothing about where
+   * a query naming it runs from — the Pocket's panel reads the root dataset while a space is open,
+   * so filtering this list by scope would put its relations out of reach exactly when they are used.
+   */
+  entityEntries(schemas: SchemaPort): EntityManifestEntry[] {
+    return moduleRegistry.all().flatMap(({ definition }) =>
+      definition.entities
+        ? schemas.entries(definition.entities.manifest, {
+            moduleId: definition.id,
+            predicates: definition.entities.predicates,
+          })
+        : [],
+    );
   },
 
   /**
