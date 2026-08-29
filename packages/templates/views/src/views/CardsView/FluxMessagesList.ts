@@ -30,7 +30,15 @@ export const fluxMessagesList: SchemaNode = {
       empty: noRows,
       children: [
         cardShell({
-          drag: { entity: 'Message', id: { $: 'message.id' }, label: { $: 'message.body' }, icon: 'chat-text' },
+          drag: {
+            entity: 'Message',
+            id: { $: 'message.id' },
+            label: { $: 'message.body' },
+            icon: 'chat-text',
+            // The two fields the byline above already reads, so this asks the foreign schema for
+            // nothing the card was not getting anyway.
+            preview: { author: { $: 'message.author' }, date: { $: 'message.createdAt' } },
+          },
           header: [agentByline({ did: { $: 'message.author' }, timestamp: { $: 'message.createdAt' } })],
           body: [{ type: 'we-html', props: { content: { $: 'message.body' } } }],
         }),

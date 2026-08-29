@@ -37,6 +37,13 @@ export const spacesList: SchemaNode = cardList({
         label: { $: 'space.name' },
         icon: 'users-three',
         datasetKey: { $: 'space.url' },
+        preview: {
+          // The cover is the picture of a space; the avatar is its mark. Prefer the first, since a
+          // 100px square filled with a cropped avatar is a worse tile than one filled with a scene.
+          thumbnail: { $: 'space.coverImage ? space.coverImage : space.avatar' },
+          author: { $: 'space.author' },
+          date: { $: 'space.createdAt' },
+        },
       },
       header: [
         {

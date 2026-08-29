@@ -11,7 +11,15 @@ export const usersList: SchemaNode = cardList({
   empty: emptyState({ icon: 'user', label: 'members', searchable: true, delay: 0 }),
   children: [
     cardShell({
-      drag: { entity: 'Agent', id: { $: 'user.did' }, label: { $: 'user.name' }, icon: 'user' },
+      drag: {
+        entity: 'Agent',
+        id: { $: 'user.did' },
+        label: { $: 'user.name' },
+        icon: 'user',
+        // No `author` here: for a person the byline would be the person, and the tile would say
+        // their name twice.
+        preview: { thumbnail: { $: 'user.coverImage ? user.coverImage : user.avatar' } },
+      },
       // Mirrors the spaces card: cover image when there is one, a lg avatar + name
       // header, then detail chips. A created/joined date is deliberately absent —
       // a member's profile summary carries no such field (unlike a Space model),

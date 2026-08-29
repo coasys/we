@@ -582,6 +582,12 @@ export function BlockHandles(props: { ctx: EditorContext }) {
               target: formatRef({ datasetKey: item.ref.dataset || HERE, entity: item.ref.entity, id: item.ref.id }),
               targetType: item.ref.entity,
               label: item.label,
+              /*
+                The picture the source was already drawing with, so an embed shows the thing rather
+                than a link to it from the first frame. Resolving it instead would mean a fetch
+                across a dataset the composer may not have joined, on every paint.
+              */
+              thumbnail: item.preview?.thumbnail ?? '',
               displayMode: 'card',
             },
           }),

@@ -40,6 +40,7 @@ import { RECORD_ROUTE_PATH, recordPage } from '@we/template-views';
 import { createEffect, createMemo, createSignal, onCleanup, onMount, Show, untrack } from 'solid-js';
 
 import { createCollabSession } from '../collab/collabSession';
+import { registerRecordGhost } from '../drag/recordGhost';
 import { PersistentAppFrames } from '../layouts/PersistentAppFrames';
 import { SHELL_SIDEBAR_WIDTH, TemplateLayout } from '../layouts/TemplateLayout';
 import { buildRoutes } from '../utils/buildRoutes';
@@ -323,6 +324,25 @@ export default function TemplateProvider() {
   */
   const chromeBag = buildTemplateBag(stores, { grants: CHROME_TIER });
   const templateBag = buildTemplateBag(stores, { grants: SPACE_TIER });
+
+  /*
+    What a drag looks like. Registered from here because it is the same kind of knowledge as
+    `openRef` below — the host's, provided once, so no source of a drag has to carry it.
+
+    The chrome bag rather than the template one: this card is host-authored, and a ghost is chrome.
+  */
+  onMount(() => {
+    onCleanup(
+      registerRecordGhost({
+        stores: chromeBag,
+        registry,
+        agent: (did) => {
+          const profile = profileStore.profiles().find((p) => p.did === did);
+          return profile ? { name: profile.name ?? '', avatar: profile.avatar ?? '' } : undefined;
+        },
+      }),
+    );
+  });
 
   /*
     Shell chrome — host slots plus anything feature modules or the interface itself contribute.

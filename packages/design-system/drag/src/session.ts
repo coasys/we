@@ -164,14 +164,15 @@ export const dragSession = {
   begin(options: BeginOptions): void {
     if (current || held) this.cancel();
 
-    const spec: GhostSpec = options.ghost ?? {
-      kind: 'chip',
-      label: options.payload.items[0]?.label ?? 'Item',
-      icon: options.payload.items[0]?.icon,
-      count: options.payload.items.length,
-    };
+    /*
+      A `node` by default, which asks the host to draw the real card and falls back to a chip when
+      no host has registered a renderer. The fallback is why this is the default rather than an
+      opt-in: a consumer that wants a card gets one, a consumer with no host gets exactly what it
+      got before, and neither has to know which.
+    */
+    const spec: GhostSpec = options.ghost ?? { kind: 'node', items: options.payload.items };
     const offset =
-      options.ghostOffset ?? (spec.kind === 'chip' ? { x: -CHIP_OFFSET.x, y: -CHIP_OFFSET.y } : { x: 0, y: 0 });
+      options.ghostOffset ?? (spec.kind === 'clone' ? { x: 0, y: 0 } : { x: -CHIP_OFFSET.x, y: -CHIP_OFFSET.y });
 
     current = {
       payload: options.payload,

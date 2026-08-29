@@ -23,12 +23,42 @@ export interface DragRef {
   id: string;
 }
 
+/**
+ * What the source's own card was drawn with, carried so a ghost or a receiver can draw the same one.
+ *
+ * Every field is something the source **already had on the row it rendered** — nothing here costs a
+ * query. That is the whole reason it is a snapshot rather than a reference to be resolved: the ghost
+ * has to exist on the frame the drag begins, and a receiver in another dataset may not be able to
+ * resolve the source's dataset at all.
+ *
+ * Deliberately not typed to any entity. A post fills `content`, an image or a space fills
+ * `thumbnail`, a person fills `avatar`; whatever draws it uses what it was given.
+ */
+export interface DragPreview {
+  /** A picture standing for the thing — a cover, an avatar, an image block's `src`. */
+  thumbnail?: string;
+  /**
+   * The composed document itself, serialized — a post's `editorState`.
+   *
+   * Carried because it is a string already on the row: the card in the feed renders it, so passing
+   * it costs a property assignment rather than a copy. A renderer may draw the real content from it;
+   * a receiver that only wants a picture reads one out of it and drops the rest.
+   */
+  content?: string;
+  /** Who made it, as a DID. Resolved to a name and a face by whatever has a profile store. */
+  author?: string;
+  /** When it was made, as an ISO string. */
+  date?: string;
+}
+
 /** One thing in flight. */
 export interface DragItem {
   ref: DragRef;
   /** For the ghost, and for whatever the receiver writes down about it. */
   label: string;
   icon?: string;
+  /** What the source drew it with. Absent for a source that has nothing but a name. */
+  preview?: DragPreview;
   /** The source's own handle on it, for a move. Opaque to the session. */
   origin?: unknown;
 }
@@ -94,15 +124,33 @@ export interface DragZone {
 /**
  * What the ghost looks like.
  *
- * Two kinds on purpose. `chip` is built from the payload and is right for a drag that crosses the
- * whole UI — a full-size card travelling that far covers the target it is aiming at. `clone` copies
- * an element already on screen, which is right for a reorder, where the thing being moved is the
- * thing you are looking at.
+ * Three kinds on purpose.
  *
- * A clone is **not** the general answer: `cloneNode(true)` does not copy shadow roots, so a clone of
- * anything containing a `we-image` or a block input is an empty box — exactly the case where a
- * ghost matters most. Reach for `clone` only where the items are plain light DOM.
+ * `chip` is built from the payload — an icon and a label — and is the fallback everywhere, because
+ * this package must draw something with no host and no design system loaded.
+ *
+ * `clone` copies an element already on screen, which is right for a reorder, where the thing being
+ * moved is the thing you are looking at. It is **not** the general answer: `cloneNode(true)` does
+ * not copy shadow roots, so a clone of anything containing a `we-image` or a block input is an empty
+ * box — exactly the case where a ghost matters most. Reach for it only where the items are plain
+ * light DOM.
+ *
+ * `node` asks the **host** to draw it, through {@link setGhostRenderer}. That is the only way to get
+ * a real card under the pointer: what a record looks like is the design system's business and this
+ * package has no dependency on it, deliberately — the same seam the graph engine has for card
+ * content, where the host supplies the component and the engine only says where it goes. A `node`
+ * ghost with no renderer registered falls back to a chip, so nothing breaks by leaving it out.
  */
 export type GhostSpec =
   | { kind: 'chip'; label: string; icon?: string; count?: number }
-  | { kind: 'clone'; source: HTMLElement; rect: DOMRect };
+  | { kind: 'clone'; source: HTMLElement; rect: DOMRect }
+  | { kind: 'node'; items: DragItem[] };
+
+/**
+ * Draws a `node` ghost. Returns `null` to decline, which falls back to a chip.
+ *
+ * The element is mounted into the top layer and positioned by the session; a renderer sets its own
+ * size and appearance and nothing else. It must return **synchronously** — the ghost has to exist on
+ * the frame the drag begins, which is what rules out resolving anything the payload did not carry.
+ */
+export type GhostRenderer = (items: DragItem[]) => HTMLElement | null;

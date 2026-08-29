@@ -1,4 +1,4 @@
-import { type DragItem, dragSession, watchPointerDrag } from '@we/drag';
+import { type DragItem, type DragPreview, dragSession, watchPointerDrag } from '@we/drag';
 import { css, html } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 
@@ -83,6 +83,18 @@ export default class Draggable extends LayoutElement {
   @property({ type: String }) icon = '';
 
   /**
+   * What this row was drawn with — `{ thumbnail?, content?, author?, date? }` — so the ghost can
+   * draw the same card and a receiver can keep it.
+   *
+   * **`attribute: false`**, unlike every other prop here. The others are short strings and reflect
+   * usefully; this is an object holding, for a post, the whole composed document. Serialising that
+   * into an attribute on every card in a feed would put a copy of each post in the DOM to support a
+   * gesture almost none of them will receive. As a property it is a reference to a string the row
+   * already holds, which costs nothing until something is actually picked up.
+   */
+  @property({ attribute: false }) preview?: DragPreview;
+
+  /**
    * What the drop means to *this* end. `copy` (the default) is what gathering is: the thing stays
    * where it was.
    */
@@ -132,7 +144,20 @@ export default class Draggable extends LayoutElement {
       ref: { entity: this.entity, id: this.recordId, ...(this.datasetKey && { dataset: this.datasetKey }) },
       label: this.label || this.entity,
       ...(this.icon && { icon: this.icon }),
+      ...(this._preview() && { preview: this._preview() }),
     };
+  }
+
+  /**
+   * The preview, with empty fields dropped.
+   *
+   * A schema fills the bag from row properties, and a row that has no picture supplies `''` rather
+   * than omitting the key — so without this every item would carry `{ thumbnail: '' }` and a
+   * receiver testing for the key would believe there was one.
+   */
+  private _preview(): DragPreview | undefined {
+    const entries = Object.entries(this.preview ?? {}).filter(([, value]) => !!value);
+    return entries.length ? (Object.fromEntries(entries) as DragPreview) : undefined;
   }
 
   private _onPointerDown = (e: PointerEvent) => {

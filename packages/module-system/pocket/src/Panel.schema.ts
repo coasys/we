@@ -1,3 +1,4 @@
+import { recordCard } from '@we/schema-kit';
 import type { SchemaNode } from '@we/schema-shared';
 
 import { POCKET_PREDICATES } from './entities';
@@ -16,63 +17,109 @@ import { POCKET_PREDICATES } from './entities';
  * written with `record.create`'s `perspective` option. That surface already existed; what the module
  * contract was missing was permission for a *module's own* entities to be installed there, which is
  * what `entities: { scope: 'agent' }` adds. Only the parts a template genuinely cannot do — building
- * a reference, asking whether one is already held, going to one — are in the store.
+ * a reference, asking whether one is already held, going to one, and remembering which folder you
+ * are in — are in the store.
  */
 
 /** The dataset every fragment here reads and writes. Named once so a typo cannot scatter. */
 const ROOT = 'datasetStore.rootDataset';
 
 /**
- * The folder being looked at: the one somebody navigated into, or the root.
+ * The folder being looked at, straight from the store.
  *
- * The root is found rather than remembered, for the reason the notes module finds its collection
- * rather than remembering it — a held id is a value that has to be invalidated, and getting that
- * wrong writes into the wrong container.
+ * It used to be found here instead — `modules.pocket.folderId ? … : first(local.rootFolder).id`,
+ * over a `$query` for the root — which is how the panel ended up with a folder id the *store* did
+ * not have. `enter` could then never record where you had come from, so the way back out never
+ * appeared and a folder was a one-way door. One value, in one place, is the fix; the store now
+ * resolves the root when the panel opens and holds the whole path.
  *
- * **A ternary, not `||`.** WE's `||` answers with a *boolean*, never with an operand — so the
- * obvious JavaScript spelling of this resolves to `true`, and `true` is what then reached the
- * executor as an `anchorId` ("data did not match any variant of untagged enum Scope") and as a
- * link source ("Link source must not be empty"). Every fallback in this file was written that way
- * and every one of them was wrong; `??` is no use either, since these all default to `''` rather
- * than to null.
+ * Empty for the one round trip before that resolves, which is what the gate below is for.
+ *
+ * A note that outlives the bug: **WE's `||` answers with a boolean, never with an operand.** Every
+ * fallback in this file was once written that way, and each resolved to `true` — reaching the
+ * executor as an `anchorId` ("data did not match any variant of untagged enum Scope") and as a link
+ * source ("Link source must not be empty"). `??` is no use either, since these default to `''`
+ * rather than to null. The ternary is the operator that answers with an operand.
  */
-const currentFolder = { $: 'modules.pocket.folderId ? modules.pocket.folderId : first(local.rootFolder).id' };
+const currentFolder = { $: 'modules.pocket.folderId' };
 
-/** A row's own drag payload — the parts of its reference, written out when it was gathered. */
+/** What a row says its label is, falling back through the entity name to something rather than nothing. */
+const itemLabel = { $: "item.label ? item.label : (item.entity ? item.entity : 'Untitled')" };
+const itemIcon = { $: "item.icon ? item.icon : 'bookmark-simple'" };
+const itemSource = { $: "item.sourceName ? item.sourceName : 'Somewhere else'" };
+
+/** The parts of a row's reference, as `we-draggable` wants them — so anything kept can be taken out again. */
+const dragProps = {
+  entity: { $: 'item.entity' },
+  recordId: { $: 'item.recordId' },
+  datasetKey: { $: 'item.datasetKey' },
+  label: { $: 'item.label' },
+  icon: { $: 'item.icon' },
+  /*
+    The snapshot goes back out exactly as it came in, so dragging a post from the Pocket into a
+    composition gets the same tile as dragging it from the feed. `content` is deliberately absent:
+    the document was read for its picture at gather time and never stored — see the store.
+  */
+  preview: {
+    thumbnail: { $: 'item.thumbnail' },
+    author: { $: 'item.sourceAuthor' },
+    date: { $: 'item.gatheredAt' },
+  },
+};
+
+/** Take this out of the Pocket. The thing itself is untouched — a Pocket holds references. */
+const forgetButton = (extra: Record<string, unknown> = {}): SchemaNode => ({
+  type: 'we-button',
+  props: {
+    variant: 'ghost',
+    size: 'sm',
+    square: true,
+    title: 'Take out of your Pocket',
+    onClick: { $action: 'modules.pocket.forget', args: [{ $: 'item.id' }] },
+    ...extra,
+  },
+  children: [{ type: 'we-icon', props: { name: 'x' } }],
+});
+
+/*
+  Going to a gathered thing opens the record's own page, joining the space first where it has not
+  been joined — a sequence, which is why it is a store action rather than an href.
+
+  Absent for a person, who has no page: gated on the stored `datasetKey` rather than by asking the
+  store, because a store's actions are unreachable from an expression and the row already carries
+  the answer. A control that cannot work is worse than no control.
+*/
+const openable = { $: "item.datasetKey != 'agent'" };
+const openAction = { $action: 'modules.pocket.goTo', args: [{ $: 'item.ref' }] };
+
+// ─── List mode ───────────────────────────────────────────────────────────────
+
 const itemRow: SchemaNode = {
   type: 'we-draggable',
-  props: {
-    entity: { $: 'item.entity' },
-    recordId: { $: 'item.recordId' },
-    datasetKey: { $: 'item.datasetKey' },
-    label: { $: 'item.label' },
-    icon: { $: 'item.icon' },
-  },
+  props: dragProps,
   children: [
     {
       type: 'Row',
-      props: {
-        bg: 'surface-sunken',
-        r: '300',
-        p: '300',
-        gap: '300',
-        ay: 'center',
-        width: '100%',
-      },
+      props: { bg: 'surface-sunken', r: '300', p: '300', gap: '300', ay: 'center', width: '100%' },
       children: [
         {
-          type: 'we-icon',
-          props: { name: { $: "item.icon ? item.icon : 'bookmark-simple'" }, color: 'text-muted' },
+          // The picture where the snapshot has one, the icon where it does not. The same choice the
+          // grid tile makes, one size down.
+          type: '$if',
+          props: {
+            condition: { $: 'item.thumbnail' },
+            then: {
+              type: 'we-image',
+              props: { src: { $: 'item.thumbnail' }, fit: 'cover', width: '32px', height: '32px', r: '200' },
+            },
+            else: { type: 'we-icon', props: { name: itemIcon, color: 'text-muted' } },
+          },
         },
         {
           type: 'Column',
           props: { gap: '100', flex: '1', minWidth: '0' },
           children: [
-            {
-              type: 'we-text',
-              props: { truncate: true },
-              children: [{ $: "item.label ? item.label : (item.entity ? item.entity : 'Untitled')" }],
-            },
+            { type: 'we-text', props: { truncate: true }, children: [itemLabel] },
             {
               type: 'Row',
               props: { gap: '200', ay: 'center' },
@@ -80,7 +127,7 @@ const itemRow: SchemaNode = {
                 {
                   type: 'we-text',
                   props: { variant: 'footnote', color: 'text-faint', truncate: true },
-                  children: [{ $: "item.sourceName ? item.sourceName : 'Somewhere else'" }],
+                  children: [itemSource],
                 },
                 {
                   type: 'we-timestamp',
@@ -90,59 +137,124 @@ const itemRow: SchemaNode = {
             },
           ],
         },
-        /*
-          Going to a gathered thing opens the record's own page, joining the space first where it
-          has not been joined — a sequence, which is why it is a store action rather than an href.
-
-          Absent for a person, who has no page: gated on the stored `datasetKey` rather than by
-          asking the store, because a store's actions are unreachable from an expression and the row
-          already carries the answer. A control that cannot work is worse than no control.
-        */
         {
           type: '$if',
           props: {
-            condition: { $: "item.datasetKey != 'agent'" },
+            condition: openable,
             then: {
               type: 'we-button',
-              props: {
-                variant: 'ghost',
-                size: 'sm',
-                title: 'Open',
-                onClick: { $action: 'modules.pocket.goTo', args: [{ $: 'item.ref' }] },
-              },
+              props: { variant: 'ghost', size: 'sm', square: true, title: 'Open', onClick: openAction },
               children: [{ type: 'we-icon', props: { name: 'arrow-square-out' } }],
             },
           },
         },
-        {
-          type: 'we-button',
-          props: {
-            variant: 'ghost',
-            size: 'sm',
-            title: 'Take out of your Pocket',
-            onClick: { $action: 'modules.pocket.forget', args: [{ $: 'item.id' }] },
-          },
-          children: [{ type: 'we-icon', props: { name: 'x' } }],
-        },
+        forgetButton(),
       ],
     },
   ],
 };
 
+/**
+ * A folder, and a place to file things into.
+ *
+ * The row is a drop zone as well as a button, which is what recovers the one thing a breadcrumb
+ * gives up against a tree navigator: filing something two levels down without opening anything.
+ * Nested inside the panel's own zone, and the innermost zone under the pointer wins — so a drop on
+ * a folder goes into the folder and a drop anywhere else goes into the folder being looked at.
+ */
 const folderRow: SchemaNode = {
-  type: 'we-button',
+  type: 'we-drop-zone',
   props: {
-    variant: 'ghost',
     width: '100%',
-    ax: 'start',
-    gap: '300',
-    onClick: { $action: 'modules.pocket.enter', args: [{ $: 'folder.id' }, { $: 'folder.name' }] },
+    onDropped: { $action: 'modules.pocket.gatherInto', args: [{ $: 'folder.id' }, { $: 'event.detail' }] },
   },
   children: [
-    { type: 'we-icon', props: { name: { $: "folder.icon ? folder.icon : 'folder'" } } },
-    { type: 'we-text', props: { truncate: true }, children: [{ $: "folder.name ? folder.name : 'Folder'" }] },
+    {
+      type: 'we-button',
+      props: {
+        variant: 'ghost',
+        width: '100%',
+        ax: 'start',
+        gap: '300',
+        onClick: { $action: 'modules.pocket.enter', args: [{ $: 'folder.id' }, { $: 'folder.name' }] },
+      },
+      children: [
+        { type: 'we-icon', props: { name: { $: "folder.icon ? folder.icon : 'folder'" } } },
+        { type: 'we-text', props: { truncate: true }, children: [{ $: "folder.name ? folder.name : 'Folder'" }] },
+      ],
+    },
   ],
 };
+
+// ─── Grid mode ───────────────────────────────────────────────────────────────
+
+/**
+ * The same square that follows the pointer during a drag.
+ *
+ * One fragment for both, so what you saw yourself carrying is what you find afterwards. It draws
+ * the stored snapshot rather than the live record, which is the whole reason a snapshot is stored:
+ * a grid of things gathered from six spaces would otherwise be six cross-dataset resolutions before
+ * anything could be painted.
+ *
+ * No `content` here, unlike the ghost — the composed document was read for its picture when the
+ * thing was gathered and deliberately never written to the agent's own dataset.
+ */
+const itemTile: SchemaNode = {
+  type: 'we-draggable',
+  props: dragProps,
+  children: [
+    {
+      type: 'Column',
+      props: { position: 'relative' },
+      children: [
+        {
+          type: 'we-button',
+          props: { variant: 'bare', title: 'Open', disabled: { $: "item.datasetKey == 'agent'" }, onClick: openAction },
+          children: [
+            recordCard({
+              label: itemLabel,
+              icon: itemIcon,
+              thumbnail: { $: 'item.thumbnail' },
+              // A DID with no name attached: the tile draws an identicon from it, and says where the
+              // thing came from in words. Resolving the DID to a name would mean reading the host's
+              // profile store, which this package will not do.
+              byline: { hash: { $: 'item.sourceAuthor' } },
+              source: itemSource,
+              date: { $: 'item.gatheredAt' },
+            }),
+          ],
+        },
+        // Over the tile rather than beside it: at 100px there is no room in flow, and a grid you
+        // cannot remove anything from would send you back to the list to do it.
+        forgetButton({ position: 'absolute', top: '0', right: '0', bg: 'surface' }),
+      ],
+    },
+  ],
+};
+
+const folderTile: SchemaNode = {
+  type: 'we-drop-zone',
+  props: {
+    onDropped: { $action: 'modules.pocket.gatherInto', args: [{ $: 'folder.id' }, { $: 'event.detail' }] },
+  },
+  children: [
+    {
+      type: 'we-button',
+      props: {
+        variant: 'bare',
+        onClick: { $action: 'modules.pocket.enter', args: [{ $: 'folder.id' }, { $: 'folder.name' }] },
+      },
+      children: [
+        recordCard({
+          label: { $: "folder.name ? folder.name : 'Folder'" },
+          icon: { $: "folder.icon ? folder.icon : 'folder'" },
+        }),
+      ],
+    },
+  ],
+};
+
+// ─── The listing ─────────────────────────────────────────────────────────────
 
 /** What the panel says when there is nothing in it — which is most people's first sight of it. */
 const emptyPocket: SchemaNode = {
@@ -162,6 +274,18 @@ const emptyPocket: SchemaNode = {
     },
   ],
 };
+
+const eachFolder = (child: SchemaNode): SchemaNode => ({
+  type: '$each',
+  props: { items: { $: 'local.folders' }, as: 'folder' },
+  children: [child],
+});
+
+const eachItem = (child: SchemaNode): SchemaNode => ({
+  type: '$each',
+  props: { items: { $: 'local.items' }, as: 'item' },
+  children: [child],
+});
 
 /**
  * What is in the folder being looked at: its sub-folders, then what was gathered into it.
@@ -187,8 +311,22 @@ const folderContents: SchemaNode = {
     },
   },
   children: [
-    { type: '$each', props: { items: { $: 'local.folders' }, as: 'folder' }, children: [folderRow] },
-    { type: '$each', props: { items: { $: 'local.items' }, as: 'item' }, children: [itemRow] },
+    {
+      type: '$if',
+      props: {
+        condition: { $: "local.pocketView == 'grid'" },
+        then: {
+          type: 'Grid',
+          props: { minChildWidth: '100px', gap: '300', width: '100%' },
+          children: [eachFolder(folderTile), eachItem(itemTile)],
+        },
+        else: {
+          type: 'Column',
+          props: { gap: '200', width: '100%' },
+          children: [eachFolder(folderRow), eachItem(itemRow)],
+        },
+      },
+    },
     /*
       Only once both subscriptions have answered. An empty `$each` renders nothing at all, so
       without this the first frame of every open would claim the Pocket is empty — which for the one
@@ -206,31 +344,126 @@ const folderContents: SchemaNode = {
   ],
 };
 
+// ─── Chrome ──────────────────────────────────────────────────────────────────
+
+/**
+ * Where you are, and the way back.
+ *
+ * A breadcrumb rather than a tree. The panel is a narrow dock, so a tree would spend most of its
+ * width on indentation; and a breadcrumb is the model people already have from every file manager,
+ * where the contents of one place fill the pane and the path above says how you got there. The one
+ * thing the tree does better — filing into a folder you are not in — is given back by making both
+ * the crumbs and the folder rows drop zones.
+ *
+ * Every crumb is a drop target, so dragging something onto "Pocket" while three levels down files
+ * it at the top without leaving where you are.
+ */
+const breadcrumb: SchemaNode = {
+  type: 'Row',
+  props: { gap: '0', ay: 'center', flex: '1', minWidth: '0', overflowX: 'auto', scrollbarWidth: 'none' },
+  children: [
+    {
+      type: '$each',
+      props: { items: { $: 'modules.pocket.crumbs' }, as: 'crumb' },
+      children: [
+        {
+          type: 'Row',
+          props: { gap: '0', ay: 'center', flexShrink: '0' },
+          children: [
+            {
+              type: '$if',
+              props: {
+                condition: { $: 'index > 0' },
+                then: { type: 'we-icon', props: { name: 'caret-right', size: 'xs', color: 'text-faint' } },
+              },
+            },
+            {
+              type: 'we-drop-zone',
+              props: {
+                onDropped: {
+                  $action: 'modules.pocket.gatherInto',
+                  args: [{ $: 'crumb.id' }, { $: 'event.detail' }],
+                },
+              },
+              children: [
+                {
+                  type: 'we-button',
+                  props: {
+                    variant: 'ghost',
+                    size: 'sm',
+                    gap: '100',
+                    // `goToCrumb` refuses the last position, so pressing where you already are does
+                    // nothing rather than reloading the folder you are looking at.
+                    onClick: { $action: 'modules.pocket.goToCrumb', args: [{ $: 'index' }] },
+                  },
+                  children: [
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $: 'crumb.icon' },
+                        then: { type: 'we-icon', props: { name: { $: 'crumb.icon' } } },
+                      },
+                    },
+                    {
+                      type: 'we-text',
+                      props: { variant: 'footnote', truncate: true, maxWidth: '90px' },
+                      children: [{ $: "crumb.name ? crumb.name : 'Folder'" }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
 const header: SchemaNode = {
   type: 'Row',
-  props: { ay: 'center', gap: '200', width: '100%' },
+  props: { ay: 'center', gap: '100', width: '100%' },
   children: [
     {
       type: '$if',
       props: {
-        condition: { $: 'count(modules.pocket.trail)' },
+        // The control that did not exist: `canGoUp` is a store read, so it is true the moment there
+        // is a path to go back along rather than depending on a value the template computed.
+        condition: { $: 'modules.pocket.canGoUp' },
         then: {
           type: 'we-button',
-          props: { variant: 'ghost', size: 'sm', title: 'Back', onClick: { $action: 'modules.pocket.up' } },
+          props: {
+            variant: 'ghost',
+            size: 'sm',
+            square: true,
+            title: 'Back',
+            onClick: { $action: 'modules.pocket.up' },
+          },
           children: [{ type: 'we-icon', props: { name: 'arrow-left' } }],
         },
       },
     },
+    breadcrumb,
     {
-      type: 'we-text',
-      props: { variant: 'heading-sm', flex: '1', minWidth: '0', truncate: true },
-      children: ['Pocket'],
+      type: 'we-button',
+      props: {
+        variant: 'ghost',
+        size: 'sm',
+        square: true,
+        title: { $: "local.pocketView == 'grid' ? 'Show as a list' : 'Show as a grid'" },
+        onClick: {
+          $setLocal: 'pocketView',
+          value: { $: "local.pocketView == 'grid' ? 'list' : 'grid'" },
+        },
+      },
+      children: [{ type: 'we-icon', props: { name: { $: "local.pocketView == 'grid' ? 'list' : 'squares-four'" } } }],
     },
     {
       type: 'we-button',
       props: {
         variant: 'ghost',
         size: 'sm',
+        square: true,
         title: 'New folder',
         onClick: { $setLocal: 'newFolderOpen', value: true },
       },
@@ -322,12 +555,15 @@ const panel: SchemaNode = {
       children: [
         {
           type: 'Column',
-          $queries: {
-            rootFolder: { entity: 'PocketFolder', where: { root: true }, limit: 1, dataset: ROOT },
-          },
           $localState: {
             newFolderOpen: { type: 'boolean', initial: false },
             newFolderName: { type: 'string', initial: '' },
+            /*
+              A preference, not view state: which way somebody likes to look at their own Pocket is
+              not something a shared link should impose, and there is no link to a panel anyway.
+              Namespaced, since the key is deployment-global.
+            */
+            pocketView: { type: 'string', initial: 'list', persist: 'pocket.displayMode' },
           },
           props: { width: '100%', height: '100%', p: '400', gap: '300', overflow: 'hidden' },
           children: [
@@ -339,24 +575,14 @@ const panel: SchemaNode = {
                 /*
                   Nothing is listed until there is a folder to list the contents of.
 
-                  The root folder is made by the first gather, so before that there is no anchor —
-                  and a drill-down whose `anchorId` is undefined is not an empty query, it is a
-                  malformed one. The notes panel gates its own scoped query the same way and for the
-                  same reason; this is that lesson, one module later.
-
-                  `rootFolderLoaded` rather than the folder itself, so the first frame of every open
-                  says nothing rather than claiming the Pocket is empty.
+                  A drill-down whose `anchorId` is undefined is not an empty query, it is a malformed
+                  one. The store creates the root folder when the panel opens, so this is one round
+                  trip rather than "until the first gather" — but it is still a frame, and the notes
+                  panel gates its own scoped query the same way for the same reason.
                 */
                 {
                   type: '$if',
-                  props: {
-                    condition: currentFolder,
-                    then: folderContents,
-                    else: {
-                      type: '$if',
-                      props: { condition: { $: 'local.rootFolderLoaded' }, then: emptyPocket },
-                    },
-                  },
+                  props: { condition: currentFolder, then: folderContents },
                 },
               ],
             },

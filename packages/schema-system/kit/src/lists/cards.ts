@@ -63,6 +63,20 @@ export interface CardShellOptions {
     icon?: SchemaProp;
     /** Only where the row is not in the dataset being looked at — a space listed in a directory. */
     datasetKey?: SchemaProp;
+    /**
+     * What this row was drawn with, so the ghost can draw the same card and a receiver can keep it.
+     *
+     * Every field is a property the list **already selected** — `post.editorState` is the same
+     * string the card body renders — so filling this costs a property assignment, not a query. Give
+     * what the row has and omit the rest: a picture where there is one, the composed document where
+     * the content itself is the picture.
+     */
+    preview?: {
+      thumbnail?: SchemaProp;
+      content?: SchemaProp;
+      author?: SchemaProp;
+      date?: SchemaProp;
+    };
   };
 }
 
@@ -94,6 +108,7 @@ export function cardShell(opts: CardShellOptions): SchemaNode {
       ...(opts.drag.label !== undefined && { label: opts.drag.label }),
       ...(opts.drag.icon !== undefined && { icon: opts.drag.icon }),
       ...(opts.drag.datasetKey !== undefined && { datasetKey: opts.drag.datasetKey }),
+      ...(opts.drag.preview && { preview: opts.drag.preview }),
     },
     children: [card],
   };

@@ -78,6 +78,8 @@ export { badgedAvatar } from './layout/badgedAvatar.ts';
 export type { BadgedAvatarOptions } from './layout/badgedAvatar.ts';
 export { pageShell } from './layout/pageShell.ts';
 export type { PageShellOptions } from './layout/pageShell.ts';
+export { recordCard } from './layout/recordCard.ts';
+export type { RecordCardOptions } from './layout/recordCard.ts';
 export { railButton, railGroup, railItem, railShell } from './layout/rail.ts';
 export type { RailButtonOptions, RailGroupOptions, RailItemOptions, RailShellOptions } from './layout/rail.ts';
 export { sectionCard } from './layout/sectionCard.ts';

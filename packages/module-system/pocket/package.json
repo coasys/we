@@ -33,6 +33,7 @@
   "devDependencies": {
     "@we/cli": "workspace:*",
     "@we/module-shared": "workspace:*",
+    "@we/schema-kit": "workspace:*",
     "@we/schema-shared": "workspace:*",
     "tsup": "^8.5.1",
     "typescript": "^5.7.2",

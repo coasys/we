@@ -265,3 +265,181 @@ describe('degrading', () => {
     expect(store.refs()).toEqual([]);
   });
 });
+
+/**
+ * Where you are in the Pocket, and the way back out.
+ *
+ * The reported bug: creating a folder, entering it, and finding no way to leave. It was one fact
+ * held as two values — a `folderId` that was `''` at the root because the root's id lived only in a
+ * template expression, and a `trail` that therefore never got its first entry, so the back button
+ * (gated on the trail being non-empty) never appeared. These pin the single-list replacement.
+ */
+describe('moving between folders', () => {
+  const opened = async () => {
+    const { deps: d, data } = deps();
+    const store = createPocketStore(d);
+    store.show();
+    // `show` resolves the root off the port; one turn of the microtask queue settles it.
+    await Promise.resolve();
+    await Promise.resolve();
+    return { store, data };
+  };
+
+  it('starts at the root, with the root actually in the path', async () => {
+    const { store } = await opened();
+
+    expect(store.crumbs()).toHaveLength(1);
+    expect(store.folderId()).toBe('PocketFolder-1');
+    // The whole bug in one assertion: an anchor exists before anybody navigates anywhere.
+    expect(store.folderId()).not.toBe('');
+  });
+
+  it('offers no way back from the root, and refuses to leave it', async () => {
+    const { store } = await opened();
+    store.up();
+
+    expect(store.canGoUp()).toBe(false);
+    expect(store.folderId()).toBe('PocketFolder-1');
+  });
+
+  it('can be left again once entered — which it could not before', async () => {
+    const { store } = await opened();
+    store.enter('PocketFolder-2', 'Reading');
+
+    expect(store.canGoUp()).toBe(true);
+    expect(store.folderId()).toBe('PocketFolder-2');
+
+    store.up();
+    expect(store.folderId()).toBe('PocketFolder-1');
+    expect(store.canGoUp()).toBe(false);
+  });
+
+  it('labels each crumb with its own folder, not with the one it was entered from', async () => {
+    // The off-by-one in the old pair: `enter(id, name)` pushed the *entered* folder's name as the
+    // label for the folder being *left*, so every crumb named the wrong place.
+    const { store } = await opened();
+    store.enter('PocketFolder-2', 'Reading');
+    store.enter('PocketFolder-3', 'Later');
+
+    expect(store.crumbs().map((c) => c.name)).toEqual(['Pocket', 'Reading', 'Later']);
+  });
+
+  it('jumps back several levels at once', async () => {
+    const { store } = await opened();
+    store.enter('PocketFolder-2', 'Reading');
+    store.enter('PocketFolder-3', 'Later');
+    store.goToCrumb(0);
+
+    expect(store.folderId()).toBe('PocketFolder-1');
+    expect(store.crumbs()).toHaveLength(1);
+  });
+
+  it('does nothing when the crumb pressed is the one already open', async () => {
+    const { store } = await opened();
+    store.enter('PocketFolder-2', 'Reading');
+    store.goToCrumb(1);
+
+    expect(store.crumbs()).toHaveLength(2);
+    expect(store.folderId()).toBe('PocketFolder-2');
+  });
+
+  it('puts you back where you were when the panel is re-opened', async () => {
+    const { store } = await opened();
+    store.enter('PocketFolder-2', 'Reading');
+    store.close();
+    store.show();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(store.folderId()).toBe('PocketFolder-2');
+  });
+
+  it('gathers into the folder being looked at', async () => {
+    const { store, data } = await opened();
+    store.enter('PocketFolder-2', 'Reading');
+    await store.gather(drop({ entity: 'CollectionBlock', id: 'ad4m://obj/abc' }));
+
+    expect(data.parents[data.rows.PocketItem[0].id as string]).toBe('PocketFolder-2');
+  });
+
+  it('files into a folder that is not open, which is what a folder drop zone does', async () => {
+    const { store, data } = await opened();
+    await store.gatherInto('PocketFolder-7', drop({ entity: 'CollectionBlock', id: 'ad4m://obj/abc' }));
+
+    expect(data.parents[data.rows.PocketItem[0].id as string]).toBe('PocketFolder-7');
+    // …without moving you.
+    expect(store.folderId()).toBe('PocketFolder-1');
+  });
+});
+
+/**
+ * The picture on a gathered row.
+ *
+ * A post has no thumbnail field and does not need one: the document it carries already holds the
+ * image, and it is read here — once, at gather time — rather than parsed per frame by a panel or
+ * denormalised onto `CollectionBlock`.
+ */
+describe('the snapshot a row keeps', () => {
+  const withPreview = (preview: Record<string, unknown>) => ({
+    items: [{ ref: { entity: 'CollectionBlock', id: 'ad4m://obj/abc' }, label: 'A post', preview }],
+  });
+
+  const document = (blocks: unknown[]) => JSON.stringify({ _type: 'document', blocks });
+
+  it('keeps a picture the source gave outright', async () => {
+    const { deps: d, data } = deps();
+    await createPocketStore(d).gather(withPreview({ thumbnail: 'we-file://cover.jpg' }));
+
+    expect(data.rows.PocketItem[0].thumbnail).toBe('we-file://cover.jpg');
+  });
+
+  it('takes one out of a composed post, which carries no thumbnail of its own', async () => {
+    const { deps: d, data } = deps();
+    await createPocketStore(d).gather(
+      withPreview({
+        content: document([
+          { _type: 'block', text: 'Look at this' },
+          { _type: 'image', src: 'we-file://photo.jpg' },
+        ]),
+      }),
+    );
+
+    expect(data.rows.PocketItem[0].thumbnail).toBe('we-file://photo.jpg');
+  });
+
+  it('looks inside a nested collection, where an image is still the picture', async () => {
+    const { deps: d, data } = deps();
+    await createPocketStore(d).gather(
+      withPreview({
+        content: document([{ _type: 'collection', content: [{ _type: 'video', thumbnail: 'we-file://still.jpg' }] }]),
+      }),
+    );
+
+    expect(data.rows.PocketItem[0].thumbnail).toBe('we-file://still.jpg');
+  });
+
+  it('never stores the document itself', async () => {
+    // Copying post bodies out of the spaces they were shared in is the problem that makes sharing a
+    // folder a matter of sending references. The picture is taken; the rest is dropped.
+    const { deps: d, data } = deps();
+    const content = document([{ _type: 'block', text: 'Something private' }]);
+    await createPocketStore(d).gather(withPreview({ content }));
+
+    expect(JSON.stringify(data.rows.PocketItem[0])).not.toContain('Something private');
+  });
+
+  it('degrades to no picture on a document it cannot read', async () => {
+    // Written by a version that shaped it differently. A row with an icon, not a thrown gather.
+    const { deps: d, data } = deps();
+    await createPocketStore(d).gather(withPreview({ content: 'not json' }));
+
+    expect(data.rows.PocketItem[0].thumbnail).toBe('');
+  });
+
+  it('keeps the author, so a tile can draw a face beside the name', async () => {
+    const { deps: d, data } = deps();
+    await createPocketStore(d).gather(withPreview({ author: 'did:key:z6Mkabc' }));
+
+    expect(data.rows.PocketItem[0].sourceAuthor).toBe('did:key:z6Mkabc');
+  });
+});

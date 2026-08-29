@@ -54,30 +54,32 @@ function expressionsIn(node: unknown, key = '', found: FoundExpression[] = []): 
 const sourcesIn = (node: unknown): string[] => expressionsIn(node).map((e) => e.source);
 
 describe('the folder anchor', () => {
-  // Lifted from the schema itself rather than restated, so it cannot drift from what ships.
-  const anchor = sourcesIn(panel).find((source) => source.includes('first(local.rootFolder)'))!;
+  /**
+   * One value, read from the store.
+   *
+   * It used to be found in the template — a ternary over a `$query` for the root folder — and that
+   * is what made entering a folder a one-way door: the id the panel drew with was never the id the
+   * store had, so `enter` had nothing to record and the way back never appeared. The anchor being a
+   * bare store read is the fix, so this pins that it stays one.
+   */
+  it('is a plain read, with nothing computed in the template', () => {
+    const anchors = expressionsIn(panel).filter((found) => found.key === 'anchorId');
 
-  it('is the folder somebody navigated into, when there is one', () => {
-    expect(run(anchor, { modules: { pocket: { folderId: 'PocketFolder-9' } }, local: { rootFolder: [] } })).toBe(
+    expect(anchors).toHaveLength(2);
+    for (const anchor of anchors) expect(anchor.source).toBe('modules.pocket.folderId');
+  });
+
+  it('resolves to the folder id the store holds', () => {
+    expect(run('modules.pocket.folderId', { modules: { pocket: { folderId: 'PocketFolder-9' } } })).toBe(
       'PocketFolder-9',
     );
   });
 
-  it('falls back to the root folder — as an id, not as a boolean', () => {
-    // The whole bug: `||` would answer `true` here, and `true` is what reached the executor.
-    const value = run(anchor, {
-      modules: { pocket: { folderId: '' } },
-      local: { rootFolder: [{ id: 'PocketFolder-1' }] },
-    });
-
-    expect(value).toBe('PocketFolder-1');
-    expect(typeof value).toBe('string');
-  });
-
-  it('is falsy while no folder exists, so the gate above it holds', () => {
-    const value = run(anchor, { modules: { pocket: { folderId: '' } }, local: { rootFolder: [] } });
+  it('is falsy before the root has resolved, so the gate above it holds', () => {
+    const value = run('modules.pocket.folderId', { modules: { pocket: { folderId: '' } } });
     expect(value).toBeFalsy();
-    // Not `false` from a boolean operator — absent, which is what "no anchor yet" means.
+    // Absent, which is what "no anchor yet" means — never `false` from a boolean operator, which is
+    // what reached the executor as "data did not match any variant of untagged enum Scope".
     expect(value).not.toBe(false);
   });
 });
@@ -120,9 +122,36 @@ describe('the contents gate', () => {
     // `$queries` run whether or not anything reads them, so hiding the rows would still fire two
     // scoped queries with no anchor — which is a malformed query, not an empty one.
     const scoped = JSON.stringify(panel).match(/"scope":/g) ?? [];
-    const gated = sourcesIn(panel).some((source) => source.includes('first(local.rootFolder)'));
+    const gated = expressionsIn(panel).some(
+      (found) => found.key === 'condition' && found.source === 'modules.pocket.folderId',
+    );
 
     expect(scoped).toHaveLength(2);
     expect(gated).toBe(true);
+  });
+});
+
+/**
+ * The way out of a folder.
+ *
+ * The reported bug in one line: entering a folder worked and leaving one was impossible, because
+ * the control was gated on a value the template could never make true. Both halves are pinned —
+ * that something asks the store, and that nothing asks a local.
+ */
+describe('going back', () => {
+  it('is offered on the answer the store gives, not one the template computed', () => {
+    const conditions = expressionsIn(panel)
+      .filter((found) => found.key === 'condition')
+      .map((found) => found.source);
+
+    expect(conditions).toContain('modules.pocket.canGoUp');
+  });
+
+  it('renders a crumb for every step of the path the store holds', () => {
+    const lists = expressionsIn(panel)
+      .filter((found) => found.key === 'items')
+      .map((found) => found.source);
+
+    expect(lists).toContain('modules.pocket.crumbs');
   });
 });

@@ -389,6 +389,11 @@
           "default": "''"
         },
         {
+          "name": "preview",
+          "type": "DragPreview | undefined",
+          "optional": true
+        },
+        {
           "name": "effect",
           "type": "'move' | 'copy' | 'link'",
           "optional": false,

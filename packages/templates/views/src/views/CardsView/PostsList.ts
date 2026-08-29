@@ -65,6 +65,16 @@ export const postsList: SchemaNode = {
             id: { $: 'post.id' },
             label: { $: 'post.textContent' },
             icon: 'newspaper',
+            /*
+              The same `editorState` the card body below renders, so the ghost draws the real post
+              rather than a name for it — which is where the picture in a post comes from, there
+              being no thumbnail field on `CollectionBlock` and no need for one.
+            */
+            preview: {
+              content: { $: 'post.editorState' },
+              author: { $: 'post.author' },
+              date: { $: 'post.createdAt' },
+            },
           },
           // Both of these drive controls in `header`, so the card is the nearest node that can
           // declare them. Undeclared, `$setLocal` warned and no-opped — the edit and delete

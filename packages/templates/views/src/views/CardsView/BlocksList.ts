@@ -40,6 +40,17 @@ const blockSection = (opts: BlockSectionOptions): SchemaNode => ({
             id: { $: 'block.id' },
             label: { $: 'block.title ?? block.name ?? block.text' },
             icon: opts.icon,
+            /*
+              One expression for every block type this list renders, because the picture lives under
+              a different name depending on which: `src` on an image, `thumbnail` on a video or a
+              link, neither on a task, an event or a note. A row without one falls through to the
+              icon, which is what those should show anyway.
+            */
+            preview: {
+              thumbnail: { $: 'block.src ? block.src : block.thumbnail' },
+              author: { $: 'block.author' },
+              date: { $: 'block.createdAt' },
+            },
           },
           header: blockHeader(opts.icon),
           body: opts.body,

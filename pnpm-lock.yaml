@@ -439,6 +439,9 @@ importers:
       '@we/design-utils':
         specifier: workspace:*
         version: link:../design-system/utils
+      '@we/drag':
+        specifier: workspace:*
+        version: link:../design-system/drag
       '@we/editor':
         specifier: workspace:*
         version: link:../editor
@@ -481,6 +484,9 @@ importers:
       '@we/primitives':
         specifier: workspace:*
         version: link:../design-system/3-primitives
+      '@we/schema-kit':
+        specifier: workspace:*
+        version: link:../schema-system/kit
       '@we/schema-shared':
         specifier: workspace:*
         version: link:../schema-system/shared
@@ -1368,6 +1374,9 @@ importers:
       '@we/module-shared':
         specifier: workspace:*
         version: link:../shared
+      '@we/schema-kit':
+        specifier: workspace:*
+        version: link:../../schema-system/kit
       '@we/schema-shared':
         specifier: workspace:*
         version: link:../../schema-system/shared
