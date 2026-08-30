@@ -38,24 +38,15 @@ export const size = {
 export type RadiusToken = '0' | '100' | '200' | '300' | '400' | '500' | '600' | '700' | '800' | '900' | 'pill' | 'full';
 
 /**
- * Radius values that name a *role* rather than a size — they resolve to the theme's group
- * variable, so the element follows whatever the theme decided for things of its kind.
+ * Radius values that name a theme *family* rather than a size — see `themeFamily.ts`, which is the
+ * one place these are declared and from which this and its padding and gap counterparts derive.
  *
- * They exist for the layer-4 components, which have no COMPONENT_CASCADE entry to inherit a group
- * from and so must be told at the call site. `EditableImage` is the reason: one component used
- * both for square profile pictures and for wide cover images, where the caller is the only thing
- * that knows which it is. Kept out of the `radius` scale itself — a scale position is a length,
- * these are indirections — and out of the theme editor's shared radius list, since `avatar`
- * resolves to a percentage and is only safe on a box guaranteed square.
- *
- * `media` and `surface` both read the theme's surface group and differ only in what they fall back
- * to when a theme sets nothing, which is the whole distinction: a *full-bleed* banner is square
- * until a theme rounds it, and a box *inset inside* a sheet takes the sheet's own rounding, because
- * square corners sitting inside a rounded container read as a mistake rather than as a choice.
- * `Card` had been spelling the second one out as a raw `var()` string since before there was a name
- * for it, which is how `r: 'surface'` came to look like it should already work.
+ * Kept out of the `radius` scale itself — a scale position is a length, these are indirections —
+ * and out of the theme editor's shared radius list, since `avatar` resolves to a percentage and is
+ * only safe on a box guaranteed square.
  */
-export type SemanticRadius = 'avatar' | 'media' | 'surface';
+export type { SemanticRadius } from './themeFamily.js';
+import type { SemanticRadius } from './themeFamily.js';
 
 // Branded type to allow both tokens and raw radius values (px, rem, %, etc.) while preserving autocomplete
 export type RadiusValue = RadiusToken | SemanticRadius | (string & {});

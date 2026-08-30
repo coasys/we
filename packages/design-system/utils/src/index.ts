@@ -1,5 +1,5 @@
 import type { DesignSystemProps, FlexDirection } from '@we/design-types';
-import { font, role, type Tier, TIERS } from '@we/tokens';
+import { font, role, semanticValues, type Tier, TIERS } from '@we/tokens';
 
 import { tierQuery } from './surface';
 
@@ -289,25 +289,34 @@ const ROLE_NAMES = new Set(Object.keys(role).map((name) => name.replace(/[A-Z]/g
  * Each carries the same fallback the corresponding primitive's cascade uses, so a component
  * written with `r="avatar"` matches `we-avatar` exactly in a theme that sets nothing.
  */
-const SEMANTIC_RADIUS: Record<string, string> = {
-  avatar: 'var(--we-theme-avatar-radius, 50%)',
-  media: 'var(--we-theme-surface-radius, 0px)',
-  /*
-    A box inset inside a sheet, taking the sheet's own rounding — `Card`'s exact chain, which it had
-    been writing as a raw `var()` string in its defaults because there was no name for it.
-
-    The same theme group as `media`, and a different fallback, which is the entire difference. A
-    full-bleed banner is square until a theme rounds it; a cover image inset inside a modal is not,
-    because square corners inside a rounded container read as a mistake. With no theme, `media`
-    resolves to 0 and every surface reading this group resolves to 8–16px, so the two disagreed by
-    default and agreed only once a theme set `surfaceRadius` — which is why the create-space cover
-    came out square inside a rounded sheet, and why reaching for `r: 'surface'` there was the right
-    instinct against a token that did not exist. It resolved to `var(--we-radius-surface)`, silently.
-  */
-  surface: 'var(--we-theme-surface-radius, var(--we-radius-400))',
+/**
+ * Theme-family names, per axis, derived from the one table that declares them.
+ *
+ * Derived rather than restated, for the same reason `ROLE_NAMES` is: the hand-written version
+ * drifted once per axis. Adding a family to `themeFamily.ts` makes it nameable here, in the value
+ * types, and in the generated docs, in one edit.
+ *
+ * Keyed by *axis* rather than by prop prefix because padding, gap, margin and the offsets all
+ * resolve through `tokenVar('space', …)`. A family says how much room a card puts inside itself,
+ * which answers nothing about the space between it and its neighbour — so `m: 'surface'` must not
+ * resolve, and does not.
+ */
+const SEMANTIC: Record<string, Record<string, string>> = {
+  radius: semanticValues('radius'),
+  padding: semanticValues('padding'),
+  gap: semanticValues('gap'),
 };
 
-export function tokenVar(prefix: string, token?: string, fallback = '0') {
+/**
+ * Which family names this value may use.
+ *
+ * Only needed where the prefix does not settle it. `radius` implies its own axis; `space` is shared
+ * by padding, gap, margin and the four offsets, so the caller says which of those it is building
+ * and the three that read no family pass nothing.
+ */
+export type SemanticAxis = 'padding' | 'gap';
+
+export function tokenVar(prefix: string, token?: string, fallback = '0', axis?: SemanticAxis) {
   // If no token, return fallback
   if (!token) return fallback;
 
@@ -320,11 +329,47 @@ export function tokenVar(prefix: string, token?: string, fallback = '0') {
   // A colour prop may name a semantic role instead of a scale position.
   if (prefix === 'color' && ROLE_NAMES.has(token)) return `var(--we-role-${token})`;
 
-  // A radius prop may name a theme group instead of a scale position, on the same principle.
-  if (prefix === 'radius' && SEMANTIC_RADIUS[token]) return SEMANTIC_RADIUS[token];
+  // A radius, padding or gap prop may name a theme family instead of a scale position, on the same
+  // principle. `prefix` answers it for radius; for spacing the caller names the axis, since margin
+  // and the offsets share this prefix and read no family.
+  const family = SEMANTIC[prefix === 'radius' ? 'radius' : (axis ?? '')]?.[token];
+  if (family) return family;
+
+  warnUnknownToken(prefix, token, axis);
 
   // Otherwise return CSS variable
   return `var(--we-${prefix}-${token})`;
+}
+
+/** Names already reported, so a value in a render loop warns once rather than every frame. */
+const warnedTokens = new Set<string>();
+
+/**
+ * A name that is not a token, not a family and not raw CSS is a typo, and it used to be silent.
+ *
+ * The fall-through below is what every unrecognised name gets: `r: 'sunken'` becomes
+ * `var(--we-radius-sunken)`, a variable nothing declares, so the property is invalid at
+ * computed-value time and the element simply paints none of it. Nothing throws and nothing logs —
+ * and the result is indistinguishable from a theme that chose square corners or no padding, which
+ * is how `r: 'surface'` looked correct for as long as it did.
+ *
+ * Only fires on something *shaped* like a name: letters and dashes, no digits. A scale position
+ * ('400'), a raw length and every CSS keyword have already returned above, so what reaches here is
+ * either a real token from a scale this does not know or a mistake.
+ */
+function warnUnknownToken(prefix: string, token: string, axis?: SemanticAxis): void {
+  if (process.env.NODE_ENV === 'production') return;
+  if (!/^[a-z][a-z-]*$/i.test(token)) return;
+  const key = `${prefix}:${axis ?? ''}:${token}`;
+  if (warnedTokens.has(key)) return;
+  warnedTokens.add(key);
+
+  const known = Object.keys(SEMANTIC[prefix === 'radius' ? 'radius' : (axis ?? '')] ?? {});
+  const suffix = known.length ? ` Known names here: ${known.join(', ')}.` : '';
+  console.warn(
+    `[DS] "${token}" is not a ${prefix} token or theme family, so it resolves to ` +
+      `var(--we-${prefix}-${token}) — a variable nothing declares, which paints nothing.${suffix}`,
+  );
 }
 
 /**
@@ -404,11 +449,16 @@ export function getMarginValues(props: DesignSystemProps) {
 }
 
 export function getPaddingValues(props: DesignSystemProps) {
+  /*
+    Four values joined into one declaration, which is why a family's padding has to be a single
+    length: a shorthand landing in one slot invalidates the whole thing. `themeFamily.ts` says which
+    families qualify and why the two that do not are excluded.
+  */
   return [
-    tokenVar('space', props['pt'] || props['py'] || props['p']),
-    tokenVar('space', props['pr'] || props['px'] || props['p']),
-    tokenVar('space', props['pb'] || props['py'] || props['p']),
-    tokenVar('space', props['pl'] || props['px'] || props['p']),
+    tokenVar('space', props['pt'] || props['py'] || props['p'], '0', 'padding'),
+    tokenVar('space', props['pr'] || props['px'] || props['p'], '0', 'padding'),
+    tokenVar('space', props['pb'] || props['py'] || props['p'], '0', 'padding'),
+    tokenVar('space', props['pl'] || props['px'] || props['p'], '0', 'padding'),
   ].join(' ');
 }
 
@@ -940,7 +990,7 @@ export function buildLayoutStyles(props: LayoutStyleProps, direction: 'row' | 'c
   const { main, cross } = mapFlexAxes(props, props.reverse ? `${direction}-reverse` : direction);
   if (main !== undefined) style['justify-content'] = main;
   if (cross !== undefined) style['align-items'] = cross;
-  if (props.gap) style.gap = tokenVar('space', props.gap);
+  if (props.gap) style.gap = tokenVar('space', props.gap, '0', 'gap');
   if (props.overflow) style.overflow = props.overflow;
   if (props.overflowX) style['overflow-x'] = props.overflowX;
   if (props.overflowY) style['overflow-y'] = props.overflowY;

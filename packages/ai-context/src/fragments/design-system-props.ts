@@ -15,13 +15,45 @@ Most @we/primitives inherit **all** layers below. Props use design token values 
 |---|---|
 | SpaceValue | "0", "100", "200", "300", "400", "500", "600", "700", "800", "900", "1000" (or CSS length e.g. "16px") |
 | ColorValue | A **role** — see the table below — or a scale position "{hue}-{shade}" where hue = neutral, primary, success, warning, danger and shade = 0, 25, 50, 75, 100, 200–900, 1000. Also "white", "black". (or CSS color). **Prefer a role.** |
-| RadiusValue | "0", "100", "200", "300", "400", "500", "600", "700", "800", "900", "pill", "full" (or CSS length). Also three *semantic* values that follow the theme instead of naming a size: "avatar" (circular by default; anything square that reads as a profile picture), "surface" (rounded like a card by default; a box **inset inside** a sheet — a cover image in a modal, a panel in a card) and "media" (**square** by default; a full-bleed banner, and video or embeds at page width). "surface" and "media" read the same theme group and differ only in that fallback, so pick by whether the box is inset in something rounded or spans the edge. Prefer all three on an \`EditableImage\` or a raw element standing in for one — a pinned "full" or "pill" cannot follow a theme's shape settings. Note "full" is 50%, so it is an ellipse on any box that is not square; reach for "pill" on wide boxes. |
+| RadiusValue | "0", "100", "200", "300", "400", "500", "600", "700", "800", "900", "pill", "full" (or CSS length). Also five *theme-family* names that follow the theme instead of naming a size — see "Theme families" below. Prefer them on an \`EditableImage\`, a \`Card\`, or a raw element standing in for one: a pinned "full" or "pill" cannot follow a theme's shape settings. Note "full" is 50%, so it is an ellipse on any box that is not square; reach for "pill" on wide boxes. |
 | ShadowValue | "sm", "md", "lg", "xl" |
 | FontSizeValue | "base", "100", "200", "300", "400", "500", "600", "700", "800", "900", "1000" (or CSS length) |
 | FontFamilyValue | "base" (or CSS font-family) |
 | LineHeightValue | "none", "tight", "snug", "normal", "relaxed", "loose" (or CSS value) |
 | LetterSpacingValue | "tighter", "tight", "normal", "wide", "wider", "widest" (or CSS value) |
 | FontWeightValue | Named tokens: "regular" (400), "medium" (500), "semibold" (600), "bold" (700). Numeric: "100"–"900". CSS pass-through: "light", "normal", "bolder". |
+
+### Theme families — for \`r\`, \`p\` and \`gap\`, the counterpart of a colour role
+
+A colour role says what a colour is *for*. A **family** says what kind of thing a box *is*, so the
+theme can decide its shape and density: buttons are rounded like this, sheets like that. Naming one
+is how a box follows a theme's \`surfaceRadius\` or \`surfacePadding\` instead of pinning a number.
+
+| Name | \`r\` | \`p\` | \`gap\` | For |
+|---|---|---|---|---|
+| \`control\` | ✓ | | ✓ | Buttons, badges, tags — anything pressed. |
+| \`surface\` | ✓ | ✓ | ✓ | Cards, modals, sheets — **and anything inset inside one**. |
+| \`input\` | ✓ | | | Fields, selects, pickers. |
+| \`avatar\` | ✓ | | | Anything square that reads as a profile picture. |
+| \`media\` | ✓ | | | A **full-bleed** banner, video or embed spanning an edge. |
+
+\`surface\` and \`media\` read the same theme variable and differ only in what they fall back to when a
+theme sets nothing: \`surface\` is rounded like a card, \`media\` is **square**. Pick by whether the box
+is inset in something rounded or spans the edge — a cover image inside a modal is \`surface\`, the
+same image as a page-width header is \`media\`.
+
+\`\`\`json
+{ "type": "Column", "props": { "bg": "surface", "r": "surface", "p": "surface", "gap": "surface" } }
+\`\`\`
+
+**The blanks are constraints, not gaps.** A family only takes \`p\` when its theme value is a single
+length: \`control\`'s padding is horizontal-only (the vertical comes from the control's height, per
+size) and \`input\`'s is a full shorthand, and padding is assembled as four values in one declaration,
+so either would produce an invalid rule.
+
+**Only these props.** A family is meaningless on a margin or an offset — it says how much room a box
+puts *inside* itself, which answers nothing about the space between it and its neighbour. \`m:
+"surface"\` resolves to nothing and warns.
 
 ### Semantic Colour Roles — reach for these before a scale position
 

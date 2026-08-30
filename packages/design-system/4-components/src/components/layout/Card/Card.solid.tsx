@@ -4,11 +4,16 @@ import type { CardProps } from './Card.types';
 
 const render = createLayoutComponent<CardProps>({
   defaults: {
-    // The named form of the chain this used to spell out. Same resolution, and now findable by
-    // anything else that needs to round like the sheet it sits in.
+    /*
+      The named form of the chains this used to spell out, one per axis, identical in what they
+      resolve to. Card is the whole reason the names exist: it is a layer-4 component, so it has no
+      COMPONENT_CASCADE entry to inherit the surface family from and had to say so itself — and the
+      only way to say it was a raw `var()` string, which is unfindable, unvalidated, and drifted
+      from the primitives reading the same variables.
+    */
     r: 'surface',
-    p: 'var(--we-theme-surface-padding, var(--we-space-500))',
-    gap: 'var(--we-theme-surface-gap, var(--we-space-400))',
+    p: 'surface',
+    gap: 'surface',
     shadow: 'var(--we-theme-shadow, none)',
   },
   ownKeys: ['direction'],
