@@ -113,8 +113,17 @@ const CSS_STYLES = css`
   :host([size='md']) {
     --we-modal-size-padding: var(--we-space-800);
   }
+  /*
+    lg holds at 48px rather than stepping up again.
+
+    It was 64px, extrapolated from the sm → md step on the reasoning that padding should stay a
+    constant fraction of the sheet. The arithmetic was fine and the result was not: a composer at
+    64px reads as a lot of empty sheet, and 64px is the figure this file already calls the padding
+    of a full page section. The step that matters is confirmation → form; a workspace is already
+    260px wider than a form, so it does not need a second one.
+  */
   :host([size='lg']) {
-    --we-modal-size-padding: var(--we-space-900);
+    --we-modal-size-padding: var(--we-space-800);
   }
   :host([size='fullscreen']) {
     --we-modal-size-padding: var(--we-space-800);

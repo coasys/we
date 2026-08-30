@@ -62,7 +62,7 @@ describe('each size names its own padding', () => {
   it.each([
     ['sm', '--we-space-700'],
     ['md', '--we-space-800'],
-    ['lg', '--we-space-900'],
+    ['lg', '--we-space-800'],
     ['fullscreen', '--we-space-800'],
   ])('%s', (size, token) => {
     expect(css).toMatch(
@@ -70,14 +70,22 @@ describe('each size names its own padding', () => {
     );
   });
 
-  it('grows with the sheet, except for the lightbox', () => {
-    // sm < md < lg, because the complaint that produced this was proportional: 40px frames a 420px
-    // confirmation and crowds a 640px form. Fullscreen is deliberately not the largest — the
-    // content is the size there, so padding is room taken from what somebody opened it to see.
+  it('steps up once, at the jump that matters', () => {
+    /*
+      A confirmation is framed generously at 40px and a form is crowded by it, so sm → md is a real
+      step. md → lg is not: a workspace is already 260px wider than a form, and stepping again put
+      64px around a composer — the figure the modal itself calls page-section padding.
+
+      So `sm < md <= lg`, not `sm < md < lg`. The looser form is the claim actually being made —
+      padding never *shrinks* as the sheet grows — and it leaves lg free to move without a test
+      rewrite each time.
+    */
     const of = (size: string) =>
       Number(/--we-space-(\d+)/.exec(new RegExp(`:host\\(\\[size='${size}'\\]\\)[^}]*`).exec(css)?.[0] ?? '')?.[1]);
     expect(of('sm')).toBeLessThan(of('md'));
-    expect(of('md')).toBeLessThan(of('lg'));
-    expect(of('fullscreen')).toBeLessThan(of('lg'));
+    expect(of('md')).toBeLessThanOrEqual(of('lg'));
+    // The lightbox is the exception in the other direction: the content is the size there, so
+    // padding is room taken from what somebody opened it to look at.
+    expect(of('fullscreen')).toBeLessThanOrEqual(of('lg'));
   });
 });
