@@ -20,7 +20,7 @@ import { Portal } from 'solid-js/web';
 
 import { registerCoreBlockComponents } from '../core-block-components';
 import type { CollabSession } from '../editor/collab';
-import { collabPlugins, seedSession } from '../editor/collab';
+import { collabPlugins, seedSession, sessionKeys } from '../editor/collab';
 import { menuTypeOf, toggleChecked, transformBlock } from '../editor/commands';
 import type { EditorContext } from '../editor/context';
 import { contentToDoc, docToContent } from '../editor/converter';
@@ -160,9 +160,12 @@ export function BlockComposer(props: Props) {
     const document: ContentDocument = {
       _type: 'document',
       blocks: docToContent(v.state.doc),
-      // In a session the shared document is the whole truth about the collection, so there is no
-      // "what I loaded" to diff against: everything it omits was deleted by somebody in the session.
-      ...(session ? {} : { base: baseKeys }),
+      // In a session the base is what the *session* knows — the ids in the shared fragment, which
+      // is everything every participant brought in. Not an empty base: that would classify a block
+      // added by a peer outside the session as one this document deleted. See `sessionKeys`.
+      base: session ? sessionKeys(session) : baseKeys,
+      // `baseHash` asks "has this collection changed since I loaded it", which a session cannot
+      // answer for itself — it has been changing continuously, by design.
       ...(baseHash && !session ? { baseHash } : {}),
     };
     if (props.onSave) props.onSave(document);
@@ -205,10 +208,12 @@ export function BlockComposer(props: Props) {
     if (session) {
       // The session owns the document. Wait for a peer to answer; if none does, this composer is
       // first in and seeds the session from the models. A peer that answered has already carried
-      // the content over, and seeding again would write a second copy.
+      // the content over, so there is nothing left to seed — and a seed that races that answer
+      // converges rather than duplicating, which is what makes the wait a courtesy rather than a
+      // correctness argument. See `seedSession`.
       await session.synced;
       if (v.isDestroyed) return;
-      seedSession(session, doc);
+      seedSession(session, doc, props.collaborate!);
       baseKeys = [];
       rebase(v);
       setVersion((n) => n + 1);

@@ -141,7 +141,22 @@ export function createAd4mEphemeralPort(getMyDid: () => string | undefined): Eph
         return;
       }
 
-      listeners.forEach((cb) => cb(link.author as string, payload));
+      /*
+        One listener at a time, each in its own `try`.
+
+        A bare `forEach` means the first listener that throws ends the loop: every later subscriber
+        on the same tag never sees the message, and the exception unwinds into the executor's signal
+        handler. Since a payload is a peer's, that is one malformed frame deafening presence, call
+        signalling and co-editing at once. Listeners should not throw and mostly do not; the
+        transport's job is to make it not matter when one does.
+      */
+      listeners.forEach((cb) => {
+        try {
+          cb(link.author as string, payload);
+        } catch (error) {
+          trace('ephemeral', 'recv:listener-threw', { tag, from: link.author, error: String(error) });
+        }
+      });
     };
 
     /**

@@ -18,6 +18,7 @@ import { parseGuestLink } from '@we/app-shell/shared';
 import { capabilitiesFromToken, createAd4mBackendPorts } from '@we/backend-ad4m';
 
 export type { GuestJoinTarget };
+export { hasStoredSession } from './storedSession';
 
 /**
  * Read guest parameters from the current URL.
@@ -27,46 +28,6 @@ export type { GuestJoinTarget };
  */
 export function parseGuestParams(): GuestJoinTarget | null {
   return parseGuestLink(window.location.href);
-}
-
-/*
-  The two keys ad4m-connect's own constructor reads to decide whether it already has a session.
-  Read here, never written — this module does not manage them, it only asks what is there.
-*/
-const AD4M_TOKEN_KEY = 'ad4m-token';
-const AD4M_URL_KEY = 'ad4m-url';
-
-/** localStorage throws outright in some privacy configurations. An unreadable store holds nothing. */
-function readLocal(key: string): string | null {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-/** Mirrors ad4m-connect's own normalisation, so the marker below is looked up under the key it wrote. */
-function guestMarkerKey(hostUrl: string): string {
-  return `ad4m-guest-email-${hostUrl.replace(/\/+$/, '').toLowerCase()}`;
-}
-
-/**
- * Whether this browser already holds a session that is somebody's actual identity.
- *
- * `connectAsGuest` writes `ad4m-token` and `ad4m-url` — the two keys *every* boot reads — so it does
- * not add a guest session beside an existing one, it replaces it. An agent who had signed in here
- * and then clicked a guest link would come back on their next visit as the guest, on the inviter's
- * node, with no sign that anything had happened and no prompt to get back. The entry point uses
- * this to decline the guest path in that case.
- *
- * A token belonging to a guest does not count: `connectAsGuest` records one per host under
- * `ad4m-guest-email-<host>`, so a stored url with a matching marker is a throwaway identity this
- * same flow created, and there is nothing there to protect.
- */
-export function hasStoredSession(): boolean {
-  if (!readLocal(AD4M_TOKEN_KEY)) return false;
-  const url = readLocal(AD4M_URL_KEY);
-  return !url || !readLocal(guestMarkerKey(url));
 }
 
 /**

@@ -180,6 +180,19 @@ function sanitiseStyleRule(rule: CSSStyleRule, options: SanitiseCssOptions, remo
     declarations.push(`${property}: ${value}${priority ? ' !important' : ''}`);
   }
 
+  /*
+    Nested rules are dropped, and said so.
+
+    A style rule can hold child rules (`&:hover { … }`, or a bare nested selector). Scoping one
+    correctly means rewriting a *relative* selector against a parent that has itself been rewritten,
+    which is a different problem from `scopeSelector`'s and not one to solve by accident. So they are
+    refused — but they used to be refused *silently*, which is the part that mattered: a theme author
+    whose nesting vanished got a sheet that applied half of what they wrote and a `removed` list that
+    said nothing had been removed.
+  */
+  const nested = (rule as CSSStyleRule & { cssRules?: CSSRuleList }).cssRules;
+  if (nested?.length) removed.push('nested rules inside a selector (write them out in full instead)');
+
   if (!declarations.length) return null;
   const selector = options.scope ? scopeSelector(rule.selectorText) : rule.selectorText;
   return `${selector} { ${declarations.join('; ')} }`;
@@ -236,6 +249,64 @@ function sanitiseRule(rule: CSSRule, options: SanitiseCssOptions, out: Collected
     return;
   }
 
+  /*
+    `@layer name { … }` — a grouping rule too, and one worth keeping.
+
+    A theme's whole job is overriding the app's own styles, so the layer a rule sits in is part of
+    what it means. It used to fall through to "unrecognised" and take the entire block with it, so a
+    theme organised into layers lost everything inside them at once. The name travels through
+    unchanged: a layer is a name, not a selector, and it is already namespaced by `@scope` around
+    the whole sheet.
+
+    The statement form (`@layer a, b;`, `CSSLayerStatementRule`) declares an order and holds no
+    rules; it is kept for the same reason and emitted as written.
+  */
+  if (type === 'CSSLayerBlockRule') {
+    const layer = rule as CSSGroupingRule & { name?: string };
+    const inner: Collected = { scoped: [], hoisted: [] };
+    for (const child of [...layer.cssRules]) sanitiseRule(child, options, inner, removed);
+    const name = layer.name ? ` ${layer.name}` : '';
+    if (inner.hoisted.length) out.hoisted.push(`@layer${name} { ${inner.hoisted.join(' ')} }`);
+    if (inner.scoped.length) out.scoped.push(`@layer${name} { ${inner.scoped.join(' ')} }`);
+    return;
+  }
+
+  if (type === 'CSSLayerStatementRule') {
+    const names = (rule as CSSRule & { nameList?: readonly string[] }).nameList;
+    if (names?.length) out.hoisted.push(`@layer ${[...names].join(', ')};`);
+    return;
+  }
+
+  /*
+    `@property` — a registered custom property. It defines a name and selects nothing, so it hoists
+    beside `@keyframes`, and for the same reason it was dropped before: it is neither a style rule
+    nor a grouping rule and nothing had a branch for it.
+
+    Its `initial-value` is a value like any other, so it goes through the same network check. The
+    rest of the descriptor — a syntax string and an inherits flag — cannot fetch.
+  */
+  if (type === 'CSSPropertyRule') {
+    const property = rule as CSSRule & {
+      name?: string;
+      syntax?: string;
+      inherits?: boolean;
+      initialValue?: string | null;
+    };
+    if (!property.name) {
+      removed.push('@property (its name could not be read)');
+      return;
+    }
+    const initial = property.initialValue ?? '';
+    if (fetchesRemotely(initial)) {
+      removed.push(`@property ${property.name} (its initial value fetches over the network)`);
+      return;
+    }
+    const parts = [`syntax: ${property.syntax ?? '"*"'}`, `inherits: ${property.inherits ? 'true' : 'false'}`];
+    if (initial) parts.push(`initial-value: ${initial}`);
+    out.hoisted.push(`@property ${property.name} { ${parts.join('; ')} }`);
+    return;
+  }
+
   if (type === 'CSSFontFaceRule') {
     // A font face is a `src: url(...)` by definition, so it survives only as a data URI — which is
     // exactly how a theme that carries its own font ships one.
@@ -271,39 +342,94 @@ function sanitiseRule(rule: CSSRule, options: SanitiseCssOptions, out: Collected
 }
 
 /**
- * Parse, filter and re-serialize a stylesheet.
+ * The parsed rules of `css`, without the document ever being asked to *apply* it.
  *
- * Uses a detached `<style>` element rather than `CSSStyleSheet.replaceSync`, because the latter is
- * unavailable in jsdom and this must be testable without a browser.
+ * ## Why this is not a `<style>` in `document.head`
+ *
+ * It was, and that undid the filter's headline promise. Appending the raw sheet to the live head to
+ * read `element.sheet` makes it a live stylesheet for as long as it is attached — and the browser
+ * acts on a live stylesheet immediately. The `@import` this whole module exists to strip was
+ * **fetched, once per call**, before anything was removed: on every keystroke in the theme editor,
+ * and on every peer-theme sync. The `finally { element.remove() }` tidied up after the request had
+ * already gone out.
+ *
+ * A constructed `CSSStyleSheet` is the primitive that actually fits. It is a parser with no
+ * document behind it, so nothing it holds is applied and nothing it names is fetched — and
+ * `replaceSync` is specified to *discard* `@import` rules rather than resolve them, which is the
+ * same answer this module reaches by hand, arrived at before any network call is possible.
+ *
+ * The fallbacks below exist for hosts without it. Neither is reached in any browser this ships to.
  */
-export function sanitiseCss(css: string, options: SanitiseCssOptions = {}): SanitiseCssResult {
-  const removed: string[] = [];
-  if (!css.trim()) return { css: '', removed };
+function parseRules(css: string): CSSRuleList | null {
+  if (typeof CSSStyleSheet !== 'undefined' && typeof CSSStyleSheet.prototype?.replaceSync === 'function') {
+    try {
+      const sheet = new CSSStyleSheet();
+      sheet.replaceSync(css);
+      return sheet.cssRules;
+    } catch {
+      // Fall through — an environment that has the constructor but refuses to use it.
+    }
+  }
 
-  if (typeof document === 'undefined') {
-    // No parser available: refuse rather than pass it through. A server-rendered host has no
-    // business injecting a stranger's CSS anyway.
-    return { css: '', removed: ['the whole stylesheet (no CSS parser available here)'] };
+  if (typeof document === 'undefined') return null;
+
+  /*
+    A document with no browsing context, from `createHTMLDocument`. Style elements in one are still
+    parsed by engines that populate `.sheet` there, and — the point — a document that is not being
+    displayed fetches nothing. jsdom does not populate `.sheet` in such a document, which is why the
+    live-document path below still exists at all.
+  */
+  const inert = document.implementation?.createHTMLDocument?.('');
+  if (inert) {
+    const element = inert.createElement('style');
+    element.textContent = css;
+    inert.head.appendChild(element);
+    if (element.sheet) return element.sheet.cssRules;
   }
 
   const element = document.createElement('style');
   element.textContent = css;
   document.head.appendChild(element);
-
   try {
-    const sheet = element.sheet;
-    if (!sheet) return { css: '', removed: ['the whole stylesheet (it could not be parsed)'] };
-
-    const out: Collected = { scoped: [], hoisted: [] };
-    for (const rule of [...sheet.cssRules]) sanitiseRule(rule, options, out, removed);
-
-    const body =
-      options.scope && out.scoped.length
-        ? `@scope (${options.scope}) {\n${out.scoped.join('\n')}\n}`
-        : out.scoped.join('\n');
-
-    return { css: [...out.hoisted, body].filter(Boolean).join('\n'), removed: [...new Set(removed)] };
+    return element.sheet?.cssRules ?? null;
   } finally {
     element.remove();
   }
+}
+
+/**
+ * Parse, filter and re-serialize a stylesheet.
+ */
+export function sanitiseCss(css: string, options: SanitiseCssOptions = {}): SanitiseCssResult {
+  const removed: string[] = [];
+  if (!css.trim()) return { css: '', removed };
+
+  /*
+    Reported from the source text, because the parser may already have thrown the rule away.
+
+    `replaceSync` drops `@import` before this code sees a rule list, so the branch in `sanitiseRule`
+    that names it never fires there. Saying nothing would leave a theme author watching their import
+    vanish with no explanation — the exact silence the `removed` list exists to break. Matching the
+    text is only ever used to *say* something; what is actually dropped is decided by the parser.
+  */
+  if (/@import\b/i.test(css)) {
+    removed.push('@import (loads a stylesheet from elsewhere, after you installed this one)');
+  }
+
+  const rules = parseRules(css);
+  if (!rules) {
+    // No parser available: refuse rather than pass it through. A server-rendered host has no
+    // business injecting a stranger's CSS anyway.
+    return { css: '', removed: ['the whole stylesheet (it could not be parsed here)'] };
+  }
+
+  const out: Collected = { scoped: [], hoisted: [] };
+  for (const rule of [...rules]) sanitiseRule(rule, options, out, removed);
+
+  const body =
+    options.scope && out.scoped.length
+      ? `@scope (${options.scope}) {\n${out.scoped.join('\n')}\n}`
+      : out.scoped.join('\n');
+
+  return { css: [...out.hoisted, body].filter(Boolean).join('\n'), removed: [...new Set(removed)] };
 }

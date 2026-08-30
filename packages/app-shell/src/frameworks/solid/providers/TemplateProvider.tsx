@@ -287,18 +287,56 @@ export default function TemplateProvider() {
     });
   }
 
-  // Resolves a dot-path string like 'datasetStore.rootDataset' against the stores object.
-  // Only called at action-dispatch time, so `stores` is always fully initialized.
+  /**
+   * The dataset accessors a `perspective` option may name.
+   *
+   * ## Why this is a list and not a walk
+   *
+   * It used to walk the **raw** `stores` object — the host's own handle, holding every store
+   * unfiltered — and then *call whatever it landed on*. The third argument of `record.create` flows
+   * straight here from a template, so
+   *
+   * ```json
+   * { "$action": "record.create", "args": ["TextBlock", {}, { "perspective": "sessionStore.logout" }] }
+   * ```
+   *
+   * logged the user out from a synced space template, and `runtimeStore.restartExecutor`,
+   * `runtimeStore.exportDatabase` and `themeStore.restorePersonalTheme` were reachable the same way.
+   * `buildTemplateBag` protects `{ "$action": "sessionStore.logout" }` and did nothing for this
+   * closure's own lookup — a filtered bag around an unfiltered walk.
+   *
+   * The fix is not a better walk. The option means *which dataset*, and the datasets are a closed
+   * set of four accessors the host itself names; there is no template for which the answer is "some
+   * arbitrary path". So this is the whole vocabulary, and anything else resolves to null — which
+   * falls through to the current dataset, exactly as an omitted option does.
+   *
+   * Adding a dataset accessor to `DatasetStore` means adding it here. That is the point: a new one
+   * is a deliberate widening of what a template may write into, not something that arrives by
+   * being reachable.
+   */
+  const PERSPECTIVE_PATHS = new Set([
+    'datasetStore.currentDataset',
+    'datasetStore.rootDataset',
+    'datasetStore.globalDataset',
+    'datasetStore.marketplaceDataset',
+  ]);
+
+  // Resolves one of the named dataset accessors above. Only called at action-dispatch time, so
+  // `stores` is always fully initialized.
   function resolvePerspective(path?: string): DatasetProxy | null {
-    if (!path) return null;
-    const [storeName, ...rest] = path.split('.');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let val: any = (stores as Record<string, unknown>)[storeName];
-    for (const key of rest) val = val?.[key];
-    if (typeof val === 'function') val = val();
+    if (!path || !PERSPECTIVE_PATHS.has(path)) {
+      if (path) console.warn(`perspective: "${path}" is not a dataset; using the current one`);
+      return null;
+    }
+    const [storeName, member] = path.split('.');
+    const store = (stores as Record<string, Record<string, unknown>>)[storeName];
+    const accessor = store?.[member];
+    // Every entry above is a dataset accessor, so it is a function; guarded anyway rather than
+    // assumed, since the assertion this list makes is about *names*, not about shapes.
+    let val: unknown = typeof accessor === 'function' ? (accessor as () => unknown)() : accessor;
     // Dataset accessors resolve to refs; model calls consume the handle inside.
-    if (val && typeof val === 'object' && 'handle' in val) val = val.handle;
-    return val ?? null;
+    if (val && typeof val === 'object' && 'handle' in val) val = (val as { handle: unknown }).handle;
+    return (val as DatasetProxy | null) ?? null;
   }
 
   // Mutations need the raw model class (create/update/delete), not the renderer's read-only
@@ -665,7 +703,17 @@ export default function TemplateProvider() {
       // personal space, where there is nobody to share with, and the composer edits alone.
       collab={(nodeId) => {
         const handle = datasetStore.currentDataset()?.handle;
-        return handle ? createCollabSession(sessionStore.ephemeralPort, handle, nodeId) : null;
+        if (!handle) return null;
+        return createCollabSession(sessionStore.ephemeralPort, handle, nodeId, {
+          // Who may write into a draft open here. Read live rather than captured: a session
+          // outlives the frame it was created in, and a member who joins mid-session should be
+          // able to type. Null while the roster is still loading — see the session's docblock.
+          members: () => {
+            const dids = spaceStore.memberDids();
+            return dids.length ? dids : null;
+          },
+          self: () => sessionStore.me()?.did,
+        });
       }}
       collabUser={() => {
         const did = sessionStore.me()?.did ?? '';

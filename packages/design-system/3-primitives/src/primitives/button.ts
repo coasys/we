@@ -1,11 +1,11 @@
 import type { DesignSystemProps } from '@we/design-types';
 import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
+import { safeHref } from '@we/design-utils';
 import { css, html } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
-import { safeHref } from '../shared/safe-href';
 import sharedStyles from '../shared/styles';
 import type { ButtonVariant, ComponentSize } from '../types';
 

@@ -4,6 +4,7 @@ import { font, role, type Tier, TIERS } from '@we/tokens';
 import { tierQuery } from './surface';
 
 export * from './color';
+export * from './safeHref';
 export * from './surface';
 export * from './tiling';
 
