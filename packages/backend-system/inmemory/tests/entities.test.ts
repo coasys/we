@@ -183,3 +183,47 @@ describe('failing loudly', () => {
     await expect(Space.findAll(dataset, { offset: 5 })).rejects.toThrow(/offset/);
   });
 });
+
+describe("'' means empty, on this backend and on AD4M", () => {
+  /*
+    The contract the two backends disagreed about for a release, in the direction that makes the
+    suite lie: `Ad4mModel.setProperty` returned early for `''` — so a clear was a no-op there —
+    while this backend wrote it and read it back as empty. Every store test exercising a clear
+    passed here and silently did nothing against a real executor, in the one suite whose header
+    calls itself a conformance test.
+
+    The AD4M side is repaired (`clearOnEmpty.ts` removes the property's links instead of skipping),
+    so both now agree that `''` means empty. These pin *this* half of the agreement: what the
+    reference implementation does is the definition, and a change to it has to be a deliberate one.
+  */
+  it('clears a property written as an empty string', async () => {
+    const space = await Space.create(dataset, { name: 'Test', description: 'Something' });
+
+    await Space.update(dataset, space.id, { description: '' });
+
+    const [read] = await Space.findAll(dataset);
+    expect(read.description).toBe('');
+  });
+
+  it('clears through an instance save as well as through update', async () => {
+    // Two write paths, one contract. `save()` is what the block layer's reconcile uses.
+    await Space.create(dataset, { name: 'Test', description: 'Something' });
+
+    const [instance] = await Space.findAll(dataset);
+    instance.description = '';
+    await instance.save();
+
+    const [read] = await Space.findAll(dataset);
+    expect(read.description).toBe('');
+  });
+
+  it('leaves a field the update did not name alone', async () => {
+    // The other half: clearing one property is not clearing the record.
+    const space = await Space.create(dataset, { name: 'Test', description: 'Something' });
+
+    await Space.update(dataset, space.id, { description: '' });
+
+    const [read] = await Space.findAll(dataset);
+    expect(read.name).toBe('Test');
+  });
+});

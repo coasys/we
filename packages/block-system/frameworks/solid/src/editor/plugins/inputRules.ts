@@ -3,6 +3,7 @@
  * followed by a space becomes a link. The block rules keep the block's `id` — a paragraph that
  * becomes a heading is still the same block to the store.
  */
+import { safeHref } from '@we/design-utils';
 import { InputRule, inputRules } from 'prosemirror-inputrules';
 import type { MarkType, NodeType, Schema } from 'prosemirror-model';
 import type { EditorState, Plugin, Transaction } from 'prosemirror-state';
@@ -50,7 +51,17 @@ function autolinkRule(link: MarkType): InputRule {
     const url = match[1];
     if (!url) return null;
     const urlStart = end - 1 - url.length;
-    const href = url.startsWith('www.') ? `https://${url}` : url;
+    /*
+      Through `safeHref`, exactly as the paste path is.
+
+      This is the third renderer of a stored href in the content layer and it went in raw, which is
+      the same class of gap twice in one package: an autolinked URL becomes a link mark, the mark's
+      `toDOM` builds a live `<a>` in the app origin, and the text was typed by whoever wrote the
+      post. Refused rather than linked — a `javascript:` URL somebody typed is not a link, and
+      leaving the text unlinked is the honest outcome.
+    */
+    const href = safeHref(url.startsWith('www.') ? `https://${url}` : url);
+    if (!href) return null;
     const tr = state.tr.insertText(' ', end, end);
     tr.addMark(urlStart, urlStart + url.length, link.create({ href }));
     tr.removeStoredMark(link);

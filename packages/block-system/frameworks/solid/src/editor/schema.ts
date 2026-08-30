@@ -266,10 +266,14 @@ const marks: Record<string, MarkSpec> = {
       An unsafe href renders as an `<a>` with none — inert, still reading as a link, which is the
       honest rendering of a link that points somewhere it is not allowed to go.
     */
-    toDOM: (mark) => {
-      const href = safeHref(String(mark.attrs.href ?? ''));
-      return ['a', { href, target: '_blank', rel: 'noopener noreferrer' }, 0] as DOMOutputSpec;
-    },
+    // Inline rather than through a local, so the guarantee is visible where the `<a>` is built —
+    // and so the lint rule that exists to catch exactly this shape can see it too.
+    toDOM: (mark) =>
+      [
+        'a',
+        { href: safeHref(String(mark.attrs.href ?? '')), target: '_blank', rel: 'noopener noreferrer' },
+        0,
+      ] as DOMOutputSpec,
   },
   nodeLink: {
     attrs: { node: {} },

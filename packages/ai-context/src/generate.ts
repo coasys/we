@@ -400,6 +400,38 @@ async function main() {
   console.log(`  Written: ${contextDataPath}`);
 
   /*
+    An example teaching a spelling the validator rejects fails the build.
+
+    ## Why this is a check and not a review note
+
+    Four audits have found this class. `CLAUDE.md`'s own rule says "a reference is always written
+    `{ \"$\": \"item.name\" }`; the validator rejects the old string spelling", and the sections
+    beneath it shipped `\"image\": \"$space.avatar\"`, `[\"$channel.name\"]` and a dozen more —
+    documentation contradicting its own rule, in the file every AI-authored template copies from.
+    An assistant following it is rejected and retries, burning continuations on the docs' own
+    pattern.
+
+    A regex over the finished reference rather than over the fragments, so it covers prose, examples
+    and anything a generator interpolates — the three places it actually appeared.
+
+    Matched only in a **value position**: an array element, or the right-hand side of a JSON key.
+    The reference has to be able to name the mistake in order to forbid it — "a plain string in a
+    prop is text too: `"$item.name"` renders those ten characters" is the rule, not a violation of
+    it — and quoting it in a sentence is not a value position, so the two are told apart by where
+    they sit rather than by an exception list.
+  */
+  const oldReferences = [...reference.matchAll(/(?<=[[,]\s*|"\s*:\s*)"(\$[a-z][A-Za-z0-9]*\.[A-Za-z0-9_.$]+)"/g)].map(
+    (m) => m[1],
+  );
+  if (oldReferences.length) {
+    console.error(
+      `  ✗ the generated reference teaches the old string reference, which the validator rejects — ` +
+        `write { "$": "…" } instead:\n     ${[...new Set(oldReferences)].join('\n     ')}`,
+    );
+    process.exitCode = 1;
+  }
+
+  /*
     A member a template can name with nothing saying what it means fails the build.
 
     Last, after everything is written, so a run that fails still leaves the reference regenerated —
