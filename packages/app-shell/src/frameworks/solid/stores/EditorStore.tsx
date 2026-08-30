@@ -156,7 +156,7 @@ export interface EditorStore {
   clearHistory: () => void;
 
   // --- Settings ---
-  setApiKey: (key: string) => void;
+  setApiKey: (key: string) => Promise<boolean>;
 }
 
 const EditorContext = createContext<EditorStore>();
@@ -720,9 +720,11 @@ export function EditorStoreProvider(props: ParentProps) {
   // ----------------------------------------------------------------
   // API key management (persisted to AgentSettings)
   // ----------------------------------------------------------------
-  function setApiKey(key: string) {
+  // Returns the write rather than dropping it, so a schema's `onError`/`onFinally` can fire and a
+  // caller can await. `updateAgentSettings` toasts a failure of its own; this is the other channel.
+  function setApiKey(key: string): Promise<boolean> {
     setApiKeySignal(key);
-    datasetStore.updateAgentSettings({ claudeApiKey: key });
+    return datasetStore.updateAgentSettings({ claudeApiKey: key });
   }
 
   // Load persisted API key when agentSettings become available

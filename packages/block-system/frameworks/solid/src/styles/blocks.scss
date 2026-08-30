@@ -199,6 +199,16 @@
   }
 }
 
+// A composition this build cannot decode. The same treatment as an unknown block, because it is
+// the same statement — something is here and we cannot draw it — one level up.
+.we-unreadable-content {
+  padding: var(--we-space-300);
+  border: 1px dashed var(--we-role-border);
+  border-radius: var(--we-radius-300);
+  color: var(--we-role-text-muted);
+  font-size: var(--we-font-size-200);
+}
+
 // Read-only renderer: highlight blocks on hover via pure CSS
 .we-block-renderer {
   > p:hover,

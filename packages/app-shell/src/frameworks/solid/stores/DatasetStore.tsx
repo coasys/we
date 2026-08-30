@@ -21,6 +21,7 @@ import { provideModuleHostServices } from '@shared/registries/moduleHostServices
 import { moduleRegistry } from '@shared/registries/moduleRegistry';
 import { getSeed } from '@shared/seedRegistry';
 import { datasetKey, type DatasetRef, type EntityManifestEntry } from '@we/backend-shared';
+import { toastService } from '@we/components/solid';
 import { AgentSettings, type DatasetProxy, getEntitiesForPerspective } from '@we/entities';
 import { Accessor, batch, createContext, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
@@ -76,7 +77,11 @@ export interface DatasetStore {
   /** Remove the dataset from the backend and local state. Space-level concerns (e.g. global
    * discovery cleanup) belong to SpaceStore.removeSpace, which calls this. */
   removeDataset: (uuid: string) => Promise<void>;
-  updateAgentSettings: (updates: Partial<AgentSettings>) => Promise<void>;
+  /**
+   * Write a partial update to the agent's settings. Resolves false when it did not land — and says
+   * so with a toast, since most callers are `void`-ed and have no other channel.
+   */
+  updateAgentSettings: (updates: Partial<AgentSettings>) => Promise<boolean>;
   clearCurrentDataset: () => void;
   /** One-time remediation for a space that accumulated duplicate SDNA installs — removes the
    * redundant duplicate link copies. Defaults to the active dataset. Returns a display-ready
@@ -602,14 +607,47 @@ export function DatasetStoreProvider(props: ParentProps) {
     }
   }
 
-  // TODO: could this be done cleaner with the .update() method on the model instead of mutating and saving?
-  async function updateAgentSettings(updates: Partial<AgentSettings>): Promise<void> {
+  /**
+   * Write a partial update to the agent's settings, and say so if it did not land.
+   *
+   * ## Why this one function is worth the ceremony
+   *
+   * Nearly every persisted preference in the app goes through here — the default template and
+   * theme, both sides of the Follow-system pair, the Claude API key, the dataset order, which
+   * modules are installed. Most callers are `void`-ed, so nothing awaited the write and nothing
+   * could have noticed it failing. `Object.assign` had already mutated the in-memory model by then,
+   * so a failed save left the app showing the new value, the perspective holding the old one, and
+   * the two disagreeing until a reload — which is the worst of the three possible outcomes, because
+   * it is the one nobody investigates.
+   *
+   * So: snapshot the fields being changed, apply, save, and put the snapshot back if the save
+   * throws. The toast is the only channel left, given the callers return `void` — but it is the
+   * channel that matters, since the person just flicked a switch and is entitled to know it did not
+   * take. Resolving `false` rather than rethrowing so a caller that *does* await gets an answer
+   * without a caller that does not getting an unhandled rejection.
+   *
+   * (The revert restores only what this call touched. Two updates racing each other would otherwise
+   * have the loser's revert undo the winner's write.)
+   */
+  async function updateAgentSettings(updates: Partial<AgentSettings>): Promise<boolean> {
     const settings = agentSettings();
-    if (!settings) return;
+    if (!settings) return false;
+
+    const keys = Object.keys(updates) as (keyof AgentSettings)[];
+    const before = Object.fromEntries(keys.map((key) => [key, settings[key]])) as Partial<AgentSettings>;
 
     Object.assign(settings, updates);
-    await settings.save();
-    setAgentSettings(settings);
+    try {
+      await settings.save();
+      setAgentSettings(settings);
+      return true;
+    } catch (error) {
+      Object.assign(settings, before);
+      setAgentSettings(settings);
+      console.error('DatasetStore: updateAgentSettings error', error);
+      toastService.error('That setting could not be saved');
+      return false;
+    }
   }
 
   async function trackDataset(ref: DatasetRef): Promise<void> {

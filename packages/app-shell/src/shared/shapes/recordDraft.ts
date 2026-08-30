@@ -205,10 +205,10 @@ function isBlank(value: string | number | boolean): boolean {
 /**
  * The draft as the object `record.create` takes.
  *
- * Blank optional fields are dropped rather than written as empty strings. The ORM skips an empty
- * string on update, so writing one is not merely noise — it is a value that cannot later be
- * cleared, and a record whose `description` is `''` is indistinguishable from one that has never
- * had a description while being harder to change.
+ * Blank optional fields are dropped rather than written as empty strings. `''` now means "clear
+ * this property" (see the AD4M adapter's `clearOnEmpty`), so writing one on a *create* is a link
+ * removal against a record that has nothing to remove — noise rather than the trap it used to be,
+ * and still worth not emitting. Absent and empty read the same on screen; absent is the honest one.
  */
 export function recordDraftFields(draft: RecordDraft): Record<string, unknown> {
   const out: Record<string, unknown> = {};

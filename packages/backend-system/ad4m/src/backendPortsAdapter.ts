@@ -29,6 +29,7 @@ import {
 import { createAd4mDataBindings } from './ad4mAdapter';
 import { createAd4mEphemeralPort } from './ad4mEphemeralAdapter';
 import { createFileExpression, getProfile, publishProfileToPublicPerspective } from './agentHelpers';
+import { installClearOnEmpty } from './clearOnEmpty';
 import { Space } from './entities';
 import { createAd4mInterpretationPort } from './interpretationAdapter';
 import { readInterpretationHints, resetInterpretationHints, writeInterpretationHints } from './interpretationHints';
@@ -119,6 +120,10 @@ export function createAd4mBackendPorts(
   // runtime administration cares so far — see `Ad4mRuntimeOptions.administersNode`.
   options: Ad4mRuntimeOptions = {},
 ): BackendPorts {
+  // `''` clears a property, which is what four separate call sites in WE already assumed and none
+  // of them got. Installed before any model is registered so every class inherits it — generated,
+  // manifest-compiled or built from foreign SHACL. See `clearOnEmpty.ts` for what it repairs.
+  installClearOnEmpty(Ad4mModel);
   // Register the native model classes for name-based $query resolution. Previously a module-load
   // side effect in the shell; it belongs to the backend choice. Use .className (set by @Model)
   // rather than .name — bundlers mangle the native .name in production builds.

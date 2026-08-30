@@ -118,7 +118,7 @@ export interface TemplateStore {
   confirmInstall: () => Promise<void>;
   cancelInstall: () => void;
   toggleInstalled: (templateId: string) => Promise<void>;
-  setDefaultTemplate: (templateId: string) => void;
+  setDefaultTemplate: (templateId: string) => Promise<boolean>;
   saveTemplate: (name: string) => Promise<void>;
   saveTemplateAs: (schema: TemplateSchema, destination?: 'root' | 'space') => Promise<boolean>;
   publishToSpace: (perspectiveUuid: string, spaceName: string) => Promise<boolean>;
@@ -1006,8 +1006,8 @@ export function TemplateStoreProvider(props: ParentProps) {
   }
 
   /** Set a template as the default (loaded on boot) */
-  function setDefaultTemplate(templateId: string): void {
-    datasetStore.updateAgentSettings({ defaultTemplateId: templateId });
+  function setDefaultTemplate(templateId: string): Promise<boolean> {
+    return datasetStore.updateAgentSettings({ defaultTemplateId: templateId });
   }
 
   async function saveTemplate(name: string): Promise<void> {

@@ -147,8 +147,8 @@ describe('saving a draft', () => {
   });
 
   it('drops a blank optional rather than writing an empty string', () => {
-    // The ORM skips an empty string on update, so a written `''` is a value that cannot later be
-    // cleared — worse than absent, and indistinguishable from it on screen.
+    // `''` means "clear this property", so writing one on a create is a removal against nothing.
+    // Absent and empty read the same on screen; absent is the honest one.
     const draft = emptyRecordDraft({ entity: 'TaskBlock', schema: task, authorable: false });
     draft.fields[0].value = 'Ship the docs';
 
