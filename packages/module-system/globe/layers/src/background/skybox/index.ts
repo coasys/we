@@ -29,7 +29,7 @@ export interface SkyboxLayerOptions {
   /**
    * Where the skybox textures are served from.
    *
-   * The default names a **pinned tag**, not a branch. It used to be `@dev`, which jsDelivr resolves
+   * The default names a **pinned commit**, not a branch. It used to be `@dev`, which jsDelivr resolves
    * afresh: every deployment of WE that has ever shipped was fetching six textures from whatever the
    * tip of a development branch happened to be that morning, with no integrity check and no way to
    * notice a change. A commit landing on `dev` altered what every installed copy of the globe
@@ -53,13 +53,24 @@ export interface SkyboxLayerOptions {
  * Supports multiple texture sets and custom textures.
  */
 /**
- * The pinned skybox asset base. See `SkyboxLayerOptions.cdnBaseUrl` for why it is a tag.
+ * The pinned skybox asset base. See `SkyboxLayerOptions.cdnBaseUrl` for why it is pinned at all.
  *
- * jsDelivr serves a tag immutably and a branch mutably, so this is the difference between "the
- * textures this release was built against" and "whatever is on `dev` right now".
+ * A **commit SHA**, not a tag, because this repository publishes no release tags — an earlier
+ * attempt at this pinned `@v0.1.0`, which does not exist, and every globe rendered a 404 instead of
+ * a sky. jsDelivr resolves a SHA immutably and a branch afresh on every request, which is the whole
+ * distinction being drawn here.
+ *
+ * **Verify the URL before changing this line.** It is a string that typechecks whatever it says, and
+ * nothing in the build or the test suite fetches it:
+ *
+ *     curl -o /dev/null -w '%{http_code}' \
+ *       "https://cdn.jsdelivr.net/gh/coasys/we@<sha>/packages/module-system/globe/layers/src/background/skybox/assets/tycho2-1k/nx.jpg"
+ *
+ * Move it forward in the same commit that changes the textures, and switch it to a release tag once
+ * there is one — a tag is the same immutability and says more to a reader.
  */
 export const SKYBOX_CDN_BASE =
-  'https://cdn.jsdelivr.net/gh/coasys/we@v0.1.0/packages/module-system/globe/layers/src/background/skybox/assets';
+  'https://cdn.jsdelivr.net/gh/coasys/we@2e624fafd56762e9c8bbce119f9ac2877124bc0a/packages/module-system/globe/layers/src/background/skybox/assets';
 
 export const skyboxLayer: LayerFactory<SkyboxLayerOptions> = (options?: SkyboxLayerOptions) => ({
   name: 'skybox',
