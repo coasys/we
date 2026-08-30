@@ -45,6 +45,32 @@ import type { RouteSchema, SchemaNode, TemplateSchema } from './types';
 export const VIEWS_MARKER = '$views';
 
 /**
+ * Where every space template lives, and the one place this literal is written.
+ *
+ * The URL is what answers "which space am I in" — `SpaceStore`'s dataset effect reads
+ * `segments[0] === 'space'` and does nothing otherwise — so a template mounted anywhere else has no
+ * space at all, whatever its content assumes. That is a property of the prefix and not of routing
+ * your own screens, which is why the host supplies it to every template rather than each one
+ * remembering: a template declaring it (the marker kind) matches this, and one that does not is
+ * wrapped in it.
+ *
+ * Four places spelled this by hand before — this route, `spacePath`, `navigateToSpace` and
+ * `switchTemplate` — which is the shape `RECORD_ROUTE_PATH`'s note records going wrong: two strings
+ * that must agree, a typechecker that sees only strings, and a mismatch whose sole symptom is a
+ * catch-all that says nothing about why.
+ */
+export const SPACE_ROUTE_PATH = '/space/:spaceId';
+
+/**
+ * How many segments that prefix occupies — what a relative link inside a space resolves against.
+ *
+ * Derived rather than written, so it cannot drift from the path above. Read by `TemplateLayout` to
+ * give a template's own chrome a base to navigate from: chrome renders outside the router, so it
+ * has no route of its own to take a depth from, and a self-routing template's nav strip is chrome.
+ */
+export const SPACE_ROUTE_DEPTH = SPACE_ROUTE_PATH.split('/').filter(Boolean).length;
+
+/**
  * A section, resolved: which view template renders, and at which segment.
  *
  * The pairing is the point — `segment` comes from the space's section list rather than from the

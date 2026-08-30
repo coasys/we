@@ -4,6 +4,26 @@
  * Provides an isolated RouteStore for the shell overlay (profile, settings, schema-tests,
  * landing-page). Uses a <MemoryRouter> so shell navigation never touches the browser URL.
  *
+ * ## Why a separate router at all — a trust boundary, not a convenience
+ *
+ * Templates declare their own route tables, and templates install from strangers. `templateAcceptance`
+ * vets structure and the store members a template may name; it does not inspect paths. So a template
+ * sharing the browser Router's coordinate space could declare `/settings` and render whatever it
+ * liked there. Out here that is not expressible.
+ *
+ * The quieter version of the same point: a surface you use to *fix* a bad template must not be
+ * rendered by that template's route table. Settings has to look the same whichever template is
+ * loaded, including a broken one, including one mid-install.
+ *
+ * Keeping the space mounted underneath is the other reason and the one usually given first, but it
+ * is the weaker of the two — a cost people talk themselves out of, where a boundary is not. Both are
+ * real: the overlay paints over a template that stays mounted, so a running call, a scroll position
+ * and a half-typed draft all survive somebody opening their settings.
+ *
+ * The costs are accepted rather than overlooked: Back does not close an overlay and a reload does
+ * not reopen it. See `docs/architecture/routing-and-view-state.md` for the shape a shareable
+ * settings link would take if one is ever wanted — it is not a URL for this state.
+ *
  * Mirrors the pattern of RouteStoreProvider + <Router> used by the main template system:
  * - ShellRouteStoreProvider creates the store signals and context
  * - ShellRouterRoot is mounted as the <MemoryRouter> root prop and calls
@@ -90,6 +110,12 @@ export function ShellRouteStoreProvider(props: ParentProps) {
   const store: ShellRouteStore = {
     currentPath,
     segments,
+    /*
+      The same thing as `segments` here, because the overlay has no space prefix to sit below — its
+      paths are its own from the first segment. Present so an overlay schema and a template schema
+      can be written the same way, rather than because there is anything to strip.
+    */
+    templateSegments: segments,
     params,
     setNavigateFunction: provideNavigate,
     setCurrentPath,

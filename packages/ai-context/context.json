@@ -6088,6 +6088,9 @@
         "segments": {
           "type": "array"
         },
+        "templateSegments": {
+          "type": "array"
+        },
         "params": {
           "type": "object"
         }

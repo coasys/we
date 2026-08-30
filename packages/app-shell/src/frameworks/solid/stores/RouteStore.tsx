@@ -1,4 +1,5 @@
 import { useNavigate } from '@solidjs/router';
+import { SPACE_ROUTE_DEPTH } from '@we/schema-shared';
 import { Accessor, createContext, createMemo, createSignal, onCleanup, ParentProps, useContext } from 'solid-js';
 
 type NavigateFunction = ReturnType<typeof useNavigate>;
@@ -7,6 +8,22 @@ export interface RouteStore {
   // State
   currentPath: Accessor<string>;
   segments: Accessor<string[]>;
+  /**
+   * The segments below the space prefix — a template's own coordinate space.
+   *
+   * `segments` is the whole URL, so anything reading it by index is pinned to where the host happens
+   * to mount things. That was fine while a self-routing template sat at the top level and its
+   * `/photo/:postId` made `segments[1]` the id; once every template moved under `/space/:spaceId`
+   * the same index became the space, and four templates would have silently read the wrong value —
+   * a query for a post whose id is a space.
+   *
+   * Reading positions relative to the template's own root fixes that once rather than per move:
+   * these indices are the same numbers they always were, and the only thing that has to change if
+   * the prefix ever changes again is `SPACE_ROUTE_DEPTH`.
+   *
+   * Outside a space this is the whole path, so a template rendered without one is unaffected.
+   */
+  templateSegments: Accessor<string[]>;
   /**
    * The URL's query parameters, reactive. Read from schemas as
    * `{ $: 'routeStore.params.<name>' }` — view state that belongs in the
@@ -67,6 +84,10 @@ export function RouteStoreProvider(props: ParentProps) {
   }
   const [params, setParamsSignal] = createSignal<Record<string, string>>(readParams());
   const segments = createMemo(() => currentPath().split('/').filter(Boolean));
+  const templateSegments = createMemo(() => {
+    const all = segments();
+    return all[0] === 'space' ? all.slice(SPACE_ROUTE_DEPTH) : all;
+  });
 
   /**
    * Last-seen query string per pathname, restored by navigate(). Keep-alive
@@ -145,6 +166,7 @@ export function RouteStoreProvider(props: ParentProps) {
     // State
     currentPath,
     segments,
+    templateSegments,
     params,
 
     // Setters

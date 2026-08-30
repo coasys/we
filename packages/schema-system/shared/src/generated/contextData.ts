@@ -2342,7 +2342,12 @@ export const contextData: ContextData = {
     },
     {
       name: 'routeStore',
-      state: { currentPath: { type: 'string' }, segments: { type: 'array' }, params: { type: 'object' } },
+      state: {
+        currentPath: { type: 'string' },
+        segments: { type: 'array' },
+        templateSegments: { type: 'array' },
+        params: { type: 'object' },
+      },
       actions: ['navigate', 'setParam', 'back'],
     },
     {
