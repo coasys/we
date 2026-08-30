@@ -149,82 +149,84 @@ export default function TemplateProvider() {
 
   // The same capability schemas get as `record.create`, lent to module stores that must write
   // without a click to hang a schema action on — a transcript appears because somebody spoke.
-  provideModuleHostServices({
-    // Only the host can turn a URI a module named into a handle. See `targeted` in
-    // `moduleHostServices.ts` for why a name it cannot resolve refuses instead of falling back.
-    datasetByUri: (uri) => datasetStore.datasets().find((d) => d.sharedUri === uri || d.id === uri)?.handle,
-    // `options` is forwarded rather than swallowed so a module can parent its write — a transcript
-    // block belongs inside the call that contains it, and creating it unparented then linking it
-    // afterwards leaves a window where a crash orphans the block into the space.
-    /*
-      `options.dataset` names where, and an unresolvable name refuses.
+  onCleanup(
+    provideModuleHostServices({
+      // Only the host can turn a URI a module named into a handle. See `targeted` in
+      // `moduleHostServices.ts` for why a name it cannot resolve refuses instead of falling back.
+      datasetByUri: (uri) => datasetStore.datasets().find((d) => d.sharedUri === uri || d.id === uri)?.handle,
+      // `options` is forwarded rather than swallowed so a module can parent its write — a transcript
+      // block belongs inside the call that contains it, and creating it unparented then linking it
+      // afterwards leaves a window where a crash orphans the block into the space.
+      /*
+        `options.dataset` names where, and an unresolvable name refuses.
 
-      Passing no perspective used to mean `resolve()` fell through to `datasetStore.currentDataset()`
-      — the space *on screen* — which is right for a write caused by the person looking at it and
-      wrong for every module whose work outlives the view. #161 made a call survive navigation, and
-      transcribe kept writing utterances into whichever space had been opened since. See
-      `DatasetTarget`.
-    */
-    createEntity: async (entity, fields, options) => {
-      const perspective = moduleTarget(options?.dataset);
-      if (!perspective) return null;
-      const rest = Object.fromEntries(Object.entries(options ?? {}).filter(([key]) => key !== 'dataset'));
-      const created = (await createInDataset(entity, fields, perspective, rest)) as { id?: string } | undefined;
-      return created?.id ?? null;
-    },
-
-    /*
-      This agent's own records, in the root dataset — the write half of `entities: { scope: 'agent' }`.
-
-      Everything goes through `recordActions` with the root perspective named, so there is one place
-      that knows how a perspective path is resolved and an agent-scoped module cannot reach a space
-      by accident: the path is fixed here rather than passed in.
-    */
-    agentData: {
-      ready: () => !!datasetStore.rootDataset(),
-      create: async (entity, fields, options) => {
-        if (!datasetStore.rootDataset()) return null;
-        const created = (await recordActions.create(entity, fields, {
-          ...options,
-          perspective: ROOT_PERSPECTIVE,
-        })) as { id?: string } | undefined;
+        Passing no perspective used to mean `resolve()` fell through to `datasetStore.currentDataset()`
+        — the space *on screen* — which is right for a write caused by the person looking at it and
+        wrong for every module whose work outlives the view. #161 made a call survive navigation, and
+        transcribe kept writing utterances into whichever space had been opened since. See
+        `DatasetTarget`.
+      */
+      createEntity: async (entity, fields, options) => {
+        const perspective = moduleTarget(options?.dataset);
+        if (!perspective) return null;
+        const rest = Object.fromEntries(Object.entries(options ?? {}).filter(([key]) => key !== 'dataset'));
+        const created = (await createInDataset(entity, fields, perspective, rest)) as { id?: string } | undefined;
         return created?.id ?? null;
       },
-      find: async (entity, query) => {
-        if (!datasetStore.rootDataset()) return [];
-        const [Model, p] = resolve(entity, { perspective: ROOT_PERSPECTIVE });
-        const rows = (await Model.findAll(p, query as never)) as unknown as Record<string, unknown>[];
-        return rows ?? [];
-      },
-      update: async (entity, id, fields) => {
-        if (!datasetStore.rootDataset()) return;
-        await recordActions.update(entity, id, fields, { perspective: ROOT_PERSPECTIVE });
-      },
-      remove: async (entity, id) => {
-        if (!datasetStore.rootDataset()) return;
-        await recordActions.delete(entity, id, { perspective: ROOT_PERSPECTIVE });
-      },
-    },
 
-    // Add-one on a to-many relation. An instance bound to an existing base expression is enough —
-    // `addRelationValue` writes a single link and never reads the current set, which is what makes
-    // several agents appending to the same list safe without coordination.
-    linkEntity: async (entity, id, relation, value, options) => {
-      const p = moduleTarget(options?.dataset);
-      if (!p) return;
-      const Model = getEntity(entity);
-      const instance = new (Model as unknown as new (perspective: unknown, base: string) => Record<string, unknown>)(
-        p,
-        id,
-      );
-      const add = instance[`add${relation.charAt(0).toUpperCase()}${relation.slice(1)}`];
-      if (typeof add !== 'function') {
-        console.warn(`linkEntity: ${entity} has no to-many relation "${relation}"`);
-        return;
-      }
-      await (add as (v: string) => Promise<void>).call(instance, value);
-    },
-  });
+      /*
+        This agent's own records, in the root dataset — the write half of `entities: { scope: 'agent' }`.
+
+        Everything goes through `recordActions` with the root perspective named, so there is one place
+        that knows how a perspective path is resolved and an agent-scoped module cannot reach a space
+        by accident: the path is fixed here rather than passed in.
+      */
+      agentData: {
+        ready: () => !!datasetStore.rootDataset(),
+        create: async (entity, fields, options) => {
+          if (!datasetStore.rootDataset()) return null;
+          const created = (await recordActions.create(entity, fields, {
+            ...options,
+            perspective: ROOT_PERSPECTIVE,
+          })) as { id?: string } | undefined;
+          return created?.id ?? null;
+        },
+        find: async (entity, query) => {
+          if (!datasetStore.rootDataset()) return [];
+          const [Model, p] = resolve(entity, { perspective: ROOT_PERSPECTIVE });
+          const rows = (await Model.findAll(p, query as never)) as unknown as Record<string, unknown>[];
+          return rows ?? [];
+        },
+        update: async (entity, id, fields) => {
+          if (!datasetStore.rootDataset()) return;
+          await recordActions.update(entity, id, fields, { perspective: ROOT_PERSPECTIVE });
+        },
+        remove: async (entity, id) => {
+          if (!datasetStore.rootDataset()) return;
+          await recordActions.delete(entity, id, { perspective: ROOT_PERSPECTIVE });
+        },
+      },
+
+      // Add-one on a to-many relation. An instance bound to an existing base expression is enough —
+      // `addRelationValue` writes a single link and never reads the current set, which is what makes
+      // several agents appending to the same list safe without coordination.
+      linkEntity: async (entity, id, relation, value, options) => {
+        const p = moduleTarget(options?.dataset);
+        if (!p) return;
+        const Model = getEntity(entity);
+        const instance = new (Model as unknown as new (perspective: unknown, base: string) => Record<string, unknown>)(
+          p,
+          id,
+        );
+        const add = instance[`add${relation.charAt(0).toUpperCase()}${relation.slice(1)}`];
+        if (typeof add !== 'function') {
+          console.warn(`linkEntity: ${entity} has no to-many relation "${relation}"`);
+          return;
+        }
+        await (add as (v: string) => Promise<void>).call(instance, value);
+      },
+    }),
+  );
 
   const stores: Stores = {
     sessionStore,

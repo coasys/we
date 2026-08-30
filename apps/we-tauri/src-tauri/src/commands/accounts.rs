@@ -112,7 +112,9 @@ pub async fn choose_file(
 
     // A path outside the local filesystem cannot be handed to the executor, and on desktop there is
     // no such thing — `into_path` fails only for the mobile content-URI case.
-    Ok(picked.and_then(|p| p.into_path().ok()).map(|p| p.to_string_lossy().to_string()))
+    Ok(picked
+        .and_then(|p| p.into_path().ok())
+        .map(|p| p.to_string_lossy().to_string()))
 }
 
 /// Start the executor over so written settings take effect.

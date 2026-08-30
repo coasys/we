@@ -411,6 +411,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
 
     // ── signals ──
     createSignalType: action('signals'),
+    deleteSignalType: destructive('signals'),
     // The vocabulary of connections, alongside the vocabulary of reactions — same tier, same act:
     // a community naming what it means by something.
     createRelationshipType: action('signals'),
@@ -431,6 +432,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     navigateToSpace: action('navigation'),
     openRecordRef: action('navigation'),
     canAdministerSpace: action('navigation'),
+    canAdministerCurrentSpace: state('navigation'),
     copyShareLink: action('navigation'),
     copyGuestLink: action('navigation'),
     activeModules: state('navigation'),

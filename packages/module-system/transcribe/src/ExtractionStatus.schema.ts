@@ -15,8 +15,8 @@
  * ## What it shows to whom
  *
  * Everyone sees every row: who is extracting, what phase, how long. That is deliberate and it is
- * what the host's relay exists to make possible — the peer running a pass is chosen by an election,
- * so which member holds the detailed view is otherwise decided by a coin flip.
+ * what the host's relay exists to make possible — a pass runs on whichever member's machine happened
+ * to start it, so which member holds the detailed view is otherwise decided by who pressed first.
  *
  * What only the runner has is the model exchange, because only their machine produced it. So the
  * disclosure is offered to everyone and *disabled* with a reason for a pass that is not theirs,

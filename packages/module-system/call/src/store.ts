@@ -19,6 +19,7 @@
  */
 import type { MediaSettings } from '@we/module-shared';
 import type { Focus, ModuleStoreDeps, Peer } from '@we/module-shared';
+import type { EphemeralScope } from '@we/module-shared';
 import { activitiesOfType } from '@we/module-shared';
 import { planEphemeral } from '@we/module-shared';
 
@@ -561,6 +562,46 @@ export function createCallStore(deps: CallStoreDeps) {
    * A failure to create is a refusal to start, not a call without a record: half a call is worse
    * than an error, because the transcript would silently go nowhere.
    */
+  /**
+   * Open the transport a call would run on, or say why it cannot.
+   *
+   * Every refusal `join` makes that is knowable without a call id: a signed-in agent, a transport, a
+   * shared space, and a capability profile that can carry unicast. Answers with the *scope* rather
+   * than a verdict, and the caller hands it back to `join` — asking the question requires opening
+   * one, and opening a second would be a reference to account for on every path through both.
+   */
+  function openCallScope(): { scope: EphemeralScope } | { reason: string } {
+    const handle = dataset?.() ?? null;
+    const me = selfId?.() ?? null;
+    if (!handle || !me) return { reason: 'A call needs a space and a signed-in agent.' };
+    if (!ephemeral || !presence) return { reason: 'This host has no transport for calls.' };
+
+    const scope = ephemeral(handle);
+    // A personal space has no neighbourhood — there is nobody to call. Say so rather than
+    // presenting controls that will never connect.
+    if (!scope) return { reason: 'Calls need a shared space. This one is personal.' };
+
+    /*
+      Refuse loudly rather than half-working, the same discipline as `planQuery`. A transport with
+      `unicast: 'none'` would deliver every offer to everyone, and each bystander would negotiate a
+      connection nobody asked for.
+
+      `confidential` is deliberately *not* requested. It would be the honest flag — an SDP offer
+      names your host candidates — but demanding native unicast would refuse to run on AD4M, whose
+      addressing is emulated. The trade is stated rather than hidden: on an emulated transport,
+      everyone in the space can see the handshake, and the media itself is still DTLS-encrypted
+      end-to-end regardless.
+    */
+    const plan = planEphemeral({ consumer: 'call', unicast: 'emulated' }, scope.capabilities);
+    if (plan.runnable) return { scope };
+
+    // Released, not abandoned. This used to be assigned to `scopeHandle` the moment it was opened
+    // and every refusal below returned without disposing, so a join against a transport that cannot
+    // carry a call leaked one reference on the backend's scope, once per attempt.
+    scope.dispose();
+    return { reason: plan.gaps.map((gap) => gap.note).join(' ') };
+  }
+
   async function startCall(anchorNodeId?: string) {
     const uri = datasetUri?.() ?? null;
     if (!uri) {
@@ -572,6 +613,27 @@ export function createCallStore(deps: CallStoreDeps) {
       return;
     }
     setProblem(null);
+
+    /*
+      Everything `join` would refuse for, asked *before* anything is written.
+
+      The record used to be created first and `join` called afterwards, so every failed start left a
+      `CollectionBlock` in the space for a call that never happened — one per press, all of them
+      `kind: 'call'`, all of them showing up wherever calls are listed, with no participants and no
+      transcript and no way to tell them from a real call nobody spoke in. On a personal space,
+      where a call can never work, pressing the button was purely a way to litter.
+
+      Duplicated rather than shared with `join` because `join` is also reached from the roster — a
+      peer's call already exists, so its refusals have nothing to undo and it stays the one place
+      that owns the message. Here the question is only "is it worth writing a record", and the
+      answer must be reached without writing one.
+    */
+    const opened = openCallScope();
+    if ('reason' in opened) {
+      setProblem(opened.reason);
+      return;
+    }
+
     let recordId: string | null = null;
     try {
       recordId = await createEntity(
@@ -585,14 +647,28 @@ export function createCallStore(deps: CallStoreDeps) {
       console.error('call: could not create the call record', cause);
     }
     if (!recordId) {
+      // The transport was opened to answer the question above; nothing is going to use it now.
+      opened.scope.dispose();
       setProblem('Could not start the call.');
       return;
     }
-    await join(recordCallId(recordId), anchorNodeId ? { datasetUri: uri, nodeId: anchorNodeId } : undefined, recordId);
+    await join(
+      recordCallId(recordId),
+      anchorNodeId ? { datasetUri: uri, nodeId: anchorNodeId } : undefined,
+      recordId,
+      opened.scope,
+    );
   }
 
-  async function join(id: string, joinAnchor?: Focus, recordId?: string) {
-    if (callId() === id) return;
+  /**
+   * `preopened` is the scope `startCall` already opened to decide whether to write a record at all.
+   * Passed through rather than opened again, so one join is one reference however it was reached.
+   */
+  async function join(id: string, joinAnchor?: Focus, recordId?: string, preopened?: EphemeralScope) {
+    if (callId() === id) {
+      preopened?.dispose();
+      return;
+    }
     // One call at a time, and this is where that is decided: joining a second tears the first down
     // rather than running both. Everything below assumes a single mesh, a single scope and a single
     // set of local tracks, and the stage has one spotlight.
@@ -600,9 +676,7 @@ export function createCallStore(deps: CallStoreDeps) {
 
     setProblem(null);
 
-    const handle = dataset?.() ?? null;
     const uri = datasetUri?.() ?? null;
-    const me = selfId?.() ?? null;
 
     /*
       A call always says which space it is in, even when it is not *about* anything in particular.
@@ -621,39 +695,25 @@ export function createCallStore(deps: CallStoreDeps) {
     // is one whose starter has left and whose record nobody republished, which the roster cannot
     // happen while anyone is in it.
     callRecord = recordId ?? liveCalls().find((call) => call.id === id)?.recordId ?? null;
-    if (!handle || !me) {
+
+    // Every refusal lives in `openCallScope`, so joining from the roster and starting a call check
+    // exactly the same things and say exactly the same words.
+    const opened = preopened ? { scope: preopened } : openCallScope();
+    if ('reason' in opened) {
+      setProblem(opened.reason);
+      return;
+    }
+    const scope = opened.scope;
+    // `openCallScope` already refused an absent identity; re-read for the type rather than
+    // asserting, so a sign-out racing the join still ends here rather than half way in.
+    const me = selfId?.() ?? null;
+    if (!me) {
+      scope.dispose();
       setProblem('A call needs a space and a signed-in agent.');
       return;
     }
-    if (!ephemeral || !presence) {
-      setProblem('This host has no transport for calls.');
-      return;
-    }
 
-    const scope = ephemeral(handle);
     scopeHandle = scope;
-    if (!scope) {
-      // A personal space has no neighbourhood — there is nobody to call. Say so rather than
-      // presenting controls that will never connect.
-      setProblem('Calls need a shared space. This one is personal.');
-      return;
-    }
-
-    // Refuse loudly rather than half-working, the same discipline as `planQuery`. A transport with
-    // `unicast: 'none'` would deliver every offer to everyone, and each bystander would negotiate a
-    // connection nobody asked for.
-    //
-    // `confidential` is deliberately *not* requested. It would be the honest flag — an SDP offer
-    // names your host candidates — but demanding native unicast would refuse to run on AD4M, whose
-    // addressing is emulated. The trade is stated rather than hidden: on an emulated transport,
-    // everyone in the space can see the handshake, and the media itself is still DTLS-encrypted
-    // end-to-end regardless.
-    const plan = planEphemeral({ consumer: 'call', unicast: 'emulated' }, scope.capabilities);
-    if (!plan.runnable) {
-      setProblem(plan.gaps.map((gap) => gap.note).join(' '));
-      return;
-    }
-
     setCallId(id);
     /*
       Starting a call shows the call.

@@ -20,6 +20,7 @@
  *    EventBlock) and space shapes alike, through `SchemaPort.interpretationHints` — with the
  *    customized/reset lifecycle that decides whether release improvements still flow.
  */
+import { hostSlot } from '@shared/hostSlot';
 import { type EntityManifest, extractableEntities, manifestEntries, validateManifest } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import { asFileField, decodeFileAsJson, encodeJsonFileData, Shape } from '@we/entities';
@@ -31,6 +32,7 @@ import {
   createEffect,
   createMemo,
   createSignal,
+  onCleanup,
   ParentProps,
   useContext,
 } from 'solid-js';
@@ -191,7 +193,7 @@ export interface ShapeStore {
    * arrives already marked extractable — copied, forked, synced from a peer — becomes a *candidate*
    * this space can switch on, not a target that starts writing into it unasked.
    */
-  provideExtractionEnroller: (enrol: (entity: string) => Promise<void>) => void;
+  provideExtractionEnroller: (enrol: (entity: string) => Promise<void>) => () => void;
 
   // Actions — wizard
   /** Open the wizard: empty for a new model, or pre-filled from a stored shape's definition. */
@@ -384,10 +386,7 @@ export function ShapeStoreProvider(props: ParentProps) {
     Filled in by SpaceStore, which owns the `Space` record and mounts below this store — see
     `provideExtractionEnroller`. Unset until it does, and a save before then simply does not enrol.
   */
-  let enrolExtractionTarget: ((entity: string) => Promise<void>) | null = null;
-  const provideExtractionEnroller = (enrol: (entity: string) => Promise<void>) => {
-    enrolExtractionTarget = enrol;
-  };
+  const extractionEnroller = hostSlot<(entity: string) => Promise<void>>();
 
   const schemas = () => session.backendPorts()?.schemas;
   const handle = () => datasetStore.currentDataset()?.handle;
@@ -436,7 +435,7 @@ export function ShapeStoreProvider(props: ParentProps) {
     the provider tree, so it cannot read a shape. The accessor rather than the value, so it follows
     a community defining a model without anything re-registering.
   */
-  datasetStore.provideExtractionCandidates(extractionCandidates);
+  onCleanup(datasetStore.provideExtractionCandidates(extractionCandidates));
 
   /**
    * What a relationship may point at here, grouped by where it comes from and labelled for the
@@ -1040,7 +1039,7 @@ export function ShapeStoreProvider(props: ParentProps) {
       */
       if (draft.extractable) {
         try {
-          await enrolExtractionTarget?.(entityName);
+          await extractionEnroller.get()?.(entityName);
         } catch (err) {
           console.warn('ShapeStore: could not add the new model to this space’s extraction targets', err);
         }
@@ -1214,7 +1213,7 @@ export function ShapeStoreProvider(props: ParentProps) {
     generating,
     hintEntities,
     extractionCandidates,
-    provideExtractionEnroller,
+    provideExtractionEnroller: extractionEnroller.provide,
     relationshipTargets,
     identityOptions,
     hintEditor,

@@ -23,9 +23,19 @@ export function BootController() {
   const spaceStore = useSpaceStore();
   const routeStore = useRouteStore();
 
-  // Capture the URL the user landed on before any boot-time navigation.
-  // Used to restore deep links after auth completes (e.g. refresh on /space/uuid/flux).
-  const initialPath = window.location.pathname;
+  /*
+    The URL the user landed on, captured before any boot-time navigation and spent once.
+
+    Held as a `let` and cleared on use, because this handler runs on *every* unlock rather than only
+    the first. Signing out and back in within one session re-ran it against the path the app was
+    opened at half an hour earlier — so coming back landed you wherever you started, quite possibly
+    a space you have since left, rather than where you were. Once it has been spent, the second
+    unlock reads the location as it is now, which is the honest answer.
+
+    The search string travels with it: a deep link is routinely `?type=posts&sort=new`, and
+    restoring only the pathname put somebody back on the page they linked to with every filter reset.
+  */
+  let pendingDeepLink: string | null = window.location.pathname + window.location.search;
 
   // Read the guest target before any async work — the entry point sets it synchronously, and
   // reading it removes it, so a remount cannot join a second time.
@@ -74,7 +84,9 @@ export function BootController() {
     }
 
     // Restore the original URL (e.g. a deep link opened via refresh), falling back to '/'
-    routeStore.navigate(initialPath || '/');
+    const target = pendingDeepLink ?? window.location.pathname + window.location.search;
+    pendingDeepLink = null;
+    routeStore.navigate(target || '/');
   });
 
   return null;

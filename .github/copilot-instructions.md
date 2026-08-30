@@ -1378,7 +1378,7 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
   - limit: number — Rows per type. Default 200.
   - Example: `{ "source": "board", "options": { "board": { "$": "local.boardId" } } }`
 - `dataset` — Seeds a single node for the current space — the starting point for exploring outward.
-  - label: string
+  - label: string — What the node is called. Defaults to the space name.
   - Example: `{ "source": "dataset", "options": { "label": "This space" } }`
 
 **expander**
@@ -1408,15 +1408,15 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
   - collide: number — Minimum spacing. Default 28.
   - Example: `{ "type": "force", "options": { "distance": 140 } }`
 - `tree` — Layered hierarchy from the graph roots. The right choice for containment and org charts.
-  - direction: "down" | "right"
-  - levelGap: number
-  - siblingGap: number
+  - direction: "down" | "right" — Which way the tree grows from its roots. Default "down".
+  - levelGap: number — Distance between one rank and the next.
+  - siblingGap: number — Distance between neighbours on the same rank.
   - Example: `{ "type": "tree", "options": { "direction": "right", "levelGap": 200 } }`
 - `radial` — Concentric rings by hop distance from the roots — reads as distance from a centre.
-  - ringGap: number
+  - ringGap: number — Distance between one ring and the next.
   - Example: `{ "type": "radial" }`
 - `grid` — Uniform grid, optionally ordered by a node data field. Honest default when edges say little.
-  - columns: number
+  - columns: number — How many columns. Derived from the node count when omitted.
   - sortBy: string — Node data field to order by.
   - Example: `{ "type": "grid", "options": { "columns": 6, "sortBy": "name" } }`
 - `manual` — Positions come from the nodes themselves — a board, where position is the data being edited rather than something derived. Pair with drag-node and persist via onNodeDragEnd.
@@ -1479,9 +1479,11 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
 - `canvas-double-click` — Double-click empty canvas to emit onCanvasDoubleClick with the world point. Writes nothing — what gets made there is the template's decision. List it BEFORE pan-zoom, which is the background fallback. Claims only the background, so it composes with expand-on-double-click: a double-click on a node opens it, one beside a node creates.
   - Example: `"behaviours": ["canvas-double-click", "pan-zoom", "select", { "type": "drag-node", "options": { "pin": true } }]`
 - `expand-on-double-click` — Double-click a node to expand it. The usual gesture on a map you also want to select on.
-  - direction: "in" | "out" | "both"
+  - direction: "in" | "out" | "both" — Which way relations are followed when the node opens. Default "both".
+  - Example: `{ "type": "expand-on-double-click", "options": { "direction": "out" } }`
 - `expand-on-click` — Single click expands — for maps meant purely for exploring, where selection is not needed.
-  - direction: "in" | "out" | "both"
+  - direction: "in" | "out" | "both" — Which way relations are followed when the node opens. Default "both".
+  - Example: `{ "type": "expand-on-click", "options": { "direction": "out" } }`
 
 ---
 
@@ -2594,6 +2596,7 @@ SpaceStore:
   - autoInterpret: boolean — whether this space has calls interpreted (extracted into records) as they happen. A community decision, off by default. Readable by every member; writing it is space-settings
   - shareExtractionDetail: boolean — whether extraction passes in this space broadcast their prompt and response to every member, so interpretationStore.activity rows carry detail for everyone. A community decision, off by default
   - extractionTargets: string[] — the models a call in this space starts out extracting. The middle of three layers: shapeStore.extractionCandidates says what COULD be extracted, this says which of them a call begins with, and the call's own participants add or remove from there (modules.transcribe.extractionTargets). Unset falls back to the two classes that were hardcoded before the setting existed, so no space silently stops extracting. Writing it is space-settings
+  - canAdministerCurrentSpace: boolean — whether this agent may change what every member of the space on screen sees. The readable form of canAdministerSpace, which an expression cannot call. Gate an admin-only control on this rather than on `x.author == me.did`, which asks who made the row and not who runs the space
 - Actions:
   - createSpace(name, description, access: 'personal' | 'shared', discovery: 'hidden' | 'listed', avatarFile?, coverImageFile?, location?): creates a new space with full setup
   - joinSpace(id: string, focus = true): joins a shared space by share link, neighbourhood URL or CID, or focuses it if already joined. Pass focus: false to join without navigating there — for a caller that needs the dataset present rather than open, which is how the marketplace reads its own dataset without moving you out of the space you are in. Rejects when the join could not be completed, so onSuccess means what it says; watch joiningSpace/joinSlow/joinError for what to show while it runs. A join whose network call times out keeps going: the backend usually finishes anyway, and this waits for that before believing the failure
@@ -2627,6 +2630,7 @@ SpaceStore:
   - launchModule(moduleId: string): invokes that module's declared launcher action. Takes an id rather than a path because $action resolves a literal string, so a rail iterating over modules cannot build modules.<id>.<method> itself
   - createSignalType(config: Partial<SignalType>): creates a new signal type in the community; slug auto-derived from name if blank
   - createRelationshipType(config: Partial<RelationshipType>): names a kind of connection this community makes — "contradicts", "came out of". The counterpart to createSignalType; slug derived from name if blank
+  - deleteSignalType(signalTypeId: string): deletes a signal type AND every signal cast with it. Use this rather than record.delete on a SignalType — a signal carries its type as a scalar id rather than a relation, so deleting the type alone leaves every reaction ever given in the space, counted by nothing and rendered by nothing
   - upsertSignal(nodeId: string, signalTypeId: string, value: number): adds or updates a signal on a node; value=0 deletes it
   - navigateToSpace(spaceId: string, view?: string): navigates to a space — accepts a perspective UUID or a neighbourhood CID (sharedUrl without the neighbourhood:// prefix); pre-loads space templates before switching so the template and data arrive together
   - openRecordRef(ref: string): goes to whatever a record reference names — the space, and the record's own page within it. Takes the whole `we:…` reference rather than its parts, so nothing outside the host restates where a record's page lives. A reference naming only a dataset opens the space; a relative one (`we:./…`) resolves against the space on screen; a person has no page, so nothing happens

@@ -97,10 +97,28 @@ export interface ProposalView {
 const SUMMARY_FIELDS = ['title', 'text', 'name', 'startDate', 'dueDate', 'assignee', 'location'];
 
 /** Flatten a proposal's values into one readable line. */
+/**
+ * How much of one proposed value is shown, and how much of the summary in total.
+ *
+ * Both ends of this are a model's output: an LLM reading a transcript decides the field values, and
+ * a transcript is whatever anybody in the call said out loud. `String(value)` with no bound is
+ * therefore a row in a review list whose length a speaker chooses — and the review list is the one
+ * surface whose whole job is being readable enough to make a decision from.
+ *
+ * Truncated with an ellipsis rather than refused: the point of the row is to be recognisable, and a
+ * value cut short still recognises. What is being accepted is the record, not this string.
+ */
+const MAX_SUMMARY_VALUE = 120;
+const MAX_SUMMARY_LENGTH = 400;
+
 function summarise(values: Record<string, unknown>): string {
   const named = SUMMARY_FIELDS.filter((field) => values[field] !== undefined && values[field] !== '');
   const rest = Object.keys(values).filter((field) => !SUMMARY_FIELDS.includes(field));
-  return [...named, ...rest].map((field) => `${field}: ${String(values[field])}`).join(' · ');
+  const cut = (text: string, limit: number) => (text.length > limit ? `${text.slice(0, limit - 1)}…` : text);
+  const line = [...named, ...rest]
+    .map((field) => `${cut(field, 40)}: ${cut(String(values[field]), MAX_SUMMARY_VALUE)}`)
+    .join(' · ');
+  return cut(line, MAX_SUMMARY_LENGTH);
 }
 
 /**
@@ -448,8 +466,9 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   /**
    * Everyone recording this call right now, this agent included, sorted.
    *
-   * The election's list: whichever of them sorts first creates the record. Coverage reads it too —
-   * it is the numerator in "2 of 4", where the whole point is that this agent counts as one of them.
+   * Coverage reads it: it is the numerator in "2 of 4", where the whole point is that this agent
+   * counts as one of them. Sorted so the list a member reads is stable rather than following
+   * whatever order the roster happened to arrive in.
    */
   function recordersOf(callId: string): string[] {
     const me = selfId?.() ?? null;
@@ -624,8 +643,8 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     Re-read the staged suggestions whenever a pass settles — anybody's, not just a press of ours.
 
     The one-shot path reloads on its own, because it has the result in hand. A *standing* pass has
-    nobody waiting on it: it runs on whichever peer won the election, stages what it found in the
-    shared graph, and announces nothing this client acts on. So auto-extraction produced proposals
+    nobody waiting on it: it runs on whichever peer registered the watch, stages what it found in
+    the shared graph, and announces nothing this client acts on. So auto-extraction produced proposals
     that were really there and never appeared — the review list only ever filled after somebody
     pressed Extract, which reads as "automatic extraction cannot propose anything".
 
@@ -708,6 +727,15 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     }
   }
 
+  /**
+   * How many times in a row a flush may find the call's record missing before giving up on those
+   * words. At `FLUSH_AFTER_MS` apart this is the better part of a minute — long enough for a record
+   * to replicate, short enough that a call whose record never arrives does not accumulate the whole
+   * conversation in a buffer nothing will ever drain.
+   */
+  const MAX_WAITING_FLUSHES = 20;
+  let waitingFlushes = 0;
+
   async function flush(): Promise<void> {
     clearTimer();
     const text = buffer.trim();
@@ -718,16 +746,32 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     try {
       const slot = await ensureCollection();
 
-      // Lost the election and the creator has not announced yet. Put the words back and come round
-      // again — dropping them would lose the opening line of every call for everyone but one agent,
-      // which is precisely the part of a conversation worth having.
+      /*
+        The call's record has not arrived yet. Put the words back and come round again — dropping
+        them would lose the opening line of every call for every agent who started speaking before
+        the record synced, which is precisely the part of a conversation worth having.
+
+        Capped, because the wait is not guaranteed to end: a call whose starter left before their
+        record replicated never gets one, and an uncapped retry re-queued the same words on a timer
+        for as long as the call ran, growing the buffer with every utterance and holding the whole
+        conversation in memory unwritten. After the cap the words go to the console with the rest of
+        the failures and the transcript carries on from wherever it can.
+      */
       if (slot.state === 'waiting') {
+        if (waitingFlushes >= MAX_WAITING_FLUSHES) {
+          console.warn('transcribe: the call record never arrived; these words were not written', text);
+          waitingFlushes = 0;
+          return;
+        }
+        waitingFlushes += 1;
         buffer = buffer ? `${text} ${buffer}` : text;
         setPending(buffer);
         clearTimer();
         flushTimer = setTimeout(() => void flush(), FLUSH_AFTER_MS);
         return;
       }
+      // Arrived. The next wait starts its own count rather than inheriting this one's.
+      waitingFlushes = 0;
 
       if (slot.state === 'nowhere') {
         console.warn('transcribe: no call to attach this utterance to; not written');
@@ -982,9 +1026,9 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     Keep a standing interpretation watch on whatever collection this call is writing into.
 
     Driven off `collectionId` rather than off the record button, because the collection is what a
-    watch is *about* and it appears late: whoever wins the creation election makes it, and everyone
-    else adopts the announced id. Registering on the button press would mean registering before
-    there is anything to name.
+    watch is *about* and it appears late: it is the call's own record, published on the call's
+    presence activity. Registering on the button press would mean registering before there is
+    anything to name.
 
     Every recorder runs this, and that is intended rather than tolerated — the registration is one
     row in the shared perspective keyed by collection id, so peers converge on it instead of
@@ -1644,10 +1688,10 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       /*
         Publish the decision immediately, before a word has been said.
 
-        This is the signal the other agents' prompt reads, and it is also what makes the election
-        deterministic: announcing only at the first flush meant nobody knew who else was recording
-        until somebody had already finished speaking, by which point the record they were racing to
-        create had usually been created twice.
+        This is the signal the other agents' prompt reads, and it is what makes coverage honest:
+        announcing only at the first flush meant nobody knew who else was recording until somebody
+        had already finished speaking, so "1 of 4" was shown for a call three people were
+        transcribing.
 
         Turning it off publishes `recording: false` rather than withdrawing the activity, because the
         collection claim rides on the same entry and outlives the recording — see `announce`.

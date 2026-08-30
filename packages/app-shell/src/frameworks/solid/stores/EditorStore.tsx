@@ -452,6 +452,9 @@ export function EditorStoreProvider(props: ParentProps) {
       setSessions((prev) => [session, ...prev]);
     } catch (err) {
       console.error('Failed to create new chat session', err);
+      // The button leaves the old conversation on screen when this fails, so without a word it
+      // reads as "New chat does nothing".
+      toastService.error('Could not start a new chat');
     }
   }
 
@@ -505,6 +508,9 @@ export function EditorStoreProvider(props: ParentProps) {
       }
     } catch (err) {
       console.error('Failed to delete session', err);
+      // A delete that fails silently leaves the row there, which reads as a stuck button — and
+      // invites a second press at a delete that may have half-run.
+      toastService.error('Could not delete that chat');
     }
   }
 

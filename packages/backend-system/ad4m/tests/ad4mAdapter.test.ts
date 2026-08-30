@@ -2,8 +2,11 @@
  * The AD4M QueryAdapter — focus on the logic that isn't just `planQuery`/`irToFlatQuery`: the two
  * conditional degradations `plan()` folds in, and the `scope`→`parent` predicate resolution.
  */
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
 import type { EntityManifestEntry } from '@we/backend-ad4m';
-import { createAd4mQueryAdapter } from '@we/backend-ad4m';
+import { createAd4mQueryAdapter, VERIFIED_AGAINST_AD4M } from '@we/backend-ad4m';
 import type { QueryIR } from '@we/backend-shared';
 import { describe, expect, it } from 'vitest';
 
@@ -166,5 +169,29 @@ describe('adapter.lower — scope → parent (Tier-2 adapter-rewrite)', () => {
       scope: { anchor: 'Conversation', via: 'nope', anchorId: 'c1' },
     };
     expect(() => adapter.lower(ir)).toThrow(/cannot resolve scope/);
+  });
+});
+
+describe('the capability profile and the executor it describes', () => {
+  it('names the executor build it was checked against, and that is the one installed', () => {
+    /*
+      `ad4mCapabilities` and the two degradations in `plan()` are claims about somebody else's
+      software, and nothing checks them at build time. `planQuery` is exact about what WE does with
+      the answers and completely credulous about the answers themselves — so a release that changes
+      AD4M's sort pushdown shows up as *wrong rows in the right shape*: a feed silently in the wrong
+      order, a "top posts" list that is not. There is no error channel at all.
+
+      The executor exposes no query-capability report to handshake against, so this is the next best
+      thing: the pin moving without anybody re-checking the profile is exactly the silent case, and
+      this makes it a loud one. When the pin moves, verify against a running executor — the tests
+      above pin what the *planner* says, which is a different question — and move the constant.
+    */
+    const root = JSON.parse(
+      readFileSync(fileURLToPath(new URL('../../../../package.json', import.meta.url)), 'utf8'),
+    ) as { pnpm?: { overrides?: Record<string, string> } };
+
+    const pinned = root.pnpm?.overrides?.['@coasys/ad4m'];
+    expect(pinned, 'no @coasys/ad4m override in the root package.json').toBeTruthy();
+    expect(pinned).toBe(VERIFIED_AGAINST_AD4M);
   });
 });

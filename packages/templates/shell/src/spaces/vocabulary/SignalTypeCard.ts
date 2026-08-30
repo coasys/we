@@ -44,7 +44,10 @@ export const signalTypeCard: SchemaNode = {
               props: {
                 variant: 'ghost',
                 size: 'sm',
-                onClick: { $action: 'record.delete', args: ['SignalType', { $: 'signalType.id' }] },
+                // Not `record.delete`: a signal carries its type as a scalar id rather than a
+                // relation, so deleting the type on its own leaves every heart ever given in the
+                // perspective, counted by nothing. The store action deletes both.
+                onClick: { $action: 'spaceStore.deleteSignalType', args: [{ $: 'signalType.id' }] },
               },
               children: [{ type: 'we-icon', props: { name: 'trash', color: 'danger-text' } }],
             },

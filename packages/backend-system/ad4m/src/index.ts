@@ -16,6 +16,7 @@ export {
   createAd4mDataBindings,
   createAd4mQueryAdapter,
   toRendererEntity,
+  VERIFIED_AGAINST_AD4M,
   type Ad4mAdapterDeps,
 } from './ad4mAdapter';
 export { ad4mEphemeralCapabilities, createAd4mEphemeralPort } from './ad4mEphemeralAdapter';

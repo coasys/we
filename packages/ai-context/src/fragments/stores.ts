@@ -339,6 +339,7 @@ export const storeEntries: StoreEntry[] = [
       templateOverrideOptions: { type: 'array', properties: ['label', 'value'] },
       themeOverrideOptions: { type: 'array', properties: ['label', 'value'] },
       spaceThemePinned: { type: 'boolean' },
+      canAdministerCurrentSpace: { type: 'boolean' },
       moduleInstallSettings: {
         type: 'array',
         properties: ['id', 'name', 'description', 'icon', 'installed'],
@@ -364,6 +365,7 @@ export const storeEntries: StoreEntry[] = [
       'setSpaceDefaultTemplate',
       'setSpaceDefaultTheme',
       'createSignalType',
+      'deleteSignalType',
       'upsertSignal',
       'navigateToSpace',
       'openRecordRef',
@@ -966,6 +968,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
         templateOverrideOptions:
           '{ label, value }[] — options for the per-space template override picker: "Use the space\u2019s default" (space-default), "Use my default" (agent-default), then every template. Each of the first two names what it resolves to. Pre-built because a schema can map a store array into options but cannot prepend one, and without those entries overriding would be one-way',
         themeOverrideOptions: '{ label, value }[] — the same, for themes',
+        canAdministerCurrentSpace:
+          'boolean — whether this agent may change what every member of the space on screen sees. The readable form of canAdministerSpace, which an expression cannot call. Gate an admin-only control on this rather than on `x.author == me.did`, which asks who made the row and not who runs the space',
         spaceThemePinned:
           'boolean — this agent has pinned a theme for the space on screen that differs from what would otherwise apply, so there is something for a reset to undo. False outside a space, and false for a pin that happens to name what the space resolves to anyway. Gate a "pinned here / reset" affordance on it rather than on the pin merely existing',
         requiredModules:
@@ -1021,6 +1025,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(field: "avatar" | "coverImage", imageFile: File, spaceUuid?): uploads and sets the space avatar or cover image',
         createSignalType:
           '(config: Partial<SignalType>): creates a new signal type in the community; slug auto-derived from name if blank',
+        deleteSignalType:
+          '(signalTypeId: string): deletes a signal type AND every signal cast with it. Use this rather than record.delete on a SignalType — a signal carries its type as a scalar id rather than a relation, so deleting the type alone leaves every reaction ever given in the space, counted by nothing and rendered by nothing',
         unreadNodeIds:
           'string[] — ids of containers in this space holding something newer than your read marker. The read side of `ReadMarker`: use it for unread dots with `{ "$": "channel.id in spaceStore.unreadNodeIds" }` rather than recomputing a `$latestChild` projection and a comparison per row',
         myMentions:

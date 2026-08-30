@@ -310,7 +310,10 @@ impl AccountRegistry {
         if let Err(e) = fs::rename(self.legacy_registry(), retired) {
             eprintln!("[accounts] Migrated, but could not retire the old registry: {e}");
         }
-        println!("[accounts] Migrated {count} account(s) into {}", managed.display());
+        println!(
+            "[accounts] Migrated {count} account(s) into {}",
+            managed.display()
+        );
     }
 
     fn read(&self) -> RegistryState {
@@ -348,7 +351,10 @@ impl AccountRegistry {
         // that is really there, and to the seed default when none is, which the caller scaffolds
         // into a fresh first run. Selecting a path that does not exist is what previously let
         // `init` recreate a directory the user had deliberately moved aside.
-        let fallback = present.first().cloned().unwrap_or_else(|| self.default_path.clone());
+        let fallback = present
+            .first()
+            .cloned()
+            .unwrap_or_else(|| self.default_path.clone());
 
         // Only persisted when it names an account that is really there. Writing the registry
         // creates the container directory, so recording a fallback to a `default_path` that does
@@ -373,7 +379,10 @@ impl AccountRegistry {
     }
 
     /// Apply a partial update. An absent field keeps its current value.
-    pub fn set_executor_settings(&self, update: ExecutorSettingsUpdate) -> Result<ExecutorSettings, String> {
+    pub fn set_executor_settings(
+        &self,
+        update: ExecutorSettingsUpdate,
+    ) -> Result<ExecutorSettings, String> {
         let state = self.read();
         let current = state.executor.clone().unwrap_or_default();
         let port = update.mcp_port.unwrap_or(current.mcp_port);
@@ -457,7 +466,10 @@ impl AccountRegistry {
                     if path == self.default_path {
                         self.default_name.clone()
                     } else {
-                        path.file_name().unwrap_or_default().to_string_lossy().to_string()
+                        path.file_name()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .to_string()
                     }
                 });
                 Account {
@@ -525,7 +537,12 @@ impl AccountRegistry {
     ///
     /// The directory keeps its original slug whatever the name becomes: renaming a data directory
     /// to match a label buys nothing and risks everything inside it.
-    pub fn set_display(&self, id: &str, name: Option<&str>, avatar: Option<&str>) -> Result<(), String> {
+    pub fn set_display(
+        &self,
+        id: &str,
+        name: Option<&str>,
+        avatar: Option<&str>,
+    ) -> Result<(), String> {
         let trimmed = name.map(str::trim);
         if let Some("") = trimmed {
             return Err("An account name is required".to_string());
@@ -603,7 +620,9 @@ impl AccountRegistry {
         // rather than handled: the way to clear this account is to move the directory aside, which
         // is the same gesture that backs everything up.
         if target == self.default_path && !self.nested_accounts().is_empty() {
-            return Err("Remove the other accounts first — they are stored inside this one".to_string());
+            return Err(
+                "Remove the other accounts first — they are stored inside this one".to_string(),
+            );
         }
 
         state.accounts.retain(|a| a.path != target);
@@ -726,7 +745,7 @@ pub fn expand_home(path: &str, home: &Path) -> PathBuf {
 mod tests {
     use super::*;
 
-        /// A registry over a fresh temp directory, plus the paths it uses.
+    /// A registry over a fresh temp directory, plus the paths it uses.
     fn temp_registry() -> (PathBuf, PathBuf, AccountRegistry) {
         let root = std::env::temp_dir().join(format!(
             "we-accounts-rs-{}-{:?}",
@@ -755,19 +774,31 @@ mod tests {
     #[test]
     fn parses_the_shared_registry_fixture_both_hosts_agree_on() {
         let fixture = include_str!("../../../we-electron/electron/fixtures/registry.shared.json");
-        let state: RegistryState = serde_json::from_str(fixture).expect("shared fixture must parse");
+        let state: RegistryState =
+            serde_json::from_str(fixture).expect("shared fixture must parse");
         assert_eq!(state.accounts.len(), 2);
         assert_eq!(state.accounts[0].name, "Main");
-        assert_eq!(state.accounts[0].avatar.as_deref(), Some("data:image/png;base64,aGk="));
+        assert_eq!(
+            state.accounts[0].avatar.as_deref(),
+            Some("data:image/png;base64,aGk=")
+        );
         assert!(state.accounts[1].provisional);
         assert!(state.selected_path.is_some());
     }
 
     #[test]
     fn parses_the_legacy_snake_case_file_this_host_once_wrote() {
-        let fixture = include_str!("../../../we-electron/electron/fixtures/registry.legacy-tauri.json");
-        let state: RegistryState = serde_json::from_str(fixture).expect("legacy fixture must parse");
-        assert_eq!(state.selected_path.as_ref().map(|p| p.to_string_lossy().into_owned()), Some("<root>/.ad4m".to_string()));
+        let fixture =
+            include_str!("../../../we-electron/electron/fixtures/registry.legacy-tauri.json");
+        let state: RegistryState =
+            serde_json::from_str(fixture).expect("legacy fixture must parse");
+        assert_eq!(
+            state
+                .selected_path
+                .as_ref()
+                .map(|p| p.to_string_lossy().into_owned()),
+            Some("<root>/.ad4m".to_string())
+        );
     }
 
     #[test]
@@ -794,9 +825,13 @@ mod tests {
     #[test]
     fn a_renamed_away_container_is_a_reset_and_renaming_back_restores_it() {
         let (root, default_path, registry) = temp_registry();
-        registry.set_display(&default_path.to_string_lossy(), Some("Personal"), None).unwrap();
+        registry
+            .set_display(&default_path.to_string_lossy(), Some("Personal"), None)
+            .unwrap();
         let created = registry.create().unwrap();
-        registry.set_display(&created.id, Some("Work"), None).unwrap();
+        registry
+            .set_display(&created.id, Some("Work"), None)
+            .unwrap();
 
         let stashed = root.join("stashed");
         fs::rename(&default_path, &stashed).unwrap();
@@ -838,7 +873,9 @@ mod tests {
         let created = registry.create().unwrap();
         registry.select(&created.id).unwrap();
 
-        let err = registry.remove(&default_path.to_string_lossy()).unwrap_err();
+        let err = registry
+            .remove(&default_path.to_string_lossy())
+            .unwrap_err();
         assert!(err.contains("other accounts first"), "got: {err}");
         assert!(default_path.exists());
         fs::remove_dir_all(root).ok();
@@ -915,7 +952,10 @@ mod tests {
         let registry = AccountRegistry::new(root.join("config"), default_path.clone());
         let listed = registry.list();
 
-        assert_eq!(listed[0].name, "Jamess", "name written by the other host was not read");
+        assert_eq!(
+            listed[0].name, "Jamess",
+            "name written by the other host was not read"
+        );
         assert!(listed[0].avatar.is_some(), "cached picture was not read");
         assert_eq!(registry.resolve_active_path(), default_path);
         fs::remove_dir_all(root).ok();
@@ -933,7 +973,10 @@ mod tests {
             .set_executor_settings(ExecutorSettingsUpdate {
                 mcp_enabled: Some(true),
                 mcp_port: Some(4321),
-                log_levels: Some(HashMap::from([("rust_executor".to_string(), "debug".to_string())])),
+                log_levels: Some(HashMap::from([(
+                    "rust_executor".to_string(),
+                    "debug".to_string(),
+                )])),
             })
             .unwrap();
         assert!(saved.mcp_enabled);
@@ -942,9 +985,15 @@ mod tests {
         registry.prune_abandoned();
 
         let after = registry.executor_settings();
-        assert!(after.mcp_enabled, "enabling MCP was lost by an unrelated registry write");
+        assert!(
+            after.mcp_enabled,
+            "enabling MCP was lost by an unrelated registry write"
+        );
         assert_eq!(after.mcp_port, 4321);
-        assert_eq!(after.log_levels.get("rust_executor").map(String::as_str), Some("debug"));
+        assert_eq!(
+            after.log_levels.get("rust_executor").map(String::as_str),
+            Some("debug")
+        );
         fs::remove_dir_all(root).ok();
     }
 
@@ -957,7 +1006,10 @@ mod tests {
             .set_executor_settings(ExecutorSettingsUpdate {
                 mcp_enabled: None,
                 mcp_port: None,
-                log_levels: Some(HashMap::from([("holochain".to_string(), "verbose".to_string())])),
+                log_levels: Some(HashMap::from([(
+                    "holochain".to_string(),
+                    "verbose".to_string()
+                )])),
             })
             .is_err());
         assert!(registry.executor_settings().log_levels.is_empty());
@@ -968,7 +1020,10 @@ mod tests {
     fn executor_settings_default_to_off_on_the_launcher_port() {
         let (root, _, registry) = temp_registry();
         let settings = registry.executor_settings();
-        assert!(!settings.mcp_enabled, "MCP must be opt-in — it opens a local port");
+        assert!(
+            !settings.mcp_enabled,
+            "MCP must be opt-in — it opens a local port"
+        );
         assert_eq!(settings.mcp_port, 3001);
         fs::remove_dir_all(root).ok();
     }
@@ -989,10 +1044,16 @@ mod tests {
     #[test]
     fn writes_the_registry_the_electron_host_can_read() {
         let (root, default_path, registry) = temp_registry();
-        registry.set_display(&default_path.to_string_lossy(), Some("Jamess"), None).unwrap();
+        registry
+            .set_display(&default_path.to_string_lossy(), Some("Jamess"), None)
+            .unwrap();
 
-        let written = fs::read_to_string(default_path.join("we-accounts").join("registry.json")).unwrap();
-        assert!(written.contains("selectedPath"), "wrote a key the other host does not read: {written}");
+        let written =
+            fs::read_to_string(default_path.join("we-accounts").join("registry.json")).unwrap();
+        assert!(
+            written.contains("selectedPath"),
+            "wrote a key the other host does not read: {written}"
+        );
         assert!(!written.contains("selected_path"));
         fs::remove_dir_all(root).ok();
     }
@@ -1004,7 +1065,11 @@ mod tests {
         let (root, default_path, _) = temp_registry();
         let container = default_path.join("we-accounts");
         fs::create_dir_all(&container).unwrap();
-        fs::write(container.join("registry.json"), r#"{"accounts":[],"selectedPath":null}"#).unwrap();
+        fs::write(
+            container.join("registry.json"),
+            r#"{"accounts":[],"selectedPath":null}"#,
+        )
+        .unwrap();
 
         let registry = AccountRegistry::new(root.join("config"), default_path.clone());
         assert_eq!(registry.resolve_active_path(), default_path);
@@ -1067,7 +1132,10 @@ mod tests {
     fn expand_home_only_expands_a_leading_tilde() {
         let home = PathBuf::from("/home/x");
         assert_eq!(expand_home("~", &home), home);
-        assert_eq!(expand_home("~/.ad4m", &home), PathBuf::from("/home/x/.ad4m"));
+        assert_eq!(
+            expand_home("~/.ad4m", &home),
+            PathBuf::from("/home/x/.ad4m")
+        );
         assert_eq!(expand_home("/tmp/a", &home), PathBuf::from("/tmp/a"));
         assert_eq!(expand_home("a~b", &home), PathBuf::from("a~b"));
     }

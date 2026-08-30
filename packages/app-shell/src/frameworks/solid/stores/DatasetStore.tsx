@@ -16,6 +16,7 @@
  * `currentDataset` signal.
  */
 import { sameDataset } from '@shared/datasetIdentity';
+import { hostListeners, hostSlot } from '@shared/hostSlot';
 import { containmentPredicate, gatherTranscriptTurns, type TurnRecord } from '@shared/interpretation/transcriptTurns';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { moduleRegistry } from '@shared/registries/moduleRegistry';
@@ -23,7 +24,7 @@ import { getSeed } from '@shared/seedRegistry';
 import { datasetKey, type DatasetRef, type EntityManifestEntry, trace } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import { AgentSettings, type DatasetProxy, getEntitiesForPerspective } from '@we/entities';
-import { Accessor, batch, createContext, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
+import { Accessor, batch, createContext, createMemo, createSignal, onCleanup, ParentProps, useContext } from 'solid-js';
 
 import { useSessionStore } from './SessionStore';
 
@@ -96,19 +97,25 @@ export interface DatasetStore {
    * caused them.
    */
   trackDataset: (ref: DatasetRef) => Promise<void>;
-  /** Register a callback fired after a dataset is removed (locally or by any client). */
-  onDatasetRemoved: (cb: (uuid: string) => void) => void;
+  /**
+   * Register a callback fired after a dataset is removed (locally or by any client).
+   *
+   * Returns the unsubscribe — hand it to `onCleanup` unless the subscriber genuinely lives as long
+   * as the app. Without one this list only ever grew, and a store that unmounted kept being called
+   * into a disposed scope. See `hostListeners`.
+   */
+  onDatasetRemoved: (cb: (uuid: string) => void) => () => void;
   initSystemDatasets: () => Promise<void>;
   loadDatasets: () => Promise<void>;
   subscribeToChanges: () => void;
   getDatasetOrder: () => string[];
   /** SpaceStore supplies "does this space want calls interpreted automatically". Unset reads off. */
-  provideAutoInterpretGate: (gate: () => boolean) => void;
+  provideAutoInterpretGate: (gate: () => boolean) => () => void;
   /**
    * ShapeStore supplies "which entities *could* be extracted here" — core vocabulary that declares
    * itself extractable, plus this space's adopted shapes. Unset reads as none.
    */
-  provideExtractionCandidates: (candidates: () => string[]) => void;
+  provideExtractionCandidates: (candidates: () => string[]) => () => void;
   /**
    * SpaceStore supplies the two layers under that: what one call extracts, and how to change it.
    *
@@ -123,7 +130,7 @@ export interface DatasetStore {
   provideCallExtraction: (access: {
     forCall: (collectionId: string) => string[];
     setForCall: (collectionId: string, entity: string, on: boolean) => Promise<void>;
-  }) => void;
+  }) => () => void;
 }
 
 const DatasetContext = createContext<DatasetStore>();
@@ -155,7 +162,15 @@ export function DatasetStoreProvider(props: ParentProps) {
   const [testDataset, setTestDataset] = createSignal<AppDataset | null>(null);
   const [agentSettings, setAgentSettings] = createSignal<AgentSettings | null>(null, { equals: false });
 
-  const removedCallbacks: Array<(uuid: string) => void> = [];
+  /*
+    Who wants telling when a dataset goes away.
+
+    A plain array with a `push` and no way back out: a store that subscribed and then unmounted was
+    still called, into a disposed scope, for the rest of the session. `hostListeners` gives the
+    unsubscribe and puts each call in its own `try` — one subscriber failing to forget a dataset
+    must not stop the others hearing about it.
+  */
+  const removedListeners = hostListeners<(uuid: string) => void>('DatasetStore.onDatasetRemoved');
 
   /*
     Whether the current space wants its calls interpreted as they happen.
@@ -164,10 +179,7 @@ export function DatasetStoreProvider(props: ParentProps) {
     setting lives on a `Space`, SpaceStore layers on top of this store, and the dependency only
     points one way. Unset means off.
   */
-  let autoInterpretGate: (() => boolean) | null = null;
-  const provideAutoInterpretGate = (gate: () => boolean) => {
-    autoInterpretGate = gate;
-  };
+  const autoInterpretGate = hostSlot<() => boolean>();
 
   /*
     What an extraction pass may write here — the same arrangement, one layer along.
@@ -178,10 +190,7 @@ export function DatasetStoreProvider(props: ParentProps) {
     silent fallback to that constant would make a wiring failure look exactly like a space whose
     community had turned everything off.
   */
-  let extractionCandidatesGate: (() => string[]) | null = null;
-  const provideExtractionCandidates = (candidates: () => string[]) => {
-    extractionCandidatesGate = candidates;
-  };
+  const extractionCandidatesGate = hostSlot<() => string[]>();
 
   /*
     What one call extracts, and how to change it — the two layers below candidacy.
@@ -190,13 +199,10 @@ export function DatasetStoreProvider(props: ParentProps) {
     and mounts below this store. Unset, `forCall` falls back to the candidates rather than to
     nothing: a host that has not wired this in should behave as it did before the layer existed.
   */
-  let callExtraction: {
+  const callExtraction = hostSlot<{
     forCall: (collectionId: string) => string[];
     setForCall: (collectionId: string, entity: string, on: boolean) => Promise<void>;
-  } | null = null;
-  const provideCallExtraction = (access: NonNullable<typeof callExtraction>) => {
-    callExtraction = access;
-  };
+  }>();
 
   /**
    * The class list one pass over this collection should ask for.
@@ -207,8 +213,8 @@ export function DatasetStoreProvider(props: ParentProps) {
    * narrow the request rather than break it.
    */
   const targetsForCollection = (collectionId: string): string[] => {
-    const candidates = extractionCandidatesGate?.() ?? [];
-    const chosen = callExtraction?.forCall(collectionId);
+    const candidates = extractionCandidatesGate.get()?.() ?? [];
+    const chosen = callExtraction.get()?.forCall(collectionId);
     if (!chosen) return candidates;
     return candidates.filter((entity) => chosen.includes(entity));
   };
@@ -216,166 +222,174 @@ export function DatasetStoreProvider(props: ParentProps) {
   // Lend feature modules the neutral ports the host owns. Published rather than imported so a
   // module never reaches into host stores — what it receives is `EphemeralPort` and dataset
   // accessors, all of which any backend could satisfy. See moduleHostServices.ts.
-  provideModuleHostServices({
-    dataset: () => currentDataset()?.handle ?? null,
-    // The *global* uri, never the local uuid — a uuid is local per-agent, so a call id derived
-    // from one would differ on every peer and each would join a call only they can see.
-    datasetUri: () => currentDataset()?.sharedUri ?? null,
-    // The same dataset, named the way a stored reference names it: the CID where there is one, so
-    // the reference means the same record to every agent who joined, and the local uuid otherwise.
-    datasetRefKey: () => {
-      const ds = currentDataset();
-      return ds ? datasetKey({ cid: ds.sharedUri, uuid: ds.id }) : '';
-    },
-    selfId: () => session.me()?.did ?? null,
-    ephemeral: session.ephemeralPort,
-    // Read through `backendPorts()` on every call rather than captured: the backend connects after
-    // this store is constructed, and a backend that cannot transcribe simply never sets it.
-    transcription: {
-      models: async () => (await session.backendPorts()?.transcription?.models()) ?? [],
-      open: async (modelId, onText, tuning) => {
-        const port = session.backendPorts()?.transcription;
-        if (!port) throw new Error('transcription: this backend cannot transcribe');
-        return port.open(modelId, onText, tuning);
+  onCleanup(
+    provideModuleHostServices({
+      dataset: () => currentDataset()?.handle ?? null,
+      // The *global* uri, never the local uuid — a uuid is local per-agent, so a call id derived
+      // from one would differ on every peer and each would join a call only they can see.
+      datasetUri: () => currentDataset()?.sharedUri ?? null,
+      // The same dataset, named the way a stored reference names it: the CID where there is one, so
+      // the reference means the same record to every agent who joined, and the local uuid otherwise.
+      datasetRefKey: () => {
+        const ds = currentDataset();
+        return ds ? datasetKey({ cid: ds.sharedUri, uuid: ds.id }) : '';
       },
-    },
-    // Same late read as transcription, but this one answers `available()` honestly — the wrapper is
-    // always published, so a module asking "can this node interpret?" has to be told about the
-    // backend behind it rather than about the wrapper's own existence.
-    interpretation: {
-      available: () => session.backendPorts()?.interpretation !== undefined,
-      interpret: async (dataset, turns, request, ctl) => {
+      selfId: () => session.me()?.did ?? null,
+      ephemeral: session.ephemeralPort,
+      // Read through `backendPorts()` on every call rather than captured: the backend connects after
+      // this store is constructed, and a backend that cannot transcribe simply never sets it.
+      transcription: {
+        models: async () => (await session.backendPorts()?.transcription?.models()) ?? [],
+        open: async (modelId, onText, tuning) => {
+          const port = session.backendPorts()?.transcription;
+          if (!port) throw new Error('transcription: this backend cannot transcribe');
+          return port.open(modelId, onText, tuning);
+        },
+      },
+      // Same late read as transcription, but this one answers `available()` honestly — the wrapper is
+      // always published, so a module asking "can this node interpret?" has to be told about the
+      // backend behind it rather than about the wrapper's own existence.
+      interpretation: {
+        available: () => session.backendPorts()?.interpretation !== undefined,
+        interpret: async (dataset, turns, request, ctl) => {
+          const port = session.backendPorts()?.interpretation;
+          if (!port) throw new Error('interpretation: this backend cannot interpret');
+          return port.interpret(dataset, turns, request, ctl);
+        },
+        proposals: async (dataset) => (await session.backendPorts()?.interpretation?.proposals(dataset)) ?? [],
+        accept: async (dataset, id, property) =>
+          (await session.backendPorts()?.interpretation?.accept(dataset, id, property)) ?? false,
+        reject: async (dataset, id, property) =>
+          (await session.backendPorts()?.interpretation?.reject(dataset, id, property)) ?? false,
+      },
+
+      /*
+        What this call extracts, and what else it could — for a module that offers the choice.
+
+        One list of `{ entity, selected }` rather than two arrays, because the surface that renders it
+        is a row of toggles and a schema cannot join two lists to decide which are ticked. The module
+        never sees the resolution: candidacy, the space's default and the call's own list are three
+        questions it has no business knowing about, and it is handed the answer.
+      */
+      extractionTargets: (collectionId: string) => {
+        const active = targetsForCollection(collectionId);
+        return (extractionCandidatesGate.get()?.() ?? []).map((entity) => ({
+          entity,
+          selected: active.includes(entity),
+        }));
+      },
+      setExtractionTarget: async (collectionId: string, entity: string, on: boolean) => {
+        const extraction = callExtraction.get();
+        if (!extraction) throw new Error('interpretation: this host cannot record a call’s extraction targets');
+        await extraction.setForCall(collectionId, entity, on);
+      },
+
+      // Gathering the turns is the host's half of the job: the port takes turns, and a module has no
+      // read with which to produce them. Parenting what comes back onto the same collection is not
+      // optional dressing — an unparented TaskBlock is a real record that no route lists, so an
+      // extraction that skipped it would look exactly like one that found nothing.
+      interpretCollection: async (collectionId) => {
         const port = session.backendPorts()?.interpretation;
         if (!port) throw new Error('interpretation: this backend cannot interpret');
-        return port.interpret(dataset, turns, request, ctl);
+        const dataset = currentDataset();
+        if (!dataset) throw new Error('interpretation: no dataset to interpret into');
+
+        const modelFor = (entity: string) => getEntitiesForPerspective(entity, dataset.handle);
+        const predicate = containmentPredicate(modelFor, currentDatasetEntities());
+        if (!predicate)
+          throw new Error('interpretation: this space has no collection schema to read a transcript from');
+
+        const turns = await gatherTranscriptTurns(
+          {
+            modelFor: (entity) => modelFor(entity) as TurnRecord | undefined,
+            handle: dataset.handle,
+            containmentPredicate: predicate,
+          },
+          collectionId,
+        );
+
+        // The host resolves the class list, because the three layers that decide it — candidacy, the
+        // space's default, this call's own — are all host state. A module names a collection and
+        // nothing else, exactly as it does for the watch id and the containment predicate.
+        return port.interpret(dataset.handle, turns, {
+          classes: targetsForCollection(collectionId),
+          parent: { id: collectionId, predicate },
+        });
       },
-      proposals: async (dataset) => (await session.backendPorts()?.interpretation?.proposals(dataset)) ?? [],
-      accept: async (dataset, id, property) =>
-        (await session.backendPorts()?.interpretation?.accept(dataset, id, property)) ?? false,
-      reject: async (dataset, id, property) =>
-        (await session.backendPorts()?.interpretation?.reject(dataset, id, property)) ?? false,
-    },
 
-    /*
-      What this call extracts, and what else it could — for a module that offers the choice.
+      /*
+        The standing version of the same thing, and the reason it lives here rather than on the module
+        surface.
 
-      One list of `{ entity, selected }` rather than two arrays, because the surface that renders it
-      is a row of toggles and a schema cannot join two lists to decide which are ticked. The module
-      never sees the resolution: candidacy, the space's default and the call's own list are three
-      questions it has no business knowing about, and it is handed the answer.
-    */
-    extractionTargets: (collectionId: string) => {
-      const active = targetsForCollection(collectionId);
-      return (extractionCandidatesGate?.() ?? []).map((entity) => ({ entity, selected: active.includes(entity) }));
-    },
-    setExtractionTarget: async (collectionId: string, entity: string, on: boolean) => {
-      if (!callExtraction) throw new Error('interpretation: this host cannot record a call’s extraction targets');
-      await callExtraction.setForCall(collectionId, entity, on);
-    },
+        A module names a collection worth watching; everything else is the host's — the watch id, the
+        dataset, the containment predicate, and the lifetime. That split is what keeps this from being
+        "a module holding a watch", which the module contract refuses: a watch is a *dataset-level*
+        registration shared with every peer, and a module store whose lifetime is a panel being open
+        would leave one behind every time somebody closed it.
 
-    // Gathering the turns is the host's half of the job: the port takes turns, and a module has no
-    // read with which to produce them. Parenting what comes back onto the same collection is not
-    // optional dressing — an unparented TaskBlock is a real record that no route lists, so an
-    // extraction that skipped it would look exactly like one that found nothing.
-    interpretCollection: async (collectionId) => {
-      const port = session.backendPorts()?.interpretation;
-      if (!port) throw new Error('interpretation: this backend cannot interpret');
-      const dataset = currentDataset();
-      if (!dataset) throw new Error('interpretation: no dataset to interpret into');
+        Keyed on the collection id, so registering twice for one call is the same registration rather
+        than two. The engine reads its processors out of the perspective graph, so this is idempotent
+        in the place it matters: whichever peer registers first wins and the rest write the same row.
+      */
+      watchCollection: async (collectionId) => {
+        const port = session.backendPorts()?.interpretation;
+        if (!port?.watch) throw new Error('interpretation: this backend cannot run a standing watch');
+        // The community's decision, read through a gate SpaceStore supplies — this store sits below
+        // it and cannot reach a Space. Absent (no gate provided yet, or no space) reads as off, which
+        // is the right way round for something that spends somebody's LLM budget.
+        if (!autoInterpretGate.get()?.()) throw new Error('interpretation: automatic extraction is off for this space');
+        const dataset = currentDataset();
+        if (!dataset) throw new Error('interpretation: no dataset to interpret into');
 
-      const modelFor = (entity: string) => getEntitiesForPerspective(entity, dataset.handle);
-      const predicate = containmentPredicate(modelFor, currentDatasetEntities());
-      if (!predicate) throw new Error('interpretation: this space has no collection schema to read a transcript from');
+        const modelFor = (entity: string) => getEntitiesForPerspective(entity, dataset.handle);
+        const predicate = containmentPredicate(modelFor, currentDatasetEntities());
+        if (!predicate)
+          throw new Error('interpretation: this space has no collection schema to read a transcript from');
 
-      const turns = await gatherTranscriptTurns(
-        {
-          modelFor: (entity) => modelFor(entity) as TurnRecord | undefined,
-          handle: dataset.handle,
-          containmentPredicate: predicate,
-        },
-        collectionId,
-      );
+        const classes = targetsForCollection(collectionId);
+        // Refused rather than registered empty: the executor rejects a processor with no classes, and
+        // "this space has marked nothing for extraction" is a sentence worth saying in its own words.
+        if (!classes.length) throw new Error('interpretation: nothing in this space is marked for AI extraction');
 
-      // The host resolves the class list, because the three layers that decide it — candidacy, the
-      // space's default, this call's own — are all host state. A module names a collection and
-      // nothing else, exactly as it does for the watch id and the containment predicate.
-      return port.interpret(dataset.handle, turns, {
-        classes: targetsForCollection(collectionId),
-        parent: { id: collectionId, predicate },
-      });
-    },
+        await port.watch(dataset.handle, {
+          watchId: watchIdFor(collectionId),
+          classes,
+          parent: { id: collectionId, predicate },
+        });
+      },
 
-    /*
-      The standing version of the same thing, and the reason it lives here rather than on the module
-      surface.
+      /*
+        Repair anything a standing pass minted without an edge.
 
-      A module names a collection worth watching; everything else is the host's — the watch id, the
-      dataset, the containment predicate, and the lifetime. That split is what keeps this from being
-      "a module holding a watch", which the module contract refuses: a watch is a *dataset-level*
-      registration shared with every peer, and a module store whose lifetime is a panel being open
-      would leave one behind every time somebody closed it.
+        Runs when a call is opened rather than on a timer, because that is the moment somebody is
+        about to look: the records exist either way, and what is missing is only their place in the
+        call. Returns the count so a caller can say nothing when there was nothing to do.
+      */
+      reconcileCollection: async (collectionId) => {
+        const port = session.backendPorts()?.interpretation;
+        const dataset = currentDataset();
+        if (!port?.reconcile || !dataset) return 0;
 
-      Keyed on the collection id, so registering twice for one call is the same registration rather
-      than two. The engine reads its processors out of the perspective graph, so this is idempotent
-      in the place it matters: whichever peer registers first wins and the rest write the same row.
-    */
-    watchCollection: async (collectionId) => {
-      const port = session.backendPorts()?.interpretation;
-      if (!port?.watch) throw new Error('interpretation: this backend cannot run a standing watch');
-      // The community's decision, read through a gate SpaceStore supplies — this store sits below
-      // it and cannot reach a Space. Absent (no gate provided yet, or no space) reads as off, which
-      // is the right way round for something that spends somebody's LLM budget.
-      if (!autoInterpretGate?.()) throw new Error('interpretation: automatic extraction is off for this space');
-      const dataset = currentDataset();
-      if (!dataset) throw new Error('interpretation: no dataset to interpret into');
+        const modelFor = (entity: string) => getEntitiesForPerspective(entity, dataset.handle);
+        const predicate = containmentPredicate(modelFor, currentDatasetEntities());
+        if (!predicate) return 0;
 
-      const modelFor = (entity: string) => getEntitiesForPerspective(entity, dataset.handle);
-      const predicate = containmentPredicate(modelFor, currentDatasetEntities());
-      if (!predicate) throw new Error('interpretation: this space has no collection schema to read a transcript from');
+        return port.reconcile(dataset.handle, {
+          classes: targetsForCollection(collectionId),
+          parent: { id: collectionId, predicate },
+        });
+      },
 
-      const classes = targetsForCollection(collectionId);
-      // Refused rather than registered empty: the executor rejects a processor with no classes, and
-      // "this space has marked nothing for extraction" is a sentence worth saying in its own words.
-      if (!classes.length) throw new Error('interpretation: nothing in this space is marked for AI extraction');
-
-      await port.watch(dataset.handle, {
-        watchId: watchIdFor(collectionId),
-        classes,
-        parent: { id: collectionId, predicate },
-      });
-    },
-
-    /*
-      Repair anything a standing pass minted without an edge.
-
-      Runs when a call is opened rather than on a timer, because that is the moment somebody is
-      about to look: the records exist either way, and what is missing is only their place in the
-      call. Returns the count so a caller can say nothing when there was nothing to do.
-    */
-    reconcileCollection: async (collectionId) => {
-      const port = session.backendPorts()?.interpretation;
-      const dataset = currentDataset();
-      if (!port?.reconcile || !dataset) return 0;
-
-      const modelFor = (entity: string) => getEntitiesForPerspective(entity, dataset.handle);
-      const predicate = containmentPredicate(modelFor, currentDatasetEntities());
-      if (!predicate) return 0;
-
-      return port.reconcile(dataset.handle, {
-        classes: targetsForCollection(collectionId),
-        parent: { id: collectionId, predicate },
-      });
-    },
-
-    unwatchCollection: async (collectionId) => {
-      const port = session.backendPorts()?.interpretation;
-      const dataset = currentDataset();
-      // Silent rather than thrown: this runs while tearing a call down, and a host that never
-      // registered anything is not a failure worth interrupting that with.
-      if (!port?.unwatch || !dataset) return;
-      await port.unwatch(dataset.handle, watchIdFor(collectionId));
-    },
-  });
+      unwatchCollection: async (collectionId) => {
+        const port = session.backendPorts()?.interpretation;
+        const dataset = currentDataset();
+        // Silent rather than thrown: this runs while tearing a call down, and a host that never
+        // registered anything is not a failure worth interrupting that with.
+        if (!port?.unwatch || !dataset) return;
+        await port.unwatch(dataset.handle, watchIdFor(collectionId));
+      },
+    }),
+  );
 
   /*
   One collection, one watch.
@@ -509,7 +523,7 @@ export function DatasetStoreProvider(props: ParentProps) {
       // Removal fires for deletions from any client
       onRemoved: (uuid) => {
         setDatasets((prev) => prev.filter((d) => d.id !== uuid));
-        removedCallbacks.forEach((cb) => cb(uuid));
+        removedListeners.emit(uuid);
         reorderDatasets(getDatasetOrder().filter((id) => id !== uuid)).catch(console.error);
       },
     });
@@ -664,7 +678,7 @@ export function DatasetStoreProvider(props: ParentProps) {
     try {
       await lifecycle.remove(uuid);
       setDatasets((prev) => prev.filter((d) => d.id !== uuid));
-      removedCallbacks.forEach((cb) => cb(uuid));
+      removedListeners.emit(uuid);
     } catch (error) {
       console.error('DatasetStore: removeDataset error', error);
     }
@@ -744,6 +758,10 @@ export function DatasetStoreProvider(props: ParentProps) {
       })();
     } catch (error) {
       console.error('DatasetStore: switchDataset error', error);
+      // Switching is a navigation, and a navigation that silently does not happen is the worst
+      // failure a store can have: the sidebar highlights the space, the URL says the space, and the
+      // content is the previous one's. Console-only, this looked like the app ignoring a click.
+      toastService.error('Could not open that space');
     }
   }
 
@@ -808,14 +826,14 @@ export function DatasetStoreProvider(props: ParentProps) {
     cleanupSpaceSdna,
 
     trackDataset,
-    onDatasetRemoved: (cb) => removedCallbacks.push(cb),
+    onDatasetRemoved: removedListeners.add,
     initSystemDatasets,
     loadDatasets,
     subscribeToChanges,
     getDatasetOrder,
-    provideAutoInterpretGate,
-    provideExtractionCandidates,
-    provideCallExtraction,
+    provideAutoInterpretGate: autoInterpretGate.provide,
+    provideExtractionCandidates: extractionCandidatesGate.provide,
+    provideCallExtraction: callExtraction.provide,
   };
 
   return <DatasetContext.Provider value={store}>{props.children}</DatasetContext.Provider>;

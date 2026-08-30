@@ -163,6 +163,29 @@ export function createAd4mDataBindings(
   };
 }
 
+/**
+ * The executor build this profile was established against.
+ *
+ * Every line below — and both degradations in `plan` — is a **claim about somebody else's
+ * software**, checked by nothing at build time. `planQuery` is exact about what WE will do with the
+ * answers, and completely credulous about the answers themselves: if a release changes AD4M's sort
+ * pushdown, nothing here fails. Skew shows up as *wrong rows in the right shape* — a feed silently
+ * in the wrong order, a "top posts" list that is not — which is the failure mode with no error
+ * channel at all.
+ *
+ * There is no handshake to close that gap with: the executor exposes no query-capability report to
+ * ask. So the version is recorded instead, next to the claims it belongs to, and the two rules are:
+ *
+ * - When the `@coasys/ad4m` pin in the root `package.json` moves, re-check this and move this
+ *   constant with it — the pin moving and this staying put is exactly the silent case.
+ * - Verify by running the query, not by reading the changelog. `packages/backend-system/ad4m/tests`
+ *   pins what the *planner* says; only an executor answers what the executor does.
+ *
+ * The pin itself is currently a test tag rather than a release, which is worth knowing when reading
+ * "verified": what was verified was that build.
+ */
+export const VERIFIED_AGAINST_AD4M = '0.13.0-test-interpretation-2';
+
 export const ad4mCapabilities: AdapterCapabilities = {
   operators: ['eq', 'ne', 'lt', 'lte', 'gt', 'gte', 'in', 'nin', 'contains', 'exists'],
   booleanCombinators: true, // OR / AND / NOT in `where` (#868)

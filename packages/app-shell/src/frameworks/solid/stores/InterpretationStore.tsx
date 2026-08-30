@@ -401,29 +401,31 @@ export function InterpretationStoreProvider(props: ParentProps) {
     shell's internals, and `phase` — the one field they differ on — is a backend vocabulary a module
     has no business matching on. It reads `label` and `running` instead.
   */
-  provideModuleHostServices({
-    interpretationAvailable: () => capable(),
-    interpretationActivity: () => activity(),
-    /*
-      The space's sharing decision, for a module explaining why a peer's row will not open.
+  onCleanup(
+    provideModuleHostServices({
+      interpretationAvailable: () => capable(),
+      interpretationActivity: () => activity(),
+      /*
+        The space's sharing decision, for a module explaining why a peer's row will not open.
 
-      Published rather than left for the module to infer from `hasDetail`: a row can lack detail
-      for reasons that have nothing to do with the setting — a peer's pass that has not reached the
-      model yet, a skipped pass that never had an exchange, a row broadcast before the setting
-      synced — and gating an explanation of the *setting* on those showed it with sharing on.
-    */
-    interpretationDetailShared: () => shareDetail(),
-    /*
-      The community's decision about automatic extraction, published for the same reason the sharing
-      one is: a module has to be able to *react* to it.
+        Published rather than left for the module to infer from `hasDetail`: a row can lack detail
+        for reasons that have nothing to do with the setting — a peer's pass that has not reached the
+        model yet, a skipped pass that never had an exchange, a row broadcast before the setting
+        synced — and gating an explanation of the *setting* on those showed it with sharing on.
+      */
+      interpretationDetailShared: () => shareDetail(),
+      /*
+        The community's decision about automatic extraction, published for the same reason the sharing
+        one is: a module has to be able to *react* to it.
 
-      Its only reader used to be a throw inside `datasetStore.watchCollection`, which meant switching
-      it on mid-call changed nothing — nothing re-ran the registration, so a call kept reporting that
-      auto-extraction was unavailable until everybody left and rejoined. Published here, a module's
-      watch effect depends on it and follows the toggle.
-    */
-    autoInterpretEnabled: () => spaceStore.autoInterpret(),
-  });
+        Its only reader used to be a throw inside `datasetStore.watchCollection`, which meant switching
+        it on mid-call changed nothing — nothing re-ran the registration, so a call kept reporting that
+        auto-extraction was unavailable until everybody left and rejoined. Published here, a module's
+        watch effect depends on it and follows the toggle.
+      */
+      autoInterpretEnabled: () => spaceStore.autoInterpret(),
+    }),
+  );
 
   const store: InterpretationStore = {
     activity,

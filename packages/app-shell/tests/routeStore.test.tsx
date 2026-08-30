@@ -56,7 +56,7 @@ describe('routeStore params', () => {
   it('navigate restores a path’s remembered search — and an explicit ? wins', () => {
     const store = mountStore();
     const nav = vi.fn();
-    store.setNavigateFunction((() => nav) as never); // signal setter: wrap so the fn is stored, not invoked
+    store.setNavigateFunction(nav as never); // takes the function itself now; it does its own wrapping
 
     // Set a param on /cards, leave, come back bare.
     store.setParam('sort', 'likes');
@@ -74,7 +74,7 @@ describe('routeStore params', () => {
   it('clearing the param clears the memory — returning lands bare', () => {
     const store = mountStore();
     const nav = vi.fn();
-    store.setNavigateFunction((() => nav) as never); // signal setter: wrap so the fn is stored, not invoked
+    store.setNavigateFunction(nav as never); // takes the function itself now; it does its own wrapping
 
     store.setParam('sort', 'likes');
     store.setParam('sort', null); // back to default
@@ -89,7 +89,7 @@ describe('routeStore params', () => {
     window.history.replaceState(null, '', '/cards?type=users');
     const store = mountStore();
     const nav = vi.fn();
-    store.setNavigateFunction((() => nav) as never); // signal setter: wrap so the fn is stored, not invoked
+    store.setNavigateFunction(nav as never); // takes the function itself now; it does its own wrapping
     store.setCurrentPath('/cards'); // the router reporting arrival
 
     window.history.replaceState(null, '', '/about');

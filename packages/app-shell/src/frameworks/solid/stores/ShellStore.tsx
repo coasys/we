@@ -109,6 +109,11 @@ function describeDestructive(path: string, args: unknown[]): { title: string; bo
         title: 'Delete this and everything in it?',
         body: 'The post and every block inside it will be removed for everyone in this space. This cannot be undone.',
       };
+    case 'spaceStore.deleteSignalType':
+      return {
+        title: 'Delete this reaction?',
+        body: 'Every reaction of this kind anybody has given in this space goes with it. This cannot be undone.',
+      };
     case 'shapeStore.deleteShape':
       return {
         title: 'Delete this model?',

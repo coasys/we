@@ -1,5 +1,5 @@
-use tauri::State;
 use crate::app_state::AppState;
+use tauri::State;
 
 #[tauri::command]
 pub fn get_port(state: State<'_, AppState>) -> u16 {

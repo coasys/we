@@ -1,5 +1,6 @@
 import type { ThemeKey } from '@shared/registries/themeRegistry';
 import { isValidThemeKey, themeRegistry } from '@shared/registries/themeRegistry';
+import { explain } from '@shared/userMessage';
 import { toastService } from '@we/components/solid';
 import type { ThemeData } from '@we/entities';
 import {
@@ -1545,6 +1546,23 @@ export function ThemeStoreProvider(props: ParentProps) {
     }
 
     try {
+      /*
+        Uploaded before anything is let go — the same argument as `templateStore.publishToMarketplace`.
+
+        Clearing the relation and then adding one file at a time meant an upload that failed part
+        way through left the listing with no screenshots and a "Failed to publish" toast: the
+        working listing destroyed by the attempt to update it.
+      */
+      const uploaded = await Promise.all(
+        options.screenshots.map(async (file) =>
+          ImageBlock.create(marketplacePerspective, {
+            src: asFileField(await compressImageToFileData(file, `screenshot-${Date.now()}`)),
+            altText: 'Screenshot',
+            version: 1,
+          }),
+        ),
+      );
+
       if (existing) {
         existing.name = options.name;
         existing.description = options.description;
@@ -1556,16 +1574,11 @@ export function ThemeStoreProvider(props: ParentProps) {
         existing.css = base.css ? asFileField(encodeToFileData(base.css, 'theme.css', 'text/css')) : null;
         await existing.save();
 
-        await existing.setScreenshots([]);
-        for (const file of options.screenshots) {
-          const fileData = await compressImageToFileData(file, `screenshot-${Date.now()}`);
-          const img = await ImageBlock.create(marketplacePerspective, {
-            src: asFileField(fileData),
-            altText: 'Screenshot',
-            version: 1,
-          });
-          await existing.addScreenshots(img);
-        }
+        // The new pictures are already uploaded — see `uploaded` above. Clearing the relation first
+        // and adding one at a time meant a failed upload destroyed the listing's existing
+        // screenshots and then reported failure; the same shape as `templateStore`'s, fixed the same
+        // way. Only when there are new ones: an update with none picked keeps what is there.
+        if (uploaded.length) await existing.setScreenshots(uploaded);
         toastService.success(`Theme "${options.name}" updated in marketplace (v${existing.version})`);
       } else {
         const theme = await Theme.create(marketplacePerspective, {
@@ -1580,15 +1593,7 @@ export function ThemeStoreProvider(props: ParentProps) {
             : null,
           css: base.css ? asFileField(encodeToFileData(base.css, 'theme.css', 'text/css')) : null,
         });
-        for (const file of options.screenshots) {
-          const fileData = await compressImageToFileData(file, `screenshot-${Date.now()}`);
-          const img = await ImageBlock.create(marketplacePerspective, {
-            src: asFileField(fileData),
-            altText: 'Screenshot',
-            version: 1,
-          });
-          await theme.addScreenshots(img);
-        }
+        if (uploaded.length) await theme.setScreenshots(uploaded);
         toastService.success(`Theme "${options.name}" published to marketplace`);
       }
       return true;
@@ -1654,8 +1659,7 @@ export function ThemeStoreProvider(props: ParentProps) {
       await loadSpaceThemes();
       toastService.success(`"${source.name}" added to this space`);
     } catch (error) {
-      console.error('ThemeStore: installToSpace error', error);
-      toastService.error(`Failed to add theme: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toastService.error(explain(error, 'Could not add that theme to this space'));
     } finally {
       setOperationLoading(null);
     }

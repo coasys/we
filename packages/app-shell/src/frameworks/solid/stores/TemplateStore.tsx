@@ -1,5 +1,6 @@
 import { templateRegistry } from '@shared/registries/templateRegistry';
 import { profileTemplate, settingsTemplate } from '@shared/schemas';
+import { explain } from '@shared/userMessage';
 import { deepClone } from '@shared/utils';
 import { toastService } from '@we/components/solid';
 import type { FileData } from '@we/entities';
@@ -836,8 +837,7 @@ export function TemplateStoreProvider(props: ParentProps) {
 
       await loadSavedTemplates();
     } catch (error) {
-      console.error('TemplateStore: installFromMarketplace error', error);
-      toastService.error(`Failed to install template: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toastService.error(explain(error, 'Could not install that template'));
     } finally {
       setOperationLoading(null);
     }
@@ -887,8 +887,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       await loadSpaceTemplates(spaceDs!);
       toastService.success(`"${schemaToInstall.meta.name}" installed to space`);
     } catch (error) {
-      console.error('TemplateStore: installToSpace error', error);
-      toastService.error(`Failed to install template: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toastService.error(explain(error, 'Could not install that template into this space'));
     } finally {
       setOperationLoading(null);
     }
@@ -967,8 +966,7 @@ export function TemplateStoreProvider(props: ParentProps) {
         blocked: [...new Set(accepted.blocked.map((reference) => reference.path))],
       });
     } catch (error) {
-      console.error('TemplateStore: requestInstall error', error);
-      toastService.error(`Failed to read template: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toastService.error(explain(error, 'Could not read that template'));
     } finally {
       setOperationLoading(null);
     }
@@ -1169,8 +1167,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       setOperationLoading(null);
       return true;
     } catch (error) {
-      console.error('TemplateStore: saveTemplateAs error', error);
-      toastService.error(`Failed to save template: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toastService.error(explain(error, 'Could not save that template'));
       setOperationLoading(null);
       return false;
     }
@@ -1338,6 +1335,29 @@ export function TemplateStoreProvider(props: ParentProps) {
     const templateIcon = options.icon ?? schema.meta?.icon ?? '';
 
     try {
+      /*
+        The new pictures are uploaded *before* the old ones are let go.
+
+        This cleared the relation first — `setScreenshots([])`, then one `addScreenshots` per file —
+        so a compress or an upload that failed part way through landed in the catch below, reported
+        "Failed to publish", and left the listing with no screenshots at all. The listing that was
+        already there, working, was the thing destroyed by the attempt to update it.
+
+        Building the blocks first and assigning the whole list at once makes the failure lose nothing:
+        an upload that throws never reaches the assignment, and the existing screenshots are still
+        attached. Relation assignment replaces the set, so the old ones go exactly when the new ones
+        arrive rather than a round trip earlier.
+      */
+      const uploaded = await Promise.all(
+        options.screenshots.map(async (file) =>
+          ImageBlock.create(marketplacePerspective, {
+            src: asFileField(await compressImageToFileData(file, `screenshot-${Date.now()}`)),
+            altText: 'Screenshot',
+            version: 1,
+          }),
+        ),
+      );
+
       if (existing) {
         // Update existing marketplace entry in place — bump version, replace schema and screenshots
         existing.name = options.name;
@@ -1348,16 +1368,9 @@ export function TemplateStoreProvider(props: ParentProps) {
         if (options.themeId !== undefined) existing.themeId = options.themeId;
         await existing.save();
 
-        await existing.setScreenshots([]);
-        for (const file of options.screenshots) {
-          const fileData = await compressImageToFileData(file, `screenshot-${Date.now()}`);
-          const imageBlock = await ImageBlock.create(marketplacePerspective, {
-            src: asFileField(fileData),
-            altText: 'Screenshot',
-            version: 1,
-          });
-          await existing.addScreenshots(imageBlock);
-        }
+        // Only when there are new ones: publishing an update with no screenshots picked should keep
+        // the ones the listing has rather than silently stripping them.
+        if (uploaded.length) await existing.setScreenshots(uploaded);
 
         toastService.success(`Template "${options.name}" updated in marketplace (v${existing.version})`);
       } else {
@@ -1372,15 +1385,7 @@ export function TemplateStoreProvider(props: ParentProps) {
           ...(options.themeId ? { themeId: options.themeId } : {}),
         });
 
-        for (const file of options.screenshots) {
-          const fileData = await compressImageToFileData(file, `screenshot-${Date.now()}`);
-          const imageBlock = await ImageBlock.create(marketplacePerspective, {
-            src: asFileField(fileData),
-            altText: 'Screenshot',
-            version: 1,
-          });
-          await template.addScreenshots(imageBlock);
-        }
+        if (uploaded.length) await template.setScreenshots(uploaded);
 
         toastService.success(`Template "${options.name}" published to marketplace`);
       }

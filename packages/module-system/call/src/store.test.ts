@@ -141,7 +141,7 @@ describe('transport and device lifetime', () => {
    * unregistering during a call — which a hot reload does — dropped the only reference to the live
    * peer connections and the media stream, leaving the camera on with nothing able to close it.
    */
-  function callable() {
+  function callable(options: { unicast?: string; personal?: boolean } = {}) {
     const signal = <T>(initial: T): [() => T, (next: T) => void] => {
       let value = initial;
       return [() => value, (next: T) => (value = next)];
@@ -149,7 +149,12 @@ describe('transport and device lifetime', () => {
 
     let disposed = 0;
     const scope = {
-      capabilities: { unicast: 'emulated', broadcast: true, coalesce: true, confidential: false },
+      capabilities: {
+        unicast: options.unicast ?? 'emulated',
+        broadcast: true,
+        coalesce: true,
+        confidential: false,
+      },
       channel: () => ({ publish: () => {}, onMessage: () => () => {} }),
       dispose: () => (disposed += 1),
     };
@@ -186,10 +191,9 @@ describe('transport and device lifetime', () => {
         },
       },
       selfId: () => me,
-      ephemeral: () => scope,
+      ephemeral: () => (options.personal ? null : scope),
       presence: { peers: () => [], setActivity: () => {}, clearActivity: () => {} },
       onDispose: (fn: () => void) => disposers.push(fn),
-      // Starting a call now writes its record first, so the harness has to answer for one.
       createEntity: async () => `rec-${++created}`,
       createPeerConnection: () => ({}) as RTCPeerConnection,
     } as never) as ReturnType<typeof createCallStore> & Record<string, (...args: unknown[]) => unknown>;
@@ -197,6 +201,7 @@ describe('transport and device lifetime', () => {
     return {
       store,
       scopeDisposals: () => disposed,
+      recordsCreated: () => created,
       disposers,
       removeDataset: (uri: string) => notifyRemoved?.(uri),
       signOut: () => {
@@ -231,6 +236,36 @@ describe('transport and device lifetime', () => {
 
     expect(store.stageOpen()).toBe(false);
     expect(store.dockEdge()).toBeNull();
+  });
+
+  it('writes no call record when the call cannot run', async () => {
+    /*
+      The record used to be created first and `join` called afterwards, so every refused start left
+      a `CollectionBlock` behind for a call that never happened — one per press, all `kind: 'call'`,
+      all of them appearing wherever calls are listed with no participants, no transcript and
+      nothing to tell them apart from a real call nobody spoke in.
+
+      A personal space is the case that made it constant rather than occasional: a call there can
+      never work, so pressing the button was purely a way to litter the space.
+    */
+    const personal = callable({ personal: true });
+    await personal.store.startCall();
+    await Promise.resolve();
+
+    expect(personal.recordsCreated()).toBe(0);
+    expect(personal.store.callId()).toBeNull();
+    expect(personal.store.problem()).toMatch(/personal/i);
+
+    // And the other refusal, which is a property of the transport rather than of the space: with no
+    // unicast at all every offer reaches everybody, so the call is refused before it is recorded.
+    const broadcastOnly = callable({ unicast: 'none' });
+    await broadcastOnly.store.startCall();
+    await Promise.resolve();
+
+    expect(broadcastOnly.recordsCreated()).toBe(0);
+    expect(broadcastOnly.store.callId()).toBeNull();
+    // And the scope opened to reach that verdict was given back, rather than leaked once per press.
+    expect(broadcastOnly.scopeDisposals()).toBe(1);
   });
 
   it('gives the transport scope back when the call ends', async () => {

@@ -135,8 +135,27 @@ const services: ModuleHostServices = {};
  * Merges rather than replaces, because the slices arrive from different stores at different times —
  * `DatasetStore`/`SessionStore` have the dataset and the transport, `PresenceStore` has the roster.
  */
-export function provideModuleHostServices(slice: ModuleHostServices): void {
+export function provideModuleHostServices(slice: ModuleHostServices): () => void {
   Object.assign(services, slice);
+
+  /*
+    Returns the withdrawal, and withdraws only what is still ours.
+
+    Six stores merge slices into one global object and nothing ever removed one. A provider that
+    unmounted — `TemplateProvider` does, on every template switch — left its closures here, bound to
+    signals from a scope that had been disposed, and a module going through them wrote against the
+    previous template's stores with nothing anywhere reporting it.
+
+    Key by key rather than wholesale, because the slices genuinely overlap in time: a store that has
+    already been superseded must take back only the entries it still owns, or its cleanup would blank
+    its replacement's.
+  */
+  const mine = Object.entries(slice) as [keyof ModuleHostServices, unknown][];
+  return () => {
+    for (const [key, value] of mine) {
+      if (services[key] === value) delete services[key];
+    }
+  };
 }
 
 /** Test seam: drop everything between cases so one test's bindings cannot leak into the next. */

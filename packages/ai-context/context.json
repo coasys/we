@@ -6640,6 +6640,9 @@
         },
         "extractionTargets": {
           "type": "array"
+        },
+        "canAdministerCurrentSpace": {
+          "type": "boolean"
         }
       },
       "actions": [
@@ -6675,6 +6678,7 @@
         "launchModule",
         "createSignalType",
         "createRelationshipType",
+        "deleteSignalType",
         "upsertSignal",
         "navigateToSpace",
         "openRecordRef",

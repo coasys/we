@@ -27,8 +27,15 @@ export interface SkyboxLayerOptions {
   };
 
   /**
-   * Base URL for CDN assets
-   * @default 'https://cdn.jsdelivr.net/gh/coasys/we@dev/packages/module-system/globe/layers/src/background/skybox/assets'
+   * Where the skybox textures are served from.
+   *
+   * The default names a **pinned tag**, not a branch. It used to be `@dev`, which jsDelivr resolves
+   * afresh: every deployment of WE that has ever shipped was fetching six textures from whatever the
+   * tip of a development branch happened to be that morning, with no integrity check and no way to
+   * notice a change. A commit landing on `dev` altered what every installed copy of the globe
+   * rendered, and anyone able to push to that branch could alter it deliberately.
+   *
+   * Move it forward on purpose when the textures change, in the same commit that changes them.
    */
   cdnBaseUrl?: string;
 
@@ -45,6 +52,15 @@ export interface SkyboxLayerOptions {
  * Displays a skybox with star textures in the background.
  * Supports multiple texture sets and custom textures.
  */
+/**
+ * The pinned skybox asset base. See `SkyboxLayerOptions.cdnBaseUrl` for why it is a tag.
+ *
+ * jsDelivr serves a tag immutably and a branch mutably, so this is the difference between "the
+ * textures this release was built against" and "whatever is on `dev` right now".
+ */
+export const SKYBOX_CDN_BASE =
+  'https://cdn.jsdelivr.net/gh/coasys/we@v0.1.0/packages/module-system/globe/layers/src/background/skybox/assets';
+
 export const skyboxLayer: LayerFactory<SkyboxLayerOptions> = (options?: SkyboxLayerOptions) => ({
   name: 'skybox',
 
@@ -55,12 +71,7 @@ export const skyboxLayer: LayerFactory<SkyboxLayerOptions> = (options?: SkyboxLa
 
   onMount: (context: LayerContext) => {
     const { viewer, onCleanup } = context;
-    const {
-      textureSet = 'tycho2-1k',
-      customPaths,
-      // Use jsdelivr CDN with branch name
-      cdnBaseUrl = 'https://cdn.jsdelivr.net/gh/coasys/we@dev/packages/module-system/globe/layers/src/background/skybox/assets',
-    } = options || {};
+    const { textureSet = 'tycho2-1k', customPaths, cdnBaseUrl = SKYBOX_CDN_BASE } = options || {};
     // TODO: brightness is not yet implemented, needs custom shader
     // const brightness = options?.brightness ?? 1.0;
 

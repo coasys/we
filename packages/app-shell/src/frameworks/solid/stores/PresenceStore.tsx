@@ -474,13 +474,15 @@ export function PresenceStoreProvider(props: ParentProps) {
    */
   createEffect(() => tabs()?.setPinned(Object.keys(myActivities()).length > 0));
 
-  provideModuleHostServices({
-    presence: {
-      peers: () => rawPeers(),
-      setActivity,
-      clearActivity,
-    },
-  });
+  onCleanup(
+    provideModuleHostServices({
+      presence: {
+        peers: () => rawPeers(),
+        setActivity,
+        clearActivity,
+      },
+    }),
+  );
 
   const store: PresenceStore = {
     peers,

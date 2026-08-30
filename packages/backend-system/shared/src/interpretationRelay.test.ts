@@ -284,4 +284,29 @@ describe('createInterpretationRelay', () => {
     anna.publish(activity());
     expect(bo.rows()).toHaveLength(0);
   });
+
+  it('caps the exchange it puts on the wire, and the exchange it accepts', () => {
+    /*
+      The relay's own docs called the detail "tens of KB per pass", which was the typical case and
+      not a bound: the prompt is built from the transcript, so an hour-long call's prompt is as long
+      as the hour-long call. Uncapped, one meeting pushed megabytes at every peer in the space, once
+      per phase — and the receiving side then held all of it for the row's ten-minute lifetime.
+
+      Both directions, because a cap on the sender alone is a request: a peer that ignores it costs
+      every receiver the same memory.
+    */
+    const { anna, bo } = pair({ shareDetail: true });
+    const huge = 'x'.repeat(200_000);
+
+    anna.publish(activity({ llm: { prompt: huge, response: huge } }));
+
+    const received = bo.rows()[0];
+    expect(received.llm?.prompt?.length).toBeLessThan(huge.length);
+    expect(received.llm?.prompt).toMatch(/truncated/);
+    expect(received.llm?.response).toMatch(/truncated/);
+
+    // What the runner itself shows is untouched: the cap is about what crosses the wire, and the
+    // agent that ran the pass already has the whole thing.
+    expect(anna.rows()[0].llm?.prompt).toBe(huge);
+  });
 });

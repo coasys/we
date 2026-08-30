@@ -2643,6 +2643,7 @@ export const contextData: ContextData = {
         autoInterpret: { type: 'boolean' },
         shareExtractionDetail: { type: 'boolean' },
         extractionTargets: { type: 'array' },
+        canAdministerCurrentSpace: { type: 'boolean' },
       },
       actions: [
         'createSpace',
@@ -2677,6 +2678,7 @@ export const contextData: ContextData = {
         'launchModule',
         'createSignalType',
         'createRelationshipType',
+        'deleteSignalType',
         'upsertSignal',
         'navigateToSpace',
         'openRecordRef',

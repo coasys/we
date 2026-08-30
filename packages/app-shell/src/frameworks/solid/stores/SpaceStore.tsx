@@ -680,11 +680,15 @@ export interface SpaceStore {
    * the vocabulary; identified, so a query can filter on it and an edge style can key on it.
    */
   createRelationshipType: (config: Partial<RelationshipType>) => Promise<void>;
+  /** Delete a signal type and every signal cast with it. Nothing else removes the signals. */
+  deleteSignalType: (signalTypeId: string) => Promise<void>;
   upsertSignal: (nodeId: string, signalTypeId: string, value: number) => Promise<void>;
   navigateToSpace: (spaceId: string, view?: string) => Promise<void>;
   openRecordRef: (ref: string) => Promise<void>;
   /** Whether this agent may change what every member of that space sees. */
   canAdministerSpace: (uuid: string) => boolean;
+  /** The same, about the space on screen, as something an expression can read. */
+  canAdministerCurrentSpace: Accessor<boolean>;
   /** Copy a space's share link to the clipboard. No-op for a space that has none. */
   copyShareLink: (uuid: string) => Promise<void>;
   /** Copy a guest invite link — auto-creates account, auto-joins the space. No-op without a host. */
@@ -771,6 +775,24 @@ export function SpaceStoreProvider(props: ParentProps) {
    * change what "may administer" means. Templates asking the question by name keep working; templates
    * that had compared two DIDs would all need editing.
    */
+  /**
+   * The same question about the space on screen, as a value a schema can read.
+   *
+   * `canAdministerSpace` is an action, and an expression cannot call one — so every template that
+   * wanted to gate a control on "may I change what everyone here sees?" wrote
+   * `x.author == me.did` instead. That is a *different* question: it asks who made the row, not who
+   * runs the space, and it is why a template installed into a space by one member could not be
+   * removed by anybody else, the space's own author included. Asked here, the answer can grow
+   * (several admins, roles) without every template being rewritten.
+   */
+  // A plain accessor rather than a memo: it reads its signals when called, so it is reactive either
+  // way — and a memo here runs eagerly at creation, before `currentSpace` further down the file
+  // exists. Cheap enough that memoising buys nothing.
+  const canAdministerCurrentSpace = (): boolean => {
+    const uuid = currentSpace()?.uuid;
+    return uuid ? canAdministerSpace(uuid) : false;
+  };
+
   function canAdministerSpace(uuid: string): boolean {
     const space = mySpaces().find((s) => s.uuid === uuid);
     if (!space) return false;
@@ -1062,17 +1084,21 @@ export function SpaceStoreProvider(props: ParentProps) {
   // holding on its behalf. A call in a space that has just been deleted keeps its camera open and
   // its presence lease heartbeating into a perspective that no longer exists, and only the module
   // can end that.
-  datasetStore.onDatasetRemoved((uuid) => {
-    setMySpaces((prev) => prev.filter((s) => s.uuid !== uuid));
-    datasetRemovalListeners.forEach((listener) => {
-      try {
-        listener(uuid);
-      } catch (error) {
-        // One module's failure must not stop the next module hearing about it.
-        console.error('SpaceStore: a module threw on dataset removal', error);
+  onCleanup(
+    datasetStore.onDatasetRemoved((uuid) => {
+      setMySpaces((prev) => prev.filter((s) => s.uuid !== uuid));
+      // Copied first: a module is allowed to forget itself in response, and mutating the set
+      // mid-iteration would skip whichever listener came next.
+      for (const listener of [...datasetRemovalListeners]) {
+        try {
+          listener(uuid);
+        } catch (error) {
+          // One module's failure must not stop the next module hearing about it.
+          console.error('SpaceStore: a module threw on dataset removal', error);
+        }
       }
-    });
-  });
+    }),
+  );
 
   // Locking the agent clears the loaded spaces along with the session.
   createEffect(() => {
@@ -1094,49 +1120,51 @@ export function SpaceStoreProvider(props: ParentProps) {
     a sidebar row holding the bare cid are the same space — the comparison this store already has to
     make everywhere else.
   */
-  provideModuleHostServices({
-    datasets: {
-      get: (uri: string) => {
-        const id = sharedIdOf(uri);
-        if (!id) return undefined;
-        const item = orderedSidebarItems().find((row) => row.spaceId === id || row.uuid === id);
-        return item ? { name: item.name, avatar: item.avatar } : undefined;
-      },
-      open: (uri: string) => {
-        const id = sharedIdOf(uri);
-        if (id) void navigateToSpace(id);
-      },
-      /*
-        Removal, as an event, so a module can end what belongs to a dataset that is gone.
+  onCleanup(
+    provideModuleHostServices({
+      datasets: {
+        get: (uri: string) => {
+          const id = sharedIdOf(uri);
+          if (!id) return undefined;
+          const item = orderedSidebarItems().find((row) => row.spaceId === id || row.uuid === id);
+          return item ? { name: item.name, avatar: item.avatar } : undefined;
+        },
+        open: (uri: string) => {
+          const id = sharedIdOf(uri);
+          if (id) void navigateToSpace(id);
+        },
+        /*
+          Removal, as an event, so a module can end what belongs to a dataset that is gone.
 
-        Translated from the dataset id `onDatasetRemoved` reports into the uri a module actually
-        holds — a call anchors on `Focus.datasetUri`, and the two are different strings for the same
-        space. Resolved before the removal lands, because afterwards there is nothing left to
-        resolve it from.
-      */
-      onRemoved: (cb: (datasetUri: string) => void) => {
-        const listener = (uuid: string) => {
-          /*
-            The uri, from whatever still remembers it.
+          Translated from the dataset id `onDatasetRemoved` reports into the uri a module actually
+          holds — a call anchors on `Focus.datasetUri`, and the two are different strings for the same
+          space. Resolved before the removal lands, because afterwards there is nothing left to
+          resolve it from.
+        */
+        onRemoved: (cb: (datasetUri: string) => void) => {
+          const listener = (uuid: string) => {
+            /*
+              The uri, from whatever still remembers it.
 
-            `onDatasetRemoved` reports the dataset id; a module holds `Focus.datasetUri`, and for a
-            shared space those are different strings for the same thing. `mySpaces` is filtered by
-            the handler above, which runs first, so the Space record is already gone — the sidebar
-            list is not, and it carries the shared id. A personal space has no uri and no module
-            anchors to one, so answering nothing for it is right rather than a gap.
-          */
-          const row = orderedSidebarItems().find((item) => item.uuid === uuid);
-          const uri = row?.spaceId ? `neighbourhood://${row.spaceId}` : undefined;
-          if (uri) cb(uri);
-        };
-        datasetRemovalListeners.add(listener);
-        return () => datasetRemovalListeners.delete(listener);
+              `onDatasetRemoved` reports the dataset id; a module holds `Focus.datasetUri`, and for a
+              shared space those are different strings for the same thing. `mySpaces` is filtered by
+              the handler above, which runs first, so the Space record is already gone — the sidebar
+              list is not, and it carries the shared id. A personal space has no uri and no module
+              anchors to one, so answering nothing for it is right rather than a gap.
+            */
+            const row = orderedSidebarItems().find((item) => item.uuid === uuid);
+            const uri = row?.spaceId ? `neighbourhood://${row.spaceId}` : undefined;
+            if (uri) cb(uri);
+          };
+          datasetRemovalListeners.add(listener);
+          return () => datasetRemovalListeners.delete(listener);
+        },
+        // The host parses the reference and knows where a record's page is; a module holding one
+        // should not have to restate either. See `ModuleDatasetAccess.openRef`.
+        openRef: (ref: string) => void openRecordRef(ref),
       },
-      // The host parses the reference and knows where a record's page is; a module holding one
-      // should not have to restate either. See `ModuleDatasetAccess.openRef`.
-      openRef: (ref: string) => void openRecordRef(ref),
-    },
-  });
+    }),
+  );
 
   const orderedSidebarItems = createMemo(() => {
     // For joined spaces, s.uuid is the creator's local UUID which never matches the
@@ -1891,6 +1919,41 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   /**
+   * Delete a signal type, and every signal cast with it.
+   *
+   * The card behind this called `record.delete` on the `SignalType` alone. Signals do not point at
+   * their type through a relation — they carry `signalTypeId` as a scalar, which is what lets a
+   * signal hang off any `WeNode` at all — so nothing cascades and nothing dangles *visibly*: every
+   * heart already given stays in the perspective, counted by no projection and rendered by nothing,
+   * and re-creating a type with the same id would bring them all back.
+   *
+   * So the cascade has to be written, and it has to be here rather than in the template: a template
+   * cannot express "find every signal in this space with this type id and delete it", and a delete
+   * that only half happens is worse than one that is refused. Per-signal `try` because a partial
+   * sweep is still progress — the alternative is one unreachable record making the type permanent.
+   */
+  async function deleteSignalType(signalTypeId: string): Promise<void> {
+    const p = datasetStore.currentDataset()?.handle;
+    if (!p) return;
+
+    const type = await SignalType.findOne(p, { where: { id: signalTypeId } });
+    if (!type) return;
+
+    // The type's own id is what a signal stores, not the record id of the type — read it off the
+    // record rather than assuming the two are spelled the same way.
+    const signals = await Signal.findAll(p, { where: { signalTypeId: type.id } });
+    for (const signal of signals) {
+      try {
+        await signal.delete();
+      } catch (error) {
+        console.error('SpaceStore: could not delete a signal of a deleted type', error);
+      }
+    }
+
+    await type.delete();
+  }
+
+  /**
    * Name a kind of connection, deriving its slug the way a signal type derives one.
    *
    * The slug is what a template refers to when it cares about a specific kind — "draw
@@ -2033,7 +2096,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   */
   const autoInterpret = createMemo<boolean>(() => currentSpace()?.autoInterpret === true);
   const shareExtractionDetail = createMemo<boolean>(() => currentSpace()?.shareExtractionDetail === true);
-  datasetStore.provideAutoInterpretGate(() => autoInterpret());
+  onCleanup(datasetStore.provideAutoInterpretGate(() => autoInterpret()));
 
   /*
     Which candidates this space's calls start with.
@@ -2112,17 +2175,24 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
   }
 
-  datasetStore.provideExtractionCandidates(shapeStore.extractionCandidates);
-  datasetStore.provideCallExtraction({
-    forCall: extractionTargetsForCall,
-    setForCall: setCallExtractionTarget,
-  });
+  /*
+    ShapeStore already lends the candidates downward — this store passed the very same accessor a
+    second time, so which of the two won was decided by mount order and nothing else. Harmless while
+    they agreed, and a coin toss the day they stop; the one that owns the value is the one that
+    lends it.
+  */
+  onCleanup(
+    datasetStore.provideCallExtraction({
+      forCall: extractionTargetsForCall,
+      setForCall: setCallExtractionTarget,
+    }),
+  );
   /*
     Ticking "let AI create these" in the model wizard is this space saying yes — see
     `ShapeStore.provideExtractionEnroller`. Handed upward because ShapeStore mounts above this one
     and cannot reach a `Space`, the mirror of how `autoInterpret` is handed down.
   */
-  shapeStore.provideExtractionEnroller((entity) => setExtractionTarget(entity, true));
+  onCleanup(shapeStore.provideExtractionEnroller((entity) => setExtractionTarget(entity, true)));
 
   /**
    * What actually renders here, for this agent: the three layers intersected, minus personal mutes.
@@ -3393,10 +3463,12 @@ export function SpaceStoreProvider(props: ParentProps) {
     launchModule,
     createSignalType,
     createRelationshipType,
+    deleteSignalType,
     upsertSignal,
     navigateToSpace,
     openRecordRef,
     canAdministerSpace,
+    canAdministerCurrentSpace,
     copyShareLink,
     copyGuestLink,
     getSubgroupMessages,

@@ -250,7 +250,9 @@ export function TemplateLayout(
   createEffect(() => setTemplatePanels(activePanels(), stores.templateStore.currentTemplate?.id ?? ''));
   onCleanup(() => setTemplatePanels([], ''));
 
-  createEffect(() => stores.routeStore.setNavigateFunction(() => navigate));
+  // Taken back on unmount. A template switch unmounts this layout, and without the cleanup the
+  // store kept navigating through the dead router — a link that silently did nothing.
+  onCleanup(stores.routeStore.setNavigateFunction(navigate));
   // Both halves, and `search` is not incidental: it is a separate signal on the router's location,
   // so reading it here is what makes this effect re-run when a link changes only the query — one
   // record page to the next. See `setCurrentPath`.
