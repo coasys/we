@@ -5,6 +5,7 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
+import { fieldSurface } from '../shared/field-surface';
 import { openFloatingPanel } from '../shared/floating-panel';
 import sharedStyles from '../shared/styles';
 import type { ComponentSize } from '../types';
@@ -36,19 +37,17 @@ const styles = css`
   [part='input-wrapper'] {
     display: flex;
     align-items: center;
-    border: 1px solid var(--we-role-border);
-    border-radius: var(--we-radius-400);
-    background: var(--we-role-surface);
     padding: 0 var(--we-space-300);
     /* The clear button and the calendar icon sat flush against each other, reading as one control. */
     gap: var(--we-space-200);
     cursor: pointer;
-    transition: border-color var(--we-transition-200, 150ms) ease;
   }
 
-  [part='input-wrapper']:focus-within {
-    border-color: var(--we-role-accent);
-  }
+  /*
+    Focus-within, since the focusable thing is the display input inside this wrapper — the same shape
+    we-select has, and for the same reason: the ring follows the caret rather than waiting for Tab.
+  */
+  ${fieldSurface("[part='input-wrapper']", ':focus-within')}
 
   [part='clear'] {
     all: unset;
@@ -174,28 +173,20 @@ const styles = css`
 
   /* Built the way we-input builds its own field, rather than resetting with all: unset — same
      border, padding and focus ring, so the time reads as a control in this design system rather
-     than as a browser one. */
+     than as a browser one. It now says that by construction: the border, fill and states come from
+     the one definition every other field uses, rather than from a restatement that had already
+     fallen a version behind it. */
   input[part='time'] {
     flex: 1;
     min-width: 0;
-    border: 1px solid var(--we-role-border);
-    border-radius: var(--we-radius-400);
-    background: var(--we-role-surface);
     color: var(--we-role-text);
     font: inherit;
     outline: none;
     padding: var(--we-space-100) var(--we-space-200);
     cursor: pointer;
-    transition: border-color var(--we-transition-200, 150ms) ease;
   }
 
-  input[part='time']:hover {
-    border-color: var(--we-role-border-strong);
-  }
-
-  input[part='time']:focus-visible {
-    border-color: var(--we-role-focus);
-  }
+  ${fieldSurface("input[part='time']", ':focus-within')}
 
   /*
     No native picker glyph, for the reason we-input hides the native number spinners: the browser

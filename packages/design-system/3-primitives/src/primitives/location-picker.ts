@@ -4,6 +4,7 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
+import { fieldSurface } from '../shared/field-surface';
 import sharedStyles from '../shared/styles';
 import { leafletCss } from './leaflet-css';
 
@@ -19,31 +20,26 @@ const styles = css`
     min-width: 0;
   }
 
+  /*
+    Everything about this box that makes it a field — fill, edge, hover, focus — comes from
+    fieldSurface below, so it cannot drift from we-input and we-select again. What is left here is
+    what is this control's alone: it is a button, so it needs the reset, and it is a single row, so
+    it needs a control height.
+  */
   [part='trigger'] {
     all: unset;
     display: inline-flex;
     align-items: center;
     gap: var(--we-space-300);
-    border: 1px solid var(--we-role-border);
-    border-radius: var(--we-radius-400);
-    background: var(--we-role-surface);
     padding: 0 var(--we-space-300);
     height: calc(var(--we-component-height-md) + var(--we-theme-control-height-offset, 0px));
     cursor: pointer;
     width: 100%;
     box-sizing: border-box;
-    transition: border-color var(--we-transition-200, 150ms) ease;
   }
 
-  [part='trigger']:hover:not([disabled]) {
-    border-color: var(--we-role-border-strong);
-  }
-
-  [part='trigger']:focus-visible {
-    border-color: var(--we-role-accent);
-    outline: 2px solid var(--we-role-accent-muted);
-    outline-offset: -1px;
-  }
+  /* After the reset above, never before it: all:unset clears border, radius and background. */
+  ${fieldSurface("[part='trigger']")}
 
   [part='pin-icon'] {
     color: var(--we-role-accent);

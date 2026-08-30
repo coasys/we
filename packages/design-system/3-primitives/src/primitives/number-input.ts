@@ -8,14 +8,36 @@ import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
 import type { ComponentSize } from '../types';
 
+/*
+  The same well `we-input` paints, and for the same reasons — this is the one field in the family
+  that draws on its own host rather than on an inner part, so it takes the DS-prop spelling rather
+  than `fieldSurface`.
+
+  It was on `bg: 'page'` with no states at all: the exact value `we-input`'s note records having
+  replaced ("an input is somewhere you put something, and the elevation stack has a role for that"),
+  left behind when that change went through. The missing states were the worse half. Nothing here
+  answered the pointer, and — because the host's border is the only edge and the inner `<input>` is
+  `all: unset` — nothing anywhere in the control marked keyboard focus, so tabbing into a number
+  field put the caret somewhere with no indication on screen of where. `focusProps` resolves to
+  `:host(:focus-within)`, which is what reaches a shadow descendant's focus from the host.
+*/
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   display: 'inline-flex',
   ay: 'center',
   r: '400',
-  border: '1px solid var(--we-role-border)',
-  bg: 'page',
+  border: '1px solid border',
+  bg: 'surface-sunken',
   fontSize: '300',
   color: 'text',
+  hoverProps: { bg: 'surface-hover', border: '1px solid border-strong' },
+  activeProps: { bg: 'surface-hover', border: '1px solid border-strong' },
+  // Focus restates the fill because a state rule falls back to the *base* value for anything it
+  // leaves out, and focus outranks hover — see the long note on `we-input`'s own `focusProps`.
+  focusProps: {
+    bg: 'surface-hover',
+    border: '1px solid var(--we-ring-color)',
+    ring: '0 0 0 1px var(--we-ring-color)',
+  },
 };
 
 const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
