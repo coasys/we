@@ -227,6 +227,28 @@ export const role = {
   surfaceActive: 'var(--we-color-neutral-200)',
 
   /**
+   * Hover and pressed states for a *well* — an input, a textarea, a select trigger.
+   *
+   * `surfaceHover` is measured for something sitting ON a surface: a menu item, a list row, a ghost
+   * button. Applied to a well it lands at about surface level, so hovering a field made it the same
+   * colour as the sheet behind it and the recess vanished under the pointer — the one moment the
+   * control should be most clearly a place you put something.
+   *
+   * Expressed as a mix *toward* `surface` rather than as a signed lightness step, which is what
+   * makes it right in both polarities without being told which it is. `STATE_STEPS` is negative in
+   * light and dark alike, so `calc(l + step)` darkens either way — correct for a row on a surface,
+   * and backwards for a well, where hovering should lift it toward the sheet rather than deepen it.
+   * Defining the value in terms of the two things it must sit between makes that structural: it
+   * cannot land past `surface`, whichever direction the ramp runs.
+   *
+   * The same argument the `color-mix` note in `design-utils/isRawCSSValue` makes for control states,
+   * and the same one `accentHover` makes for stepping from the role instead of from the scale.
+   */
+  surfaceSunkenHover: 'color-mix(in oklab, var(--we-role-surface-sunken) 65%, var(--we-role-surface))',
+  /** Pressed goes further along the same path, so a click reads differently from a hover. */
+  surfaceSunkenActive: 'color-mix(in oklab, var(--we-role-surface-sunken) 45%, var(--we-role-surface))',
+
+  /**
    * The filled neutral of a *control* — a slider track, a switch track, a progress trough, a
    * scrollbar thumb, a secondary button, a count chip.
    *

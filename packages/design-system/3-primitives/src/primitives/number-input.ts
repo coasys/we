@@ -29,12 +29,12 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   bg: 'surface-sunken',
   fontSize: '300',
   color: 'text',
-  hoverProps: { bg: 'surface-hover', border: '1px solid border-strong' },
-  activeProps: { bg: 'surface-hover', border: '1px solid border-strong' },
+  hoverProps: { bg: 'surface-sunken-hover', border: '1px solid border-strong' },
+  activeProps: { bg: 'surface-sunken-active', border: '1px solid border-strong' },
   // Focus restates the fill because a state rule falls back to the *base* value for anything it
   // leaves out, and focus outranks hover — see the long note on `we-input`'s own `focusProps`.
   focusProps: {
-    bg: 'surface-hover',
+    bg: 'surface-sunken-hover',
     border: '1px solid var(--we-ring-color)',
     ring: '0 0 0 1px var(--we-ring-color)',
   },

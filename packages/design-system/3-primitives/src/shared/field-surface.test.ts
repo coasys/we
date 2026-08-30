@@ -93,7 +93,10 @@ describe('the host-painted fields say the same thing in DS props', () => {
   });
 
   it.each(HOST_PAINTED)('%s answers the pointer with the fill, not the edge alone', (_name, ctor) => {
-    expect(defaultsOf(ctor).hoverProps).toMatchObject({ bg: 'surface-hover' });
+    // The WELL's hover, not the surface's. `surface-hover` is measured for a row sitting ON a
+    // surface, so on a recessed field it landed at about surface level and the recess vanished
+    // under the pointer — see the role's own note.
+    expect(defaultsOf(ctor).hoverProps).toMatchObject({ bg: 'surface-sunken-hover' });
   });
 });
 
@@ -102,6 +105,6 @@ describe('every field answers the pointer', () => {
   // had no hover rule at all, leaving it the only field in the family that did not respond. The
   // claim and the code now agree.
   it.each(PART_PAINTED)('%s changes fill on hover, not the edge alone', (_name, ctor) => {
-    expect(cssTextOf(ctor)).toContain('background: var(--we-role-surface-hover)');
+    expect(cssTextOf(ctor)).toContain('background: var(--we-role-surface-sunken-hover)');
   });
 });

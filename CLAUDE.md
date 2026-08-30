@@ -1587,7 +1587,8 @@ a user-chosen swatch.
 | `surface` | A card, panel or sheet sitting on the page. |
 | `surface-raised` | Something floating above the page — a popover, a floating bar, a docked rail with a shadow. |
 | `surface-sunken` | A well recessed into a surface — an inset box, a code block, an input trough. |
-| `surface-hover` / `surface-active` | Row and item feedback. Use inside `hoverProps` / `activeProps`. |
+| `surface-hover` / `surface-active` | Row and item feedback — something sitting **on** a surface. Use inside `hoverProps` / `activeProps`. |
+| `surface-sunken-hover` / `surface-sunken-active` | The same, for a **well**: an input, a textarea, a picker trigger. A well hovered with `surface-hover` lands at about surface level and stops looking recessed, so reach for these wherever the resting fill is `surface-sunken`. |
 | `control-surface` | The filled neutral of a *control* — a slider or switch track, a progress trough, a scrollbar thumb, a secondary button, a count chip. Not a surface and not a state. |
 | `text` | Primary body and heading text. |
 | `text-muted` | Secondary text — captions, labels, metadata. |

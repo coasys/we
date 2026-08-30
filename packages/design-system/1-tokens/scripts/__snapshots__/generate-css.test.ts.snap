@@ -158,6 +158,8 @@ exports[`token CSS generation > color.css — hues, lightness ramp, palettes, ro
   --we-role-accent-active: oklch(from var(--we-role-accent) calc(l + var(--we-state-active-accent, var(--we-state-active))) c h);
   --we-role-surface-hover: var(--we-color-neutral-100);
   --we-role-surface-active: var(--we-color-neutral-200);
+  --we-role-surface-sunken-hover: color-mix(in oklab, var(--we-role-surface-sunken) 65%, var(--we-role-surface));
+  --we-role-surface-sunken-active: color-mix(in oklab, var(--we-role-surface-sunken) 45%, var(--we-role-surface));
   --we-role-control-surface: var(--we-color-neutral-200);
   --we-role-overlay: oklch(14.6% calc(var(--we-color-neutral-saturation) / 100 * var(--we-color-neutral-chroma-max, 0.18) * 0.2920) var(--we-color-neutral-hue) / 60%);
   --we-role-shadow-color: oklch(14.6% calc(var(--we-color-neutral-saturation) / 100 * var(--we-color-neutral-chroma-max, 0.18) * 0.2920) var(--we-color-neutral-hue));

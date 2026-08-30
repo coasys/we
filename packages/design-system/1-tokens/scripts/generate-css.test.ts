@@ -72,20 +72,27 @@ describe('token CSS generation', () => {
         A scale position, an expression over the theme's variables, or a step from another role —
         never a literal, which is what makes a role themeable at all.
 
-        Four accepted forms, and the shape of each matters:
+        Five accepted forms, and the shape of each matters:
           var(--we-color-…)                        a scale position
           oklch(<number>% calc(var(--we-color-…     a pinned lightness, parametric chroma and hue
           oklch(calc(var(--we-…                     a lightness that is itself a variable
           oklch(from var(--we-role-…                a step from another role
+          color-mix(in <space>, var(--we-role-…     a position BETWEEN two roles
 
         The third was added for the accent, whose lightness became a theme parameter — it is *more*
         parametric than the second, not less, so a pattern that only allowed a literal lightness was
         rejecting the wrong thing. Written as an alternation of prefixes rather than "not a hex",
         because the failure being guarded against is a role that stops following the theme, and
         naming the legal shapes is what catches a new way of doing that.
+
+        The fifth arrived with the well's hover states, and is a different kind of parametric from
+        the fourth rather than a loosening of it. A step says "this far from that role" and needs a
+        signed direction; a mix says "this far between these two", which needs none — so it stays
+        correct when the ramp inverts, without the value being told which polarity it is in. The
+        arguments are still required to be variables, so a literal is refused here exactly as before.
       */
       expect(declaration![1], `role '${name}' hardcodes a colour`).toMatch(
-        /^(var\(--we-(color|role)-|oklch\([\d.]+% (calc\(var\(--we-color-|[\d.]+ var\(--we-color-)|oklch\(calc\(var\(--we-|oklch\(from var\(--we-role-)/,
+        /^(var\(--we-(color|role)-|oklch\([\d.]+% (calc\(var\(--we-color-|[\d.]+ var\(--we-color-)|oklch\(calc\(var\(--we-|oklch\(from var\(--we-role-|color-mix\(in [a-z]+, var\(--we-(color|role)-)/,
       );
     }
   });

@@ -63,7 +63,7 @@ export function fieldSurface(
     }
 
     ${box}:hover:not([disabled]) {
-      background: var(--we-role-surface-hover);
+      background: var(--we-role-surface-sunken-hover);
       border-color: var(--we-role-border-strong);
       transition:
         background-color ${stateTransition},
@@ -77,7 +77,7 @@ export function fieldSurface(
       arrived.
     */
     ${focus} {
-      background: var(--we-role-surface-hover);
+      background: var(--we-role-surface-sunken-hover);
       border-color: var(--we-ring-color);
       box-shadow: 0 0 0 1px var(--we-ring-color);
       /* Both properties travel together or the ring pops in over an edge that is still moving. */
