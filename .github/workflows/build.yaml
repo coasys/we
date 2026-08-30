@@ -183,9 +183,27 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
+      # rustfmt for the toolchain the crate actually pins, which is not the default one.
+      #
+      # `src-tauri/rust-toolchain.toml` pins channel 1.92 — it has to match ad4m's, because this
+      # crate compiles that whole tree by path and the older default resolved a dependency graph
+      # that does not build. rustup honours that file for anything run in the directory, so
+      # installing rustfmt for `stable` and then running `cargo fmt` there installs it for one
+      # toolchain and uses another: rustup silently fetches 1.92 and reports "'cargo-fmt' is not
+      # installed for the toolchain '1.92'". That is what the first version of this job did.
+      #
+      # The channel is read out of the file rather than written here, so this cannot drift from the
+      # pin it exists to serve — and it is echoed, because "which toolchain" is the whole failure.
+      - name: Install rustfmt for the pinned toolchain
+        working-directory: apps/we-tauri/src-tauri
+        run: |
+          CHANNEL="$(sed -n 's/^ *channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)"
+          if [ -z "$CHANNEL" ]; then
+            echo "::error::could not read [toolchain] channel from rust-toolchain.toml"
+            exit 1
+          fi
+          echo "Pinned Rust channel: $CHANNEL"
+          rustup toolchain install "$CHANNEL" --component rustfmt --profile minimal
 
       - name: Check formatting
         working-directory: apps/we-tauri/src-tauri
