@@ -18,14 +18,20 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   bg: 'var(--we-role-surface)',
   r: '600',
   /*
-    32px, not the 64px this used to be.
+    40px. Between the 64px this started at and the 32px it was cut to.
 
-    `space-900` is the padding of a full page section, and around a two-line confirmation it was
-    most of the dialog: "Delete this?" plus a sentence came out ~300px wide with 128px of that
-    being padding, which is a large part of why modals read as small and empty. 32px is still
-    generous against the 24px a card gets, which is the relationship a sheet should have to a card.
+    `space-900` (64px) is the padding of a full page section, and around a two-line confirmation it
+    was most of the dialog: "Delete this?" plus a sentence came out ~300px wide with 128px of that
+    being padding, which is a large part of why modals read as small and empty. Cutting it to 32px
+    fixed that and overshot in the other direction — 32px is only 8px more than the 24px a card
+    gets, so a sheet floating over the page was barely more generous than a card sitting in it, and
+    the content read as crowded against the edge.
+
+    40px keeps the relationship the cut was arguing for (a sheet is roomier than a card) with enough
+    of a gap between them for it to be legible. Still well short of the page-section figure, so a
+    short confirmation does not go back to being mostly margin.
   */
-  p: '600',
+  p: '700',
   ax: 'stretch',
   /*
     Start, not centre. The base grows with its content, so centring on the main axis does nothing
