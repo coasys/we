@@ -18,6 +18,9 @@ const DEFAULTS: Partial<EditableImageProps> = {
   bg: 'neutral-200',
 };
 
+/** The same, for a tile sizing itself by ratio — see `baseStyle`. */
+const { height: _defaultHeight, ...DEFAULTS_BY_RATIO } = DEFAULTS;
+
 const editableImageKeys = [...designSystemKeys, 'children'] as const;
 const editableImageStyleKeys = editableImageKeys.filter((key) => key !== 'children');
 const componentKeys = [
@@ -64,10 +67,26 @@ export function EditableImage(allProps: EditableImageProps) {
   let cropRef: ImageCropRef | undefined;
   let fileInput: HTMLInputElement | undefined;
 
+  /*
+    An `aspect` and no height of its own means the tile sizes itself by ratio.
+
+    `aspect` is the shape the crop step enforces, and until now it said nothing about the box the
+    result is shown in — so a caller had to pick a height that happened to match, against a width it
+    could not know. The create-space modal is where that came apart: a 4:1 crop displayed in a box
+    that worked out to 3.4:1, so `fit: cover` re-cropped the sides of what somebody had just framed,
+    and the preview quietly disagreed with the file being saved. Any fixed height is only right at
+    one modal width anyway, and a modal narrows on a phone.
+
+    Only when no height is given, so the full-bleed banners that pass both (the space header at
+    300px, the profile at 200px) are untouched.
+  */
+  const sizedByRatio = () => props.aspect !== undefined && dsProps.height === undefined;
+
   const baseStyle = createMemo(() => {
     const usedProps = filterProps(dsProps, editableImageStyleKeys);
-    const merged = mergeProps(usedProps, DEFAULTS) as EditableImageProps;
-    return { ...buildLayoutStyles(merged, 'column'), 'flex-shrink': '0' };
+    const merged = mergeProps(usedProps, sizedByRatio() ? DEFAULTS_BY_RATIO : DEFAULTS) as EditableImageProps;
+    const ratio = sizedByRatio() ? { 'aspect-ratio': String(props.aspect) } : {};
+    return { ...buildLayoutStyles(merged, 'column'), 'flex-shrink': '0', ...ratio };
   });
 
   // Tiers count as much as states: both route through the same var indirection, and gating on the

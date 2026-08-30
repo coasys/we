@@ -78,7 +78,12 @@ export const createSpaceModal = {
             alt: 'Cover image',
             fit: 'cover',
             width: '100%',
-            height: '160px',
+            /*
+              No height: the tile takes its shape from `aspect`, so the box and the crop are the
+              same 4:1 at every modal width. A fixed height could only be right at one of them — and
+              at the width this sheet actually is, 160px worked out to 3.4:1, so `fit: cover` was
+              re-cropping the sides of what somebody had just framed in the crop step.
+            */
             aspect: 4 / 1,
             // Inset inside a modal that has its own radius, so square corners here read as a
             // mismatch in any rounded theme. Full-bleed banners (the space header, the profile
@@ -92,8 +97,12 @@ export const createSpaceModal = {
           },
         },
         {
+          /*
+            Half of the avatar's own height, so the overlap says what it is rather than being a
+            number that looked right once.
+          */
           type: 'Row',
-          props: { mt: '-60px', ml: '800' },
+          props: { mt: '-44px', ml: '800' },
           children: [
             {
               type: 'EditableImage',
@@ -101,8 +110,15 @@ export const createSpaceModal = {
                 src: { $: 'local.avatar' },
                 alt: 'Space avatar',
                 fit: 'cover',
-                width: '120px',
-                height: '120px',
+                /*
+                  88px, not 120px. Against a banner this size the larger disc was carrying about
+                  twice the weight it carries anywhere else — 75% of the cover's height, where the
+                  space header is 40% and the profile page 60% — which is what made it read as
+                  floating on the sheet rather than as sitting in a header. It also left a 60px
+                  band below the cover with nothing in it but the bottom of the avatar.
+                */
+                width: '88px',
+                height: '88px',
                 r: 'avatar',
                 /*
                   The sheet's own colour, which is what makes this read as a disc punched out of
