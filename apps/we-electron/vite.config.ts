@@ -15,7 +15,13 @@ export default defineConfig({
     },
   },
   server: { port: 3002 },
-  build: { target: 'esnext', outDir: 'dist' },
+  build: {
+    target: 'esnext',
+    outDir: 'dist',
+    // Above the 500 kB default because the chunks that crossed it are the on-demand Cesium and
+    // three.js bundles. See apps/we-web/vite.config.ts for the full reasoning and what it costs.
+    chunkSizeWarningLimit: 3500,
+  },
   // Never pre-bundle local file: deps — hard links break on rebuild, causing
   // Vite's dep optimizer cache to serve stale content after restart.
   optimizeDeps: { exclude: ['@coasys/ad4m'] },
