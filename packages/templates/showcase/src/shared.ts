@@ -14,7 +14,13 @@
  */
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 import { expr } from '@we/schema-shared';
-import { composerModal as kitComposerModal, field, formModal } from '@we/template-kit';
+import {
+  composerModal as kitComposerModal,
+  field,
+  formModal,
+  HAS_OFFERED_SIGNAL_TYPES,
+  OFFERED_SIGNAL_TYPES,
+} from '@we/template-kit';
 
 /**
  * The kinds these templates use.
@@ -153,14 +159,14 @@ export function signalRow(nodeRef: string): SchemaNode {
   return {
     type: '$if',
     props: {
-      condition: { $: 'count(local.signalTypes)' },
+      condition: { $: HAS_OFFERED_SIGNAL_TYPES },
       then: {
         type: 'Row',
         props: { gap: '400', ay: 'center' },
         children: [
           {
             type: '$each',
-            props: { items: { $: 'local.signalTypes' }, as: 'sig' },
+            props: { items: { $: OFFERED_SIGNAL_TYPES }, as: 'sig' },
             children: [
               {
                 /*

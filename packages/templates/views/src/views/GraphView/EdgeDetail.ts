@@ -1,5 +1,11 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { agentByline, commentThread, composerModal } from '@we/template-kit';
+import {
+  agentByline,
+  commentThread,
+  composerModal,
+  HAS_OFFERED_SIGNAL_TYPES,
+  OFFERED_SIGNAL_TYPES,
+} from '@we/template-kit';
 
 /**
  * A drawn connection, opened.
@@ -39,14 +45,14 @@ const close = { $setLocal: 'selectedEdge', value: null };
 const signals: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $: 'count(local.signalTypes)' },
+    condition: { $: HAS_OFFERED_SIGNAL_TYPES },
     then: {
       type: 'Row',
       props: { gap: '600', ay: 'center', minHeight: '40px' },
       children: [
         {
           type: '$each',
-          props: { items: { $: 'local.signalTypes' }, as: 'sig' },
+          props: { items: { $: OFFERED_SIGNAL_TYPES }, as: 'sig' },
           children: [
             {
               type: 'SignalControl',

@@ -4843,6 +4843,13 @@
           "default": "true"
         },
         {
+          "name": "retired",
+          "type": "boolean",
+          "predicate": "we://retired",
+          "required": false,
+          "default": "false"
+        },
+        {
           "name": "valueType",
           "type": "string",
           "predicate": "we://signal_value_type",
@@ -6678,7 +6685,7 @@
         "launchModule",
         "createSignalType",
         "createRelationshipType",
-        "deleteSignalType",
+        "setSignalTypeRetired",
         "upsertSignal",
         "navigateToSpace",
         "openRecordRef",

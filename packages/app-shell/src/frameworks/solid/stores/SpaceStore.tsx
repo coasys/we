@@ -680,8 +680,8 @@ export interface SpaceStore {
    * the vocabulary; identified, so a query can filter on it and an edge style can key on it.
    */
   createRelationshipType: (config: Partial<RelationshipType>) => Promise<void>;
-  /** Delete a signal type and every signal cast with it. Nothing else removes the signals. */
-  deleteSignalType: (signalTypeId: string) => Promise<void>;
+  /** Withdraw a signal type from use, or bring it back. Never removes the signals given with it. */
+  setSignalTypeRetired: (signalTypeId: string, retired: boolean) => Promise<void>;
   upsertSignal: (nodeId: string, signalTypeId: string, value: number) => Promise<void>;
   navigateToSpace: (spaceId: string, view?: string) => Promise<void>;
   openRecordRef: (ref: string) => Promise<void>;
@@ -1919,38 +1919,47 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   /**
-   * Delete a signal type, and every signal cast with it.
+   * Withdraw a signal type from use, or bring it back — without touching what people gave.
    *
-   * The card behind this called `record.delete` on the `SignalType` alone. Signals do not point at
-   * their type through a relation — they carry `signalTypeId` as a scalar, which is what lets a
-   * signal hang off any `WeNode` at all — so nothing cascades and nothing dangles *visibly*: every
-   * heart already given stays in the perspective, counted by no projection and rendered by nothing,
-   * and re-creating a type with the same id would bring them all back.
+   * ## Why this is not a delete
    *
-   * So the cascade has to be written, and it has to be here rather than in the template: a template
-   * cannot express "find every signal in this space with this type id and delete it", and a delete
-   * that only half happens is worse than one that is refused. Per-signal `try` because a partial
-   * sweep is still progress — the alternative is one unreachable record making the type permanent.
+   * A `Signal` names its type by **record id** (`signalTypeId`), not by slug, while every template
+   * resolves the type by slug at render time — `find(local.signalTypes, { slug: 'like' }).id`.
+   * Three things follow, and they decide the whole design:
+   *
+   * - Deleting the type removes nothing. Every reaction ever given stays in the perspective, now
+   *   naming an id nothing resolves, counted by no projection and rendered by nothing.
+   * - Re-creating a type with the same slug does not bring them back either. AD4M mints a fresh
+   *   record id, so the old rows still name the dead one. "Delete it and add it back" loses the
+   *   history permanently, which is exactly the thing a person would expect to be safe.
+   * - Cascading the delete instead — sweeping up every `Signal` with that id — is worse than it
+   *   looks. It is thousands of sequential link removals in an established space; it destroys
+   *   *other members'* expressions on one person's click, in a neighbourhood every member can write
+   *   to; it cannot be undone; and it cannot even be guaranteed, since a peer who was offline
+   *   during the sweep, or who reacted concurrently, re-orphans immediately.
+   *
+   * So the reversible option is the right one, and it is the one this codebase already chose one
+   * layer up: `shapeStore.deleteShape` removes a model definition and says plainly that "records
+   * already created keep their data — only the definition goes". A signal type is the same kind of
+   * thing, and deserves the same answer.
+   *
+   * Retired, the type stops being offered anywhere a reaction can be given. The signals stay,
+   * `find()` by slug still resolves it so existing counts keep working, and un-retiring restores
+   * every reaction exactly as it was — because nothing was ever removed.
+   *
+   * Positively phrased so a switch can pass `event.detail` bare, matching `setAgentMuted` and
+   * `setViewVisible`.
    */
-  async function deleteSignalType(signalTypeId: string): Promise<void> {
+  async function setSignalTypeRetired(signalTypeId: string, retired: boolean): Promise<void> {
     const p = datasetStore.currentDataset()?.handle;
     if (!p) return;
 
-    const type = await SignalType.findOne(p, { where: { id: signalTypeId } });
-    if (!type) return;
-
-    // The type's own id is what a signal stores, not the record id of the type — read it off the
-    // record rather than assuming the two are spelled the same way.
-    const signals = await Signal.findAll(p, { where: { signalTypeId: type.id } });
-    for (const signal of signals) {
-      try {
-        await signal.delete();
-      } catch (error) {
-        console.error('SpaceStore: could not delete a signal of a deleted type', error);
-      }
+    try {
+      await SignalType.update(p, signalTypeId, { retired });
+    } catch (error) {
+      console.error('SpaceStore: could not change whether a signal type is retired', error);
+      toastService.error(retired ? 'Could not retire that reaction' : 'Could not restore that reaction');
     }
-
-    await type.delete();
   }
 
   /**
@@ -3463,7 +3472,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     launchModule,
     createSignalType,
     createRelationshipType,
-    deleteSignalType,
+    setSignalTypeRetired,
     upsertSignal,
     navigateToSpace,
     openRecordRef,

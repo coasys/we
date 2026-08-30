@@ -2055,6 +2055,7 @@ SignalType extends WeNode:
   - aggregate: SignalAggregate = 'count' [we://aggregate]
   - semantic: SignalSemantic = 'custom' [we://semantic]
   - allowChange: boolean = true [we://allow_change]
+  - retired: boolean = false [we://retired]
   - valueType: string = 'numeric' [we://signal_value_type]
   - schemaVersion: number = 1 [we://schema_version]
 
@@ -2630,7 +2631,7 @@ SpaceStore:
   - launchModule(moduleId: string): invokes that module's declared launcher action. Takes an id rather than a path because $action resolves a literal string, so a rail iterating over modules cannot build modules.<id>.<method> itself
   - createSignalType(config: Partial<SignalType>): creates a new signal type in the community; slug auto-derived from name if blank
   - createRelationshipType(config: Partial<RelationshipType>): names a kind of connection this community makes — "contradicts", "came out of". The counterpart to createSignalType; slug derived from name if blank
-  - deleteSignalType(signalTypeId: string): deletes a signal type AND every signal cast with it. Use this rather than record.delete on a SignalType — a signal carries its type as a scalar id rather than a relation, so deleting the type alone leaves every reaction ever given in the space, counted by nothing and rendered by nothing
+  - setSignalTypeRetired(signalTypeId: string, retired: boolean): withdraws a signal type from use, or brings it back. Never deletes the signals given with it — a signal names its type by record id while templates resolve it by slug, so DELETING a type strands every reaction ever given and re-creating one with the same slug does not restore them. Retiring is the reversible version: the type stops being offered, existing counts keep working, and un-retiring brings everything back. Filter the offered list with OFFERED_SIGNAL_TYPES from @we/template-kit; leave find()-by-slug unfiltered so history still resolves
   - upsertSignal(nodeId: string, signalTypeId: string, value: number): adds or updates a signal on a node; value=0 deletes it
   - navigateToSpace(spaceId: string, view?: string): navigates to a space — accepts a perspective UUID or a neighbourhood CID (sharedUrl without the neighbourhood:// prefix); pre-loads space templates before switching so the template and data arrive together
   - openRecordRef(ref: string): goes to whatever a record reference names — the space, and the record's own page within it. Takes the whole `we:…` reference rather than its parts, so nothing outside the host restates where a record's page lives. A reference naming only a dataset opens the space; a relative one (`we:./…`) resolves against the space on screen; a person has no page, so nothing happens

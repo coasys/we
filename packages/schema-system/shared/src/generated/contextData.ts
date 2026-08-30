@@ -1737,6 +1737,7 @@ export const contextData: ContextData = {
         },
         { name: 'semantic', type: 'SignalSemantic', predicate: 'we://semantic', required: false, default: "'custom'" },
         { name: 'allowChange', type: 'boolean', predicate: 'we://allow_change', required: false, default: 'true' },
+        { name: 'retired', type: 'boolean', predicate: 'we://retired', required: false, default: 'false' },
         {
           name: 'valueType',
           type: 'string',
@@ -2678,7 +2679,7 @@ export const contextData: ContextData = {
         'launchModule',
         'createSignalType',
         'createRelationshipType',
-        'deleteSignalType',
+        'setSignalTypeRetired',
         'upsertSignal',
         'navigateToSpace',
         'openRecordRef',

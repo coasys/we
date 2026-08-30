@@ -365,7 +365,7 @@ export const storeEntries: StoreEntry[] = [
       'setSpaceDefaultTemplate',
       'setSpaceDefaultTheme',
       'createSignalType',
-      'deleteSignalType',
+      'setSignalTypeRetired',
       'upsertSignal',
       'navigateToSpace',
       'openRecordRef',
@@ -1025,8 +1025,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(field: "avatar" | "coverImage", imageFile: File, spaceUuid?): uploads and sets the space avatar or cover image',
         createSignalType:
           '(config: Partial<SignalType>): creates a new signal type in the community; slug auto-derived from name if blank',
-        deleteSignalType:
-          '(signalTypeId: string): deletes a signal type AND every signal cast with it. Use this rather than record.delete on a SignalType — a signal carries its type as a scalar id rather than a relation, so deleting the type alone leaves every reaction ever given in the space, counted by nothing and rendered by nothing',
+        setSignalTypeRetired:
+          '(signalTypeId: string, retired: boolean): withdraws a signal type from use, or brings it back. Never deletes the signals given with it — a signal names its type by record id while templates resolve it by slug, so DELETING a type strands every reaction ever given and re-creating one with the same slug does not restore them. Retiring is the reversible version: the type stops being offered, existing counts keep working, and un-retiring brings everything back. Filter the offered list with OFFERED_SIGNAL_TYPES from @we/template-kit; leave find()-by-slug unfiltered so history still resolves',
         unreadNodeIds:
           'string[] — ids of containers in this space holding something newer than your read marker. The read side of `ReadMarker`: use it for unread dots with `{ "$": "channel.id in spaceStore.unreadNodeIds" }` rather than recomputing a `$latestChild` projection and a comparison per row',
         myMentions:

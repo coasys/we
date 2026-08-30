@@ -56,6 +56,7 @@ export { RECORD_ROUTE_PATH, recordLink } from './we/recordLink.ts';
 export { marketplaceList } from './we/marketplaceList.ts';
 export type { MarketplaceListOptions } from './we/marketplaceList.ts';
 export { peopleRow } from './we/peopleRow.ts';
+export { HAS_OFFERED_SIGNAL_TYPES, OFFERED_SIGNAL_TYPES } from './we/signalTypes.ts';
 export type { PeopleRowOptions } from './we/peopleRow.ts';
 export { recordFormModal } from './we/recordForm.ts';
 export type { RecordFormModalOptions } from './we/recordForm.ts';

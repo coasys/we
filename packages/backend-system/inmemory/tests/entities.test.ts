@@ -22,6 +22,7 @@ const Template = entities.Template;
 const ImageBlock = entities.ImageBlock;
 const AgentSettings = entities.AgentSettings;
 const SignalType = entities.SignalType;
+const Signal = entities.Signal;
 
 let dataset: { id: string; tables: Record<string, unknown[]> };
 
@@ -225,5 +226,62 @@ describe("'' means empty, on this backend and on AD4M", () => {
 
     const [read] = await Space.findAll(dataset);
     expect(read.name).toBe('Test');
+  });
+});
+
+describe('retiring a signal type keeps what people gave', () => {
+  /*
+    The bug this is here to stop coming back.
+
+    A `Signal` names its type by **record id** (`signalTypeId`), while every template resolves the
+    type by slug at render time — `find(local.signalTypes, { slug: 'like' }).id`. Three consequences
+    follow, and the middle one is the surprise:
+
+    - Deleting the type removes no signals. They stay, naming an id nothing resolves.
+    - Re-creating a type with the same slug does NOT bring them back, because the new record has a
+      new id. "Delete it and add it back" therefore loses the history permanently.
+    - So a cascade was proposed — sweep up every signal with that id. That destroys other members'
+      reactions on one person's click, in a neighbourhood every member can write to, irreversibly,
+      and it cannot even be guaranteed: a peer offline during the sweep re-orphans immediately.
+
+    `retired` is the reversible answer, and it is what `deleteShape` already does one layer up:
+    the definition stops being offered, the instances keep their data.
+  */
+  it('leaves every signal in place, and keeps resolving the type behind them', async () => {
+    const like = await SignalType.create(dataset, { name: 'Like', slug: 'like' });
+    await Signal.create(dataset, { signalTypeId: like.id as string, value: 1 });
+    await Signal.create(dataset, { signalTypeId: like.id as string, value: 1 });
+
+    await SignalType.update(dataset, like.id as string, { retired: true });
+
+    // Nothing was removed — which is the entire point.
+    expect(await Signal.findAll(dataset)).toHaveLength(2);
+
+    // And the type is still there to be resolved, so a count of what people gave still works.
+    // Hiding it from the query instead would read as "nobody ever liked anything".
+    const found = await SignalType.findOne(dataset, { where: { slug: 'like' } });
+    expect(found?.retired).toBe(true);
+  });
+
+  it('comes back whole, because nothing was thrown away', async () => {
+    // The scenario a delete cannot serve: withdraw the word, change your mind, and every reaction
+    // is exactly where it was. A re-created type would have a new id and none of this history.
+    const like = await SignalType.create(dataset, { name: 'Like', slug: 'like' });
+    await Signal.create(dataset, { signalTypeId: like.id as string, value: 1 });
+
+    await SignalType.update(dataset, like.id as string, { retired: true });
+    await SignalType.update(dataset, like.id as string, { retired: false });
+
+    const restored = await SignalType.findOne(dataset, { where: { slug: 'like' } });
+    expect(restored?.retired).toBe(false);
+    expect(restored?.id).toBe(like.id);
+    expect(await Signal.findAll(dataset, { where: { signalTypeId: like.id as string } })).toHaveLength(1);
+  });
+
+  it('starts unretired, so an existing space is unaffected by the field arriving', async () => {
+    // `default: false` matters for the pushdown question too: the offered-list filter runs
+    // client-side precisely because records predating the field have no value at all here.
+    const type = await SignalType.create(dataset, { name: 'Like', slug: 'like' });
+    expect(type.retired).toBe(false);
   });
 });

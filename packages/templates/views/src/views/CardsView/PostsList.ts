@@ -1,5 +1,14 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { agentByline, cardList, cardShell, composerModal, emptyState, recordLink } from '@we/template-kit';
+import {
+  agentByline,
+  cardList,
+  cardShell,
+  composerModal,
+  emptyState,
+  HAS_OFFERED_SIGNAL_TYPES,
+  OFFERED_SIGNAL_TYPES,
+  recordLink,
+} from '@we/template-kit';
 
 export const postsList: SchemaNode = {
   type: 'Column',
@@ -185,14 +194,14 @@ export const postsList: SchemaNode = {
             {
               type: '$if',
               props: {
-                condition: { $: 'count(local.signalTypes)' },
+                condition: { $: HAS_OFFERED_SIGNAL_TYPES },
                 then: {
                   type: 'Row',
                   props: { height: '40px', mt: '200', ay: 'center', gap: '700' },
                   children: [
                     {
                       type: '$each',
-                      props: { items: { $: 'local.signalTypes' }, as: 'sig' },
+                      props: { items: { $: OFFERED_SIGNAL_TYPES }, as: 'sig' },
                       children: [
                         {
                           type: 'SignalControl',
