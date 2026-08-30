@@ -471,7 +471,44 @@ export interface ModuleDefinition {
    * silently breaks reactivity across a dynamically-loaded boundary.
    */
   createStore?: (deps: ModuleStoreDeps) => Record<string, unknown>;
+
+  /**
+   * Store members a **space template** may not reach — see {@link ModuleStoreSurface}.
+   *
+   * Omit it and every member is reachable at both tiers, which is the historical behaviour and the
+   * right default for a module whose store only touches the space on screen.
+   */
+  chromeOnlyStoreMembers?: readonly string[];
 }
+
+/**
+ * Which of a module's store members are host-chrome's alone.
+ *
+ * ## The hole this closes
+ *
+ * `modules` is the one entry in the template bag that is not filtered per member. It cannot be:
+ * `templateSurface.ts` classifies members it can *see* in a store interface it knows, and a module's
+ * store is a flat record of signals, derived closures and actions that the host has never heard of.
+ * So the whole namespace is handed to every tier, and the reason that was acceptable is that modules
+ * are bundled — chosen by the deployment's seed, shipped with the app, at the app's own trust level.
+ *
+ * The Pocket is where that stopped holding. Its actions write `PocketItem` and `PocketFolder` into
+ * the **agent's private root dataset**, so `modules.pocket.gather` from a synced space template is a
+ * stranger's template writing into a store that has nothing to do with the space it came from —
+ * the `resolvePerspective` shape again, a filtered bag around an unfiltered namespace.
+ *
+ * A module knows which of its members are chrome's, and nothing else does, so it says. The list is
+ * subtracted from the space-tier bag and left intact at the chrome tier; a member named here is
+ * *absent* below, exactly as an ungranted store member is, so a template gets no error channel.
+ *
+ * ## What this is not
+ *
+ * Not the state-vs-action split. Every member a module publishes is still tagged reactive, so a
+ * `{ $: 'modules.call.leave' }` still *calls* during paint. Fixing that needs a `state()` marker in
+ * `ModuleStoreDeps` and a change in every module's `createStore`; it is a real follow-up and this is
+ * not it. What this is, is the scope question — which is the half that had a live consequence.
+ */
+export type ModuleStoreSurface = readonly string[];
 
 /**
  * Fixed chrome a module has on screen right now, for the host to route panels and other chrome

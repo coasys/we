@@ -77,4 +77,42 @@ export const pocketModule = defineModule({
   launcher: { icon: 'bag-simple', label: 'Pocket', action: 'toggle', activeWhen: 'open' },
 
   createStore: (deps: ModuleStoreDeps) => createPocketStore(deps),
+
+  /*
+    Everything that reads or writes the Pocket's contents is chrome's alone.
+
+    The Pocket is the first module whose store touches the **agent's private root dataset** —
+    `PocketItem` and `PocketFolder` live beside your settings and your installed templates, not in
+    the space you happen to be looking at. `modules` is the one namespace a template bag hands over
+    whole, so before this a synced space template could call `modules.pocket.gather` and file things
+    into a store belonging to no space at all, or read `refs` to enumerate what somebody keeps.
+
+    The reads are withheld along with the writes: `refs` and `crumbs` are the contents and the folder
+    names, which is the same private thing seen from the other side.
+
+    What stays open is what the Pocket is *as chrome* — `open`, `toggle`, `show`, `close`, the dock
+    keys and `canOpen`. A template offering "put this in your Pocket" wants a button that opens the
+    panel, and the person then drops the thing in themselves; that is the whole interaction, and it
+    costs a space template nothing to have to go through the person.
+
+    The panel itself is host chrome (module panels render against the chrome bag), so it reaches all
+    of these unchanged.
+  */
+  chromeOnlyStoreMembers: [
+    'folderId',
+    'crumbs',
+    'canGoUp',
+    'enter',
+    'up',
+    'goToCrumb',
+    'refs',
+    'holds',
+    'busy',
+    'lastError',
+    'gather',
+    'gatherInto',
+    'forget',
+    'refresh',
+    'goTo',
+  ],
 });

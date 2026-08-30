@@ -1084,15 +1084,19 @@ const ALWAYS_PRESENT = new Set([
  * it, and this function tags only what was marked. Left as a follow-up rather than done here because
  * it is a contract change across five modules, and doing it badly would be worse than doing it late.
  */
-function taggedModuleStores(modules: Record<string, Record<string, unknown>>): Record<string, unknown> {
+function taggedModuleStores(
+  modules: Record<string, Record<string, unknown>>,
+  chromeOnly?: Record<string, readonly string[]>,
+): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [id, store] of Object.entries(modules ?? {})) {
     if (!store || typeof store !== 'object') continue;
+    // Members this module keeps for host chrome — absent below, not blocked. See `ModuleStoreSurface`.
+    const withheld = new Set(chromeOnly?.[id] ?? []);
     out[id] = Object.fromEntries(
-      Object.entries(store).map(([name, member]) => [
-        name,
-        typeof member === 'function' ? markReactive(member) : member,
-      ]),
+      Object.entries(store)
+        .filter(([name]) => !withheld.has(name))
+        .map(([name, member]) => [name, typeof member === 'function' ? markReactive(member) : member]),
     );
   }
   return out;
@@ -1116,6 +1120,15 @@ export interface BuildBagOptions {
    * resolves — so `onSuccess` does not fire on a cancel.
    */
   onDestructive?: (path: string, args: unknown[]) => boolean | Promise<boolean>;
+  /**
+   * Store members each module withholds from a space template, keyed by module id.
+   *
+   * Passed by the host from the module registry, rather than read here, for the reason this whole
+   * file exists to serve: what a module publishes is the module's declaration, and the boundary
+   * should not have to know the names. Only meaningful below the chrome tier — chrome *is* the
+   * audience these members are kept for. See `ModuleStoreSurface`.
+   */
+  moduleChromeOnly?: Record<string, readonly string[]>;
 }
 
 /**
@@ -1144,7 +1157,11 @@ export function buildTemplateBag<T extends Record<string, unknown>>(stores: T, o
     if (key === 'modules') {
       Object.defineProperty(bag, key, {
         enumerable: true,
-        get: () => taggedModuleStores(stores[key] as Record<string, Record<string, unknown>>),
+        get: () =>
+          taggedModuleStores(
+            stores[key] as Record<string, Record<string, unknown>>,
+            granted.has('host-layout') ? undefined : options.moduleChromeOnly,
+          ),
       });
       continue;
     }

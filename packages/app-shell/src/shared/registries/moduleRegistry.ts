@@ -394,6 +394,22 @@ export const moduleRegistry = {
   },
 
   /**
+   * Store members each module keeps for host chrome, keyed by module id.
+   *
+   * Read by `buildTemplateBag` when it assembles the space-tier `modules` namespace — see
+   * `ModuleStoreSurface` for why a module rather than the host declares this. Rebuilt on each call
+   * rather than memoised: modules register and unregister at runtime, and this is consulted once per
+   * bag construction, not per read.
+   */
+  chromeOnlyStoreMembers(): Record<string, readonly string[]> {
+    const out: Record<string, readonly string[]> = {};
+    for (const { definition } of moduleRegistry.all()) {
+      if (definition.chromeOnlyStoreMembers?.length) out[definition.id] = definition.chromeOnlyStoreMembers;
+    }
+    return out;
+  },
+
+  /**
    * Components every registered module contributes, for the host's component registry.
    *
    * Most modules should contribute none: in a schema fragment `Column` is a registry key rather than

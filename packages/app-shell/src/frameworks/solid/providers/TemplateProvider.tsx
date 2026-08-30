@@ -373,6 +373,9 @@ export default function TemplateProvider() {
   const templateBag = buildTemplateBag(stores, {
     grants: SPACE_TIER,
     onDestructive: (path, args) => shellStore.requestDestructive(path, args),
+    // What each module keeps for chrome. Declared by the module, since only it knows which of its
+    // members reach past the space on screen — see `ModuleStoreSurface`.
+    moduleChromeOnly: moduleRegistry.chromeOnlyStoreMembers(),
   });
 
   /*
