@@ -15,8 +15,8 @@ import {
   SpaceTemplatePreference,
   Template,
 } from '@we/entities';
-import type { SchemaNode, StoredTemplate, TemplateMeta, TemplateSchema } from '@we/schema-shared';
-import { createStoredTemplate, ensureNodeIds } from '@we/schema-shared';
+import type { RouteSchema, SchemaNode, StoredTemplate, TemplateMeta, TemplateSchema } from '@we/schema-shared';
+import { createStoredTemplate, ensureNodeIds, hasViewsMarker } from '@we/schema-shared';
 import { updateSchema } from '@we/schema-solid';
 import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
@@ -657,6 +657,26 @@ export function TemplateStoreProvider(props: ParentProps) {
       : allTemplates().find((t) => t.id === realId && !t._fromSpace) || shellTemplates.find((t) => t.id === realId);
     if (newTemplate) {
       commitTemplate(newTemplate);
+      /*
+        Where to land depends on which URL shape the incoming template speaks.
+
+        A template that marks where the space's sections go — `$views` — hosts them at
+        `/space/<id>/<segment>`, so carrying the current section across is exactly right and is what
+        `lastViewByTemplate` is for. A template that routes *itself* has no such route: the showcase
+        set mounts its own paths at the top level (`/board`, `/channel/:id`), so navigating to a
+        space URL landed on its catch-all. Switching to Workshop put you on "No such page" until you
+        pressed a nav button, and every other self-routing template had the same fault — the space
+        path was simply being assumed of all of them.
+
+        `/` rather than a guess at its first route: a self-routing template's index is its own to
+        decide, and Workshop's is a `redirect` to `/board` precisely so nothing outside it has to
+        know that.
+      */
+      if (!hasViewsMarker(newTemplate.routes as RouteSchema[] | undefined)) {
+        routeStore.navigate('/');
+        datasetStore.updateAgentSettings({ currentTemplateId: realId });
+        return;
+      }
       const segs = routeStore.segments();
       const currentView = segs[0] === 'space' && segs[2] ? segs[2] : 'globe';
       const view = lastViewByTemplate.get(realId) ?? currentView;

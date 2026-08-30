@@ -20,7 +20,11 @@ import { describe, expect, it } from 'vitest';
 
 import * as showcase from './index.ts';
 
-type Schema = { meta?: { name?: string; description?: string; icon?: string; role?: string } };
+type Route = { path: string; redirect?: string; routes?: Route[] };
+type Schema = {
+  meta?: { name?: string; description?: string; icon?: string; role?: string };
+  routes?: Route[];
+};
 
 /*
   The templates, not everything the index re-exports: `KIND` and `MODE` are the shared vocabulary
@@ -79,5 +83,37 @@ describe('the showcase templates', () => {
       .filter((name) => exported.some(([exportName]) => exportName === name));
 
     expect([...catalogued].sort()).toEqual([...exported.map(([name]) => name)].sort());
+  });
+
+  /*
+    Every one of these routes ITSELF — none marks where a space's sections go — so switching to one
+    lands on `/` and the template decides from there. That is the contract `switchTemplate` reads:
+    it carries the current section across only for a template that hosts sections, because those are
+    the ones living at `/space/<id>/<segment>`.
+
+    It was assuming the space shape of every template, so switching to Workshop landed on its
+    catch-all — "No such page" until you pressed a nav button — and the rest were one click from the
+    same fault. Both halves are asserted here: that these do not host sections, and that each can
+    answer `/`.
+  */
+  it.each(exported)('%s routes itself and can answer /', (_name, schema) => {
+    const hasViewsMarker = (routes: Route[] = []): boolean =>
+      routes.some((route) => route.path === '$views' || hasViewsMarker(route.routes));
+
+    expect(hasViewsMarker(schema.routes), 'a showcase template hosts no sections').toBe(false);
+
+    /*
+      Either no route table at all — the host's own catch-all renders nothing and the layout draws
+      the template at every path, which is how a single-screen template like Events works — or a
+      route that answers `/`, since that is where switching lands. A table with routes but no index
+      falls to the template's own catch-all, which is the bug this pins.
+    */
+    if (!schema.routes?.length) return;
+    const index = schema.routes.find((route) => route.path === '/');
+    expect(index, 'has routes but none answers /, so switching to it lands on its 404').toBeTruthy();
+    // A redirect has to point at a route that exists, or it bounces to the catch-all instead.
+    if (index?.redirect) {
+      expect(schema.routes.some((route) => route.path === index.redirect)).toBe(true);
+    }
   });
 });
