@@ -47,8 +47,15 @@ export type RadiusToken = '0' | '100' | '200' | '300' | '400' | '500' | '600' | 
  * that knows which it is. Kept out of the `radius` scale itself — a scale position is a length,
  * these are indirections — and out of the theme editor's shared radius list, since `avatar`
  * resolves to a percentage and is only safe on a box guaranteed square.
+ *
+ * `media` and `surface` both read the theme's surface group and differ only in what they fall back
+ * to when a theme sets nothing, which is the whole distinction: a *full-bleed* banner is square
+ * until a theme rounds it, and a box *inset inside* a sheet takes the sheet's own rounding, because
+ * square corners sitting inside a rounded container read as a mistake rather than as a choice.
+ * `Card` had been spelling the second one out as a raw `var()` string since before there was a name
+ * for it, which is how `r: 'surface'` came to look like it should already work.
  */
-export type SemanticRadius = 'avatar' | 'media';
+export type SemanticRadius = 'avatar' | 'media' | 'surface';
 
 // Branded type to allow both tokens and raw radius values (px, rem, %, etc.) while preserving autocomplete
 export type RadiusValue = RadiusToken | SemanticRadius | (string & {});

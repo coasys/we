@@ -292,6 +292,19 @@ const ROLE_NAMES = new Set(Object.keys(role).map((name) => name.replace(/[A-Z]/g
 const SEMANTIC_RADIUS: Record<string, string> = {
   avatar: 'var(--we-theme-avatar-radius, 50%)',
   media: 'var(--we-theme-surface-radius, 0px)',
+  /*
+    A box inset inside a sheet, taking the sheet's own rounding — `Card`'s exact chain, which it had
+    been writing as a raw `var()` string in its defaults because there was no name for it.
+
+    The same theme group as `media`, and a different fallback, which is the entire difference. A
+    full-bleed banner is square until a theme rounds it; a cover image inset inside a modal is not,
+    because square corners inside a rounded container read as a mistake. With no theme, `media`
+    resolves to 0 and every surface reading this group resolves to 8–16px, so the two disagreed by
+    default and agreed only once a theme set `surfaceRadius` — which is why the create-space cover
+    came out square inside a rounded sheet, and why reaching for `r: 'surface'` there was the right
+    instinct against a token that did not exist. It resolved to `var(--we-radius-surface)`, silently.
+  */
+  surface: 'var(--we-theme-surface-radius, var(--we-radius-400))',
 };
 
 export function tokenVar(prefix: string, token?: string, fallback = '0') {

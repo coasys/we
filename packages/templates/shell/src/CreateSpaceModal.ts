@@ -85,13 +85,17 @@ export const createSpaceModal = {
               re-cropping the sides of what somebody had just framed in the crop step.
             */
             aspect: 4 / 1,
-            // Inset inside a modal that has its own radius, so square corners here read as a
-            // mismatch in any rounded theme. Full-bleed banners (the space header, the profile
-            // page) are left square deliberately — rounding a page-width header is a template
-            // decision, not a theme's.
-            r: 'media',
+            /*
+              Inset inside a modal that has its own radius, so square corners here read as a
+              mismatch. `surface` rather than `media`: both follow the theme's surface group and
+              differ only in what they fall back to when a theme sets nothing. `media` is square,
+              which is right for the full-bleed banners on the space header and the profile page
+              and wrong for a box sitting inside a rounded sheet. This is `Card`'s rounding, under
+              the name `Card` now uses for it.
+            */
+            r: 'surface',
             placeholderIcon: 'panorama',
-            uploadLabel: 'Upload cover image',
+            uploadLabel: 'Cover image',
             editLabel: 'Change cover image',
             onImageChange: { $setLocal: 'coverImage', value: { $: 'event' } },
           },
@@ -102,7 +106,7 @@ export const createSpaceModal = {
             number that looked right once.
           */
           type: 'Row',
-          props: { mt: '-44px', ml: '800' },
+          props: { mt: '-60px', ml: '800' },
           children: [
             {
               type: 'EditableImage',
@@ -117,8 +121,8 @@ export const createSpaceModal = {
                   floating on the sheet rather than as sitting in a header. It also left a 60px
                   band below the cover with nothing in it but the bottom of the avatar.
                 */
-                width: '88px',
-                height: '88px',
+                width: '120px',
+                height: '120px',
                 r: 'avatar',
                 /*
                   The sheet's own colour, which is what makes this read as a disc punched out of
@@ -130,8 +134,8 @@ export const createSpaceModal = {
                 */
                 ring: '0 0 0 4px var(--we-role-surface)',
                 placeholderIcon: 'image',
-                uploadLabel: 'Add image',
-                editLabel: 'Change image',
+                uploadLabel: 'Space image',
+                editLabel: 'Change space image',
                 fontSize: '200',
                 onImageChange: { $setLocal: 'avatar', value: { $: 'event' } },
               },

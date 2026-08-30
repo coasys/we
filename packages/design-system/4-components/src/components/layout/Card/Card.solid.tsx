@@ -4,7 +4,9 @@ import type { CardProps } from './Card.types';
 
 const render = createLayoutComponent<CardProps>({
   defaults: {
-    r: 'var(--we-theme-surface-radius, var(--we-radius-400))',
+    // The named form of the chain this used to spell out. Same resolution, and now findable by
+    // anything else that needs to round like the sheet it sits in.
+    r: 'surface',
     p: 'var(--we-theme-surface-padding, var(--we-space-500))',
     gap: 'var(--we-theme-surface-gap, var(--we-space-400))',
     shadow: 'var(--we-theme-shadow, none)',
