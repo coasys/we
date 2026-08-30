@@ -157,7 +157,19 @@ export const createSpaceModal = {
     field({ name: 'name', label: 'Name', placeholder: 'Space name...', validated: true }),
 
     // Description
-    field({ name: 'description', label: 'Description', placeholder: 'Description (optional)' }),
+    /*
+      A textarea, at two rows. A description is prose and an input is one line, so anything past a
+      short phrase scrolled sideways inside a field with no sign there was more of it. Two rows
+      rather than the default three: enough to show that it wraps, without a box that looks like it
+      is asking for a paragraph.
+    */
+    field({
+      name: 'description',
+      label: 'Description',
+      placeholder: 'Description (optional)',
+      control: 'textarea',
+      props: { rows: 2 },
+    }),
 
     // Location picker
     {
@@ -336,10 +348,21 @@ export const createSpaceModal = {
               type: 'Row',
               props: { gap: '200', ay: 'center' },
               children: [
-                { type: 'we-icon', props: { name: 'info', size: 'sm' } },
+                /*
+                  Both at `text-muted`, and the icon coloured at all — it had no `color`, so it
+                  inherited full-strength `text` and sat next to a faint line as the loudest thing
+                  in the row.
+
+                  `text-muted` rather than `text-faint` for the pair. Faint is tertiary — the
+                  documented use is placeholders, disabled labels and decorative icons — and this
+                  line explains why the control above it is disabled and what to do about it. It is
+                  one of the few things in the sheet somebody actually has to read, and it was the
+                  quietest.
+                */
+                { type: 'we-icon', props: { name: 'info', size: 'sm', color: 'text-muted' } },
                 {
                   type: 'we-text',
-                  props: { variant: 'footnote', color: 'text-faint' },
+                  props: { variant: 'footnote', color: 'text-muted' },
                   children: ['Join the WE discovery space to list your space globally.'],
                 },
               ],
@@ -363,7 +386,7 @@ export const createSpaceModal = {
         {
           type: 'we-button',
           // Guarded like the backdrop — one way out of the modal, not two that disagree.
-          props: { variant: 'ghost', text: 'Cancel', onClick: guard.close },
+          props: { variant: 'secondary', text: 'Cancel', onClick: guard.close },
         },
         {
           type: 'we-button',
