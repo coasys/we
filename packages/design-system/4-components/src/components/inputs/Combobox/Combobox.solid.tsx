@@ -1,6 +1,6 @@
 import type { LayoutProps } from '@we/design-utils/solid';
 import { buildLayoutStyles } from '@we/design-utils/solid';
-import { createEffect, createMemo, createSignal, For, Show, splitProps } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, onCleanup, Show, splitProps } from 'solid-js';
 
 import type { ComboboxOption, ComboboxProps as ComboboxOwnProps } from './Combobox.types';
 
@@ -72,8 +72,19 @@ export function Combobox(allProps: ComboboxComponentProps) {
     }
   };
 
+  /*
+    The blur delay exists so a click on an option lands before the list is torn down. What it also
+    did was outlive the component: the timer was never cancelled, so unmounting a combobox within
+    150ms of blurring it — closing the modal it is in, which is the ordinary way to leave one — ran
+    this against a disposed scope and called `onChange` on a consumer that had gone.
+  */
+  let blurTimer: ReturnType<typeof setTimeout> | undefined;
+  onCleanup(() => clearTimeout(blurTimer));
+
   const handleBlur = () => {
-    setTimeout(() => {
+    clearTimeout(blurTimer);
+    blurTimer = setTimeout(() => {
+      blurTimer = undefined;
       if (selectionHandled) {
         selectionHandled = false;
         return;

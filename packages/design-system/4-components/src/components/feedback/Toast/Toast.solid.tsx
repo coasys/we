@@ -9,7 +9,9 @@ import type { ToastItem } from './Toast.types';
 const VARIANT_ICONS: Record<string, string> = {
   info: 'info',
   success: 'check-circle',
-  warning: 'alert-triangle',
+  // Phosphor's name is `warning`. `alert-triangle` is Lucide's, so every warning toast asked the
+  // icon set for something it does not have and rendered nothing where the icon should be.
+  warning: 'warning',
   error: 'x-circle',
 };
 

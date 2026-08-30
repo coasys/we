@@ -104,46 +104,56 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
 
   const metrics = () => ITEM_SIZES[props.itemSize ?? props.size ?? 'md'];
 
+  /*
+    Every binding reads through the accessor, rather than off a snapshot taken once.
+
+    `const item = getItem()` at the top of a render function runs exactly once — at creation, outside
+    any reactive scope — so a menu built from data was frozen at whatever the data said the first
+    time it was opened. A label bound to a store, an entry that becomes disabled while the menu is
+    up, a variant that turns danger: none of them ever changed on screen. `Index` gives a reactive
+    accessor *per position* precisely so this can work; the snapshot threw that away.
+
+    The handler still closes over the accessor rather than the value, so a click acts on the entry as
+    it is now and not as it was when the menu opened.
+  */
   const renderActionItem = (getItem: () => DropdownMenuAction) => {
-    const item = getItem();
     return (
       <we-menu-item
-        on:select={() => handleAction(item)}
-        variant={item.variant || 'default'}
-        opacity={item.disabled ? 0.5 : 1}
-        cursor={item.disabled ? 'not-allowed' : 'pointer'}
+        on:select={() => handleAction(getItem())}
+        variant={getItem().variant || 'default'}
+        opacity={getItem().disabled ? 0.5 : 1}
+        cursor={getItem().disabled ? 'not-allowed' : 'pointer'}
         px={metrics().px}
         py={metrics().py}
         gap={metrics().gap}
         fontSize={metrics().fontSize}
       >
-        <Show when={item.icon}>
-          <we-icon name={item.icon!} size={metrics().icon} />
+        <Show when={getItem().icon}>
+          <we-icon name={getItem().icon!} size={metrics().icon} />
         </Show>
-        <we-text fontSize={metrics().fontSize}>{item.label}</we-text>
+        <we-text fontSize={metrics().fontSize}>{getItem().label}</we-text>
       </we-menu-item>
     );
   };
 
   const renderToggleItem = (getItem: () => SolidDropdownMenuToggle) => {
-    const item = getItem();
     const checked = createMemo(() => isChecked(getItem()));
 
     return (
       <we-menu-item
-        on:select={() => handleToggle(item)}
+        on:select={() => handleToggle(getItem())}
         selected={checked()}
-        opacity={item.disabled ? 0.5 : 1}
-        cursor={item.disabled ? 'not-allowed' : 'pointer'}
+        opacity={getItem().disabled ? 0.5 : 1}
+        cursor={getItem().disabled ? 'not-allowed' : 'pointer'}
         px={metrics().px}
         py={metrics().py}
         gap={metrics().gap}
         fontSize={metrics().fontSize}
       >
-        <Show when={item.icon}>
-          <we-icon name={item.icon!} size={metrics().icon} />
+        <Show when={getItem().icon}>
+          <we-icon name={getItem().icon!} size={metrics().icon} />
         </Show>
-        <we-text fontSize={metrics().fontSize}>{item.label}</we-text>
+        <we-text fontSize={metrics().fontSize}>{getItem().label}</we-text>
         <Show when={checked()}>
           <we-icon name="check" size="xs" weight="bold" color="accent" />
         </Show>
@@ -152,30 +162,30 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
   };
 
   const renderGroup = (getGroup: () => DropdownMenuGroup & { items: SolidDropdownMenuEntry[] }) => {
-    const group = getGroup();
+    // Through the accessor throughout, for the reason spelled out above `renderActionItem`.
     const collapsed = createMemo(() => isGroupCollapsed(getGroup()));
     const groupItems = createMemo(() => getGroup().items);
 
     return (
       <>
         {/* Collapsible header */}
-        <Show when={group.collapsible !== false}>
+        <Show when={getGroup().collapsible !== false}>
           <we-menu-item
-            on:select={() => !group.disabled && toggleGroup(group.id)}
-            opacity={group.disabled ? 0.5 : 1}
-            cursor={group.disabled ? 'not-allowed' : 'pointer'}
+            on:select={() => !getGroup().disabled && toggleGroup(getGroup().id)}
+            opacity={getGroup().disabled ? 0.5 : 1}
+            cursor={getGroup().disabled ? 'not-allowed' : 'pointer'}
             color="text-faint"
             prop:hoverProps={{ color: 'neutral-500' }}
           >
             <we-icon name={collapsed() ? 'caret-right' : 'caret-down'} size="xs" />
-            <we-text>{group.label}</we-text>
+            <we-text>{getGroup().label}</we-text>
           </we-menu-item>
         </Show>
 
         {/* Non-collapsible header */}
-        <Show when={group.collapsible === false}>
+        <Show when={getGroup().collapsible === false}>
           <we-menu-item color="text-muted" cursor="default" pointerEvents="none">
-            <we-text>{group.label}</we-text>
+            <we-text>{getGroup().label}</we-text>
           </we-menu-item>
         </Show>
 
