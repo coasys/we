@@ -263,15 +263,34 @@ export abstract class OverlayElement extends DesignSystemElement {
    * The first focusable thing, not the dialog itself: a dialog opens because somebody is about to
    * do something, and putting the caret in the field they came for is the difference between a
    * keyboard user starting work and hunting for it.
+   *
+   * ## Why it waits a frame
+   *
+   * "Once the content has rendered" was being read as the overlay's own `firstUpdated`, and that is
+   * one render too early. A slotted `we-input` exists as an element by then but has no shadow root
+   * yet — Lit attaches one during its *first update*, which is a microtask away — so
+   * `collectFocusable` cannot see the `<input>` inside it. The consequences were both silent:
+   *
+   * - A modal whose fields are all primitives (which is every form modal) matched **nothing**, so
+   *   focus stayed on `body` behind the scrim — precisely the state the trap exists to prevent,
+   *   reached from the other end.
+   * - A modal containing one raw focusable — a `role="button"` tile, say — matched *only* that,
+   *   whatever its position in the dialog, because it was the only candidate that needed no shadow
+   *   root to be found.
+   *
+   * One frame is enough for any depth: Lit's updates are microtasks and a nested tree settles them
+   * all in the same drain, well before paint.
    */
   protected captureFocus(): void {
     if (this._previouslyFocused) return;
     this._previouslyFocused = deepActiveElement();
-    const focusable = this.collectFocusable();
-    // Skip the close button when there is anything else: "Close" is a poor first stop in a dialog
-    // that asked a question.
-    const target = focusable.find((el) => el.getAttribute('part') !== 'close-button') ?? focusable[0];
-    target?.focus();
+    requestAnimationFrame(() => {
+      // Opened and closed again inside the frame. Focusing into a detached tree would strand it.
+      if (!this.isConnected) return;
+      const focusable = this.collectFocusable();
+      const target = focusable.find((el) => !skipsInitialFocus(el)) ?? focusable[0];
+      target?.focus();
+    });
   }
 
   /** Give focus back to whatever had it. Called on disconnect. */
@@ -280,6 +299,35 @@ export abstract class OverlayElement extends DesignSystemElement {
     this._previouslyFocused = null;
     if (previous?.isConnected) previous.focus();
   }
+}
+
+/**
+ * Whether this element is a poor place to land when the overlay opens.
+ *
+ * A *tab stop*, still — this decides the opening target only, so everything here stays reachable
+ * with one Tab. Two cases, and they are the same case: a control whose whole job is to leave, and
+ * a control that opens something else. Enter on either is not what somebody who just opened a
+ * dialog meant to do.
+ *
+ * - `part="close-button"`. "Close" is a poor first stop in a dialog that asked a question.
+ * - `data-we-skip-autofocus`. The opt-out for a consumer's own control — `EditableImage`'s tile
+ *   carries it, since Enter there opens the OS file picker over the form somebody came to fill in.
+ *
+ * Both are read through `hostOf`, because the element collected is rarely the element the marker
+ * is on: `we-button` renders a real `<button part="base">` in its shadow root and that is what
+ * takes focus, so a `part`/attribute written on the `we-button` is one root up. Matching on the
+ * collected element alone is how the close-button rule came to be dead code — every candidate
+ * answered `part="base"` and none ever answered `part="close-button"`.
+ */
+function skipsInitialFocus(el: HTMLElement): boolean {
+  const marked = hostOf(el);
+  return marked.getAttribute('part') === 'close-button' || marked.hasAttribute('data-we-skip-autofocus');
+}
+
+/** The element itself, or the component that rendered it, when it came out of a shadow root. */
+function hostOf(el: HTMLElement): HTMLElement {
+  const root = el.getRootNode();
+  return root instanceof ShadowRoot ? (root.host as HTMLElement) : el;
 }
 
 /** The focused element, through shadow roots — `document.activeElement` stops at the host. */
