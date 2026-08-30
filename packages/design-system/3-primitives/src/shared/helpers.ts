@@ -778,11 +778,34 @@ export function getStaticDSStyles(
   // Auto-derive cascade fallback defaults from DEFAULT_PROPS when not explicitly set.
   // Explicit values in COMPONENT_CASCADE always take precedence.
   const dp = defaultProps as Record<string, unknown> | undefined;
-  const radiusDefault =
-    cascade?.radiusDefault ??
-    (dp && radiusKeys.some((k) => dp[k] !== undefined)
-      ? getRadiusValues(defaultProps as DesignSystemProps)
-      : undefined);
+  /*
+    A capped radius has to be ONE value, not the four-value shorthand.
+
+    `radiusCapGroup` wraps the default in `min(group, cap)`, and `min()` takes single values — so a
+    derived `var(--we-radius-300) var(--we-radius-300) var(--we-radius-300) var(--we-radius-300)`
+    inside it is not merely wrong, it is invalid, which drops the whole `border-radius` declaration
+    and leaves the element at its initial `0`. `we-textarea` and `we-file-upload` are the two
+    components with a cap, and both had square corners for exactly this reason: sharp against every
+    rounded field beside them, from a rule that was being discarded rather than applied.
+
+    Nothing said so, because an invalid declaration is silent by design and the corners it produces
+    look like a decision somebody made.
+  */
+  const capped = cascade?.radiusCapGroup !== undefined;
+  const derivedRadius = () => {
+    if (!dp || !radiusKeys.some((k) => dp[k] !== undefined)) return undefined;
+    if (!capped) return getRadiusValues(defaultProps as DesignSystemProps);
+    if (dp['r'] !== undefined) return tokenVar('radius', dp['r'] as string);
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn(
+        `[DS] ${componentName}: radiusCapGroup needs a single radius, and DEFAULT_PROPS sets only ` +
+          `per-corner values. min() cannot take a shorthand, so the declaration would be invalid. ` +
+          `Set \`r\` in DEFAULT_PROPS, or radiusDefault in COMPONENT_CASCADE.`,
+      );
+    }
+    return undefined;
+  };
+  const radiusDefault = cascade?.radiusDefault ?? derivedRadius();
   const paddingDefault =
     cascade?.paddingDefault ??
     (dp && paddingKeys.some((k) => dp[k] !== undefined)
