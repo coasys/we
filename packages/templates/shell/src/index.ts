@@ -15,7 +15,7 @@ export { namePrompt } from './NamePrompt.schema';
 export { landingPageTemplate } from './about';
 export { marketplaceTemplate } from './marketplace';
 export { CHROME_RAIL_WIDTH, chromeRail } from './ChromeRail.schema';
-export { templatePicker, themePicker } from './DesignControls.schema';
+export { templatePicker, themePicker } from './DesignControls';
 export { profileTemplate } from './Profile.schema';
 export { aiSection } from './AiSettings.schema';
 export { languagesLocalState, languagesSection } from './LanguageSettings.schema';

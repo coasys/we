@@ -2,6 +2,7 @@
   inset: 0;
   background: var(--we-role-overlay);
   opacity: 0;
+
   // The token rather than a hardcoded duration, so this follows the theme's animationSpeed like
   // every other transition. It was 0.5s, slow enough on a hover to read as lag.
   transition: opacity var(--we-transition-300, 250ms) ease;

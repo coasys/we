@@ -1,5 +1,29 @@
 {
   "extends": ["stylelint-config-standard"],
   "ignoreFiles": ["**/dist/**", "**/build/**", "**/node_modules/**"],
-  "rules": { "custom-property-empty-line-before": ["never", { "ignore": ["after-comment"] }] }
+  "rules": {
+    "custom-property-empty-line-before": [
+      "never",
+      {
+        "ignore": ["after-comment"]
+      }
+    ],
+    "selector-class-pattern": [
+      "^(ProseMirror[A-Za-z-]*|[a-z][a-z0-9]*(-[a-z0-9]+)*(__[a-z0-9]+(-[a-z0-9]+)*)?(--[a-z0-9]+(-[a-z0-9]+)*)?)$",
+      {
+        "message": "Expected class selector to be kebab-case, optionally with BEM __element and --modifier (ProseMirror's own class names are exempt \u2014 they are imposed by the library)"
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["**/*.scss"],
+      "extends": ["stylelint-config-standard-scss"],
+      "rules": {
+        "scss/no-global-function-names": null,
+        "scss/comment-no-empty": null,
+        "scss/at-extend-no-missing-placeholder": null
+      }
+    }
+  ]
 }

@@ -47,7 +47,7 @@
 import type { SchemaNode } from '@we/schema-shared';
 import { railButton } from '@we/template-kit';
 
-import { TEMPLATE_PICKER_OPEN, templatePicker, THEME_PICKER_OPEN, themePicker } from './DesignControls.schema';
+import { TEMPLATE_PICKER_OPEN, templatePicker, THEME_PICKER_OPEN, themePicker } from './DesignControls';
 
 /**
  * The width every docked module panel should clear. Exported so panels stay in step with the rail.

@@ -26,7 +26,7 @@
   font-family: var(--we-font-family);
   color: var(--we-role-text);
   white-space: pre-wrap;
-  word-wrap: break-word;
+  overflow-wrap: break-word;
 
   .we-block {
     padding: var(--we-space-300);
@@ -96,11 +96,13 @@
   }
 
   $bullets: '•', '◦', '▪';
+
   @for $i from 0 through 6 {
     .we-list-item[data-list-type='bullet']:not([data-level]),
     .we-list-item[data-list-type='bullet'][data-level='#{$i}'] {
       &::before {
         content: list.nth($bullets, ($i % 3) + 1);
+
         // Scaled rather than sized: a transform leaves the line box alone, so the dot grows about
         // its own centre and stays on the line. A `font-size` here would change what `1lh` above
         // means and put the marker back out of alignment.
@@ -112,15 +114,18 @@
   // Counters: one per level, so a nested run does not disturb its parent's numbering.
   @for $i from 0 through 6 {
     $sel: ".we-list-item[data-list-type='number'][data-level='#{$i}']";
+
     @if $i == 0 {
       $sel: ".we-list-item[data-list-type='number']:not([data-level])";
     }
     #{$sel} {
       counter-increment: we-list-#{$i};
+
       &::before {
         content: counter(we-list-#{$i}) '.';
       }
     }
+
     // A run starts after anything that is not a numbered item at this level.
     :not(#{$sel}) + #{$sel},
     #{$sel}:first-child {
@@ -132,6 +137,7 @@
   .we-list-item[data-list-type='check'] {
     &::before {
       content: '';
+
       // A fixed square, so it centres itself on the line rather than filling it.
       top: calc(var(--we-space-300) + (1.5em - 16px) / 2); // fallback where `lh` is unsupported
       top: calc(var(--we-space-300) + (1lh - 16px) / 2);
@@ -248,8 +254,7 @@
   &[data-layout='row'] {
     > .we-collection-content {
       display: flex;
-      flex-direction: row;
-      flex-wrap: nowrap;
+      flex-flow: row nowrap;
       overflow-x: auto;
       gap: var(--we-gap, 1rem);
 

@@ -41,16 +41,25 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'lcov'],
       reportsDirectory: './.coverage',
+      /*
+        Everything under `src`, whether a test loaded it or not.
+
+        Without an `include`, v8 reports only the files the run actually imported — so a store no
+        test touches is not 0%, it is *absent*, and the percentage is computed over the half that
+        happens to be covered. Seven of seventeen stores were missing from the report entirely and
+        the figure read 49% of the ten that were there, which is a number about a subset nobody
+        chose. Listing the whole tree makes an untested file count as the zero it is.
+
+        The point of the change is that the number stops flattering. `src/frameworks/**` used to be
+        excluded outright — all 9,380 lines of the stores — for the same reason and with the same
+        effect.
+      */
+      include: ['src/**/*.{ts,tsx}'],
       exclude: ['**/node_modules/**', 'tests/**', 'src/**/index.ts', 'src/seed/cli.ts', 'src/seed/examples.ts'],
       /*
-        `src/frameworks/**` used to be excluded — all 9,380 lines of the stores, the largest and
-        least-covered part of the biggest package in the repo. Every coverage number the project
-        produced was therefore measured over its safe half, which is precisely why the store gap
-        stayed invisible while the figure looked respectable.
-
-        Included now, with no threshold attached. A number nobody can see is not a gate, and a gate
-        set to today's number is a gate that only ever ratchets by accident; the first honest reading
-        is the input to deciding what to test, which is what the audit's P4-2 asks for.
+        Still no threshold, deliberately. A gate set to today's number ratchets only by accident,
+        and the first honest reading is the input to deciding what to test rather than a line to
+        defend. What was missing was not a threshold — it was a number that meant anything.
       */
     },
     projects: [

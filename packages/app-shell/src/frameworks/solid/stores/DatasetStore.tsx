@@ -20,7 +20,7 @@ import { containmentPredicate, gatherTranscriptTurns, type TurnRecord } from '@s
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { moduleRegistry } from '@shared/registries/moduleRegistry';
 import { getSeed } from '@shared/seedRegistry';
-import { datasetKey, type DatasetRef, type EntityManifestEntry } from '@we/backend-shared';
+import { datasetKey, type DatasetRef, type EntityManifestEntry, trace } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import { AgentSettings, type DatasetProxy, getEntitiesForPerspective } from '@we/entities';
 import { Accessor, batch, createContext, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
@@ -578,7 +578,7 @@ export function DatasetStoreProvider(props: ParentProps) {
       }
 
       // No root dataset exists — create one
-      console.log('DatasetStore: creating root dataset');
+      trace('dataset', 'root:create');
       const rootCreated = toApp(await lifecycle.create('we-root'));
       const newRootSchemas = session.backendPorts()!.schemas;
       await newRootSchemas.installRoot(rootCreated.handle, moduleRegistry.agentSchemas(newRootSchemas));
@@ -592,7 +592,7 @@ export function DatasetStoreProvider(props: ParentProps) {
       setRootDataset(rootCreated);
       setAgentSettings(settings);
 
-      console.log('DatasetStore: created root dataset', rootCreated.id);
+      trace('dataset', 'root:created', { id: rootCreated.id });
 
       // Find or create we-test system dataset
       const allRefs = (await lifecycle.list()).map(toApp);
@@ -767,7 +767,7 @@ export function DatasetStoreProvider(props: ParentProps) {
       const myDid = session.me()?.did;
       const authorList = authors.map((did) => (did === myDid ? `${did} (you)` : did)).join(', ');
       const summary = `Removed ${removed} duplicate SDNA link(s) created by: ${authorList}`;
-      console.log(`DatasetStore: cleanupSpaceSdna on ${targetUuid} —`, summary);
+      trace('dataset', 'sdna:cleanup', { dataset: targetUuid, summary });
       return summary;
     } catch (error) {
       console.error('DatasetStore: cleanupSpaceSdna error', error);

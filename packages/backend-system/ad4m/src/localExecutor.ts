@@ -21,7 +21,9 @@ async function ensureExecutorReady(client: Ad4mClient): Promise<{ status: AgentS
       const status = await client.agent.status();
       return { status };
     } catch {
-      console.log(`Ad4m: Executor not ready, attempt ${attempt} of ${maxAttempts}`);
+      // Retrying a backend that has not come up is operational news, not a debugging leftover:
+      // it is the only thing on screen while a desktop launch stalls.
+      console.info(`Ad4m: Executor not ready, attempt ${attempt} of ${maxAttempts}`);
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }

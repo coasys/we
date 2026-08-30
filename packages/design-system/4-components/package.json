@@ -8,7 +8,7 @@
   "scripts": {
     "build:steps": "tsup",
     "build": "we-build",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "exports": {
@@ -44,9 +44,11 @@
     "@we/primitives": "workspace:*",
     "@we/tokens": "workspace:*",
     "esbuild-plugin-solid": "^0.6.0",
+    "jsdom": "^28.0.1",
     "sass": "^1.103.1",
     "solid-js": "^1.9.15",
     "tsup": "^8.5.1",
+    "vite-plugin-solid": "^2.11.14",
     "vitest": "^4.1.11"
   },
   "publishConfig": {

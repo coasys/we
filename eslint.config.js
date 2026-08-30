@@ -243,4 +243,43 @@ export default [
       'no-restricted-syntax': ['error', ...dsPropSelectors()],
     },
   },
+  {
+    /*
+      `console.log` is a debugging statement that got committed.
+
+      Twenty of them sat in library source across three audits, saying things like
+      "DatasetStore: creating root dataset" to whoever happened to have devtools open — noise in a
+      shipped app, and the reason a genuine warning is hard to see in it.
+
+      Three are allowed, and the line is about audience rather than severity. `error` and `warn`
+      report a problem — this codebase reports a swallowed failure through `console.error` beside a
+      toast, and several docblocks name that as the contract. `info` is the deliberate, low-volume
+      operational note: "this runtime does not report pass progress", "recovered after 3 failed
+      sends" — things worth saying once to whoever is looking at a misbehaving deployment.
+
+      `log` and `debug` are what a debugging session leaves behind. Twenty of them said
+      "DatasetStore: creating root dataset" to anybody who happened to open devtools, which is the
+      noise a real warning has to be found in.
+
+      Scoped to library source. A CLI's whole output is `console.log` (`seed/cli.ts`, the context
+      generator, the schema validator), a test may print, and a playground is not shipped.
+    */
+    name: 'we/no-console-log-in-library-source',
+    files: ['packages/**/src/**/*.ts', 'packages/**/src/**/*.tsx'],
+    ignores: [
+      '**/*.test.ts',
+      '**/*.test.tsx',
+      '**/src/cli/**',
+      '**/cli/src/**',
+      '**/app-shell/src/seed/cli.ts',
+      // A component whose entire purpose is to print when it re-renders.
+      '**/RerenderLog/**',
+      '**/ai-context/src/**',
+      // Its entire purpose is a console line, opt-in and off by default.
+      '**/installConsoleTrace.ts',
+    ],
+    rules: {
+      'no-console': ['error', { allow: ['warn', 'error', 'info'] }],
+    },
+  },
 ];

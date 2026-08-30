@@ -23,7 +23,7 @@ import {
   viewSettings,
 } from '@shared/viewResolution';
 import type { AgentProfileSummary, DatasetRef } from '@we/backend-shared';
-import { displayName } from '@we/backend-shared';
+import { displayName, trace } from '@we/backend-shared';
 import type { ContentInput } from '@we/block-shared';
 import {
   contentHash,
@@ -1272,7 +1272,7 @@ export function SpaceStoreProvider(props: ParentProps) {
 
       // Write to own dataset
       const spaceRecord = await addSpaceToDataset(spaceHandle, spaceData, locationData);
-      console.log('SpaceStore: created space model for new dataset', spaceRecord);
+      trace('space', 'created', { id: spaceRecord.id });
 
       // Sync to global discovery space when the user opted in.
       // Space.create returns relations unhydrated, so we pass avatarData, coverImageData,
@@ -1434,7 +1434,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
 
     if (focus) await datasetStore.switchDataset(joinedRef.id);
-    console.log('SpaceStore: joined space', joinedRef.id);
+    trace('space', 'joined', { id: joinedRef.id });
   }
 
   /**
@@ -1471,7 +1471,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     setJoinSlow(false);
     const slowTimer = setTimeout(() => setJoinSlow(true), JOIN_SLOW_AFTER_MS);
 
-    console.log('SpaceStore: joining shared dataset', id);
+    trace('space', 'join:start', { id });
     try {
       // Ask the backend what it already has before asking it for more. The caller checked this
       // store's dataset list, which is a boot-time snapshot plus whatever change events have landed
@@ -1480,7 +1480,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       // is how one space becomes two.
       const alreadyJoined = (await lifecycle.list().catch(() => null))?.find((ref) => datasetAnswersTo(ref, id));
       if (alreadyJoined) {
-        console.log('SpaceStore: the backend had already joined this space', alreadyJoined.id);
+        trace('space', 'join:already', { id: alreadyJoined.id });
         await finishJoin(alreadyJoined, focus);
         return;
       }

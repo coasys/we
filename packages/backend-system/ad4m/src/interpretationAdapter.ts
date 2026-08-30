@@ -31,6 +31,7 @@ import type {
   TranscriptTurn,
   WatchRequest,
 } from '@we/backend-shared';
+import { trace } from '@we/backend-shared';
 import { getEntitiesForPerspective, getEntity, getEntityTargetClass, getRegisteredEntityNames } from '@we/entities';
 
 const proxy = (dataset: DatasetHandle) => dataset as PerspectiveProxy;
@@ -469,7 +470,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
         which makes those the only evidence there is. Filtering them out at the listener was the
         difference between a diagnosable failure and a shrug.
       */
-      console.debug('[interpretation]', event.step, {
+      trace('interpretation', event.step, {
         processor: event.processorId,
         agent: event.agentDid,
         items: event.itemIds?.length ?? 0,
@@ -571,7 +572,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       } catch (error) {
         if (!isMissingHandler(error)) {
           // Inconclusive. Left unset so the next dataset change asks again.
-          console.debug('[interpretation] capability probe inconclusive', error);
+          trace('interpretation', 'probe:inconclusive', { error: String(error) });
           return true;
         }
         console.info('[interpretation] this node cannot interpret — its executor predates the extraction stack');
@@ -729,8 +730,8 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
         reads exactly like a conversation with nothing in it. That cost a day to find once. Keeping
         the query one console-filter away means the next person can copy it and run it by hand.
       */
-      console.debug('[interpretation] registering watch', { watchId: request.watchId, interpretationClasses });
-      console.debug('[interpretation] scope query\n%s', sourceScopeQuery);
+      trace('interpretation', 'watch:register', { watchId: request.watchId, classes: interpretationClasses });
+      trace('interpretation', 'watch:scope-query', { query: sourceScopeQuery });
 
       /*
         Create, or replace — never register over what is already there.
@@ -760,11 +761,11 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       try {
         existing = await readProcessorClasses(perspective, request.watchId);
       } catch (error) {
-        console.debug('[interpretation] could not read the registered class list', error);
+        trace('interpretation', 'watch:classes-unreadable', { error: String(error) });
       }
       const desired = [...interpretationClasses].sort();
       if (existing.length && existing.join(',') !== desired.join(',')) {
-        console.debug('[interpretation] class set changed — clearing the watch before re-registering', {
+        trace('interpretation', 'watch:classes-changed', {
           watchId: request.watchId,
           from: existing,
           to: desired,

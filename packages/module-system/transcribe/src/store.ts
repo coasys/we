@@ -1111,7 +1111,9 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       try {
         await interpretation.watchCollection(next);
         setWatchProblem('');
-        console.debug('[transcribe] watching collection for auto-extraction', next);
+        // `debug` is filtered out of most consoles by default, so this said nothing to the person
+        // it was for. Watching is worth one line: it is the moment auto-extraction starts.
+        console.info('[transcribe] watching collection for auto-extraction', next);
       } catch (error) {
         /*
           Recorded, not just logged.

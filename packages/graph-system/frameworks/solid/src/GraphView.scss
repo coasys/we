@@ -28,6 +28,7 @@
 .we-graph__surface {
   position: absolute;
   inset: 0;
+
   // A direct-manipulation surface: a drag moves the camera, it does not select text.
   cursor: grab;
 
@@ -52,6 +53,7 @@
   > * {
     pointer-events: auto;
     user-select: text;
+
     // The grab cursor is a promise the canvas makes and this element does not keep.
     cursor: auto;
   }
@@ -95,8 +97,10 @@
 .we-graph__layer {
   position: absolute;
   inset: 0;
+
   // Transforms scale about the origin, which is where the layouts put their coordinate space.
   transform-origin: 0 0;
+
   // Also set inline by the renderer, where the reasoning lives: the layer must never take the
   // pointer, or it covers the hit surface wherever the camera has moved it to.
   pointer-events: none;
@@ -148,9 +152,11 @@
 .we-graph__edges {
   position: absolute;
   inset: 0;
+
   // Curves and labels reaching outside the box still paint; this is what made the giant box
   // unnecessary in the first place.
   overflow: visible;
+
   // Nothing in here takes the pointer. Edge picking is geometric, in the engine — paths used to carry
   // `pointer-events: stroke`, which made the DOM the only thing that could pick an edge, broke the
   // rule that the core owns hit-testing, and was why a canvas renderer could not have supported
@@ -167,6 +173,7 @@
   font-size: 10px;
   white-space: nowrap;
   pointer-events: none;
+
   // Legible over the edge it sits on, without a background plate that would hide the line.
   text-shadow:
     0 0 3px var(--we-color-neutral-0),
@@ -198,6 +205,7 @@
   position: absolute;
   left: 0;
   top: 0;
+
   // Centres the dot on the anchor rather than hanging it below and right.
   transform: translate(-50%, -50%);
   display: flex;
@@ -230,14 +238,17 @@
   color: var(--node-label-color);
   font-size: var(--node-label-size);
   left: 0;
+
   // Just below the dot, whatever size it is.
   top: calc(var(--node-size) / 2 + var(--we-space-100));
+
   // `--label-scale` is 1 by default and `1 / zoom` when the label is pinned to a constant on-screen
   // size. Scaling about the top centre keeps it hanging under the node rather than drifting as it
   // resizes; the translate centres it and is unaffected by the scale beside it, since a percentage
   // translate resolves against the element's own box.
   transform-origin: 50% 0;
   transform: translateX(-50%) scale(var(--label-scale, 1));
+
   // Sizes to its text up to the cap, so `text-overflow` has a width to work against.
   width: max-content;
   max-width: 140px;
@@ -245,6 +256,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+
   // Legible over edges and other nodes without needing a background plate.
   paint-order: stroke;
   text-shadow:
@@ -283,6 +295,7 @@
   flex: 1;
   min-width: 0;
   overflow: hidden;
+
   // Inherited from the layer, but stated here because this subtree is arbitrary host content and
   // one element in it setting `pointer-events: auto` would put a hole in the canvas.
   pointer-events: none;
@@ -290,7 +303,7 @@
   &::after {
     content: '';
     position: absolute;
-    inset: auto 0 0 0;
+    inset: auto 0 0;
     height: var(--we-space-500);
     background: linear-gradient(to bottom, transparent, var(--node-color));
   }
@@ -311,10 +324,12 @@
 
 .we-graph__card-text {
   color: var(--node-label-color);
+
   // Scaled with the card's content, so the fallback answers the same slider as the real thing —
   // otherwise the setting would appear to do nothing on a card whose content has not arrived.
   font-size: calc(var(--node-label-size) * var(--content-scale, 1));
   line-height: 1.4;
+
   // Clamped rather than scrolled: a card is a glance, and the inspector is where the whole value is.
   display: -webkit-box;
   -webkit-line-clamp: 5;
@@ -413,8 +428,10 @@
   --grip: calc(12px / var(--graph-zoom));
   --half-w: calc(var(--node-width) / 2);
   --half-h: calc(var(--node-height) / 2);
+
   position: absolute;
   transform: translate(-50%, -50%);
+
   // The node layer is inert so the canvas can hit-test in world space; these are the elements that
   // take a press themselves, because what they resize is a box on screen rather than a point.
   pointer-events: auto;

@@ -142,6 +142,15 @@ jobs:
       - name: Test
         run: pnpm test
 
+      # Coverage has been configured for as long as the tests have and has never run anywhere,
+      # which is the same shape as the stylelint gap above it: a number nobody produces is a number
+      # nobody can act on. Reported rather than gated — there is no threshold yet, deliberately (see
+      # `packages/app-shell/vitest.config.ts`), and a gate set to today's figure would only ever
+      # ratchet by accident. Non-fatal so a package without the reporter cannot fail the run.
+      - name: Coverage
+        continue-on-error: true
+        run: pnpm --filter @we/app-shell test -- --coverage.enabled --coverage.reporter=text-summary
+
   schemas:
     name: Validate schemas
     needs: build

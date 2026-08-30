@@ -76,8 +76,13 @@ export default function TemplateProvider() {
     document.documentElement.style.setProperty('--we-chrome-rail-width', CHROME_RAIL_WIDTH);
   });
 
-  // Console store for debugging $action calls in schema
+  /*
+    The console, as a store, so a schema author can print from an `$action` while working something
+    out. This is the one place `console.log` is the *feature* rather than a leftover — hence the
+    disable, rather than an exemption in the lint config that would cover the whole file.
+  */
   const consoleStore = {
+    // eslint-disable-next-line no-console
     log: (...args: unknown[]) => console.log(...args),
     warn: (...args: unknown[]) => console.warn(...args),
     error: (...args: unknown[]) => console.error(...args),
