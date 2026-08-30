@@ -41,6 +41,22 @@ export interface AppDataset extends Omit<DatasetRef, 'handle'> {
 
 const toApp = (ref: DatasetRef): AppDataset => ref as AppDataset;
 
+/**
+ * The one segment a space is addressed by — its shared id when it has one, its local id otherwise.
+ *
+ * Both forms *resolve*: the route effect matches `d.id === seg || d.sharedId === seg`, so a shared
+ * space had two working URLs and which one you got depended on which code path built the link.
+ * `switchTemplate` wrote the shared id, `navigateToSpace` passed through whatever it was handed, and
+ * `spacePath` echoed whatever was already in the address — so one space accumulated two history
+ * entries, two share links, and two answers to "am I already here".
+ *
+ * The rule was never in doubt, only unenforced: a local id means nothing to anybody else, so a
+ * space that can be shared is addressed by the id that travels. Written once here and used wherever
+ * a space path is built; the other form keeps resolving, as an alias rather than an equal.
+ */
+export const canonicalSpaceId = (dataset: Pick<AppDataset, 'id' | 'sharedId'>): string =>
+  dataset.sharedId ?? dataset.id;
+
 export interface DatasetStore {
   // State
   datasets: Accessor<AppDataset[]>;

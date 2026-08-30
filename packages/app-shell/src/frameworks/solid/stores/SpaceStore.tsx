@@ -69,7 +69,7 @@ import {
 } from 'solid-js';
 
 import { useAppStore } from './AppStore';
-import { type AppDataset, useDatasetStore } from './DatasetStore';
+import { type AppDataset, canonicalSpaceId, useDatasetStore } from './DatasetStore';
 import { useProfileStore } from './ProfileStore';
 import { useRouteStore } from './RouteStore';
 import { useSessionStore } from './SessionStore';
@@ -1737,7 +1737,12 @@ export function SpaceStoreProvider(props: ParentProps) {
 
     const segs = routeStore.segments();
     const currentView = view ?? (segs[0] === 'space' && segs[2] ? segs[2] : 'about');
-    const targetPath = '/space/' + spaceId + '/' + currentView;
+    /*
+      The canonical segment, not the one the caller happened to hold. `spaceId` here may be either
+      form — a sidebar row passes the local id, a share link the shared one — and both resolve, so
+      without this one space ended up with two addresses depending on how you reached it.
+    */
+    const targetPath = '/space/' + (ds ? canonicalSpaceId(ds) : spaceId) + '/' + currentView;
     shellStore.closeShellView();
     routeStore.navigate(targetPath);
     // Notify embedded app iframes (e.g. Flux) after the dataset has switched

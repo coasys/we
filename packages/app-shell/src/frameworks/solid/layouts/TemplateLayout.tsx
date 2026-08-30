@@ -31,7 +31,7 @@ import type { Stores } from '@solid/types';
 import { MemoryRouter, Route, useLocation, useNavigate } from '@solidjs/router';
 import { Column } from '@we/components/solid';
 import { panelResizing } from '@we/editor/runtime';
-import { applyThemeVars, clearThemeVars, parseOverrides, surfaceStyles } from '@we/schema-shared';
+import { applyThemeVars, clearThemeVars, parseOverrides, SPACE_ROUTE_DEPTH, surfaceStyles } from '@we/schema-shared';
 import { lazy } from 'solid-js';
 
 const EditorOverlay = lazy(() => import('@we/editor').then((m) => ({ default: m.EditorOverlay })));
@@ -465,7 +465,20 @@ export function TemplateLayout(
                 node={stores.templateStore.currentTemplate}
                 stores={templateStores}
                 registry={registry}
-                context={{ surface: templateSurface.surface }}
+                /*
+                  `$nav` so a template's own chrome can navigate relatively.
+
+                  Chrome lives in the template's root node, which is rendered here rather than by
+                  the router — so it has no route to take a base depth from, and a relative path in
+                  it reached the router as written and landed on the catch-all. A self-routing
+                  template's nav strip is chrome, and its links are to its own screens, so the base
+                  it wants is the space it is mounted under.
+
+                  `SPACE_ROUTE_DEPTH` rather than a literal 2, derived from the path the host mounts
+                  every template at. Harmless for the marker kind, whose chrome uses absolute paths
+                  because its links cross spaces.
+                */
+                context={{ surface: templateSurface.surface, $nav: { baseDepth: SPACE_ROUTE_DEPTH } }}
                 children={props.children}
               />
             </Show>

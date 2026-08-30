@@ -23,7 +23,7 @@ import { createStore, reconcile } from 'solid-js/store';
 
 import { CHROME_TIER, SPACE_TIER } from '../../../shared/registries/templateSurface';
 import { acceptTemplate, describeAcceptance, describeCapabilities } from '../../../shared/templateAcceptance';
-import { type AppDataset, useDatasetStore } from './DatasetStore';
+import { type AppDataset, canonicalSpaceId, useDatasetStore } from './DatasetStore';
 import { useRouteStore } from './RouteStore';
 import { useSessionStore } from './SessionStore';
 
@@ -658,34 +658,27 @@ export function TemplateStoreProvider(props: ParentProps) {
     if (newTemplate) {
       commitTemplate(newTemplate);
       /*
-        Where to land depends on which URL shape the incoming template speaks.
+        Every template lives under the space prefix now, so there is one shape here rather than two.
 
-        A template that marks where the space's sections go — `$views` — hosts them at
-        `/space/<id>/<segment>`, so carrying the current section across is exactly right and is what
-        `lastViewByTemplate` is for. A template that routes *itself* has no such route: the showcase
-        set mounts its own paths at the top level (`/board`, `/channel/:id`), so navigating to a
-        space URL landed on its catch-all. Switching to Workshop put you on "No such page" until you
-        pressed a nav button, and every other self-routing template had the same fault — the space
-        path was simply being assumed of all of them.
-
-        `/` rather than a guess at its first route: a self-routing template's index is its own to
-        decide, and Workshop's is a `redirect` to `/board` precisely so nothing outside it has to
-        know that.
+        What still differs is what comes *after* it. A template hosting the space's sections lands
+        on one, and carrying the current section across is what `lastViewByTemplate` is for. A
+        self-routing template's screens are its own, so it lands on the space itself and its own
+        index decides — Workshop's is a `redirect`, precisely so nothing out here has to know its
+        first screen is the board.
       */
-      if (!hasViewsMarker(newTemplate.routes as RouteSchema[] | undefined)) {
+      const p = datasetStore.currentDataset();
+      if (!p) {
         routeStore.navigate('/');
         datasetStore.updateAgentSettings({ currentTemplateId: realId });
         return;
       }
-      const segs = routeStore.segments();
-      const currentView = segs[0] === 'space' && segs[2] ? segs[2] : 'globe';
-      const view = lastViewByTemplate.get(realId) ?? currentView;
-      const p = datasetStore.currentDataset();
-      if (p) {
-        const spaceId = p.sharedId ?? p.id;
-        routeStore.navigate('/space/' + spaceId + '/' + view);
+      const base = `/space/${canonicalSpaceId(p)}`;
+      if (!hasViewsMarker(newTemplate.routes as RouteSchema[] | undefined)) {
+        routeStore.navigate(base);
       } else {
-        routeStore.navigate('/');
+        const segs = routeStore.segments();
+        const currentView = segs[0] === 'space' && segs[2] ? segs[2] : 'globe';
+        routeStore.navigate(`${base}/${lastViewByTemplate.get(realId) ?? currentView}`);
       }
       datasetStore.updateAgentSettings({ currentTemplateId: realId });
     } else {
