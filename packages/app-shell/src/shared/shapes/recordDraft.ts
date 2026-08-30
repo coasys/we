@@ -32,6 +32,16 @@ export interface RecordField {
   /** Placeholder text, where the type suggests one worth having. */
   placeholder: string;
   value: string | number | boolean;
+  /**
+   * What this field started as, so "has anything been typed" can be answered by comparison.
+   *
+   * The discard guard used to ask whether a field held *anything* — any number, any non-empty
+   * string — and every field is seeded: a number to `0`, a select to its declared default. So an
+   * untouched `TaskBlock` form (`status: 'todo'`) reported itself dirty, and closing a form nobody
+   * had touched raised "discard your changes?". A dialog people learn to click through is worse
+   * than no dialog.
+   */
+  initial: string | number | boolean;
 }
 
 export interface RecordDraft {
@@ -94,6 +104,7 @@ function initialValue(property: PropertySchema, control: RecordControl): string 
 
 function fieldFrom(name: string, property: PropertySchema): RecordField {
   const control = controlFor(property);
+  const initial = initialValue(property, control);
   return {
     name,
     label: humanise(name),
@@ -101,7 +112,9 @@ function fieldFrom(name: string, property: PropertySchema): RecordField {
     required: property.required === true,
     options: (property.options ?? []).map((value) => ({ label: humanise(String(value)), value: String(value) })),
     placeholder: property.control === 'url' ? 'https://…' : '',
-    value: initialValue(property, control),
+    value: initial,
+    // Kept beside the value rather than re-derived, so the comparison cannot drift from the seed.
+    initial,
   };
 }
 

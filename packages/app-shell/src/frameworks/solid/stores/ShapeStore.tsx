@@ -293,6 +293,14 @@ export interface ShapeStore {
   // Actions — hints
   openHintEditor: (entity: string) => Promise<void>;
   closeHintEditor: () => void;
+  /**
+   * Whether the open hint editor holds unsaved edits — what a discard guard reads.
+   *
+   * A store rather than a `$localState` expression, because the rows come from the model's
+   * declaration: a schema has no set of local names it could test. Same reason
+   * `recordStore.recordDraftDirty` exists.
+   */
+  hintEditorDirty: () => boolean;
   /** key is 'class' for the class hint, or a property predicate. */
   setHintDraft: (key: string, value: string) => void;
   saveHintEditor: () => Promise<void>;
@@ -309,10 +317,21 @@ export function ShapeStoreProvider(props: ParentProps) {
   const [spaceShapes, setSpaceShapes] = createSignal<SpaceShapeView[]>([]);
   const [shapesLoaded, setShapesLoaded] = createSignal(false);
   const [shapeDraft, setShapeDraft] = createSignal<ShapeDraft | null>(null);
+
+  /**
+   * The draft as it was when the wizard opened, serialised — for the discard guard on an *edit*.
+   *
+   * A plain variable rather than a signal: nothing renders from it, and it is read once, at the
+   * moment somebody tries to close. Null for a new model, which has no "before" to compare with.
+   */
+  let openedDraft: string | null = null;
   const [editingShapeId, setEditingShapeId] = createSignal<string | null>(null);
   const [draftErrors, setDraftErrors] = createSignal<string[]>([]);
   const [savingShape, setSavingShape] = createSignal(false);
   const [hintEditor, setHintEditor] = createSignal<HintEditorState | null>(null);
+
+  /** The hint editor as it was when it opened, serialised — see `hintEditorDirty`. */
+  let openedHints: string | null = null;
   const [hintBusy, setHintBusy] = createSignal(false);
   const [generating, setGenerating] = createSignal(false);
   const [expandedMembers, setExpandedMembers] = createSignal<string[]>([]);
@@ -585,6 +604,8 @@ export function ShapeStoreProvider(props: ParentProps) {
     setConfirmReplaceFields(false);
     if (!recordId) {
       const draft = emptyShapeDraft();
+      // A new model starts from nothing, and the field tests below are what judge it — no snapshot.
+      openedDraft = null;
       // Batched: two separate writes mount the wizard with nothing expanded and then expand it, so
       // the starter row played its opening animation every time the modal was opened. Together they
       // are one update, and the row is simply open from the first frame.
@@ -604,6 +625,9 @@ export function ShapeStoreProvider(props: ParentProps) {
     // Lifted out of the batch: a property narrowing does not survive into a callback, and the
     // lowering is pure anyway.
     const draft = manifestToDraft(view.name, view.manifest, { description: view.description, icon: view.icon });
+    // What it looked like on open, so the guard can ask whether anything actually changed. See
+    // `draftHasWork`.
+    openedDraft = JSON.stringify(draft);
     batch(() => {
       setEditingShapeId(recordId);
       setShapeDraft(draft);
@@ -622,7 +646,20 @@ export function ShapeStoreProvider(props: ParentProps) {
   function draftHasWork(): boolean {
     const draft = shapeDraft();
     if (!draft) return false;
-    if (editingShapeId()) return true;
+    /*
+      Editing an existing model asks whether it *changed*, not whether it is filled in.
+
+      This used to answer `true` for every edit session on the reasoning that a stored model's
+      content came from the space and is therefore worth keeping — which is true of the model and
+      not of the *draft*, which has changed nothing yet. So opening a model to read it and pressing
+      Escape raised "discard this model?", every time, about nothing. That is the same failure the
+      new-model branch below goes out of its way to avoid.
+
+      Compared against a snapshot taken when the wizard opened. Rows are mutated in place without
+      touching the signal (see the note below `commitDraft`), so this has to be evaluated at close
+      time rather than memoised — which it is: `requestCloseWizard` calls it on the click.
+    */
+    if (editingShapeId()) return openedDraft !== null && JSON.stringify(draft) !== openedDraft;
     if (draft.name.trim() || draft.description.trim() || draft.classHint.trim() || draft.icon) return true;
     return draft.members.some((m) => m.name.trim() || m.hint.trim() || m.options.trim() || m.target || m.defaultValue);
   }
@@ -1062,7 +1099,7 @@ export function ShapeStoreProvider(props: ParentProps) {
       // One rule for every hint on the entity, class and properties alike — they disagreed before,
       // and the properties had it wrong. See {@link hintToDisplay} for what an absent hint means.
       const customized = stored?.customized ?? false;
-      setHintEditor({
+      const editor = {
         entity,
         classHint: hintToDisplay({ stored: stored?.classHint, declared: declared.classHint, customized }),
         defaultClassHint: declared.classHint,
@@ -1073,7 +1110,10 @@ export function ShapeStoreProvider(props: ParentProps) {
           defaultHint: row.hint,
         })),
         customized,
-      });
+      };
+      // What it looked like on open, so closing can tell an edit from a read. See `hintEditorDirty`.
+      openedHints = JSON.stringify(editor);
+      setHintEditor(editor);
     } catch (err) {
       console.error('ShapeStore: reading hints failed', err);
       toastService.error('Could not read this model’s hints.');
@@ -1083,7 +1123,32 @@ export function ShapeStoreProvider(props: ParentProps) {
   }
 
   function closeHintEditor(): void {
+    openedHints = null;
     setHintEditor(null);
+  }
+
+  /**
+   * Whether the hint editor holds anything that would be lost by closing.
+   *
+   * ## Why it needed one at all
+   *
+   * The hint editor is a modal full of textareas and it was the one draft surface in the app with
+   * **no** guard: a backdrop click or Escape threw away every hint somebody had written, silently.
+   * The wizard beside it guards, the record form guards, the theme editor autosaves — this one just
+   * lost the work.
+   *
+   * Compared against a snapshot rather than tested for content, for the reason the other two
+   * guards learned the hard way: every row opens pre-filled with the declared hint, so "holds
+   * something" is true of an editor nobody has touched, and a dialog that always fires is one
+   * people stop reading.
+   *
+   * Evaluated on the click rather than memoised: hint text is mutated in place, deliberately (see
+   * `setHintDraft`), so nothing would notify a memo.
+   */
+  function hintEditorDirty(): boolean {
+    const editor = hintEditor();
+    if (!editor || openedHints === null) return false;
+    return JSON.stringify(editor) !== openedHints;
   }
 
   function setHintDraft(key: string, value: string): void {
@@ -1183,6 +1248,7 @@ export function ShapeStoreProvider(props: ParentProps) {
     deleteShape,
     openHintEditor,
     closeHintEditor,
+    hintEditorDirty,
     setHintDraft,
     saveHintEditor,
     resetHintEditor,

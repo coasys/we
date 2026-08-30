@@ -817,7 +817,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(overrides: Partial<ThemeOverrides>): while editing, merges parameter changes (hues, saturation, lightness range, role pins) into the draft. Applied live',
         updateEditingCss: '(css: string): while editing, replaces the draft’s raw CSS layer. Applied live',
         updateEditingMeta: '(fields: { name?, icon? }): while editing, renames or re-icons the draft',
-        cancelEditing: '(): ends the editing session and discards the draft, restoring what was applied before',
+        cancelEditing:
+          '(): ends the editing session and discards the draft, restoring what was applied before. Note the theme *panel* autosaves on unmount, so closing the panel keeps the draft — this is the explicit throw-away, and the only path that does',
         createAndStartEditing:
           "(name: string, icon: string, sourceId?: string, destination?: 'personal' | 'space'): creates a new theme — copied from sourceId when given — and opens an editing session on it. Resolves true on success",
         saveEditingTheme:
@@ -1182,7 +1183,10 @@ export function generateStoresText(entries: StoreEntry[]): string {
         deleteShape:
           '(shapeRecordId): removes a model definition from the space. Existing entries keep their data; only the definition goes',
         openHintEditor: '(entity): opens per-space AI-hint tuning for an entity (core or space-defined)',
-        closeHintEditor: '(): closes the hint editor, discarding unsaved edits',
+        closeHintEditor:
+          '(): closes the hint editor, discarding unsaved edits. Pair it with hintEditorDirty in a discardGuard rather than wiring it to a modal’s close directly',
+        hintEditorDirty:
+          'whether the open hint editor holds edits that closing would lose. What a discard guard reads: the rows come from the model’s declaration, so a schema has no set of local names it could test. Compares against the state the editor opened in, so an editor somebody only read closes without a question',
         setHintDraft: "(key, value): sets one hint in the open editor — key is 'class' or a property predicate",
         saveHintEditor:
           '(): writes the hints to this space and marks them customized, so schema refreshes stop reverting them',

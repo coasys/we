@@ -205,6 +205,11 @@ export interface ShellStore {
    */
   spaceSettingsEdge: Accessor<DockEdge | null>;
   /** Open or close the space-settings panel; the rail's gear toggles, the pencil opens. */
+  /**
+   * Tell the shell which modules are active here, so a dock's *request* is gated the way its frame
+   * is. Wiring: `SpaceStore` provides it, and nothing else should. See `moduleGate`.
+   */
+  provideModuleGate: (gate: (moduleId: string) => boolean) => void;
   toggleSpaceSettings: () => void;
   openSpaceSettings: () => void;
   closeSpaceSettings: () => void;
@@ -462,13 +467,38 @@ function loadPlacements(): Record<string, FloatPlacement> {
   }
 }
 
-function savePlacements(placements: Record<string, FloatPlacement>): void {
-  if (typeof localStorage === 'undefined') return;
+/**
+ * The write, deferred to the end of the frame.
+ *
+ * ## Why it cannot be synchronous
+ *
+ * `writePlacement` runs on every `pointermove` of a drag or a resize, which is once per frame — and
+ * each call serialised the whole placement map and wrote it to localStorage. `setItem` is
+ * synchronous and hits the disk, so a drag was doing blocking I/O at 60Hz, at the exact moment the
+ * app is trying to track a cursor. Nothing about it needs to be immediate: the value being persisted
+ * is where a panel *ended up*, and every frame but the last is a position nobody asked to keep.
+ *
+ * A microtask rather than a debounce, so a single write is still on disk before the next turn of the
+ * event loop and nothing has to reason about how long the tail is. Coalescing means a drag of 300
+ * frames writes once when it settles.
+ */
+let pendingPlacements: Record<string, FloatPlacement> | null = null;
+
+function flushPlacements(): void {
+  const placements = pendingPlacements;
+  pendingPlacements = null;
+  if (!placements || typeof localStorage === 'undefined') return;
   try {
     localStorage.setItem(PLACEMENTS_KEY, JSON.stringify(placements));
   } catch {
     // A full or disabled store costs the user their layout next boot, and nothing else.
   }
+}
+
+function savePlacements(placements: Record<string, FloatPlacement>): void {
+  const first = pendingPlacements === null;
+  pendingPlacements = placements;
+  if (first) queueMicrotask(flushPlacements);
 }
 
 export function ShellStoreProvider(props: ParentProps) {
@@ -621,7 +651,37 @@ export function ShellStoreProvider(props: ParentProps) {
     const scope = templatePanelScope();
     return scope && declarationFor()[id] ? `${scope}::${id}` : id;
   };
+  /**
+   * Authored panels the reader has closed, so they stay closed while the template that declared
+   * them is on screen — and only while.
+   *
+   * ## Two things were wrong with keeping this forever
+   *
+   * It had one writer and no clearer, so a closed panel could never be reopened: nothing in the app
+   * sets an entry back to false, and `edge:` reads `null` for a closed panel, which is how the host
+   * knows to render no dock. Closing an authored panel was permanent for the session.
+   *
+   * And it was keyed by the bare `panel.id`, which a template chooses — so "inspector" closed in one
+   * template arrived closed in the next, with no way to tell that it had. `placementKey` had already
+   * met this problem for positions and answers it by scoping to the template; the same scope applies
+   * here.
+   *
+   * Cleared on a template switch rather than persisted. A closed panel is a statement about the
+   * arrangement in front of you, and the arrangement has been replaced.
+   */
   const [closedPanels, setClosedPanels] = createSignal<Record<string, boolean>>({});
+
+  /*
+    Switching template forgets what was closed.
+
+    Scoping the keys stops one template's decision leaking into another's; clearing on the switch is
+    what stops the map growing for the life of the session, and is also the honest reading — a panel
+    somebody closed in an arrangement that has been replaced is not a preference about the new one.
+  */
+  createEffect(() => {
+    templatePanelScope();
+    setClosedPanels({});
+  });
 
   /** A declaration by the dock id it resolves to, for the placement chain to consult. */
   const declarationFor = createMemo(() => {
@@ -643,17 +703,38 @@ export function ShellStoreProvider(props: ParentProps) {
   const [dockRegistryVersion, setDockRegistryVersion] = createSignal(0);
   onCleanup(onDockRegistryChanged(() => setDockRegistryVersion((v) => v + 1)));
 
+  /**
+   * Whether a module's chrome renders here at all — injected, because only `SpaceStore` knows.
+   *
+   * ## What this fixes
+   *
+   * A module dock's *frame* is gated by `gateOnSpace`, so it unmounts in a space that has not
+   * enabled the module. Its **request** was not, so `contentInset` went on reserving 200–500px for
+   * a panel that was no longer on screen. Open notes or transcribe displacing in space A, walk into
+   * space B: the frame goes, the room it took does not, and the close button is inside the frame
+   * that went. A reload was the only way out.
+   *
+   * The same predicate as the frame's, so the two cannot disagree — including the `holdsWhen`
+   * escape hatch, which is how a call keeps its bar in a space that never enabled calls.
+   *
+   * Defaults to "everything is active", so a host that never injects behaves exactly as before.
+   */
+  const [moduleGate, setModuleGate] = createSignal<(moduleId: string) => boolean>(() => true);
+
   const dockRequests = createMemo<DockRequest[]>(() => {
     dockRegistryVersion();
-    return dockRegistry.ordered().map((entry) => {
-      const request: DockRequest = {
-        id: entry.id,
-        edge: (readModuleKey(entry.moduleId, entry.edge) as DockEdge) ?? null,
-        size: (readModuleKey(entry.moduleId, entry.size) as DockSize) ?? 'md',
-        float: Boolean(readModuleKey(entry.moduleId, entry.float)),
-      };
-      return { ...request, placement: placementOf(request) };
-    });
+    return dockRegistry
+      .ordered()
+      .filter((entry) => moduleGate()(entry.moduleId))
+      .map((entry) => {
+        const request: DockRequest = {
+          id: entry.id,
+          edge: (readModuleKey(entry.moduleId, entry.edge) as DockEdge) ?? null,
+          size: (readModuleKey(entry.moduleId, entry.size) as DockSize) ?? 'md',
+          float: Boolean(readModuleKey(entry.moduleId, entry.float)),
+        };
+        return { ...request, placement: placementOf(request) };
+      });
   });
 
   /**
@@ -828,7 +909,7 @@ export function ShellStoreProvider(props: ParentProps) {
 
     const seats: Record<string, Rect> = {};
     for (const edge of ['left', 'right', 'top', 'bottom'] as const) {
-      const members = columnMembers(panels, edge);
+      const members = columnMembers(panels, edge, viewport());
       // One panel on an edge is not a column — it keeps the snap position it has always had.
       if (members.length < 2) continue;
       const occupied = occupiedOf(members[0].index, requests);
@@ -1006,10 +1087,19 @@ export function ShellStoreProvider(props: ParentProps) {
     for (const panel of authored) {
       const dockId = templatePanelDockId(panel.id);
       // One key answering both "where" and "whether", exactly as a module's does: closed is null.
-      keys[`edge:${panel.id}`] = () => (closedPanels()[panel.id] ? null : (edgeOfSnap(panel.snap ?? null) ?? 'right'));
+      // Scoped by the same key positions use, so one template's "closed" is not another's.
+      keys[`edge:${panel.id}`] = () =>
+        closedPanels()[placementKey(panel.id)] ? null : (edgeOfSnap(panel.snap ?? null) ?? 'right');
       keys[`size:${panel.id}`] = () => panel.size ?? 'md';
       keys[`float:${panel.id}`] = () => !panel.displace;
-      keys[`close:${panel.id}`] = () => setClosedPanels((prev) => ({ ...prev, [panel.id]: true }));
+      keys[`close:${panel.id}`] = () => setClosedPanels((prev) => ({ ...prev, [placementKey(panel.id)]: true }));
+      // The way back. A panel with a close button and no opener is a panel you lose once.
+      keys[`open:${panel.id}`] = () =>
+        setClosedPanels((prev) => {
+          const next = { ...prev };
+          delete next[placementKey(panel.id)];
+          return next;
+        });
 
       if (!registeredPanels.includes(dockId)) {
         const entry = {
@@ -1123,6 +1213,8 @@ export function ShellStoreProvider(props: ParentProps) {
     requestDestructive,
     spaceSettingsOpen,
     spaceSettingsEdge: () => (spaceSettingsOpen() ? 'right' : null),
+    // Wrapped, because `setSignal` treats a function argument as an updater.
+    provideModuleGate: (gate) => setModuleGate(() => gate),
     toggleSpaceSettings: () => setSpaceSettingsOpen((open) => !open),
     openSpaceSettings: () => setSpaceSettingsOpen(true),
     closeSpaceSettings: () => setSpaceSettingsOpen(false),
@@ -1245,11 +1337,28 @@ export function ShellStoreProvider(props: ParentProps) {
       */
       const stored = placementOf(request);
       const vertical = edgeOfSnap(stored.snap) === 'left' || edgeOfSnap(stored.snap) === 'right';
+      /*
+        Resizing a *snapped* panel changes its size, not where it is parked.
+
+        The free-floating branch writes `snap: null` because a panel dragged to a size is a panel the
+        reader has taken charge of — but it was reached by every snapped panel that is not currently
+        *spanning*, which is any snapped card and, below `NARROW_VIEWPORT_PX`, every displacing panel
+        (where `displaces()` refuses the trade and `floating` comes back true). So resizing a docked
+        panel on a narrow window silently un-docked it, permanently, and the only sign was that it
+        stopped taking room.
+
+        A snap is a statement about position; a resize is a statement about size. Neither implies the
+        other, so a snapped panel keeps its snap and takes the new dimensions — its origin is derived
+        from the snap on every frame, which is why `x`/`y` are not written with them.
+      */
+      const keepsSnap = stored.snap !== null;
       writePlacement(
         id,
         spanning
           ? { ...stored, ...(vertical ? { thicknessX: w } : { thicknessY: h }) }
-          : { ...stored, snap: null, x, y, w, h },
+          : keepsSnap
+            ? { ...stored, w, h }
+            : { ...stored, snap: null, x, y, w, h },
       );
     },
 

@@ -17,6 +17,7 @@ import type { ViewSetting } from '@shared/viewResolution';
 import {
   activeSections,
   parseIdList,
+  preserveUnknownViews,
   resolveEnabledViews,
   routableSections,
   viewSettings,
@@ -910,7 +911,28 @@ export function SpaceStoreProvider(props: ParentProps) {
   const availableViews = createMemo<Map<string, TemplateSchema>>(() => {
     const out = new Map<string, TemplateSchema>(Object.entries(viewRegistry));
     for (const template of templateStore.allTemplates()) {
-      if (template.meta?.role !== 'view' || !template.id || out.has(template.id)) continue;
+      if (template.meta?.role !== 'view' || !template.id) continue;
+      /*
+        A saved view sharing a built-in's id is refused *audibly*.
+
+        The registry wins, and that is right — a stranger's template must not be able to replace
+        "About" by naming itself `about`. What was wrong is that it won in silence: the view was
+        installed, appeared in nobody's list, rendered nowhere, and the only symptom was a section
+        that did not exist. Every shell in the world says something when a name is taken.
+
+        Warned rather than surfaced as a toast, because this is not an act anybody is watching: the
+        collision is discovered while resolving a space's views, which happens on entry and on every
+        template load, so a toast would fire repeatedly and at no useful moment. The install flow is
+        where a person could act on it.
+      */
+      if (out.has(template.id)) {
+        if (Object.prototype.hasOwnProperty.call(viewRegistry, template.id)) {
+          console.warn(
+            `view "${template.id}" shares its id with a built-in section and will not be used. Rename it to install it.`,
+          );
+        }
+        continue;
+      }
       out.set(template.id, template);
     }
     return out;
@@ -2733,6 +2755,29 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (uuid) await setSpaceThemeOverride(FOLLOW_SPACE, uuid);
   }
 
+  /*
+    Tell the shell which modules' chrome is live here.
+
+    The same predicate `gateOnSpace` wraps every module slot in — enabled here, *or* the module says
+    it is holding on regardless (`holdsWhen`, which is how a call keeps its bar in a space that
+    never enabled calls). Only this store can answer it, and `ShellStore` mounts above this one, so
+    it is injected rather than read.
+
+    Without it, a dock's frame unmounted on a space switch and its *request* did not, so
+    `contentInset` went on reserving room for a panel that was no longer there — with the close
+    button inside the frame that had gone. See `ShellStore.moduleGate`.
+  */
+  createEffect(() => {
+    const on = new Set(activeModules());
+    shellStore.provideModuleGate((moduleId: string) => {
+      if (on.has(moduleId)) return true;
+      const definition = moduleRegistry.all().find((m) => m.definition.id === moduleId)?.definition;
+      // `holdsWhen` is a full store path (`modules.call.active`); only its final key is a store member.
+      const key = definition?.holdsWhen?.split('.').pop();
+      return read(moduleId, key, false);
+    });
+  });
+
   const moduleLaunchers = createMemo(() => {
     const on = new Set(activeModules());
     return moduleRegistry
@@ -2960,7 +3005,18 @@ export function SpaceStoreProvider(props: ParentProps) {
 
   /** The write half both of the above share — persist, cache, and republish the space on screen. */
   async function writeEnabledViews(ds: AppDataset, space: Space, viewIds: string[]) {
-    const enabledViewsJson = JSON.stringify(viewIds);
+    /*
+      Sections this build has never heard of go back in, where they were.
+
+      Both callers start from the *resolved* list, which is right — it is what the person acted on —
+      and resolving drops ids naming a view this build does not have. Writing that straight back
+      persisted the pruning, so one member on an older build flicking one switch removed every
+      section their build lacked, for the whole community, with no way back. See
+      `preserveUnknownViews`.
+    */
+    const available = availableViews();
+    const merged = preserveUnknownViews(viewIds, parseIdList(space.enabledViews), (id) => available.has(id));
+    const enabledViewsJson = JSON.stringify(merged);
     try {
       await Space.update(ds.handle, space.id, { enabledViews: enabledViewsJson });
     } catch (error) {

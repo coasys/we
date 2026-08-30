@@ -6312,6 +6312,9 @@
         },
         "confirmDiscard": {
           "type": "boolean"
+        },
+        "hintEditorDirty": {
+          "type": "object"
         }
       },
       "actions": [

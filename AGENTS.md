@@ -2461,6 +2461,7 @@ ShapeStore:
   - generateIntent: 'none' | 'generate' | 'regenerate' | 'replace' — what the generate button would do right now, given what the draft holds. Label it "Regenerate" on 'regenerate' and 'replace' and "Generate" otherwise — 'none' is an empty draft, which has nothing to re-run, so testing for 'generate' alone labels a fresh form wrongly. Disable only on 'none', and route the click through requestGenerateFields, which decides whether to ask first
   - confirmReplaceFields: boolean — the "replace the fields below?" confirmation is showing. Only ever raised for a generation over hand-written rows; a generated proposal nobody touched re-runs on the click
   - confirmDiscard: boolean — the "discard this model?" confirmation is showing
+  - hintEditorDirty: unknown
 - Actions:
   - openShapeWizard(shapeRecordId?): opens the model wizard — empty for a new model, or pre-filled from a stored shape to edit it
   - cancelShapeWizard(): closes the wizard, discarding the draft
@@ -2484,7 +2485,7 @@ ShapeStore:
   - saveShapeDraft(): validates, stores and adopts the draft. Errors land in draftErrors; success closes the wizard and the new entity becomes queryable via $query in this space
   - deleteShape(shapeRecordId): removes a model definition from the space. Existing entries keep their data; only the definition goes
   - openHintEditor(entity): opens per-space AI-hint tuning for an entity (core or space-defined)
-  - closeHintEditor(): closes the hint editor, discarding unsaved edits
+  - closeHintEditor(): closes the hint editor, discarding unsaved edits. Pair it with hintEditorDirty in a discardGuard rather than wiring it to a modal’s close directly
   - setHintDraft(key, value): sets one hint in the open editor — key is 'class' or a property predicate
   - saveHintEditor(): writes the hints to this space and marks them customized, so schema refreshes stop reverting them
   - resetHintEditor(): back to the declaration's hints; release improvements flow again
@@ -2684,7 +2685,7 @@ ThemeStore:
   - updateEditingOverrides(overrides: Partial<ThemeOverrides>): while editing, merges parameter changes (hues, saturation, lightness range, role pins) into the draft. Applied live
   - updateEditingCss(css: string): while editing, replaces the draft’s raw CSS layer. Applied live
   - updateEditingMeta(fields: { name?, icon? }): while editing, renames or re-icons the draft
-  - cancelEditing(): ends the editing session and discards the draft, restoring what was applied before
+  - cancelEditing(): ends the editing session and discards the draft, restoring what was applied before. Note the theme *panel* autosaves on unmount, so closing the panel keeps the draft — this is the explicit throw-away, and the only path that does
   - createAndStartEditing(name: string, icon: string, sourceId?: string, destination?: 'personal' | 'space'): creates a new theme — copied from sourceId when given — and opens an editing session on it. Resolves true on success
   - saveEditingTheme(): writes the draft over the theme being edited and keeps editing. Resolves to the saved theme, or null when nothing was being edited
   - saveEditingThemeAs(name: string, icon: string): writes the draft as a new theme under that name, leaving the original untouched

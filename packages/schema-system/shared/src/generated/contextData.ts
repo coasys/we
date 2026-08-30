@@ -2494,6 +2494,7 @@ export const contextData: ContextData = {
         generateIntent: { type: 'string' },
         confirmReplaceFields: { type: 'boolean' },
         confirmDiscard: { type: 'boolean' },
+        hintEditorDirty: { type: 'object' },
       },
       actions: [
         'openShapeWizard',

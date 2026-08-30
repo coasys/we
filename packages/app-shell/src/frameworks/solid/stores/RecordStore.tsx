@@ -462,8 +462,21 @@ export function RecordStoreProvider(props: ParentProps) {
   const recordDraftDirty = createMemo(() => {
     const draft = recordDraft();
     if (!draft) return false;
+    /*
+      Changed from what it started as — not "holds something".
+
+      Every field is seeded: a number to `0`, a select to whatever the model declares
+      (`TaskBlock.status` is `'todo'`). Asking whether a field held anything therefore answered yes
+      for a form nobody had touched, so closing an untouched Task form raised "discard your
+      changes?". `field.initial` is the seed, kept beside the value when the draft is built.
+
+      Strings are trimmed on both sides so typing a space and deleting it is not work; other kinds
+      compare directly, since a boolean or a number is only ever set deliberately.
+    */
     return draft.fields.some((f) =>
-      typeof f.value === 'string' ? f.value.trim() !== '' : typeof f.value === 'number',
+      typeof f.value === 'string' && typeof f.initial === 'string'
+        ? f.value.trim() !== f.initial.trim()
+        : f.value !== f.initial,
     );
   });
 

@@ -591,6 +591,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     deleteShape: destructive('space-settings'),
     openHintEditor: action('space-settings'),
     closeHintEditor: action('space-settings'),
+    hintEditorDirty: state('space-settings'),
     setHintDraft: action('space-settings'),
     saveHintEditor: action('space-settings'),
     resetHintEditor: action('space-settings'),
@@ -828,6 +829,13 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       bag — so these must appear in the chrome tier too, and `wiring` would exclude them from both.
       They are `host-layout`, the group chrome-only surfaces already live in.
     */
+    /*
+      Which modules' chrome is live here, injected by `SpaceStore` — see `ShellStore.moduleGate`.
+
+      Wiring in the strictest sense: it is one store handing another an answer it cannot compute,
+      and a template able to call it could make every module's panel claim room it is not using.
+    */
+    provideModuleGate: WIRING,
     pendingDestructive: state('host-layout'),
     confirmDestructive: action('host-layout'),
     cancelDestructive: action('host-layout'),
