@@ -250,7 +250,12 @@ export function EditableImage(allProps: EditableImageProps) {
         </Show>
 
         {/* Hover overlay */}
-        <Column class="editable-image__overlay" ax="center" ay="center" p="300" gap="200" position="absolute">
+        {/*
+          `gap: 100`, not 200. The glyph and the label are one thing said twice, not two items in a
+          list — the wider gap read as a stack of two separate marks rather than as an icon with its
+          caption.
+        */}
+        <Column class="editable-image__overlay" ax="center" ay="center" p="300" gap="100" position="absolute">
           {/*
             A pencil over an empty tile promises editing something that does not exist yet.
 
