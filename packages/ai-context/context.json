@@ -408,7 +408,7 @@
         },
         {
           "name": "preview",
-          "type": "DragPreview | undefined",
+          "type": "{ thumbnail?: string; content?: string; author?: string; date?: string } | undefined",
           "optional": true
         },
         {
