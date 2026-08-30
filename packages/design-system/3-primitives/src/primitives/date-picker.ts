@@ -1,6 +1,6 @@
 import type { DesignSystemProps } from '@we/design-types';
-import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
-import { css, html, nothing, type PropertyValues } from 'lit';
+import { type DSLayer, familyVar, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
+import { css, html, nothing, type PropertyValues, unsafeCSS } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
@@ -211,7 +211,9 @@ const styles = css`
     overflow-y: auto;
     background: var(--we-role-surface-raised);
     border: 1px solid var(--we-role-border);
-    border-radius: var(--we-theme-surface-radius, var(--we-radius-400));
+    /* A surface, though the control that opens it is an input — the panel is its own kind of thing.
+       Through the table rather than by hand, so it cannot drift from every other surface. */
+    border-radius: ${unsafeCSS(familyVar('surface', 'radius'))};
     box-shadow: 0 4px 12px color-mix(in srgb, var(--we-role-shadow-color) 10%, transparent);
     padding: var(--we-space-100) 0;
   }

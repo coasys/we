@@ -316,6 +316,22 @@ const SEMANTIC: Record<string, Record<string, string>> = {
  */
 export type SemanticAxis = 'padding' | 'gap';
 
+/**
+ * A family's chain, for CSS that cannot go through a prop.
+ *
+ * The names resolve on DS props, which covers a component's own box — but an inner shadow part is
+ * styled in a `css` block, and a component whose *panel* belongs to a different family from itself
+ * has nowhere else to say so: `we-select` is an input, and the listbox it opens is a surface.
+ *
+ * Both `we-select` and `we-date-picker` were writing that chain by hand, which is the same hazard
+ * `Select`'s copy of the button cascade was. Same table, same value, one spelling.
+ */
+export function familyVar(family: string, axis: 'radius' | 'padding' | 'gap'): string {
+  const value = SEMANTIC[axis]?.[family];
+  if (!value) throw new Error(`[DS] "${family}" has no ${axis} — see themeFamily.ts for the matrix.`);
+  return value;
+}
+
 export function tokenVar(prefix: string, token?: string, fallback = '0', axis?: SemanticAxis) {
   // If no token, return fallback
   if (!token) return fallback;
@@ -448,26 +464,40 @@ export function getMarginValues(props: DesignSystemProps) {
   ].join(' ');
 }
 
-export function getPaddingValues(props: DesignSystemProps) {
+/**
+ * What a side or corner takes when the props do not name one.
+ *
+ * `'0'` is right where there is nothing else to fall back to, and wrong wherever the value would
+ * otherwise have come from the theme — which is the case for every registered primitive. Both
+ * builders below assemble ONE declaration out of four values, so a single named corner decides all
+ * four: `rl: '0'` on a `we-button` set top-left and bottom-left explicitly and sent the other two to
+ * `0`, silently discarding the cascade they were reading.
+ *
+ * It looked like a Select quirk and is general. It is also why `Select` carried a hand-copy of
+ * `we-button`'s four-deep radius chain in its `rr`, with a comment explaining the workaround: with
+ * the rest of the chain passed in here instead, an unnamed corner keeps reading the theme and the
+ * restatement is unnecessary.
+ */
+export function getPaddingValues(props: DesignSystemProps, rest = '0') {
   /*
     Four values joined into one declaration, which is why a family's padding has to be a single
     length: a shorthand landing in one slot invalidates the whole thing. `themeFamily.ts` says which
     families qualify and why the two that do not are excluded.
   */
   return [
-    tokenVar('space', props['pt'] || props['py'] || props['p'], '0', 'padding'),
-    tokenVar('space', props['pr'] || props['px'] || props['p'], '0', 'padding'),
-    tokenVar('space', props['pb'] || props['py'] || props['p'], '0', 'padding'),
-    tokenVar('space', props['pl'] || props['px'] || props['p'], '0', 'padding'),
+    tokenVar('space', props['pt'] || props['py'] || props['p'], rest, 'padding'),
+    tokenVar('space', props['pr'] || props['px'] || props['p'], rest, 'padding'),
+    tokenVar('space', props['pb'] || props['py'] || props['p'], rest, 'padding'),
+    tokenVar('space', props['pl'] || props['px'] || props['p'], rest, 'padding'),
   ].join(' ');
 }
 
-export function getRadiusValues(props: DesignSystemProps) {
+export function getRadiusValues(props: DesignSystemProps, rest = '0') {
   return [
-    tokenVar('radius', props['rtl'] || props['rt'] || props['rl'] || props['r']),
-    tokenVar('radius', props['rtr'] || props['rt'] || props['rr'] || props['r']),
-    tokenVar('radius', props['rbr'] || props['rb'] || props['rr'] || props['r']),
-    tokenVar('radius', props['rbl'] || props['rb'] || props['rl'] || props['r']),
+    tokenVar('radius', props['rtl'] || props['rt'] || props['rl'] || props['r'], rest),
+    tokenVar('radius', props['rtr'] || props['rt'] || props['rr'] || props['r'], rest),
+    tokenVar('radius', props['rbr'] || props['rb'] || props['rr'] || props['r'], rest),
+    tokenVar('radius', props['rbl'] || props['rb'] || props['rl'] || props['r'], rest),
   ].join(' ');
 }
 

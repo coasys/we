@@ -143,8 +143,10 @@ const baseThemeSpec: Record<string, Record<string, string>> = {
     outline: 'none',
   },
   // Cursor
+  // The caret is chrome, not syntax — it marks where typing goes, so it is the text colour. The
+  // palette exemption below covers the tokens beneath it and not this.
   '.cm-cursor, .cm-dropCursor': {
-    borderLeftColor: 'var(--we-color-neutral-700)',
+    borderLeftColor: 'var(--we-role-text)',
   },
   /*
     Syntax tokens are a palette, so they keep their scale positions: a theme pinning `dangerText`

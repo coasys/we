@@ -39,6 +39,7 @@
     "solid-js": "^1.9.15"
   },
   "devDependencies": {
+    "@types/node": "^26.3.0",
     "@we/cli": "workspace:*",
     "@we/design-types": "workspace:*",
     "@we/primitives": "workspace:*",

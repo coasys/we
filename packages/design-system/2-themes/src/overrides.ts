@@ -184,6 +184,19 @@ export type ThemeOverrides = {
    */
   borderWidth?: string;
   /**
+   * How long a hover, press or focus takes to arrive — the ARRIVAL only.
+   *
+   * Departures snap by design (see STATE_TRANSITION / REST_TRANSITION in primitives/shared/helpers),
+   * so this is one direction, not a duration for the pair.
+   *
+   * The variable has been read by every state rule of every primitive since the split was written,
+   * and until now nothing could set it: the slot was wired at one end and dead at the other, exactly
+   * as `--we-theme-tab-spacing` was. Themes were not locked out — the fallback is
+   * `--we-transition-100`, which `animationSpeed` moves — but they could not tune interaction
+   * response without also changing every other transition in the app, which are different decisions.
+   */
+  stateDuration?: string;
+  /**
    * Focus ring thickness. A ring is a stroke, and a theme that can thicken its borders and not its
    * rings looks half-converted — which it was, until `borderWidth` made the asymmetry visible.
    */

@@ -46,7 +46,7 @@ const styles = css`
 
   [part='label'][data-required]::after {
     content: ' *';
-    color: var(--we-color-danger-500);
+    color: var(--we-role-danger-text);
   }
 
   [part='description'] {
@@ -58,7 +58,9 @@ const styles = css`
   [part='error'] {
     font-size: var(--we-font-size-100);
     font-weight: 500;
-    color: var(--we-color-danger-500);
+    /* Status as a foreground is the danger-text role, which the contrast corrections measure
+       against the page. The scale position this was is measured against nothing. */
+    color: var(--we-role-danger-text);
   }
 
   [part='control'] {
@@ -66,8 +68,10 @@ const styles = css`
     flex-direction: column;
   }
 
+  /* The ring is a stroke rather than a foreground, so it takes the fill role — the danger
+     counterpart of the focus role --we-ring-color normally resolves to. */
   :host([error]:not([error=''])) {
-    --we-ring-color: var(--we-color-danger-500);
+    --we-ring-color: var(--we-role-danger);
   }
 `;
 

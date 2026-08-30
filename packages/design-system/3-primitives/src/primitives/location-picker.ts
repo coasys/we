@@ -212,7 +212,7 @@ export default class LocationPicker extends DesignSystemElement {
     // Custom pin icon using a simple data URI — avoids broken icon path issue in Leaflet+bundlers
     const pinIcon = L.divIcon({
       html: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="32" viewBox="0 0 24 32">
-        <path d="M12 0C5.373 0 0 5.373 0 12c0 9 12 20 12 20s12-11 12-20C24 5.373 18.627 0 12 0z" fill="var(--we-color-primary-500,#6366f1)"/>
+        <path d="M12 0C5.373 0 0 5.373 0 12c0 9 12 20 12 20s12-11 12-20C24 5.373 18.627 0 12 0z" fill="var(--we-role-accent,#6366f1)"/>
         <circle cx="12" cy="12" r="5" fill="white"/>
       </svg>`,
       className: '',

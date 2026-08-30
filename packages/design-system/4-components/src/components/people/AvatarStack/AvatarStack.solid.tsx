@@ -1,5 +1,6 @@
 export type * from './AvatarStack.types';
 
+import { tokenVar } from '@we/design-utils';
 import { avatarToneRing } from '@we/tokens';
 import { createMemo, For, Show } from 'solid-js';
 
@@ -113,7 +114,7 @@ export function AvatarStack(props: AvatarStackProps) {
             // The avatar group, not a literal circle: this chip sits in the row *as* one of the
             // faces, so a theme that squares them off has to square this too or the row ends in an
             // odd one out. Safe as a percentage for the same reason the avatars are — it is square.
-            'border-radius': 'var(--we-theme-avatar-radius, 50%)',
+            'border-radius': tokenVar('radius', 'avatar'),
             background: 'var(--we-role-control-surface)',
             color: 'var(--we-role-text)',
             'font-size': 'var(--we-font-size-100)',

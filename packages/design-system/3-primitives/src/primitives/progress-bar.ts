@@ -14,12 +14,20 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   bg: 'control-surface',
 };
 
+/*
+  The bar itself. Roles rather than scale positions, because these are meanings a theme pins — a
+  theme setting `accent` expects its primary progress bar to follow — and because the corrections
+  at apply time measure a role against what is behind it and skip a scale position entirely.
+
+  `neutral` takes `border-strong`: the trough is already `control-surface`, so the fill has to be a
+  neutral distinguishable from it, and that is the role for an emphasised neutral.
+*/
 const VARIANT_COLORS: Record<ComponentVariant, string> = {
-  neutral: 'var(--we-color-neutral-500)',
-  primary: 'var(--we-color-primary-500)',
-  success: 'var(--we-color-success-500)',
-  warning: 'var(--we-color-warning-500)',
-  danger: 'var(--we-color-danger-500)',
+  neutral: 'var(--we-role-border-strong)',
+  primary: 'var(--we-role-accent)',
+  success: 'var(--we-role-success)',
+  warning: 'var(--we-role-warning)',
+  danger: 'var(--we-role-danger)',
 };
 
 const SIZE_HEIGHTS: Record<ComponentSize, string> = {

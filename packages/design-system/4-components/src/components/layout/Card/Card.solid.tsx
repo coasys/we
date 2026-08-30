@@ -3,17 +3,14 @@ import { createLayoutComponent } from '../createLayoutComponent';
 import type { CardProps } from './Card.types';
 
 const render = createLayoutComponent<CardProps>({
+  /*
+    A Card is a surface — said once, the way `we-modal` says it in COMPONENT_CASCADE, rather than
+    once per axis. This was three raw `var()` chains, then three family names, and both were the
+    same statement repeated because layer 4 had no way to make it.
+  */
+  family: 'surface',
   defaults: {
-    /*
-      The named form of the chains this used to spell out, one per axis, identical in what they
-      resolve to. Card is the whole reason the names exist: it is a layer-4 component, so it has no
-      COMPONENT_CASCADE entry to inherit the surface family from and had to say so itself — and the
-      only way to say it was a raw `var()` string, which is unfindable, unvalidated, and drifted
-      from the primitives reading the same variables.
-    */
-    r: 'surface',
-    p: 'surface',
-    gap: 'surface',
+    // Not a family axis: shadow has no group, so a theme reaches it through this one variable.
     shadow: 'var(--we-theme-shadow, none)',
   },
   ownKeys: ['direction'],

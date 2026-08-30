@@ -44,12 +44,23 @@ export const ALERT_VARIANT_ICONS: Record<ComponentVariant, string> = {
   danger: 'x-circle',
 };
 
+/*
+  A tint of the status colour, mixed rather than pinned to a scale position.
+
+  `neutral` already named a role and the other four did not, which is the tell. A `-200` is one
+  theme's idea of a light red: it follows the hue and polarity parameters and cannot follow a theme
+  that *pins* `danger`, and the contrast corrections at apply time skip it entirely. `color-mix`
+  against the role is how the rest of the system builds a step it has no role for — the same move
+  a control's hover and pressed states make.
+*/
+const tinted = (role: string) => `1px solid color-mix(in srgb, var(--we-role-${role}) 30%, transparent)`;
+
 const VARIANT_BORDER: Record<ComponentVariant, string> = {
   neutral: '1px solid var(--we-role-border)',
-  primary: '1px solid var(--we-color-primary-200)',
-  success: '1px solid var(--we-color-success-200)',
-  warning: '1px solid var(--we-color-warning-200)',
-  danger: '1px solid var(--we-color-danger-200)',
+  primary: tinted('accent'),
+  success: tinted('success'),
+  warning: tinted('warning'),
+  danger: tinted('danger'),
 };
 
 const styles = css`

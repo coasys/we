@@ -124,12 +124,17 @@ const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
     // Explicit: size-aware CSS var chain — not derivable from DEFAULT_PROPS alone.
     radiusDefault: 'var(--we-button-size-radius, var(--we-radius-400))',
     // Padding is owned by CSS_STYLES (x-only, 0 y) — nativePadding suppresses the generic declaration.
+    // The group is still declared: `nativePadding` says who writes the rule, not which family the
+    // component belongs to, and CSS_STYLES reads this variable directly. Unused for emission,
+    // load-bearing as the statement that reading it is membership rather than a copied chain.
+    paddingGroup: '--we-theme-control-padding-x',
     nativePadding: true,
     gapGroup: '--we-theme-control-gap',
     gapDefault: 'var(--we-button-size-gap, var(--we-space-300))',
   },
   badge: {
     radiusGroup: '--we-theme-control-radius',
+    paddingGroup: '--we-theme-control-padding-x', // As button — see the note there.
     nativePadding: true,
     gapGroup: '--we-theme-control-gap',
     gapDefault: 'var(--we-badge-size-gap, 0)',
@@ -145,6 +150,8 @@ const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
     gapDefault: 'var(--we-space-300)',
   },
   'progress-bar': { radiusGroup: '--we-theme-control-radius' },
+  // A strip of page controls: the space between them is the control group's, like a button's.
+  pagination: { gapGroup: '--we-theme-control-gap' },
   // Inputs
   input: { radiusGroup: '--we-theme-input-radius', paddingGroup: '--we-theme-input-padding' },
   textarea: {
@@ -186,6 +193,13 @@ const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
     radiusCapGroup: '--we-theme-surface-radius',
     paddingGroup: '--we-theme-surface-padding',
   },
+  /*
+    A skeleton stands in for content, so it has to be shaped like the content. It was pinned at
+    `r: '400'` with no group at all, which meant a sharp theme squared off every real box on the
+    page and left every placeholder rounded — the one component whose entire job is to resemble
+    something else was the one that did not follow the theme.
+  */
+  skeleton: { radiusGroup: '--we-theme-surface-radius' },
   'form-field': {
     radiusGroup: '--we-theme-input-radius',
     radiusDefault: 'var(--we-radius-300)', // Explicit: wrapper — no r in DEFAULT_PROPS
@@ -579,7 +593,13 @@ function updateCustomVars(
   // Only set the instance radius var when the prop was explicitly passed (not from DEFAULT_PROPS).
   // If not explicitly set, the static CSS fallback chain handles it via --we-theme-*-radius.
   const radiusExplicit = !rawExplicitProps || radiusKeys.some((k) => rawExplicitProps[k] !== undefined);
-  setProperty(el, `${prefix}radius`, hasRadius && radiusExplicit ? getRadiusValues(props) : undefined);
+  // The rest of the cascade for whichever corners the props did not name — see `cascadeRestFor`.
+  // Without it a single named corner sent the other three to `0` and discarded the theme.
+  setProperty(
+    el,
+    `${prefix}radius`,
+    hasRadius && radiusExplicit ? getRadiusValues(props, cascadeRestFor(componentName, 'radius')) : undefined,
+  );
 
   // Layout on base
   setProperty(el, `${prefix}display`, props.display);
@@ -602,7 +622,11 @@ function updateCustomVars(
   const hasPadding = paddingKeys.some((k) => props[k] !== undefined && props[k] !== null);
   // Same guard as radius — only set the instance padding var when explicitly passed.
   const paddingExplicit = !rawExplicitProps || paddingKeys.some((k) => rawExplicitProps[k] !== undefined);
-  setProperty(el, `${prefix}padding`, hasPadding && paddingExplicit ? getPaddingValues(props) : undefined);
+  setProperty(
+    el,
+    `${prefix}padding`,
+    hasPadding && paddingExplicit ? getPaddingValues(props, cascadeRestFor(componentName, 'padding')) : undefined,
+  );
 
   // Typography
   setProperty(el, `${prefix}text-align`, props.textAlign);
@@ -687,12 +711,52 @@ function cascadeSpec(
     }
     return [cssProp, varSuffix];
   }
+  return [cssProp, varSuffix, cascadeRest(componentName, varSuffix, groupVar, tokenDefault, capGroupVar)];
+}
+
+/**
+ * The cascade below the instance variable: per-component theme override, then group, then token.
+ *
+ * Split out of `cascadeSpec` because it is needed in two places that must not disagree. The static
+ * sheet uses it as the fallback of `--we-{component}-{axis}`; `updateCustomVars` uses it as the
+ * fallback for a side or corner the props did not name, so a partially-specified radius keeps
+ * reading the theme for the rest instead of collapsing to `0`. Deliberately excludes the instance
+ * variable itself, which would be circular in the second use.
+ */
+function cascadeRest(
+  componentName: string,
+  varSuffix: string,
+  groupVar: string,
+  tokenDefault: string,
+  capGroupVar?: string,
+): string {
   const compThemeVar = `--we-theme-${componentName}-${varSuffix}`;
   // Capped inside the group arm only, so the per-component variable stays the last word.
   const group = capGroupVar
     ? `min(var(${groupVar}, ${tokenDefault}), var(${capGroupVar}, ${tokenDefault}))`
     : `var(${groupVar}, ${tokenDefault})`;
-  return [cssProp, varSuffix, `var(${compThemeVar}, ${group})`];
+  return `var(${compThemeVar}, ${group})`;
+}
+
+/**
+ * What an unnamed side or corner of this component should fall back to.
+ *
+ * Answers `undefined` where there is genuinely nothing behind the props — an unregistered component,
+ * or one whose group has no default — and the builders then use `0`, which is the old behaviour and
+ * correct in that case.
+ */
+export function cascadeRestFor(componentName: string, axis: 'radius' | 'padding'): string | undefined {
+  const cascade = COMPONENT_CASCADE[componentName];
+  const groupVar = axis === 'radius' ? cascade?.radiusGroup : cascade?.paddingGroup;
+  const tokenDefault = axis === 'radius' ? cascade?.radiusDefault : cascade?.paddingDefault;
+  if (!groupVar || !tokenDefault) return undefined;
+  return cascadeRest(
+    componentName,
+    axis,
+    groupVar,
+    tokenDefault,
+    axis === 'radius' ? cascade?.radiusCapGroup : undefined,
+  );
 }
 
 /**

@@ -201,6 +201,7 @@ export const THEME_CSS_MAP: Record<ParametricKey, string> = {
   warningLightness: '--we-warning-lightness',
 
   borderWidth: '--we-theme-border-width',
+  stateDuration: '--we-theme-state-duration',
   focusRingWidth: '--we-theme-focus-ring-width',
   // Typography
   fontFamily: '--we-font-family',
