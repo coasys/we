@@ -2529,6 +2529,7 @@ export const contextData: ContextData = {
       state: {
         activeShellView: { type: 'string' },
         createSpaceOpen: { type: 'boolean' },
+        pendingDestructive: { type: 'object' },
         spaceSettingsOpen: { type: 'boolean' },
         dockGeometry: { type: 'object' },
         contentInset: { type: 'object' },
@@ -2546,6 +2547,8 @@ export const contextData: ContextData = {
         'openShellView',
         'closeShellView',
         'setCreateSpaceOpen',
+        'confirmDestructive',
+        'cancelDestructive',
         'toggleSpaceSettings',
         'openSpaceSettings',
         'closeSpaceSettings',
@@ -2689,6 +2692,7 @@ export const contextData: ContextData = {
         currentTemplate: { type: 'object', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
         loading: { type: 'boolean' },
         defaultTemplateId: { type: 'string' },
+        pendingInstall: { type: 'object' },
         operationLoading: { type: 'string' },
       },
       actions: [
@@ -2699,6 +2703,8 @@ export const contextData: ContextData = {
         'uninstallTemplate',
         'installFromMarketplace',
         'installToSpace',
+        'confirmInstall',
+        'cancelInstall',
         'toggleInstalled',
         'setDefaultTemplate',
         'saveTemplate',

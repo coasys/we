@@ -412,7 +412,9 @@ export function sanitiseCss(css: string, options: SanitiseCssOptions = {}): Sani
     vanish with no explanation — the exact silence the `removed` list exists to break. Matching the
     text is only ever used to *say* something; what is actually dropped is decided by the parser.
   */
-  if (/@import\b/i.test(css)) {
+  // Comments stripped first: the retro theme's stylesheet *explains* in a comment why it no longer
+  // has an `@import`, and reporting that as a removal would be a lie with a straight face.
+  if (/@import\b/i.test(css.replace(/\/\*[\s\S]*?\*\//g, ' '))) {
     removed.push('@import (loads a stylesheet from elsewhere, after you installed this one)');
   }
 

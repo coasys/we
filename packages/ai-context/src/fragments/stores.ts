@@ -876,7 +876,12 @@ export function generateStoresText(entries: StoreEntry[]): string {
         uninstallTemplate:
           '(templateId: string): hides a custom template from the pickers without deleting it. The counterpart of installTemplate',
         installFromMarketplace:
-          '(marketplaceTemplateId: string): copies a marketplace template into your own library. A personal act — use installToSpace to give the community a template',
+          '(marketplaceTemplateId: string): copies a marketplace template into your own library. A personal act — use installToSpace to give the community a template. Asks first: the template is fetched and inspected, and the host raises a dialog naming what it will be able to do. Nothing is written until that is confirmed, so treat this as "start an install", not "install"',
+        pendingInstall:
+          'the template an install dialog is showing ({ marketplaceId, destination, name, icon, version, capabilities, blocked }), or null when none is open. Host chrome renders it — a dialog vouching for a template must not be drawn by a template, so this is at the chrome tier only',
+        confirmInstall:
+          '(): installs what the dialog is showing. Host chrome only, for the same reason pendingInstall is: a template able to call this is the confirmation being skipped',
+        cancelInstall: '(): closes the install dialog without installing',
         toggleInstalled:
           '(templateId: string): installs or uninstalls by id — what the settings list’s switch calls. Prefer installTemplate/uninstallTemplate where the switch can pass its value',
         setDefaultTemplate:
@@ -895,7 +900,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         removeTemplate: '(): removes the current template',
         saveTemplate: '(name: string): saves the current template',
         installToSpace:
-          '(marketplaceTemplateId: string): copies a marketplace template into the current space, so every member of that community gets it — as opposed to installing it for yourself. Pair with templateStore.operationLoading to show progress on the row being installed',
+          '(marketplaceTemplateId: string): copies a marketplace template into the current space, so every member of that community gets it — as opposed to installing it for yourself. Asks first, exactly as installFromMarketplace does. Pair with templateStore.operationLoading to show progress on the row being installed',
       },
     },
     spaceStore: {

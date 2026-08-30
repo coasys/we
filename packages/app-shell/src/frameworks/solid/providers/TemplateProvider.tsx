@@ -361,7 +361,19 @@ export default function TemplateProvider() {
     whatever bag it is given, which is the same division that keeps `ModuleStoreDeps` honest.
   */
   const chromeBag = buildTemplateBag(stores, { grants: CHROME_TIER });
-  const templateBag = buildTemplateBag(stores, { grants: SPACE_TIER });
+  /*
+    The space bag, with the host's own confirmation in front of every destructive action.
+
+    Only this bag. Chrome is authored here, in this repo, and asks its own questions where it needs
+    to — `removeAccountModal`, the account-removal flow, the editor's discard guards — so guarding
+    it too would put two dialogs in front of one click. A space template is the case the flag was
+    invented for: it arrives from a stranger, so whether it asks before deleting is the stranger's
+    decision, and this takes that decision away from them.
+  */
+  const templateBag = buildTemplateBag(stores, {
+    grants: SPACE_TIER,
+    onDestructive: (path, args) => shellStore.requestDestructive(path, args),
+  });
 
   /*
     What a drag looks like. Registered from here because it is the same kind of knowledge as

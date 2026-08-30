@@ -4,7 +4,6 @@ import {
   agentByline,
   cardList,
   cardShell,
-  confirmModal,
   emptyState,
   field,
   formModal,
@@ -209,8 +208,6 @@ export const callsList: SchemaNode = {
                     preview: { author: { $: 'call.author' }, date: { $: 'call.createdAt' } },
                   },
                   localState: {
-                    confirmDeleteOpen: { type: 'boolean', initial: false },
-                    deleting: { type: 'boolean', initial: false },
                     editOpen: { type: 'boolean', initial: false },
                     titleDraft: { type: 'string', initial: { $: 'call.title' } },
                     descriptionDraft: { type: 'string', initial: { $: 'call.description' } },
@@ -718,7 +715,17 @@ export const callsList: SchemaNode = {
                                             variant: 'ghost',
                                             size: 'sm',
                                             square: true,
-                                            onClick: { $setLocal: 'confirmDeleteOpen', value: true },
+                                            /*
+                                              No `confirmModal`: the host raises its own in front of
+                                              every destructive store action, from the tier boundary.
+                                              A call record is a CollectionBlock like a post, and the
+                                              recursive delete does not care which kind it holds.
+                                              See DestructivePrompt.schema.ts.
+                                            */
+                                            onClick: {
+                                              $action: 'spaceStore.deleteCollection',
+                                              args: [{ $: 'call.id' }],
+                                            },
                                           },
                                           children: [{ type: 'we-icon', props: { name: 'trash' } }],
                                         },
@@ -776,21 +783,6 @@ export const callsList: SchemaNode = {
                                   { title: { $: 'local.titleDraft' }, description: { $: 'local.descriptionDraft' } },
                                 ],
                               },
-                            }),
-                            confirmModal({
-                              open: { $: 'local.confirmDeleteOpen' },
-                              close: { $setLocal: 'confirmDeleteOpen', value: false },
-                              title: 'Delete call?',
-                              body: 'This will permanently delete the recording and every utterance in it. This cannot be undone.',
-                              confirmLabel: 'Delete',
-                              // The delete walks the collection and removes every utterance under it, so a
-                              // long transcript takes a visible moment. Without the spinner the button
-                              // absorbs the click and appears to have failed, inviting a second click at a
-                              // delete already running.
-                              busyLocal: 'deleting',
-                              // A call record is a CollectionBlock like a post, and the recursive delete
-                              // does not care which kind it is holding.
-                              confirm: { $action: 'spaceStore.deleteCollection', args: [{ $: 'call.id' }] },
                             }),
                           ],
                         },

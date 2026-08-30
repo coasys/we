@@ -1,13 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-import {
-  agentByline,
-  cardList,
-  cardShell,
-  composerModal,
-  confirmModal,
-  emptyState,
-  recordLink,
-} from '@we/template-kit';
+import { agentByline, cardList, cardShell, composerModal, emptyState, recordLink } from '@we/template-kit';
 
 export const postsList: SchemaNode = {
   type: 'Column',
@@ -76,11 +68,10 @@ export const postsList: SchemaNode = {
               date: { $: 'post.createdAt' },
             },
           },
-          // Both of these drive controls in `header`, so the card is the nearest node that can
-          // declare them. Undeclared, `$setLocal` warned and no-opped — the edit and delete
-          // buttons rendered, took the click, and did nothing.
+          // Drives the edit control in `header`, so the card is the nearest node that can declare
+          // it. Undeclared, `$setLocal` warned and no-opped — the button rendered, took the click,
+          // and did nothing.
           localState: {
-            confirmDeleteOpen: { type: 'boolean', initial: false },
             editPostOpen: { type: 'boolean', initial: false },
           },
           header: [
@@ -88,7 +79,6 @@ export const postsList: SchemaNode = {
               type: 'Row',
               props: { ax: 'between', ay: 'center', width: '100%' },
               $localState: {
-                confirmDeleteOpen: { type: 'boolean', initial: false },
                 editPostOpen: { type: 'boolean', initial: false },
               },
               children: [
@@ -165,18 +155,17 @@ export const postsList: SchemaNode = {
                                 variant: 'ghost',
                                 size: 'sm',
                                 square: true,
-                                onClick: { $setLocal: 'confirmDeleteOpen', value: true },
+                                /*
+                                  No `confirmModal` here, and none anywhere else on a destructive
+                                  store action: the host raises its own in front of every one of
+                                  them, from the tier boundary. A second dialog behind it would be
+                                  two questions about one click, and this is the one a hostile
+                                  template could simply have omitted. See DestructivePrompt.schema.ts.
+                                */
+                                onClick: { $action: 'spaceStore.deleteCollection', args: [{ $: 'post.id' }] },
                               },
                               children: [{ type: 'we-icon', props: { name: 'trash' } }],
                             },
-                            confirmModal({
-                              open: { $: 'local.confirmDeleteOpen' },
-                              close: { $setLocal: 'confirmDeleteOpen', value: false },
-                              title: 'Delete post?',
-                              body: 'This will permanently delete the post and everything inside it. This cannot be undone.',
-                              confirmLabel: 'Delete',
-                              confirm: { $action: 'spaceStore.deleteCollection', args: [{ $: 'post.id' }] },
-                            }),
                           ],
                         },
                       },

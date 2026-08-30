@@ -6352,6 +6352,9 @@
         "createSpaceOpen": {
           "type": "boolean"
         },
+        "pendingDestructive": {
+          "type": "object"
+        },
         "spaceSettingsOpen": {
           "type": "boolean"
         },
@@ -6393,6 +6396,8 @@
         "openShellView",
         "closeShellView",
         "setCreateSpaceOpen",
+        "confirmDestructive",
+        "cancelDestructive",
         "toggleSpaceSettings",
         "openSpaceSettings",
         "closeSpaceSettings",
@@ -6650,6 +6655,9 @@
         "defaultTemplateId": {
           "type": "string"
         },
+        "pendingInstall": {
+          "type": "object"
+        },
         "operationLoading": {
           "type": "string"
         }
@@ -6662,6 +6670,8 @@
         "uninstallTemplate",
         "installFromMarketplace",
         "installToSpace",
+        "confirmInstall",
+        "cancelInstall",
         "toggleInstalled",
         "setDefaultTemplate",
         "saveTemplate",

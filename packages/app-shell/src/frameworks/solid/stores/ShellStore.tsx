@@ -75,6 +75,53 @@ import {
   useContext,
 } from 'solid-js';
 
+/** A destructive action a template asked for, as the host's own dialog puts it. */
+export interface PendingDestructive {
+  /** The store path — `spaceStore.deleteCollection`. Shown as the small print, so it is always true. */
+  path: string;
+  title: string;
+  body: string;
+}
+
+/**
+ * What the host says when a template asks to delete something.
+ *
+ * Written from the path and the arguments, and deliberately in the host's own words rather than the
+ * template's: the template is the thing being guarded against, so a dialog it could phrase is a
+ * dialog it could phrase misleadingly. The same wording every time is also what makes it
+ * recognisable — a person learns what WE's delete confirmation looks like, and nothing rendered
+ * inside a space can imitate it.
+ *
+ * Fallback rather than exhaustive on purpose. A member marked `destructive` that nobody has written
+ * a sentence for still gets a dialog naming the action, which is the direction to fail in: adding a
+ * destructive member and forgetting this file costs a vague prompt, not a missing one.
+ */
+function describeDestructive(path: string, args: unknown[]): { title: string; body: string } {
+  const entity = typeof args[0] === 'string' ? args[0] : '';
+  switch (path) {
+    case 'record.delete':
+      return {
+        title: entity ? `Delete this ${entity}?` : 'Delete this record?',
+        body: 'It will be removed for everyone in this space. This cannot be undone.',
+      };
+    case 'spaceStore.deleteCollection':
+      return {
+        title: 'Delete this and everything in it?',
+        body: 'The post and every block inside it will be removed for everyone in this space. This cannot be undone.',
+      };
+    case 'shapeStore.deleteShape':
+      return {
+        title: 'Delete this model?',
+        body: 'Records already created keep their data — only the definition goes, and nothing can be created from it afterwards.',
+      };
+    default:
+      return {
+        title: 'Delete this?',
+        body: 'This cannot be undone.',
+      };
+  }
+}
+
 export interface ShellStore {
   /** Id of the currently open shell overlay, or null. */
   activeShellView: Accessor<string | null>;
@@ -113,6 +160,35 @@ export interface ShellStore {
    */
   createSpaceOpen: Accessor<boolean>;
   setCreateSpaceOpen: (open: boolean) => void;
+  /**
+   * The destructive action a template just asked for, waiting on a person's answer — or null.
+   *
+   * ## Why the host owns this rather than each template
+   *
+   * `templateSurface.ts` marks a member `destructive` and says the flag is there so "a host can
+   * demand its own confirmation for those regardless of tier — in host chrome, where a theme's CSS
+   * cannot restyle it". Nothing demanded one. Half the delete buttons in the templates wrote their
+   * own `confirmModal` and half wired the action to a bare button, which is the shape a rule that
+   * lives at the call sites always ends up in.
+   *
+   * The deeper problem is that a template's own confirmation is worth nothing where it matters. A
+   * space template arrives from a stranger, so "does it ask before deleting" is up to the stranger.
+   * A dialog the *host* raises, from the tier boundary, cannot be omitted, restyled or worded
+   * misleadingly by the template that triggered it.
+   *
+   * So this is the one confirmation for every destructive action a space template can name, and the
+   * templates no longer write their own for those. See `requestDestructive`.
+   */
+  pendingDestructive: Accessor<PendingDestructive | null>;
+  /** Do it. */
+  confirmDestructive: () => void;
+  /** Don't. */
+  cancelDestructive: () => void;
+  /**
+   * Ask, and resolve with the answer. Wiring — `TemplateProvider` passes this as the space bag's
+   * `onDestructive`, and nothing else should call it.
+   */
+  requestDestructive: (path: string, args: unknown[]) => Promise<boolean>;
   /**
    * Whether the space-settings panel is open.
    *
@@ -412,6 +488,28 @@ export function ShellStoreProvider(props: ParentProps) {
   const lastShellPath: Record<string, string> = {};
   const [createSpaceOpen, setCreateSpaceOpen] = createSignal(false);
   const [spaceSettingsOpen, setSpaceSettingsOpen] = createSignal(false);
+
+  const [pendingDestructive, setPendingDestructive] = createSignal<PendingDestructive | null>(null);
+  /** Resolves the promise `requestDestructive` handed back. Null when no question is outstanding. */
+  let answerDestructive: ((ok: boolean) => void) | null = null;
+
+  function requestDestructive(path: string, args: unknown[]): Promise<boolean> {
+    // A second question while one is open answers "no" to the first rather than losing it. Two
+    // dialogs cannot both be on screen, and an unanswered promise would hang the first action's
+    // `onFinally` forever.
+    answerDestructive?.(false);
+    setPendingDestructive({ path, ...describeDestructive(path, args) });
+    return new Promise<boolean>((resolve) => {
+      answerDestructive = resolve;
+    });
+  }
+
+  function settleDestructive(ok: boolean): void {
+    const answer = answerDestructive;
+    answerDestructive = null;
+    setPendingDestructive(null);
+    answer?.(ok);
+  }
 
   // Docks are sized against the window, so the window is state. Tracked here rather than in each
   // module because the whole point of the arrangement is that a module never does viewport maths.
@@ -1019,6 +1117,10 @@ export function ShellStoreProvider(props: ParentProps) {
     closeShellView: () => setActiveShellView(null),
     createSpaceOpen,
     setCreateSpaceOpen,
+    pendingDestructive,
+    confirmDestructive: () => settleDestructive(true),
+    cancelDestructive: () => settleDestructive(false),
+    requestDestructive,
     spaceSettingsOpen,
     spaceSettingsEdge: () => (spaceSettingsOpen() ? 'right' : null),
     toggleSpaceSettings: () => setSpaceSettingsOpen((open) => !open),

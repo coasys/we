@@ -9,6 +9,8 @@
 export { accountSettings, removeAccountModal } from './AccountSettings.schema';
 export { bootScreen } from './BootScreen.schema';
 export { consentPrompt, consentSecret } from './ConsentPrompt.schema';
+export { destructivePrompt } from './DestructivePrompt.schema';
+export { installPrompt } from './InstallPrompt.schema';
 export { namePrompt } from './NamePrompt.schema';
 export { landingPageTemplate } from './about';
 export { marketplaceTemplate } from './marketplace';

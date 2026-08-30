@@ -2493,6 +2493,7 @@ ShellStore:
 - State:
   - activeShellView: string | null — id of the currently open shell overlay ('profile' | 'settings' | 'schema-tests' | 'landing-page'), or null
   - createSpaceOpen: boolean — the create-space modal is open. Shell state because more than one place opens it; bind the modal’s open prop to this and close it with setCreateSpaceOpen
+  - pendingDestructive: unknown
   - spaceSettingsOpen: boolean — the space-settings panel is open. It configures whichever space is open, so it needs no id; bind a launcher’s active state to this
   - dockGeometry: Record<dockId, DockGeometry> — every registered panel's resolved box (top, left, width, height, edge, mode). Read a field as { $: "shellStore.dockGeometry['<id>'].<field>" } — by index, since a dock id holds a colon; the frame a panel is wrapped in binds its geometry this way so a move rewrites props rather than remounting
   - contentInset: { top, right, bottom, left } in pixels — what the content viewport gives up to panels that displace it. Read it to keep your own fixed chrome clear of docked panels
@@ -2509,6 +2510,8 @@ ShellStore:
   - openShellView(id: string, path?: string): opens a shell overlay by id, optionally at a route inside it — the overlay keeps its own memory router, so this never touches the browser URL
   - closeShellView(): closes the currently open shell overlay
   - setCreateSpaceOpen(open: boolean): opens or closes the create-space modal. Shell state rather than a page’s $localState because more than one place opens it — the settings page and the sidebar’s spaces group — and a page-scoped flag could only be set from inside that page
+  - confirmDestructive(): unknown
+  - cancelDestructive(): unknown
   - toggleSpaceSettings(): opens or closes the settings panel for the space on screen. What a gear in chrome should call — a control that is always present toggles, so a second press puts back what the first press changed
   - openSpaceSettings(): opens that panel without closing it again. For a control that sits on the very fields it leads to (the About view’s pencil), where a toggle would break the promise to show them
   - closeSpaceSettings(): closes the space-settings panel
@@ -2623,6 +2626,7 @@ TemplateStore:
   - currentTemplate: TemplateSchema (the active template)
   - loading: boolean — the template lists are still being read. Gate empty states on it
   - defaultTemplateId: string — id of the agent's preferred default template, used where no space or override decides. Persisted to AgentSettings.defaultTemplateId
+  - pendingInstall: unknown
   - operationLoading: string | null — the id of the template operation in flight, namespaced by kind ('marketplace-install:<id>', 'space-install:<id>'), or null. A key rather than a boolean so one row's spinner does not appear on every row
 - Actions:
   - switchTemplate(newTemplateId: string): switches to another template
@@ -2630,8 +2634,10 @@ TemplateStore:
   - deleteTemplate(templateId: string): permanently deletes a custom template from the library
   - installTemplate(templateId: string): marks an installed custom template visible in the pickers
   - uninstallTemplate(templateId: string): hides a custom template from the pickers without deleting it. The counterpart of installTemplate
-  - installFromMarketplace(marketplaceTemplateId: string): copies a marketplace template into your own library. A personal act — use installToSpace to give the community a template
-  - installToSpace(marketplaceTemplateId: string): copies a marketplace template into the current space, so every member of that community gets it — as opposed to installing it for yourself. Pair with templateStore.operationLoading to show progress on the row being installed
+  - installFromMarketplace(marketplaceTemplateId: string): copies a marketplace template into your own library. A personal act — use installToSpace to give the community a template. Asks first: the template is fetched and inspected, and the host raises a dialog naming what it will be able to do. Nothing is written until that is confirmed, so treat this as "start an install", not "install"
+  - installToSpace(marketplaceTemplateId: string): copies a marketplace template into the current space, so every member of that community gets it — as opposed to installing it for yourself. Asks first, exactly as installFromMarketplace does. Pair with templateStore.operationLoading to show progress on the row being installed
+  - confirmInstall(): installs what the dialog is showing. Host chrome only, for the same reason pendingInstall is: a template able to call this is the confirmation being skipped
+  - cancelInstall(): closes the install dialog without installing
   - toggleInstalled(templateId: string): installs or uninstalls by id — what the settings list’s switch calls. Prefer installTemplate/uninstallTemplate where the switch can pass its value
   - setDefaultTemplate(templateId: string): sets the agent's preferred default template (persists to AgentSettings.defaultTemplateId)
   - saveTemplate(name: string): saves the current template

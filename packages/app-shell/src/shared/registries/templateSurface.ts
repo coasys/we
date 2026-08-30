@@ -738,6 +738,17 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     uninstallTemplate: action('library'),
     installFromMarketplace: action('library'),
     installToSpace: action('space-settings'),
+    /*
+      The install dialog's own three members.
+
+      `library`, and at the chrome tier only — the dialog is host chrome by design (a dialog
+      vouching for a template must not be drawn by one), so nothing at the space tier has any use
+      for them, and `confirmInstall` writing on a click a space template could make is exactly the
+      confirmation being bypassed. See InstallPrompt.schema.ts.
+    */
+    pendingInstall: state('library'),
+    confirmInstall: action('library'),
+    cancelInstall: action('library'),
     setDefaultTemplate: action('library'),
     saveTemplate: action('editor'),
     saveTemplateAs: action('editor'),
@@ -802,6 +813,25 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       user's behalf.
     */
     setCreateSpaceOpen: action('navigation'),
+    /*
+      The host's delete confirmation.
+
+      `wiring` for all four, deliberately, and this is the one classification in the file where
+      being reachable would defeat the member's whole purpose. The dialog stands between a space
+      template and every destructive action it can name; a template that could read
+      `pendingDestructive` could tell whether the dialog was up, and one that could call
+      `confirmDestructive` could answer its own question. `requestDestructive` is the guard itself,
+      passed to `buildTemplateBag` by the host.
+
+      Chrome reaches them the way it reaches everything else the templates may not touch: it is not
+      in a bag at all. `DestructivePrompt.schema.ts` is a host slot, rendered against the chrome
+      bag — so these must appear in the chrome tier too, and `wiring` would exclude them from both.
+      They are `host-layout`, the group chrome-only surfaces already live in.
+    */
+    pendingDestructive: state('host-layout'),
+    confirmDestructive: action('host-layout'),
+    cancelDestructive: action('host-layout'),
+    requestDestructive: WIRING,
     /*
       The space-settings panel — which host surface is open, and asking for it.
 
@@ -1071,8 +1101,21 @@ function taggedModuleStores(modules: Record<string, Record<string, unknown>>): R
 export interface BuildBagOptions {
   /** Which capability groups this template was granted. */
   grants: readonly CapabilityGroup[];
-  /** Called before a `destructive` action runs. Returning false refuses it. */
-  onDestructive?: (path: string) => boolean;
+  /**
+   * Called before a `destructive` action runs. Resolving false refuses it.
+   *
+   * Asynchronous, and that is the whole reason this was never wired to anything. A confirmation is
+   * a question put to a person, so a guard that had to answer *synchronously* could only ever have
+   * been a policy check — and there is no policy here, there is a human. The option existed, three
+   * call sites passed nothing, and every destructive action a space template could name ran on one
+   * unqualified click.
+   *
+   * Awaiting it makes a destructive action async from the template's point of view, which costs
+   * nothing: `$action` already awaits, and `onSuccess`/`onError`/`onFinally` are defined in terms
+   * of the returned promise. A refusal resolves `undefined` — the same nothing a blocked action
+   * resolves — so `onSuccess` does not fire on a cancel.
+   */
+  onDestructive?: (path: string, args: unknown[]) => boolean | Promise<boolean>;
 }
 
 /**
@@ -1155,7 +1198,7 @@ export function buildTemplateBag<T extends Record<string, unknown>>(stores: T, o
       if (spec.destructive && options.onDestructive) {
         const guard = options.onDestructive;
         const bound = method;
-        method = (...args: unknown[]) => (guard(path) ? bound(...args) : undefined);
+        method = async (...args: unknown[]) => ((await guard(path, args)) ? bound(...args) : undefined);
       }
 
       filtered[name] = method;
