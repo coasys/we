@@ -10,6 +10,10 @@
  *   on a scrolling list and moves is somebody scrolling, and a surface that reads it as a drag
  *   cannot be scrolled at all. The alternative — `touch-action: none` on the container — is the
  *   same bug spelled in CSS.
+ *
+ * The second half of the touch answer is here too, and it is not CSS either: once the long press
+ * has decided this *is* a drag, the browser must stop scrolling for as long as it lasts. See
+ * `blockScroll`.
  */
 import type { DragPoint } from './types';
 
@@ -51,6 +55,24 @@ export function watchPointerDrag(down: PointerEvent, options: PointerDragOptions
   let holdTimer: ReturnType<typeof setTimeout> | undefined;
   let last = down;
 
+  /*
+    Stop the browser scrolling while a touch drag is running.
+
+    `touch-action` cannot do this on its own, and the reason is a timing one: it is read when the
+    finger lands, and whether this press is a drag is not known until the long press elapses. Set to
+    `none` up front it would kill scrolling on every list holding a draggable row — the bug the long
+    press exists to avoid — and left permissive, the first movement after the long press lets the UA
+    start a native pan, which fires `pointercancel` and drops the item the instant it moves. That is
+    what made touch dragging not work at all: every card picked up, then cancelled itself.
+
+    So the block is applied for the *duration of the drag*, by cancelling `touchmove` — the one
+    event a scroll can still be prevented from. Non-passive, on the document, and only while
+    dragging: outside a drag nothing here touches scrolling.
+  */
+  const blockScroll = (e: TouchEvent) => {
+    if (dragging && e.cancelable) e.preventDefault();
+  };
+
   function begin(e: PointerEvent) {
     if (dragging) return;
     dragging = true;
@@ -61,6 +83,7 @@ export function watchPointerDrag(down: PointerEvent, options: PointerDragOptions
       // A pointer that has already been released cannot be captured; the drag still runs off the
       // events we are listening for.
     }
+    if (isTouch) document.addEventListener('touchmove', blockScroll, { passive: false, capture: true });
     options.onStart(e);
   }
 
@@ -102,6 +125,7 @@ export function watchPointerDrag(down: PointerEvent, options: PointerDragOptions
   function stop() {
     clearHold();
     dragging = false;
+    document.removeEventListener('touchmove', blockScroll, true);
     capture.removeEventListener('pointermove', onMove as EventListener);
     capture.removeEventListener('pointerup', onUp as EventListener);
     capture.removeEventListener('pointercancel', onCancel as EventListener);

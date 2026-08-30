@@ -1,5 +1,5 @@
 import type { DesignSystemProps } from '@we/design-types';
-import { type DSLayer, filterProps, getKeysForLayers, mergeProps, stateKeys } from '@we/design-utils';
+import { type DSLayer, filterProps, getKeysForLayers, mergeProps, stateKeys, tierKeys } from '@we/design-utils';
 import { LitElement } from 'lit';
 import { property } from 'lit/decorators.js';
 
@@ -38,9 +38,24 @@ export function DesignSystemMixin<T extends Constructor<LitElement>>(
     apply whatever it happened to hold at first paint and ignore every change after. It is filtered
     out of `primitiveKeys` for the same reason it is listed separately: those are reflected strings.
   */
-  const primitiveKeys = activeKeys.filter((key) => !stateKeySet.has(key) && key !== 'styles');
+  /*
+    Tier bags are objects, like the state bags, and are registered as such.
+
+    `getKeysForLayers` now includes them, which is what makes `mdUpProps` reach `filterProps` at all
+    — but reaching it as a *reflected string property* would be a second version of the same bug:
+    Lit would stringify the bag into an attribute, and reading it back gives `[object Object]`.
+    Registered the same way `hoverProps` is, which is what they are: a partial prop bag applying
+    under a condition.
+
+    Unlike the state bags they are not gated on the `state` layer. A tier is not a kind of property,
+    it is a condition under which any kind applies — an element with no hover behaviour can still be
+    laid out differently at a different width.
+  */
+  const tierKeySet = new Set<string>(tierKeys);
+  const primitiveKeys = activeKeys.filter((key) => !stateKeySet.has(key) && !tierKeySet.has(key) && key !== 'styles');
   property({ type: Object, attribute: false })(Base.prototype, 'styles');
   primitiveKeys.forEach((key) => property({ type: primitiveTypes[key] || String, reflect: true })(Base.prototype, key));
+  tierKeys.forEach((key) => property({ type: Object, attribute: false })(Base.prototype, key));
   if (hasState) {
     stateKeys.forEach((key) => property({ type: Object, attribute: false })(Base.prototype, key));
   }
