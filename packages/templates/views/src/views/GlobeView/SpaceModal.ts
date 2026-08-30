@@ -81,11 +81,11 @@ export const spaceModal = {
               /*
                 Hoisted rather than queried inline, so the list can be filtered.
 
-                A retired type must not be offered, and "retired" cannot be a `where`: pre-existing
-                `SignalType` records have no such property, an unbound variable excludes the row, and
-                a pushed-down filter would therefore hide every reaction a community defined before
-                the field existed. Filtering client-side needs the results in `local`, which is what
-                the hoist is for. See `OFFERED_SIGNAL_TYPES`.
+                A retired type must not be offered. A `where` would serve *this* modal — it never
+                resolves a slug — but every other site shares one subscription between the controls
+                and a `find()`-by-slug count that must still see retired types, so the filter lives
+                at the point of use everywhere rather than in two spellings. `filter()` cannot name
+                an inline `$query`'s results, hence the hoist. See `OFFERED_SIGNAL_TYPES`.
               */
               type: 'Column',
               props: { gap: '200' },

@@ -479,6 +479,32 @@ A bare list is the positive counterpart of "not" with a list, and the way to fet
 { id: ['id1', 'id2', 'id3'] }. Native on the AD4M backend, where it pushes down to a SPARQL VALUES
 clause. An empty list matches nothing, which is what "none of these" should mean.
 
+An ABSENT property is the trap worth knowing, and "not" is where the two backends disagree.
+
+A record that never had a property written carries no value for it — on AD4M a property is a link,
+so it is simply not there. Three cases, and the middle one differs by backend:
+
+  { field: 'x' }             — does NOT match an absent value. Both agree.
+  { field: { not: 'x' } }    — MATCHES an absent value inside filter() and on the in-memory
+                               backend (undefined !== 'x'), and does NOT match on AD4M, where
+                               != over an unbound variable excludes the row, exactly as SQL's
+                               three-valued logic excludes NULL. A $query where written with "not"
+                               can therefore pass every test and come back empty in production.
+  { field: { exists: false } } — means absent, unambiguously, on both.
+
+A declared "default" does not rescue this. The manifest's default is applied when a record is
+CONSTRUCTED, so anything created normally does carry it — but a field added to an entity after
+some records already existed reads as absent on every one of them, and the query layer never
+consults the default when filtering.
+
+Say "absent counts as the default" explicitly when you mean it:
+
+  { OR: [ { retired: false }, { retired: { exists: false } } ] }
+
+Native on AD4M — "exists" and the combinators are both supported — but the OR costs this query's
+sort pushdown (see below), so pair it with a plain sort or none. Where the set is small and already
+in hand, filtering client-side with filter() sidesteps the whole question.
+
 startsWith/endsWith are case-sensitive where contains is not: they match structured strings against
 a known prefix (an ISO date, an id out of a URI). They are NOT native to the AD4M backend, so a $query
 using one is refused — use contains there; inside filter() they are evaluated client-side.

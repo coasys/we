@@ -285,3 +285,72 @@ describe('retiring a signal type keeps what people gave', () => {
     expect(type.retired).toBe(false);
   });
 });
+
+describe('an absent property, and what the two backends do with it', () => {
+  /*
+    Found while adding `SignalType.retired`, and pinned because it decided a design choice.
+
+    A property is a *link* on AD4M, so a record that never had one written has no value at all —
+    where this backend holds a row and simply lacks the key. The three cases below are not the same
+    across the two, and the middle one is a genuine conformance divergence:
+
+    - `{ field: '' }` does not match an absent value on either. They agree.
+    - `{ field: { not: x } }` MATCHES an absent value here, because `undefined !== x` is true in
+      JavaScript — and does NOT match on AD4M, because `!=` over an unbound variable excludes the
+      row, exactly as SQL's three-valued logic excludes NULL. **A `where` written with `not` is
+      therefore green in this suite and silently empty against a real executor**, which is the same
+      shape as the `''` contract bug above it.
+    - `{ field: { exists: false } }` is the spelling that means "absent" on both.
+
+    This is why `OFFERED_SIGNAL_TYPES` filters client-side instead of pushing
+    `{ retired: { not: true } }` down. The `not` form would have passed every test here.
+
+    Not "fixed" by making this backend exclude absent values from `not`: which of the two is right
+    is a contract decision (SQL says exclude, JavaScript says match), it would change the meaning of
+    every existing `not` query, and the honest first step is that the difference is written down and
+    has a test. See the PR's Known follow-ups.
+  */
+  it('writes a declared default, so a record created normally is filterable on it', async () => {
+    // The half that works, and why the exposure is narrow: anything built through `create` carries
+    // its manifest defaults whether or not the caller passed them, so the property is not absent.
+    await SignalType.create(dataset, { name: 'Live', slug: 'live' });
+    const gone = await SignalType.create(dataset, { name: 'Gone', slug: 'gone' });
+    await SignalType.update(dataset, gone.id as string, { retired: true });
+
+    const offered = await SignalType.findAll(dataset, { where: { retired: false } });
+    expect(offered.map((t) => t.name)).toEqual(['Live']);
+  });
+
+  it('does not match an absent property against a value', async () => {
+    // `avatar` has no declared default, so it is genuinely absent — the stand-in for a field added
+    // to an entity after some records already existed.
+    await Space.create(dataset, { name: 'Bare' });
+    await Space.create(dataset, { name: 'Pictured', avatar: 'inmemory://pic.png' });
+
+    expect(await Space.findAll(dataset, { where: { avatar: '' } })).toHaveLength(0);
+  });
+
+  it('DOES match an absent property against `not` — where AD4M would not', async () => {
+    /*
+      The divergence, asserted so it is a known quantity rather than a surprise. Do not read this
+      as an endorsement: it is what this backend does today, and a `where` relying on it will not
+      behave the same way in production.
+    */
+    await Space.create(dataset, { name: 'Bare' });
+    await Space.create(dataset, { name: 'Pictured', avatar: 'inmemory://pic.png' });
+
+    const matched = await Space.findAll(dataset, { where: { avatar: { not: 'inmemory://pic.png' } } });
+    expect(matched.map((s) => s.name)).toEqual(['Bare']);
+  });
+
+  it('means absent unambiguously with `exists`, on either backend', async () => {
+    // The spelling to reach for, and the one the where-grammar documentation now names.
+    await Space.create(dataset, { name: 'Bare' });
+    await Space.create(dataset, { name: 'Pictured', avatar: 'inmemory://pic.png' });
+
+    const found = await Space.findAll(dataset, {
+      where: { OR: [{ avatar: '' }, { avatar: { exists: false } }] },
+    });
+    expect(found.map((s) => s.name)).toEqual(['Bare']);
+  });
+});

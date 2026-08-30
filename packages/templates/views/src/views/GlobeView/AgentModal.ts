@@ -83,8 +83,9 @@ export const agentModal = {
 
             // ── Signal controls ─────────────────────────────────
             {
-              // Hoisted so a retired type can be filtered out client-side — see `SpaceModal` for
-              // why this cannot be a `where`, and `OFFERED_SIGNAL_TYPES` for the rule.
+              // Hoisted so a retired type can be filtered out client-side, and hoisted because
+              // `filter()` cannot name an inline `$query`'s results. See `SpaceModal` for why the
+              // filter is not a `where`, and `OFFERED_SIGNAL_TYPES` for the rule.
               type: 'Row',
               props: { gap: '200', ay: 'center', wrap: true },
               $queries: { signalTypes: { entity: 'SignalType', subscribe: true } },
