@@ -167,6 +167,13 @@ export function EditableImage(allProps: EditableImageProps) {
         ref={checkSurface}
         role="button"
         tabIndex={0}
+        /*
+          A tab stop, but not the one a dialog should open on. Pressing Enter here opens the OS file
+          picker, and the tile is often the first thing in a form (a cover image above the name
+          field), so an overlay taking the first focusable landed every keyboard user in a file
+          dialog over the form they came to fill in. See `skipsInitialFocus` in overlay-element.
+        */
+        data-we-skip-autofocus=""
         aria-label={label()}
         onClick={pickFile}
         onKeyDown={(e) => {
