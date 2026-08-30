@@ -213,6 +213,20 @@ jobs:
           echo "Pinned Rust channel: $CHANNEL"
           rustup toolchain install "$CHANNEL" --component rustfmt --profile minimal
 
+      # The generated Rust has to exist before anything parses `lib.rs`.
+      #
+      # `src-tauri/src/generated/` is gitignored — `mod.rs` and `seed_servers.rs` are written from
+      # `we-seed.json`. rustfmt follows `mod` declarations, so on a fresh checkout it parses
+      # `mod generated;` and stops with "failed to resolve mod `generated`". Nothing about that is
+      # visible on a developer's machine, where the directory has been sitting since the first build.
+      #
+      # The generator is plain Node with no imports outside the standard library, so this needs no
+      # `pnpm install` and none of the workspace — which is why this job stays independent of Build.
+      # It also rewrites the tracked `tauri.conf.json`; harmless here, since this job has no drift
+      # check, but it is the reason this step does not belong in one that does.
+      - name: Generate the seed-derived sources
+        run: node apps/we-tauri/scripts/generate-seed-config.cjs
+
       # `rustfmt` directly, not `cargo fmt`, and that is the point rather than a shortcut.
       #
       # `cargo fmt` shells out to `cargo metadata`, which needs a manifest — and `src-tauri/Cargo.toml`
