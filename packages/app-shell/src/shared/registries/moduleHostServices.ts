@@ -338,6 +338,9 @@ export function createModuleStoreDeps(framework: {
       ready: () => services.agentData?.ready() ?? false,
       create: async (entity, fields, options) => (await services.agentData?.create(entity, fields, options)) ?? null,
       find: async (entity, query) => (await services.agentData?.find(entity, query)) ?? [],
+      update: async (entity, id, fields) => {
+        await services.agentData?.update(entity, id, fields);
+      },
       remove: async (entity, id) => {
         await services.agentData?.remove(entity, id);
       },

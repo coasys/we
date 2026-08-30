@@ -112,6 +112,8 @@ export const pocketModule = defineModule({
     'gather',
     'gatherInto',
     'forget',
+    'renameFolder',
+    'deleteFolder',
     'refresh',
     'goTo',
   ],

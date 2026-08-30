@@ -137,7 +137,19 @@ export function parseGuestLink(href: string): GuestJoinTarget | null {
   if (!match) return null;
 
   const spaceId = safeDecode(match[1]);
-  if (!spaceId) return null;
+  /*
+    The decoded id has to look like an id.
+
+    It goes straight into `navigate(`/space/${spaceId}`)` and `joinSpace(spaceId)`, and the path
+    match cannot vouch for it: `[^/]+` excludes a slash from the *encoded* segment, and `%2F`
+    decodes to one. So a link could put arbitrary text — a second path segment, a query string, a
+    fragment — into a route the app then navigates to.
+
+    A space is named by a perspective uuid or a neighbourhood CID, both of which are
+    `[A-Za-z0-9._-]`, and the length bound is far past either. Nothing legitimate is refused by this
+    and nothing else gets through it.
+  */
+  if (!spaceId || !/^[A-Za-z0-9._-]{1,128}$/.test(spaceId)) return null;
 
   const hostUrl = url.searchParams.get('host');
   if (!hostUrl || !isAllowedGuestHost(hostUrl)) return null;

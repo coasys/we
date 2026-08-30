@@ -984,15 +984,15 @@ Most @we/primitives also accept Design System Props (see next section for detail
   Props: variant: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' = 'neutral', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-blockquote (DesignSystemElement)
 - we-button (DesignSystemElement)
-  Props: variant: 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline' | 'bare' = 'primary', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', text?: string | undefined, href?: string | undefined, disabled: boolean = false, loading: boolean = false, gradient: boolean = false, square: boolean = false
+  Props: variant: 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline' | 'bare' = 'primary', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', text?: string | undefined, label: string = '', href?: string | undefined, disabled: boolean = false, loading: boolean = false, gradient: boolean = false, square: boolean = false
 - we-checkbox (DesignSystemElement)
-  Props: checked: boolean = false, disabled: boolean = false, name: string = '', value: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
+  Props: checked: boolean = false, disabled: boolean = false, name: string = '', label: string = '', value: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-code (DesignSystemElement)
   Props: block: boolean = false
 - we-color-picker (DesignSystemElement)
   Props: value: string = '#000000', disabled: boolean = false, name: string = '', palette: array = [ '#000000', '#434343', '#666666', '#999999', '#b7b7b7', '#cccccc', '#d9d9d9', '#ffffff', '#980000', '#ff0000', '#ff9900', '#ffff00', '#00ff00', '#00ffff', '#4a86e8', '#0000ff', '#9900ff', '#ff00ff', '#e6b8af', '#f4cccc', '#fce5cd', '#fff2cc', '#d9ead3', '#d0e0e3', '#c9daf8', '#cfe2f3', '#d9d2e9', '#ead1dc', ], tokens: boolean = false, alpha: boolean = false
 - we-date-picker (DesignSystemElement)
-  Props: value: string = '', showTime: boolean = false, placeholder: string = 'Select date', disabled: boolean = false, name: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
+  Props: value: string = '', showTime: boolean = false, placeholder: string = 'Select date', disabled: boolean = false, name: string = '', label: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-divider (LayoutElement)
   Props: orientation: 'horizontal' | 'vertical' = 'horizontal', variant: 'solid' | 'dashed' | 'dotted' = 'solid', color?: string | undefined, thickness?: string | undefined
 - we-draggable (LayoutElement) — Makes whatever is inside it something that can be picked up and carried somewhere else.
@@ -1026,7 +1026,7 @@ instead of the grid. What is dragged is therefore the *child*, which is also wha
 the geometry are measured from.
   Props: entity: string = '', recordId: string = '', datasetKey: string = '', label: string = '', icon: string = '', preview?: DragPreview | undefined, origin?: unknown | undefined, effect: 'move' | 'copy' | 'link' = 'copy', disabled: boolean = false
 - we-drawer (OverlayElement)
-  Props: hideclosebutton: boolean = false, close: () => void
+  Props: hideclosebutton: boolean = false, label: string = '', close: () => void
 - we-drop-zone (LayoutElement) — Anything a `we-draggable` can be dropped into.
 
 The receiving half of the pair, and the same rung: two custom elements and an existing `$action`,
@@ -1074,13 +1074,13 @@ fragment; it is sanitized before rendering so XSS payloads are stripped.
 - we-icon (LayoutElement)
   Props: name: string = '', color: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '{css-length}' = '', weight: 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone' = 'regular', gradient: string = ''
 - we-icon-picker (DesignSystemElement)
-  Props: value: string = '', disabled: boolean = false, name: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', placeholder: string = 'Pick icon'
+  Props: value: string = '', disabled: boolean = false, name: string = '', label: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', placeholder: string = 'Pick icon'
 - we-iframe (LayoutVisualElement)
   Props: src: string = '', title: string = 'Embedded content', allow: string = '', sandbox?: string | undefined
 - we-image (LayoutVisualElement)
   Props: src: string | File = '', alt: string = '', fit: '' | 'cover' | 'contain' | 'fill' | 'none' | 'scale-down' = '', loading: 'eager' | 'lazy' = 'eager', gradient: string = '', objectPosition: string = ''
 - we-input (DesignSystemElement)
-  Props: value: string = '', max: string = '', min: string = '', maxlength: unknown = Infinity, minlength: number = 0, pattern: string = '', name: string = '', step: string = '', placeholder: string = '', autocomplete: string = '', autofocus: boolean = false, disabled: boolean = false, required: boolean = false, readonly: boolean = false, type: string = 'text', revealable: boolean = false, size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
+  Props: value: string = '', max: string = '', min: string = '', maxlength: unknown = Infinity, minlength: number = 0, pattern: string = '', name: string = '', label: string = '', step: string = '', placeholder: string = '', autocomplete: string = '', autofocus: boolean = false, disabled: boolean = false, required: boolean = false, readonly: boolean = false, type: string = 'text', revealable: boolean = false, size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-link (DesignSystemElement)
   Props: href: string = '', target: string = '', rel: string = '', download: string = '', disabled: boolean = false
 - we-location-picker (DesignSystemElement)
@@ -1101,7 +1101,7 @@ Supports selected, active, and danger states.
 - we-number (DesignSystemElement) — Displays a number, optionally abbreviated (1 200 → 1.2K, 1 500 000 → 1.5M).
   Props: value: number = 0, shorten: boolean = false, precision: number = 1, locale: string = 'en', formattedValue: string
 - we-number-input (DesignSystemElement)
-  Props: value: number | '' = 0, min: number = -Infinity, max: unknown = Infinity, step: number = 1, disabled: boolean = false, name: string = '', placeholder: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
+  Props: value: number | '' = 0, min: number = -Infinity, max: unknown = Infinity, step: number = 1, disabled: boolean = false, name: string = '', label: string = '', placeholder: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-pagination (DesignSystemElement)
   Props: page: number = 1, total: number = 1, siblings: number = 1, size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-popover (LayoutElement) — Low-level floating panel anchored to a trigger element.
@@ -1110,7 +1110,7 @@ Use DropdownMenu component for dropdown menus.
 - we-progress-bar (DesignSystemElement)
   Props: value: number = 0, max: number = 100, variant: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' = 'primary', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-radio (DesignSystemElement)
-  Props: checked: boolean = false, disabled: boolean = false, name: string = '', value: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
+  Props: checked: boolean = false, disabled: boolean = false, name: string = '', label: string = '', value: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-resize-handle (LayoutElement) — A drag target that reports how far it has moved, and nothing else.
 
 ## Why it reports a delta rather than owning a size
@@ -1138,11 +1138,11 @@ div — not focusable, so there is no way to resize a panel from the keyboard. P
   Props: maxHeight: string = '', maxWidth: string = '', pin: '' | 'end' = ''
 - we-select (DesignSystemElement) — Pick a single value from a list of options. Custom-rendered dropdown.
 Use for form fields, settings, filters. Set searchable=true for type-to-filter.
-  Props: options: SelectOption[] = [], value: string = '', placeholder: string = '', disabled: boolean = false, searchable: boolean = false, fit: boolean = false, name: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
+  Props: options: SelectOption[] = [], value: string = '', placeholder: string = '', disabled: boolean = false, searchable: boolean = false, fit: boolean = false, name: string = '', label: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-skeleton (DesignSystemElement)
   Props: width: string = '100%', height: string = '20px', animation: 'pulse' | 'wave' = 'pulse'
 - we-slider (DesignSystemElement)
-  Props: value: number = 0, min: number = 0, max: number = 100, step: number = 1, disabled: boolean = false, name: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', showValue: boolean = false
+  Props: value: number = 0, min: number = 0, max: number = 100, step: number = 1, disabled: boolean = false, name: string = '', label: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', showValue: boolean = false
 - we-sortable (DesignSystemElement) — A drop zone whose items can be picked up, reordered, and moved to other zones.
 
 ## One element, not two
@@ -1200,7 +1200,7 @@ on a focused handle picks the row up exactly as it does on a plain item.
 - we-spinner (LayoutElement)
   Props: size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | (string & {}) = 'md', color: string = ''
 - we-switch (DesignSystemElement)
-  Props: checked: boolean = false, disabled: boolean = false, name: string = '', value: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', labelOff: string = '', labelOn: string = ''
+  Props: checked: boolean = false, disabled: boolean = false, name: string = '', label: string = '', value: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', labelOff: string = '', labelOn: string = ''
 - we-tab (DesignSystemElement)
   Props: key: string = '', selected: boolean = false, label?: string | undefined, selectedProps?: Partial<DesignSystemProps> | undefined
 - we-tabs (DesignSystemElement)
@@ -1210,7 +1210,7 @@ on a focused handle picks the row up exactly as it does on a plain item.
 - we-text (DesignSystemElement)
   Props: text?: string | undefined, variant: '' | 'body' | 'label' | 'footnote' | 'subheading' | 'ingress' | 'heading-sm' | 'heading-md' | 'heading-lg' | 'heading-xl' = '', tag: 'p' | 'span' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'small' | 'b' | 'i' | 'label' | 'div' = 'span', inline: boolean = false, uppercase: boolean = false, italic: boolean = false, truncate: boolean = false, gradient: string = '', loading: boolean = false, loadingWidth: string = '100%'
 - we-textarea (DesignSystemElement)
-  Props: value: string = '', name: string = '', placeholder: string = '', rows: number = 3, maxlength: unknown = Infinity, minlength: number = 0, disabled: boolean = false, required: boolean = false, readonly: boolean = false, resize: 'none' | 'vertical' | 'horizontal' | 'both' = 'vertical', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
+  Props: value: string = '', name: string = '', label: string = '', placeholder: string = '', rows: number = 3, maxlength: unknown = Infinity, minlength: number = 0, disabled: boolean = false, required: boolean = false, readonly: boolean = false, resize: 'none' | 'vertical' | 'horizontal' | 'both' = 'vertical', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-timestamp (DesignSystemElement) — Displays a formatted or relative timestamp that self-updates each minute
 when `relative` is enabled.
   Props: value: string = '', relative: boolean = false, locale: string = 'en', dateStyle: Intl.DateTimeFormatOptions['dateStyle'] | null = null, timeStyle: Intl.DateTimeFormatOptions['timeStyle'] | null = null, weekday: Intl.DateTimeFormatOptions['weekday'] | null = null, year: Intl.DateTimeFormatOptions['year'] | null = null, month: Intl.DateTimeFormatOptions['month'] | null = null, day: Intl.DateTimeFormatOptions['day'] | null = null, hour: Intl.DateTimeFormatOptions['hour'] | null = null, minute: Intl.DateTimeFormatOptions['minute'] | null = null, second: Intl.DateTimeFormatOptions['second'] | null = null, timeZone: string | null = null, hourCycle: Intl.DateTimeFormatOptions['hourCycle'] | null = null, formattedTime: string

@@ -138,10 +138,27 @@ describe('buildGuestLink', () => {
     expect(buildGuestLink({ ...ok, serverUrl: 'http://node.example:12000' })).toBe('');
   });
 
-  it('encodes the shared id', () => {
-    const link = buildGuestLink({ ...ok, sharedId: 'a/b' });
-    expect(link).toContain('/join/a%2Fb');
-    expect(parseGuestLink(link)?.spaceId).toBe('a/b');
+  it('encodes the shared id, and reads back an id that is one', () => {
+    // A CID is the ordinary case and needs no escaping, but the encode has to be there: the id goes
+    // into a path segment, and a builder that assumed the safe alphabet would be wrong the day one
+    // arrives that is not.
+    const link = buildGuestLink({ ...ok, sharedId: 'Qm-Space.1_2' });
+    expect(link).toContain('/join/Qm-Space.1_2');
+    expect(parseGuestLink(link)?.spaceId).toBe('Qm-Space.1_2');
+  });
+
+  it('refuses a link whose id decodes to something that is not an id', () => {
+    /*
+      `[^/]+` excludes a slash from the *encoded* segment and `%2F` decodes to one, so the path
+      match cannot vouch for what comes out — and what comes out is interpolated into
+      `navigate('/space/…')` and handed to `joinSpace`.
+    */
+    const built = buildGuestLink({ ...ok, sharedId: 'a/b' });
+    expect(built).toContain('/join/a%2Fb');
+    expect(parseGuestLink(built)).toBeNull();
+    expect(
+      parseGuestLink(`https://we.example/join/${encodeURIComponent('x?y=1')}?host=https://node.example`),
+    ).toBeNull();
   });
 });
 

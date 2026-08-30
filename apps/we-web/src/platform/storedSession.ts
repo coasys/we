@@ -77,6 +77,40 @@ function prefixOf(key: string, suffix: string): string | null {
  * The url and the marker are read under the *same* prefix as the token that named them. Mixing
  * prefixes would let a real session under one version be excused by a guest marker under another.
  */
+/**
+ * The host this browser holds a **guest** session on, or null.
+ *
+ * ## Why a reload needs to be able to ask
+ *
+ * `BackendInitResult.guest` is set once, by the guest connector, and never persisted — so the flag
+ * lasts exactly as long as the tab. `BootController` then rewrites the URL to `/space/<id>`, and
+ * the next load takes the ordinary connector, which knows nothing about guests. A reloaded guest
+ * became an ordinary local user: the name prompt reappeared every launch with the wrong sentence
+ * ("your account was set up outside WE" — it was not, this app made it minutes ago), they could
+ * never see whose node they were on, and `administersNode` rested entirely on the executor
+ * answering `isMultiUser` honestly.
+ *
+ * The marker is already on disk. `connectAsGuest` writes `ad4m-guest-email-<host>` per host, and
+ * `ad4m-url` says which host the live session is against — so "is this session a guest's" is
+ * answerable from what is there, with nothing new to persist and nothing to keep in sync.
+ *
+ * The inverse of {@link hasStoredSession}, and deliberately built from the same parts: one of them
+ * being wrong about what a guest session looks like while the other is right is the failure worth
+ * designing out.
+ */
+export function storedGuestHost(): string | null {
+  const entries = localEntries();
+  const read = (key: string): string | null => entries.find(([k]) => k === key)?.[1] || null;
+
+  for (const [key, token] of entries) {
+    const prefix = prefixOf(key, AD4M_TOKEN_KEY);
+    if (prefix === null || !token) continue;
+    const url = read(`${prefix}${AD4M_URL_KEY}`);
+    if (url && read(`${prefix}${guestMarkerKey(url)}`)) return url;
+  }
+  return null;
+}
+
 export function hasStoredSession(): boolean {
   const entries = localEntries();
   const read = (key: string): string | null => entries.find(([k]) => k === key)?.[1] || null;

@@ -191,6 +191,10 @@ export default function TemplateProvider() {
         const rows = (await Model.findAll(p, query as never)) as unknown as Record<string, unknown>[];
         return rows ?? [];
       },
+      update: async (entity, id, fields) => {
+        if (!datasetStore.rootDataset()) return;
+        await recordActions.update(entity, id, fields, { perspective: ROOT_PERSPECTIVE });
+      },
       remove: async (entity, id) => {
         if (!datasetStore.rootDataset()) return;
         await recordActions.delete(entity, id, { perspective: ROOT_PERSPECTIVE });

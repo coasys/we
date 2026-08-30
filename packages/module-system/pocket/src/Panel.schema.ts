@@ -183,20 +183,182 @@ const folderRow: SchemaNode = {
   },
   children: [
     {
-      type: 'we-button',
+      /*
+        Renaming in place, or the row.
+
+        Folders could be created and never renamed or removed — no action, no control — so a typo in
+        a folder name was permanent in the one panel whose whole job is tidying. Both controls live
+        on the row rather than in a menu: there are two of them, the panel is narrow, and a dropdown
+        for two items is a click somebody has to learn about first.
+      */
+      type: '$if',
       props: {
-        variant: 'ghost',
-        width: '100%',
-        ax: 'start',
-        gap: '300',
-        onClick: { $action: 'modules.pocket.enter', args: [{ $: 'folder.id' }, { $: 'folder.name' }] },
+        condition: { $: 'folder.id == local.renamingFolderId' },
+        then: {
+          type: 'Row',
+          props: { gap: '200', width: '100%' },
+          children: [
+            {
+              type: 'we-input',
+              props: {
+                value: { $: 'local.renameFolderName' },
+                size: 'sm',
+                autofocus: true,
+                label: 'Folder name',
+                flex: '1',
+                minWidth: '0',
+                onInput: { $setLocal: 'renameFolderName', value: { $: 'event.detail' } },
+              },
+            },
+            {
+              type: 'we-button',
+              props: {
+                size: 'sm',
+                disabled: { $: '!trim(local.renameFolderName)' },
+                onClick: {
+                  $action: 'modules.pocket.renameFolder',
+                  args: [{ $: 'folder.id' }, { $: 'local.renameFolderName' }],
+                  onFinally: [{ $setLocal: 'renamingFolderId', value: '' }],
+                },
+              },
+              children: ['Save'],
+            },
+            {
+              type: 'we-button',
+              props: {
+                variant: 'ghost',
+                size: 'sm',
+                square: true,
+                label: 'Cancel renaming',
+                onClick: { $setLocal: 'renamingFolderId', value: '' },
+              },
+              children: [{ type: 'we-icon', props: { name: 'x' } }],
+            },
+          ],
+        },
+        else: {
+          type: 'Row',
+          props: { gap: '100', width: '100%', ay: 'center' },
+          children: [
+            {
+              type: 'we-button',
+              props: {
+                variant: 'ghost',
+                flex: '1',
+                minWidth: '0',
+                ax: 'start',
+                gap: '300',
+                onClick: { $action: 'modules.pocket.enter', args: [{ $: 'folder.id' }, { $: 'folder.name' }] },
+              },
+              children: [
+                { type: 'we-icon', props: { name: { $: "folder.icon ? folder.icon : 'folder'" } } },
+                {
+                  type: 'we-text',
+                  props: { truncate: true },
+                  children: [{ $: "folder.name ? folder.name : 'Folder'" }],
+                },
+              ],
+            },
+            {
+              type: 'we-button',
+              props: {
+                variant: 'ghost',
+                size: 'sm',
+                square: true,
+                flexShrink: '0',
+                label: 'Rename folder',
+                onClick: [
+                  { $setLocal: 'renameFolderName', value: { $: 'folder.name' } },
+                  { $setLocal: 'renamingFolderId', value: { $: 'folder.id' } },
+                ],
+              },
+              children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],
+            },
+            {
+              type: 'we-button',
+              props: {
+                variant: 'ghost',
+                size: 'sm',
+                square: true,
+                flexShrink: '0',
+                color: 'danger-text',
+                label: 'Remove folder',
+                onClick: { $setLocal: 'confirmDeleteFolderId', value: { $: 'folder.id' } },
+              },
+              children: [{ type: 'we-icon', props: { name: 'trash' } }],
+            },
+          ],
+        },
       },
-      children: [
-        { type: 'we-icon', props: { name: { $: "folder.icon ? folder.icon : 'folder'" } } },
-        { type: 'we-text', props: { truncate: true }, children: [{ $: "folder.name ? folder.name : 'Folder'" }] },
-      ],
     },
   ],
+};
+
+/*
+  Removing a folder asks first, because it takes what is filed in it.
+
+  Written out rather than reaching for `confirmModal`: that fragment is in `@we/template-kit`, which
+  reads WE's own stores, and a module depending on it would take on the host's store surface — the
+  same reason `newFolderForm` above is written by hand. The host's own destructive guard does not
+  cover this either: that one stands in front of *space templates*, and this panel is chrome.
+
+  Gated on the id rather than a boolean, so the list can say which.
+*/
+const deleteFolderConfirm: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'local.confirmDeleteFolderId' },
+    then: {
+      type: 'we-modal',
+      props: { size: 'sm', close: { $setLocal: 'confirmDeleteFolderId', value: '' } },
+      children: [
+        {
+          type: 'Column',
+          props: { gap: '400' },
+          children: [
+            // `slot` is a node key, not a prop — it says which of the modal's slots this goes in.
+            {
+              type: 'we-text',
+              slot: 'header',
+              props: { variant: 'heading-sm' },
+              children: ['Remove this folder?'],
+            },
+            {
+              type: 'we-text',
+              props: { color: 'text-muted' },
+              children: [
+                'Everything filed in it is removed from your Pocket too, along with any folders inside it. The things themselves are untouched — a Pocket holds references.',
+              ],
+            },
+            {
+              type: 'Row',
+              props: { gap: '200', ax: 'end' },
+              children: [
+                {
+                  type: 'we-button',
+                  props: { variant: 'ghost', onClick: { $setLocal: 'confirmDeleteFolderId', value: '' } },
+                  children: ['Keep it'],
+                },
+                {
+                  type: 'we-button',
+                  props: {
+                    variant: 'danger',
+                    loading: { $: 'modules.pocket.busy' },
+                    onClick: {
+                      $action: 'modules.pocket.deleteFolder',
+                      args: [{ $: 'local.confirmDeleteFolderId' }],
+                      onFinally: [{ $setLocal: 'confirmDeleteFolderId', value: '' }],
+                    },
+                  },
+                  children: ['Remove'],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  },
 };
 
 // ─── Grid mode ───────────────────────────────────────────────────────────────
@@ -599,6 +761,17 @@ const panel: SchemaNode = {
             newFolderOpen: { type: 'boolean', initial: false },
             newFolderName: { type: 'string', initial: '' },
             /*
+              Which folder is being renamed, and what it is being renamed to.
+
+              The id rather than a boolean, for the reason every per-row flag in a data-driven list
+              needs one: the rows come from a query, so there is no name a schema could give each of
+              them. Empty means nobody is being renamed.
+            */
+            renamingFolderId: { type: 'string', initial: '' },
+            renameFolderName: { type: 'string', initial: '' },
+            /** The folder a delete is being confirmed for — the id, for the same reason. */
+            confirmDeleteFolderId: { type: 'string', initial: '' },
+            /*
               A preference, not view state: which way somebody likes to look at their own Pocket is
               not something a shared link should impose, and there is no link to a panel anyway.
               Namespaced, since the key is deployment-global.
@@ -609,6 +782,7 @@ const panel: SchemaNode = {
           children: [
             header,
             newFolderForm,
+            deleteFolderConfirm,
             {
               type: 'we-scroll-area',
               children: [

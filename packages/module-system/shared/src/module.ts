@@ -815,6 +815,21 @@ export interface AgentDataAccess {
     entity: string,
     query?: { where?: Record<string, unknown>; order?: Record<string, 'asc' | 'desc'>; limit?: number },
   ) => Promise<Record<string, unknown>[]>;
+  /**
+   * Change the named fields of one record, leaving the rest.
+   *
+   * ## Why this widened a deliberately narrow surface
+   *
+   * The restraint above is right — a module's data surface should be the smallest thing that does
+   * the job — and create/find/remove was one call short of it. The Pocket could make folders and
+   * never rename one: no update, so a typo in a folder name was permanent, and the alternatives are
+   * both wrong. Delete-and-recreate loses the id, and everything filed in the folder hangs off it;
+   * create-a-replacement leaves the original behind.
+   *
+   * A rename is not a general ORM. This takes an id and a field bag, exactly as `record.update` does
+   * for a schema, and is bounded by the same thing everything else here is: the agent's own dataset.
+   */
+  update: (entity: string, id: string, fields: Record<string, unknown>) => Promise<void>;
   /** Delete one record. Irreversible, and only ever this agent's own. */
   remove: (entity: string, id: string) => Promise<void>;
 }

@@ -8,7 +8,7 @@
  */
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { hasStoredSession } from './storedSession';
+import { hasStoredSession, storedGuestHost } from './storedSession';
 
 const V = '0.13.0-test-interpretation-2/';
 const HOST = 'https://node.example.org';
@@ -106,6 +106,41 @@ describe('hasStoredSession', () => {
         },
       ),
     );
+    expect(hasStoredSession()).toBe(false);
+  });
+});
+
+describe('storedGuestHost', () => {
+  /*
+    The inverse question, and the one a *reload* has to ask. `BackendInitResult.guest` lives as long
+    as the tab, and `BootController` rewrites the URL — so every load after the first comes through
+    the ordinary connector, which knew nothing about guests and treated one as a local user.
+  */
+  it('is null with nothing stored', () => {
+    expect(storedGuestHost()).toBeNull();
+  });
+
+  it('names the host when the live session is a guest one', () => {
+    storage.setItem(`${V}ad4m-token`, 'tok');
+    storage.setItem(`${V}ad4m-url`, HOST);
+    storage.setItem(`${V}ad4m-guest-email-${HOST}`, 'guest-abc@flux.demo');
+    expect(storedGuestHost()).toBe(HOST);
+  });
+
+  it('is null for a real session, which is exactly when hasStoredSession is true', () => {
+    storage.setItem(`${V}ad4m-token`, 'tok');
+    storage.setItem(`${V}ad4m-url`, HOST);
+    expect(storedGuestHost()).toBeNull();
+    expect(hasStoredSession()).toBe(true);
+  });
+
+  it('never answers yes to both, whichever prefix the credentials are under', () => {
+    // The two are built from the same parts precisely so they cannot disagree about what a guest
+    // session looks like.
+    storage.setItem('ad4m-token', 'tok');
+    storage.setItem('ad4m-url', HOST);
+    storage.setItem(`ad4m-guest-email-${HOST}`, 'guest-abc@flux.demo');
+    expect(storedGuestHost()).toBe(HOST);
     expect(hasStoredSession()).toBe(false);
   });
 });

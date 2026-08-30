@@ -1,5 +1,6 @@
 import type { DesignSystemProps } from '@we/design-types';
 import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
+import type { PropertyValues } from 'lit';
 import { css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
@@ -124,7 +125,10 @@ export default class FormField extends DesignSystemElement {
     }
   };
 
-  updated(changed: Map<string, unknown>) {
+  // `super.updated` first — the base class writes the DS custom properties there, so an override
+  // that skips it silently disables every DS prop on this element.
+  updated(changed: PropertyValues) {
+    super.updated(changed);
     if (changed.has('label')) this._nameControls();
   }
 

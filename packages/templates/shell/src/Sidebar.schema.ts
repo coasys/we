@@ -1,5 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { railGroup, railItem, railShell } from '@we/template-kit';
+import { confirmModal, railGroup, railItem, railShell } from '@we/template-kit';
 
 /**
  * Shell Sidebar
@@ -25,6 +25,9 @@ const COLLAPSED_WIDTH = '80px';
 
 const rail: SchemaNode = railShell({
   collapsedWidth: COLLAPSED_WIDTH,
+  // Declared here because the *button* that sets it is a rail item, and a flag declared only above
+  // the dialog would leave that button clicking into nothing. See the logout control below.
+  localState: { confirmGuestLogout: { type: 'boolean', initial: false } },
   position: 'fixed',
   /*
     Above a docked module panel, which is what `chrome` means — see the z-index tokens.
@@ -98,10 +101,39 @@ const rail: SchemaNode = railShell({
           }),
         },
       },
+      /*
+        Logging out is one-way for a guest, so a guest is told before it happens.
+
+        A guest identity was minted by the link they clicked and exists on the inviter's node with
+        credentials this app holds and shows nowhere. `logout` forgets them; the reload lands on a
+        connect screen pointing at that host, and there is no password, no recovery phrase and no
+        second device to get back in with — the account and everything posted from it are simply
+        gone. For an ordinary member the same button is "sign in again", which is why the control
+        carried no warning: it is the right control with two very different consequences.
+
+        Not hidden. A guest may genuinely want to leave, and a missing exit is its own trap; what
+        was missing is the sentence saying what leaving costs.
+      */
       railItem({
         icon: 'sign-out',
         label: 'Logout',
-        onClick: { $action: 'sessionStore.logout' },
+        onClick: {
+          $if: {
+            condition: { $: 'sessionStore.isGuest' },
+            then: { $setLocal: 'confirmGuestLogout', value: true },
+            else: { $action: 'sessionStore.logout' },
+          },
+        },
+      }),
+      confirmModal({
+        open: { $: 'local.confirmGuestLogout' },
+        close: { $setLocal: 'confirmGuestLogout', value: false },
+        title: 'Sign out of this guest account?',
+        body: 'This identity was created by the invite link you followed. It has no password and no other way back in, so signing out ends it for good — along with anything you have posted from it.',
+        detail: 'To keep it, stay signed in on this browser.',
+        confirmLabel: 'Sign out anyway',
+        cancelLabel: 'Stay signed in',
+        confirm: { $action: 'sessionStore.logout' },
       }),
     ],
   },
