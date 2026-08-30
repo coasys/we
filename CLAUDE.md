@@ -1058,7 +1058,7 @@ The wrapper must not exist as a box. A card inside a grid track, a row inside a 
 real element in between would take the track and leave the card laid out against the wrapper
 instead of the grid. What is dragged is therefore the *child*, which is also what the ghost and
 the geometry are measured from.
-  Props: entity: string = '', recordId: string = '', datasetKey: string = '', label: string = '', icon: string = '', preview?: DragPreview | undefined, origin?: unknown | undefined, effect: 'move' | 'copy' | 'link' = 'copy', disabled: boolean = false
+  Props: entity: string = '', recordId: string = '', datasetKey: string = '', label: string = '', icon: string = '', preview?: { thumbnail?: string; content?: string; author?: string; date?: string } | undefined, origin?: unknown | undefined, effect: 'move' | 'copy' | 'link' = 'copy', disabled: boolean = false
 - we-drawer (OverlayElement)
   Props: hideclosebutton: boolean = false, label: string = '', close: () => void
 - we-drop-zone (LayoutElement) — Anything a `we-draggable` can be dropped into.

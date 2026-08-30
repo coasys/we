@@ -8,5 +8,14 @@ export default defineConfig({
   // silently stop updating while the initial paint still looks correct.
   resolve: { dedupe: ['solid-js', 'solid-js/web', 'solid-js/store'] },
   server: { port: 3300 },
-  build: { target: 'esnext' },
+  build: {
+    target: 'esnext',
+    /*
+      A harness, built as one bundle on purpose: it is loaded from localhost and read end to end,
+      so splitting it would only put chunk boundaries between the things it exists to compare.
+      Above the flat 500 kB default so the warning means "this grew unexpectedly" rather than
+      firing on every build.
+    */
+    chunkSizeWarningLimit: 1000,
+  },
 });

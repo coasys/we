@@ -28,6 +28,17 @@ const typeExpansions: Record<string, string> = {
   Placement:
     "'top' | 'bottom' | 'left' | 'right' | 'top-start' | 'top-end' | 'bottom-start' | 'bottom-end' | 'left-start' | 'left-end' | 'right-start' | 'right-end'",
   ComboboxOption: '{ label: string; value: string; disabled?: boolean }',
+  /*
+    What the source's own card was drawn with, so a ghost or a receiver can draw the same one.
+
+    Written out rather than left opaque because every field is optional and none is implied by the
+    name: a template setting `preview` on a `we-draggable` has to know that a post fills `content`
+    while an image or a space fills `thumbnail`. `DragPreview` on its own says none of that, and
+    there is nowhere in the generated reference to look it up.
+
+    Source of truth is `@we/drag`'s `DragPreview` (packages/design-system/drag/src/types.ts).
+  */
+  DragPreview: '{ thumbnail?: string; content?: string; author?: string; date?: string }',
 };
 
 /** Primitive types that are never opaque (no expansion needed). */

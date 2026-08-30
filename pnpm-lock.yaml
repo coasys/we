@@ -89,6 +89,9 @@ importers:
         specifier: ^1.9.15
         version: 1.9.15
     devDependencies:
+      '@we/cli':
+        specifier: workspace:*
+        version: link:../../../../packages/cli
       happy-dom:
         specifier: ^20.11.6
         version: 20.11.6
@@ -135,6 +138,9 @@ importers:
       '@solidjs/testing-library':
         specifier: ^0.8.10
         version: 0.8.10(@solidjs/router@0.15.4(solid-js@1.9.15))(solid-js@1.9.15)
+      '@we/cli':
+        specifier: workspace:*
+        version: link:../../../../packages/cli
       happy-dom:
         specifier: ^20.11.6
         version: 20.11.6
@@ -175,6 +181,9 @@ importers:
         specifier: ^1.9.15
         version: 1.9.15
     devDependencies:
+      '@we/cli':
+        specifier: workspace:*
+        version: link:../../../../packages/cli
       happy-dom:
         specifier: ^20.11.6
         version: 20.11.6
@@ -206,6 +215,9 @@ importers:
         specifier: workspace:*
         version: link:../../../../packages/design-system/1-tokens
     devDependencies:
+      '@we/cli':
+        specifier: workspace:*
+        version: link:../../../../packages/cli
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
@@ -295,6 +307,9 @@ importers:
         specifier: ^1.9.15
         version: 1.9.15
     devDependencies:
+      '@we/cli':
+        specifier: workspace:*
+        version: link:../../packages/cli
       playwright-core:
         specifier: ^1.62.1
         version: 1.62.1
