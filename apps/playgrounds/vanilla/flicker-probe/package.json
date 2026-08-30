@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build:steps": "vite build",
+    "build": "we-build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit"
   },
@@ -17,6 +18,7 @@
     "@we/tokens": "workspace:*"
   },
   "devDependencies": {
+    "@we/cli": "workspace:*",
     "typescript": "^5.7.2",
     "vite": "^8.2.2"
   }

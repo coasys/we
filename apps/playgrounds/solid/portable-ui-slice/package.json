@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build:steps": "vite build",
+    "build": "we-build",
     "preview": "vite preview",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
@@ -23,6 +24,7 @@
   },
   "devDependencies": {
     "@solidjs/testing-library": "^0.8.10",
+    "@we/cli": "workspace:*",
     "happy-dom": "^20.11.6",
     "typescript": "^5.7.2",
     "vite": "^8.2.2",
