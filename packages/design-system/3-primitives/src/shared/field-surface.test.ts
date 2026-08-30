@@ -41,6 +41,10 @@ const PART_PAINTED: [string, unknown, string[]][] = [
   ['we-location-picker', LocationPicker, ["[part='trigger']"]],
   ['we-icon-picker', IconPicker, ["[part='trigger']", "[part='search']", "[part='emoji-input']"]],
   ['we-date-picker', DatePicker, ["[part='input-wrapper']", "input[part='time']"]],
+  // The control the three rules were written on first and copied outward from. It is in this list
+  // rather than asserted separately because "one definition" has to include the original — a
+  // reference that merely happens to agree is how the family drifted the first time.
+  ['we-select', Select, ["[part='input-wrapper']"]],
 ];
 
 /** The controls that paint it on their own host, through DEFAULT_PROPS. */
@@ -93,13 +97,11 @@ describe('the host-painted fields say the same thing in DS props', () => {
   });
 });
 
-describe('we-select', () => {
-  // Not on fieldSurface: it restates the resting and focus rules in its own CSS, which is where the
-  // shared definition was lifted from. Asserted so the two cannot part company silently.
-  it('draws the same well and the same ring', () => {
-    const css = cssTextOf(Select);
-    expect(css).toContain('--we-role-surface-sunken');
-    expect(css).toContain('box-shadow: 0 0 0 1px var(--we-ring-color)');
-    expect(css).toContain('--we-theme-input-radius');
+describe('every field answers the pointer', () => {
+  // we-input's note argues for lifting the fill on hover by pointing at we-select's trigger — which
+  // had no hover rule at all, leaving it the only field in the family that did not respond. The
+  // claim and the code now agree.
+  it.each(PART_PAINTED)('%s changes fill on hover, not the edge alone', (_name, ctor) => {
+    expect(cssTextOf(ctor)).toContain('background: var(--we-role-surface-hover)');
   });
 });
