@@ -113,7 +113,31 @@ describe('the showcase templates', () => {
     expect(index, 'has routes but none answers /, so switching to it lands on its 404').toBeTruthy();
     // A redirect has to point at a route that exists, or it bounces to the catch-all instead.
     if (index?.redirect) {
-      expect(schema.routes.some((route) => route.path === index.redirect)).toBe(true);
+      /*
+        Relative, and pointing at a route that exists. Both halves matter and both fail silently.
+
+        The host mounts every template under `/space/:spaceId`, and `buildRoutes` joins an absolute
+        redirect to the parent *pattern* — so `/board` became a literal `/space/:spaceId/board`,
+        matching nothing. And a redirect at a path no route serves lands on the catch-all, which is
+        the same "No such page" by a different route.
+      */
+      expect(index.redirect.startsWith('./'), 'an absolute redirect joins to the parent pattern').toBe(true);
+      const target = index.redirect.slice(1);
+      expect(schema.routes.some((route) => route.path === target)).toBe(true);
     }
+  });
+
+  it.each(exported)('%s navigates relatively, so the host can mount it anywhere', (_name, schema) => {
+    /*
+      A template addresses its own screens, not the whole URL. An absolute `/board` was correct only
+      while these mounted at the root; under the space prefix it leaves the space entirely.
+
+      Checked over the serialised schema rather than by walking it, because these paths appear in
+      several shapes — a `navigate` argument, an interpolated expression, a nav array a `$each`
+      reads, an option a fragment turns into a handler — and the string is the one thing they share.
+    */
+    const serialised = JSON.stringify(schema.routes ?? []);
+    const absolute = [...serialised.matchAll(/routeStore\.navigate[^)]*?'(\/[a-z][^']*)'/g)].map((m) => m[1]);
+    expect(absolute).toEqual([]);
   });
 });

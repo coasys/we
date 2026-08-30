@@ -52,12 +52,20 @@ const EXTRACTED = ['TaskBlock', 'EventBlock'];
 const CALL = { $: 'modules.transcribe.collectionId' };
 
 /** Routes, as segments. Compared against `routeStore.segments`, which is how `route` matches too. */
-const ROUTE = { board: 'board', tasks: 'tasks', record: 'record' } as const;
+/*
+  `calls`, not `record`. The host injects its own `/record/:entity` — a page for one record — into
+  every template, and this route is the log of past calls. Two different pages under one segment is
+  a collision the router resolves by order rather than by meaning, so the one with a better name
+  moved: this list is of calls, and always was.
+*/
+const ROUTE = { board: 'board', tasks: 'tasks', record: 'calls' } as const;
 
 const NAV = [
-  { path: '/board', segment: ROUTE.board, icon: 'graph', label: 'Board' },
-  { path: '/tasks', segment: ROUTE.tasks, icon: 'check-square', label: 'Tasks' },
-  { path: '/record', segment: ROUTE.record, icon: 'archive', label: 'Record' },
+  // Relative, so they resolve under whatever the host mounts this template at. `segment` is what
+  // the active state tests, and is unaffected by the prefix either way.
+  { path: './board', segment: ROUTE.board, icon: 'graph', label: 'Board' },
+  { path: './tasks', segment: ROUTE.tasks, icon: 'check-square', label: 'Tasks' },
+  { path: './calls', segment: ROUTE.record, icon: 'archive', label: 'Calls' },
 ];
 
 /**
@@ -477,7 +485,7 @@ const tasksRoute: RouteSchema = {
  * repeated one level down — a live feed and an archive are the same records seen differently.
  */
 const recordRoute: RouteSchema = {
-  path: '/record',
+  path: '/calls',
   type: 'Column',
   props: { width: '100%', minHeight: '100%', ax: 'center', px: '400', pt: '900', pb: '600' },
   children: [
@@ -639,7 +647,12 @@ export const workshopTemplate: TemplateSchema = {
   props: { bg: 'page', width: '100%', minHeight: '100%' },
   children: [switcher, { type: '$routes' }],
   routes: [
-    { path: '/', redirect: '/board' },
+    /*
+      Relative, because the parent path this now sits under carries a parameter: an absolute target
+      is joined to the *pattern*, so `/board` became a literal `/space/:spaceId/board`. Relative
+      resolves against the address actually on screen.
+    */
+    { path: '/', redirect: './board' },
     boardRoute,
     tasksRoute,
     recordRoute,

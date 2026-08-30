@@ -28,9 +28,18 @@ import { agentByline, collectionFeed, commentThread, emptyState, noReplies, repl
 import { composerModal, KIND, signalRow, signalTypesQuery } from './shared.ts';
 
 const navItems = [
-  { label: 'Home', icon: 'house', path: '/' },
-  { label: 'Photos', icon: 'image', path: '/photos' },
-  { label: 'Profile', icon: 'user', path: '/profile' },
+  /*
+    `segment` beside `path`, because the two answer different questions and only one of them
+    survives a move. The active test was `currentPath == nav.path`, which compares a whole address
+    against a fragment of one — true only while the template owned the root. Membership of a
+    segment is the same question asked where the answer does not depend on the prefix.
+
+    Home is the space itself, so it has no segment of its own: it is active when none of the others
+    is, which is what an empty segment means below.
+  */
+  { label: 'Home', icon: 'house', path: '.', segment: '' },
+  { label: 'Photos', icon: 'image', path: './photos', segment: 'photos' },
+  { label: 'Profile', icon: 'user', path: './profile', segment: 'profile' },
 ];
 
 const leftRail: SchemaNode = {
@@ -45,7 +54,9 @@ const leftRail: SchemaNode = {
         {
           type: 'we-button',
           props: {
-            variant: { $: "routeStore.currentPath == nav.path ? 'secondary' : 'ghost'" },
+            variant: {
+              $: "(nav.segment ? nav.segment in routeStore.templateSegments : !count(routeStore.templateSegments)) ? 'secondary' : 'ghost'",
+            },
             width: '100%',
             ax: 'start',
             gap: '300',
@@ -90,7 +101,7 @@ const postCard = (opts: { clickable?: boolean }): SchemaNode => {
         props: {
           variant: 'bare',
           width: '100%',
-          onClick: { $action: 'routeStore.navigate', args: [{ $: '`/post/${post.id}`' }] },
+          onClick: { $action: 'routeStore.navigate', args: [{ $: '`./post/${post.id}`' }] },
         },
         children: [
           {
