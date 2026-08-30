@@ -96,7 +96,29 @@ export function buildTransitionCSS(config: TransitionConfig): string {
  * form, so the array has to be what decides.
  */
 export function transitionSpan(config: TransitionConfig): number {
+  // Nothing is animating, so there is nothing to wait for. See `prefersReducedMotion`.
+  if (prefersReducedMotion()) return 0;
   return toEffects(config).reduce((longest, e) => Math.max(longest, e.duration ?? 300), 0);
+}
+
+/**
+ * Whether this reader has asked for reduced motion.
+ *
+ * ## Why the *timers* have to know, and not only the CSS
+ *
+ * The generated tokens CSS already forces `transition-duration: 0.01ms !important` under
+ * `prefers-reduced-motion`, which correctly stops everything moving. What it cannot reach is
+ * `transitionSpan`, which is how long a node stays mounted while it is supposedly exiting — so an
+ * element with a 700ms exit sat there, at full opacity and full size, not animating, for 700ms, and
+ * then vanished. Reduced motion turned a smooth fade into a hard flash, which is the opposite of
+ * what was asked for.
+ *
+ * Read at call time rather than captured: the setting can change while the app is open, and a
+ * module-load snapshot would keep answering for whatever was true at boot. `matchMedia` is missing
+ * in a non-browser test environment, where "no preference" is the right answer.
+ */
+export function prefersReducedMotion(): boolean {
+  return typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 }
 
 /**

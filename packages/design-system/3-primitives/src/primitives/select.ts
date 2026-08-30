@@ -298,6 +298,13 @@ export default class Select extends DesignSystemElement {
    */
   @property({ type: Boolean, reflect: true }) fit = false;
   @property({ type: String }) name = '';
+  /**
+   * What this control is called, for anybody who cannot see the label beside it. Rendered as
+   * `aria-label` on the combobox itself — see `we-input`'s `label` for why the wrapper's name is
+   * not enough.
+   */
+  @property({ type: String }) label = '';
+
   @property({ type: String, reflect: true }) size: ComponentSize = 'md';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
@@ -553,6 +560,7 @@ export default class Select extends DesignSystemElement {
                     placeholder=${this.placeholder || nothing}
                     ?disabled=${this.disabled}
                     role="combobox"
+                    aria-label=${this.label || nothing}
                     aria-expanded=${this._open ? 'true' : 'false'}
                     aria-autocomplete="list"
                     aria-controls="listbox"
@@ -568,6 +576,7 @@ export default class Select extends DesignSystemElement {
                     placeholder=${this.placeholder}
                     ?disabled=${this.disabled}
                     role="combobox"
+                    aria-label=${this.label || nothing}
                     aria-expanded=${this._open ? 'true' : 'false'}
                     aria-controls="listbox"
                     aria-activedescendant=${activeId}

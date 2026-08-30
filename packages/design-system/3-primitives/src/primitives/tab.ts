@@ -80,6 +80,13 @@ export class Tab extends DesignSystemElement {
     this.dispatchEvent(new CustomEvent('tab-select', { detail: { value: this.key }, bubbles: true, composed: true }));
   }
 
+  /*
+    Roving tabindex: the strip is one tab stop and the arrow keys move within it.
+
+    Every tab used to be focusable, so Tab walked through all of them before reaching the panel —
+    which is exactly what the tablist pattern exists to prevent, and what `role="tablist"` promised
+    a reader was already true. `we-tabs` owns the arrow keys; this owns being reachable.
+  */
   render() {
     const inline = this.styles || {};
     return html`
@@ -87,6 +94,7 @@ export class Tab extends DesignSystemElement {
         part="base"
         role="tab"
         aria-selected=${this.selected}
+        tabindex=${this.selected ? '0' : '-1'}
         @click=${this.handleClick}
         style=${styleMap(inline)}
       >

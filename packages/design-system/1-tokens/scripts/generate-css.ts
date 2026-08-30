@@ -117,6 +117,24 @@ ${reducedVars}
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/*
+  The same argument for transparency, which nothing was consulting.
+
+  Every floating panel defaults to glass — a 30% surface behind a 12px backdrop blur — and both are
+  expressed as theme variables, so a single override reaches all of them without any panel knowing
+  about the preference. Somebody who asks their operating system to reduce transparency is usually
+  asking because text over a blurred background is hard for them to read, which is exactly what a
+  docked panel over content is.
+
+  \`!important\` for the same mechanical reason as above: a theme sets these inline.
+*/
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --we-theme-surface-opacity: 1 !important;
+    --we-theme-surface-blur: 0px !important;
+  }
 }`;
 
   return css;
@@ -579,6 +597,21 @@ function generateCombinedCSS(outputDir: string) {
     SIL Open Font License 1.1; Mozilla Text (Mozilla) likewise.
   */
   const fontsCSS = `/* @we/tokens webfonts — vendored, no network. Import alongside ./index.css. */
+
+/*
+  DM Sans ships here at weight 400 only, so every bold in the base family is synthesised.
+
+  Both other families are variable — Mozilla Text declares \`font-weight: 200 700\` and carries an
+  \`fvar\` table to back it — and DM Sans does not: the vendored file is a single static instance.
+  Nothing is wrong with the declaration (400 is what the file holds, and saying otherwise would make
+  it worse), but \`fontWeight: 'bold'\` on body text gets the browser's algorithmic smear rather than
+  a drawn bold, which is visibly heavier and worse spaced at small sizes.
+
+  The fix is an asset, not code: vendor the variable DM Sans woff2 and widen this to
+  \`font-weight: 100 1000\`, in both the latin and latin-ext faces. Left as a follow-up rather than
+  papered over, because widening the declaration without the file makes the browser stop
+  synthesising and render every weight at 400 instead — strictly worse than the smear.
+*/
 
 /* DM Sans — latin */
 @font-face {

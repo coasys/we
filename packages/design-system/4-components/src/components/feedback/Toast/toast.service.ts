@@ -43,6 +43,34 @@ function addToast(message: string, variant: ToastVariant = 'info', duration = 40
   return id;
 }
 
+/**
+ * Hold a toast's countdown while somebody is reading it, and resume when they look away.
+ *
+ * ## Why an auto-dismissing message has to be pausable
+ *
+ * A toast disappears on a timer, so the timer is the whole failure mode: a message longer than four
+ * seconds' reading, or one a person reaches for the dismiss button on, or one a screen-reader user
+ * is being read while it vanishes underneath them. WCAG 2.2.1 says a time limit must be
+ * extendable; the ordinary way to extend this one is to stop counting while the pointer or focus is
+ * on it, which is also what anybody expects when they move the mouse over a message to read it.
+ *
+ * Paused rather than cancelled: the toast still goes when attention moves on, so nothing
+ * accumulates on screen.
+ */
+function pauseDismiss(id: string) {
+  const timer = timers.get(id);
+  if (timer === undefined) return;
+  clearTimeout(timer);
+  timers.delete(id);
+}
+
+/** Start the countdown again, from the full duration — the point is to give the reader time. */
+function resumeDismiss(id: string) {
+  if (timers.has(id)) return;
+  const toast = toasts().find((t) => t.id === id);
+  if (toast) scheduleDismiss(id, toast.duration ?? 0);
+}
+
 function removeToast(id: string) {
   const timer = timers.get(id);
   if (timer) clearTimeout(timer);
@@ -56,6 +84,10 @@ export const toastService = {
   },
   add: addToast,
   remove: removeToast,
+  /** Stop a toast's countdown while it is being read. See `pauseDismiss`. */
+  pause: pauseDismiss,
+  /** Start it again once attention moves on. */
+  resume: resumeDismiss,
   info: (message: string, duration?: number) => addToast(message, 'info', duration),
   success: (message: string, duration?: number) => addToast(message, 'success', duration),
   warning: (message: string, duration?: number) => addToast(message, 'warning', duration),

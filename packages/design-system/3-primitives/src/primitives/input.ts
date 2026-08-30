@@ -209,6 +209,21 @@ export default class Input extends DesignSystemElement {
   @property({ type: Number, reflect: true }) minlength = 0;
   @property({ type: String, reflect: true }) pattern = '';
   @property({ type: String, reflect: true }) name = '';
+  /**
+   * What this control is called, for anybody who cannot see the label beside it.
+   *
+   * Rendered as `aria-label` on the **inner control**, which is the whole point. `we-form-field`
+   * puts `aria-labelledby` on its own `role="group"` wrapper, and naming a group does not name the
+   * widget inside it — so a screen reader announced these as "edit text", "checkbox, not checked",
+   * "slider", with nothing to say which one. `aria-label` on the host does not help either: the
+   * host is not the focusable thing.
+   *
+   * `we-form-field` sets this from its own label when the control does not already carry one, so an
+   * existing field gets a name with no change at its call site. Set it directly for a control that
+   * has no visible label at all.
+   */
+  @property({ type: String }) label = '';
+
   @property({ type: String, reflect: true }) step = '';
   @property({ type: String, reflect: true }) placeholder = '';
   @property({ type: String, reflect: true }) autocomplete = '';
@@ -310,6 +325,7 @@ export default class Input extends DesignSystemElement {
         <slot name="start"></slot>
         <input
           part="input"
+          aria-label=${this.label || nothing}
           .value=${this.value}
           .type=${this.revealable && this._revealed ? 'text' : this.type}
           .max=${this.max}
