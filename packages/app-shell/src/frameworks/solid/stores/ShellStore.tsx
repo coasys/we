@@ -7,6 +7,7 @@
  * which is the *overlay-scoped* memory router mounted inside the overlay; this store is
  * app-level, because the controls that open an overlay render outside it.
  */
+import { dockIsOffered } from '@shared/dockGating';
 import {
   CHROME_RAIL_PX,
   columnLayout,
@@ -723,18 +724,23 @@ export function ShellStoreProvider(props: ParentProps) {
 
   const dockRequests = createMemo<DockRequest[]>(() => {
     dockRegistryVersion();
-    return dockRegistry
-      .ordered()
-      .filter((entry) => moduleGate()(entry.moduleId))
-      .map((entry) => {
-        const request: DockRequest = {
-          id: entry.id,
-          edge: (readModuleKey(entry.moduleId, entry.edge) as DockEdge) ?? null,
-          size: (readModuleKey(entry.moduleId, entry.size) as DockSize) ?? 'md',
-          float: Boolean(readModuleKey(entry.moduleId, entry.float)),
-        };
-        return { ...request, placement: placementOf(request) };
-      });
+    return (
+      dockRegistry
+        .ordered()
+        // Only *module* chrome is gated on the space — host chrome (the settings panel, the editor's
+        // four) registers docks under a store id that is not a module id, and the gate has no true
+        // answer for those. See `dockIsOffered`, which is where that decision lives and is tested.
+        .filter((entry) => dockIsOffered(entry.moduleId, (id) => Boolean(moduleRegistry.get(id)), moduleGate()))
+        .map((entry) => {
+          const request: DockRequest = {
+            id: entry.id,
+            edge: (readModuleKey(entry.moduleId, entry.edge) as DockEdge) ?? null,
+            size: (readModuleKey(entry.moduleId, entry.size) as DockSize) ?? 'md',
+            float: Boolean(readModuleKey(entry.moduleId, entry.float)),
+          };
+          return { ...request, placement: placementOf(request) };
+        })
+    );
   });
 
   /**

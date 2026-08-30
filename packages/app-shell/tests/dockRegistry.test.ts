@@ -10,8 +10,9 @@ import {
   registerHostDockStore,
   unregisterHostDockStore,
 } from '../src/shared/registries/dockRegistry';
-import { registerEditorDocks } from '../src/shared/registries/editorDocks';
+import { EDITOR_STORE_ID, registerEditorDocks } from '../src/shared/registries/editorDocks';
 import { moduleRegistry, moduleStores } from '../src/shared/registries/moduleRegistry';
+import { registerShellDocks, SHELL_DOCK_STORE_ID } from '../src/shared/registries/shellDocks';
 import { onSlotRegistryChanged, slotRegistry } from '../src/shared/registries/slotRegistry';
 import { TEMPLATE_SURFACE } from '../src/shared/registries/templateSurface';
 
@@ -125,6 +126,30 @@ describe('a panel declares how it closes', () => {
       for (const dock of factory(stub).docks ?? []) {
         expect(dock.close, `${id} contributes a panel with no way to close it`).toBeTruthy();
       }
+    }
+  });
+
+  it('registers host chrome under a store id that is not a module id', () => {
+    /*
+      The invariant the space gate depends on, and the one that broke the settings panel.
+
+      `ShellStore.dockRequests` filters every dock through `moduleGate` — "is this module enabled in
+      this space?" — which `SpaceStore` answers from `activeModules`. Host chrome registers docks
+      too, under a `hostDockStores` key rather than a module id: `shell` for the space-settings
+      panel, `editor` for the AI, code, theme and inspector panels. Asked about those, the gate said
+      no, so they had no edge, no geometry, and the button that opens them did nothing.
+
+      The fix is that only docks belonging to a *registered module* are gated, and this pins the
+      premise it rests on: these ids are not modules, and are not expected to become modules. If one
+      ever does, the gate starts applying to it and the panel disappears — which is the failure this
+      test exists to make loud rather than mysterious.
+    */
+    registerShellDocks();
+    registerEditorDocks();
+
+    for (const storeId of [SHELL_DOCK_STORE_ID, EDITOR_STORE_ID]) {
+      expect(dockRegistry.ordered().some((entry) => entry.moduleId === storeId)).toBe(true);
+      expect(moduleRegistry.get(storeId), `"${storeId}" is host chrome, not a module`).toBeUndefined();
     }
   });
 
