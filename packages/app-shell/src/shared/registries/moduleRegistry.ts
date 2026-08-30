@@ -14,7 +14,7 @@
  *
  * ## The `modules` namespace must always exist
  *
- * Subtle and easy to get wrong. `$store` resolution splits on `.`, and a **single-segment** path does
+ * Subtle and easy to get wrong. Store-path resolution splits on `.`, and a **single-segment** path does
  * `stores[storeName][prop]` with no guard — so reading `modules.notes` throws if the `modules`
  * key is absent, rather than returning undefined. Deeper paths go through `walkPath`, which does
  * degrade safely.
@@ -391,6 +391,22 @@ export const moduleRegistry = {
 
   all(): RegisteredModule[] {
     return [...modules.values()];
+  },
+
+  /**
+   * Store members each module keeps for host chrome, keyed by module id.
+   *
+   * Read by `buildTemplateBag` when it assembles the space-tier `modules` namespace — see
+   * `ModuleStoreSurface` for why a module rather than the host declares this. Rebuilt on each call
+   * rather than memoised: modules register and unregister at runtime, and this is consulted once per
+   * bag construction, not per read.
+   */
+  chromeOnlyStoreMembers(): Record<string, readonly string[]> {
+    const out: Record<string, readonly string[]> = {};
+    for (const { definition } of moduleRegistry.all()) {
+      if (definition.chromeOnlyStoreMembers?.length) out[definition.id] = definition.chromeOnlyStoreMembers;
+    }
+    return out;
   },
 
   /**

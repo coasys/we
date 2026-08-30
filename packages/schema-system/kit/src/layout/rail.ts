@@ -116,6 +116,15 @@ export interface RailShellOptions {
   /** Start open. Defaults to false. */
   defaultExpanded?: boolean;
   /**
+   * Extra `$localState` fields, declared on the rail's own node.
+   *
+   * A rail holds controls, and a control that opens a dialog needs a flag declared by an *ancestor
+   * of the button*, not merely of the dialog — undeclared, `$setLocal` warns and no-ops, so the
+   * control renders, takes the click and does nothing. The rail is the only node above every item
+   * in it, so a caller with such a control has nowhere else to put one.
+   */
+  localState?: Record<string, unknown>;
+  /**
    * Ids of groups that start collapsed.
    *
    * Here rather than an option on `railGroup`, because a group declaring its own `$localState`
@@ -160,6 +169,8 @@ export function railShell(opts: RailShellOptions): SchemaNode {
         ...(opts.persistKey && { persist: opts.persistKey }),
       },
       collapsedGroups: { type: 'array', initial: opts.initialCollapsedGroups ?? [] },
+      // Last, so a caller's field cannot shadow the two the rail runs on.
+      ...(opts.localState ?? {}),
     },
     children: [
       ...(opts.header ? [opts.header] : []),
@@ -443,7 +454,7 @@ export function railItem(opts: RailItemOptions): SchemaNode {
 export interface RailGroupOptions {
   /**
    * Identifies the group in the shell's `collapsedGroups` set. Unique within one rail, and free to
-   * be an expression (`'$category.id'`) — which is the point: groups can come from data.
+   * be an expression (`{ $: 'category.id' }`) — which is the point: groups can come from data.
    */
   id: SchemaProp;
   label: Content;

@@ -5,6 +5,7 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
+import { openFloatingPanel } from '../shared/floating-panel';
 import sharedStyles from '../shared/styles';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
@@ -383,15 +384,35 @@ export default class ColorPicker extends DesignSystemElement {
     }
   };
 
+  /** Teardown for the floating anchor while the panel is up. See `openFloatingPanel`. */
+  private _closeFloating?: () => void;
+
   updated(changed: Map<PropertyKey, unknown>) {
     super.updated(changed);
     if (!changed.has('_open')) return;
     if (this._open) {
       document.addEventListener('pointerdown', this._onDocPointer);
       document.addEventListener('keydown', this._onKey);
+      /*
+        Into the top layer, anchored to the swatch — the same treatment as the select, the date
+        picker and the icon picker.
+
+        Absolutely positioned, it was laid out inside whatever box it happened to be in, and the
+        theme panel is a scroll area: a swatch two thirds of the way down opened a picker that was
+        clipped by the panel's edge, so choosing a colour meant scrolling the panel to bring the
+        picker into view — while the swatch you were matching against scrolled out of it.
+      */
+      requestAnimationFrame(() => {
+        this._closeFloating = openFloatingPanel(
+          this.renderRoot.querySelector<HTMLElement>('[part="preview"]'),
+          this.renderRoot.querySelector<HTMLElement>('[part="popover"]'),
+        );
+      });
     } else {
       document.removeEventListener('pointerdown', this._onDocPointer);
       document.removeEventListener('keydown', this._onKey);
+      this._closeFloating?.();
+      this._closeFloating = undefined;
     }
   }
 
@@ -399,6 +420,8 @@ export default class ColorPicker extends DesignSystemElement {
     super.disconnectedCallback();
     document.removeEventListener('pointerdown', this._onDocPointer);
     document.removeEventListener('keydown', this._onKey);
+    this._closeFloating?.();
+    this._closeFloating = undefined;
   }
 
   /** The token this value names, if it names one — which is also what selects the Tokens tab. */
@@ -592,7 +615,7 @@ export default class ColorPicker extends DesignSystemElement {
 
       ${
         this._open
-          ? html`<div part="popover" role="dialog">
+          ? html`<div part="popover" role="dialog" aria-label="Choose a colour">
               ${
                 showTabs
                   ? html`<div part="tabs">

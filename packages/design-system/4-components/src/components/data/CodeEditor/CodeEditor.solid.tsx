@@ -206,6 +206,27 @@ export function CodeEditor(props: CodeEditorProps) {
           }
         }),
         cmView.EditorView.theme(themeSpecFor(props.maxHeight)),
+        /*
+          Mod-S saves.
+
+          `onSave` was in the props type, documented, passed by callers — and bound to nothing. The
+          editor took the browser's own Save-page dialog instead, which is the one keystroke every
+          person editing text in a box will try. Registered ahead of `basicSetup`'s keymap
+          (`Prec.highest`) so nothing there can claim it first, and it returns `true` so the browser
+          does not also act on it.
+        */
+        cmState.Prec.highest(
+          cmView.keymap.of([
+            {
+              key: 'Mod-s',
+              preventDefault: true,
+              run: (target) => {
+                props.onSave?.(target.state.doc.toString());
+                return true;
+              },
+            },
+          ]),
+        ),
       ],
       parent: containerRef,
       root: containerRef.ownerDocument,

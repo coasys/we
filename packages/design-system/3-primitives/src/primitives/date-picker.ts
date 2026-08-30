@@ -283,6 +283,8 @@ export default class DatePicker extends DesignSystemElement {
   @property({ type: String }) placeholder = 'Select date';
   @property({ type: Boolean, reflect: true }) disabled = false;
   @property({ type: String }) name = '';
+  /** What this picker is called, for a reader who cannot see the field label beside it. */
+  @property({ type: String }) label = '';
   @property({ type: String, reflect: true }) size: ComponentSize = 'md';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
@@ -394,6 +396,36 @@ export default class DatePicker extends DesignSystemElement {
    * `change` every other path does, with an empty string — which is what "unset" is everywhere
    * this value is read.
    */
+  /** Open or close, refusing when disabled. The one place both the click and the keys go through. */
+  private _toggleOpen = () => {
+    if (this.disabled) return;
+    this._open = !this._open;
+  };
+
+  /**
+   * The keyboard half of a combobox: Enter, Space and ArrowDown open it, Escape closes it.
+   *
+   * There was none. `aria-haspopup` announced a popup that could only be summoned with a pointer,
+   * so somebody navigating by keyboard reached the field, found it readonly, and had no way forward
+   * — which for a required date is a form that cannot be completed at all.
+   *
+   * Escape returns focus to the input rather than leaving it inside a panel that has gone.
+   */
+  private _onKeyDown = (e: KeyboardEvent) => {
+    if (this.disabled) return;
+    if (!this._open && (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown')) {
+      e.preventDefault();
+      this._open = true;
+      return;
+    }
+    if (this._open && e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      this._open = false;
+      this.renderRoot.querySelector<HTMLElement>('[part="display"]')?.focus();
+    }
+  };
+
   private _clear = (e: Event) => {
     // The wrapper opens the calendar on click; clearing must not also open it.
     e.stopPropagation();
@@ -541,9 +573,29 @@ export default class DatePicker extends DesignSystemElement {
     });
 
     return html`
-      <div part="base" style=${styleMap({ position: 'relative', ...this.styles })}>
-        <div part="input-wrapper" style=${styleMap({ height: h })} @click=${() => (this._open = !this._open)}>
-          <input part="display" readonly .value=${this._displayValue} placeholder=${this.placeholder} />
+      <div part="base" style=${styleMap({ position: 'relative', ...this.styles })} @keydown=${this._onKeyDown}>
+        <div part="input-wrapper" style=${styleMap({ height: h })} @click=${this._toggleOpen}>
+          <!--
+            The input is the control, and it opens the calendar.
+
+            It was \`readonly\` inside a \`<div @click>\` with no keydown handler anywhere in the file,
+            so the picker could be opened by pointer and by nothing else: a keyboard user tabbed onto
+            a field they could type nothing into and that did nothing when they pressed anything. It
+            stays readonly — the calendar is how a date is chosen — but it now answers Enter, Space
+            and ArrowDown to open, and Escape to close, which is the combobox pattern this already
+            claims with \`aria-haspopup\`.
+          -->
+          <input
+            part="display"
+            readonly
+            role="combobox"
+            aria-haspopup="dialog"
+            aria-expanded=${this._open ? 'true' : 'false'}
+            aria-label=${this.label || nothing}
+            ?disabled=${this.disabled}
+            .value=${this._displayValue}
+            placeholder=${this.placeholder}
+          />
           ${
             this.value
               ? html`

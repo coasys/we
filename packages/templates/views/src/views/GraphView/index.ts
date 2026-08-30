@@ -65,7 +65,7 @@ const schemaGraph: SchemaNode = {
     // before `select`, that press never reaches selection and clicking the background cannot clear it.
     behaviours: ['node-double-click', 'select', { type: 'drag-node' }, 'pan-zoom'],
     height: '100%',
-    revision: { $: 'local.revision' },
+    revision: { $: '`${datasetStore.currentDataset.id}:${local.revision}`' },
     onNodeClick: selectNode,
     onSelectionChange: clearOnEmptySelection,
     onNodeDoubleClick: { $setLocal: 'cardOpen', value: true },
@@ -151,7 +151,7 @@ const knowledgeGraph: SchemaNode = {
       'pan-zoom',
     ],
     height: '100%',
-    revision: { $: 'local.revision' },
+    revision: { $: '`${datasetStore.currentDataset.id}:${local.revision}`' },
     onNodeClick: selectNode,
     onSelectionChange: clearOnEmptySelection,
     onNodeDoubleClick: { $setLocal: 'cardOpen', value: true },
@@ -195,7 +195,7 @@ const contentGraph: SchemaNode = {
     // one behaviour ever sees the gesture. The panel's Open button still reaches a document here.
     behaviours: ['select', 'expand-on-double-click', 'pan-zoom'],
     height: '100%',
-    revision: { $: 'local.revision' },
+    revision: { $: '`${datasetStore.currentDataset.id}:${local.revision}`' },
     onNodeClick: selectNode,
     onSelectionChange: clearOnEmptySelection,
     expandRequest,
@@ -298,6 +298,14 @@ export const graphView: TemplateSchema = {
       reporting the write, and this is the one case where the template *knows* something changed
       because it is what changed it. The graph merges either way, so the update arriving twice costs
       a query and changes nothing on screen.
+
+      **The dataset is part of the revision** wherever it is passed to a graph — see the `revision`
+      props below. The space route is a layout route and the router is keyed on template plus views,
+      so walking from space A to space B with the same template remounts nothing: the graph restarts
+      only on a seed or expansion change, and neither of those mentions the dataset. A's nodes stayed
+      on screen under B's URL, which reads as B containing A's content. Folding the dataset id into
+      the revision makes a space switch exactly what it is — everything on this canvas is now about
+      somewhere else.
     */
     revision: { type: 'number', initial: 0 },
   },

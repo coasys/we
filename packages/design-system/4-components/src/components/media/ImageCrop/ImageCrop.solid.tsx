@@ -375,6 +375,22 @@ export function ImageCrop(allProps: ImageCropProps) {
       setImgLoaded(true);
       allProps.onReady?.({ getCroppedFile });
     };
+    /*
+      A picture that will not decode still has to hand back the handle.
+
+      `onReady` is how the consumer gets `getCroppedFile`, and it was only called from `onload` — so
+      a file the browser refuses (a truncated upload, a `.heic` on a browser that cannot read one, a
+      revoked object URL) left the crop dialog on screen with a Save button wired to a function
+      nobody had been given. Nothing said why, and nothing ever would.
+
+      The handle goes over anyway. `getCroppedFile` has an unloaded image to work from and answers
+      accordingly; what matters is that the consumer is in a position to find out, rather than
+      holding a dialog that cannot be completed or explained.
+    */
+    img.onerror = () => {
+      console.error('ImageCrop: could not load the image', allProps.src);
+      allProps.onReady?.({ getCroppedFile });
+    };
     img.src = allProps.src;
   });
 

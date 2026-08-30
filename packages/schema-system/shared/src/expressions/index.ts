@@ -12,10 +12,13 @@
  * capability walker — without any of them learning a second spelling; and because a plain string is
  * then always a literal, which retires the `"$item"`-as-literal trap the old context strings had.
  *
- * ## Both forms are accepted
+ * ## There is one form
  *
- * The operator tokens are this language's syntax tree written as JSON, and `convert.ts` reads them
- * as such. A template in either spelling renders; the codemod prints the old into the new.
+ * This said "both forms are accepted" and pointed at a `convert.ts` that reads the old operator
+ * tokens as this language's syntax tree. That file is deleted: the operator tokens are gone, and a
+ * schema in the old spelling is refused by the validator rather than converted. The one place a
+ * `$`-string still evaluates is a `$localState` field's `initial` — see `resolveInitial` in the
+ * Solid renderer, which says why and says that it is the exception.
  */
 import type { Expr } from './ast';
 import { parseExpression } from './parser';

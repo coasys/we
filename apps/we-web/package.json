@@ -9,7 +9,8 @@
     "build:steps": "vite build",
     "build": "we-build",
     "serve": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@we/app-shell": "workspace:*",
@@ -22,6 +23,7 @@
     "@we/cli": "workspace:*",
     "typescript": "^5.7.2",
     "vite": "^8.2.2",
-    "vite-plugin-solid": "^2.11.14"
+    "vite-plugin-solid": "^2.11.14",
+    "vitest": "^4.1.11"
   }
 }

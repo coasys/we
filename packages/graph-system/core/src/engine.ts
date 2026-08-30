@@ -112,6 +112,20 @@ function referencedMetrics(rules: StyleRules<Record<string, unknown>> | undefine
 }
 
 const DEFAULT_MAX_NODES = 2000;
+
+/**
+ * The most nodes any spec may ask for, whatever it says.
+ *
+ * `maxNodes` is set by the *template*, which is data a stranger can write, and it is the only thing
+ * standing between an expansion and unbounded work: each node is a query, a layout body and a
+ * rendered mark. A template asking for a million is not a template with an ambitious map, it is a
+ * template that hangs the tab of everybody who opens the space it is installed in.
+ *
+ * Well above anything legible — a force graph is already unreadable at a few thousand marks — so the
+ * clamp is a backstop rather than a design constraint. It costs a template nothing it could have
+ * used, which is what makes it the right shape for a host limit.
+ */
+const HOST_MAX_NODES = 20000;
 const DEFAULT_EXPAND_LIMIT = 50;
 
 /**
@@ -712,7 +726,10 @@ export class GraphEngine {
   // ─── Budget ──────────────────────────────────────────────────────────────────
 
   private maxNodes(): number {
-    return this.spec.expansion?.maxNodes ?? DEFAULT_MAX_NODES;
+    // Clamped, and floored at 1: a spec asking for zero or a negative would make every expansion a
+    // no-op with no way to tell that from an empty graph. See `HOST_MAX_NODES`.
+    const asked = this.spec.expansion?.maxNodes ?? DEFAULT_MAX_NODES;
+    return Math.max(1, Math.min(asked, HOST_MAX_NODES));
   }
 
   private atBudget(): boolean {

@@ -32,6 +32,16 @@ export interface RecordField {
   /** Placeholder text, where the type suggests one worth having. */
   placeholder: string;
   value: string | number | boolean;
+  /**
+   * What this field started as, so "has anything been typed" can be answered by comparison.
+   *
+   * The discard guard used to ask whether a field held *anything* — any number, any non-empty
+   * string — and every field is seeded: a number to `0`, a select to its declared default. So an
+   * untouched `TaskBlock` form (`status: 'todo'`) reported itself dirty, and closing a form nobody
+   * had touched raised "discard your changes?". A dialog people learn to click through is worse
+   * than no dialog.
+   */
+  initial: string | number | boolean;
 }
 
 export interface RecordDraft {
@@ -94,6 +104,7 @@ function initialValue(property: PropertySchema, control: RecordControl): string 
 
 function fieldFrom(name: string, property: PropertySchema): RecordField {
   const control = controlFor(property);
+  const initial = initialValue(property, control);
   return {
     name,
     label: humanise(name),
@@ -101,7 +112,9 @@ function fieldFrom(name: string, property: PropertySchema): RecordField {
     required: property.required === true,
     options: (property.options ?? []).map((value) => ({ label: humanise(String(value)), value: String(value) })),
     placeholder: property.control === 'url' ? 'https://…' : '',
-    value: initialValue(property, control),
+    value: initial,
+    // Kept beside the value rather than re-derived, so the comparison cannot drift from the seed.
+    initial,
   };
 }
 
@@ -205,10 +218,10 @@ function isBlank(value: string | number | boolean): boolean {
 /**
  * The draft as the object `record.create` takes.
  *
- * Blank optional fields are dropped rather than written as empty strings. The ORM skips an empty
- * string on update, so writing one is not merely noise — it is a value that cannot later be
- * cleared, and a record whose `description` is `''` is indistinguishable from one that has never
- * had a description while being harder to change.
+ * Blank optional fields are dropped rather than written as empty strings. `''` now means "clear
+ * this property" (see the AD4M adapter's `clearOnEmpty`), so writing one on a *create* is a link
+ * removal against a record that has nothing to remove — noise rather than the trap it used to be,
+ * and still worth not emitting. Absent and empty read the same on screen; absent is the honest one.
  */
 export function recordDraftFields(draft: RecordDraft): Record<string, unknown> {
   const out: Record<string, unknown> = {};

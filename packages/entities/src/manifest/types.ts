@@ -239,6 +239,7 @@ export interface SignalTypeRecord extends WeNodeRecord {
   aggregate: 'count' | 'mean' | 'sum' | 'median';
   semantic: 'approval' | 'quality' | 'relevance' | 'agreement' | 'custom';
   allowChange: boolean;
+  retired: boolean;
   valueType: string;
   schemaVersion: number;
 }

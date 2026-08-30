@@ -10,6 +10,8 @@
  *   • Signal controls row
  *   • "Join Space" CTA button
  */
+import { OFFERED_SIGNAL_TYPES } from '@we/template-kit';
+
 export const spaceModal = {
   type: 'we-modal',
   props: { size: 'md', close: { $setLocal: 'selectedPin', value: null } },
@@ -76,12 +78,22 @@ export const spaceModal = {
 
             // Signal controls
             {
+              /*
+                Hoisted rather than queried inline, so the list can be filtered.
+
+                A retired type must not be offered. A `where` would serve *this* modal — it never
+                resolves a slug — but every other site shares one subscription between the controls
+                and a `find()`-by-slug count that must still see retired types, so the filter lives
+                at the point of use everywhere rather than in two spellings. `filter()` cannot name
+                an inline `$query`'s results, hence the hoist. See `OFFERED_SIGNAL_TYPES`.
+              */
               type: 'Column',
               props: { gap: '200' },
+              $queries: { signalTypes: { entity: 'SignalType', subscribe: true } },
               children: [
                 {
                   type: '$each',
-                  props: { items: { $query: { entity: 'SignalType', subscribe: true } }, as: 'sig' },
+                  props: { items: { $: OFFERED_SIGNAL_TYPES }, as: 'sig' },
                   children: [
                     {
                       type: 'SignalControl',

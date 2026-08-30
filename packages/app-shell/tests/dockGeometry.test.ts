@@ -1100,30 +1100,47 @@ describe('who is in a column', () => {
     placement: placement({ snap: 'left', displace: false, ...over }),
   });
 
+  /** Wide enough that a displacing panel really does displace. See `NARROW_VIEWPORT_PX`. */
+  const wide = { width: 1440, height: 900 };
+
   it('is decided by the snap, not by a declaration', () => {
     const panels = [member(), member({ snap: 'right' }), member()];
 
-    expect(columnMembers(panels, 'left')).toHaveLength(2);
+    expect(columnMembers(panels, 'left', wide)).toHaveLength(2);
   });
 
   it('leaves out panels that are not floating there', () => {
     const panels = [member(), member({ displace: true }), member({ maximised: true })];
 
     // A displacing panel is in a *strip*, and a maximised one is not on an edge at all.
-    expect(columnMembers(panels, 'left')).toHaveLength(1);
+    expect(columnMembers(panels, 'left', wide)).toHaveLength(1);
+  });
+
+  it('counts a displacing panel as a column member on a window too narrow to displace', () => {
+    /*
+      Below `NARROW_VIEWPORT_PX` the trade is refused and the panel covers instead — so it is
+      floating, whatever its flag says. Read off the flag it belonged to neither arrangement: not
+      the strip (which counts only what really displaces) and not the column, so two of them on one
+      edge landed on the same snap and overlapped exactly.
+    */
+    const narrow = { width: 700, height: 900 };
+    const panels = [member({ displace: true }), member({ displace: true })];
+
+    expect(columnMembers(panels, 'left', narrow)).toHaveLength(2);
+    expect(columnMembers(panels, 'left', wide)).toHaveLength(0);
   });
 
   it('excludes corners, which are a place for one card', () => {
     const panels = [member({ snap: 'top-left' }), member({ snap: 'bottom-left' })];
 
-    expect(columnMembers(panels, 'left')).toHaveLength(0);
+    expect(columnMembers(panels, 'left', wide)).toHaveLength(0);
   });
 
   it('orders members by the order a drop gave them', () => {
     const first = member({ order: 1 });
     const second = member({ order: 0 });
 
-    expect(columnMembers([first, second], 'left')).toEqual([second, first]);
+    expect(columnMembers([first, second], 'left', wide)).toEqual([second, first]);
   });
 });
 

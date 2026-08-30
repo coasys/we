@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import type { CapabilityGroup } from '../src/shared/registries/templateSurface';
 import {
   buildTemplateBag,
   CAPABILITY_GROUPS,
@@ -292,5 +293,54 @@ describe('space-configuring actions are pinned to the space on screen', () => {
       [{ name: 'Renamed' }, 'another-space'],
       ['call', true, 'another-space'],
     ]);
+  });
+});
+
+describe('modules — what a space template may reach in the one unfiltered namespace', () => {
+  /*
+    `modules` is handed over whole, because the boundary classifies members it can see in interfaces
+    it knows and a module's store is a flat record it has never heard of. That was acceptable while
+    every module's store touched only the space on screen. The Pocket broke it: its actions write
+    `PocketItem`/`PocketFolder` into the agent's *private root dataset*, so a synced space template
+    calling `modules.pocket.gather` writes into a store belonging to no space at all.
+
+    A module declares what it keeps, since only it knows. Withheld, not blocked — absent from the
+    bag exactly as an ungranted store member is, leaving no error channel to probe.
+  */
+  const modules = {
+    pocket: { open: () => true, toggle: () => {}, gather: () => {}, refs: () => ['a'] },
+    notes: { open: () => true, close: () => {} },
+  };
+  const chromeOnly = { pocket: ['gather', 'refs'] };
+
+  const bagFor = (grants: readonly CapabilityGroup[]) =>
+    buildTemplateBag({ modules }, { grants, moduleChromeOnly: chromeOnly }).modules as Record<
+      string,
+      Record<string, unknown>
+    >;
+
+  it('withholds a module’s chrome-only members from the space tier', () => {
+    const space = bagFor(SPACE_TIER);
+    expect('gather' in space.pocket).toBe(false);
+    expect('refs' in space.pocket).toBe(false);
+  });
+
+  it('leaves the module reachable as chrome — open, toggle, and what it is', () => {
+    // Withholding the contents must not withhold the panel: a template offering "put this in your
+    // Pocket" opens it and lets the person drop the thing in, which is the whole interaction.
+    const space = bagFor(SPACE_TIER);
+    expect('open' in space.pocket).toBe(true);
+    expect('toggle' in space.pocket).toBe(true);
+  });
+
+  it('gives host chrome everything, since chrome is who they are kept for', () => {
+    const chrome = bagFor(CHROME_TIER);
+    expect('gather' in chrome.pocket).toBe(true);
+    expect('refs' in chrome.pocket).toBe(true);
+  });
+
+  it('leaves a module that declares nothing exactly as it was', () => {
+    const space = bagFor(SPACE_TIER);
+    expect(Object.keys(space.notes).sort()).toEqual(['close', 'open']);
   });
 });

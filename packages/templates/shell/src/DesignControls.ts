@@ -1,3 +1,16 @@
+/*
+  Not `.schema.ts`, and that is the point.
+
+  Everything here is a *builder* with an ambient contract: `templatePicker()` reads
+  `local.templatePickerOpen`, which the rail that composes it declares. `.schema.ts` means "this
+  file exports a schema the validator can judge on its own", and one of these judged alone reports
+  ten errors about state it was never meant to own — which is why they were functions in the first
+  place (see the note on `templatePicker`).
+
+  So the file said "no schema export found" on every validation run: a warning that was accurate
+  about a file that is correctly outside the walk, and which had to be read and dismissed each time.
+  The composed rail *is* validated, and that is where these are covered.
+*/
 /**
  * Choosing a template and choosing a theme — the two pickers that live in the chrome rail.
  *

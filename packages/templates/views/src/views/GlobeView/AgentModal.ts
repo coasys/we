@@ -10,6 +10,8 @@
  *   • Signal controls row
  *   • Close button
  */
+import { OFFERED_SIGNAL_TYPES } from '@we/template-kit';
+
 export const agentModal = {
   type: 'we-modal',
   props: { size: 'md', close: { $setLocal: 'selectedPin', value: null } },
@@ -81,12 +83,16 @@ export const agentModal = {
 
             // ── Signal controls ─────────────────────────────────
             {
+              // Hoisted so a retired type can be filtered out client-side, and hoisted because
+              // `filter()` cannot name an inline `$query`'s results. See `SpaceModal` for why the
+              // filter is not a `where`, and `OFFERED_SIGNAL_TYPES` for the rule.
               type: 'Row',
               props: { gap: '200', ay: 'center', wrap: true },
+              $queries: { signalTypes: { entity: 'SignalType', subscribe: true } },
               children: [
                 {
                   type: '$each',
-                  props: { items: { $query: { entity: 'SignalType', subscribe: true } }, as: 'sig' },
+                  props: { items: { $: OFFERED_SIGNAL_TYPES }, as: 'sig' },
                   children: [
                     {
                       type: 'SignalControl',

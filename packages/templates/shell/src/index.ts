@@ -9,11 +9,13 @@
 export { accountSettings, removeAccountModal } from './AccountSettings.schema';
 export { bootScreen } from './BootScreen.schema';
 export { consentPrompt, consentSecret } from './ConsentPrompt.schema';
+export { destructivePrompt } from './DestructivePrompt.schema';
+export { installPrompt } from './InstallPrompt.schema';
 export { namePrompt } from './NamePrompt.schema';
 export { landingPageTemplate } from './about';
 export { marketplaceTemplate } from './marketplace';
 export { CHROME_RAIL_WIDTH, chromeRail } from './ChromeRail.schema';
-export { templatePicker, themePicker } from './DesignControls.schema';
+export { templatePicker, themePicker } from './DesignControls';
 export { profileTemplate } from './Profile.schema';
 export { aiSection } from './AiSettings.schema';
 export { languagesLocalState, languagesSection } from './LanguageSettings.schema';

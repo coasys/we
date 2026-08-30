@@ -1,6 +1,6 @@
 import type { DesignSystemProps } from '@we/design-types';
 import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
-import { css, html } from 'lit';
+import { css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
@@ -92,6 +92,21 @@ export default class Textarea extends DesignSystemElement {
 
   @property({ type: String, reflect: true }) value = '';
   @property({ type: String, reflect: true }) name = '';
+  /**
+   * What this control is called, for anybody who cannot see the label beside it.
+   *
+   * Rendered as `aria-label` on the **inner control**, which is the whole point. `we-form-field`
+   * puts `aria-labelledby` on its own `role="group"` wrapper, and naming a group does not name the
+   * widget inside it — so a screen reader announced these as "edit text", "checkbox, not checked",
+   * "slider", with nothing to say which one. `aria-label` on the host does not help either: the
+   * host is not the focusable thing.
+   *
+   * `we-form-field` sets this from its own label when the control does not already carry one, so an
+   * existing field gets a name with no change at its call site. Set it directly for a control that
+   * has no visible label at all.
+   */
+  @property({ type: String }) label = '';
+
   @property({ type: String, reflect: true }) placeholder = '';
   @property({ type: Number }) rows = 3;
   @property({ type: Number, reflect: true }) maxlength = Infinity;
@@ -145,6 +160,7 @@ export default class Textarea extends DesignSystemElement {
         <slot name="start"></slot>
         <textarea
           part="textarea"
+          aria-label=${this.label || nothing}
           .value=${this.value}
           rows=${this.rows}
           maxlength=${this.maxlength}

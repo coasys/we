@@ -31,6 +31,7 @@ import type {
   TranscriptTurn,
   WatchRequest,
 } from '@we/backend-shared';
+import { trace } from '@we/backend-shared';
 import { getEntitiesForPerspective, getEntity, getEntityTargetClass, getRegisteredEntityNames } from '@we/entities';
 
 const proxy = (dataset: DatasetHandle) => dataset as PerspectiveProxy;
@@ -180,6 +181,63 @@ function decode(value: unknown): unknown {
     return Literal.fromUrl(value).get();
   } catch {
     return value;
+  }
+}
+
+/**
+ * Predicates whose value is a *reference* to another record rather than a literal.
+ *
+ * Only these can point somewhere, so only these need checking. `Relationship`'s two endpoints are
+ * the case that matters — see {@link assertEndpointsAreLocal}.
+ */
+const REFERENCE_PREDICATES = new Set(['we://relationship_source', 'we://relationship_target', 'we://placed_node']);
+
+/**
+ * Refuse to commit a proposal that points outside this perspective.
+ *
+ * ## What is being defended against
+ *
+ * The values in a proposal were written by a language model reading a transcript, and a transcript
+ * is whatever anybody in the call said out loud — so a prompt-injected utterance is a person
+ * choosing what the model proposes. WE never sees those values before committing them: `accept`
+ * hands the overlay's id to the executor and the executor writes what it staged.
+ *
+ * Most of that is bounded already. The class list is the intersection of extractable, the space's
+ * targets and the call's, and a scalar an attacker chooses is a scalar in a record somebody clicked
+ * Accept on — visible, wrong, and removable. `Relationship` is the exception, because its `source`
+ * and `target` are untyped references: a proposal can name **any base in the dataset**, so a
+ * plausible-looking "X contradicts Y" can be committed pointing at a record from an unrelated part
+ * of the space, authored by whoever clicked Accept.
+ *
+ * So the endpoints are resolved before the commit and refused if they name nothing here. That does
+ * not make the *claim* true — nothing can — but it bounds what a proposal can attach itself to, to
+ * records this perspective actually holds, which is the difference between a wrong statement and a
+ * statement about somewhere the reviewer cannot see.
+ *
+ * Best-effort by construction: a runtime that will not list its overlays cannot be checked, and
+ * refusing every accept on that basis would break review on exactly the runtimes that work. It
+ * throws only on a *resolved* violation.
+ */
+async function assertEndpointsAreLocal(perspective: PerspectiveProxy, overlayId: string): Promise<void> {
+  let overlay: { base: string; inferred?: [string, unknown][] } | undefined;
+  try {
+    overlay = (await perspective.interpretationOverlays()).find((o) => o.base === overlayId);
+  } catch {
+    return;
+  }
+  if (!overlay?.inferred) return;
+
+  for (const [predicate, raw] of overlay.inferred) {
+    if (!REFERENCE_PREDICATES.has(predicate)) continue;
+    const target = decode(raw);
+    if (typeof target !== 'string' || !target) continue;
+    // A base with no links at all is a base this perspective does not hold.
+    const links = await perspective.get(new LinkQuery({ source: target }));
+    if (!links.length) {
+      throw new Error(
+        `interpretation: this suggestion points at "${target}", which is not a record in this space — not committing it`,
+      );
+    }
   }
 }
 
@@ -469,7 +527,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
         which makes those the only evidence there is. Filtering them out at the listener was the
         difference between a diagnosable failure and a shrug.
       */
-      console.debug('[interpretation]', event.step, {
+      trace('interpretation', event.step, {
         processor: event.processorId,
         agent: event.agentDid,
         items: event.itemIds?.length ?? 0,
@@ -571,7 +629,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       } catch (error) {
         if (!isMissingHandler(error)) {
           // Inconclusive. Left unset so the next dataset change asks again.
-          console.debug('[interpretation] capability probe inconclusive', error);
+          trace('interpretation', 'probe:inconclusive', { error: String(error) });
           return true;
         }
         console.info('[interpretation] this node cannot interpret — its executor predates the extraction stack');
@@ -697,6 +755,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
     async accept(dataset: DatasetHandle, id: string, property?: string): Promise<boolean> {
       if (!runtimeSupportsInterpretation(dataset)) throw new Error(UNSUPPORTED);
       const perspective = proxy(dataset);
+      await assertEndpointsAreLocal(perspective, id);
       return perspective.acceptInterpretation(id, property ? await toPredicate(perspective, property) : undefined);
     },
 
@@ -729,8 +788,8 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
         reads exactly like a conversation with nothing in it. That cost a day to find once. Keeping
         the query one console-filter away means the next person can copy it and run it by hand.
       */
-      console.debug('[interpretation] registering watch', { watchId: request.watchId, interpretationClasses });
-      console.debug('[interpretation] scope query\n%s', sourceScopeQuery);
+      trace('interpretation', 'watch:register', { watchId: request.watchId, classes: interpretationClasses });
+      trace('interpretation', 'watch:scope-query', { query: sourceScopeQuery });
 
       /*
         Create, or replace — never register over what is already there.
@@ -760,11 +819,11 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       try {
         existing = await readProcessorClasses(perspective, request.watchId);
       } catch (error) {
-        console.debug('[interpretation] could not read the registered class list', error);
+        trace('interpretation', 'watch:classes-unreadable', { error: String(error) });
       }
       const desired = [...interpretationClasses].sort();
       if (existing.length && existing.join(',') !== desired.join(',')) {
-        console.debug('[interpretation] class set changed — clearing the watch before re-registering', {
+        trace('interpretation', 'watch:classes-changed', {
           watchId: request.watchId,
           from: existing,
           to: desired,
@@ -1001,8 +1060,41 @@ function targetClasses(perspective: PerspectiveProxy, names: readonly string[]):
  * are both worse than a caller finding out its name was wrong.
  */
 async function toPredicate(perspective: PerspectiveProxy, property: string): Promise<string> {
-  for (const [predicate, name] of await predicateNames(perspective)) {
-    if (name === property) return predicate;
+  /*
+    Read from the shapes, not by inverting `predicateNames`.
+
+    `predicateNames` is `predicate → name` and keeps the **first** name it sees for a predicate,
+    because a readable label for a proposal only needs one. Two properties legitimately share a
+    predicate: `we://title` is `title` on most blocks and `label` on `Relationship` and `EmbedBlock`.
+    So the map holds `we://title → title`, inverting it never yields `label`, and
+    `toPredicate(p, 'label')` threw — per-property accept of a Relationship's label was impossible,
+    latently, because only whole-record accept is wired today.
+
+    Scanning the shapes for the *name* asks the question in the direction it is being asked in, and
+    a name shared across two entities resolves to the same predicate either way.
+  */
+  for (const name of getRegisteredEntityNames()) {
+    const shape = (
+      getEntity(name) as unknown as { generateSHACL?: () => { shape: { properties?: unknown[] } } }
+    ).generateSHACL?.().shape;
+    for (const p of (shape?.properties ?? []) as { path?: string; name?: string }[]) {
+      if (p.name === property && p.path) return p.path;
+    }
   }
+
+  // Then the perspective's own shapes — a module's entities, or a foreign app's.
+  try {
+    const native = new Set(getRegisteredEntityNames());
+    for (const shapeName of await perspective.getShaclNames()) {
+      if (native.has(shapeName)) continue;
+      const shape = await perspective.getShacl(shapeName);
+      for (const p of (shape?.properties ?? []) as { path?: string; name?: string }[]) {
+        if (p.name === property && p.path) return p.path;
+      }
+    }
+  } catch {
+    // Fall through to the error below, which says the useful thing either way.
+  }
+
   throw new Error(`interpretation: no property named "${property}" in this dataset's schemas`);
 }

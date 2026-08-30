@@ -74,6 +74,39 @@ function stringifyLiteralValue(value: unknown, fallback: string): string {
   return fallback;
 }
 
+/*
+  How much of a peer's profile this client will hold.
+
+  ## Why there is a cap at all
+
+  Every field below is written by whoever the profile belongs to, published to a public perspective,
+  and read here with no ceiling. That is the whole shape of the problem: a peer chooses the number
+  of bytes this client stores and then renders — into every byline, every member row, every avatar,
+  every mention candidate, on every screen where they appear — and does so without needing to be in
+  a space, since a profile is fetched by DID from a public perspective.
+
+  A megabyte "handle" is not a clever attack, which is why it kept being nobody's job to stop. It is
+  a peer making a member list unusable for everybody in a community, and it costs them one string.
+
+  The numbers are generous rather than tight: they exist to bound the damage, not to enforce a style
+  guide, and a limit that real profiles bump into would be a bug of its own. Truncated rather than
+  refused — a name cut short still identifies somebody, where a blank one does not, and refusing
+  would hand a peer a way to make themselves invisible instead of merely loud.
+*/
+const MAX_NAME_CHARS = 120;
+const MAX_BIO_CHARS = 4000;
+/**
+ * An image is a data URI held in memory and put in an `<img src>`. Base64 is 4 chars per 3 bytes,
+ * so this is roughly 3 MB of picture — far past anything the app's own upload path produces (it
+ * compresses) and far short of what makes a member list fall over.
+ */
+const MAX_IMAGE_CHARS = 4_000_000;
+
+/** `value`, cut to `max` characters. See the caps above for why this exists. */
+function capped(value: string, max: number): string {
+  return value.length > max ? value.slice(0, max) : value;
+}
+
 async function resolveExpressionToDataUri(url: string, client: Ad4mClient): Promise<string | undefined> {
   try {
     const res = await client.expression.get(url);
@@ -81,8 +114,14 @@ async function resolveExpressionToDataUri(url: string, client: Ad4mClient): Prom
     const { data_base64, file_type } = JSON.parse(res.data) as { data_base64?: string; file_type?: string };
     if (!data_base64) return undefined;
     // data_base64 may be a full data URI (WE format) or raw base64 (Flux format)
-    if (data_base64.startsWith('data:')) return data_base64;
-    return `data:${file_type};base64,${data_base64}`;
+    const uri = data_base64.startsWith('data:') ? data_base64 : `data:${file_type};base64,${data_base64}`;
+    // Dropped rather than truncated, unlike the text fields: half a data URI is a broken image, and
+    // an absent picture is a better rendering of an oversized one than a broken-image glyph.
+    if (uri.length > MAX_IMAGE_CHARS) {
+      console.warn(`ad4m: profile image at ${url} is too large to display (${uri.length} chars)`);
+      return undefined;
+    }
+    return uri;
   } catch (cause) {
     // Best-effort by design — a peer's avatar expression can be unfetched, offline, or malformed,
     // and a missing picture must not fail the profile it decorates. Logged (unlike before) because
@@ -121,16 +160,16 @@ export async function getProfile(did: string, backendClient: unknown): Promise<A
       const val = parseLiteralTarget(link.data.target);
       switch (link.data.predicate) {
         case 'we://first_name':
-          result.firstName = val;
+          result.firstName = capped(val, MAX_NAME_CHARS);
           break;
         case 'we://last_name':
-          result.lastName = val;
+          result.lastName = capped(val, MAX_NAME_CHARS);
           break;
         case 'we://handle':
-          result.handle = val;
+          result.handle = capped(val, MAX_NAME_CHARS);
           break;
         case 'we://bio':
-          result.bio = val;
+          result.bio = capped(val, MAX_BIO_CHARS);
           break;
         case 'we://profile_image':
           result.avatar = await resolveExpressionToDataUri(link.data.target, client);
@@ -148,16 +187,16 @@ export async function getProfile(did: string, backendClient: unknown): Promise<A
         const val = parseLiteralTarget(link.data.target);
         switch (link.data.predicate) {
           case 'sioc://has_given_name':
-            result.firstName = val;
+            result.firstName = capped(val, MAX_NAME_CHARS);
             break;
           case 'sioc://has_family_name':
-            result.lastName = val;
+            result.lastName = capped(val, MAX_NAME_CHARS);
             break;
           case 'sioc://has_username':
-            result.handle = val;
+            result.handle = capped(val, MAX_NAME_CHARS);
             break;
           case 'sioc://has_bio':
-            result.bio = val;
+            result.bio = capped(val, MAX_BIO_CHARS);
             break;
           case 'sioc://has_profile_image':
             if (!result.avatar) result.avatar = await resolveExpressionToDataUri(link.data.target, client);
@@ -182,13 +221,13 @@ export async function getProfile(did: string, backendClient: unknown): Promise<A
         const val = parseLiteralTarget(link.data.target);
         switch (link.data.predicate) {
           case 'sioc://has_firstname':
-            result.firstName = val;
+            result.firstName = capped(val, MAX_NAME_CHARS);
             break;
           case 'sioc://has_lastname':
-            result.lastName = val;
+            result.lastName = capped(val, MAX_NAME_CHARS);
             break;
           case 'sioc://has_username':
-            result.handle = val;
+            result.handle = capped(val, MAX_NAME_CHARS);
             break;
         }
       }
@@ -207,8 +246,8 @@ export async function getProfile(did: string, backendClient: unknown): Promise<A
         result.location = {
           latitude: lat,
           longitude: lng,
-          city: cityLink ? parseLiteralTarget(cityLink.data.target) : undefined,
-          country: countryLink ? parseLiteralTarget(countryLink.data.target) : undefined,
+          city: cityLink ? capped(parseLiteralTarget(cityLink.data.target), MAX_NAME_CHARS) : undefined,
+          country: countryLink ? capped(parseLiteralTarget(countryLink.data.target), MAX_NAME_CHARS) : undefined,
         };
       }
     }

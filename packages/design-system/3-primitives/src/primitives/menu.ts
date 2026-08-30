@@ -39,15 +39,43 @@ export default class Menu extends DesignSystemElement {
     this.addEventListener('keydown', this._onKeyDown);
   }
 
+  /**
+   * The focusable rows, in order.
+   *
+   * ## Why this is not `querySelectorAll('[role="menuitem"]')`
+   *
+   * It was, and it matched nothing. `role="menuitem"` is on the `[part=base]` **inside**
+   * `we-menu-item`'s shadow root, and a light-DOM query cannot see there — `menu-item.ts` even
+   * documents the arrangement in the comment above its `focusProps`. So every arrow key returned at
+   * the first line and the only way through a menu was Tab, while `role="menu"` announced arrow
+   * navigation that did nothing.
+   *
+   * So: find the item *hosts* in the light DOM, then take the focusable row out of each one's shadow
+   * root. Descends into `we-menu-group`, whose items are nested a level deeper.
+   */
   private _getItems(): HTMLElement[] {
-    return Array.from(this.querySelectorAll('[role="menuitem"]'));
+    const rows: HTMLElement[] = [];
+    for (const host of this.querySelectorAll('we-menu-item')) {
+      const row = host.shadowRoot?.querySelector<HTMLElement>('[role="menuitem"]');
+      // Skip a disabled or collapsed row rather than focusing something that cannot be activated.
+      if (row && row.offsetParent !== null) rows.push(row);
+    }
+    return rows;
+  }
+
+  /** Which row currently has focus, given the event's target is the host and the row is inside it. */
+  private _indexOfFocused(items: HTMLElement[], target: EventTarget | null): number {
+    const host = target as HTMLElement | null;
+    const row = host?.shadowRoot?.querySelector<HTMLElement>('[role="menuitem"]') ?? null;
+    const direct = items.indexOf(host as HTMLElement);
+    return direct >= 0 ? direct : items.indexOf(row as HTMLElement);
   }
 
   private _onKeyDown = (e: KeyboardEvent) => {
     const items = this._getItems();
     if (!items.length) return;
 
-    const current = items.indexOf(e.target as HTMLElement);
+    const current = this._indexOfFocused(items, e.target);
 
     let next = -1;
     switch (e.key) {

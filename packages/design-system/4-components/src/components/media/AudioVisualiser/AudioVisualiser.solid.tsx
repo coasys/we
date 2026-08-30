@@ -90,21 +90,26 @@ export function AudioVisualiser(props: AudioVisualiserProps) {
 
     let cancelled = false;
 
+    /*
+      One `AudioContext` per decode, closed on **every** exit.
+
+      The three success-shaped paths closed it and the failure path did not: a `fetch` that 404s or a
+      file `decodeAudioData` refuses left the context open, and a browser allows only a handful per
+      page (six in Chrome) before `new AudioContext()` starts throwing. So a feed with a few broken
+      audio blocks in it stopped being able to draw *any* waveform, including the working ones —
+      and the console said "decode failed", which is true and points at the wrong thing.
+
+      A `finally` is the whole fix. The context is created outside the `try` for the same reason: it
+      has to be reachable from there.
+    */
     (async () => {
+      const decodeCtx = new AudioContext();
       try {
-        const decodeCtx = new AudioContext();
         const response = await fetch(src);
-        if (cancelled) {
-          decodeCtx.close();
-          return;
-        }
+        if (cancelled) return;
         const arrayBuffer = await response.arrayBuffer();
-        if (cancelled) {
-          decodeCtx.close();
-          return;
-        }
+        if (cancelled) return;
         const audioBuffer = await decodeCtx.decodeAudioData(arrayBuffer);
-        await decodeCtx.close();
         if (cancelled) return;
 
         const rawData = audioBuffer.getChannelData(0);
@@ -124,6 +129,8 @@ export function AudioVisualiser(props: AudioVisualiserProps) {
         setWaveformData(normalized);
       } catch (e) {
         console.error('AudioVisualiser: decode failed', e);
+      } finally {
+        await decodeCtx.close().catch(() => {});
       }
     })();
 

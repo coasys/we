@@ -1,6 +1,6 @@
 import { designSystemKeys, filterProps, mergeProps } from '@we/design-utils';
 import { buildLayoutStyles, getBgImageAttrs, useStateProps } from '@we/design-utils/solid';
-import { createMemo, createSignal, Show, splitProps } from 'solid-js';
+import { createMemo, createSignal, onCleanup, Show, splitProps } from 'solid-js';
 
 export type * from './EditableImage.types';
 import { Column } from '../../layout/Column/Column.solid';
@@ -108,6 +108,19 @@ export function EditableImage(allProps: EditableImageProps) {
     // Cleared so choosing the same file twice in a row still fires a change event.
     input.value = '';
   }
+
+  /*
+    The object URL goes with the component, not only with the modal.
+
+    Every path that *closes* the crop step revoked it, and unmounting is not one of them: navigating
+    away, switching the record being edited, or a route change with the crop modal open left the
+    blob alive for the life of the page. An image is megabytes, and the whole point of an object URL
+    is that the browser cannot tell when you are done with it.
+  */
+  onCleanup(() => {
+    const url = rawUrl();
+    if (url) URL.revokeObjectURL(url);
+  });
 
   function closeModal() {
     setModalOpen(false);

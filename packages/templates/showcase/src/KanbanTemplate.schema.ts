@@ -172,6 +172,14 @@ const boardRoute: RouteSchema = {
 
     kanbanBoard({
       boardId: { $: 'routeStore.segments[1]' },
+      /*
+        What a move means here — supplied by the template, not by the kit.
+
+        `@we/schema-kit` is the portable tier: it names no store, so the WE-specific half of a
+        kanban (relinking two `children` edges through `spaceStore.moveChild`) is the caller's to
+        provide. This is the same shape `confirmModal` uses for its `confirm`.
+      */
+      onMove: ({ card, from, to }) => ({ $action: 'spaceStore.moveChild', args: [{ $: card }, { $: from }, to] }),
       empty: emptyState({
         icon: 'columns',
         label: 'columns',
@@ -201,7 +209,10 @@ const boardRoute: RouteSchema = {
               props: { ax: 'between', ay: 'center', width: '100%' },
               children: [
                 agentByline({ did: { $: `${as}.author` }, timestamp: { $: `${as}.createdAt` }, avatarSize: 'xs' }),
-                moveCardMenu(as, 'column'),
+                moveCardMenu(as, 'column', ({ card, from, to }) => ({
+                  $action: 'spaceStore.moveChild',
+                  args: [{ $: card }, { $: from }, to],
+                })),
               ],
             },
             signalRow(as),

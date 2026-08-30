@@ -17,7 +17,11 @@ runs:
     # Read the version from .nvmrc rather than restating it. The two used to be written
     # out separately — the workflow said `24`, .nvmrc said `v24.14.0` — which agrees
     # until the day somebody bumps one of them.
-    - uses: actions/setup-node@v4
+    # Majors kept in step with `ad4m-compat.yaml`, which inlines these same steps because it
+    # checks out an older commit and cannot resolve a local action from it. The two drifted —
+    # `@v4` here against `@v7` there — which is exactly the "silent drift" this file was extracted
+    # to prevent, arrived at from the one direction extraction cannot cover.
+    - uses: actions/setup-node@v7
       with:
         node-version-file: .nvmrc
 
@@ -34,7 +38,7 @@ runs:
       run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
 
     - name: Cache pnpm store
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       with:
         path: ${{ steps.pnpm-store.outputs.path }}
         key: pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}

@@ -29,6 +29,7 @@
   "dependencies": {
     "@we/backend-shared": "workspace:*",
     "@we/block-shared": "workspace:*",
+    "@we/design-utils": "workspace:*",
     "@we/drag": "workspace:*",
     "@we/entities": "workspace:*",
     "prosemirror-commands": "^1.7.2",

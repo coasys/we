@@ -284,6 +284,7 @@ async function ensureEntitiesRegistered(p: PerspectiveProxy, models: readonly (t
   ]);
   const missing = models.filter((_, i) => !present[i]);
   const stale = models.filter((m, i) => present[i] && shapeIsStale(m, stored));
+  warnAboutOrphanedPredicates(stale, stored);
   await registerEntities(p, missing, stale);
 }
 
@@ -298,6 +299,43 @@ async function ensureEntitiesRegistered(p: PerspectiveProxy, models: readonly (t
  * per app run, not one per switch, forever, for everybody.
  */
 const refreshedThisSession = new Set<string>();
+
+/**
+ * Say so when a refresh is about to leave stored values unreachable.
+ *
+ * ## The silent half of a shape refresh
+ *
+ * `shapeIsStale` asks whether the declaration has a predicate the stored shape lacks — a property
+ * *added*, which the refresh then writes and which costs nothing. It does not ask the reverse, and
+ * the reverse is where data goes: a predicate the stored shape has and the declaration no longer
+ * does is a property that was renamed or removed, and rewriting the SHACL without it makes every
+ * value already written under the old predicate unreadable. The links are still there; nothing
+ * queries them, nothing lists them, and nothing said anything.
+ *
+ * Migrating is not something this can do — a rename is a mapping only the author knows, and
+ * guessing one would rewrite a community's data on a heuristic. `schemaVersion` exists on two
+ * entities for exactly this and nothing reads it yet; when something does, this is where it belongs.
+ *
+ * What it can do is stop the loss being invisible. Loud, named, once per refresh.
+ */
+function warnAboutOrphanedPredicates(
+  stale: readonly (typeof Ad4mModel)[],
+  stored: ReadonlyMap<string, StoredShape>,
+): void {
+  for (const model of stale) {
+    const targetClass = getEntityTargetClass(model);
+    const current = targetClass ? stored.get(targetClass) : undefined;
+    if (!current?.paths.size) continue;
+    const declared = declaredShape(model);
+    const orphaned = [...current.paths].filter((predicate) => !declared.paths.has(predicate));
+    if (!orphaned.length) continue;
+    console.warn(
+      `SDNA refresh of ${targetClass} drops ${orphaned.join(', ')} — values already written under ` +
+        `${orphaned.length === 1 ? 'that predicate' : 'those predicates'} stay in the perspective and ` +
+        `stop being readable. A rename needs a migration; there is none.`,
+    );
+  }
+}
 
 /**
  * Write shapes for `missing` (absent entirely) and `stale` (present in an older form).

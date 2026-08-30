@@ -107,7 +107,9 @@ export function initializeIntegrations(
       moduleRegistry,
     );
 
-    console.log(
+    // `info`: one line, once, at boot, saying what this deployment turned out to be — which is the
+    // first thing anybody debugging a seed wants and is not a debugging leftover.
+    console.info(
       `✓ ${seed.project.name} initialized — ${embedded.length} embedded app(s)` +
         (activated.length ? `, ${activated.length} module(s): ${activated.join(', ')}` : ''),
     );

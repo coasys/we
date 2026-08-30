@@ -186,3 +186,73 @@ describe('what it refuses by default', () => {
     expect(css).toContain('!important');
   });
 });
+
+describe('parsing does not apply the sheet', () => {
+  it('never attaches the unsanitised sheet to the live document', () => {
+    /*
+      The bug this pins: the sheet used to be appended to `document.head` to be read back, which
+      makes it a live stylesheet — so the `@import` this module exists to strip was fetched once per
+      call, before anything had been removed, and the `finally` that detached it ran after the
+      request had gone out. In the theme editor that is one fetch per keystroke.
+
+      Watching `appendChild` on the real head is the only way to assert it from outside: a request
+      cannot be observed in jsdom, and the point is precisely that no attachment ever happens.
+    */
+    const appended: string[] = [];
+    const original = document.head.appendChild.bind(document.head);
+    document.head.appendChild = ((node: Node) => {
+      appended.push((node as HTMLElement).tagName ?? '');
+      return original(node as never);
+    }) as typeof document.head.appendChild;
+
+    try {
+      sanitiseCss('@import url(https://attacker.example/x.css); .a { color: red }');
+    } finally {
+      document.head.appendChild = original;
+    }
+
+    expect(appended).toEqual([]);
+  });
+
+  it('still reports the @import it dropped', () => {
+    const { css, removed } = sanitiseCss('@import url(https://attacker.example/x.css); .a { color: red }');
+    expect(css).not.toContain('@import');
+    expect(css).toContain('color: red');
+    expect(removed.some((r) => r.startsWith('@import'))).toBe(true);
+  });
+});
+
+describe('rules it used to drop in silence', () => {
+  it('keeps a @layer block and what is inside it', () => {
+    // A theme's job is overriding the app's styles, so which layer a rule sits in is part of what
+    // it means. The whole block used to fall through to "unrecognised" and take its contents with it.
+    const { css } = sanitiseCss('@layer theme { .a { color: red } }');
+    expect(css).toContain('@layer theme');
+    expect(css).toContain('color: red');
+  });
+
+  it('keeps a @layer ordering statement', () => {
+    const { css } = sanitiseCss('@layer base, theme;');
+    expect(css).toContain('@layer base, theme;');
+  });
+
+  it('never lets a @property carry a remote URL through', () => {
+    /*
+      The keeping half of `@property` cannot be asserted here: jsdom's CSS parser does not know the
+      at-rule and returns no rule at all for it, so there is nothing for the branch to receive. What
+      *is* worth pinning in every environment is the direction that matters — whichever way the
+      parser goes, an initial value that fetches never reaches the output.
+    */
+    const refused = sanitiseCss(
+      '@property --bg { syntax: "<image>"; inherits: false; initial-value: url(https://attacker.example/p.png) }',
+    );
+    expect(refused.css).not.toContain('attacker.example');
+  });
+
+  it('says so when it drops nested rules', () => {
+    // Refusing them is the decision; refusing them without a word is the bug. A theme author whose
+    // nesting vanished got a sheet applying half of what they wrote and a clean `removed` list.
+    const { removed } = sanitiseCss('.a { color: red; &:hover { color: blue } }');
+    expect(removed.some((r) => r.includes('nested'))).toBe(true);
+  });
+});

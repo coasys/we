@@ -22,6 +22,7 @@ export {
 export type {
   ChromeReserve,
   CreateEntityOptions,
+  DatasetTarget,
   DockContribution,
   DockAspect,
   DockEdge,

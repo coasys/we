@@ -195,3 +195,41 @@ describe('the chrome the shell renders', () => {
     expect(blocked.map((reference) => reference.path)).toContain('shellStore.beginDockResize');
   });
 });
+
+describe('a template’s declared panels are part of its surface', () => {
+  /*
+    `meta.panels[].node` is a schema like any other, rendered against the same bag — so a panel
+    naming a chrome-tier member is a template reaching past its tier, and the walk has to see it.
+
+    It does, and nothing said so. The audit read `inspectTemplateSurface` as checking `meta.requires`
+    only, which is a reasonable thing to conclude from a walk with no test on it: nothing here
+    exercised a panel node, so a refactor that stopped descending into `meta` would have taken this
+    boundary with it silently. Workshop is the live case — its panel reads `interpretationStore`,
+    which happens to be granted at the space tier, so even that one proves nothing on its own.
+  */
+  const withPanel = (node: unknown) => ({
+    meta: { name: 'Test', description: '', icon: '', panels: [{ id: 'inspector', node }] },
+    type: 'Column',
+  });
+
+  it('reports a chrome-only member named by a panel', () => {
+    const template = withPanel({ type: 'we-text', children: [{ $: 'runtimeStore.trustedAgents' }] });
+    const { blocked } = inspectTemplateSurface(template, SPACE_TIER);
+    expect(blocked.map((reference) => reference.path)).toEqual(['runtimeStore.trustedAgents']);
+  });
+
+  it('reports an action a panel calls, not only a value it reads', () => {
+    const template = withPanel({
+      type: 'we-button',
+      props: { onClick: { $action: 'sessionStore.logout' } },
+      children: ['Sign out'],
+    });
+    const { blocked } = inspectTemplateSurface(template, SPACE_TIER);
+    expect(blocked.map((reference) => reference.path)).toEqual(['sessionStore.logout']);
+  });
+
+  it('leaves a panel that stays inside the tier alone', () => {
+    const template = withPanel({ type: 'we-text', children: [{ $: 'spaceStore.members' }] });
+    expect(inspectTemplateSurface(template, SPACE_TIER).blocked).toEqual([]);
+  });
+});

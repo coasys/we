@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { safeHref } from './safe-href';
+import { safeHref } from './safeHref';
 
 describe('what it refuses', () => {
   it('refuses javascript:', () => {

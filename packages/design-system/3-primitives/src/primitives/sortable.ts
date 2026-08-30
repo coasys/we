@@ -17,7 +17,23 @@ import sharedStyles from '../shared/styles';
 const CSS_STYLES = css`
   :host {
     display: block;
-    touch-action: none;
+    /*
+      Scrolling still works along the list's own axis; the drag is a long press.
+
+      This was touch-action:none, which pointerDrag's own docblock calls "the same bug spelled in
+      CSS" — and it meant no sortable list anywhere could be scrolled with a finger: not the
+      sidebar rail, not a kanban column, not a shape's member list. The gesture never needed it. A
+      touch drag begins on a long press and never on movement, and the scroll is blocked for the
+      duration of the drag itself, in JavaScript, where the decision is actually known.
+
+      The permitted axis is the one the list runs along, so a vertical list scrolls vertically and a
+      horizontal strip scrolls sideways. Reflected as an attribute, so this is a plain selector.
+    */
+    touch-action: pan-y;
+  }
+
+  :host([direction='horizontal']) {
+    touch-action: pan-x;
   }
 
   [part='container'] {
@@ -296,10 +312,28 @@ export default class Sortable extends DesignSystemElement {
     });
   };
 
+  /**
+   * Escape abandons a reorder in progress.
+   *
+   * The keyboard path has had this since it was written; the pointer path had not, so a drag begun
+   * by mistake — or one whose destination turned out to be wrong — could only be ended by finding
+   * somewhere harmless to release. Escape is what every other drag in the app answers to
+   * (`dragSession` binds the same key), and a gesture with no way out is one people avoid starting.
+   *
+   * Capture phase, so it is not eaten by whatever has focus inside the row being dragged.
+   */
+  private _onDragKeyDown = (e: KeyboardEvent) => {
+    if (e.key !== 'Escape' || !this._dragging) return;
+    e.preventDefault();
+    e.stopPropagation();
+    this._endDrag();
+  };
+
   private _startDrag(dragged: Element, e: PointerEvent) {
     // Pointer capture (done by the watcher) is what keeps moves arriving after the pointer leaves
     // this element — which is exactly what a cross-zone drag does, and why hit-testing is done
     // against coordinates rather than by listening on each zone.
+    document.addEventListener('keydown', this._onDragKeyDown, true);
     this._dragging = dragged;
     this._target = this;
     this._dropIndex = this._getItems().indexOf(dragged);
@@ -539,6 +573,7 @@ export default class Sortable extends DesignSystemElement {
   }
 
   private _endDrag() {
+    document.removeEventListener('keydown', this._onDragKeyDown, true);
     if (this._dragging) {
       (this._dragging as HTMLElement).style.opacity = '';
       this._dragging = null;

@@ -1,5 +1,6 @@
 import type { DesignSystemProps } from '@we/design-types';
 import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
+import type { PropertyValues } from 'lit';
 import { css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
@@ -95,6 +96,42 @@ export default class FormField extends DesignSystemElement {
     return mergeProps(usedProps, mergeProps(sizeDefaults, DEFAULT_PROPS)) as Partial<DesignSystemProps>;
   }
 
+  /**
+   * Give the slotted control this field's name, unless it already has one.
+   *
+   * ## Why the wrapper's `aria-labelledby` was not enough
+   *
+   * It is on `[part=control]`, a `role="group"`, and naming a group does not name the widget inside
+   * it. Every control in the app was announced as "edit text", "checkbox, not checked", "slider" —
+   * a form with visible labels throughout that a screen-reader user could not fill in, because
+   * nothing said which field they were standing in.
+   *
+   * Pushed down from here rather than required at every call site, because there are a hundred call
+   * sites and they all already pass `label` to the field. A control that names itself is left alone,
+   * so the explicit `label` prop stays the override.
+   *
+   * Re-run on `slotchange`, and on any update that changed the label — a field whose label is bound
+   * to a signal would otherwise keep announcing the first one it ever had.
+   */
+  private _nameControls = () => {
+    if (!this.label) return;
+    const slot = this.renderRoot?.querySelector('slot');
+    for (const node of slot?.assignedElements({ flatten: true }) ?? []) {
+      // Only WE's own controls: a plain `<div>` wrapper has no `label` property and setting one
+      // would be an inert expando, and a native control is the consumer's to name.
+      if (!node.tagName.startsWith('WE-')) continue;
+      const control = node as HTMLElement & { label?: string };
+      if (!control.label) control.label = this.label;
+    }
+  };
+
+  // `super.updated` first — the base class writes the DS custom properties there, so an override
+  // that skips it silently disables every DS prop on this element.
+  updated(changed: PropertyValues) {
+    super.updated(changed);
+    if (changed.has('label')) this._nameControls();
+  }
+
   render() {
     const inline = this.styles || {};
     const descId = this.description ? `${this._fieldId}-desc` : undefined;
@@ -128,7 +165,7 @@ export default class FormField extends DesignSystemElement {
           aria-describedby=${describedBy || ''}
           aria-invalid=${this.error ? 'true' : 'false'}
         >
-          <slot></slot>
+          <slot @slotchange=${this._nameControls}></slot>
         </div>
         ${this.error ? html`<div part="error" id=${errorId!} role="alert">${this.error}</div>` : nothing}
       </div>

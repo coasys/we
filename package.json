@@ -25,7 +25,8 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "clean:deep": "pnpm clean && rm -rf apps/we-tauri/src-tauri/target apps/we-electron/dist-electron",
-    "lint:css": "stylelint 'packages/**/src/**/*.css' 'apps/*/src/**/*.css'"
+    "lint:css": "stylelint 'packages/**/src/**/*.css' 'apps/*/src/**/*.css' 'packages/**/src/**/*.scss'",
+    "test:coverage": "pnpm -r --no-bail run test -- --coverage"
   },
   "packageManager": "pnpm@10.18.3",
   "devDependencies": {
@@ -38,10 +39,12 @@
     "eslint-plugin-simple-import-sort": "^14.0.0",
     "husky": "^9.1.7",
     "lint-staged": "^17.3.0",
+    "postcss-scss": "^4.0.9",
     "prettier": "3.9.6",
     "prettier-plugin-sort-package-json": "^1.1.0",
     "stylelint": "^17.14.1",
     "stylelint-config-standard": "^40.0.0",
+    "stylelint-config-standard-scss": "^17.0.0",
     "typescript": "^5.7.2"
   },
   "pnpm": {

@@ -76,8 +76,13 @@ export default function TemplateProvider() {
     document.documentElement.style.setProperty('--we-chrome-rail-width', CHROME_RAIL_WIDTH);
   });
 
-  // Console store for debugging $action calls in schema
+  /*
+    The console, as a store, so a schema author can print from an `$action` while working something
+    out. This is the one place `console.log` is the *feature* rather than a leftover — hence the
+    disable, rather than an exemption in the lint config that would cover the whole file.
+  */
   const consoleStore = {
+    // eslint-disable-next-line no-console
     log: (...args: unknown[]) => console.log(...args),
     warn: (...args: unknown[]) => console.warn(...args),
     error: (...args: unknown[]) => console.error(...args),
@@ -111,65 +116,117 @@ export default function TemplateProvider() {
     },
   };
 
+  /**
+   * The dataset a module's write means: the one it named, or the space on screen.
+   *
+   * Named by **URI**, not by store path: a module is not a template and has no store bag, and the
+   * URI is the string it already holds — presence anchors an activity with it, which is how
+   * transcribe knows the call's space at all. Matched against the dataset list rather than a
+   * registry, so this answers only for datasets this agent actually holds.
+   *
+   * `null` for a name that does not resolve, and the callers refuse rather than falling back. See
+   * `DatasetTarget` for why those two must not be the same outcome.
+   */
+  function moduleTarget(uri?: string): DatasetProxy | null {
+    if (!uri) return (datasetStore.currentDataset()?.handle as DatasetProxy | undefined) ?? null;
+    const found = datasetStore.datasets().find((d) => d.sharedUri === uri || d.id === uri);
+    if (!found) {
+      console.warn(`module host: no dataset for "${uri}" — refusing rather than writing elsewhere`);
+      return null;
+    }
+    return found.handle;
+  }
+
+  /** `record.create`, against a resolved handle rather than a store path. */
+  function createInDataset(
+    entity: string,
+    fields: Record<string, unknown>,
+    perspective: DatasetProxy,
+    rest: Record<string, unknown>,
+  ) {
+    return getEntity(entity).create(perspective, fields, Object.keys(rest).length ? rest : undefined);
+  }
+
   // The same capability schemas get as `record.create`, lent to module stores that must write
   // without a click to hang a schema action on — a transcript appears because somebody spoke.
-  provideModuleHostServices({
-    // `options` is forwarded rather than swallowed so a module can parent its write — a transcript
-    // block belongs inside the call that contains it, and creating it unparented then linking it
-    // afterwards leaves a window where a crash orphans the block into the space.
-    createEntity: async (entity, fields, options) => {
-      if (!datasetStore.currentDataset()) return null;
-      const created = (await recordActions.create(entity, fields, { ...options })) as { id?: string } | undefined;
-      return created?.id ?? null;
-    },
+  onCleanup(
+    provideModuleHostServices({
+      // Only the host can turn a URI a module named into a handle. See `targeted` in
+      // `moduleHostServices.ts` for why a name it cannot resolve refuses instead of falling back.
+      datasetByUri: (uri) => datasetStore.datasets().find((d) => d.sharedUri === uri || d.id === uri)?.handle,
+      // `options` is forwarded rather than swallowed so a module can parent its write — a transcript
+      // block belongs inside the call that contains it, and creating it unparented then linking it
+      // afterwards leaves a window where a crash orphans the block into the space.
+      /*
+        `options.dataset` names where, and an unresolvable name refuses.
 
-    /*
-      This agent's own records, in the root dataset — the write half of `entities: { scope: 'agent' }`.
-
-      Everything goes through `recordActions` with the root perspective named, so there is one place
-      that knows how a perspective path is resolved and an agent-scoped module cannot reach a space
-      by accident: the path is fixed here rather than passed in.
-    */
-    agentData: {
-      ready: () => !!datasetStore.rootDataset(),
-      create: async (entity, fields, options) => {
-        if (!datasetStore.rootDataset()) return null;
-        const created = (await recordActions.create(entity, fields, {
-          ...options,
-          perspective: ROOT_PERSPECTIVE,
-        })) as { id?: string } | undefined;
+        Passing no perspective used to mean `resolve()` fell through to `datasetStore.currentDataset()`
+        — the space *on screen* — which is right for a write caused by the person looking at it and
+        wrong for every module whose work outlives the view. #161 made a call survive navigation, and
+        transcribe kept writing utterances into whichever space had been opened since. See
+        `DatasetTarget`.
+      */
+      createEntity: async (entity, fields, options) => {
+        const perspective = moduleTarget(options?.dataset);
+        if (!perspective) return null;
+        const rest = Object.fromEntries(Object.entries(options ?? {}).filter(([key]) => key !== 'dataset'));
+        const created = (await createInDataset(entity, fields, perspective, rest)) as { id?: string } | undefined;
         return created?.id ?? null;
       },
-      find: async (entity, query) => {
-        if (!datasetStore.rootDataset()) return [];
-        const [Model, p] = resolve(entity, { perspective: ROOT_PERSPECTIVE });
-        const rows = (await Model.findAll(p, query as never)) as unknown as Record<string, unknown>[];
-        return rows ?? [];
-      },
-      remove: async (entity, id) => {
-        if (!datasetStore.rootDataset()) return;
-        await recordActions.delete(entity, id, { perspective: ROOT_PERSPECTIVE });
-      },
-    },
 
-    // Add-one on a to-many relation. An instance bound to an existing base expression is enough —
-    // `addRelationValue` writes a single link and never reads the current set, which is what makes
-    // several agents appending to the same list safe without coordination.
-    linkEntity: async (entity, id, relation, value) => {
-      if (!datasetStore.currentDataset()) return;
-      const [Model, p] = resolve(entity);
-      const instance = new (Model as unknown as new (perspective: unknown, base: string) => Record<string, unknown>)(
-        p,
-        id,
-      );
-      const add = instance[`add${relation.charAt(0).toUpperCase()}${relation.slice(1)}`];
-      if (typeof add !== 'function') {
-        console.warn(`linkEntity: ${entity} has no to-many relation "${relation}"`);
-        return;
-      }
-      await (add as (v: string) => Promise<void>).call(instance, value);
-    },
-  });
+      /*
+        This agent's own records, in the root dataset — the write half of `entities: { scope: 'agent' }`.
+
+        Everything goes through `recordActions` with the root perspective named, so there is one place
+        that knows how a perspective path is resolved and an agent-scoped module cannot reach a space
+        by accident: the path is fixed here rather than passed in.
+      */
+      agentData: {
+        ready: () => !!datasetStore.rootDataset(),
+        create: async (entity, fields, options) => {
+          if (!datasetStore.rootDataset()) return null;
+          const created = (await recordActions.create(entity, fields, {
+            ...options,
+            perspective: ROOT_PERSPECTIVE,
+          })) as { id?: string } | undefined;
+          return created?.id ?? null;
+        },
+        find: async (entity, query) => {
+          if (!datasetStore.rootDataset()) return [];
+          const [Model, p] = resolve(entity, { perspective: ROOT_PERSPECTIVE });
+          const rows = (await Model.findAll(p, query as never)) as unknown as Record<string, unknown>[];
+          return rows ?? [];
+        },
+        update: async (entity, id, fields) => {
+          if (!datasetStore.rootDataset()) return;
+          await recordActions.update(entity, id, fields, { perspective: ROOT_PERSPECTIVE });
+        },
+        remove: async (entity, id) => {
+          if (!datasetStore.rootDataset()) return;
+          await recordActions.delete(entity, id, { perspective: ROOT_PERSPECTIVE });
+        },
+      },
+
+      // Add-one on a to-many relation. An instance bound to an existing base expression is enough —
+      // `addRelationValue` writes a single link and never reads the current set, which is what makes
+      // several agents appending to the same list safe without coordination.
+      linkEntity: async (entity, id, relation, value, options) => {
+        const p = moduleTarget(options?.dataset);
+        if (!p) return;
+        const Model = getEntity(entity);
+        const instance = new (Model as unknown as new (perspective: unknown, base: string) => Record<string, unknown>)(
+          p,
+          id,
+        );
+        const add = instance[`add${relation.charAt(0).toUpperCase()}${relation.slice(1)}`];
+        if (typeof add !== 'function') {
+          console.warn(`linkEntity: ${entity} has no to-many relation "${relation}"`);
+          return;
+        }
+        await (add as (v: string) => Promise<void>).call(instance, value);
+      },
+    }),
+  );
 
   const stores: Stores = {
     sessionStore,
@@ -287,18 +344,56 @@ export default function TemplateProvider() {
     });
   }
 
-  // Resolves a dot-path string like 'datasetStore.rootDataset' against the stores object.
-  // Only called at action-dispatch time, so `stores` is always fully initialized.
+  /**
+   * The dataset accessors a `perspective` option may name.
+   *
+   * ## Why this is a list and not a walk
+   *
+   * It used to walk the **raw** `stores` object — the host's own handle, holding every store
+   * unfiltered — and then *call whatever it landed on*. The third argument of `record.create` flows
+   * straight here from a template, so
+   *
+   * ```json
+   * { "$action": "record.create", "args": ["TextBlock", {}, { "perspective": "sessionStore.logout" }] }
+   * ```
+   *
+   * logged the user out from a synced space template, and `runtimeStore.restartExecutor`,
+   * `runtimeStore.exportDatabase` and `themeStore.restorePersonalTheme` were reachable the same way.
+   * `buildTemplateBag` protects `{ "$action": "sessionStore.logout" }` and did nothing for this
+   * closure's own lookup — a filtered bag around an unfiltered walk.
+   *
+   * The fix is not a better walk. The option means *which dataset*, and the datasets are a closed
+   * set of four accessors the host itself names; there is no template for which the answer is "some
+   * arbitrary path". So this is the whole vocabulary, and anything else resolves to null — which
+   * falls through to the current dataset, exactly as an omitted option does.
+   *
+   * Adding a dataset accessor to `DatasetStore` means adding it here. That is the point: a new one
+   * is a deliberate widening of what a template may write into, not something that arrives by
+   * being reachable.
+   */
+  const PERSPECTIVE_PATHS = new Set([
+    'datasetStore.currentDataset',
+    'datasetStore.rootDataset',
+    'datasetStore.globalDataset',
+    'datasetStore.marketplaceDataset',
+  ]);
+
+  // Resolves one of the named dataset accessors above. Only called at action-dispatch time, so
+  // `stores` is always fully initialized.
   function resolvePerspective(path?: string): DatasetProxy | null {
-    if (!path) return null;
-    const [storeName, ...rest] = path.split('.');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let val: any = (stores as Record<string, unknown>)[storeName];
-    for (const key of rest) val = val?.[key];
-    if (typeof val === 'function') val = val();
+    if (!path || !PERSPECTIVE_PATHS.has(path)) {
+      if (path) console.warn(`perspective: "${path}" is not a dataset; using the current one`);
+      return null;
+    }
+    const [storeName, member] = path.split('.');
+    const store = (stores as Record<string, Record<string, unknown>>)[storeName];
+    const accessor = store?.[member];
+    // Every entry above is a dataset accessor, so it is a function; guarded anyway rather than
+    // assumed, since the assertion this list makes is about *names*, not about shapes.
+    let val: unknown = typeof accessor === 'function' ? (accessor as () => unknown)() : accessor;
     // Dataset accessors resolve to refs; model calls consume the handle inside.
-    if (val && typeof val === 'object' && 'handle' in val) val = val.handle;
-    return val ?? null;
+    if (val && typeof val === 'object' && 'handle' in val) val = (val as { handle: unknown }).handle;
+    return (val as DatasetProxy | null) ?? null;
   }
 
   // Mutations need the raw model class (create/update/delete), not the renderer's read-only
@@ -323,7 +418,22 @@ export default function TemplateProvider() {
     whatever bag it is given, which is the same division that keeps `ModuleStoreDeps` honest.
   */
   const chromeBag = buildTemplateBag(stores, { grants: CHROME_TIER });
-  const templateBag = buildTemplateBag(stores, { grants: SPACE_TIER });
+  /*
+    The space bag, with the host's own confirmation in front of every destructive action.
+
+    Only this bag. Chrome is authored here, in this repo, and asks its own questions where it needs
+    to — `removeAccountModal`, the account-removal flow, the editor's discard guards — so guarding
+    it too would put two dialogs in front of one click. A space template is the case the flag was
+    invented for: it arrives from a stranger, so whether it asks before deleting is the stranger's
+    decision, and this takes that decision away from them.
+  */
+  const templateBag = buildTemplateBag(stores, {
+    grants: SPACE_TIER,
+    onDestructive: (path, args) => shellStore.requestDestructive(path, args),
+    // What each module keeps for chrome. Declared by the module, since only it knows which of its
+    // members reach past the space on screen — see `ModuleStoreSurface`.
+    moduleChromeOnly: moduleRegistry.chromeOnlyStoreMembers(),
+  });
 
   /*
     What a drag looks like. Registered from here because it is the same kind of knowledge as
@@ -665,7 +775,17 @@ export default function TemplateProvider() {
       // personal space, where there is nobody to share with, and the composer edits alone.
       collab={(nodeId) => {
         const handle = datasetStore.currentDataset()?.handle;
-        return handle ? createCollabSession(sessionStore.ephemeralPort, handle, nodeId) : null;
+        if (!handle) return null;
+        return createCollabSession(sessionStore.ephemeralPort, handle, nodeId, {
+          // Who may write into a draft open here. Read live rather than captured: a session
+          // outlives the frame it was created in, and a member who joins mid-session should be
+          // able to type. Null while the roster is still loading — see the session's docblock.
+          members: () => {
+            const dids = spaceStore.memberDids();
+            return dids.length ? dids : null;
+          },
+          self: () => sessionStore.me()?.did,
+        });
       }}
       collabUser={() => {
         const did = sessionStore.me()?.did ?? '';

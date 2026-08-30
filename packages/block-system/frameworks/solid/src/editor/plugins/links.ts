@@ -3,6 +3,7 @@
  * Mod-click a link to open it. Setting and clearing a link on the current selection is here too,
  * for the toolbar and the Mod-K prompt to call.
  */
+import { safeHref } from '@we/design-utils';
 import type { MarkType } from 'prosemirror-model';
 import { Plugin } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
@@ -13,18 +14,33 @@ export function isUrl(text: string): boolean {
   return URL_ONLY.test(text.trim());
 }
 
+/**
+ * The href to store, or `''` for one that would not be safe to click.
+ *
+ * Sanitised on the way in as well as on the way out. `toDOM` is the boundary that matters — it is
+ * what renders a peer's mark — but storing a `javascript:` href and refusing to render it would
+ * leave the document carrying something no reader can see and every future consumer must remember
+ * to filter. Cheaper to never write it.
+ */
 function normalizeHref(text: string): string {
   const t = text.trim();
-  return t.startsWith('www.') ? `https://${t}` : t;
+  return safeHref(t.startsWith('www.') ? `https://${t}` : t);
 }
 
-/** Apply a link to the selection, or remove it with an empty href. */
+/**
+ * Apply a link to the selection, or remove it with an empty href.
+ *
+ * An href `safeHref` refuses reads as an empty one — the link is removed rather than written with
+ * nothing in it, so a `javascript:` URL typed into the Mod-K prompt leaves the text unlinked
+ * instead of leaving an `<a>` that goes nowhere.
+ */
 export function setLink(view: EditorView, href: string): void {
   const { state } = view;
   const link: MarkType = state.schema.marks.link;
   const { from, to, empty } = state.selection;
   const tr = state.tr;
-  if (!href.trim()) {
+  const safe = normalizeHref(href);
+  if (!safe) {
     if (empty) {
       // Remove the link around the caret.
       const range = linkRangeAt(view, from);
@@ -33,17 +49,13 @@ export function setLink(view: EditorView, href: string): void {
   } else if (empty) {
     const range = linkRangeAt(view, from);
     if (range) {
-      tr.removeMark(range.from, range.to, link).addMark(
-        range.from,
-        range.to,
-        link.create({ href: normalizeHref(href) }),
-      );
+      tr.removeMark(range.from, range.to, link).addMark(range.from, range.to, link.create({ href: safe }));
     } else {
       const text = href.trim();
-      tr.insertText(text, from, to).addMark(from, from + text.length, link.create({ href: normalizeHref(href) }));
+      tr.insertText(text, from, to).addMark(from, from + text.length, link.create({ href: safe }));
     }
   } else {
-    tr.removeMark(from, to, link).addMark(from, to, link.create({ href: normalizeHref(href) }));
+    tr.removeMark(from, to, link).addMark(from, to, link.create({ href: safe }));
   }
   tr.removeStoredMark(link);
   view.dispatch(tr);
@@ -111,7 +123,11 @@ export function linksPlugin(): Plugin {
       handleClick(view, _pos, event) {
         const target = (event.target as HTMLElement | null)?.closest?.('a[href]') as HTMLAnchorElement | null;
         if (!target || !(event.metaKey || event.ctrlKey)) return false;
-        window.open(target.href, '_blank', 'noopener,noreferrer');
+        // The attribute, not `.href` — a refused link renders with an empty one, and the property
+        // would resolve that against the current page and reopen the app in a new tab.
+        const href = safeHref(target.getAttribute('href') ?? '');
+        if (!href) return false;
+        window.open(href, '_blank', 'noopener,noreferrer');
         return true;
       },
     },

@@ -141,7 +141,7 @@ describe('transport and device lifetime', () => {
    * unregistering during a call — which a hot reload does — dropped the only reference to the live
    * peer connections and the media stream, leaving the camera on with nothing able to close it.
    */
-  function callable() {
+  function callable(options: { unicast?: string; personal?: boolean } = {}) {
     const signal = <T>(initial: T): [() => T, (next: T) => void] => {
       let value = initial;
       return [() => value, (next: T) => (value = next)];
@@ -149,27 +149,66 @@ describe('transport and device lifetime', () => {
 
     let disposed = 0;
     const scope = {
-      capabilities: { unicast: 'emulated', broadcast: true, coalesce: true, confidential: false },
+      capabilities: {
+        unicast: options.unicast ?? 'emulated',
+        broadcast: true,
+        coalesce: true,
+        confidential: false,
+      },
       channel: () => ({ publish: () => {}, onMessage: () => () => {} }),
       dispose: () => (disposed += 1),
     };
 
     const disposers: Array<() => void> = [];
     let created = 0;
+    // The host's removal channel — see `ModuleDatasetAccess.onRemoved`. Held so a test can fire it.
+    let notifyRemoved: ((uri: string) => void) | null = null;
+    /*
+      `signal` here is a plain closure with no subscribers, so nothing re-runs on its own. The
+      effects are kept and re-run by hand instead, which is enough for what is being asserted: an
+      effect that reads a value and acts on it does the same thing whether a framework or a test
+      decided it was time to look again.
+    */
+    const effects: Array<() => void> = [];
+    let me: string | null = 'did:test:me';
     const store = createCallStore({
       signal,
+      effect: (fn: () => void) => {
+        effects.push(fn);
+        fn();
+      },
       dataset: () => ({ id: 'ds' }),
       datasetUri: () => 'inmemory://ds',
-      selfId: () => 'did:test:me',
-      ephemeral: () => scope,
+      datasets: {
+        get: () => undefined,
+        open: () => {},
+        openRef: () => {},
+        onRemoved: (cb: (uri: string) => void) => {
+          notifyRemoved = cb;
+          return () => {
+            notifyRemoved = null;
+          };
+        },
+      },
+      selfId: () => me,
+      ephemeral: () => (options.personal ? null : scope),
       presence: { peers: () => [], setActivity: () => {}, clearActivity: () => {} },
       onDispose: (fn: () => void) => disposers.push(fn),
-      // Starting a call now writes its record first, so the harness has to answer for one.
       createEntity: async () => `rec-${++created}`,
       createPeerConnection: () => ({}) as RTCPeerConnection,
     } as never) as ReturnType<typeof createCallStore> & Record<string, (...args: unknown[]) => unknown>;
 
-    return { store, scopeDisposals: () => disposed, disposers };
+    return {
+      store,
+      scopeDisposals: () => disposed,
+      recordsCreated: () => created,
+      disposers,
+      removeDataset: (uri: string) => notifyRemoved?.(uri),
+      signOut: () => {
+        me = null;
+        for (const run of effects) run();
+      },
+    };
   }
 
   it('shows the video when the call starts', async () => {
@@ -197,6 +236,36 @@ describe('transport and device lifetime', () => {
 
     expect(store.stageOpen()).toBe(false);
     expect(store.dockEdge()).toBeNull();
+  });
+
+  it('writes no call record when the call cannot run', async () => {
+    /*
+      The record used to be created first and `join` called afterwards, so every refused start left
+      a `CollectionBlock` behind for a call that never happened — one per press, all `kind: 'call'`,
+      all of them appearing wherever calls are listed with no participants, no transcript and
+      nothing to tell them apart from a real call nobody spoke in.
+
+      A personal space is the case that made it constant rather than occasional: a call there can
+      never work, so pressing the button was purely a way to litter the space.
+    */
+    const personal = callable({ personal: true });
+    await personal.store.startCall();
+    await Promise.resolve();
+
+    expect(personal.recordsCreated()).toBe(0);
+    expect(personal.store.callId()).toBeNull();
+    expect(personal.store.problem()).toMatch(/personal/i);
+
+    // And the other refusal, which is a property of the transport rather than of the space: with no
+    // unicast at all every offer reaches everybody, so the call is refused before it is recorded.
+    const broadcastOnly = callable({ unicast: 'none' });
+    await broadcastOnly.store.startCall();
+    await Promise.resolve();
+
+    expect(broadcastOnly.recordsCreated()).toBe(0);
+    expect(broadcastOnly.store.callId()).toBeNull();
+    // And the scope opened to reach that verdict was given back, rather than leaked once per press.
+    expect(broadcastOnly.scopeDisposals()).toBe(1);
   });
 
   it('gives the transport scope back when the call ends', async () => {
@@ -229,13 +298,56 @@ describe('transport and device lifetime', () => {
 
     await store.startCall();
     await Promise.resolve();
-    expect(disposers).toHaveLength(1);
+    expect(store.callId()).not.toBeNull();
 
     for (const dispose of disposers) dispose();
 
     // The camera-stays-on case: unregistering during a call must close what the call holds.
     expect(scopeDisposals()).toBe(1);
     expect(store.callId()).toBeNull();
+  });
+
+  it('tears the call down when the space it is in is deleted', async () => {
+    /*
+      Nothing did. `removeDataset` tore the perspective down and left this store holding the media
+      tracks, the peer connections and a presence lease heartbeating into a perspective that no
+      longer existed.
+    */
+    const { store, scopeDisposals, removeDataset } = callable();
+
+    await store.startCall();
+    await Promise.resolve();
+
+    removeDataset('inmemory://ds');
+
+    expect(store.callId()).toBeNull();
+    expect(scopeDisposals()).toBe(1);
+  });
+
+  it('ignores the removal of a space the call is not in', async () => {
+    const { store, scopeDisposals, removeDataset } = callable();
+
+    await store.startCall();
+    await Promise.resolve();
+
+    removeDataset('inmemory://somewhere-else');
+
+    expect(store.callId()).not.toBeNull();
+    expect(scopeDisposals()).toBe(0);
+  });
+
+  it('ends the call when the agent signs out', async () => {
+    // `logout` locks the agent and returns to the sign-in screen without unregistering anything, so
+    // on desktop — which does not reload — the camera light stayed on through the login screen.
+    const { store, scopeDisposals, signOut } = callable();
+
+    await store.startCall();
+    await Promise.resolve();
+
+    signOut();
+
+    expect(store.callId()).toBeNull();
+    expect(scopeDisposals()).toBe(1);
   });
 });
 

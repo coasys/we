@@ -16,7 +16,15 @@ export interface RouteStore {
   params: Accessor<Record<string, string>>;
 
   // Setters
-  setNavigateFunction: (navigate: NavigateFunction) => void;
+  /**
+   * Lend the router's `navigate`. Returns the disposer — hand it to `onCleanup`.
+   *
+   * Without one, a layout that unmounted (a template switch is exactly that) left this holding the
+   * dead router's function, and every subsequent `routeStore.navigate` went to a router that no
+   * longer renders anything: a link that visibly does nothing, with no warning, because the slot
+   * was full. Clearing it restores the honest "Navigate function not available yet" instead.
+   */
+  setNavigateFunction: (navigate: NavigateFunction) => () => void;
   setCurrentPath: (path: string, search?: string) => void;
 
   // Actions
@@ -51,6 +59,12 @@ function readParams(search?: string): Record<string, string> {
 export function RouteStoreProvider(props: ParentProps) {
   const [currentPath, setCurrentPathSignal] = createSignal('');
   const [navigateFunction, setNavigateFunction] = createSignal<NavigateFunction | null>(null);
+
+  /** Lend a `navigate`, and take it back again — but only if it is still the one that was lent. */
+  function provideNavigate(navigate: NavigateFunction): () => void {
+    setNavigateFunction(() => navigate);
+    return () => setNavigateFunction((current) => (current === navigate ? null : current));
+  }
   const [params, setParamsSignal] = createSignal<Record<string, string>>(readParams());
   const segments = createMemo(() => currentPath().split('/').filter(Boolean));
 
@@ -134,7 +148,7 @@ export function RouteStoreProvider(props: ParentProps) {
     params,
 
     // Setters
-    setNavigateFunction,
+    setNavigateFunction: provideNavigate,
     setCurrentPath,
 
     // Actions

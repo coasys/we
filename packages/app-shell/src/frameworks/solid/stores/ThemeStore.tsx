@@ -1,5 +1,6 @@
 import type { ThemeKey } from '@shared/registries/themeRegistry';
 import { isValidThemeKey, themeRegistry } from '@shared/registries/themeRegistry';
+import { explain } from '@shared/userMessage';
 import { toastService } from '@we/components/solid';
 import type { ThemeData } from '@we/entities';
 import {
@@ -80,7 +81,7 @@ export interface ThemeStore {
 
   // Actions
   setCurrentTheme: (themeId: string) => void;
-  setDefaultTheme: (themeId: string) => void;
+  setDefaultTheme: (themeId: string) => Promise<boolean>;
   /**
    * The role the theme editor should jump to, kebab-case, or empty.
    *
@@ -105,7 +106,7 @@ export interface ThemeStore {
    */
   systemThemes: Accessor<{ light: string; dark: string; resolved: 'light' | 'dark' }>;
   /** Set one side of the pair. An empty id returns that side to the built-in. */
-  setSystemTheme: (polarity: 'light' | 'dark', themeId: string) => void;
+  setSystemTheme: (polarity: 'light' | 'dark', themeId: string) => Promise<boolean>;
   /** Options for either side, with a "Built-in" entry a schema could not prepend itself. */
   systemThemeOptions: Accessor<{ label: string; value: string }[]>;
   /**
@@ -1009,10 +1010,10 @@ export function ThemeStoreProvider(props: ParentProps) {
     setFocusedRole(role);
   }
 
-  function setDefaultTheme(themeId: string) {
+  function setDefaultTheme(themeId: string): Promise<boolean> {
     localStorage.setItem(THEME_KEY, themeId);
     setCurrentThemeId(themeId);
-    datasetStore.updateAgentSettings({ defaultThemeId: themeId });
+    return datasetStore.updateAgentSettings({ defaultThemeId: themeId });
   }
 
   /**
@@ -1025,12 +1026,12 @@ export function ThemeStoreProvider(props: ParentProps) {
    * being resolved is the one input that cannot be answered, and the resolver's own guard should
    * not be the only thing standing between a click and a loop.
    */
-  function setSystemTheme(polarity: 'light' | 'dark', themeId: string) {
-    if (themeId === SYSTEM_THEME_ID) return;
+  function setSystemTheme(polarity: 'light' | 'dark', themeId: string): Promise<boolean> {
+    if (themeId === SYSTEM_THEME_ID) return Promise.resolve(false);
     const key = polarity === 'dark' ? SYSTEM_DARK_KEY : SYSTEM_LIGHT_KEY;
     if (themeId) localStorage.setItem(key, themeId);
     else localStorage.removeItem(key);
-    datasetStore.updateAgentSettings(
+    return datasetStore.updateAgentSettings(
       polarity === 'dark' ? { systemDarkThemeId: themeId } : { systemLightThemeId: themeId },
     );
   }
@@ -1545,6 +1546,23 @@ export function ThemeStoreProvider(props: ParentProps) {
     }
 
     try {
+      /*
+        Uploaded before anything is let go — the same argument as `templateStore.publishToMarketplace`.
+
+        Clearing the relation and then adding one file at a time meant an upload that failed part
+        way through left the listing with no screenshots and a "Failed to publish" toast: the
+        working listing destroyed by the attempt to update it.
+      */
+      const uploaded = await Promise.all(
+        options.screenshots.map(async (file) =>
+          ImageBlock.create(marketplacePerspective, {
+            src: asFileField(await compressImageToFileData(file, `screenshot-${Date.now()}`)),
+            altText: 'Screenshot',
+            version: 1,
+          }),
+        ),
+      );
+
       if (existing) {
         existing.name = options.name;
         existing.description = options.description;
@@ -1556,16 +1574,11 @@ export function ThemeStoreProvider(props: ParentProps) {
         existing.css = base.css ? asFileField(encodeToFileData(base.css, 'theme.css', 'text/css')) : null;
         await existing.save();
 
-        await existing.setScreenshots([]);
-        for (const file of options.screenshots) {
-          const fileData = await compressImageToFileData(file, `screenshot-${Date.now()}`);
-          const img = await ImageBlock.create(marketplacePerspective, {
-            src: asFileField(fileData),
-            altText: 'Screenshot',
-            version: 1,
-          });
-          await existing.addScreenshots(img);
-        }
+        // The new pictures are already uploaded — see `uploaded` above. Clearing the relation first
+        // and adding one at a time meant a failed upload destroyed the listing's existing
+        // screenshots and then reported failure; the same shape as `templateStore`'s, fixed the same
+        // way. Only when there are new ones: an update with none picked keeps what is there.
+        if (uploaded.length) await existing.setScreenshots(uploaded);
         toastService.success(`Theme "${options.name}" updated in marketplace (v${existing.version})`);
       } else {
         const theme = await Theme.create(marketplacePerspective, {
@@ -1580,15 +1593,7 @@ export function ThemeStoreProvider(props: ParentProps) {
             : null,
           css: base.css ? asFileField(encodeToFileData(base.css, 'theme.css', 'text/css')) : null,
         });
-        for (const file of options.screenshots) {
-          const fileData = await compressImageToFileData(file, `screenshot-${Date.now()}`);
-          const img = await ImageBlock.create(marketplacePerspective, {
-            src: asFileField(fileData),
-            altText: 'Screenshot',
-            version: 1,
-          });
-          await theme.addScreenshots(img);
-        }
+        if (uploaded.length) await theme.setScreenshots(uploaded);
         toastService.success(`Theme "${options.name}" published to marketplace`);
       }
       return true;
@@ -1654,8 +1659,7 @@ export function ThemeStoreProvider(props: ParentProps) {
       await loadSpaceThemes();
       toastService.success(`"${source.name}" added to this space`);
     } catch (error) {
-      console.error('ThemeStore: installToSpace error', error);
-      toastService.error(`Failed to add theme: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toastService.error(explain(error, 'Could not add that theme to this space'));
     } finally {
       setOperationLoading(null);
     }

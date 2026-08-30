@@ -1,5 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { confirmModal, sectionCard } from '@we/template-kit';
+import { confirmModal, discardGuard, sectionCard } from '@we/template-kit';
 
 /**
  * The Models section of space settings: the content models this space defines, the wizard that
@@ -934,13 +934,30 @@ const shapeWizardModal: SchemaNode = {
   ],
 };
 
+/*
+  Closing the hint editor asks first, when there is something to lose.
+
+  It was the one draft surface in the app with no guard: a backdrop click or Escape threw away every
+  hint somebody had written, silently, while the wizard beside it asked. `hintEditorDirty` compares
+  against the state the editor opened in rather than testing for content — every row opens pre-filled
+  with the declared hint, so "holds something" is true of an editor nobody has touched.
+*/
+const hintGuard = discardGuard({
+  dirty: { $: 'shapeStore.hintEditorDirty' },
+  close: { $action: 'shapeStore.closeHintEditor' },
+  title: 'Discard these hints?',
+  body: 'The hints you have written will be lost. They have not been saved to this space.',
+  keepLabel: 'Keep editing',
+});
+
 /** Per-space hint tuning for one entity. Mounted while `shapeStore.hintEditor` is non-null. */
 const hintEditorModal: SchemaNode = {
   type: 'we-modal',
   // Title and actions slotted: a model with many properties scrolls its hint rows, never the
   // heading that says whose hints these are or the buttons that save them. `lg` for the same
   // reason as the wizard — a hint row is a label over a full-width field.
-  props: { size: 'lg', close: { $action: 'shapeStore.closeHintEditor' } },
+  props: { size: 'lg', close: hintGuard.close },
+  $localState: hintGuard.localState,
   children: [
     {
       type: 'Row',
@@ -1043,7 +1060,9 @@ const hintEditorModal: SchemaNode = {
           children: [
             {
               type: 'we-button',
-              props: { variant: 'ghost', onClick: { $action: 'shapeStore.closeHintEditor' } },
+              // Through the guard as well, so there is one way out of this modal rather than two
+              // that disagree about whether the work matters.
+              props: { variant: 'ghost', onClick: hintGuard.close },
               children: ['Cancel'],
             },
             {
@@ -1060,6 +1079,9 @@ const hintEditorModal: SchemaNode = {
         },
       ],
     },
+    // Inside the modal, because the flag it reads is declared here — and because a question about
+    // this modal belongs in front of it.
+    hintGuard.node,
   ],
 };
 
@@ -1146,7 +1168,14 @@ const shapeRow: SchemaNode = {
                 variant: 'ghost',
                 size: 'sm',
                 square: true,
-                onClick: { $setLocal: 'confirmDeleteShapeId', value: { $: 'shape.id' } },
+                /*
+                  No `confirmModal`: the host raises its own in front of every destructive store
+                  action, from the tier boundary. This one used to be gated on the row's id rather
+                  than a boolean, because a list needs to say *which* — a question the host's dialog
+                  does not have, since it is handed the arguments of the call it is guarding.
+                  See DestructivePrompt.schema.ts.
+                */
+                onClick: { $action: 'shapeStore.deleteShape', args: [{ $: 'shape.id' }] },
               },
               children: [{ type: 'we-icon', props: { name: 'trash' } }],
             },
@@ -1230,20 +1259,6 @@ const replaceFieldsConfirmModal: SchemaNode = confirmModal({
   confirm: { $action: 'shapeStore.generateShapeFields' },
 });
 
-/*
-  Gated on the id rather than a boolean — the list has a row per model and the flag has to say
-  *which* — so closing means clearing the string, not setting a flag false. Which is one of the two
-  shapes the old `openLocal` option could not express.
-*/
-const deleteConfirmModal: SchemaNode = confirmModal({
-  open: { $: 'local.confirmDeleteShapeId' },
-  close: { $setLocal: 'confirmDeleteShapeId', value: '' },
-  title: 'Remove this model?',
-  body: 'Entries already created with it keep their data, and other members keep seeing them — only the definition is removed from this space.',
-  confirmLabel: 'Remove',
-  confirm: { $action: 'shapeStore.deleteShape', args: [{ $: 'local.confirmDeleteShapeId' }] },
-});
-
 export const modelsSection: SchemaNode = {
   ...sectionCard({
     title: 'Models',
@@ -1318,7 +1333,6 @@ export const modelsSection: SchemaNode = {
       { type: '$if', props: { condition: { $: 'shapeStore.hintEditor' }, then: hintEditorModal } },
       discardConfirmModal,
       replaceFieldsConfirmModal,
-      deleteConfirmModal,
     ],
   }),
   $localState: {

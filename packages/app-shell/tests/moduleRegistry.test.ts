@@ -65,6 +65,8 @@ describe('slotRegistry — faithful generalisation of shellRegistry', () => {
       'core:removeAccount',
       'core:createSpace',
       'core:namePrompt',
+      'core:installPrompt',
+      'core:destructivePrompt',
       'core:sidebar',
       'core:templateEditor',
       'core:chromeRail',

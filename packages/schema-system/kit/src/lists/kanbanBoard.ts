@@ -25,7 +25,7 @@
  * whichever of two simultaneous movers lost. Moving a card *between* columns works today, because
  * that is a relink rather than an ordering.
  */
-import type { SchemaNode } from '@we/schema-shared';
+import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
 import { emptyNote } from '../states/emptyState.ts';
 import type { AnchorId } from '../types.ts';
@@ -43,6 +43,20 @@ export interface KanbanBoardOptions {
   empty: SchemaNode;
   /** Width of each column. Defaults to `'300px'`. */
   columnWidth?: string;
+  /**
+   * What moving a card between columns *does* — the caller's, not the kit's.
+   *
+   * This was `{ $action: 'spaceStore.moveChild' }`, written into the fragment. `@we/schema-kit` is
+   * the portable tier and its whole promise is that it names no store: a fragment naming one is a
+   * fragment that only works inside WE, in the package whose reason for existing is that it works
+   * anywhere. The guard meant to catch that greps for `$store`, a token that no longer exists, so
+   * this sat green in the file the README points at as the example.
+   *
+   * Takes the handler, so a caller can pass `spaceStore.moveChild` (which WE's own kanban does) or
+   * anything else. The move is described the way the menu reports it: the card, the column it is
+   * leaving, and the column it is joining, which arrives as `arg.id`.
+   */
+  onMove: (of: { card: string; from: string; to: SchemaProp }) => SchemaProp;
 }
 
 export function kanbanBoard(opts: KanbanBoardOptions): SchemaNode {
@@ -143,7 +157,7 @@ export function kanbanBoard(opts: KanbanBoardOptions): SchemaNode {
  * waiting on CRDT ordering. A menu moves a card correctly today and keeps working when dragging
  * arrives beside it.
  */
-export function moveCardMenu(card: string, column: string): SchemaNode {
+export function moveCardMenu(card: string, column: string, onMove: KanbanBoardOptions['onMove']): SchemaNode {
   return {
     type: 'DropdownMenu',
     props: {
@@ -157,10 +171,7 @@ export function moveCardMenu(card: string, column: string): SchemaNode {
         entry through `onSelect`, and the one handler reads its id as `arg`.
       */
       items: { $: 'local.columnRows.map(c, { id: c.id, label: c.title })' },
-      onSelect: {
-        $action: 'spaceStore.moveChild',
-        args: [{ $: `${card}.id` }, { $: `${column}.id` }, { $: 'arg.id' }],
-      },
+      onSelect: onMove({ card: `${card}.id`, from: `${column}.id`, to: { $: 'arg.id' } }),
     },
   };
 }

@@ -10,6 +10,8 @@
  * would be a feel decision made in a package that cannot see the surface.
  */
 
+import { deepElementFromPoint } from './deepElement';
+
 /** How close to an edge, in pixels, before it starts scrolling. */
 const EDGE_BAND = 48;
 /** Pixels per move event at the very edge. */
@@ -41,7 +43,9 @@ function step(position: number, low: number, high: number): number {
  * which is also why it never blocks a drop.
  */
 export function autoscroll(x: number, y: number): void {
-  const under = document.elementFromPoint?.(x, y) ?? null;
+  // Through shadow roots: the scroller inside a `we-scroll-area` is *below* its host, so walking up
+  // from the host could never reach it. See `deepElementFromPoint`.
+  const under = deepElementFromPoint(x, y);
   const box = scrollableAncestor(under);
   if (!box) return;
 

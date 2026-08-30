@@ -145,7 +145,7 @@ export function dockGeometryPath(id: string, field: string): string {
 /**
  * Wrap a panel in the box the host has decided it occupies, and in the controls that move it.
  *
- * Every geometric prop is a `$store` reference rather than a literal, which is what keeps a panel
+ * Every geometric prop is a store reference rather than a literal, which is what keeps a panel
  * *moving* rather than being rebuilt: changing snap, size or displacement rewrites props on a
  * container that stays mounted. Rebuilding it would remount the panel's whole subtree, and a subtree
  * holding live `<video>` elements loses its streams when that happens — the same reference-identity

@@ -140,11 +140,24 @@ export function installedList(opts: InstalledListOptions): SchemaNode {
                       },
                     },
                   },
-                  // Delete — only the author
+                  /*
+                    Delete — whoever made it, or whoever runs the space.
+
+                    This was `author == me.did` alone, which meant a template or theme installed
+                    into a space by one member could not be removed by anybody else — the space's
+                    own author included. `installToSpace` therefore had no way back: the copy it
+                    made was permanent for everyone but the person who made it.
+
+                    `canAdministerCurrentSpace` is the question the control is actually asking, and
+                    an affordance rather than enforcement — a neighbourhood is writable by every
+                    member, so this decides who is *offered* the button, not who could delete.
+                  */
                   {
                     type: '$if',
                     props: {
-                      condition: { $: `${opts.as}.author == me.did` },
+                      condition: {
+                        $: `${opts.as}.author == me.did || spaceStore.canAdministerCurrentSpace`,
+                      },
                       then: {
                         type: 'we-button',
                         props: {

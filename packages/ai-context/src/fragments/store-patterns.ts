@@ -33,8 +33,8 @@ Iterating over store data:
         "onClick": { "$action": "routeStore.navigate", "args": [{ "$": "\`/space/\${space.uuid}\`" }] }
       },
       "children": [
-        { "type": "we-avatar", "props": { "image": "$space.avatar", "initials": "$space.name", "size": "sm" } },
-        { "type": "we-text", "children": ["$space.name"] }
+        { "type": "we-avatar", "props": { "image": { "$": "space.avatar" }, "hash": { "$": "space.uuid" }, "initials": { "$": "space.name" }, "size": "sm" } },
+        { "type": "we-text", "children": [{ "$": "space.name" }] }
       ]
     }
   ]
@@ -80,8 +80,8 @@ Example — Channel list with conversation count and latest conversation:
   "children": [{
     "type": "Row",
     "children": [
-      { "type": "we-text", "children": ["$channel.name"] },
-      { "type": "we-text", "children": ["$channel.$conversationCount"] }
+      { "type": "we-text", "children": [{ "$": "channel.name" }] },
+      { "type": "we-text", "children": [{ "$": "channel.$conversationCount" }] }
     ]
   }]
 }
@@ -128,7 +128,7 @@ Example — Channel list → Conversation list:
             "variant": "ghost",
             "onClick": { "$action": "routeStore.navigate", "args": [{ "$": "\`/channels/\${channel.id}\`" }] }
           },
-          "children": ["$channel.name"]
+          "children": [{ "$": "channel.name" }]
         }]
       }]
     },
@@ -150,7 +150,7 @@ Example — Channel list → Conversation list:
         },
         "children": [{
           "type": "we-text",
-          "children": ["$convo.conversationName"]
+          "children": [{ "$": "convo.conversationName" }]
         }]
       }]
     }
@@ -226,12 +226,12 @@ Use literal arrays for fixed/sample data:
           "type": "Row",
           "props": { "gap": "300", "ay": "center" },
           "children": [
-            { "type": "we-avatar", "props": { "initials": "$post.author", "size": "sm" } },
-            { "type": "we-text", "props": { "variant": "label" }, "children": ["$post.author"] }
+            { "type": "we-avatar", "props": { "initials": { "$": "post.author" }, "hash": { "$": "post.author" }, "size": "sm" } },
+            { "type": "we-text", "props": { "variant": "label" }, "children": [{ "$": "post.author" }] }
           ]
         },
-        { "type": "we-text", "props": { "variant": "heading-sm" }, "children": ["$post.title"] },
-        { "type": "we-text", "children": ["$post.text"] }
+        { "type": "we-text", "props": { "variant": "heading-sm" }, "children": [{ "$": "post.title" }] },
+        { "type": "we-text", "children": [{ "$": "post.text" }] }
       ]
     }
   ]
@@ -243,10 +243,11 @@ Use $query or a store read for dynamic data (more common in production):
 
 Per-item customization inside $each:
 To style or highlight specific items, add a data flag to those items and use $if on the flag inside the template. Do NOT use index == N comparisons — they are fragile, repetitive, and break when items are reordered.
-Example: add "highlighted": true to one item's data, then use $if on "$post.highlighted" in the template:
-{ "type": "$if", "props": { "condition": "$post.highlighted", "then": { "type": "we-badge", "props": { "variant": "primary" }, "children": ["Featured"] } } }
-For conditional props (e.g. different bg on highlighted items):
-{ "bg": { "$if": { "condition": "$post.highlighted", "then": "primary-50", "else": "neutral-0" } } }
+Example: add "highlighted": true to one item's data, then use $if on the flag in the template:
+{ "type": "$if", "props": { "condition": { "$": "post.highlighted" }, "then": { "type": "we-badge", "props": { "variant": "primary" }, "children": ["Featured"] } } }
+For a conditional PROP, use a ternary in an expression — NOT a prop-level $if, which is a node type
+and resolves to a handler in a value position:
+{ "bg": { "$": "post.highlighted ? 'accent-muted' : 'surface'" } }
 
 Boolean toggle (show/hide, expand/collapse):
 {

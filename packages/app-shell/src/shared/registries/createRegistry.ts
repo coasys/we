@@ -1,5 +1,5 @@
 /**
- * One registry mechanism.
+ * One registry mechanism — and an honest account of what is on it.
  *
  * ## Why
  *
@@ -30,6 +30,37 @@
  * For an ecosystem the sameness matters more than it does for the product: every registry is an
  * install path, and a marketplace that installs into thirteen registries has thirteen ways to
  * half-install something. One shape is one install path.
+ *
+ * ## What is actually on it, and why the rest is not
+ *
+ * "Adopted by 2 of 14" has been a review note three times running, so here is the count in full.
+ * The fourteen are not fourteen registries — most are a different thing wearing the word:
+ *
+ * - **On it, and correctly so.** `dockRegistry` and `slotRegistry`: entries by id, replaced on
+ *   re-registration, read in a stable order, and depended on reactively. `editorDocks` and
+ *   `shellDocks` are not registries at all — they are *registrars*, and everything they register
+ *   goes into those two, so they are on it too.
+ * - **Compile-time maps, not registries.** `templateRegistry`, `viewRegistry`, `themeRegistry`,
+ *   `bundledModules`, and the two generated files behind them. Nothing registers into these at
+ *   runtime: they are a constant the bundler produced from the seed, and their whole surface is
+ *   `keyof typeof` — which is what gives `isValidThemeKey` and `ViewId` their types. Putting them on
+ *   a runtime `Map` would *delete* that, in exchange for a change channel with nothing to announce.
+ *   The name is the misleading part, not the shape.
+ * - **`moduleRegistry`.** The `Map` inside it is three lines under a hundred lines of admission:
+ *   predicate adjudication, manifest validation, backend and framework compatibility, store
+ *   construction, and registration into the two registries above. Its reactivity is already
+ *   `dockRegistry.announce`, because that is where consumers look. Wrapping the storage would move
+ *   three lines and change nothing about the part that matters.
+ * - **`templatePanels`.** Not keyed at all: the declaration *is* the list, replaced wholesale so a
+ *   template that drops a panel can say so, and scoped by which interface declared it. Its change
+ *   channel is deliberately separate from `dockRegistry`'s — see that file for the feedback loop
+ *   that separation prevents.
+ * - **`templateSurface` and `moduleHostServices`.** An allowlist and a service bag. Neither has
+ *   entries, ids or an order.
+ *
+ * So the honest number is "every registry that is one", and the thing to hold to is the rule rather
+ * than the count: **a new place that keeps entries by id and is read back in order is built here.**
+ * A constant map compiled from the seed is not one of those.
  */
 
 export interface RegistryEntry {

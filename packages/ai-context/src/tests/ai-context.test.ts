@@ -223,6 +223,41 @@ describe('contribution surfaces', () => {
     expect(missing, 'these paths in docs/contributing/surfaces.md no longer exist').toEqual([]);
   });
 
+  it('only links anchors that exist in it', () => {
+    /*
+      A heading rename breaks every link to it, and a broken in-document anchor is invisible: the
+      link still renders, the text still reads correctly, and clicking it goes nowhere. The
+      "Schema operators" section became "Expression functions" and the table above it went on
+      pointing at `#schema-operators` from two places.
+
+      GitHub's slug rule: lower-cased, non-alphanumerics dropped, spaces to hyphens.
+    */
+    const slug = (heading: string) =>
+      heading
+        .toLowerCase()
+        .replace(/[^\w\s-]/g, '')
+        .trim()
+        .replace(/\s+/g, '-');
+
+    const headings = new Set([...guide.matchAll(/^#{2,4} (.+)$/gm)].map((m) => slug(m[1].trim())));
+    const anchors = [...guide.matchAll(/\]\(#([A-Za-z0-9-]+)\)/g)].map((m) => m[1]);
+    expect(anchors.length).toBeGreaterThan(10);
+
+    const broken = [...new Set(anchors)].filter((anchor) => !headings.has(anchor));
+    expect(broken, 'these anchors in docs/contributing/surfaces.md point at no heading').toEqual([]);
+  });
+
+  it('does not teach a token the schema language no longer has', () => {
+    /*
+      `$store` was replaced by the expression token in #169. Prose still naming it teaches a
+      spelling the validator rejects — the same class as the reference's own old-string examples,
+      and worse here because this is the document a contributor is sent to first.
+
+      Matched with a word boundary so `$storeName` in an example is not a false positive.
+    */
+    expect(guide, 'docs/contributing/surfaces.md names the removed `$store` token').not.toMatch(/\$store\b/);
+  });
+
   it('keeps the router and the guide agreeing about which surfaces exist', () => {
     /*
       The router in CLAUDE.md is the compressed copy, and a surface added to one and not the other is

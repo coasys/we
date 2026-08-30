@@ -339,6 +339,7 @@ export const storeEntries: StoreEntry[] = [
       templateOverrideOptions: { type: 'array', properties: ['label', 'value'] },
       themeOverrideOptions: { type: 'array', properties: ['label', 'value'] },
       spaceThemePinned: { type: 'boolean' },
+      canAdministerCurrentSpace: { type: 'boolean' },
       moduleInstallSettings: {
         type: 'array',
         properties: ['id', 'name', 'description', 'icon', 'installed'],
@@ -364,6 +365,7 @@ export const storeEntries: StoreEntry[] = [
       'setSpaceDefaultTemplate',
       'setSpaceDefaultTheme',
       'createSignalType',
+      'setSignalTypeRetired',
       'upsertSignal',
       'navigateToSpace',
       'openRecordRef',
@@ -817,7 +819,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(overrides: Partial<ThemeOverrides>): while editing, merges parameter changes (hues, saturation, lightness range, role pins) into the draft. Applied live',
         updateEditingCss: '(css: string): while editing, replaces the draft’s raw CSS layer. Applied live',
         updateEditingMeta: '(fields: { name?, icon? }): while editing, renames or re-icons the draft',
-        cancelEditing: '(): ends the editing session and discards the draft, restoring what was applied before',
+        cancelEditing:
+          '(): ends the editing session and discards the draft, restoring what was applied before. Note the theme *panel* autosaves on unmount, so closing the panel keeps the draft — this is the explicit throw-away, and the only path that does',
         createAndStartEditing:
           "(name: string, icon: string, sourceId?: string, destination?: 'personal' | 'space'): creates a new theme — copied from sourceId when given — and opens an editing session on it. Resolves true on success",
         saveEditingTheme:
@@ -853,6 +856,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
         personalTemplates:
           "array of TemplateSchema objects — core templates plus user's installed custom templates (excludes space templates)",
         spaceTemplates: 'array of TemplateSchema objects — templates loaded from the current space perspective',
+        pendingInstall:
+          'the template an install dialog is showing ({ marketplaceId, destination, name, icon, version, capabilities, blocked }), or null when none is open. `capabilities` is already in the words a person reads. Host chrome renders it: a dialog vouching for a template must not be drawn by a template',
         builtInTemplates: 'array of TemplateSchema objects — built-in system templates (always available)',
         myTemplates:
           "array of TemplateSchema objects — user's installed custom templates only (excludes built-in and space templates)",
@@ -876,7 +881,11 @@ export function generateStoresText(entries: StoreEntry[]): string {
         uninstallTemplate:
           '(templateId: string): hides a custom template from the pickers without deleting it. The counterpart of installTemplate',
         installFromMarketplace:
-          '(marketplaceTemplateId: string): copies a marketplace template into your own library. A personal act — use installToSpace to give the community a template',
+          '(marketplaceTemplateId: string): copies a marketplace template into your own library. A personal act — use installToSpace to give the community a template. Asks first: the template is fetched and inspected, and the host raises a dialog naming what it will be able to do. Nothing is written until that is confirmed, so treat this as "start an install", not "install"',
+        confirmInstall:
+          '(): installs what the dialog is showing. Host chrome only, for the same reason pendingInstall is: a template able to call this is the disclosure being skipped',
+        cancelInstall: '(): closes the install dialog without installing',
+
         toggleInstalled:
           '(templateId: string): installs or uninstalls by id — what the settings list’s switch calls. Prefer installTemplate/uninstallTemplate where the switch can pass its value',
         setDefaultTemplate:
@@ -895,7 +904,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         removeTemplate: '(): removes the current template',
         saveTemplate: '(name: string): saves the current template',
         installToSpace:
-          '(marketplaceTemplateId: string): copies a marketplace template into the current space, so every member of that community gets it — as opposed to installing it for yourself. Pair with templateStore.operationLoading to show progress on the row being installed',
+          '(marketplaceTemplateId: string): copies a marketplace template into the current space, so every member of that community gets it — as opposed to installing it for yourself. Asks first, exactly as installFromMarketplace does. Pair with templateStore.operationLoading to show progress on the row being installed',
       },
     },
     spaceStore: {
@@ -959,6 +968,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
         templateOverrideOptions:
           '{ label, value }[] — options for the per-space template override picker: "Use the space\u2019s default" (space-default), "Use my default" (agent-default), then every template. Each of the first two names what it resolves to. Pre-built because a schema can map a store array into options but cannot prepend one, and without those entries overriding would be one-way',
         themeOverrideOptions: '{ label, value }[] — the same, for themes',
+        canAdministerCurrentSpace:
+          'boolean — whether this agent may change what every member of the space on screen sees. The readable form of canAdministerSpace, which an expression cannot call. Gate an admin-only control on this rather than on `x.author == me.did`, which asks who made the row and not who runs the space',
         spaceThemePinned:
           'boolean — this agent has pinned a theme for the space on screen that differs from what would otherwise apply, so there is something for a reset to undo. False outside a space, and false for a pin that happens to name what the space resolves to anyway. Gate a "pinned here / reset" affordance on it rather than on the pin merely existing',
         requiredModules:
@@ -970,7 +981,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         moduleInstallSettings:
           "{ id, name, description, icon, installed, surface, switchable }[] — every registered module and whether this agent wants it anywhere. The global Settings → Modules list, and the only place an 'app' or 'capability' module is decided about: a contribution is gated at the layer where it renders, and only 'chrome' renders inside a space. `surface` is derived from what the module contributes. Its per-space counterpart is `modules` on each spaceList row, which carries enabled/installed/visible/active together and lists chrome modules only",
         moduleLaunchers:
-          '{ id, icon, label, active }[] — launchers for the modules enabled here and available in this space; what the host module rail renders. Pair with { $action: "spaceStore.launchModule", args: ["$mod.id"] }',
+          '{ id, icon, label, active }[] — launchers for the modules enabled here and available in this space; what the host module rail renders. Pair with { $action: "spaceStore.launchModule", args: [{ $: "mod.id" }] }',
       },
       actions: {
         moveChild:
@@ -1014,6 +1025,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(field: "avatar" | "coverImage", imageFile: File, spaceUuid?): uploads and sets the space avatar or cover image',
         createSignalType:
           '(config: Partial<SignalType>): creates a new signal type in the community; slug auto-derived from name if blank',
+        setSignalTypeRetired:
+          '(signalTypeId: string, retired: boolean): withdraws a signal type from use, or brings it back. Never deletes the signals given with it — a signal names its type by record id while templates resolve it by slug, so DELETING a type strands every reaction ever given and re-creating one with the same slug does not restore them. Retiring is the reversible version: the type stops being offered, existing counts keep working, and un-retiring brings everything back. Filter the offered list with OFFERED_SIGNAL_TYPES from @we/template-kit; leave find()-by-slug unfiltered so history still resolves',
         unreadNodeIds:
           'string[] — ids of containers in this space holding something newer than your read marker. The read side of `ReadMarker`: use it for unread dots with `{ "$": "channel.id in spaceStore.unreadNodeIds" }` rather than recomputing a `$latestChild` projection and a comparison per row',
         myMentions:
@@ -1046,7 +1059,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         setModuleVisible:
           '(moduleId: string, visible: boolean, spaceUuid?): shows or hides a module for this agent in one space, without changing what the community runs. Private: written to the root dataset, never to the space. Phrased positively so a switch can pass `event.detail` bare \u2014 wrapping it in another token would evaluate at render time and send a constant',
         setSpaceTemplateOverride:
-          "(templateId: string, spaceUuid?): sets the template THIS AGENT sees in one space, overriding the community's default. Three values: 'space-default' follows the space, 'agent-default' follows your own global default (tracking later changes to it), or a concrete template id pins that one. Private, and applied immediately when that space is the one on screen. Note the sentinels are named values, not '' — the ORM skips empty strings on update, so '' cannot clear a property",
+          "(templateId: string, spaceUuid?): sets the template THIS AGENT sees in one space, overriding the community's default. Three values: 'space-default' follows the space, 'agent-default' follows your own global default (tracking later changes to it), or a concrete template id pins that one. Private, and applied immediately when that space is the one on screen. The sentinels are named values rather than '' because they are three distinct meanings, and only one of them is no value at all",
         setSpaceThemeOverride:
           '(themeId: string, spaceUuid?): sets the theme THIS AGENT sees in one space. Same three values as setSpaceTemplateOverride. Private',
         applyTheme:
@@ -1122,6 +1135,12 @@ export function generateStoresText(entries: StoreEntry[]): string {
         savingShape: 'boolean — a save is in flight',
         aiAvailable: 'boolean — AI model generation is available (the agent has a Claude API key configured)',
         generating: 'boolean — an AI generation is in flight',
+        extractionCandidates:
+          "string[] — entity names an extraction pass COULD write here: core vocabulary that declares itself extractable, plus every adopted shape that does. Candidacy, not a decision — which of these a call actually looks for is two layers down (spaceStore.extractionTargets, then the call's own participants). Read it to offer a choice, and to display findings: a card should show a record somebody extracted an hour ago even if the target has since been switched off",
+        extractionNeedsIdentity:
+          'boolean — the open draft would be extracted into and has no field to recognise what it already wrote, so every pass duplicates everything. A warning to put beside the switch, not a refusal: the wizard saves either way',
+        hintEditorDirty:
+          'whether the open hint editor holds edits that closing would lose. What a discard guard reads: the rows come from the model’s declaration, so a schema has no set of local names it could test. Compares against the state the editor opened in, so an editor somebody only read closes without a question',
         hintEntities:
           "{ entity, source: 'core' | 'shape' }[] — entities offering AI-hint tuning in this space: core interpretable vocabulary (TaskBlock, EventBlock) plus the space's own shapes",
         extractionTargets:
@@ -1150,6 +1169,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
         setShapeField: "(field: 'name' | 'description' | 'icon' | 'classHint', value): sets one top-level draft field",
         setIdentityMember:
           "(rowId): chooses which member identifies duplicates for AI extraction; 'none' clears it. At most one, which is why it is a picker rather than a per-row flag",
+        setExtractable:
+          '(on: boolean): allows or refuses an AI extraction pass writing instances of the open draft. Its own action rather than a setShapeField case, because the value is a boolean and that field takes strings',
         addProperty: '(): appends an empty property (scalar field) row to the draft',
         addRelationship: '(): appends an empty relationship (edge to another model) row to the draft',
         removeMember: '(rowId): removes one member row',
@@ -1177,7 +1198,10 @@ export function generateStoresText(entries: StoreEntry[]): string {
         deleteShape:
           '(shapeRecordId): removes a model definition from the space. Existing entries keep their data; only the definition goes',
         openHintEditor: '(entity): opens per-space AI-hint tuning for an entity (core or space-defined)',
-        closeHintEditor: '(): closes the hint editor, discarding unsaved edits',
+        closeHintEditor:
+          '(): closes the hint editor, discarding unsaved edits. Pair it with hintEditorDirty in a discardGuard rather than wiring it to a modal’s close directly',
+        hintEditorDirty:
+          'whether the open hint editor holds edits that closing would lose. What a discard guard reads: the rows come from the model’s declaration, so a schema has no set of local names it could test. Compares against the state the editor opened in, so an editor somebody only read closes without a question',
         setHintDraft: "(key, value): sets one hint in the open editor — key is 'class' or a property predicate",
         saveHintEditor:
           '(): writes the hints to this space and marks them customized, so schema refreshes stop reverting them',
@@ -1265,6 +1289,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           "string | null — id of the currently open shell overlay ('profile' | 'settings' | 'schema-tests' | 'landing-page'), or null",
         spaceSettingsOpen:
           'boolean — the space-settings panel is open. It configures whichever space is open, so it needs no id; bind a launcher\u2019s active state to this',
+        pendingDestructive:
+          "the destructive action a space template just asked for ({ path, title, body }), or null. The host raises its own confirmation in front of every one of them — a space template arrives from a stranger, so whether it asks before deleting is not the stranger's decision. Host chrome renders it; a template writing its own dialog for a destructive store action would be a second question about one click",
         layoutPinned:
           'Record<string, boolean> keyed by panel id — whether that panel has been dragged away from where meta.panels declared it. False for a panel no layout mentions, since there is nothing to go back to. Gate a "reset to layout" affordance on it rather than on a placement merely existing',
         createSpaceOpen:
@@ -1309,6 +1335,9 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(id: string): covers the content region with the panel, or goes back to being a card. Nothing about where the panel was is overwritten while it is on',
         toggleDockDisplace:
           '(id: string): makes the panel push the content aside, or stop. A toggle rather than a setter because a menu item reports only that it was clicked',
+        confirmDestructive:
+          '(): runs the destructive action the host is asking about. Host chrome only, for the reason pendingDestructive is: an action able to answer its own confirmation is the confirmation being skipped',
+        cancelDestructive: '(): refuses it. The waiting action resolves as though it had been blocked',
         openShellView:
           '(id: string, path?: string): opens a shell overlay by id, optionally at a route inside it — the overlay keeps its own memory router, so this never touches the browser URL',
         setCreateSpaceOpen:
@@ -1403,19 +1432,43 @@ export function generateStoresText(entries: StoreEntry[]): string {
 
     lines.push('- State:');
     for (const key of Object.keys(entry.state)) {
-      const typeDesc = desc.state[key] ?? 'unknown';
-      lines.push(`  - ${key}: ${typeDesc}`);
+      const typeDesc = desc.state[key];
+      if (typeDesc === undefined) undescribedMembers.push(`${entry.name}.${key}`);
+      lines.push(`  - ${key}: ${typeDesc ?? 'unknown'}`);
     }
 
     lines.push('- Actions:');
     for (const key of entry.actions) {
-      const sig = desc.actions[key] ?? '(): unknown';
-      lines.push(`  - ${key}${sig}`);
+      const sig = desc.actions[key];
+      if (sig === undefined) undescribedMembers.push(`${entry.name}.${key}()`);
+      lines.push(`  - ${key}${sig ?? '(): unknown'}`);
     }
   }
 
   return lines.join('\n');
 }
+
+/**
+ * Members that rendered as `unknown` — reachable from a schema, and with nothing saying what they do.
+ *
+ * ## Why this is a build failure rather than a note
+ *
+ * The architecture plan's rule is that an undescribed member fails the build, and the generator's
+ * own count was the wrong measure of one: it counted members missing from `storeEntries`, which is
+ * a merge input, while what an author actually reads is this — the description table, whose misses
+ * render as the literal word `unknown` in the reference an LLM is handed.
+ *
+ * The consequence of it being a count is on the record. Three `ShapeStore` members regressed to
+ * `unknown` after the PR that reported "zero unknown remain"; the count went up by three and nobody
+ * looked.
+ *
+ * Wiring never reaches here — `mergeStoreEntries` drops it against `templateSurface.ts` first — so
+ * everything on this list is vocabulary a template can name.
+ *
+ * Populated by {@link generateStoresText}, which the module runs once below. Reading it before that
+ * would give an empty array, which is why it is not a function.
+ */
+export const undescribedMembers: string[] = [];
 
 /**
  * The prose block for the reference, built from whatever entries it is given.

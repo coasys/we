@@ -97,10 +97,28 @@ export interface ProposalView {
 const SUMMARY_FIELDS = ['title', 'text', 'name', 'startDate', 'dueDate', 'assignee', 'location'];
 
 /** Flatten a proposal's values into one readable line. */
+/**
+ * How much of one proposed value is shown, and how much of the summary in total.
+ *
+ * Both ends of this are a model's output: an LLM reading a transcript decides the field values, and
+ * a transcript is whatever anybody in the call said out loud. `String(value)` with no bound is
+ * therefore a row in a review list whose length a speaker chooses — and the review list is the one
+ * surface whose whole job is being readable enough to make a decision from.
+ *
+ * Truncated with an ellipsis rather than refused: the point of the row is to be recognisable, and a
+ * value cut short still recognises. What is being accepted is the record, not this string.
+ */
+const MAX_SUMMARY_VALUE = 120;
+const MAX_SUMMARY_LENGTH = 400;
+
 function summarise(values: Record<string, unknown>): string {
   const named = SUMMARY_FIELDS.filter((field) => values[field] !== undefined && values[field] !== '');
   const rest = Object.keys(values).filter((field) => !SUMMARY_FIELDS.includes(field));
-  return [...named, ...rest].map((field) => `${field}: ${String(values[field])}`).join(' · ');
+  const cut = (text: string, limit: number) => (text.length > limit ? `${text.slice(0, limit - 1)}…` : text);
+  const line = [...named, ...rest]
+    .map((field) => `${cut(field, 40)}: ${cut(String(values[field]), MAX_SUMMARY_VALUE)}`)
+    .join(' · ');
+  return cut(line, MAX_SUMMARY_LENGTH);
 }
 
 /**
@@ -393,15 +411,30 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * agent's own state in the roster. So "which call am I in, and what is it about" is answerable
    * locally, from data that is already there, without either module knowing the other exists.
    */
-  function myCall(): { id: string; anchorNodeId: string | null; recordId: string | null } | null {
+  function myCall(): {
+    id: string;
+    anchorNodeId: string | null;
+    recordId: string | null;
+    datasetUri: string | null;
+  } | null {
     const me = selfId?.() ?? null;
     if (!me || !presence) return null;
     const mine = activitiesOfType(presence.peers(), 'call').find(({ peer }) => peer.agentId === me);
     if (!mine) return null;
-    const anchor = (mine.activity as { anchor?: { nodeId?: string } }).anchor;
+    const anchor = (mine.activity as { anchor?: { nodeId?: string; datasetUri?: string } }).anchor;
     return {
       id: mine.activity.id,
       anchorNodeId: anchor?.nodeId ?? null,
+      /*
+        The space the call is *in*, which is not necessarily the space on screen.
+
+        A call survives navigation, so by the time somebody speaks the reader may be two spaces away
+        — and every write here used to resolve to "the current dataset", which put the utterance in
+        the wrong perspective with a `children` link to a record that perspective does not hold.
+        Peers in the call's own space stopped seeing the transcript. The call module publishes this
+        on every activity, so it is already here; it just was not being read.
+      */
+      datasetUri: anchor?.datasetUri ?? null,
       // Published by the call module from the moment the call starts — see `recordCallId`. This is
       // what replaced electing a creator among the transcribers.
       recordId: (mine.activity as { record?: string }).record ?? null,
@@ -433,8 +466,9 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   /**
    * Everyone recording this call right now, this agent included, sorted.
    *
-   * The election's list: whichever of them sorts first creates the record. Coverage reads it too —
-   * it is the numerator in "2 of 4", where the whole point is that this agent counts as one of them.
+   * Coverage reads it: it is the numerator in "2 of 4", where the whole point is that this agent
+   * counts as one of them. Sorted so the list a member reads is stable rather than following
+   * whatever order the roster happened to arrive in.
    */
   function recordersOf(callId: string): string[] {
     const me = selfId?.() ?? null;
@@ -467,10 +501,21 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    */
   function announce(callId: string, recording: boolean, collection?: string | null): void {
     const claim = collection ?? collectionId();
+    /*
+      Anchored to the call's space, exactly as the call module anchors its own activity.
+
+      Without an anchor, `PresenceStore.setActivity` publishes into the space on screen — so an
+      agent transcribing a call in A while reading B announced the transcription to **B's** peers,
+      who cannot join the call it names, while A's peers never saw `recording: true` and had no way
+      to know they were being recorded. That is the more serious half: a recording notice that
+      reaches everyone except the people being recorded.
+    */
+    const anchorUri = myCall()?.datasetUri;
     presence?.setActivity({
       type: TRANSCRIBE_ACTIVITY,
       id: callId,
       recording,
+      ...(anchorUri ? { anchor: { datasetUri: anchorUri } } : {}),
       ...(claim ? { collection: claim } : {}),
     });
   }
@@ -507,17 +552,28 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * itself a second time. Keyed on the collection, the answer to "have I already said I was here"
    * stays right across every leave and rejoin within a session.
    */
-  async function recordSelfParticipation(collection: string): Promise<void> {
+  async function recordSelfParticipation(collection: string, dataset?: string): Promise<void> {
     const me = selfId?.() ?? null;
     if (!linkEntity || !me || recordedParticipants.has(collection)) return;
     recordedParticipants.add(collection);
     try {
-      await linkEntity('CollectionBlock', collection, 'participants', me);
+      await linkEntity('CollectionBlock', collection, 'participants', me, dataset ? { dataset } : undefined);
     } catch (cause) {
       // Let it be retried rather than losing this agent from the roster for the rest of the call.
       recordedParticipants.delete(collection);
       console.error('transcribe: could not record participation', cause);
     }
+  }
+
+  /**
+   * The dataset every write and every read in this module is about: the call's, not the reader's.
+   *
+   * `undefined` when there is no call or no anchor, which the host reads as "the space on screen" —
+   * the behaviour everything here had before, and the right one when nothing says otherwise.
+   */
+  function callTarget(): { dataset: string } | undefined {
+    const uri = myCall()?.datasetUri;
+    return uri ? { dataset: uri } : undefined;
   }
 
   /**
@@ -574,7 +630,9 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   async function loadProposals(): Promise<void> {
     if (!interpretation) return;
     try {
-      const staged = await interpretation.proposals();
+      // The call's space, for the same reason the writes use it: a call outlives the space on
+      // screen, so "proposals here" was answering about wherever the reader had wandered to.
+      const staged = await interpretation.proposals(callTarget());
       setProposals(staged.map((p) => ({ id: p.id, kind: p.kind, summary: summarise(p.values) })));
     } catch {
       setProposals([]);
@@ -585,8 +643,8 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     Re-read the staged suggestions whenever a pass settles — anybody's, not just a press of ours.
 
     The one-shot path reloads on its own, because it has the result in hand. A *standing* pass has
-    nobody waiting on it: it runs on whichever peer won the election, stages what it found in the
-    shared graph, and announces nothing this client acts on. So auto-extraction produced proposals
+    nobody waiting on it: it runs on whichever peer registered the watch, stages what it found in
+    the shared graph, and announces nothing this client acts on. So auto-extraction produced proposals
     that were really there and never appeared — the review list only ever filled after somebody
     pressed Extract, which reads as "automatic extraction cannot propose anything".
 
@@ -669,6 +727,15 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     }
   }
 
+  /**
+   * How many times in a row a flush may find the call's record missing before giving up on those
+   * words. At `FLUSH_AFTER_MS` apart this is the better part of a minute — long enough for a record
+   * to replicate, short enough that a call whose record never arrives does not accumulate the whole
+   * conversation in a buffer nothing will ever drain.
+   */
+  const MAX_WAITING_FLUSHES = 20;
+  let waitingFlushes = 0;
+
   async function flush(): Promise<void> {
     clearTimer();
     const text = buffer.trim();
@@ -679,24 +746,46 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     try {
       const slot = await ensureCollection();
 
-      // Lost the election and the creator has not announced yet. Put the words back and come round
-      // again — dropping them would lose the opening line of every call for everyone but one agent,
-      // which is precisely the part of a conversation worth having.
+      /*
+        The call's record has not arrived yet. Put the words back and come round again — dropping
+        them would lose the opening line of every call for every agent who started speaking before
+        the record synced, which is precisely the part of a conversation worth having.
+
+        Capped, because the wait is not guaranteed to end: a call whose starter left before their
+        record replicated never gets one, and an uncapped retry re-queued the same words on a timer
+        for as long as the call ran, growing the buffer with every utterance and holding the whole
+        conversation in memory unwritten. After the cap the words go to the console with the rest of
+        the failures and the transcript carries on from wherever it can.
+      */
       if (slot.state === 'waiting') {
+        if (waitingFlushes >= MAX_WAITING_FLUSHES) {
+          console.warn('transcribe: the call record never arrived; these words were not written', text);
+          waitingFlushes = 0;
+          return;
+        }
+        waitingFlushes += 1;
         buffer = buffer ? `${text} ${buffer}` : text;
         setPending(buffer);
         clearTimer();
         flushTimer = setTimeout(() => void flush(), FLUSH_AFTER_MS);
         return;
       }
+      // Arrived. The next wait starts its own count rather than inheriting this one's.
+      waitingFlushes = 0;
 
       if (slot.state === 'nowhere') {
         console.warn('transcribe: no call to attach this utterance to; not written');
         return;
       }
 
-      await createEntity?.('TextBlock', { text }, { parent: { id: slot.id, predicate: CHILDREN_PREDICATE } });
-      await recordSelfParticipation(slot.id);
+      // The call's space, not the reader's. See `myCall().datasetUri`.
+      const dataset = myCall()?.datasetUri ?? undefined;
+      await createEntity?.(
+        'TextBlock',
+        { text },
+        { parent: { id: slot.id, predicate: CHILDREN_PREDICATE }, ...(dataset ? { dataset } : {}) },
+      );
+      await recordSelfParticipation(slot.id, dataset);
     } catch (cause) {
       // Reported but not surfaced as a failed state: the transcript continues, and losing one block
       // is better than stopping a call's transcription over a single write.
@@ -937,9 +1026,9 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     Keep a standing interpretation watch on whatever collection this call is writing into.
 
     Driven off `collectionId` rather than off the record button, because the collection is what a
-    watch is *about* and it appears late: whoever wins the creation election makes it, and everyone
-    else adopts the announced id. Registering on the button press would mean registering before
-    there is anything to name.
+    watch is *about* and it appears late: it is the call's own record, published on the call's
+    presence activity. Registering on the button press would mean registering before there is
+    anything to name.
 
     Every recorder runs this, and that is intended rather than tolerated — the registration is one
     row in the shared perspective keyed by collection id, so peers converge on it instead of
@@ -1066,7 +1155,9 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       try {
         await interpretation.watchCollection(next);
         setWatchProblem('');
-        console.debug('[transcribe] watching collection for auto-extraction', next);
+        // `debug` is filtered out of most consoles by default, so this said nothing to the person
+        // it was for. Watching is worth one line: it is the moment auto-extraction starts.
+        console.info('[transcribe] watching collection for auto-extraction', next);
       } catch (error) {
         /*
           Recorded, not just logged.
@@ -1253,10 +1344,23 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     void stop();
   });
 
-  // Leaving the space ends the session — the blocks belong to the space that was being spoken in,
-  // and continuing to write into a perspective the user has navigated away from would be wrong.
+  /*
+    Having nowhere to write ends the session — but a call is somewhere to write.
+
+    This used to stop the moment `dataset()` went null, on the grounds that "the blocks belong to
+    the space that was being spoken in, and continuing to write into a perspective the user has
+    navigated away from would be wrong". The premise was true and the conclusion followed from a
+    second, unstated one: that the only perspective this module could write to was the one on
+    screen. It no longer is — every write now names the call's own dataset — so navigating away is
+    not a reason to stop transcribing a call that is still running, any more than it is a reason to
+    hang up. #161 made the call survive navigation; this is the rest of that.
+
+    What is left is the case the effect was really for: nowhere to write *at all*. No dataset and no
+    call is the boot frame, a logged-out agent, and the moment after leaving a call — all of them
+    "stop", and none of them "the reader wandered off".
+  */
   effect?.(() => {
-    if (!dataset?.()) {
+    if (!dataset?.() && !myCall()) {
       setEnabled(false);
       setAutoJoined(false);
       if (context) void stop();
@@ -1265,6 +1369,28 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       // start next — the request is only meaningful for the join it was pressed to accompany.
       setPendingResume('');
     }
+  });
+
+  /*
+    Signing out stops the microphone.
+
+    The same latch as the call module's, and for the same reason: `logout` locks the agent and
+    returns to the sign-in screen without unregistering anything, so on desktop — which does not
+    reload — an open audio graph carried on through the login screen. Watched through `selfId`
+    because that is what signing out *is* from here; the latch keeps it quiet on the boot frames
+    before the first login, where `selfId` is null and always was.
+  */
+  let hadIdentity = false;
+  effect?.(() => {
+    if (selfId?.()) {
+      hadIdentity = true;
+      return;
+    }
+    if (!hadIdentity) return;
+    setEnabled(false);
+    setAutoJoined(false);
+    if (context) void stop();
+    setPendingResume('');
   });
 
   return {
@@ -1562,10 +1688,10 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       /*
         Publish the decision immediately, before a word has been said.
 
-        This is the signal the other agents' prompt reads, and it is also what makes the election
-        deterministic: announcing only at the first flush meant nobody knew who else was recording
-        until somebody had already finished speaking, by which point the record they were racing to
-        create had usually been created twice.
+        This is the signal the other agents' prompt reads, and it is what makes coverage honest:
+        announcing only at the first flush meant nobody knew who else was recording until somebody
+        had already finished speaking, so "1 of 4" was shown for a call three people were
+        transcribing.
 
         Turning it off publishes `recording: false` rather than withdrawing the activity, because the
         collection claim rides on the same entry and outlives the recording — see `announce`.
@@ -1639,12 +1765,12 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      */
     acceptProposal: async (id: string) => {
       if (!interpretation) return;
-      await interpretation.accept(id);
+      await interpretation.accept(id, undefined, callTarget());
       setProposals(proposals().filter((p) => p.id !== id));
     },
     rejectProposal: async (id: string) => {
       if (!interpretation) return;
-      await interpretation.reject(id);
+      await interpretation.reject(id, undefined, callTarget());
       setProposals(proposals().filter((p) => p.id !== id));
     },
     /** Write what has been heard so far without waiting for the buffer to fill. */

@@ -23,6 +23,7 @@
  * about what a heading or a list item looks like — parity is structural rather than tested for.
  */
 import type { CollectionContentBlock } from '@we/block-shared';
+import { safeHref } from '@we/design-utils';
 import type { DOMOutputSpec, MarkSpec, NodeSpec, NodeType } from 'prosemirror-model';
 import { Schema } from 'prosemirror-model';
 
@@ -253,8 +254,26 @@ const marks: Record<string, MarkSpec> = {
     parseDOM: [
       { tag: 'a[href]:not(.we-node-link)', getAttrs: (dom) => ({ href: (dom as HTMLElement).getAttribute('href') }) },
     ],
+    /*
+      `safeHref`, because this href is a peer's string.
+
+      A link mark's `href` arrives inside a synced post, and `toDOM` is what the read-only renderer
+      builds a live `<a>` in the app's own origin from — so `javascript:` here is script execution
+      one click away, for every reader of the post, bounded only by whatever CSP the host happens to
+      have. The write path normalises too, but a mark can reach a document without passing through
+      it: a paste of foreign HTML, a `parseDOM` round trip, a record written by another client.
+
+      An unsafe href renders as an `<a>` with none — inert, still reading as a link, which is the
+      honest rendering of a link that points somewhere it is not allowed to go.
+    */
+    // Inline rather than through a local, so the guarantee is visible where the `<a>` is built —
+    // and so the lint rule that exists to catch exactly this shape can see it too.
     toDOM: (mark) =>
-      ['a', { href: String(mark.attrs.href), target: '_blank', rel: 'noopener noreferrer' }, 0] as DOMOutputSpec,
+      [
+        'a',
+        { href: safeHref(String(mark.attrs.href ?? '')), target: '_blank', rel: 'noopener noreferrer' },
+        0,
+      ] as DOMOutputSpec,
   },
   nodeLink: {
     attrs: { node: {} },

@@ -1,7 +1,7 @@
 /**
  * What a link is allowed to point at.
  *
- * ## Why a primitive has to care
+ * ## Why a renderer has to care
  *
  * `href` looks like a display concern, and in an app whose links are written by its own developers
  * it is one. WE's are not: a link's target comes from a template, which is data, and from a record,
@@ -9,9 +9,19 @@
  * script execution in the app's own origin, one click away, from anybody who can write a string
  * anywhere it is rendered — a post body, a profile field, a space description.
  *
- * The check belongs here rather than in each caller for the ordinary reason: there is one `<a>` per
- * primitive and dozens of places that render one, so a rule enforced at the call sites is a rule
- * that holds until somebody adds the next call site.
+ * The check belongs here rather than in each caller for the ordinary reason: there are dozens of
+ * places that render an `<a>`, so a rule enforced at the call sites is a rule that holds until
+ * somebody adds the next call site.
+ *
+ * ## Why it lives in `@we/design-utils` rather than in the primitives
+ *
+ * It was written for `we-link` and `we-button`, and for a year those were the only renderers of a
+ * stored href. The content layer added another — the ProseMirror link mark, whose `toDOM` builds an
+ * `<a>` in the app origin from a mark attribute a peer wrote — in a package that cannot import Lit.
+ * A second copy would have been a second thing to keep correct, so the one implementation moved
+ * down to the neutral layer both sides already depend on.
+ *
+ * Anything rendering a stored href imports it from here. There is no second version of this check.
  *
  * ## What is allowed
  *

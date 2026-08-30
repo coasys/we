@@ -142,6 +142,118 @@ jobs:
       - name: Test
         run: pnpm test
 
+      # Coverage has been configured for as long as the tests have and has never run anywhere,
+      # which is the same shape as the stylelint gap above it: a number nobody produces is a number
+      # nobody can act on. Reported rather than gated — there is no threshold yet, deliberately (see
+      # `packages/app-shell/vitest.config.ts`), and a gate set to today's figure would only ever
+      # ratchet by accident. Non-fatal so a package without the reporter cannot fail the run.
+      - name: Coverage
+        continue-on-error: true
+        run: pnpm --filter @we/app-shell test -- --coverage.enabled --coverage.reporter=text-summary
+
+  # The one part of WE that `pnpm test` cannot reach.
+  #
+  # `apps/we-tauri/src-tauri` is real code with real tests — account discovery, the data-directory
+  # layout, the launcher handoff — and twenty `#[test]`s that had never run anywhere but a
+  # developer's machine. Everything they cover is what decides *which agent's data a launch opens*,
+  # so a regression there is somebody else's identity, not a rendering glitch.
+  #
+  # Its own job rather than a step in Test, because it needs a Rust toolchain — and because what it
+  # can check today is narrower than "run the tests", for a reason worth stating rather than hiding.
+  #
+  # ## Why this is formatting and not `cargo test`
+  #
+  # Two independent reasons, and the first one is not about dependencies at all.
+  #
+  # `src-tauri/Cargo.toml` is **gitignored**: it is generated from `Cargo.toml.template` by
+  # `generate-seed-config.cjs`, which substitutes `{{AD4M_EXECUTOR_PATH}}` and `{{AD4M_CLIENT_PATH}}`
+  # out of `we-seed.json`. A fresh checkout has no manifest, so anything going through `cargo` fails
+  # before it reads a line of Rust — and generating one does not help, because the paths it writes
+  # point at a sibling ad4m checkout this runner does not have.
+  #
+  # Second, even with that checkout present the resolve fails: `libffi-sys` is pinned to `=3.2.0`
+  # through ad4m's `scryer-prolog` and to `^4.1` through its `deno_ffi`, and both declare
+  # `links = "ffi"`, which Cargo refuses. So the twenty `#[test]`s in `accounts.rs` do not run here
+  # or on a developer's machine, and a `cargo test` step would report a resolution failure rather
+  # than anything about the code.
+  #
+  # Getting one would mean checking out ad4m at a pinned ref, running the seed-config generator, and
+  # fixing the `links` conflict upstream — the same three things the packaged desktop build needs.
+  #
+  # Formatting is checked because it needs no resolution at all, and because it is the half that
+  # was silently drifting: thirty-two files were unformatted when this job was added.
+  #
+  # The fix is upstream, and belongs with the "packaged desktop build in CI" item this job does not
+  # close: once the crate resolves, add the `cargo test` step below it and drop this note.
+  rust:
+    name: Rust formatting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # rustfmt for the toolchain the crate pins, which is not the default one.
+      #
+      # `src-tauri/rust-toolchain.toml` pins channel 1.92 — it has to match ad4m's, because this
+      # crate compiles that whole tree by path and the older default resolved a dependency graph
+      # that does not build. rustup honours that file for anything run in the directory, so
+      # installing rustfmt for `stable` and then running rustfmt there installs it for one toolchain
+      # and uses another: rustup silently fetches 1.92 and reports "'cargo-fmt' is not installed for
+      # the toolchain '1.92'".
+      #
+      # The channel is read out of the file rather than written here, so this cannot drift from the
+      # pin it exists to serve — and it is echoed, because "which toolchain" is the whole failure.
+      - name: Install rustfmt for the pinned toolchain
+        working-directory: apps/we-tauri/src-tauri
+        run: |
+          CHANNEL="$(sed -n 's/^ *channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)"
+          if [ -z "$CHANNEL" ]; then
+            echo "::error::could not read [toolchain] channel from rust-toolchain.toml"
+            exit 1
+          fi
+          echo "Pinned Rust channel: $CHANNEL"
+          rustup toolchain install "$CHANNEL" --component rustfmt --profile minimal
+
+      # The generated Rust has to exist before anything parses `lib.rs`.
+      #
+      # `src-tauri/src/generated/` is gitignored — `mod.rs` and `seed_servers.rs` are written from
+      # `we-seed.json`. rustfmt follows `mod` declarations, so on a fresh checkout it parses
+      # `mod generated;` and stops with "failed to resolve mod `generated`". Nothing about that is
+      # visible on a developer's machine, where the directory has been sitting since the first build.
+      #
+      # The generator is plain Node with no imports outside the standard library, so this needs no
+      # `pnpm install` and none of the workspace — which is why this job stays independent of Build.
+      # It also rewrites the tracked `tauri.conf.json`; harmless here, since this job has no drift
+      # check, but it is the reason this step does not belong in one that does.
+      - name: Generate the seed-derived sources
+        run: node apps/we-tauri/scripts/generate-seed-config.cjs
+
+      # `rustfmt` directly, not `cargo fmt`, and that is the point rather than a shortcut.
+      #
+      # `cargo fmt` shells out to `cargo metadata`, which needs a manifest — and `src-tauri/Cargo.toml`
+      # is **gitignored**. It is generated from `Cargo.toml.template` by `generate-seed-config.cjs`,
+      # which substitutes `{{AD4M_EXECUTOR_PATH}}` and `{{AD4M_CLIENT_PATH}}` out of `we-seed.json`.
+      # So a fresh checkout has no manifest at all, and generating one would not help: the paths it
+      # writes point at a sibling ad4m checkout that CI does not have, so `cargo metadata` would then
+      # fail to resolve instead of failing to find.
+      #
+      # Formatting is a property of the source text, not of a dependency graph, so it needs neither.
+      # This also keeps the check honest about its own scope — it is exactly the nine tracked `.rs`
+      # files, `build.rs` included, and never the gitignored `src/generated/` output.
+      #
+      # The file list comes from git rather than a glob so it cannot silently pick up `target/` or
+      # generated sources, and the count is asserted because an empty list would make this pass
+      # vacuously — the failure mode a formatting gate is most likely to have.
+      - name: Check formatting
+        run: |
+          FILES="$(git ls-files -- apps/we-tauri/src-tauri | grep '\.rs$')"
+          COUNT="$(printf '%s\n' "$FILES" | grep -c . || true)"
+          if [ "$COUNT" -lt 1 ]; then
+            echo "::error::no Rust sources found to format-check"
+            exit 1
+          fi
+          echo "Checking $COUNT files"
+          printf '%s\n' "$FILES" | xargs rustfmt --check --edition 2021
+
   schemas:
     name: Validate schemas
     needs: build

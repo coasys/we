@@ -158,7 +158,7 @@ export interface DockContribution {
    *
    * A store key rather than a value because both halves of that change while the app runs. Named
    * like {@link ModuleLauncher.action} is, and for the same reason — the host reads it, and a module
-   * cannot build a `$store` path to itself.
+   * cannot build a `modules.<id>.<key>` path to itself.
    */
   edge: string;
   /**
@@ -471,7 +471,44 @@ export interface ModuleDefinition {
    * silently breaks reactivity across a dynamically-loaded boundary.
    */
   createStore?: (deps: ModuleStoreDeps) => Record<string, unknown>;
+
+  /**
+   * Store members a **space template** may not reach — see {@link ModuleStoreSurface}.
+   *
+   * Omit it and every member is reachable at both tiers, which is the historical behaviour and the
+   * right default for a module whose store only touches the space on screen.
+   */
+  chromeOnlyStoreMembers?: readonly string[];
 }
+
+/**
+ * Which of a module's store members are host-chrome's alone.
+ *
+ * ## The hole this closes
+ *
+ * `modules` is the one entry in the template bag that is not filtered per member. It cannot be:
+ * `templateSurface.ts` classifies members it can *see* in a store interface it knows, and a module's
+ * store is a flat record of signals, derived closures and actions that the host has never heard of.
+ * So the whole namespace is handed to every tier, and the reason that was acceptable is that modules
+ * are bundled — chosen by the deployment's seed, shipped with the app, at the app's own trust level.
+ *
+ * The Pocket is where that stopped holding. Its actions write `PocketItem` and `PocketFolder` into
+ * the **agent's private root dataset**, so `modules.pocket.gather` from a synced space template is a
+ * stranger's template writing into a store that has nothing to do with the space it came from —
+ * the `resolvePerspective` shape again, a filtered bag around an unfiltered namespace.
+ *
+ * A module knows which of its members are chrome's, and nothing else does, so it says. The list is
+ * subtracted from the space-tier bag and left intact at the chrome tier; a member named here is
+ * *absent* below, exactly as an ungranted store member is, so a template gets no error channel.
+ *
+ * ## What this is not
+ *
+ * Not the state-vs-action split. Every member a module publishes is still tagged reactive, so a
+ * `{ $: 'modules.call.leave' }` still *calls* during paint. Fixing that needs a `state()` marker in
+ * `ModuleStoreDeps` and a change in every module's `createStore`; it is a real follow-up and this is
+ * not it. What this is, is the scope question — which is the half that had a live consequence.
+ */
+export type ModuleStoreSurface = readonly string[];
 
 /**
  * Fixed chrome a module has on screen right now, for the host to route panels and other chrome
@@ -702,7 +739,33 @@ export interface ModuleStoreDeps {
    * There is deliberately no general `update` here yet. When one arrives it will need an answer for
    * concurrent writers, and this covers the add-only cases without pretending to have one.
    */
-  linkEntity?: (entity: string, id: string, relation: string, value: string) => Promise<void>;
+  linkEntity?: (entity: string, id: string, relation: string, value: string, options?: DatasetTarget) => Promise<void>;
+}
+
+/**
+ * Which dataset a module's write goes to.
+ *
+ * ## Why "the current one" is the wrong default for a module
+ *
+ * Every write a module made resolved to `datasetStore.currentDataset()` — the space *on screen*.
+ * That is right for a module whose work is caused by the person looking at it, and it is wrong for
+ * every module whose work outlives the view, which is the interesting kind. #161 made a call
+ * survive navigation, and transcribe kept writing each utterance into whatever space had been
+ * opened since: start a call in A with recording on, walk into B, keep talking, and every line
+ * became a `TextBlock` in **B's** perspective carrying a `children` link from a record id B does
+ * not hold. Peers in A stopped seeing the transcript; B accumulated orphans.
+ *
+ * So a module that knows where its work belongs says so, by dataset URI — the same string presence
+ * anchors an activity with, which is how transcribe knows it at all. Absent still means the space on
+ * screen, so nothing that never had this question changes.
+ *
+ * **A URI that cannot be resolved refuses the write.** Not "falls back to the current dataset":
+ * falling back is the bug, and writing a call's transcript into the wrong space is worse than not
+ * writing it. The host returns `null`/no-ops and logs.
+ */
+export interface DatasetTarget {
+  /** The dataset's shared URI, as `Focus.datasetUri` carries it. Absent means the space on screen. */
+  dataset?: string;
 }
 
 /**
@@ -714,7 +777,7 @@ export interface ModuleStoreDeps {
  * meaningless outside the call that contains it, and creating it unparented — then linking it in a
  * second step — leaves a window where a crash orphans the block into the space.
  */
-export interface CreateEntityOptions {
+export interface CreateEntityOptions extends DatasetTarget {
   /**
    * The record to link this one under, named by id and predicate rather than by model class.
    *
@@ -752,6 +815,21 @@ export interface AgentDataAccess {
     entity: string,
     query?: { where?: Record<string, unknown>; order?: Record<string, 'asc' | 'desc'>; limit?: number },
   ) => Promise<Record<string, unknown>[]>;
+  /**
+   * Change the named fields of one record, leaving the rest.
+   *
+   * ## Why this widened a deliberately narrow surface
+   *
+   * The restraint above is right — a module's data surface should be the smallest thing that does
+   * the job — and create/find/remove was one call short of it. The Pocket could make folders and
+   * never rename one: no update, so a typo in a folder name was permanent, and the alternatives are
+   * both wrong. Delete-and-recreate loses the id, and everything filed in the folder hangs off it;
+   * create-a-replacement leaves the original behind.
+   *
+   * A rename is not a general ORM. This takes an id and a field bag, exactly as `record.update` does
+   * for a schema, and is bounded by the same thing everything else here is: the agent's own dataset.
+   */
+  update: (entity: string, id: string, fields: Record<string, unknown>) => Promise<void>;
   /** Delete one record. Irreversible, and only ever this agent's own. */
   remove: (entity: string, id: string) => Promise<void>;
 }
@@ -960,12 +1038,19 @@ export interface ModuleInterpretationAccess {
    */
   detailShared: () => boolean;
 
-  /** Suggestions staged in this dataset, awaiting a human. */
-  proposals: () => Promise<InterpretationProposal[]>;
+  /**
+   * Suggestions staged in a dataset, awaiting a human.
+   *
+   * `target` names which — the same {@link DatasetTarget} the write surface takes, and for the same
+   * reason. Interpretation follows the call, and a call now outlives the space on screen, so
+   * "proposals here" was answering about wherever the reader had wandered to. Absent still means the
+   * space on screen.
+   */
+  proposals: (target?: DatasetTarget) => Promise<InterpretationProposal[]>;
   /** Commit a staged suggestion — the whole record, or one property by name. */
-  accept: (id: string, property?: string) => Promise<boolean>;
+  accept: (id: string, property?: string, target?: DatasetTarget) => Promise<boolean>;
   /** Drop a staged suggestion. */
-  reject: (id: string, property?: string) => Promise<boolean>;
+  reject: (id: string, property?: string, target?: DatasetTarget) => Promise<boolean>;
 }
 
 /**
@@ -1074,6 +1159,26 @@ export interface ModuleDatasetAccess {
    * `@we/backend-shared`'s `recordRef`.
    */
   openRef: (ref: string) => void;
+  /**
+   * Told when a dataset this agent held is removed, by its uri.
+   *
+   * ## Why a module needs to hear this
+   *
+   * A module whose work outlives the space on screen — a call, a transcript — holds resources that
+   * belong to a *particular* dataset, and nothing else can end them. Removing a call's space used to
+   * leave the call running: the `getUserMedia` tracks stayed open, the peer connections stayed up,
+   * and the presence lease went on heartbeating into a perspective that no longer existed.
+   *
+   * A subscription rather than a state a module polls, because "gone" is an event and the absence
+   * that follows it is indistinguishable from every other absence. `datasets.get(uri)` is
+   * `undefined` during boot, while the list loads, and for a space this agent never joined; a module
+   * tearing a call down on that would tear it down on the boot frame. Only the host knows which
+   * absence is a removal.
+   *
+   * Returns an unsubscribe. Optional on hosts that cannot report it, in which case a module must
+   * behave as it did before — which is to say, this is a repair, not a dependency.
+   */
+  onRemoved?: (cb: (datasetUri: string) => void) => () => void;
 }
 
 /** What a module gets to know about a dataset. */

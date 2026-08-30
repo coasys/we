@@ -827,10 +827,23 @@ export function rectOf(box: DockGeometry | undefined, viewport: Viewport, fallba
 export function columnMembers<T extends { placement: FloatPlacement }>(
   panels: T[],
   edge: Exclude<DockEdge, null>,
+  viewport: Viewport,
 ): T[] {
   return panels
     .filter(
-      (panel) => edgeOfSnap(panel.placement.snap) === edge && !panel.placement.displace && !panel.placement.maximised,
+      (panel) =>
+        edgeOfSnap(panel.placement.snap) === edge &&
+        /*
+          Whether it *actually* displaces, not whether it asked to.
+
+          The two differ below `NARROW_VIEWPORT_PX`, where `displaces()` refuses the trade and the
+          panel covers instead. Testing the flag left such a panel in neither arrangement: not in the
+          strip, because `occupiedFor` counts only what really displaces, and not in the column,
+          because the flag said displace. Two of them on one edge landed on the same snap and
+          overlapped exactly, each hiding the other's titlebar.
+        */
+        !displaces(panel.placement, viewport) &&
+        !panel.placement.maximised,
     )
     .sort((a, b) => (a.placement.order ?? Number.POSITIVE_INFINITY) - (b.placement.order ?? Number.POSITIVE_INFINITY));
 }

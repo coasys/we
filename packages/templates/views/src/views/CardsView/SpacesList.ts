@@ -1,5 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { cardList, cardShell, confirmModal, emptyState, statChip } from '@we/template-kit';
+import { cardList, cardShell, emptyState, statChip } from '@we/template-kit';
 
 export const spacesList: SchemaNode = cardList({
   query: {
@@ -59,7 +59,6 @@ export const spacesList: SchemaNode = cardList({
         {
           type: 'Row',
           props: { ax: 'between', ay: 'center', width: '100%' },
-          $localState: { confirmDeleteOpen: { type: 'boolean', initial: false } },
           children: [
             {
               type: 'Row',
@@ -85,18 +84,14 @@ export const spacesList: SchemaNode = cardList({
                       props: {
                         variant: 'ghost',
                         size: 'sm',
-                        onClick: { $setLocal: 'confirmDeleteOpen', value: true },
+                        /*
+                          No `confirmModal`: the host raises its own in front of every destructive
+                          store action, from the tier boundary. See DestructivePrompt.schema.ts.
+                        */
+                        onClick: { $action: 'record.delete', args: ['Space', { $: 'space.id' }] },
                       },
                       children: [{ type: 'we-icon', props: { name: 'trash' } }],
                     },
-                    confirmModal({
-                      open: { $: 'local.confirmDeleteOpen' },
-                      close: { $setLocal: 'confirmDeleteOpen', value: false },
-                      title: 'Remove from discovery?',
-                      body: 'This will remove this space from the global discovery listing. The space and all its content will remain intact.',
-                      confirmLabel: 'Remove',
-                      confirm: { $action: 'record.delete', args: ['Space', { $: 'space.id' }] },
-                    }),
                   ],
                 },
               },

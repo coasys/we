@@ -379,9 +379,9 @@ describe('joining a transcript somebody else started', () => {
     expect(h.store.autoJoined()).toBe(true);
   });
 
-  it('announces it immediately, so the election counts it rather than producing a second record', () => {
-    // The same reason the button press announces before a word is said: an agent that joins the
-    // election late has already lost it, and creates a duplicate of the record it should have found.
+  it('announces it immediately, rather than waiting for the first word', () => {
+    // The same reason the button press announces before a word is said: a peer that hears about a
+    // transcription late writes into whatever collection it had already picked.
     const h = harness(THEIR_TRANSCRIPT, { ...IN_A_SPACE, transcription: CAN_TRANSCRIBE });
 
     expect(h.published).toContainEqual({ type: TRANSCRIBE_ACTIVITY, id: CALL, recording: true });
@@ -704,8 +704,8 @@ describe('extraction', () => {
     The standing watch follows the call's collection.
 
     Wired to `collectionId` rather than to the record button, because the collection appears late —
-    whoever wins the creation election makes it and the rest adopt the announced id — so there is
-    nothing to name at the press. These pin that it starts when there is something to watch and
+    it is the call's own record, which arrives when the call does — so there is nothing to name at
+    the press. These pin that it starts when there is something to watch and
     stops when the call ends, which is the part most likely to rot: nothing fails visibly if a watch
     outlives its call, it just keeps interpreting a conversation nobody is having.
   */
@@ -835,7 +835,7 @@ describe('extraction', () => {
 
     Two rules that pull in opposite directions and are both load-bearing. The press is one agent's,
     so narrowing it is local and affects nobody else — but the standing watch is a registration in
-    the shared graph that spends whichever peer wins the election, so it takes the space's whole
+    the shared graph that spends whichever peer runs the pass, so it takes the space's whole
     list and no agent's selection. Collapsing the two would either give one member a veto over what
     the neighbourhood extracts, or have peers overwrite each other's registration in turn.
   */

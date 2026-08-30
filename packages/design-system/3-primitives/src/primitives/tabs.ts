@@ -28,6 +28,45 @@ export class Tabs extends DesignSystemElement {
     });
   }
 
+  /**
+   * Arrow keys move between tabs, and only the selected one is a tab stop.
+   *
+   * `role="tablist"` is a promise about both, and neither was kept: every tab was its own tab stop
+   * (so Tab walked through all of them before reaching the panel, which is precisely what the
+   * pattern exists to avoid) and the arrow keys did nothing. A roving tabindex is the other half —
+   * `we-tab` carries it — so this only has to move focus and selection together, which is what
+   * "automatic activation" means and what a tab strip that navigates routes already does on click.
+   *
+   * Home and End go to the ends, per the same pattern. Wraps at both, since a tab strip is a ring.
+   */
+  private _onKeyDown = (e: KeyboardEvent) => {
+    const tabs = this._allTabs;
+    if (!tabs.length) return;
+    const horizontal = e.key === 'ArrowRight' || e.key === 'ArrowLeft';
+    const vertical = e.key === 'ArrowDown' || e.key === 'ArrowUp';
+    if (!horizontal && !vertical && e.key !== 'Home' && e.key !== 'End') return;
+
+    const current = tabs.findIndex((tab) => (tab as unknown as Record<string, unknown>).selected);
+    const at = current >= 0 ? current : 0;
+    let next = at;
+    if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = tabs.length - 1;
+    else {
+      const delta = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : -1;
+      next = (at + delta + tabs.length) % tabs.length;
+    }
+    if (next === at) return;
+
+    e.preventDefault();
+    const target = tabs[next] as unknown as { key?: string };
+    // Through the same event a click sends, so selection, the `change` event and whatever a
+    // consumer wired to it all behave identically however the tab was reached.
+    if (target.key !== undefined) {
+      this.onTabSelect(new CustomEvent('tab-select', { detail: { value: target.key } }));
+    }
+    (tabs[next].shadowRoot?.querySelector('[role="tab"]') as HTMLElement | null)?.focus();
+  };
+
   private onTabSelect(e: CustomEvent) {
     this.selectedKey = e.detail.value;
     this.dispatchEvent(
@@ -38,7 +77,13 @@ export class Tabs extends DesignSystemElement {
   render() {
     const inline = this.styles || {};
     return html`
-      <nav part="base" role="tablist" @tab-select=${this.onTabSelect} style=${styleMap(inline)}>
+      <nav
+        part="base"
+        role="tablist"
+        @tab-select=${this.onTabSelect}
+        @keydown=${this._onKeyDown}
+        style=${styleMap(inline)}
+      >
         <slot></slot>
       </nav>
     `;

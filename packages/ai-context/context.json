@@ -157,6 +157,12 @@
           "optional": true
         },
         {
+          "name": "label",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
           "name": "href",
           "type": "string | undefined",
           "optional": true
@@ -206,6 +212,12 @@
         },
         {
           "name": "name",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "label",
           "type": "string",
           "optional": false,
           "default": "''"
@@ -311,6 +323,12 @@
         },
         {
           "name": "name",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "label",
           "type": "string",
           "optional": false,
           "default": "''"
@@ -422,6 +440,12 @@
           "type": "boolean",
           "optional": false,
           "default": "false"
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "optional": false,
+          "default": "''"
         },
         {
           "name": "close",
@@ -605,6 +629,12 @@
           "default": "''"
         },
         {
+          "name": "label",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
           "name": "size",
           "type": "'xs' | 'sm' | 'md' | 'lg' | 'xl'",
           "optional": false,
@@ -734,6 +764,12 @@
         },
         {
           "name": "name",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "label",
           "type": "string",
           "optional": false,
           "default": "''"
@@ -1087,6 +1123,12 @@
           "default": "''"
         },
         {
+          "name": "label",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
           "name": "placeholder",
           "type": "string",
           "optional": false,
@@ -1211,6 +1253,12 @@
         },
         {
           "name": "name",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "label",
           "type": "string",
           "optional": false,
           "default": "''"
@@ -1341,6 +1389,12 @@
           "default": "''"
         },
         {
+          "name": "label",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
           "name": "size",
           "type": "'xs' | 'sm' | 'md' | 'lg' | 'xl'",
           "optional": false,
@@ -1410,6 +1464,12 @@
         },
         {
           "name": "name",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "label",
           "type": "string",
           "optional": false,
           "default": "''"
@@ -1504,6 +1564,12 @@
         },
         {
           "name": "name",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "label",
           "type": "string",
           "optional": false,
           "default": "''"
@@ -1674,6 +1740,12 @@
         },
         {
           "name": "name",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "label",
           "type": "string",
           "optional": false,
           "default": "''"
@@ -4771,6 +4843,13 @@
           "default": "true"
         },
         {
+          "name": "retired",
+          "type": "boolean",
+          "predicate": "we://retired",
+          "required": false,
+          "default": "false"
+        },
+        {
           "name": "valueType",
           "type": "string",
           "predicate": "we://signal_value_type",
@@ -6312,6 +6391,9 @@
         },
         "confirmDiscard": {
           "type": "boolean"
+        },
+        "hintEditorDirty": {
+          "type": "object"
         }
       },
       "actions": [
@@ -6351,6 +6433,9 @@
         },
         "createSpaceOpen": {
           "type": "boolean"
+        },
+        "pendingDestructive": {
+          "type": "object"
         },
         "spaceSettingsOpen": {
           "type": "boolean"
@@ -6393,6 +6478,8 @@
         "openShellView",
         "closeShellView",
         "setCreateSpaceOpen",
+        "confirmDestructive",
+        "cancelDestructive",
         "toggleSpaceSettings",
         "openSpaceSettings",
         "closeSpaceSettings",
@@ -6560,6 +6647,9 @@
         },
         "extractionTargets": {
           "type": "array"
+        },
+        "canAdministerCurrentSpace": {
+          "type": "boolean"
         }
       },
       "actions": [
@@ -6595,6 +6685,7 @@
         "launchModule",
         "createSignalType",
         "createRelationshipType",
+        "setSignalTypeRetired",
         "upsertSignal",
         "navigateToSpace",
         "openRecordRef",
@@ -6650,6 +6741,9 @@
         "defaultTemplateId": {
           "type": "string"
         },
+        "pendingInstall": {
+          "type": "object"
+        },
         "operationLoading": {
           "type": "string"
         }
@@ -6662,6 +6756,8 @@
         "uninstallTemplate",
         "installFromMarketplace",
         "installToSpace",
+        "confirmInstall",
+        "cancelInstall",
         "toggleInstalled",
         "setDefaultTemplate",
         "saveTemplate",

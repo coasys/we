@@ -1,13 +1,14 @@
 {
   "name": "@we/module-graph",
   "version": "0.1.0",
-  "description": "Graph feature module \u2014 a general-purpose graph engine with pluggable expanders, layouts and behaviours",
+  "description": "Graph feature module — a general-purpose graph engine with pluggable expanders, layouts and behaviours",
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "build:steps": "tsup",
     "build": "we-build",
+    "build:steps": "tsup",
     "dev": "tsup --watch",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "main": "./dist/index.js",
@@ -28,10 +29,14 @@
   },
   "devDependencies": {
     "@we/cli": "workspace:*",
+    "@we/graph-core": "workspace:*",
+    "@we/graph-expanders": "workspace:*",
+    "@we/graph-layouts": "workspace:*",
     "@we/module-shared": "workspace:*",
     "@we/schema-shared": "workspace:*",
     "tsup": "^8.5.1",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.11"
   },
   "context": {
     "type": "plugins",

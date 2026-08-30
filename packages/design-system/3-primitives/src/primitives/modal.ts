@@ -203,32 +203,36 @@ export default class Modal extends OverlayElement {
     if (e.key === 'Escape') {
       this.close();
     } else if (e.key === 'Tab') {
-      this._trapFocus(e);
+      // The base class's, which walks the composed tree. The one that lived here queried
+      // `[part=base]`'s shadow subtree — where a modal's slotted content is not — so it found
+      // nothing and returned on every keypress. See `OverlayElement.trapFocus`.
+      this.trapFocus(e);
     }
   }
 
-  private _trapFocus(e: KeyboardEvent) {
-    const base = this.renderRoot.querySelector('[part="base"]');
-    if (!base) return;
-    const focusable = base.querySelectorAll<HTMLElement>(
-      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-    );
-    if (focusable.length === 0) return;
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first.focus();
-    }
+  /**
+   * Move focus into the dialog once its content exists.
+   *
+   * `firstUpdated` rather than `connectedCallback`: the slots are empty until the first render, so
+   * capturing earlier finds nothing to focus and leaves focus behind the scrim — which is the state
+   * this whole trap exists to prevent, arrived at from the other end.
+   */
+  firstUpdated() {
+    this.captureFocus();
   }
 
   render() {
     return html`
       <div part="backdrop" @click=${this.close}></div>
-      <div part="base" role="dialog" aria-modal="true">
+      <!--
+        Named by its own header.
+
+        \`aria-modal="true"\` says "this is a dialog and focus is inside it"; without a name, a screen
+        reader announces "dialog" and stops, which tells somebody they are trapped and not what in.
+        The header slot is where every consumer already puts the title, so pointing at it costs a
+        caller nothing — and \`aria-labelledby\` on a shadow id resolves, since it is same-root.
+      -->
+      <div part="base" role="dialog" aria-modal="true" aria-labelledby="modal-title">
         ${
           !this.hideclosebutton
             ? html`
@@ -242,7 +246,7 @@ export default class Modal extends OverlayElement {
               `
             : null
         }
-        <slot name="header"></slot>
+        <slot name="header" id="modal-title"></slot>
         <div part="content"><slot></slot></div>
         <slot name="footer"></slot>
       </div>

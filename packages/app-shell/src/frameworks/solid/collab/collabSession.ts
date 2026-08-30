@@ -20,6 +20,28 @@
  * harmless — which is what makes a best-effort broadcast a sufficient transport. What it does not
  * give is history for a peer who was offline: a session is live state only. The models are the
  * record, and a save materialises them; a peer who missed the session reads those.
+ *
+ * ## Who may write
+ *
+ * Every frame carries its sender, authenticated by the transport, and `members` says who the space
+ * holds. A frame from anyone else is dropped. This is not a strong boundary and does not pretend to
+ * be one — a neighbourhood is writable by its members, so a member editing a draft they were not
+ * invited into is a member doing something rude, not an intruder — but discarding the sender
+ * outright meant a session accepted `Y.applyUpdate` from anybody the transport would carry, with no
+ * record of who. The membership list is the coarsest check that is actually available here, and it
+ * is strictly better than none.
+ *
+ * A member list that has not loaded yet answers "unknown" rather than "nobody": refusing every
+ * frame during the first seconds of a space would break the join handshake for the common case in
+ * order to narrow a window nothing is actually protected by.
+ *
+ * ## Nothing a peer sends may throw
+ *
+ * Frames are decoded and applied inside `try`. The transport dispatches to its subscribers with a
+ * plain `forEach`, so an exception here used to unwind through it and take every *other* listener
+ * on the same signal down with it — presence, call signalling — from one malformed base64 string.
+ * The adapter now catches per-listener as well; both halves are needed, because "one bad frame is
+ * dropped" and "one bad frame is survivable" are different guarantees.
  */
 import type { EphemeralPort } from '@we/backend-shared';
 import type { CollabSession } from '@we/block-solid';
@@ -32,7 +54,40 @@ type Message = { t: 'hello' } | { t: 'sync'; u: string } | { t: 'update'; u: str
 /** How long a joiner waits for a peer to answer before treating itself as first in. */
 const JOIN_TIMEOUT_MS = 1500;
 
-export function createCollabSession(ephemeral: EphemeralPort, dataset: unknown, nodeId: string): CollabSession | null {
+/**
+ * A frame bigger than this is refused before it is decoded.
+ *
+ * Base64 of a Yjs update: a composition large enough to reach a megabyte encoded is one no editor
+ * would be usable in, so this is far above anything real and still bounds what a peer can make this
+ * client allocate in one message.
+ */
+const MAX_FRAME_CHARS = 1_000_000;
+
+export interface CollabSessionOptions {
+  /**
+   * DIDs the space holds, or `null` while that is still unknown. A frame from anybody else is
+   * dropped; `null` accepts, since the alternative is refusing the join handshake on every boot.
+   */
+  members?: () => string[] | null;
+  /** This agent's own DID, so an echoed frame is not treated as a peer answering the handshake. */
+  self?: () => string | undefined;
+}
+
+/** Whether `payload` is a frame this protocol recognises, with a decodable-looking body. */
+function isMessage(payload: unknown): payload is Message {
+  if (!payload || typeof payload !== 'object') return false;
+  const { t, u } = payload as { t?: unknown; u?: unknown };
+  if (t === 'hello') return true;
+  if (t !== 'sync' && t !== 'update' && t !== 'awareness') return false;
+  return typeof u === 'string' && u.length > 0 && u.length <= MAX_FRAME_CHARS;
+}
+
+export function createCollabSession(
+  ephemeral: EphemeralPort,
+  dataset: unknown,
+  nodeId: string,
+  options: CollabSessionOptions = {},
+): CollabSession | null {
   const scope = ephemeral(dataset as never);
   if (!scope) return null;
 
@@ -67,30 +122,44 @@ export function createCollabSession(ephemeral: EphemeralPort, dataset: unknown, 
   };
   awareness.on('update', onAwareness);
 
-  const unsubscribe = channel.onMessage((_from, payload) => {
-    const message = payload as Message;
-    if (!message || typeof message !== 'object') return;
-    switch (message.t) {
-      case 'hello':
-        send({ t: 'sync', u: toBase64(Y.encodeStateAsUpdate(doc)) });
-        send({ t: 'awareness', u: toBase64(encodeAwarenessUpdate(awareness, [doc.clientID])) });
-        return;
-      case 'sync':
-        Y.applyUpdate(doc, fromBase64(message.u), 'remote');
-        // Answer once with our own state so two peers that both started with content merge.
-        if (!answered) {
-          answered = true;
-          send({ t: 'update', u: toBase64(Y.encodeStateAsUpdate(doc)) });
-        }
-        clearTimeout(joinTimer);
-        resolveSynced(true);
-        return;
-      case 'update':
-        Y.applyUpdate(doc, fromBase64(message.u), 'remote');
-        return;
-      case 'awareness':
-        applyAwarenessUpdate(awareness, fromBase64(message.u), 'remote');
-        return;
+  /** Whether a frame from `from` is one this session will act on. See the module docblock. */
+  const accepts = (from: string): boolean => {
+    if (!from) return false;
+    if (from === options.self?.()) return false;
+    const members = options.members?.();
+    return !members || members.includes(from);
+  };
+
+  const unsubscribe = channel.onMessage((from, payload) => {
+    if (!accepts(from) || !isMessage(payload)) return;
+    const message = payload;
+    try {
+      switch (message.t) {
+        case 'hello':
+          send({ t: 'sync', u: toBase64(Y.encodeStateAsUpdate(doc)) });
+          send({ t: 'awareness', u: toBase64(encodeAwarenessUpdate(awareness, [doc.clientID])) });
+          return;
+        case 'sync':
+          Y.applyUpdate(doc, fromBase64(message.u), 'remote');
+          // Answer once with our own state so two peers that both started with content merge.
+          if (!answered) {
+            answered = true;
+            send({ t: 'update', u: toBase64(Y.encodeStateAsUpdate(doc)) });
+          }
+          clearTimeout(joinTimer);
+          resolveSynced(true);
+          return;
+        case 'update':
+          Y.applyUpdate(doc, fromBase64(message.u), 'remote');
+          return;
+        case 'awareness':
+          applyAwarenessUpdate(awareness, fromBase64(message.u), 'remote');
+          return;
+      }
+    } catch (error) {
+      // One unusable frame, dropped. Logged rather than swallowed silently: a peer whose frames
+      // never decode is a protocol skew worth being able to see.
+      console.warn(`collab: unusable ${message.t} frame from ${from}`, error);
     }
   });
   let answered = false;

@@ -89,8 +89,21 @@ export function Blocks(props: { blocks: readonly ContentBlock[] }): JSX.Element 
 
 /**
  * Read-only rendering of a composition: a walker over the blocks, no editor. Accepts the
- * `data:…;base64,…` string a resolved file field reads as, already-decoded blocks, or a legacy
- * tree, and resolves stored file addresses against the host's dataset before drawing.
+ * `data:…;base64,…` string a resolved file field reads as or already-decoded blocks, and resolves
+ * stored file addresses against the host's dataset before drawing.
+ *
+ * ## A composition it cannot read says so
+ *
+ * `decodeEditorState` answers null for anything that is not a composition — the Lexical tree WE
+ * stored before the content layer, a truncated blob, a future format. That null used to become
+ * `[]`, which renders as an *empty post*: indistinguishable from one somebody wrote nothing in.
+ * Opening the composer on it then made it worse, since the composer starts from the same nothing
+ * and its save treats every still-linked block as somebody else's addition — so the author saw an
+ * empty box, wrote something, and got a "changed by someone else" toast for their trouble.
+ *
+ * WE has no consumers on the old format and is not carrying a migration for one, so the answer is
+ * not to read it — it is to stop pretending there was nothing there. The blocks themselves are
+ * untouched either way; only the blob is unreadable.
  *
  * @superclass DesignSystemElement
  */
@@ -100,9 +113,11 @@ export function BlockRenderer(props: Props) {
 
   const [blocks] = createResource(
     () => ({ state: props.editorState, dataset: props.perspective ?? host.dataset() }),
-    async ({ state, dataset }) => {
+    async ({ state, dataset }): Promise<ContentBlock[] | null> => {
       if (state === undefined || state === null) return [] as ContentBlock[];
-      const decoded = decodeEditorState(state) ?? [];
+      // Null, not `[]`. Empty and unreadable are different things and only one of them is true.
+      const decoded = decodeEditorState(state);
+      if (decoded === null) return null;
       if (!dataset) return decoded;
       try {
         return await resolveExpressionAddresses(dataset, decoded);
@@ -120,7 +135,11 @@ export function BlockRenderer(props: Props) {
   return (
     <Column class="we-block-renderer-wrapper" width={width} ax={props.ax} ay={props.ay}>
       <div class={themeRoot}>
-        <Blocks blocks={blocks() ?? []} />
+        <Switch fallback={<Blocks blocks={blocks() ?? []} />}>
+          <Match when={blocks() === null}>
+            <div class="we-unreadable-content">This was written in a format this version of WE cannot read.</div>
+          </Match>
+        </Switch>
       </div>
     </Column>
   );

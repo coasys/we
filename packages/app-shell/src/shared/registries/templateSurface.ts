@@ -22,8 +22,8 @@
  *   probe.
  * - **State is tagged, actions are not.** Only members declared `state` are marked with
  *   `markReactive`, and `walkPath` now calls only tagged accessors. That closes the other half of
- *   the hole: `$store` used to *invoke* any function it walked past, so naming a zero-argument
- *   method in a `$store` path called it during paint.
+ *   the hole: a store read used to *invoke* any function it walked past, so naming a zero-argument
+ *   method in one called it during paint.
  * - **Groups are the grant unit, per-member declarations are the mechanism.** Nobody can review a
  *   list of 388 method names; "this template can manage your library and your account" is
  *   reviewable. Groups are what a marketplace listing will show a human when chrome templates
@@ -411,6 +411,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
 
     // ── signals ──
     createSignalType: action('signals'),
+    setSignalTypeRetired: action('signals'),
     // The vocabulary of connections, alongside the vocabulary of reactions — same tier, same act:
     // a community naming what it means by something.
     createRelationshipType: action('signals'),
@@ -431,6 +432,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     navigateToSpace: action('navigation'),
     openRecordRef: action('navigation'),
     canAdministerSpace: action('navigation'),
+    canAdministerCurrentSpace: state('navigation'),
     copyShareLink: action('navigation'),
     copyGuestLink: action('navigation'),
     activeModules: state('navigation'),
@@ -591,6 +593,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     deleteShape: destructive('space-settings'),
     openHintEditor: action('space-settings'),
     closeHintEditor: action('space-settings'),
+    hintEditorDirty: state('space-settings'),
     setHintDraft: action('space-settings'),
     saveHintEditor: action('space-settings'),
     resetHintEditor: action('space-settings'),
@@ -738,6 +741,17 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     uninstallTemplate: action('library'),
     installFromMarketplace: action('library'),
     installToSpace: action('space-settings'),
+    /*
+      The install dialog's own three members.
+
+      `library`, and at the chrome tier only — the dialog is host chrome by design (a dialog
+      vouching for a template must not be drawn by one), so nothing at the space tier has any use
+      for them, and `confirmInstall` writing on a click a space template could make is exactly the
+      confirmation being bypassed. See InstallPrompt.schema.ts.
+    */
+    pendingInstall: state('library'),
+    confirmInstall: action('library'),
+    cancelInstall: action('library'),
     setDefaultTemplate: action('library'),
     saveTemplate: action('editor'),
     saveTemplateAs: action('editor'),
@@ -802,6 +816,32 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       user's behalf.
     */
     setCreateSpaceOpen: action('navigation'),
+    /*
+      The host's delete confirmation.
+
+      `wiring` for all four, deliberately, and this is the one classification in the file where
+      being reachable would defeat the member's whole purpose. The dialog stands between a space
+      template and every destructive action it can name; a template that could read
+      `pendingDestructive` could tell whether the dialog was up, and one that could call
+      `confirmDestructive` could answer its own question. `requestDestructive` is the guard itself,
+      passed to `buildTemplateBag` by the host.
+
+      Chrome reaches them the way it reaches everything else the templates may not touch: it is not
+      in a bag at all. `DestructivePrompt.schema.ts` is a host slot, rendered against the chrome
+      bag — so these must appear in the chrome tier too, and `wiring` would exclude them from both.
+      They are `host-layout`, the group chrome-only surfaces already live in.
+    */
+    /*
+      Which modules' chrome is live here, injected by `SpaceStore` — see `ShellStore.moduleGate`.
+
+      Wiring in the strictest sense: it is one store handing another an answer it cannot compute,
+      and a template able to call it could make every module's panel claim room it is not using.
+    */
+    provideModuleGate: WIRING,
+    pendingDestructive: state('host-layout'),
+    confirmDestructive: action('host-layout'),
+    cancelDestructive: action('host-layout'),
+    requestDestructive: WIRING,
     /*
       The space-settings panel — which host surface is open, and asking for it.
 
@@ -1054,15 +1094,19 @@ const ALWAYS_PRESENT = new Set([
  * it, and this function tags only what was marked. Left as a follow-up rather than done here because
  * it is a contract change across five modules, and doing it badly would be worse than doing it late.
  */
-function taggedModuleStores(modules: Record<string, Record<string, unknown>>): Record<string, unknown> {
+function taggedModuleStores(
+  modules: Record<string, Record<string, unknown>>,
+  chromeOnly?: Record<string, readonly string[]>,
+): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [id, store] of Object.entries(modules ?? {})) {
     if (!store || typeof store !== 'object') continue;
+    // Members this module keeps for host chrome — absent below, not blocked. See `ModuleStoreSurface`.
+    const withheld = new Set(chromeOnly?.[id] ?? []);
     out[id] = Object.fromEntries(
-      Object.entries(store).map(([name, member]) => [
-        name,
-        typeof member === 'function' ? markReactive(member) : member,
-      ]),
+      Object.entries(store)
+        .filter(([name]) => !withheld.has(name))
+        .map(([name, member]) => [name, typeof member === 'function' ? markReactive(member) : member]),
     );
   }
   return out;
@@ -1071,8 +1115,30 @@ function taggedModuleStores(modules: Record<string, Record<string, unknown>>): R
 export interface BuildBagOptions {
   /** Which capability groups this template was granted. */
   grants: readonly CapabilityGroup[];
-  /** Called before a `destructive` action runs. Returning false refuses it. */
-  onDestructive?: (path: string) => boolean;
+  /**
+   * Called before a `destructive` action runs. Resolving false refuses it.
+   *
+   * Asynchronous, and that is the whole reason this was never wired to anything. A confirmation is
+   * a question put to a person, so a guard that had to answer *synchronously* could only ever have
+   * been a policy check — and there is no policy here, there is a human. The option existed, three
+   * call sites passed nothing, and every destructive action a space template could name ran on one
+   * unqualified click.
+   *
+   * Awaiting it makes a destructive action async from the template's point of view, which costs
+   * nothing: `$action` already awaits, and `onSuccess`/`onError`/`onFinally` are defined in terms
+   * of the returned promise. A refusal resolves `undefined` — the same nothing a blocked action
+   * resolves — so `onSuccess` does not fire on a cancel.
+   */
+  onDestructive?: (path: string, args: unknown[]) => boolean | Promise<boolean>;
+  /**
+   * Store members each module withholds from a space template, keyed by module id.
+   *
+   * Passed by the host from the module registry, rather than read here, for the reason this whole
+   * file exists to serve: what a module publishes is the module's declaration, and the boundary
+   * should not have to know the names. Only meaningful below the chrome tier — chrome *is* the
+   * audience these members are kept for. See `ModuleStoreSurface`.
+   */
+  moduleChromeOnly?: Record<string, readonly string[]>;
 }
 
 /**
@@ -1101,7 +1167,11 @@ export function buildTemplateBag<T extends Record<string, unknown>>(stores: T, o
     if (key === 'modules') {
       Object.defineProperty(bag, key, {
         enumerable: true,
-        get: () => taggedModuleStores(stores[key] as Record<string, Record<string, unknown>>),
+        get: () =>
+          taggedModuleStores(
+            stores[key] as Record<string, Record<string, unknown>>,
+            granted.has('host-layout') ? undefined : options.moduleChromeOnly,
+          ),
       });
       continue;
     }
@@ -1155,7 +1225,7 @@ export function buildTemplateBag<T extends Record<string, unknown>>(stores: T, o
       if (spec.destructive && options.onDestructive) {
         const guard = options.onDestructive;
         const bound = method;
-        method = (...args: unknown[]) => (guard(path) ? bound(...args) : undefined);
+        method = async (...args: unknown[]) => ((await guard(path, args)) ? bound(...args) : undefined);
       }
 
       filtered[name] = method;

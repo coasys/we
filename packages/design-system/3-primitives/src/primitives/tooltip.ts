@@ -135,6 +135,9 @@ export default class Tooltip extends LayoutElement {
   // is where the consequences were finally noticed.
   updated(changed: PropertyValues) {
     super.updated(changed);
+    // A tooltip whose text is bound to a signal would otherwise keep describing the trigger with
+    // whatever it said first.
+    if (changed.has('title')) this._describeTrigger();
     if (changed.has('open')) {
       if (this.open) this.openTooltip();
       else this.closeTooltip();
@@ -208,9 +211,31 @@ export default class Tooltip extends LayoutElement {
     this.open = false;
   };
 
+  /**
+   * Point `aria-describedby` at the tooltip from the element that is actually focused.
+   *
+   * It was on the wrapper `<span part="trigger">`, which is not focusable and is not what a screen
+   * reader is on when the tooltip appears — so the description was never read out, for any tooltip
+   * in the app. The focusable thing is whatever the consumer slotted (a `we-button`, an avatar), so
+   * the attribute has to go there.
+   *
+   * The id lives in this shadow root and the slotted element in the light DOM, so they are in
+   * different trees and `aria-describedby` cannot cross that. The description is copied onto the
+   * trigger with `aria-description` instead — the text rather than a reference, which is exactly
+   * what that attribute is for and the one thing that does work across a shadow boundary.
+   */
+  private _describeTrigger = () => {
+    const slot = this.renderRoot?.querySelector('slot:not([name])') as HTMLSlotElement | null;
+    const text = this.title || (this.textContent ?? '').trim();
+    for (const el of slot?.assignedElements({ flatten: true }) ?? []) {
+      if (text) el.setAttribute('aria-description', text);
+      else el.removeAttribute('aria-description');
+    }
+  };
+
   render() {
     return html`
-      <span part="trigger" aria-describedby=${this._tooltipId}><slot></slot></span>
+      <span part="trigger"><slot @slotchange=${this._describeTrigger}></slot></span>
       <span part="tooltip" id=${this._tooltipId} role="tooltip">
         <!--
           Slotted content, falling back to \`title\`.

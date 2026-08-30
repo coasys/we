@@ -26,7 +26,6 @@
 */
 .we-flip-card {
   perspective: 1000px;
-  -webkit-perspective: 1000px;
   cursor: pointer;
   user-select: none;
 
@@ -35,7 +34,6 @@
     width: 100%;
     height: 100%;
     transition: transform var(--we-flip-card-duration, 0.5s) cubic-bezier(0.4, 0, 0.2, 1);
-    -webkit-transform-style: preserve-3d;
     transform-style: preserve-3d;
   }
 
@@ -50,9 +48,9 @@
     position: absolute;
     inset: 0;
     backface-visibility: hidden;
-    -webkit-backface-visibility: hidden;
     border-radius: var(--we-theme-surface-radius, var(--we-radius-400));
     overflow: hidden;
+
     /*
       Swapped around the instant the card is edge-on — which is `0.35` of the duration, not half.
 

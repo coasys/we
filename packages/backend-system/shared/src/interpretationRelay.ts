@@ -126,6 +126,28 @@ export interface InterpretationRelay {
  * against the same code path AD4M runs in production — the reason the ephemeral port has a
  * reference implementation at all.
  */
+/**
+ * How much of one side of the exchange goes on the wire.
+ *
+ * The doc above calls the detail "tens of KB per pass" and that was the *typical* case, not a
+ * bound: the prompt is built from a transcript, so an hour-long call's prompt is as long as the
+ * hour-long call, and both halves went out uncapped to every peer in the space, once per phase.
+ * A single meeting could therefore push megabytes of ephemeral traffic at everybody present — and
+ * a peer sending an oversized payload has the same effect on every receiver whether or not it meant
+ * to.
+ *
+ * 64KB is roughly the largest thing worth reading in a debug panel, which is what this is for. The
+ * marker says the text was cut rather than letting a truncated JSON blob read as a malformed one.
+ */
+const MAX_DETAIL_CHARS = 64_000;
+const TRUNCATION_MARKER = '\n… (truncated for sharing)';
+
+function clampDetail(text: string | undefined): string | undefined {
+  if (text === undefined) return undefined;
+  if (text.length <= MAX_DETAIL_CHARS) return text;
+  return text.slice(0, MAX_DETAIL_CHARS) + TRUNCATION_MARKER;
+}
+
 export function createInterpretationRelay(channel: EphemeralChannel, options: RelayOptions = {}): InterpretationRelay {
   const now = options.now ?? (() => Date.now());
   const ttlMs = options.ttlMs ?? INTERPRETATION_ACTIVITY_TTL_MS;
@@ -166,7 +188,9 @@ export function createInterpretationRelay(channel: EphemeralChannel, options: Re
       phase: activity.phase,
       ids: activity.ids,
       detail: activity.detail,
-      ...(sharingDetail() ? { prompt: activity.llm?.prompt, response: activity.llm?.response } : {}),
+      ...(sharingDetail()
+        ? { prompt: clampDetail(activity.llm?.prompt), response: clampDetail(activity.llm?.response) }
+        : {}),
     };
     // Fire and forget, matching the channel's own contract. A dropped update costs one frame of
     // staleness on a peer's bar and is corrected by the next phase; awaiting it here would make
@@ -206,7 +230,16 @@ export function createInterpretationRelay(channel: EphemeralChannel, options: Re
       at: now(),
       ids: payload.ids,
       detail: payload.detail,
-      llm: payload.prompt || payload.response ? { prompt: payload.prompt, response: payload.response } : undefined,
+      /*
+        Clamped on the way in as well as on the way out. What this peer sends is under its own
+        control; what arrives is not, and a peer that sends an unbounded prompt is holding that
+        much of every receiver's memory for the row's whole ten-minute lifetime — once per pass,
+        for as long as it cares to keep sending. A cap on the sender alone is a request.
+      */
+      llm:
+        payload.prompt || payload.response
+          ? { prompt: clampDetail(payload.prompt), response: clampDetail(payload.response) }
+          : undefined,
     });
     notify();
   });

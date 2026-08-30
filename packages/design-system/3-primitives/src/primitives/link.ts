@@ -1,10 +1,10 @@
 import type { DesignSystemProps } from '@we/design-types';
+import { safeHref } from '@we/design-utils';
 import { css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
-import { safeHref } from '../shared/safe-href';
 import sharedStyles from '../shared/styles';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {

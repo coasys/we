@@ -47,6 +47,23 @@ function propertyNames(entity: string): string[] {
 /** The registry key a text block persists through. */
 const TEXT_TYPE = 'block';
 
+/**
+ * How deep a walk of the `children` relation will go.
+ *
+ * `children` is a multi-writer link set in a shared perspective: no writer reads the current set
+ * before appending, which is what makes concurrent additions safe, and is also why nothing can stop
+ * two agents between them producing a cycle. Neither of them did anything wrong; the graph is
+ * simply not guaranteed to be a tree, and code that assumed it was recursed forever. Deleting a
+ * collection that had one was impossible — the delete ran inside a transaction and never returned,
+ * so the collection could not be removed by any means the app offered.
+ *
+ * A visited set is the real fix and both walkers now carry one. The depth cap is the belt: a
+ * degenerate but acyclic tree — a thousand nested collections, which nothing legitimate produces —
+ * would otherwise still exhaust the stack. Well past any real composition; a hand-built document
+ * nests single figures.
+ */
+const MAX_BLOCK_DEPTH = 64;
+
 /** Fields on a content block that are the composition's, not the model's. */
 const CONTENT_OWN = new Set(['_type', '_key', 'content', 'children', 'markDefs', '__assetNames']);
 
@@ -617,15 +634,20 @@ export async function childrenToBlocks(perspective: BlockDataset, collection: Re
  */
 export async function deleteBlocks(perspective: BlockDataset, rootUri: string): Promise<void> {
   await runEntityTransaction(perspective, async (tx) => {
-    async function deleteNode(uri: string): Promise<void> {
+    const seen = new Set<string>();
+    async function deleteNode(uri: string, depth: number): Promise<void> {
+      // See `MAX_BLOCK_DEPTH`: `children` is a multi-writer link set, so a cycle in it is something
+      // two agents can produce without either doing anything wrong.
+      if (seen.has(uri) || depth > MAX_BLOCK_DEPTH) return;
+      seen.add(uri);
       const resolved = await resolveBlockInstance(perspective, uri);
       if (!resolved) return;
       if (hasChildren(resolved.model)) {
-        for (const childUri of resolved.model.children) await deleteNode(childUri);
+        for (const childUri of resolved.model.children) await deleteNode(childUri, depth + 1);
       }
       await resolved.model.delete(tx.batchId);
     }
-    await deleteNode(rootUri);
+    await deleteNode(rootUri, 0);
   });
 }
 
@@ -641,13 +663,16 @@ type Resolved = { model: BlockRecord; entity: string };
  */
 async function collectDescendants(perspective: BlockDataset, childUris: string[]): Promise<Map<string, Resolved>> {
   const result = new Map<string, Resolved>();
-  async function walk(uri: string): Promise<void> {
+  async function walk(uri: string, depth: number): Promise<void> {
+    // `result` doubles as the visited set — a block reachable by two paths is the same block, and
+    // resolving it twice would be wasted work even without the cycle. See `MAX_BLOCK_DEPTH`.
+    if (result.has(uri) || depth > MAX_BLOCK_DEPTH) return;
     const resolved = await resolveBlockInstance(perspective, uri);
     if (!resolved) return;
     result.set(uri, resolved);
-    if (hasChildren(resolved.model)) for (const childUri of resolved.model.children) await walk(childUri);
+    if (hasChildren(resolved.model)) for (const childUri of resolved.model.children) await walk(childUri, depth + 1);
   }
-  for (const uri of childUris) await walk(uri);
+  for (const uri of childUris) await walk(uri, 0);
   return result;
 }
 
@@ -748,7 +773,34 @@ export async function reconcileBlocks(
       uploaded: ContentBlock | undefined,
     ): Promise<BlockRecord | undefined> {
       const registration = getBlockRegistration(isTextBlock(block) ? TEXT_TYPE : block._type);
-      if (!registration) return undefined;
+      /*
+        A block type this client does not know: keep it exactly where it is.
+
+        Returning `undefined` here used to be the whole answer, and it was destructive. The id never
+        reached `orderedIds`; `kept` only rescues blocks that are *not* in the base, and this one is;
+        so the parent's `children` link went, and the removal pass below — which deletes anything in
+        the base that nothing claimed — deleted the model too. Editing one paragraph of a post
+        silently destroyed every block in it whose type this build had never heard of.
+
+        Claiming it and returning the model it already has puts the link back in the author's order
+        and leaves the record untouched. Nothing is written for it: `data` would be built from a
+        registration that does not exist, and a block we cannot read is not a block we should write.
+
+        Today all sixteen core types register unconditionally, so this bites only once a module or a
+        space shape contributes a block type — which is exactly what `blockableEntities` exists for,
+        and exactly the case where "somebody else has a plugin I don't" is normal rather than an
+        error. A block with no stored record and no registration is genuinely nothing this client can
+        represent, and only that case is dropped.
+      */
+      if (!registration) {
+        const unknownId = typeof block._key === 'string' ? block._key : undefined;
+        const stored = unknownId && !claimed.has(unknownId) ? existing.get(unknownId) : undefined;
+        if (unknownId && stored) {
+          claimed.add(unknownId);
+          return stored.model;
+        }
+        return undefined;
+      }
 
       const data = modelData(registration.entity, block);
       const existingId = typeof block._key === 'string' ? block._key : undefined;

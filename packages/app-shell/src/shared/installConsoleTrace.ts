@@ -51,8 +51,17 @@ import { setTraceSink } from '@we/backend-shared';
 
 const STORAGE_KEY = 'we:trace';
 
-/** Scopes emitted anywhere in the codebase, for the "what can I turn on" question. */
-export const TRACE_SCOPES = ['presence', 'ephemeral'] as const;
+/**
+ * Scopes emitted anywhere in the codebase, for the "what can I turn on" question.
+ *
+ * `dataset` and `space` were `console.log` lines in the two stores — "creating root dataset",
+ * "joined space", "joining shared dataset" — printed to everybody who happened to have devtools
+ * open, in a shipped app. They are the same *kind* of thing the ephemeral scope already covers: a
+ * sequence of hops that is worth watching when a join or a boot goes wrong, and worth nothing at
+ * all when it does not. So they moved behind the same switch rather than being deleted, which
+ * would have lost the diagnostic with the noise.
+ */
+export const TRACE_SCOPES = ['presence', 'ephemeral', 'dataset', 'space'] as const;
 
 function enabledScopes(): Set<string> | null {
   if (typeof localStorage === 'undefined') return null;

@@ -30,6 +30,7 @@ import type {
 import type {
   AgentDataAccess,
   CreateEntityOptions,
+  DatasetTarget,
   InterpretationActivitySummary,
   ModuleDatasetAccess,
   ModuleIdentityAccess,
@@ -42,6 +43,14 @@ import { moduleRegistry, moduleStores } from './moduleRegistry';
 export interface ModuleHostServices {
   dataset?: () => DatasetHandle | null;
   datasetUri?: () => string | null;
+  /**
+   * Resolve a dataset URI a module named, or `undefined` when this agent does not hold it.
+   *
+   * The half of {@link DatasetTarget} only the host can supply. Distinguishes "not named" from
+   * "named and not found", because those must not have the same outcome: the first means the space
+   * on screen, and the second must refuse rather than silently write somewhere else.
+   */
+  datasetByUri?: (uri: string) => DatasetHandle | undefined;
   selfId?: () => string | null;
   ephemeral?: EphemeralPort;
   presence?: {
@@ -104,14 +113,14 @@ export interface ModuleHostServices {
   identities?: ModuleIdentityAccess;
   /** Naming and reaching spaces, for a module whose state can outlive the space on screen. */
   datasets?: ModuleDatasetAccess;
-  /** Write a record into the current dataset — the host's `record.create`, in imperative form. */
+  /** Write a record — the host's `record.create`, in imperative form. Honours `options.dataset`. */
   createEntity?: (
     entity: string,
     fields: Record<string, unknown>,
     options?: CreateEntityOptions,
   ) => Promise<string | null>;
   /** Add one value to a to-many relation on an existing record. See `ModuleStoreDeps.linkEntity`. */
-  linkEntity?: (entity: string, id: string, relation: string, value: string) => Promise<void>;
+  linkEntity?: (entity: string, id: string, relation: string, value: string, options?: DatasetTarget) => Promise<void>;
   /** This agent's own records, in the root dataset. See `AgentDataAccess`. */
   agentData?: AgentDataAccess;
   /** How the current dataset is named in a record reference. See `ModuleStoreDeps.datasetRefKey`. */
@@ -126,13 +135,57 @@ const services: ModuleHostServices = {};
  * Merges rather than replaces, because the slices arrive from different stores at different times —
  * `DatasetStore`/`SessionStore` have the dataset and the transport, `PresenceStore` has the roster.
  */
-export function provideModuleHostServices(slice: ModuleHostServices): void {
+export function provideModuleHostServices(slice: ModuleHostServices): () => void {
   Object.assign(services, slice);
+
+  /*
+    Returns the withdrawal, and withdraws only what is still ours.
+
+    Six stores merge slices into one global object and nothing ever removed one. A provider that
+    unmounted — `TemplateProvider` does, on every template switch — left its closures here, bound to
+    signals from a scope that had been disposed, and a module going through them wrote against the
+    previous template's stores with nothing anywhere reporting it.
+
+    Key by key rather than wholesale, because the slices genuinely overlap in time: a store that has
+    already been superseded must take back only the entries it still owns, or its cleanup would blank
+    its replacement's.
+  */
+  const mine = Object.entries(slice) as [keyof ModuleHostServices, unknown][];
+  return () => {
+    for (const [key, value] of mine) {
+      if (services[key] === value) delete services[key];
+    }
+  };
 }
 
 /** Test seam: drop everything between cases so one test's bindings cannot leak into the next. */
 export function resetModuleHostServices(): void {
   for (const key of Object.keys(services)) delete services[key as keyof ModuleHostServices];
+}
+
+/**
+ * The dataset a module's call means: the one it named, or the space on screen.
+ *
+ * ## Why a missing one is `null` rather than the current dataset
+ *
+ * Falling back is the bug this exists to fix. A module names a dataset precisely when its work does
+ * *not* belong to whatever is on screen — a transcript belongs to the call, and the call's space may
+ * be two navigations behind. Resolving a name it does not hold and quietly writing to the current
+ * dataset instead is how a transcript ended up in the wrong space with a `children` link to a record
+ * that space does not hold.
+ *
+ * So there are three answers, not two: unnamed means here, named-and-found means there, and
+ * named-and-missing means nowhere. A caller that gets nothing does nothing — which loses one
+ * utterance, where the alternative loses the transcript and corrupts a second space.
+ */
+function targeted(target?: DatasetTarget): DatasetHandle | null {
+  if (!target?.dataset) return services.dataset?.() ?? null;
+  const found = services.datasetByUri?.(target.dataset);
+  if (!found) {
+    console.warn(`module host: no dataset for "${target.dataset}" — refusing rather than writing elsewhere`);
+    return null;
+  }
+  return found;
 }
 
 /**
@@ -252,18 +305,26 @@ export function createModuleStoreDeps(framework: {
       // False until the store publishes, which reads as "not shared" — the conservative answer,
       // and the one the footnote it gates should give while the setting is still unknown.
       detailShared: () => services.interpretationDetailShared?.() ?? false,
-      proposals: async () => {
-        const dataset = services.dataset?.();
+      /*
+        `target` names the dataset, and an unresolvable one refuses rather than falling through.
+
+        Interpretation follows the *call*, and a call outlives the space on screen — so reading
+        proposals from `dataset()` answered about wherever the reader had wandered to, and accepting
+        one committed it there. `targeted` is the one place that decision is made; see it for why a
+        named-and-missing dataset is not the same as an unnamed one.
+      */
+      proposals: async (target) => {
+        const dataset = targeted(target);
         if (!dataset || !services.interpretation) return [];
         return services.interpretation.proposals(dataset);
       },
-      accept: async (id, property) => {
-        const dataset = services.dataset?.();
+      accept: async (id, property, target) => {
+        const dataset = targeted(target);
         if (!dataset || !services.interpretation) return false;
         return services.interpretation.accept(dataset, id, property);
       },
-      reject: async (id, property) => {
-        const dataset = services.dataset?.();
+      reject: async (id, property, target) => {
+        const dataset = targeted(target);
         if (!dataset || !services.interpretation) return false;
         return services.interpretation.reject(dataset, id, property);
       },
@@ -275,6 +336,9 @@ export function createModuleStoreDeps(framework: {
       get: (uri) => services.datasets?.get(uri),
       open: (uri) => services.datasets?.open(uri),
       openRef: (ref) => services.datasets?.openRef(ref),
+      // No-op unsubscribe where the host cannot report removals, so a module's cleanup is
+      // unconditional rather than another thing to guard.
+      onRemoved: (cb) => services.datasets?.onRemoved?.(cb) ?? (() => {}),
     },
 
     identities: {
@@ -293,13 +357,16 @@ export function createModuleStoreDeps(framework: {
       ready: () => services.agentData?.ready() ?? false,
       create: async (entity, fields, options) => (await services.agentData?.create(entity, fields, options)) ?? null,
       find: async (entity, query) => (await services.agentData?.find(entity, query)) ?? [],
+      update: async (entity, id, fields) => {
+        await services.agentData?.update(entity, id, fields);
+      },
       remove: async (entity, id) => {
         await services.agentData?.remove(entity, id);
       },
     },
 
-    linkEntity: async (entity, id, relation, value) => {
-      await services.linkEntity?.(entity, id, relation, value);
+    linkEntity: async (entity, id, relation, value, options) => {
+      await services.linkEntity?.(entity, id, relation, value, options);
     },
   };
 }

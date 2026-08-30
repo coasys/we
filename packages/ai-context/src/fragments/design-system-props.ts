@@ -76,7 +76,13 @@ a user-chosen swatch.
 \`\`\`
 
 Roles work anywhere a colour token does, including inside a border shorthand
-(\`"1px solid border"\`) and behind \`$if\` (\`{ "$if": { "condition": …, "then": "accent-muted", "else": "surface-sunken" } }\`).
+(\`"1px solid border"\`) and behind a ternary
+(\`{ "$": "row.selected ? 'accent-muted' : 'surface-sunken'" }\`).
+
+**Not \`$if\` in a prop.** \`$if\` is a *node* type and, in a value position, resolves to a handler —
+so the colour resolver is handed a function, paints nothing, and warns about nothing. The validator
+does not catch it either. A condition that chooses a value is a ternary, which is what the
+expression language has one for.
 
 **Always kebab-case: \`"surface-sunken"\`, never \`"surfaceSunken"\`.** The camelCase spelling is the
 TypeScript key of a \`ThemeRole\`; a schema writes the CSS spelling. Getting it wrong fails silently —

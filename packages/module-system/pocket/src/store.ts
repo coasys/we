@@ -158,7 +158,7 @@ function thumbnailFrom(content: string | undefined): string {
  * and `$query`. This module ships no CRUD wrapper for them, for the reason notes ships none.
  */
 export function createPocketStore(deps: ModuleStoreDeps) {
-  const { signal } = deps;
+  const { signal, effect } = deps;
 
   const [open, setOpen] = signal(false);
   /**
@@ -207,6 +207,30 @@ export function createPocketStore(deps: ModuleStoreDeps) {
     const id = await data.create('PocketFolder', { name: 'Pocket', icon: 'bag-simple', root: true });
     return id ? { id, name: 'Pocket', icon: 'bag-simple', root: true } : null;
   }
+
+  /*
+    Read what is held as soon as there is a dataset to read it from, rather than on first open.
+
+    `refs` is what every card in the app asks "have I already gathered this?" — `item.id in
+    modules.pocket.refs` — and it was empty until somebody opened the panel. So for the whole of a
+    session in which the Pocket was never opened, every gathered thing reported itself ungathered,
+    and gathering it again was the obvious thing to do. The panel is not what the answer depends on;
+    the agent's dataset is.
+
+    An effect rather than a call at construction, because the root dataset arrives well after the
+    module store is built — `agentData.ready()` is false for the first frames of every boot, which
+    is exactly why the read has to be able to re-run.
+  */
+  let loadedRefs = false;
+  effect?.(() => {
+    if (loadedRefs || !agentData()?.ready()) return;
+    loadedRefs = true;
+    void reload().catch(() => {
+      // Retried on the next ready-transition rather than reported: nothing is on screen yet, and a
+      // failed read costs a stale "not gathered" badge, not data.
+      loadedRefs = false;
+    });
+  });
 
   /** Re-read what is held, so a card's "already gathered" state follows a gather or a removal. */
   async function reload(): Promise<void> {
@@ -371,10 +395,44 @@ export function createPocketStore(deps: ModuleStoreDeps) {
   }
 
   /**
+   * How deep a folder tree may be walked when deleting one.
+   *
+   * The parent relation is written by this agent alone, so a cycle takes a corrupt record rather
+   * than two writers racing — but "cannot happen" is not a reason to recurse without a bound when
+   * the consequence is an unrecoverable hang in the middle of a delete.
+   */
+  const MAX_FOLDER_DEPTH = 32;
+
+  /** A folder, its items, and everything under it — depth first, so a parent outlives its children. */
+  async function removeFolderTree(id: string, depth: number): Promise<void> {
+    const data = agentData();
+    if (!data?.ready() || depth > MAX_FOLDER_DEPTH) return;
+
+    const children = (await data.find('PocketFolder', {})) as unknown as (PocketFolderRow & {
+      parent?: string;
+    })[];
+    for (const child of children) {
+      if (child.id && child.id !== id && child.parent === id) await removeFolderTree(child.id, depth + 1);
+    }
+
+    const items = (await data.find('PocketItem', {})) as unknown as (PocketRow & { parent?: string })[];
+    for (const item of items) {
+      if (item.parent === id) await data.remove('PocketItem', item.id);
+    }
+
+    await data.remove('PocketFolder', id);
+  }
+
+  /**
    * Gather everything a drop carried, into a folder or into the one being looked at.
    *
-   * Several items at once because a drag can carry several; each is gathered independently, so one
-   * that fails does not lose the rest.
+   * Several items at once because a drag can carry several, and each is gathered independently, so
+   * one that fails does not lose the rest.
+   *
+   * "Independently" was a claim rather than a fact: one `try` around a sequential loop meant the
+   * first failure abandoned every item after it. A drag of five where the second is unreachable
+   * kept one. Each is attempted in its own `try` now, and the report says how many did not land —
+   * which is also the honest thing to say, since the ones that did are on screen.
    */
   async function gatherAll(payload: DroppedPayload | GatherInput, into?: string): Promise<void> {
     const inputs: GatherInput[] =
@@ -393,14 +451,32 @@ export function createPocketStore(deps: ModuleStoreDeps) {
 
     setBusy(true);
     setLastError('');
+    const failures: unknown[] = [];
     try {
-      for (const input of inputs) await gatherOne(input, into);
+      for (const input of inputs) {
+        try {
+          await gatherOne(input, into);
+        } catch (error) {
+          failures.push(error);
+        }
+      }
       await reload();
     } catch (error) {
-      setLastError(error instanceof Error ? error.message : 'Could not add that to your Pocket.');
+      // The reload, not a gather. Everything that landed is stored; what is stale is the badge on
+      // the cards, which the next open repairs.
+      failures.push(error);
     } finally {
       setBusy(false);
     }
+
+    if (!failures.length) return;
+    const first = failures[0];
+    const message = first instanceof Error ? first.message : 'Could not add that to your Pocket.';
+    setLastError(
+      failures.length === inputs.length || inputs.length === 1
+        ? message
+        : `${failures.length} of ${inputs.length} could not be added. ${message}`,
+    );
   }
 
   return {
@@ -467,6 +543,60 @@ export function createPocketStore(deps: ModuleStoreDeps) {
     forget: async (id: string): Promise<void> => {
       await agentData()?.remove('PocketItem', id);
       await reload();
+    },
+
+    /**
+     * Rename a folder. Empty is refused rather than stored — a nameless folder is unreachable by
+     * eye, and `folder.name ? folder.name : 'Folder'` in the panel would then draw every one of them
+     * the same.
+     */
+    renameFolder: async (id: string, name: string): Promise<void> => {
+      const trimmed = name.trim();
+      if (!id || !trimmed) return;
+      await agentData()?.update('PocketFolder', id, { name: trimmed });
+      // The breadcrumb holds its own copy of the name, so it has to be told.
+      setCrumbs(crumbs().map((crumb) => (crumb.id === id ? { ...crumb, name: trimmed } : crumb)));
+    },
+
+    /**
+     * Delete a folder, and everything filed in it.
+     *
+     * ## Why this exists, and why it recurses
+     *
+     * Folders could be created and never removed or renamed: no action, no control, no way back
+     * from a typo. Which made every mistake permanent in a panel whose whole job is tidying.
+     *
+     * The contents go with it because a Pocket item is a *reference* — deleting one throws away
+     * nothing but the note that you kept something, and leaving them behind would mean orphaning
+     * them under a parent that no longer exists, where nothing could reach them and nothing could
+     * delete them either. Sub-folders the same way, depth-first.
+     *
+     * The root refuses. It is created on the first gather and everything hangs off it; removing it
+     * would leave the next gather with nowhere to write.
+     *
+     * Walking out first, when the folder being deleted is on the path — a breadcrumb pointing at a
+     * record that is gone is a panel that cannot be navigated out of.
+     */
+    deleteFolder: async (id: string): Promise<void> => {
+      const data = agentData();
+      if (!data?.ready() || !id) return;
+      const root = await rootFolder();
+      if (!root || id === root.id) return;
+
+      const path = crumbs();
+      const at = path.findIndex((crumb) => crumb.id === id);
+      if (at >= 0) setCrumbs(path.slice(0, Math.max(1, at)));
+
+      setBusy(true);
+      setLastError('');
+      try {
+        await removeFolderTree(id, 0);
+        await reload();
+      } catch (error) {
+        setLastError(error instanceof Error ? error.message : 'Could not remove that folder.');
+      } finally {
+        setBusy(false);
+      }
     },
 
     /** Re-read what is held. Wire it to the panel opening. */

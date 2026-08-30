@@ -273,6 +273,16 @@ export function RuntimeStoreProvider(props: ParentProps) {
       return { ok: true, value: await fn() };
     } catch (err) {
       console.error('RuntimeStore: runtime call failed', err);
+      /*
+        The executor's own words, deliberately — this is the one surface where they are the useful
+        thing rather than the leak.
+
+        Everywhere else a raw `error.message` went through `explain` (see `shared/userMessage.ts`),
+        because a GraphQL failure from three layers down tells a member nothing they can act on.
+        Here the reader is administering the node, and the messages *are* the answer: "Choose a port
+        between 1024 and 65535", "languages is part of the running node and cannot be removed". A
+        generic sentence would replace a fix with a shrug.
+      */
       setError(err instanceof Error ? err.message : String(err));
       return { ok: false };
     } finally {

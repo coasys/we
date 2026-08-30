@@ -4,7 +4,8 @@
   "description": "Portable schema fragments — shapes that expand to plain nodes, for templates and modules alike",
   "type": "module",
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "exports": {
     ".": {

@@ -5,6 +5,7 @@
   position: fixed;
   z-index: 10;
   margin: 0;
+
   // Reset UA [popover] defaults (inset, border, background, overflow, color) that
   // would otherwise leak through — same defaults OverlayElement resets for
   // we-modal/we-drawer. (Padding is set below rather than reset.)
@@ -17,6 +18,7 @@
   pointer-events: none;
   display: flex;
   height: 40px;
+
   // Fills the strip `HANDLE_GUTTER` describes in blockHandles.tsx, which is also the strip the
   // pointer only has to reach for the handle to appear. Keep the two the same.
   width: 50px;
@@ -42,10 +44,12 @@
     display: flex;
     justify-content: center;
     align-items: center;
+
     // The icons take their colour from here (they carry no `color` prop, so they are drawn in
     // currentColor) and brighten under the pointer. A filled hover swatch behind a handle that
     // is itself already a hover affordance was one layer of feedback too many.
     color: var(--we-role-text-muted);
+
     // Both, because this rule comes after the settings button's own opacity transition and a
     // second `transition` would replace it rather than add to it.
     transition:
@@ -61,9 +65,11 @@
     opacity: 1;
     pointer-events: auto;
   }
+
   &[data-block-focused='true'] {
     opacity: 1;
     pointer-events: auto;
+
     .we-block-handle-settings-button {
       opacity: 1;
       pointer-events: auto;
@@ -78,6 +84,7 @@
   // the caller. Without this it can end up confined to an ancestor's
   // containing block (e.g. a transformed/positioned wrapper) instead.
   position: fixed;
+
   // A hairline with rounded caps — it marks a boundary, so it should read as a line rather than
   // as a bar wedged between two blocks. The caller centres it on that boundary, and knows this
   // height.
@@ -87,10 +94,13 @@
   z-index: 10;
   pointer-events: none;
   opacity: 0;
+
   // transition: opacity var(--we-transition-300);
   will-change: opacity;
+
   // z-index: var(--we-z-dropdown);
   margin: 0;
+
   // Reset UA [popover] defaults (inset, padding, border, background, overflow, color) that
   // would otherwise leak through — same defaults OverlayElement resets for
   // we-modal/we-drawer, and `we-sortable` for the line it draws for the same job.

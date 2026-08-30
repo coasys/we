@@ -188,7 +188,7 @@ Between components and templates sits the **template kit** — reusable fragment
 
 Plus **feature modules** that install into any community: the **graph engine** (knowledge maps, schema maps, boards — one engine, pluggable expanders and layouts), layer systems (like the Cesium globe for geographic and location-based community mapping), calls and transcription, notes — and, ahead, governance modules (voting, moderation, consensus), economics modules (payment flows, mutual credit, resource allocation), and integration modules (bridges, imports, connectors).
 
-**Blocks** are composable content units — text, image, embed, code, task, event — that users arrange freely within pages. **Themes** are complete visual identities: token sets plus styling, shareable across any template.
+**Blocks** are composable content units — text, image, embed, code, task, event — that users arrange freely within a composition (a post, a note, a card). **Themes** are complete visual identities: token sets plus styling, shareable across any template.
 
 **The seed system.** Every deployment starts from a seed file (`we-seed.json`): which modules to include, how to arrange and theme them, platform settings. Want a community platform? Pick community modules. A project manager? Pick project modules. Same infrastructure, different seed.
 
@@ -224,7 +224,7 @@ Start small, compose upward.
 
 1. Find your rung: [Contribution Surfaces](./docs/contributing/surfaces.md) lists every slot WE
    accepts a contribution into, and routes what you want to build to the one it belongs in
-2. Explore the [design system](./packages/design-system) — the token → element → component → widget → page → template hierarchy
+2. Explore the [design system](./packages/design-system) — the token → primitive → component → widget hierarchy, and the fragments and templates composed from it
 3. Check the [schema-system](./packages/schema-system) for how schemas drive UI generation
 4. Look at [Flux](https://github.com/juntofoundation/flux) as the reference application built on WE
 5. Read the [Seed System](./docs/getting-started/seed-system.md) to see how modules compose into deployable apps

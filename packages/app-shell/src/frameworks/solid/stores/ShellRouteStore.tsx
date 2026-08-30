@@ -16,7 +16,17 @@
  *   // pass shellRouteStore as routeStore in shellStores bag
  */
 import { useLocation, useNavigate } from '@solidjs/router';
-import { createContext, createEffect, createMemo, createSignal, JSX, onMount, ParentProps, useContext } from 'solid-js';
+import {
+  createContext,
+  createEffect,
+  createMemo,
+  createSignal,
+  JSX,
+  onCleanup,
+  onMount,
+  ParentProps,
+  useContext,
+} from 'solid-js';
 
 import type { RouteStore } from './RouteStore';
 import { useShellStore } from './ShellStore';
@@ -43,6 +53,12 @@ export function ShellRouteStoreProvider(props: ParentProps) {
   const [currentPath, setCurrentPath] = createSignal('/');
   const [search, setSearch] = createSignal('');
   const [navigateFunction, setNavigateFunction] = createSignal<ReturnType<typeof useNavigate> | null>(null);
+
+  /** Lend the overlay router's `navigate`, and take it back — see `RouteStore.setNavigateFunction`. */
+  function provideNavigate(navigate: ReturnType<typeof useNavigate>): () => void {
+    setNavigateFunction(() => navigate);
+    return () => setNavigateFunction((current) => (current === navigate ? null : current));
+  }
   const segments = createMemo(() => currentPath().split('/').filter(Boolean));
   const params = createMemo(() => Object.fromEntries(new URLSearchParams(search())));
 
@@ -75,7 +91,7 @@ export function ShellRouteStoreProvider(props: ParentProps) {
     currentPath,
     segments,
     params,
-    setNavigateFunction,
+    setNavigateFunction: provideNavigate,
     setCurrentPath,
     setSearch,
     navigate,
@@ -115,7 +131,9 @@ export function ShellRouterRoot(props: ParentProps): JSX.Element {
   */
   const restoreTo = shell.takePendingPath();
 
-  createEffect(() => store.setNavigateFunction(() => navigate));
+  // The overlay's own router, taken back when the overlay closes — see `RouteStore`, which had the
+  // same slot and the same missing half.
+  onCleanup(store.setNavigateFunction(navigate));
   createEffect(() => {
     store.setCurrentPath(location.pathname);
     // Reported upwards on every move, because this store does not outlive the overlay and the

@@ -145,7 +145,7 @@ const boardCards: SchemaNode = {
     // risk worth guarding against is rearranging somebody else's board by accident.
     controls: ['zoom-in', 'zoom-out', 'fit', 'lock'],
     height: '100%',
-    revision: { $: 'local.revision' },
+    revision: { $: '`${datasetStore.currentDataset.id}:${local.revision}`' },
     onNodeClick: selectNode,
     // Clicking empty canvas deselects — the same handler the other three modes carry. The board is
     // where it matters most: it is the mode you click around in, and without it the only way to

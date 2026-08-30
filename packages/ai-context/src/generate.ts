@@ -44,7 +44,7 @@ import { routing } from './fragments/routing.js';
 import { rules } from './fragments/rules.js';
 import { schemaOperators } from './fragments/schema-operators.js';
 import { storePatterns } from './fragments/store-patterns.js';
-import { generateStoresText, storeEntries } from './fragments/stores.js';
+import { generateStoresText, storeEntries, undescribedMembers } from './fragments/stores.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // From src/generate.ts: up to ai-context/, up to packages/, up to repo root
@@ -67,12 +67,12 @@ const DEFAULTS: Record<string, string> = {
  * The source decides *what exists* — a member absent here cannot be named in a schema, and one
  * present is allowed whether or not anybody has described it. The fragment decides *what it means*:
  * the prose in `fragments/stores.ts` and, more load-bearing, `StateMemberMeta`'s
- * `properties`/`model`, which is what lets the validator check one level into a `$store` path.
+ * `properties`/`model`, which is what lets the validator check one level into an expression's path.
  *
  * Both directions of drift are reported, because they fail differently. A member with no entry is
  * merely undocumented — the AI reference is thinner than it could be. A fragment entry for a member
  * that no longer exists is worse: it documents something that isn't there, and its metadata would
- * silently license a `$store` path into nothing.
+ * silently license an expression's path into nothing.
  */
 function mergeStoreEntries(
   derived: ExtractedStore[],
@@ -148,15 +148,31 @@ function mergeStoreEntries(
     process.exitCode = 1;
   }
   /*
-    Counted, not listed.
+    An undescribed member a template can *reach* fails the build.
 
-    Most undocumented members are internal wiring a schema has no business naming — `provideSpaceLookup`,
-    `setNavigateFunction`, `backendPorts` — and nothing here can tell those from a template-facing
-    member somebody forgot to write up. Printing a hundred names every run would bury the stale list
-    above, which is the half that is always worth acting on. The count is enough to notice a jump.
+    This used to be a count, on the reasoning that "nothing here can tell internal wiring from a
+    template-facing member somebody forgot to write up". Something can, and it is already read three
+    lines above: `templateSurface.ts` classifies every member, and `WIRING` is precisely "no schema
+    can reach this". So the members already filtered out as wiring are the ones that were making the
+    list unusable, and what is left is the set the architecture plan's rule is about — a member a
+    template may name, with nothing telling its author what it means.
+
+    The consequence of leaving it a count is on the record: three `ShapeStore` members regressed to
+    `unknown` after the PR that reported "zero unknown remain", and the count went up by three and
+    nobody looked.
+
+    Listed rather than counted now, because a failure has to say what to do about it.
+  */
+  /*
+    Counted, not listed — and deliberately not a failure.
+
+    This measures members missing from `storeEntries`, which is a *merge input*: a member absent
+    from it still renders with its description, because the descriptions are a separate table. So
+    the number here is noise for the most part, and the real "undescribed" check is the one against
+    that table — see `undescribedMembers`, which does fail the build.
   */
   if (undocumented.length) {
-    console.log(`  ${undocumented.length} store members are valid in schemas but undocumented (mostly internal).`);
+    console.log(`  ${undocumented.length} store members are absent from storeEntries (mostly internal).`);
   }
 
   return [...merged, ...pseudo];
@@ -382,6 +398,53 @@ async function main() {
   ].join('\n');
   await writeFormatted(contextDataPath, contextDataContent);
   console.log(`  Written: ${contextDataPath}`);
+
+  /*
+    An example teaching a spelling the validator rejects fails the build.
+
+    ## Why this is a check and not a review note
+
+    Four audits have found this class. `CLAUDE.md`'s own rule says "a reference is always written
+    `{ \"$\": \"item.name\" }`; the validator rejects the old string spelling", and the sections
+    beneath it shipped `\"image\": \"$space.avatar\"`, `[\"$channel.name\"]` and a dozen more —
+    documentation contradicting its own rule, in the file every AI-authored template copies from.
+    An assistant following it is rejected and retries, burning continuations on the docs' own
+    pattern.
+
+    A regex over the finished reference rather than over the fragments, so it covers prose, examples
+    and anything a generator interpolates — the three places it actually appeared.
+
+    Matched only in a **value position**: an array element, or the right-hand side of a JSON key.
+    The reference has to be able to name the mistake in order to forbid it — "a plain string in a
+    prop is text too: `"$item.name"` renders those ten characters" is the rule, not a violation of
+    it — and quoting it in a sentence is not a value position, so the two are told apart by where
+    they sit rather than by an exception list.
+  */
+  const oldReferences = [...reference.matchAll(/(?<=[[,]\s*|"\s*:\s*)"(\$[a-z][A-Za-z0-9]*\.[A-Za-z0-9_.$]+)"/g)].map(
+    (m) => m[1],
+  );
+  if (oldReferences.length) {
+    console.error(
+      `  ✗ the generated reference teaches the old string reference, which the validator rejects — ` +
+        `write { "$": "…" } instead:\n     ${[...new Set(oldReferences)].join('\n     ')}`,
+    );
+    process.exitCode = 1;
+  }
+
+  /*
+    A member a template can name with nothing saying what it means fails the build.
+
+    Last, after everything is written, so a run that fails still leaves the reference regenerated —
+    the fix is to describe the member, and having the file on disk is what lets you see what it
+    currently says. See `undescribedMembers` in `fragments/stores.ts`.
+  */
+  if (undescribedMembers.length) {
+    console.error(
+      `  ✗ reachable from a schema and undescribed — add each to the descriptions table in ` +
+        `fragments/stores.ts:\n     ${undescribedMembers.join('\n     ')}`,
+    );
+    process.exitCode = 1;
+  }
 
   console.log('Done.');
 }

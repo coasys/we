@@ -6,7 +6,7 @@
  * or a visual confirmation area for interactive/structural tests.
  *
  * Groups:
- *   1. Data Access     — $store, $concat
+ *   1. Data Access     — expressions ({ $: … }), including interpolation
  *   2. Actions         — $action, $arg
  *   3. Operators       — $eq, $ne, $not, $and, $or
  *   4. Control Flow    — $if, $each (flat, nested, empty)
@@ -166,7 +166,7 @@ function queryModePanel(mode: string, description: string, queryConfig: Record<s
 }
 
 // ---------------------------------------------------------------------------
-// 1. Data Access — $store, $concat
+// 1. Data Access — expressions ({ $: … }), including interpolation
 // ---------------------------------------------------------------------------
 
 const storeTest = section('store reads', 'Read values from the store', [
@@ -1285,7 +1285,7 @@ const childrenTokenTest = section('Children expressions', 'Expressions resolved 
   {
     type: 'we-text',
     props: { color: 'text-faint' },
-    children: ['Tests the renderChildren token resolution added for $store/$concat in children:'],
+    children: ['Tests the renderChildren token resolution for an expression in children:'],
   },
   check('$store in children', 'hello', { $: 'testStore.stringValue' }, { $: "testStore.stringValue == 'hello'" }),
   check(

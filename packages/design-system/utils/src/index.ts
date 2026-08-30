@@ -4,6 +4,7 @@ import { font, role, type Tier, TIERS } from '@we/tokens';
 import { tierQuery } from './surface';
 
 export * from './color';
+export * from './safeHref';
 export * from './surface';
 export * from './tiling';
 
@@ -158,6 +159,26 @@ export function getKeysForLayers(layers: DSLayer[]): string[] {
     typed, accepted, and dropped — for a layout-only primitive and a full one alike.
   */
   keys.add('styles');
+  /*
+    And the tier bags, for exactly the reason `styles` is here: they belong to every element and to
+    no layer.
+
+    This is the identical bug the paragraph above records, one line later and unnoticed for a
+    release. `DesignSystemMixin` derives both its reactive-property registration and its
+    `filterProps` from this function, so on every `we-*` element `mdUpProps` was never a reactive
+    property and was filtered out before `updateAllCustomVars` could see it. No `--we-<name>-md-*`
+    variable was ever written, and the `@container` rules the static sheet emits read nothing. The
+    validator accepts a tier bag on any component, so `{ type: 'we-text', props: { mdUpProps: … } }`
+    validated clean and did nothing — and `designSystemKeys`, which the Solid layout components use,
+    includes tiers, which is why the one real usage in the repo happened to be on a layout node and
+    happened to work.
+
+    A tier is not a *kind* of property, it is a condition under which the kinds apply — so it cannot
+    be a layer without forcing every element to opt into responsiveness separately from the props
+    being made responsive. What a tier bag may contain is still bounded by the element's own layers,
+    enforced where the variables are emitted rather than here.
+  */
+  for (const key of tierKeys) keys.add(key);
   const result = [...keys];
   keysForLayersCache.set(cacheKey, result);
   return result;

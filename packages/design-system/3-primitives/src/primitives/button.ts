@@ -1,11 +1,11 @@
 import type { DesignSystemProps } from '@we/design-types';
 import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
-import { css, html } from 'lit';
+import { safeHref } from '@we/design-utils';
+import { css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
-import { safeHref } from '../shared/safe-href';
 import sharedStyles from '../shared/styles';
 import type { ButtonVariant, ComponentSize } from '../types';
 
@@ -251,6 +251,18 @@ export default class Button extends DesignSystemElement {
   @property({ type: String, reflect: true }) variant: ButtonVariant = 'primary';
   @property({ type: String, reflect: true }) size: ComponentSize = 'md';
   @property({ type: String }) text?: string;
+  /**
+   * What this button is called, for anybody who cannot see what is inside it.
+   *
+   * Every icon-only button in the app was announced as "button": the modal close, the ChromeRail's
+   * launchers, a card's delete, a composer's toolbar. There was no way to fix one, either —
+   * `aria-label` set on the host does not name the inner `<button>` that actually takes focus, and
+   * nothing forwarded it.
+   *
+   * Unnecessary for a button with `text` or with text in its slot: that content is the name, and a
+   * second one here would override what the reader can see. Necessary for every `square` one.
+   */
+  @property({ type: String }) label = '';
   @property({ type: String }) href?: string;
   @property({ type: Boolean, reflect: true }) disabled = false;
   @property({ type: Boolean, reflect: true }) loading = false;
@@ -321,6 +333,8 @@ export default class Button extends DesignSystemElement {
           part="base"
           role="button"
           href=${href}
+          aria-label=${this.label || nothing}
+          aria-busy=${this.loading ? 'true' : nothing}
           aria-disabled=${this.disabled || this.loading ? 'true' : 'false'}
           @click=${this._onClick}
           style=${styleMap(inline)}
@@ -330,8 +344,27 @@ export default class Button extends DesignSystemElement {
       `;
     }
 
+    /*
+      `loading` is `aria-busy`, not `disabled`.
+
+      A native `disabled` removes the element from the tab order, so a button disabled *while its own
+      submit is in flight* takes focus away from the person who just pressed it and drops them at the
+      top of the document — mid-submit, with no announcement, and with nowhere obvious to return to.
+      `aria-busy` says the same thing to a screen reader and keeps the button where it was; the click
+      is still refused, by `_onClick`, which has always been what actually stops a second submit.
+
+      `disabled` itself still disables. That is a statement about whether the action is available at
+      all, which is a different thing from whether it is currently running.
+    */
     return html`
-      <button part="base" ?disabled=${this.disabled || this.loading} @click=${this._onClick} style=${styleMap(inline)}>
+      <button
+        part="base"
+        ?disabled=${this.disabled}
+        aria-label=${this.label || nothing}
+        aria-busy=${this.loading ? 'true' : nothing}
+        @click=${this._onClick}
+        style=${styleMap(inline)}
+      >
         ${this._content()}
       </button>
     `;

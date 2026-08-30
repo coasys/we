@@ -33,6 +33,8 @@ import {
   consentPrompt,
   consentSecret,
   createSpaceModalMount,
+  destructivePrompt,
+  installPrompt,
   namePrompt,
   removeAccountModal,
   sidebar,
@@ -282,6 +284,23 @@ export function registerCoreSlots(): void {
   // (`profileStore.needsName`) is false until the app is ready and the profile fetch has answered,
   // so it cannot appear over the boot screen either. See NamePrompt.schema.ts.
   slotRegistry.register({ id: 'core:namePrompt', anchor: 'overlay', node: namePrompt, order: 5 });
+  /*
+    What a template you are about to install will be able to do.
+
+    Chrome, and it has to be: the marketplace page it is raised from is itself a template, and a
+    dialog drawn by the thing it is vouching for is worth nothing. Ordered above the name prompt
+    because the user pressed a button to get here and is waiting on an answer, where the name
+    prompt merely became answerable. See InstallPrompt.schema.ts.
+  */
+  slotRegistry.register({ id: 'core:installPrompt', anchor: 'overlay', node: installPrompt, order: 6 });
+  /*
+    The host's own confirmation in front of anything a space template deletes.
+
+    Last, so it is in front of everything: it is the only overlay with an action *waiting* on it —
+    a promise the tier boundary is holding open — and a dialog a person cannot see is a delete that
+    never resolves. See DestructivePrompt.schema.ts.
+  */
+  slotRegistry.register({ id: 'core:destructivePrompt', anchor: 'overlay', node: destructivePrompt, order: 7 });
   slotRegistry.register({ id: 'core:sidebar', anchor: 'dock-left', node: sidebar, order: 0 });
   slotRegistry.register({ id: 'core:templateEditor', anchor: 'dock-right', node: templateEditor, order: 0 });
   // The editor's panels, as docks — see `editorDocks.ts` for why they are not part of the node above.

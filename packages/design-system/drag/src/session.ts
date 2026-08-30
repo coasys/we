@@ -59,6 +59,22 @@ export interface BeginOptions {
   ghostOffset?: DragPoint;
   /** The element the drag came from, for a zone that wants to refuse its own source. */
   from?: Element;
+  /**
+   * Stop watching the pointer that started this drag.
+   *
+   * ## The bug this closes
+   *
+   * `begin` ends a session already running rather than stacking a second one, which is right — and
+   * it did so without telling the *first* pointer's watcher, which is not. That watcher kept
+   * listening: a second finger landing on another card ended finger A's session and started B's,
+   * after which A's moves drove B's ghost and A's release **dropped B's payload at A's point**. Two
+   * fingers on a touch screen is not an exotic input.
+   *
+   * So a gesture hands over the way to abandon it, and the session calls it whenever the drag it
+   * belongs to is over — superseded, dropped or cancelled. `watchPointerDrag` already returns
+   * exactly this function.
+   */
+  release?: () => void;
 }
 
 interface Current {
@@ -66,6 +82,8 @@ interface Current {
   ghost: Ghost;
   offset: DragPoint;
   from?: Element;
+  /** See {@link BeginOptions.release}. */
+  release?: () => void;
   zone: DragZone | null;
   dwellTimer?: ReturnType<typeof setTimeout>;
   dwelledOn?: DragZone;
@@ -84,6 +102,44 @@ function announce() {
   if (on) document.documentElement.setAttribute(DRAGGING_ATTR, '');
   else document.documentElement.removeAttribute(DRAGGING_ATTR);
   document.dispatchEvent(new CustomEvent(DRAG_CHANGE_EVENT, { detail: { active: on } }));
+}
+
+/*
+  What a keyboard drag says out loud.
+
+  The pointer path needs nothing here: the ghost is on screen, the target zone is outlined, and a
+  sighted user can see both. The keyboard path has neither — arrow keys move a selection between
+  zones with no visual anchor to follow — so without an announcement it is a gesture that reports
+  nothing at all. `DragZone.label` was declared for exactly this ("Named for the keyboard path,
+  which has to say where a held item would go") and read nowhere.
+
+  A polite live region rather than an alert: this narrates a deliberate act, and interrupting the
+  user with each arrow press is worse than following along.
+*/
+let liveRegion: HTMLElement | null = null;
+
+function say(message: string): void {
+  if (typeof document === 'undefined') return;
+  if (!liveRegion) {
+    liveRegion = document.createElement('div');
+    liveRegion.setAttribute('aria-live', 'polite');
+    liveRegion.setAttribute('role', 'status');
+    // Visually hidden without `display: none`, which removes it from the accessibility tree too.
+    liveRegion.style.cssText =
+      'position:fixed;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0';
+    document.body.appendChild(liveRegion);
+  }
+  // Cleared first, so repeating the same sentence is announced again rather than swallowed as a
+  // no-change — which is what pressing the same arrow twice at the end of a list produces.
+  liveRegion.textContent = '';
+  liveRegion.textContent = message;
+}
+
+/** How a payload refers to itself in an announcement. */
+function payloadLabel(payload: DragPayload): string {
+  const first = payload.items[0];
+  const name = first?.label || first?.ref.entity || 'item';
+  return payload.items.length > 1 ? `${payload.items.length} items` : name;
 }
 
 function context(zone: DragZone, point: DragPoint): DropContext {
@@ -128,6 +184,34 @@ function onKeyDown(e: KeyboardEvent) {
   if (!current && !held) return;
   e.preventDefault();
   dragSession.cancel();
+}
+
+/*
+  A drag the window stopped being able to see is a drag that is over.
+
+  `pointercancel` is the ordinary end of an interrupted gesture, and the UA is not obliged to send
+  one: alt-tabbing away, a notification taking focus, the tab going to the background. When it does
+  not, the ghost stays on the screen in the top layer with nothing left to move it — visible, above
+  everything, unremovable without a reload, and every zone still armed.
+
+  Both events, because they are different failures: `blur` is "the window lost the pointer",
+  `visibilitychange` is "this tab is not on screen at all". Neither can be a *drop*, since there is
+  no point to drop at.
+*/
+function onWindowBlur() {
+  if (current) dragSession.cancel();
+}
+
+function onVisibilityChange() {
+  if (document.visibilityState === 'hidden' && current) dragSession.cancel();
+}
+
+function watchInterruptions(on: boolean): void {
+  if (typeof window === 'undefined') return;
+  const bind = on ? window.addEventListener : window.removeEventListener;
+  bind.call(window, 'blur', onWindowBlur);
+  const bindDoc = on ? document.addEventListener : document.removeEventListener;
+  bindDoc.call(document, 'visibilitychange', onVisibilityChange);
 }
 
 export const dragSession = {
@@ -205,10 +289,12 @@ export const dragSession = {
       ghost: createGhost(spec),
       offset,
       from: options.from,
+      release: options.release,
       zone: null,
     };
     current.ghost.moveTo(options.pointer.x - offset.x, options.pointer.y - offset.y);
     document.addEventListener('keydown', onKeyDown, true);
+    watchInterruptions(true);
     announce();
     this.move(options.pointer);
   },
@@ -256,8 +342,10 @@ export const dragSession = {
   cancel(): void {
     if (held) {
       leaveZone(held.zone);
+      const what = payloadLabel(held.payload);
       held = null;
       announce();
+      say(`${what} put back.`);
     }
     this.end();
   },
@@ -268,7 +356,18 @@ export const dragSession = {
     clearDwell();
     leaveZone(current.zone);
     current.ghost.destroy();
+    /*
+      The pointer's watcher goes with the session, and is cleared *before* it is called: a release
+      that reports a cancellation would re-enter here, and the second pass must find nothing.
+    */
+    const release = current.release;
     current = null;
+    watchInterruptions(false);
+    try {
+      release?.();
+    } catch (error) {
+      console.warn('drag: a gesture threw while being released', error);
+    }
     document.removeEventListener('keydown', onKeyDown, true);
     announce();
   },
@@ -285,6 +384,7 @@ export const dragSession = {
     document.addEventListener('keydown', onKeyDown, true);
     this.cycleKeyboard(1);
     announce();
+    if (!held.zone) say(`${payloadLabel(payload)} picked up. Nowhere to put it.`);
   },
 
   /** Move the selection to the next (or previous) accepting zone, in registration order. */
@@ -301,6 +401,10 @@ export const dragSession = {
     held.zone = next;
     next.el.setAttribute(DROP_TARGET_ATTR, '');
     next.onEnter?.(context(next, { x: 0, y: 0 }));
+    // A zone that did not name itself still gets said, as its position: "1 of 4" is less use than a
+    // name and far more use than silence.
+    const where = next.label || `destination ${candidates.indexOf(next) + 1} of ${candidates.length}`;
+    say(`${payloadLabel(held.payload)} over ${where}. Space to drop, Escape to cancel.`);
   },
 
   /** Drop what is held into the selected zone. */
@@ -310,6 +414,7 @@ export const dragSession = {
     leaveZone(zone);
     held = null;
     announce();
+    say(zone ? `${payloadLabel(payload)} dropped on ${zone.label || 'the selected destination'}.` : 'Nothing to drop.');
     if (zone) zone.onDrop?.({ payload, point: { x: 0, y: 0 }, zone });
   },
 

@@ -7,7 +7,10 @@ description: Unpack the artifact the Build job produced, so this job does not ha
 runs:
   using: composite
   steps:
-    - uses: actions/download-artifact@v4
+    # Paired with `upload-artifact` in `build.yaml`, and the pairing is load-bearing: the two
+    # halves speak the same artifact protocol, and a v7 upload read by a v4 download is not a
+    # version preference, it is a job that cannot find what the build produced.
+    - uses: actions/download-artifact@v7
       with:
         name: build-outputs
 

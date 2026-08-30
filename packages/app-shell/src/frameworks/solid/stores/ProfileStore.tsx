@@ -10,7 +10,7 @@ import { provideModuleHostServices } from '@shared/registries/moduleHostServices
 import { type AgentProfileSummary, displayName, isProfileEmpty, type PublishProfileFields } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import { compressImageToFileData, dataURIToFileData, shrinkDataUri } from '@we/entities';
-import { Accessor, createContext, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
+import { Accessor, createContext, createMemo, createSignal, onCleanup, ParentProps, useContext } from 'solid-js';
 
 import { useAccountStore } from './AccountStore';
 import { useSessionStore } from './SessionStore';
@@ -499,20 +499,22 @@ export function ProfileStoreProvider(props: ParentProps) {
    * a profile lands. The name is assembled here rather than in each module, because how a host makes
    * a display name out of the fields it holds is the host's business.
    */
-  provideModuleHostServices({
-    identities: {
-      get: (agentId) => {
-        const profile = profiles().find((entry) => entry.did === agentId);
-        if (!profile) return undefined;
-        // The rule this used to inline now lives in `displayName`, applied once when the cache is
-        // decorated — so a module and a template can no longer disagree about someone's name. That
-        // includes the placeholder for an agent with no name at all: a call tile and a byline should
-        // not differ on what an unnamed peer is called, and `displayName` is where that is decided.
-        return { name: profile.name, avatar: profile.avatar };
+  onCleanup(
+    provideModuleHostServices({
+      identities: {
+        get: (agentId) => {
+          const profile = profiles().find((entry) => entry.did === agentId);
+          if (!profile) return undefined;
+          // The rule this used to inline now lives in `displayName`, applied once when the cache is
+          // decorated — so a module and a template can no longer disagree about someone's name. That
+          // includes the placeholder for an agent with no name at all: a call tile and a byline should
+          // not differ on what an unnamed peer is called, and `displayName` is where that is decided.
+          return { name: profile.name, avatar: profile.avatar };
+        },
+        fetch: (agentId) => void fetchProfile(agentId),
       },
-      fetch: (agentId) => void fetchProfile(agentId),
-    },
-  });
+    }),
+  );
 
   const store: ProfileStore = {
     profiles,

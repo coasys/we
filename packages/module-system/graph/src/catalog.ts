@@ -79,7 +79,7 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       id: 'dataset',
       category: 'seed',
       description: 'Seeds a single node for the current space — the starting point for exploring outward.',
-      options: [{ name: 'label', type: 'string' }],
+      options: [{ name: 'label', type: 'string', description: 'What the node is called. Defaults to the space name.' }],
       example: `{ "source": "dataset", "options": { "label": "This space" } }`,
     },
 
@@ -145,9 +145,13 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       category: 'layout',
       description: 'Layered hierarchy from the graph roots. The right choice for containment and org charts.',
       options: [
-        { name: 'direction', type: '"down" | "right"' },
-        { name: 'levelGap', type: 'number' },
-        { name: 'siblingGap', type: 'number' },
+        {
+          name: 'direction',
+          type: '"down" | "right"',
+          description: 'Which way the tree grows from its roots. Default "down".',
+        },
+        { name: 'levelGap', type: 'number', description: 'Distance between one rank and the next.' },
+        { name: 'siblingGap', type: 'number', description: 'Distance between neighbours on the same rank.' },
       ],
       example: `{ "type": "tree", "options": { "direction": "right", "levelGap": 200 } }`,
     },
@@ -155,7 +159,7 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       id: 'radial',
       category: 'layout',
       description: 'Concentric rings by hop distance from the roots — reads as distance from a centre.',
-      options: [{ name: 'ringGap', type: 'number' }],
+      options: [{ name: 'ringGap', type: 'number', description: 'Distance between one ring and the next.' }],
       example: `{ "type": "radial" }`,
     },
     {
@@ -163,7 +167,7 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       category: 'layout',
       description: 'Uniform grid, optionally ordered by a node data field. Honest default when edges say little.',
       options: [
-        { name: 'columns', type: 'number' },
+        { name: 'columns', type: 'number', description: 'How many columns. Derived from the node count when omitted.' },
         { name: 'sortBy', type: 'string', description: 'Node data field to order by.' },
       ],
       example: `{ "type": "grid", "options": { "columns": 6, "sortBy": "name" } }`,
@@ -339,13 +343,27 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       id: 'expand-on-double-click',
       category: 'behaviour',
       description: 'Double-click a node to expand it. The usual gesture on a map you also want to select on.',
-      options: [{ name: 'direction', type: '"in" | "out" | "both"' }],
+      options: [
+        {
+          name: 'direction',
+          type: '"in" | "out" | "both"',
+          description: 'Which way relations are followed when the node opens. Default "both".',
+        },
+      ],
+      example: `{ "type": "expand-on-double-click", "options": { "direction": "out" } }`,
     },
     {
       id: 'expand-on-click',
       category: 'behaviour',
       description: 'Single click expands — for maps meant purely for exploring, where selection is not needed.',
-      options: [{ name: 'direction', type: '"in" | "out" | "both"' }],
+      options: [
+        {
+          name: 'direction',
+          type: '"in" | "out" | "both"',
+          description: 'Which way relations are followed when the node opens. Default "both".',
+        },
+      ],
+      example: `{ "type": "expand-on-click", "options": { "direction": "out" } }`,
     },
   ],
 };

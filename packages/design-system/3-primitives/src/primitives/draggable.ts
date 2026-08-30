@@ -9,15 +9,27 @@ const CSS_STYLES = css`
     /* See "display: contents" in the class doc — the wrapper must not become a box. */
     --we-draggable-host-display: contents;
     display: contents;
-    /*
-      Vertical panning still works, so a finger can scroll a feed of draggable cards. The drag is a
-      long press instead — touch-action: none here would be the same bug the sortable's touch
-      handling exists to avoid, one level up: a list you cannot scroll.
-    */
+  }
+
+  /*
+    On the child, because the host has no box to put it on.
+
+    touch-action is a property of a box, and display:contents generates none — so this declaration
+    sat on :host doing nothing at all, and every Pocket row and kit card picked up on long-press and
+    dropped itself the moment the finger moved, because the UA was free to start a native pan and
+    fire pointercancel. The wrapper cannot become a box (a card inside a grid track would then take
+    the track and lay out against the wrapper instead of the grid), so the rule moves down to what
+    is actually being dragged.
+
+    pan-y rather than none: a finger must still be able to scroll a feed of draggable cards. The
+    drag is a long press, and pointerDrag blocks the scroll for the duration of the drag itself —
+    which is the half CSS cannot express, since the decision is made after the press.
+  */
+  ::slotted(*) {
     touch-action: pan-y;
   }
 
-  :host([disabled]) {
+  :host([disabled]) ::slotted(*) {
     touch-action: auto;
   }
 `;
@@ -189,6 +201,13 @@ export default class Draggable extends LayoutElement {
           payload: { items: [this._item()], effect: this.effect },
           pointer: { x: start.clientX, y: start.clientY },
           from: this,
+          // Hand over the way to abandon this press, so a second finger picking something else up
+          // stops *this* watcher too. See `BeginOptions.release`.
+          release: () => {
+            const stop = this._stopWatch;
+            this._stopWatch = null;
+            stop?.();
+          },
         });
         this.dispatchEvent(new CustomEvent('we-drag-begin', { detail: this._item(), bubbles: true, composed: true }));
       },

@@ -5,12 +5,13 @@
   position: fixed;
   z-index: var(--we-z-popover);
   margin: 0;
+
   // Reset UA [popover] default `color` that would otherwise leak through —
   // background/border are already set below, but overflow-x needs an explicit
   // reset since the UA default (`overflow: auto` on both axes) would otherwise
   // apply on x too (previously it was `visible` before the popover promotion).
   color: inherit;
-  overflow-x: hidden;
+  overflow: hidden auto;
   top: 20px;
   pointer-events: auto;
   display: flex;
@@ -22,7 +23,6 @@
   border: 1px solid var(--we-role-border);
   min-width: 250px;
   max-height: min(400px, 60vh);
-  overflow-y: auto;
 
   .we-block-menu-filter {
     all: unset;
