@@ -13,6 +13,7 @@ import { callModule } from '@we/module-call';
 import { createGlobeModule } from '@we/module-globe';
 import { createGraphModule } from '@we/module-graph';
 import { notesModule } from '@we/module-notes';
+import { platformModule } from '@we/module-platform';
 import type { ModuleDefinition, ModuleStoreDeps } from '@we/module-shared';
 import { transcribeModule } from '@we/module-transcribe';
 
@@ -47,6 +48,9 @@ export const bundledModules: Record<string, BundledModuleFactory> = {
   // Hears the call without either module referencing the other — the host routes the stream from
   // whichever module declares `audioSource`. See `@we/module-transcribe`.
   transcribe: () => transcribeModule,
+  // Hosted platform — auth, billing, usage, guest flow, two-JWT session management.
+  // Only activated by platform-seed.json, never by the standalone we-seed.json.
+  platform: () => platformModule,
 };
 
 export interface ModuleActivation {

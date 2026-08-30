@@ -1,0 +1,15 @@
+{
+  "project": {
+    "name": "Coasys Platform",
+    "version": "0.1.0",
+    "description": "Hosted Coasys platform with integrated auth, billing, and AI services",
+    "author": "Coasys"
+  },
+  "features": {
+    "useQueryIR": true
+  },
+  "modules": ["platform", "notes", "call", "transcribe"],
+  "templates": ["default"],
+  "views": ["about", "cards", "tasks"],
+  "apps": []
+}

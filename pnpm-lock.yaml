@@ -56,6 +56,40 @@ importers:
         specifier: ^5.7.2
         version: 5.9.3
 
+  apps/platform-web:
+    dependencies:
+      '@coasys/ad4m':
+        specifier: 0.13.0-test-interpretation-2
+        version: 0.13.0-test-interpretation-2
+      '@coasys/ad4m-connect':
+        specifier: 0.13.0-test-interpretation-2
+        version: 0.13.0-test-interpretation-2
+      '@we/app-shell':
+        specifier: workspace:*
+        version: link:../../packages/app-shell
+      '@we/backend-ad4m':
+        specifier: workspace:*
+        version: link:../../packages/backend-system/ad4m
+      '@we/module-platform':
+        specifier: workspace:*
+        version: link:../../packages/module-system/platform
+      solid-js:
+        specifier: ^1.9.15
+        version: 1.9.15
+    devDependencies:
+      '@we/cli':
+        specifier: workspace:*
+        version: link:../../packages/cli
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vite:
+        specifier: ^8.2.2
+        version: 8.2.2(@types/node@26.3.0)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.103.1)(tsx@4.23.12)(yaml@2.9.0)
+      vite-plugin-solid:
+        specifier: ^2.11.14
+        version: 2.11.14(solid-js@1.9.15)(vite@8.2.2(@types/node@26.3.0)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.103.1)(tsx@4.23.12)(yaml@2.9.0))
+
   apps/playgrounds/solid/graph-explorer:
     dependencies:
       '@we/components':
@@ -469,6 +503,9 @@ importers:
       '@we/module-notes':
         specifier: workspace:*
         version: link:../module-system/notes
+      '@we/module-platform':
+        specifier: workspace:*
+        version: link:../module-system/platform
       '@we/module-shared':
         specifier: workspace:*
         version: link:../module-system/shared
@@ -1267,6 +1304,24 @@ importers:
       '@we/backend-shared':
         specifier: workspace:*
         version: link:../../backend-system/shared
+    devDependencies:
+      '@we/cli':
+        specifier: workspace:*
+        version: link:../../cli
+      '@we/module-shared':
+        specifier: workspace:*
+        version: link:../shared
+      '@we/schema-shared':
+        specifier: workspace:*
+        version: link:../../schema-system/shared
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.12)(typescript@5.9.3)(yaml@2.9.0)
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+
+  packages/module-system/platform:
     devDependencies:
       '@we/cli':
         specifier: workspace:*

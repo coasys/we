@@ -50,6 +50,7 @@
     "@we/module-globe": "workspace:*",
     "@we/module-graph": "workspace:*",
     "@we/module-notes": "workspace:*",
+    "@we/module-platform": "workspace:*",
     "@we/primitives": "workspace:*",
     "@we/schema-shared": "workspace:*",
     "@we/schema-solid": "workspace:*",

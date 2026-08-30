@@ -1,0 +1,37 @@
+{
+  "name": "@we/module-platform",
+  "version": "0.1.0",
+  "description": "Platform feature module — hosted auth, billing, usage, and session management",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build:steps": "tsup",
+    "build": "we-build",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {},
+  "peerDependencies": {
+    "@we/schema-shared": "workspace:*",
+    "@we/module-shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@we/cli": "workspace:*",
+    "@we/schema-shared": "workspace:*",
+    "@we/module-shared": "workspace:*",
+    "tsup": "^8.5.1",
+    "typescript": "^5.7.2"
+  }
+}
