@@ -48,7 +48,9 @@ export const initializeSpaceGate: SchemaNode = gatePrompt({
             },
           ],
         },
-        field({ name: 'name', label: 'Name', placeholder: 'Space name...', validated: true, touchOnBlur: true }),
+        // Judged on submit, not on blur — the guard below touches everything, so the error arrives
+        // on the click that was refused rather than at somebody who clicked through an empty field.
+        field({ name: 'name', label: 'Name', placeholder: 'Space name...', validated: true }),
         field({ name: 'description', label: 'Description', placeholder: 'Description (optional)' }),
         {
           type: 'we-button',

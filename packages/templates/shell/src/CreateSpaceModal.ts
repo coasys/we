@@ -46,54 +46,87 @@ export const createSpaceModal = {
   children: [
     { type: 'we-text', props: { variant: 'heading-md' }, children: ['Create a New Space'] },
 
-    // Cover image
-    {
-      type: 'EditableImage',
-      props: {
-        src: { $: 'local.coverImage' },
-        alt: 'Cover image',
-        fit: 'cover',
-        width: '100%',
-        height: '180px',
-        aspect: 4 / 1,
-        // Inset inside a modal that has its own radius, so square corners here read as a mismatch
-        // in any rounded theme. Full-bleed banners (the space header, the profile page) are left
-        // square deliberately — rounding a page-width header is a template decision, not a theme's.
-        r: 'media',
-        placeholderIcon: 'panorama',
-        uploadLabel: 'Upload cover image',
-        editLabel: 'Change cover image',
-        onImageChange: { $setLocal: 'coverImage', value: { $: 'event' } },
-      },
-    },
+    /*
+      Cover and avatar, arranged the way the space header this is composing arranges them: the
+      banner, and the avatar cut out of its bottom-left corner.
 
-    // Avatar image
+      It was a *centred* avatar, which is the one arrangement neither the space header nor the
+      profile page uses — and which sat over a form whose every other row is left-aligned, so the
+      top of the sheet and the rest of it disagreed about where things start.
+
+      Their own box, with no gap. The modal's own `gap: 500` sits between its children, so a
+      negative margin here is measured against the cover *plus* those 24px — which is how the
+      offset came to be spelled `-85px`: half of a 120px avatar, less the gap, arrived at by
+      tuning until it looked right rather than by saying what it was. In here `-60px` means half.
+    */
     {
-      type: 'Row',
-      props: { ax: 'center', mt: '-85px' },
+      type: 'Column',
+      props: { gap: '0' },
       children: [
         {
           type: 'EditableImage',
           props: {
-            src: { $: 'local.avatar' },
-            alt: 'Space avatar',
+            src: { $: 'local.coverImage' },
+            alt: 'Cover image',
             fit: 'cover',
-            width: '120px',
-            height: '120px',
-            r: 'avatar',
-            ring: '0 0 0 2px var(--we-ring-color)',
-            placeholderIcon: 'image',
-            uploadLabel: 'Add image',
-            editLabel: 'Change image',
-            fontSize: '200',
-            onImageChange: { $setLocal: 'avatar', value: { $: 'event' } },
+            width: '100%',
+            height: '180px',
+            aspect: 4 / 1,
+            // Inset inside a modal that has its own radius, so square corners here read as a
+            // mismatch in any rounded theme. Full-bleed banners (the space header, the profile
+            // page) are left square deliberately — rounding a page-width header is a template
+            // decision, not a theme's.
+            r: 'media',
+            placeholderIcon: 'panorama',
+            uploadLabel: 'Upload cover image',
+            editLabel: 'Change cover image',
+            onImageChange: { $setLocal: 'coverImage', value: { $: 'event' } },
           },
+        },
+        {
+          type: 'Row',
+          props: { mt: '-60px', ml: '400' },
+          children: [
+            {
+              type: 'EditableImage',
+              props: {
+                src: { $: 'local.avatar' },
+                alt: 'Space avatar',
+                fit: 'cover',
+                width: '120px',
+                height: '120px',
+                r: 'avatar',
+                /*
+                  The sheet's own colour, which is what makes this read as a disc punched out of
+                  the banner rather than as a disc sitting on top of it.
+
+                  It was `--we-ring-color` — the *focus* colour, painted permanently. A control
+                  wearing the focus colour at rest is saying something untrue about itself, and it
+                  says it right next to a form where the real focus ring means something.
+                */
+                ring: '0 0 0 4px var(--we-role-surface)',
+                placeholderIcon: 'image',
+                uploadLabel: 'Add image',
+                editLabel: 'Change image',
+                fontSize: '200',
+                onImageChange: { $setLocal: 'avatar', value: { $: 'event' } },
+              },
+            },
+          ],
         },
       ],
     },
 
-    // Name
-    field({ name: 'name', label: 'Name', placeholder: 'Space name...', validated: true, touchOnBlur: true }),
+    /*
+      Name — validated, but judged on submit rather than on blur.
+
+      `touchOnBlur` fired "Name is required" at somebody who had clicked into the field and back
+      out of it without typing, which is a report about a form nobody has finished rather than a
+      mistake anybody made — and it left the field wearing the danger ring on the way back in. The
+      submit guard below already touches everything, so the error still arrives, on the click that
+      was actually refused. Same shape as the account-creation form in BootScreen.
+    */
+    field({ name: 'name', label: 'Name', placeholder: 'Space name...', validated: true }),
 
     // Description
     field({ name: 'description', label: 'Description', placeholder: 'Description (optional)' }),
@@ -173,7 +206,7 @@ export const createSpaceModal = {
             {
               type: 'we-text',
               props: { variant: 'body', fontWeight: 'medium' },
-              children: [{ $: "local.access == 'shared' ? 'Shared with network' : 'Personal space'" }],
+              children: [{ $: "local.access == 'shared' ? 'Shareable space' : 'Personal space'" }],
             },
             {
               type: 'we-text',
