@@ -110,6 +110,21 @@ export const transcribeModule = defineModule({
     { anchor: CALL_STATUS_ANCHOR, node: extractionSignal, order: 10 },
   ],
 
+  /*
+    Hold everything while this module is recording, whatever the space thinks.
+
+    The same argument as the call module's `holdsWhen`, and the same failure without it: a module's
+    chrome is gated on the space having enabled it, which is right for chrome *about* that space and
+    wrong for a module whose work outlives the space it started in. Recording follows the call, and
+    the call survives navigation — so walking into a space that has not enabled transcribe unmounted
+    the controls, the status and the panel while the microphone carried on. There was no way to stop
+    it except leaving the call, and no sign it was still running.
+
+    `enabled` is false the moment recording stops, which is what this has to satisfy: a key that
+    stayed true would make the chrome permanent.
+  */
+  holdsWhen: 'modules.transcribe.enabled',
+
   /**
    * A panel that makes room rather than covering. See `DockContribution`.
    *

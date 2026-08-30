@@ -111,15 +111,60 @@ export default function TemplateProvider() {
     },
   };
 
+  /**
+   * The dataset a module's write means: the one it named, or the space on screen.
+   *
+   * Named by **URI**, not by store path: a module is not a template and has no store bag, and the
+   * URI is the string it already holds — presence anchors an activity with it, which is how
+   * transcribe knows the call's space at all. Matched against the dataset list rather than a
+   * registry, so this answers only for datasets this agent actually holds.
+   *
+   * `null` for a name that does not resolve, and the callers refuse rather than falling back. See
+   * `DatasetTarget` for why those two must not be the same outcome.
+   */
+  function moduleTarget(uri?: string): DatasetProxy | null {
+    if (!uri) return (datasetStore.currentDataset()?.handle as DatasetProxy | undefined) ?? null;
+    const found = datasetStore.datasets().find((d) => d.sharedUri === uri || d.id === uri);
+    if (!found) {
+      console.warn(`module host: no dataset for "${uri}" — refusing rather than writing elsewhere`);
+      return null;
+    }
+    return found.handle;
+  }
+
+  /** `record.create`, against a resolved handle rather than a store path. */
+  function createInDataset(
+    entity: string,
+    fields: Record<string, unknown>,
+    perspective: DatasetProxy,
+    rest: Record<string, unknown>,
+  ) {
+    return getEntity(entity).create(perspective, fields, Object.keys(rest).length ? rest : undefined);
+  }
+
   // The same capability schemas get as `record.create`, lent to module stores that must write
   // without a click to hang a schema action on — a transcript appears because somebody spoke.
   provideModuleHostServices({
+    // Only the host can turn a URI a module named into a handle. See `targeted` in
+    // `moduleHostServices.ts` for why a name it cannot resolve refuses instead of falling back.
+    datasetByUri: (uri) => datasetStore.datasets().find((d) => d.sharedUri === uri || d.id === uri)?.handle,
     // `options` is forwarded rather than swallowed so a module can parent its write — a transcript
     // block belongs inside the call that contains it, and creating it unparented then linking it
     // afterwards leaves a window where a crash orphans the block into the space.
+    /*
+      `options.dataset` names where, and an unresolvable name refuses.
+
+      Passing no perspective used to mean `resolve()` fell through to `datasetStore.currentDataset()`
+      — the space *on screen* — which is right for a write caused by the person looking at it and
+      wrong for every module whose work outlives the view. #161 made a call survive navigation, and
+      transcribe kept writing utterances into whichever space had been opened since. See
+      `DatasetTarget`.
+    */
     createEntity: async (entity, fields, options) => {
-      if (!datasetStore.currentDataset()) return null;
-      const created = (await recordActions.create(entity, fields, { ...options })) as { id?: string } | undefined;
+      const perspective = moduleTarget(options?.dataset);
+      if (!perspective) return null;
+      const rest = Object.fromEntries(Object.entries(options ?? {}).filter(([key]) => key !== 'dataset'));
+      const created = (await createInDataset(entity, fields, perspective, rest)) as { id?: string } | undefined;
       return created?.id ?? null;
     },
 
@@ -155,9 +200,10 @@ export default function TemplateProvider() {
     // Add-one on a to-many relation. An instance bound to an existing base expression is enough —
     // `addRelationValue` writes a single link and never reads the current set, which is what makes
     // several agents appending to the same list safe without coordination.
-    linkEntity: async (entity, id, relation, value) => {
-      if (!datasetStore.currentDataset()) return;
-      const [Model, p] = resolve(entity);
+    linkEntity: async (entity, id, relation, value, options) => {
+      const p = moduleTarget(options?.dataset);
+      if (!p) return;
+      const Model = getEntity(entity);
       const instance = new (Model as unknown as new (perspective: unknown, base: string) => Record<string, unknown>)(
         p,
         id,

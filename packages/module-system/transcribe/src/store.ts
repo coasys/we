@@ -393,15 +393,30 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * agent's own state in the roster. So "which call am I in, and what is it about" is answerable
    * locally, from data that is already there, without either module knowing the other exists.
    */
-  function myCall(): { id: string; anchorNodeId: string | null; recordId: string | null } | null {
+  function myCall(): {
+    id: string;
+    anchorNodeId: string | null;
+    recordId: string | null;
+    datasetUri: string | null;
+  } | null {
     const me = selfId?.() ?? null;
     if (!me || !presence) return null;
     const mine = activitiesOfType(presence.peers(), 'call').find(({ peer }) => peer.agentId === me);
     if (!mine) return null;
-    const anchor = (mine.activity as { anchor?: { nodeId?: string } }).anchor;
+    const anchor = (mine.activity as { anchor?: { nodeId?: string; datasetUri?: string } }).anchor;
     return {
       id: mine.activity.id,
       anchorNodeId: anchor?.nodeId ?? null,
+      /*
+        The space the call is *in*, which is not necessarily the space on screen.
+
+        A call survives navigation, so by the time somebody speaks the reader may be two spaces away
+        — and every write here used to resolve to "the current dataset", which put the utterance in
+        the wrong perspective with a `children` link to a record that perspective does not hold.
+        Peers in the call's own space stopped seeing the transcript. The call module publishes this
+        on every activity, so it is already here; it just was not being read.
+      */
+      datasetUri: anchor?.datasetUri ?? null,
       // Published by the call module from the moment the call starts — see `recordCallId`. This is
       // what replaced electing a creator among the transcribers.
       recordId: (mine.activity as { record?: string }).record ?? null,
@@ -467,10 +482,21 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    */
   function announce(callId: string, recording: boolean, collection?: string | null): void {
     const claim = collection ?? collectionId();
+    /*
+      Anchored to the call's space, exactly as the call module anchors its own activity.
+
+      Without an anchor, `PresenceStore.setActivity` publishes into the space on screen — so an
+      agent transcribing a call in A while reading B announced the transcription to **B's** peers,
+      who cannot join the call it names, while A's peers never saw `recording: true` and had no way
+      to know they were being recorded. That is the more serious half: a recording notice that
+      reaches everyone except the people being recorded.
+    */
+    const anchorUri = myCall()?.datasetUri;
     presence?.setActivity({
       type: TRANSCRIBE_ACTIVITY,
       id: callId,
       recording,
+      ...(anchorUri ? { anchor: { datasetUri: anchorUri } } : {}),
       ...(claim ? { collection: claim } : {}),
     });
   }
@@ -507,17 +533,28 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * itself a second time. Keyed on the collection, the answer to "have I already said I was here"
    * stays right across every leave and rejoin within a session.
    */
-  async function recordSelfParticipation(collection: string): Promise<void> {
+  async function recordSelfParticipation(collection: string, dataset?: string): Promise<void> {
     const me = selfId?.() ?? null;
     if (!linkEntity || !me || recordedParticipants.has(collection)) return;
     recordedParticipants.add(collection);
     try {
-      await linkEntity('CollectionBlock', collection, 'participants', me);
+      await linkEntity('CollectionBlock', collection, 'participants', me, dataset ? { dataset } : undefined);
     } catch (cause) {
       // Let it be retried rather than losing this agent from the roster for the rest of the call.
       recordedParticipants.delete(collection);
       console.error('transcribe: could not record participation', cause);
     }
+  }
+
+  /**
+   * The dataset every write and every read in this module is about: the call's, not the reader's.
+   *
+   * `undefined` when there is no call or no anchor, which the host reads as "the space on screen" —
+   * the behaviour everything here had before, and the right one when nothing says otherwise.
+   */
+  function callTarget(): { dataset: string } | undefined {
+    const uri = myCall()?.datasetUri;
+    return uri ? { dataset: uri } : undefined;
   }
 
   /**
@@ -574,7 +611,9 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   async function loadProposals(): Promise<void> {
     if (!interpretation) return;
     try {
-      const staged = await interpretation.proposals();
+      // The call's space, for the same reason the writes use it: a call outlives the space on
+      // screen, so "proposals here" was answering about wherever the reader had wandered to.
+      const staged = await interpretation.proposals(callTarget());
       setProposals(staged.map((p) => ({ id: p.id, kind: p.kind, summary: summarise(p.values) })));
     } catch {
       setProposals([]);
@@ -695,8 +734,14 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
         return;
       }
 
-      await createEntity?.('TextBlock', { text }, { parent: { id: slot.id, predicate: CHILDREN_PREDICATE } });
-      await recordSelfParticipation(slot.id);
+      // The call's space, not the reader's. See `myCall().datasetUri`.
+      const dataset = myCall()?.datasetUri ?? undefined;
+      await createEntity?.(
+        'TextBlock',
+        { text },
+        { parent: { id: slot.id, predicate: CHILDREN_PREDICATE }, ...(dataset ? { dataset } : {}) },
+      );
+      await recordSelfParticipation(slot.id, dataset);
     } catch (cause) {
       // Reported but not surfaced as a failed state: the transcript continues, and losing one block
       // is better than stopping a call's transcription over a single write.
@@ -1253,10 +1298,23 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     void stop();
   });
 
-  // Leaving the space ends the session — the blocks belong to the space that was being spoken in,
-  // and continuing to write into a perspective the user has navigated away from would be wrong.
+  /*
+    Having nowhere to write ends the session — but a call is somewhere to write.
+
+    This used to stop the moment `dataset()` went null, on the grounds that "the blocks belong to
+    the space that was being spoken in, and continuing to write into a perspective the user has
+    navigated away from would be wrong". The premise was true and the conclusion followed from a
+    second, unstated one: that the only perspective this module could write to was the one on
+    screen. It no longer is — every write now names the call's own dataset — so navigating away is
+    not a reason to stop transcribing a call that is still running, any more than it is a reason to
+    hang up. #161 made the call survive navigation; this is the rest of that.
+
+    What is left is the case the effect was really for: nowhere to write *at all*. No dataset and no
+    call is the boot frame, a logged-out agent, and the moment after leaving a call — all of them
+    "stop", and none of them "the reader wandered off".
+  */
   effect?.(() => {
-    if (!dataset?.()) {
+    if (!dataset?.() && !myCall()) {
       setEnabled(false);
       setAutoJoined(false);
       if (context) void stop();
@@ -1265,6 +1323,28 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       // start next — the request is only meaningful for the join it was pressed to accompany.
       setPendingResume('');
     }
+  });
+
+  /*
+    Signing out stops the microphone.
+
+    The same latch as the call module's, and for the same reason: `logout` locks the agent and
+    returns to the sign-in screen without unregistering anything, so on desktop — which does not
+    reload — an open audio graph carried on through the login screen. Watched through `selfId`
+    because that is what signing out *is* from here; the latch keeps it quiet on the boot frames
+    before the first login, where `selfId` is null and always was.
+  */
+  let hadIdentity = false;
+  effect?.(() => {
+    if (selfId?.()) {
+      hadIdentity = true;
+      return;
+    }
+    if (!hadIdentity) return;
+    setEnabled(false);
+    setAutoJoined(false);
+    if (context) void stop();
+    setPendingResume('');
   });
 
   return {
@@ -1639,12 +1719,12 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      */
     acceptProposal: async (id: string) => {
       if (!interpretation) return;
-      await interpretation.accept(id);
+      await interpretation.accept(id, undefined, callTarget());
       setProposals(proposals().filter((p) => p.id !== id));
     },
     rejectProposal: async (id: string) => {
       if (!interpretation) return;
-      await interpretation.reject(id);
+      await interpretation.reject(id, undefined, callTarget());
       setProposals(proposals().filter((p) => p.id !== id));
     },
     /** Write what has been heard so far without waiting for the buffer to fill. */

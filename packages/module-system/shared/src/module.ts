@@ -739,7 +739,33 @@ export interface ModuleStoreDeps {
    * There is deliberately no general `update` here yet. When one arrives it will need an answer for
    * concurrent writers, and this covers the add-only cases without pretending to have one.
    */
-  linkEntity?: (entity: string, id: string, relation: string, value: string) => Promise<void>;
+  linkEntity?: (entity: string, id: string, relation: string, value: string, options?: DatasetTarget) => Promise<void>;
+}
+
+/**
+ * Which dataset a module's write goes to.
+ *
+ * ## Why "the current one" is the wrong default for a module
+ *
+ * Every write a module made resolved to `datasetStore.currentDataset()` — the space *on screen*.
+ * That is right for a module whose work is caused by the person looking at it, and it is wrong for
+ * every module whose work outlives the view, which is the interesting kind. #161 made a call
+ * survive navigation, and transcribe kept writing each utterance into whatever space had been
+ * opened since: start a call in A with recording on, walk into B, keep talking, and every line
+ * became a `TextBlock` in **B's** perspective carrying a `children` link from a record id B does
+ * not hold. Peers in A stopped seeing the transcript; B accumulated orphans.
+ *
+ * So a module that knows where its work belongs says so, by dataset URI — the same string presence
+ * anchors an activity with, which is how transcribe knows it at all. Absent still means the space on
+ * screen, so nothing that never had this question changes.
+ *
+ * **A URI that cannot be resolved refuses the write.** Not "falls back to the current dataset":
+ * falling back is the bug, and writing a call's transcript into the wrong space is worse than not
+ * writing it. The host returns `null`/no-ops and logs.
+ */
+export interface DatasetTarget {
+  /** The dataset's shared URI, as `Focus.datasetUri` carries it. Absent means the space on screen. */
+  dataset?: string;
 }
 
 /**
@@ -751,7 +777,7 @@ export interface ModuleStoreDeps {
  * meaningless outside the call that contains it, and creating it unparented — then linking it in a
  * second step — leaves a window where a crash orphans the block into the space.
  */
-export interface CreateEntityOptions {
+export interface CreateEntityOptions extends DatasetTarget {
   /**
    * The record to link this one under, named by id and predicate rather than by model class.
    *
@@ -997,12 +1023,19 @@ export interface ModuleInterpretationAccess {
    */
   detailShared: () => boolean;
 
-  /** Suggestions staged in this dataset, awaiting a human. */
-  proposals: () => Promise<InterpretationProposal[]>;
+  /**
+   * Suggestions staged in a dataset, awaiting a human.
+   *
+   * `target` names which — the same {@link DatasetTarget} the write surface takes, and for the same
+   * reason. Interpretation follows the call, and a call now outlives the space on screen, so
+   * "proposals here" was answering about wherever the reader had wandered to. Absent still means the
+   * space on screen.
+   */
+  proposals: (target?: DatasetTarget) => Promise<InterpretationProposal[]>;
   /** Commit a staged suggestion — the whole record, or one property by name. */
-  accept: (id: string, property?: string) => Promise<boolean>;
+  accept: (id: string, property?: string, target?: DatasetTarget) => Promise<boolean>;
   /** Drop a staged suggestion. */
-  reject: (id: string, property?: string) => Promise<boolean>;
+  reject: (id: string, property?: string, target?: DatasetTarget) => Promise<boolean>;
 }
 
 /**
@@ -1111,6 +1144,26 @@ export interface ModuleDatasetAccess {
    * `@we/backend-shared`'s `recordRef`.
    */
   openRef: (ref: string) => void;
+  /**
+   * Told when a dataset this agent held is removed, by its uri.
+   *
+   * ## Why a module needs to hear this
+   *
+   * A module whose work outlives the space on screen — a call, a transcript — holds resources that
+   * belong to a *particular* dataset, and nothing else can end them. Removing a call's space used to
+   * leave the call running: the `getUserMedia` tracks stayed open, the peer connections stayed up,
+   * and the presence lease went on heartbeating into a perspective that no longer existed.
+   *
+   * A subscription rather than a state a module polls, because "gone" is an event and the absence
+   * that follows it is indistinguishable from every other absence. `datasets.get(uri)` is
+   * `undefined` during boot, while the list loads, and for a space this agent never joined; a module
+   * tearing a call down on that would tear it down on the boot frame. Only the host knows which
+   * absence is a removal.
+   *
+   * Returns an unsubscribe. Optional on hosts that cannot report it, in which case a module must
+   * behave as it did before — which is to say, this is a repair, not a dependency.
+   */
+  onRemoved?: (cb: (datasetUri: string) => void) => () => void;
 }
 
 /** What a module gets to know about a dataset. */

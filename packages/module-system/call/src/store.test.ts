@@ -156,11 +156,36 @@ describe('transport and device lifetime', () => {
 
     const disposers: Array<() => void> = [];
     let created = 0;
+    // The host's removal channel — see `ModuleDatasetAccess.onRemoved`. Held so a test can fire it.
+    let notifyRemoved: ((uri: string) => void) | null = null;
+    /*
+      `signal` here is a plain closure with no subscribers, so nothing re-runs on its own. The
+      effects are kept and re-run by hand instead, which is enough for what is being asserted: an
+      effect that reads a value and acts on it does the same thing whether a framework or a test
+      decided it was time to look again.
+    */
+    const effects: Array<() => void> = [];
+    let me: string | null = 'did:test:me';
     const store = createCallStore({
       signal,
+      effect: (fn: () => void) => {
+        effects.push(fn);
+        fn();
+      },
       dataset: () => ({ id: 'ds' }),
       datasetUri: () => 'inmemory://ds',
-      selfId: () => 'did:test:me',
+      datasets: {
+        get: () => undefined,
+        open: () => {},
+        openRef: () => {},
+        onRemoved: (cb: (uri: string) => void) => {
+          notifyRemoved = cb;
+          return () => {
+            notifyRemoved = null;
+          };
+        },
+      },
+      selfId: () => me,
       ephemeral: () => scope,
       presence: { peers: () => [], setActivity: () => {}, clearActivity: () => {} },
       onDispose: (fn: () => void) => disposers.push(fn),
@@ -169,7 +194,16 @@ describe('transport and device lifetime', () => {
       createPeerConnection: () => ({}) as RTCPeerConnection,
     } as never) as ReturnType<typeof createCallStore> & Record<string, (...args: unknown[]) => unknown>;
 
-    return { store, scopeDisposals: () => disposed, disposers };
+    return {
+      store,
+      scopeDisposals: () => disposed,
+      disposers,
+      removeDataset: (uri: string) => notifyRemoved?.(uri),
+      signOut: () => {
+        me = null;
+        for (const run of effects) run();
+      },
+    };
   }
 
   it('shows the video when the call starts', async () => {
@@ -229,13 +263,56 @@ describe('transport and device lifetime', () => {
 
     await store.startCall();
     await Promise.resolve();
-    expect(disposers).toHaveLength(1);
+    expect(store.callId()).not.toBeNull();
 
     for (const dispose of disposers) dispose();
 
     // The camera-stays-on case: unregistering during a call must close what the call holds.
     expect(scopeDisposals()).toBe(1);
     expect(store.callId()).toBeNull();
+  });
+
+  it('tears the call down when the space it is in is deleted', async () => {
+    /*
+      Nothing did. `removeDataset` tore the perspective down and left this store holding the media
+      tracks, the peer connections and a presence lease heartbeating into a perspective that no
+      longer existed.
+    */
+    const { store, scopeDisposals, removeDataset } = callable();
+
+    await store.startCall();
+    await Promise.resolve();
+
+    removeDataset('inmemory://ds');
+
+    expect(store.callId()).toBeNull();
+    expect(scopeDisposals()).toBe(1);
+  });
+
+  it('ignores the removal of a space the call is not in', async () => {
+    const { store, scopeDisposals, removeDataset } = callable();
+
+    await store.startCall();
+    await Promise.resolve();
+
+    removeDataset('inmemory://somewhere-else');
+
+    expect(store.callId()).not.toBeNull();
+    expect(scopeDisposals()).toBe(0);
+  });
+
+  it('ends the call when the agent signs out', async () => {
+    // `logout` locks the agent and returns to the sign-in screen without unregistering anything, so
+    // on desktop — which does not reload — the camera light stayed on through the login screen.
+    const { store, scopeDisposals, signOut } = callable();
+
+    await store.startCall();
+    await Promise.resolve();
+
+    signOut();
+
+    expect(store.callId()).toBeNull();
+    expect(scopeDisposals()).toBe(1);
   });
 });
 

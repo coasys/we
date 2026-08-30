@@ -763,6 +763,49 @@ export function createCallStore(deps: CallStoreDeps) {
     tearing a call down on it is what this was doing wrong in the first place.
   */
 
+  /*
+    Signing out leaves the call.
+
+    `SessionStore.logout` locks the agent and returns to the sign-in screen; nothing called `leave`,
+    so the `getUserMedia` tracks, the peer connections and the presence scope survived it. The
+    camera light stayed on through the login screen and after signing back in — on desktop, where
+    the app does not reload. Web was fine only by accident: it reloads, which closes everything.
+
+    Watched through `selfId` rather than through a new lifecycle hook, because that is exactly what
+    signing out *is* from a module's point of view — the agent this call belongs to is no longer
+    here. The `hadIdentity` latch is what keeps it from firing on the boot frames before the first
+    login, where `selfId` is null and always was.
+  */
+  let hadIdentity = false;
+  effect?.(() => {
+    if (selfId?.()) {
+      hadIdentity = true;
+      return;
+    }
+    if (hadIdentity && callId()) teardown();
+  });
+
+  /*
+    Deleting the call's space ends the call.
+
+    Nothing did. `removeDataset` tore the perspective down and left this store holding the
+    `getUserMedia` tracks, every `RTCPeerConnection` in the mesh and a presence lease still
+    heartbeating into a perspective that no longer existed — a call whose space had been deleted
+    carried on, with a camera light and no way back to what it was about.
+
+    Subscribed rather than derived, because the absence a removal leaves is indistinguishable from
+    every other absence: `datasets.get(uri)` is `undefined` during boot, while the list loads, and
+    for a space this agent never joined. Only the host can say which one is a removal.
+
+    `anchor.datasetUri` is what a call is anchored to, so that is what is compared. A call with no
+    anchor is in a personal space, which has no uri and cannot be the subject of one of these.
+  */
+  onDispose?.(
+    datasets?.onRemoved?.((removedUri) => {
+      if (callId() && anchor?.datasetUri === removedUri) teardown();
+    }) ?? (() => {}),
+  );
+
   /**
    * Losing the module leaves the call too.
    *

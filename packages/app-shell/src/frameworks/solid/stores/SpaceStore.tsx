@@ -1029,9 +1029,27 @@ export function SpaceStoreProvider(props: ParentProps) {
   // it needs to resolve a space's default template (see TemplateStore.provideSpaceLookup).
   templateStore.provideSpaceLookup(mySpaces);
 
-  // A dataset removed from any client takes its Space entry with it.
+  /**
+   * Modules that asked to hear about a removal — see `ModuleDatasetAccess.onRemoved`.
+   *
+   * A plain set rather than a signal: nothing renders from it, and it is read once per removal.
+   */
+  const datasetRemovalListeners = new Set<(uuid: string) => void>();
+
+  // A dataset removed from any client takes its Space entry with it — and anything a module is
+  // holding on its behalf. A call in a space that has just been deleted keeps its camera open and
+  // its presence lease heartbeating into a perspective that no longer exists, and only the module
+  // can end that.
   datasetStore.onDatasetRemoved((uuid) => {
     setMySpaces((prev) => prev.filter((s) => s.uuid !== uuid));
+    datasetRemovalListeners.forEach((listener) => {
+      try {
+        listener(uuid);
+      } catch (error) {
+        // One module's failure must not stop the next module hearing about it.
+        console.error('SpaceStore: a module threw on dataset removal', error);
+      }
+    });
   });
 
   // Locking the agent clears the loaded spaces along with the session.
@@ -1065,6 +1083,32 @@ export function SpaceStoreProvider(props: ParentProps) {
       open: (uri: string) => {
         const id = sharedIdOf(uri);
         if (id) void navigateToSpace(id);
+      },
+      /*
+        Removal, as an event, so a module can end what belongs to a dataset that is gone.
+
+        Translated from the dataset id `onDatasetRemoved` reports into the uri a module actually
+        holds — a call anchors on `Focus.datasetUri`, and the two are different strings for the same
+        space. Resolved before the removal lands, because afterwards there is nothing left to
+        resolve it from.
+      */
+      onRemoved: (cb: (datasetUri: string) => void) => {
+        const listener = (uuid: string) => {
+          /*
+            The uri, from whatever still remembers it.
+
+            `onDatasetRemoved` reports the dataset id; a module holds `Focus.datasetUri`, and for a
+            shared space those are different strings for the same thing. `mySpaces` is filtered by
+            the handler above, which runs first, so the Space record is already gone — the sidebar
+            list is not, and it carries the shared id. A personal space has no uri and no module
+            anchors to one, so answering nothing for it is right rather than a gap.
+          */
+          const row = orderedSidebarItems().find((item) => item.uuid === uuid);
+          const uri = row?.spaceId ? `neighbourhood://${row.spaceId}` : undefined;
+          if (uri) cb(uri);
+        };
+        datasetRemovalListeners.add(listener);
+        return () => datasetRemovalListeners.delete(listener);
       },
       // The host parses the reference and knows where a record's page is; a module holding one
       // should not have to restate either. See `ModuleDatasetAccess.openRef`.
