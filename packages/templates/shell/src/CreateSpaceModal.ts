@@ -44,7 +44,15 @@ export const createSpaceModal = {
     ...guard.localState,
   },
   children: [
-    { type: 'we-text', props: { variant: 'heading-md' }, children: ['Create a New Space'] },
+    /*
+      The header slot, not an ordinary first child. Two things follow from it, and this modal was
+      missing both: the title stays put while a form this tall scrolls, and `we-modal`'s
+      `aria-labelledby="modal-title"` points at the header slot — so with nothing in it a screen
+      reader announced "dialog" and stopped, which says somebody is trapped without saying what in.
+      `confirmModal` and `formModal` both slot their titles; this form is written out by hand and
+      was the one that did not.
+    */
+    { type: 'we-text', props: { variant: 'heading-md' }, slot: 'header', children: ['Create a New Space'] },
 
     /*
       Cover and avatar, arranged the way the space header this is composing arranges them: the
@@ -70,7 +78,7 @@ export const createSpaceModal = {
             alt: 'Cover image',
             fit: 'cover',
             width: '100%',
-            height: '180px',
+            height: '160px',
             aspect: 4 / 1,
             // Inset inside a modal that has its own radius, so square corners here read as a
             // mismatch in any rounded theme. Full-bleed banners (the space header, the profile
@@ -85,7 +93,7 @@ export const createSpaceModal = {
         },
         {
           type: 'Row',
-          props: { mt: '-60px', ml: '400' },
+          props: { mt: '-60px', ml: '800' },
           children: [
             {
               type: 'EditableImage',
@@ -321,10 +329,16 @@ export const createSpaceModal = {
       ],
     },
 
-    // Action buttons
+    /*
+      Action buttons — pinned in the footer slot, so Create Space is reachable without scrolling to
+      the bottom of a form that is taller than the sheet. `ax: 'end'` is the house convention and
+      the one every other modal uses; the slot supplies the modal's own gap, so the `mt` this
+      carried would now double-space it.
+    */
     {
       type: 'Row',
-      props: { gap: '300', ax: 'end', mt: '200' },
+      slot: 'footer',
+      props: { gap: '300', ax: 'end' },
       children: [
         {
           type: 'we-button',

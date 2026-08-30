@@ -199,6 +199,9 @@ const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
   modal: {
     radiusGroup: '--we-theme-surface-radius',
     paddingGroup: '--we-theme-surface-padding',
+    // Explicit: size-aware CSS var chain, declared per `size` in modal.ts — not derivable from
+    // DEFAULT_PROPS, which can only hold the one figure that applies when no size is set.
+    paddingDefault: 'var(--we-modal-size-padding, var(--we-space-700))',
     gapGroup: '--we-theme-surface-gap',
   },
   drawer: {
