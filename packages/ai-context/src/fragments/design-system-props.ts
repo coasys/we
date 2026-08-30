@@ -88,7 +88,8 @@ a user-chosen swatch.
 | \`surface-inverse\` | A surface deliberately opposite to the page — a tooltip. Holds a fixed lightness, so it does *not* flip with the theme. |
 | \`on-inverse\` | Text or an icon **on top of** \`surface-inverse\` — a tooltip's own text. **Not** for text on the accent, which is \`on-accent\`. |
 | \`border\` | Default borders and dividers. |
-| \`border-strong\` | Emphasised separation. |
+| \`border-strong\` | Emphasised separation — two regions that are genuinely apart. Not a hover state. |
+| \`border-hover\` | The edge of an interactive box under the pointer. Sits between \`border\` and \`border-strong\`, which are three ramp steps apart; borrowing the latter for hover makes an outline jump rather than acknowledge. |
 | \`accent\` | An accent *fill* — a primary button, a selected disc. |
 | \`accent-hover\` / \`accent-active\` | Hover and pressed states of an accent fill. |
 | \`on-accent\` | Text or an icon **on top of** an accent fill. |

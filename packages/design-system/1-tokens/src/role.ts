@@ -114,6 +114,23 @@ export const role = {
   /** Emphasised border (focus-adjacent, strong separation). */
   borderStrong: 'var(--we-color-neutral-500)',
   /**
+   * The edge of an interactive box under the pointer.
+   *
+   * `border` and `borderStrong` are three steps apart on the ramp — 200 to 500 — because they answer
+   * different questions: one is "where does this box end", the other is "these two regions are
+   * genuinely separate". Neither is "the pointer is here", and borrowing the second for it made a
+   * field's outline jump on hover, loud enough to read as a state change rather than as
+   * acknowledgement.
+   *
+   * Between the two rather than a step from either, for the reason `surfaceSunkenHover` is: it
+   * cannot overshoot `borderStrong`, whichever direction the ramp runs, and it needs no signed
+   * direction to stay right when the polarity flips.
+   *
+   * `borderStrong` keeps its own meaning and its own users — the scrollbar thumb, the checkbox, the
+   * menu-group dividers — which is why this is a new role rather than a change to that one.
+   */
+  borderHover: 'color-mix(in oklab, var(--we-role-border) 60%, var(--we-role-border-strong))',
+  /**
    * The accent (interactive emphasis) — a filled button, a selected disc.
    *
    * ## Off the ramp entirely, because a fill is a colour and not a position

@@ -64,7 +64,7 @@ export function fieldSurface(
 
     ${box}:hover:not([disabled]) {
       background: var(--we-role-surface-sunken-hover);
-      border-color: var(--we-role-border-strong);
+      border-color: var(--we-role-border-hover);
       transition:
         background-color ${stateTransition},
         border-color ${stateTransition};
