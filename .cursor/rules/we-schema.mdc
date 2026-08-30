@@ -1588,7 +1588,7 @@ a user-chosen swatch.
 | `surface-raised` | Something floating above the page — a popover, a floating bar, a docked rail with a shadow. |
 | `surface-sunken` | A well recessed into a surface — an inset box, a code block, an input trough. |
 | `surface-hover` / `surface-active` | Row and item feedback — something sitting **on** a surface. Use inside `hoverProps` / `activeProps`. |
-| `surface-sunken-hover` / `surface-sunken-active` | The same, for a **well**: an input, a textarea, a picker trigger. A well hovered with `surface-hover` lands at about surface level and stops looking recessed, so reach for these wherever the resting fill is `surface-sunken`. |
+| `surface-sunken-hover` | A **well** lifted — an input, a textarea, a picker trigger. Hovering one with `surface-hover` lands it at about surface level and it stops looking recessed, so use this wherever the resting fill is `surface-sunken`. One state, not a hover/pressed pair: a field is clicked *into* rather than pushed, so hover, press and focus all resolve here and the ring is what says "focused". |
 | `control-surface` | The filled neutral of a *control* — a slider or switch track, a progress trough, a scrollbar thumb, a secondary button, a count chip. Not a surface and not a state. |
 | `text` | Primary body and heading text. |
 | `text-muted` | Secondary text — captions, labels, metadata. |

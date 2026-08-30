@@ -227,7 +227,14 @@ export const role = {
   surfaceActive: 'var(--we-color-neutral-200)',
 
   /**
-   * Hover and pressed states for a *well* — an input, a textarea, a select trigger.
+   * The lifted state of a *well* — an input, a textarea, a select trigger.
+   *
+   * One state, not the hover/pressed pair every other role here comes in, because a field is not
+   * pressed. A button is: you push it, it responds, it springs back. A field is clicked *into* and
+   * then focused, and the focus is what persists — so a distinct pressed fill is a flash on
+   * mousedown that snaps back on release, which reads as the control losing its place rather than
+   * as feedback. Hover, press and focus therefore all resolve here, and the ring is what says
+   * "focused". Material, Fluent, Carbon and Primer all draw text fields this way.
    *
    * `surfaceHover` is measured for something sitting ON a surface: a menu item, a list row, a ghost
    * button. Applied to a well it lands at about surface level, so hovering a field made it the same
@@ -245,8 +252,6 @@ export const role = {
    * and the same one `accentHover` makes for stepping from the role instead of from the scale.
    */
   surfaceSunkenHover: 'color-mix(in oklab, var(--we-role-surface-sunken) 65%, var(--we-role-surface))',
-  /** Pressed goes further along the same path, so a click reads differently from a hover. */
-  surfaceSunkenActive: 'color-mix(in oklab, var(--we-role-surface-sunken) 45%, var(--we-role-surface))',
 
   /**
    * The filled neutral of a *control* — a slider track, a switch track, a progress trough, a

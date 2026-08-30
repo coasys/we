@@ -98,6 +98,22 @@ describe('the host-painted fields say the same thing in DS props', () => {
     // under the pointer — see the role's own note.
     expect(defaultsOf(ctor).hoverProps).toMatchObject({ bg: 'surface-sunken-hover' });
   });
+
+  it.each(HOST_PAINTED)('%s does not flash on mousedown — press is the hover fill', (_name, ctor) => {
+    /*
+      A field is clicked INTO, not pushed. Giving it a distinct pressed fill is a flash on mousedown
+      that snaps back on release, because the state order is hover → focus → active: press wins
+      while the button is down and focus takes over when it comes up, one step away. That reads as
+      the control losing its place rather than as feedback, and it is what a separate
+      `surfaceSunkenActive` produced for exactly one commit.
+
+      So all three of hover, press and focus resolve to the same fill, and the ring is what says
+      focused. Asserted because "add the missing pressed step" is a plausible-looking change.
+    */
+    const defaults = defaultsOf(ctor) as Record<string, { bg?: string }>;
+    expect(defaults.activeProps?.bg).toBe(defaults.hoverProps?.bg);
+    expect(defaults.focusProps?.bg).toBe(defaults.hoverProps?.bg);
+  });
 });
 
 describe('every field answers the pointer', () => {

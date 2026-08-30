@@ -23,7 +23,10 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   // one of those decisions, and the reason this carries no `transition` of its own, is argued on
   // `we-input` — which has the same states and has to look identical beside this.
   hoverProps: { bg: 'surface-sunken-hover', border: '1px solid border-strong' },
-  activeProps: { bg: 'surface-sunken-active', border: '1px solid border-strong' },
+  // Pressed resolves to the same fill as hover, deliberately — a field is clicked INTO, not
+  // pushed, so a distinct pressed step is a flash that snaps back on release. See the note on
+  // the `surfaceSunkenHover` role.
+  activeProps: { bg: 'surface-sunken-hover', border: '1px solid border-strong' },
   focusProps: {
     bg: 'surface-sunken-hover',
     border: '1px solid var(--we-ring-color)',
