@@ -308,7 +308,7 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
               {
                 type: 'we-button',
                 // Guarded like the backdrop — one way out of the modal.
-                props: { variant: 'ghost', onClick: guard.close },
+                props: { variant: 'secondary', onClick: guard.close },
                 children: ['Cancel'],
               },
               {
