@@ -148,7 +148,7 @@ confirmModal({
   title: 'Delete post?',
   body: 'This will permanently delete the post and everything inside it. This cannot be undone.',
   confirmLabel: 'Delete',
-  confirm: { $action: 'spaceStore.deleteCollection', args: ['$post.id'] },
+  confirm: { $action: 'spaceStore.deleteCollection', args: [{ $: 'post.id' }] },
 })
 \`\`\`
 
@@ -334,15 +334,15 @@ with the value itself as \`arg\`.
 \`\`\`json
 {
   "type": "$agent",
-  "props": { "did": "$post.author", "as": "author" },
+  "props": { "did": { "$": "post.author" }, "as": "author" },
   "children": [
     {
       "type": "Row",
       "props": { "ay": "center", "gap": "300" },
       "children": [
-        { "type": "we-avatar", "props": { "size": "sm", "image": "$author.avatar", "hash": "$author.did" } },
-        { "type": "we-text", "props": { "fontWeight": "semibold" }, "children": ["$author.name"] },
-        { "type": "we-timestamp", "props": { "value": "$post.createdAt", "relative": true, "color": "textMuted" } }
+        { "type": "we-avatar", "props": { "size": "sm", "image": { "$": "author.avatar" }, "hash": { "$": "author.did" } } },
+        { "type": "we-text", "props": { "fontWeight": "semibold" }, "children": [{ "$": "author.name" }] },
+        { "type": "we-timestamp", "props": { "value": { "$": "post.createdAt" }, "relative": true, "color": "text-muted" } }
       ]
     }
   ]
@@ -393,7 +393,7 @@ whatever is there:
               "type": "Row",
               "props": { "gap": "300", "ay": "center" },
               "children": [
-                { "type": "we-text", "props": { "variant": "label", "color": "text-muted" }, "children": ["$field.label"] },
+                { "type": "we-text", "props": { "variant": "label", "color": "text-muted" }, "children": [{ "$": "field.label" }] },
                 {
                   "type": "$if",
                   "props": {
@@ -601,15 +601,7 @@ A group heading toggles its own id in the set, and its body reveals on the block
   "children": [
     {
       "type": "we-icon",
-      "props": {
-        "name": {
-          "$if": {
-            "condition": { "$": "'spaces' in local.collapsedGroups" },
-            "then": "caret-right",
-            "else": "caret-down"
-          }
-        }
-      }
+      "props": { "name": { "$": "'spaces' in local.collapsedGroups ? 'caret-right' : 'caret-down'" } }
     },
     { "type": "we-text", "children": ["Spaces"] }
   ]

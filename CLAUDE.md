@@ -1548,7 +1548,13 @@ a user-chosen swatch.
 ```
 
 Roles work anywhere a colour token does, including inside a border shorthand
-(`"1px solid border"`) and behind `$if` (`{ "$if": { "condition": …, "then": "accent-muted", "else": "surface-sunken" } }`).
+(`"1px solid border"`) and behind a ternary
+(`{ "$": "row.selected ? 'accent-muted' : 'surface-sunken'" }`).
+
+**Not `$if` in a prop.** `$if` is a *node* type and, in a value position, resolves to a handler —
+so the colour resolver is handed a function, paints nothing, and warns about nothing. The validator
+does not catch it either. A condition that chooses a value is a ternary, which is what the
+expression language has one for.
 
 **Always kebab-case: `"surface-sunken"`, never `"surfaceSunken"`.** The camelCase spelling is the
 TypeScript key of a `ThemeRole`; a schema writes the CSS spelling. Getting it wrong fails silently —
@@ -2450,24 +2456,24 @@ ShapeStore:
   - aiAvailable: boolean — AI model generation is available (the agent has a Claude API key configured)
   - generating: boolean — an AI generation is in flight
   - hintEntities: { entity, source: 'core' | 'shape' }[] — entities offering AI-hint tuning in this space: core interpretable vocabulary (TaskBlock, EventBlock) plus the space's own shapes
-  - extractionCandidates: unknown
+  - extractionCandidates: string[] — entity names an extraction pass COULD write here: core vocabulary that declares itself extractable, plus every adopted shape that does. Candidacy, not a decision — which of these a call actually looks for is two layers down (spaceStore.extractionTargets, then the call's own participants). Read it to offer a choice, and to display findings: a card should show a record somebody extracted an hour ago even if the target has since been switched off
   - relationshipTargets: { label, value }[] — what a relationship may point at here, ready for a we-select: this space's own models, then block types, then other apps' models. Core infrastructure entities are deliberately absent
   - identityOptions: { label, value }[] — "None" plus every named property of the open draft, for the identity picker. Built in the store because a schema can map options but cannot prepend one
   - hintEditor: the hint editor state ({ entity, classHint, defaultClassHint, rows: { name, predicate, hint, defaultHint }[], customized }) or null while closed — non-nullness mounts the hint editor modal
   - hintBusy: boolean — the hint editor is loading or saving
-  - extractionNeedsIdentity: unknown
+  - extractionNeedsIdentity: boolean — the open draft would be extracted into and has no field to recognise what it already wrote, so every pass duplicates everything. A warning to put beside the switch, not a refusal: the wizard saves either way
   - memberOptions: { rowId, options }[] — each member's default-value picker entries. Read with find(shapeStore.memberOptions, { rowId: member.rowId }) rather than off member: rows are mutated in place while typing, so values hanging off the row cannot be reactive
   - expandedMembers: string[] — rowIds whose detail panel is open. Read with { $: 'member.rowId in shapeStore.expandedMembers' }; a new row and any row an error names open themselves. Generation leaves rows closed — a collapsed row shows its hint, so what was generated is readable without opening anything
   - generateIntent: 'none' | 'generate' | 'regenerate' | 'replace' — what the generate button would do right now, given what the draft holds. Label it "Regenerate" on 'regenerate' and 'replace' and "Generate" otherwise — 'none' is an empty draft, which has nothing to re-run, so testing for 'generate' alone labels a fresh form wrongly. Disable only on 'none', and route the click through requestGenerateFields, which decides whether to ask first
   - confirmReplaceFields: boolean — the "replace the fields below?" confirmation is showing. Only ever raised for a generation over hand-written rows; a generated proposal nobody touched re-runs on the click
   - confirmDiscard: boolean — the "discard this model?" confirmation is showing
-  - hintEditorDirty: unknown
+  - hintEditorDirty: whether the open hint editor holds edits that closing would lose. What a discard guard reads: the rows come from the model’s declaration, so a schema has no set of local names it could test. Compares against the state the editor opened in, so an editor somebody only read closes without a question
 - Actions:
   - openShapeWizard(shapeRecordId?): opens the model wizard — empty for a new model, or pre-filled from a stored shape to edit it
   - cancelShapeWizard(): closes the wizard, discarding the draft
   - setShapeField(field: 'name' | 'description' | 'icon' | 'classHint', value): sets one top-level draft field
   - setIdentityMember(rowId): chooses which member identifies duplicates for AI extraction; 'none' clears it. At most one, which is why it is a picker rather than a per-row flag
-  - setExtractable(): unknown
+  - setExtractable(on: boolean): allows or refuses an AI extraction pass writing instances of the open draft. Its own action rather than a setShapeField case, because the value is a boolean and that field takes strings
   - addProperty(): appends an empty property (scalar field) row to the draft
   - addRelationship(): appends an empty relationship (edge to another model) row to the draft
   - removeMember(rowId): removes one member row
@@ -2494,7 +2500,7 @@ ShellStore:
 - State:
   - activeShellView: string | null — id of the currently open shell overlay ('profile' | 'settings' | 'schema-tests' | 'landing-page'), or null
   - createSpaceOpen: boolean — the create-space modal is open. Shell state because more than one place opens it; bind the modal’s open prop to this and close it with setCreateSpaceOpen
-  - pendingDestructive: unknown
+  - pendingDestructive: the destructive action a space template just asked for ({ path, title, body }), or null. The host raises its own confirmation in front of every one of them — a space template arrives from a stranger, so whether it asks before deleting is not the stranger's decision. Host chrome renders it; a template writing its own dialog for a destructive store action would be a second question about one click
   - spaceSettingsOpen: boolean — the space-settings panel is open. It configures whichever space is open, so it needs no id; bind a launcher’s active state to this
   - dockGeometry: Record<dockId, DockGeometry> — every registered panel's resolved box (top, left, width, height, edge, mode). Read a field as { $: "shellStore.dockGeometry['<id>'].<field>" } — by index, since a dock id holds a colon; the frame a panel is wrapped in binds its geometry this way so a move rewrites props rather than remounting
   - contentInset: { top, right, bottom, left } in pixels — what the content viewport gives up to panels that displace it. Read it to keep your own fixed chrome clear of docked panels
@@ -2511,8 +2517,8 @@ ShellStore:
   - openShellView(id: string, path?: string): opens a shell overlay by id, optionally at a route inside it — the overlay keeps its own memory router, so this never touches the browser URL
   - closeShellView(): closes the currently open shell overlay
   - setCreateSpaceOpen(open: boolean): opens or closes the create-space modal. Shell state rather than a page’s $localState because more than one place opens it — the settings page and the sidebar’s spaces group — and a page-scoped flag could only be set from inside that page
-  - confirmDestructive(): unknown
-  - cancelDestructive(): unknown
+  - confirmDestructive(): runs the destructive action the host is asking about. Host chrome only, for the reason pendingDestructive is: an action able to answer its own confirmation is the confirmation being skipped
+  - cancelDestructive(): refuses it. The waiting action resolves as though it had been blocked
   - toggleSpaceSettings(): opens or closes the settings panel for the space on screen. What a gear in chrome should call — a control that is always present toggles, so a second press puts back what the first press changed
   - openSpaceSettings(): opens that panel without closing it again. For a control that sits on the very fields it leads to (the About view’s pencil), where a toggle would break the promise to show them
   - closeSpaceSettings(): closes the space-settings panel
@@ -2558,7 +2564,7 @@ SpaceStore:
   - missingModules: string[] — of those, the ones this agent has not installed. Non-empty means the template is mounting a component nothing provides, so part of the page silently renders nothing. Empty in the ordinary case
   - activeModules: string[] — what actually renders here for this agent: registered ∩ installed ∩ enabled, less the modules muted in this space. Module chrome and the launcher rail gate on this; enabledModules alone is not sufficient
   - moduleInstallSettings: { id, name, description, icon, installed, surface, switchable }[] — every registered module and whether this agent wants it anywhere. The global Settings → Modules list, and the only place an 'app' or 'capability' module is decided about: a contribution is gated at the layer where it renders, and only 'chrome' renders inside a space. `surface` is derived from what the module contributes. Its per-space counterpart is `modules` on each spaceList row, which carries enabled/installed/visible/active together and lists chrome modules only
-  - moduleLaunchers: { id, icon, label, active }[] — launchers for the modules enabled here and available in this space; what the host module rail renders. Pair with { $action: "spaceStore.launchModule", args: ["$mod.id"] }
+  - moduleLaunchers: { id, icon, label, active }[] — launchers for the modules enabled here and available in this space; what the host module rail renders. Pair with { $action: "spaceStore.launchModule", args: [{ $: "mod.id" }] }
   - spaceViews: ResolvedView[] — this space's sections resolved: which view renders at which segment, in the space's order, each carrying its schema. The host builds the route tree from it; a nav strip reads viewNav, which is this without the payload
   - routableViews: ResolvedView[] — every view that could render here, at its permanent segment — what routes are built from. Separate from spaceViews because it changes when a view is installed, not when a switch is flicked
   - enabledViewIds: string[] — ids of the sections the community has turned on here. What a route body is gated on; not the nav list, which also drops this agent's hidden ones — hiding a section for yourself must not make its URL refuse you
@@ -2627,7 +2633,7 @@ TemplateStore:
   - currentTemplate: TemplateSchema (the active template)
   - loading: boolean — the template lists are still being read. Gate empty states on it
   - defaultTemplateId: string — id of the agent's preferred default template, used where no space or override decides. Persisted to AgentSettings.defaultTemplateId
-  - pendingInstall: unknown
+  - pendingInstall: the template an install dialog is showing ({ marketplaceId, destination, name, icon, version, capabilities, blocked }), or null when none is open. `capabilities` is already in the words a person reads. Host chrome renders it: a dialog vouching for a template must not be drawn by a template
   - operationLoading: string | null — the id of the template operation in flight, namespaced by kind ('marketplace-install:<id>', 'space-install:<id>'), or null. A key rather than a boolean so one row's spinner does not appear on every row
 - Actions:
   - switchTemplate(newTemplateId: string): switches to another template
@@ -2637,7 +2643,7 @@ TemplateStore:
   - uninstallTemplate(templateId: string): hides a custom template from the pickers without deleting it. The counterpart of installTemplate
   - installFromMarketplace(marketplaceTemplateId: string): copies a marketplace template into your own library. A personal act — use installToSpace to give the community a template. Asks first: the template is fetched and inspected, and the host raises a dialog naming what it will be able to do. Nothing is written until that is confirmed, so treat this as "start an install", not "install"
   - installToSpace(marketplaceTemplateId: string): copies a marketplace template into the current space, so every member of that community gets it — as opposed to installing it for yourself. Asks first, exactly as installFromMarketplace does. Pair with templateStore.operationLoading to show progress on the row being installed
-  - confirmInstall(): installs what the dialog is showing. Host chrome only, for the same reason pendingInstall is: a template able to call this is the confirmation being skipped
+  - confirmInstall(): installs what the dialog is showing. Host chrome only, for the same reason pendingInstall is: a template able to call this is the disclosure being skipped
   - cancelInstall(): closes the install dialog without installing
   - toggleInstalled(templateId: string): installs or uninstalls by id — what the settings list’s switch calls. Prefer installTemplate/uninstallTemplate where the switch can pass its value
   - setDefaultTemplate(templateId: string): sets the agent's preferred default template (persists to AgentSettings.defaultTemplateId)
@@ -2736,8 +2742,8 @@ Iterating over store data:
         "onClick": { "$action": "routeStore.navigate", "args": [{ "$": "`/space/${space.uuid}`" }] }
       },
       "children": [
-        { "type": "we-avatar", "props": { "image": "$space.avatar", "initials": "$space.name", "size": "sm" } },
-        { "type": "we-text", "children": ["$space.name"] }
+        { "type": "we-avatar", "props": { "image": { "$": "space.avatar" }, "hash": { "$": "space.uuid" }, "initials": { "$": "space.name" }, "size": "sm" } },
+        { "type": "we-text", "children": [{ "$": "space.name" }] }
       ]
     }
   ]
@@ -2783,8 +2789,8 @@ Example — Channel list with conversation count and latest conversation:
   "children": [{
     "type": "Row",
     "children": [
-      { "type": "we-text", "children": ["$channel.name"] },
-      { "type": "we-text", "children": ["$channel.$conversationCount"] }
+      { "type": "we-text", "children": [{ "$": "channel.name" }] },
+      { "type": "we-text", "children": [{ "$": "channel.$conversationCount" }] }
     ]
   }]
 }
@@ -2831,7 +2837,7 @@ Example — Channel list → Conversation list:
             "variant": "ghost",
             "onClick": { "$action": "routeStore.navigate", "args": [{ "$": "`/channels/${channel.id}`" }] }
           },
-          "children": ["$channel.name"]
+          "children": [{ "$": "channel.name" }]
         }]
       }]
     },
@@ -2853,7 +2859,7 @@ Example — Channel list → Conversation list:
         },
         "children": [{
           "type": "we-text",
-          "children": ["$convo.conversationName"]
+          "children": [{ "$": "convo.conversationName" }]
         }]
       }]
     }
@@ -2929,12 +2935,12 @@ Use literal arrays for fixed/sample data:
           "type": "Row",
           "props": { "gap": "300", "ay": "center" },
           "children": [
-            { "type": "we-avatar", "props": { "initials": "$post.author", "size": "sm" } },
-            { "type": "we-text", "props": { "variant": "label" }, "children": ["$post.author"] }
+            { "type": "we-avatar", "props": { "initials": { "$": "post.author" }, "hash": { "$": "post.author" }, "size": "sm" } },
+            { "type": "we-text", "props": { "variant": "label" }, "children": [{ "$": "post.author" }] }
           ]
         },
-        { "type": "we-text", "props": { "variant": "heading-sm" }, "children": ["$post.title"] },
-        { "type": "we-text", "children": ["$post.text"] }
+        { "type": "we-text", "props": { "variant": "heading-sm" }, "children": [{ "$": "post.title" }] },
+        { "type": "we-text", "children": [{ "$": "post.text" }] }
       ]
     }
   ]
@@ -2946,10 +2952,11 @@ Use $query or a store read for dynamic data (more common in production):
 
 Per-item customization inside $each:
 To style or highlight specific items, add a data flag to those items and use $if on the flag inside the template. Do NOT use index == N comparisons — they are fragile, repetitive, and break when items are reordered.
-Example: add "highlighted": true to one item's data, then use $if on "$post.highlighted" in the template:
-{ "type": "$if", "props": { "condition": "$post.highlighted", "then": { "type": "we-badge", "props": { "variant": "primary" }, "children": ["Featured"] } } }
-For conditional props (e.g. different bg on highlighted items):
-{ "bg": { "$if": { "condition": "$post.highlighted", "then": "primary-50", "else": "neutral-0" } } }
+Example: add "highlighted": true to one item's data, then use $if on the flag in the template:
+{ "type": "$if", "props": { "condition": { "$": "post.highlighted" }, "then": { "type": "we-badge", "props": { "variant": "primary" }, "children": ["Featured"] } } }
+For a conditional PROP, use a ternary in an expression — NOT a prop-level $if, which is a node type
+and resolves to a handler in a value position:
+{ "bg": { "$": "post.highlighted ? 'accent-muted' : 'surface'" } }
 
 Boolean toggle (show/hide, expand/collapse):
 {
@@ -3185,7 +3192,7 @@ confirmModal({
   title: 'Delete post?',
   body: 'This will permanently delete the post and everything inside it. This cannot be undone.',
   confirmLabel: 'Delete',
-  confirm: { $action: 'spaceStore.deleteCollection', args: ['$post.id'] },
+  confirm: { $action: 'spaceStore.deleteCollection', args: [{ $: 'post.id' }] },
 })
 ```
 
@@ -3371,15 +3378,15 @@ with the value itself as `arg`.
 ```json
 {
   "type": "$agent",
-  "props": { "did": "$post.author", "as": "author" },
+  "props": { "did": { "$": "post.author" }, "as": "author" },
   "children": [
     {
       "type": "Row",
       "props": { "ay": "center", "gap": "300" },
       "children": [
-        { "type": "we-avatar", "props": { "size": "sm", "image": "$author.avatar", "hash": "$author.did" } },
-        { "type": "we-text", "props": { "fontWeight": "semibold" }, "children": ["$author.name"] },
-        { "type": "we-timestamp", "props": { "value": "$post.createdAt", "relative": true, "color": "textMuted" } }
+        { "type": "we-avatar", "props": { "size": "sm", "image": { "$": "author.avatar" }, "hash": { "$": "author.did" } } },
+        { "type": "we-text", "props": { "fontWeight": "semibold" }, "children": [{ "$": "author.name" }] },
+        { "type": "we-timestamp", "props": { "value": { "$": "post.createdAt" }, "relative": true, "color": "text-muted" } }
       ]
     }
   ]
@@ -3430,7 +3437,7 @@ whatever is there:
               "type": "Row",
               "props": { "gap": "300", "ay": "center" },
               "children": [
-                { "type": "we-text", "props": { "variant": "label", "color": "text-muted" }, "children": ["$field.label"] },
+                { "type": "we-text", "props": { "variant": "label", "color": "text-muted" }, "children": [{ "$": "field.label" }] },
                 {
                   "type": "$if",
                   "props": {
@@ -3638,15 +3645,7 @@ A group heading toggles its own id in the set, and its body reveals on the block
   "children": [
     {
       "type": "we-icon",
-      "props": {
-        "name": {
-          "$if": {
-            "condition": { "$": "'spaces' in local.collapsedGroups" },
-            "then": "caret-right",
-            "else": "caret-down"
-          }
-        }
-      }
+      "props": { "name": { "$": "'spaces' in local.collapsedGroups ? 'caret-right' : 'caret-down'" } }
     },
     { "type": "we-text", "children": ["Spaces"] }
   ]
@@ -4366,7 +4365,7 @@ include: {
     limit: 1,
   },
 }
-// Access the result: '$post.$myLikeSignal.value'
+// Access the result: { $: 'post.$myLikeSignal.value' }
 ```
 
 Note: `count: true` works as a plain literal — the typed projection (`TypedIncludeProjection`)

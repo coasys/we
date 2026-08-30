@@ -411,7 +411,7 @@ include: {
     limit: 1,
   },
 }
-// Access the result: '$post.$myLikeSignal.value'
+// Access the result: { $: 'post.$myLikeSignal.value' }
 \`\`\`
 
 Note: \`count: true\` works as a plain literal — the typed projection (\`TypedIncludeProjection\`)

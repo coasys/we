@@ -163,6 +163,18 @@ const DS_PROP_TYPE_OVERRIDES: Record<string, string> = {
 function classifyPropType(typeText: string): string {
   if (!typeText || typeText === 'unknown') return 'unknown';
   const t = typeText.replace(/\s*\|\s*undefined/g, '').trim();
+  /*
+    A prop that takes a handler, which is not the same as one that takes a value.
+
+    `we-modal`'s `close: () => void` is called like a click handler and is passed one everywhere in
+    the app — a `discardGuard` hands it a `{ $if: … }`, correctly. Classified `unknown` it was
+    indistinguishable from a prop nobody had described, so the only way to tell a handler position
+    from a value position was the `on…` naming convention, and `close` does not follow it.
+
+    Bearing on nothing else: the type-category check below skips anything that is not string,
+    boolean or number, so this classification is read by `checkValuePositionIf` alone.
+  */
+  if (/=>/.test(t) || t === 'Function') return 'function';
   if (t === 'boolean') return 'boolean';
   if (t === 'number') return 'number';
   if (t === 'string') return 'string';
@@ -568,6 +580,8 @@ function walkOperatorNode(
     // itself reported as the mistake it is.
     if (type === '$if' && (key === 'then' || key === 'else')) continue;
     checkTokenValue(value, `${path}.props.${key}`, ctx, state, errors);
+    // No registry entry for an operator's own props; the name test is the whole check there.
+    checkValuePositionIf(key, value, `${path}.props.${key}`, undefined, errors);
   }
 
   if (type === '$if') {
@@ -848,6 +862,7 @@ function checkProps(
 
     // Check for token values in props (regardless of whether prop is known)
     checkTokenValue(propValue, propPath, ctx, state, errors);
+    checkValuePositionIf(propName, propValue, propPath, propTypes, errors);
 
     if (COLOUR_PROPS.has(propName) || BORDER_PROPS.has(propName)) {
       checkColourValue(propName, propValue, propPath, errors);
@@ -939,6 +954,58 @@ function checkProps(
       }
     }
   }
+}
+
+/**
+ * `{ $if: … }` in a **value** position, which resolves to a function and paints nothing.
+ *
+ * ## Why this is worth a rule of its own
+ *
+ * `$if` is two things with the same spelling. As a *node* (`{ type: '$if', props: { … } }`) it is
+ * the conditional that renders one branch or the other; as a *token* it is the handler conditional,
+ * legal inside `onClick` and the `$action` lifecycle arrays. What it is not is a value — and the
+ * dispatcher does not know that: it routes every `{ $if: … }` to `resolveIfHandler`, which
+ * unconditionally returns a handler. So
+ *
+ * ```json
+ * { "bg": { "$if": { "condition": …, "then": "primary-50", "else": "neutral-0" } } }
+ * ```
+ *
+ * hands a *function* to the colour resolver. Nothing is painted, nothing warns, nothing throws —
+ * and the validator was green, because `zIfToken` sits in the general prop union and this file
+ * modelled `$if` as yielding a colour. The generated reference taught it in three places, which is
+ * the only reason it kept being written.
+ *
+ * The sanctioned form is a ternary in an expression, which is what the language has one for.
+ *
+ * Handler props are exempt — which is a question about the prop's **declared type**, not its name.
+ * `onClick` is the obvious shape and `we-modal`'s `close: () => void` is the one that is not: it
+ * takes a handler and is called like one, and every `discardGuard` in the app passes a `$if` to it
+ * legitimately. So the test is "does this prop hold a function", answered from the registry, and
+ * falling back to the name only where the component is unknown to it.
+ *
+ * Available exactly here and nowhere deeper: by the time a token is walked recursively, which prop
+ * it hangs off has been lost.
+ */
+function checkValuePositionIf(
+  propName: string,
+  value: unknown,
+  path: string,
+  propTypes: Map<string, string> | undefined,
+  errors: ValidationError[],
+): void {
+  if (/^on[A-Z]/.test(propName)) return;
+  const declared = propTypes?.get(propName);
+  if (declared === 'function') return;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return;
+  if (!('$if' in (value as Record<string, unknown>))) return;
+  errors.push({
+    path,
+    message:
+      `"$if" is a handler and a node type, not a value — in a prop it resolves to a function and the ` +
+      `prop is never set. Use a ternary instead: { "$": "condition ? a : b" }.`,
+    severity: 'error',
+  });
 }
 
 function checkTokenValue(
