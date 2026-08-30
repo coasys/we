@@ -2430,6 +2430,7 @@ RouteStore:
 - State:
   - currentPath: string (the current route path)
   - segments: string[] (currentPath split by "/", e.g. ["/foo/bar"] → ["foo", "bar"])
+  - templateSegments: string[] — the segments BELOW the space prefix, which is a template's own coordinate space. A template mounted at /space/<id> reading its own route params wants this: at /space/abc/photo/xyz it is ["photo", "xyz"], so a `/photo/:postId` route reads templateSegments[1] and keeps reading it wherever the host mounts the template. Reading `segments` by index pins a template to the host's prefix and breaks when it moves.
   - params: Record<string, string> — the URL's query parameters, reactive; read one as { $: 'routeStore.params.<name>' }. Prefer $localState with syncParam for fields a view owns; read params directly only for parameters something else writes
 - Actions:
   - navigate(to: string, options?): navigates to a route (a bare path restores that route's remembered query string)
