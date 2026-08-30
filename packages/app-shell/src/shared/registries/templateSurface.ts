@@ -22,8 +22,8 @@
  *   probe.
  * - **State is tagged, actions are not.** Only members declared `state` are marked with
  *   `markReactive`, and `walkPath` now calls only tagged accessors. That closes the other half of
- *   the hole: `$store` used to *invoke* any function it walked past, so naming a zero-argument
- *   method in a `$store` path called it during paint.
+ *   the hole: a store read used to *invoke* any function it walked past, so naming a zero-argument
+ *   method in one called it during paint.
  * - **Groups are the grant unit, per-member declarations are the mechanism.** Nobody can review a
  *   list of 388 method names; "this template can manage your library and your account" is
  *   reviewable. Groups are what a marketplace listing will show a human when chrome templates

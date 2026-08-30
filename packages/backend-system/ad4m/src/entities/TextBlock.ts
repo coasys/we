@@ -55,10 +55,23 @@ export class TextBlock extends WeNode {
   @Property({ through: 'we://direction' })
   direction: string = '';
 
+  /** The block's words, and the one string search, transcripts, notes and the AI all read. */
   @Property({ through: 'we://text' })
   text: string = '';
 
-  /** Standoff annotations over `text` — a JSON array, empty string for none. */
+  /**
+   * Inline structure over `text`, as standoff annotations — a JSON array of
+   * `{ start, end, type, ...data }` ranges, offsets in Unicode **code points**, empty string for
+   * none. Types are `strong`, `em`, `underline`, `strike`, `code`, `link` (with `href`),
+   * `nodeLink` and `mention` (with `did`).
+   *
+   * A block with `text` and no `marks` is one unmarked span, which is what makes a writer that
+   * knows nothing about marks — a transcriber, a plain textarea — produce a well-formed block.
+   *
+   * Read it to *render* text; do not query on it. Anything queryable is written out as a
+   * relation beside it: a mention is also a `we://mention` link on the root, which is where
+   * "who is named in this post" is answered.
+   */
   @Property({ through: 'we://marks' })
   marks: string = '';
 

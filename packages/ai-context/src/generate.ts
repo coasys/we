@@ -67,12 +67,12 @@ const DEFAULTS: Record<string, string> = {
  * The source decides *what exists* — a member absent here cannot be named in a schema, and one
  * present is allowed whether or not anybody has described it. The fragment decides *what it means*:
  * the prose in `fragments/stores.ts` and, more load-bearing, `StateMemberMeta`'s
- * `properties`/`model`, which is what lets the validator check one level into a `$store` path.
+ * `properties`/`model`, which is what lets the validator check one level into an expression's path.
  *
  * Both directions of drift are reported, because they fail differently. A member with no entry is
  * merely undocumented — the AI reference is thinner than it could be. A fragment entry for a member
  * that no longer exists is worse: it documents something that isn't there, and its metadata would
- * silently license a `$store` path into nothing.
+ * silently license an expression's path into nothing.
  */
 function mergeStoreEntries(
   derived: ExtractedStore[],

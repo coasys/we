@@ -454,7 +454,7 @@ export function railItem(opts: RailItemOptions): SchemaNode {
 export interface RailGroupOptions {
   /**
    * Identifies the group in the shell's `collapsedGroups` set. Unique within one rail, and free to
-   * be an expression (`'$category.id'`) — which is the point: groups can come from data.
+   * be an expression (`{ $: 'category.id' }`) — which is the point: groups can come from data.
    */
   id: SchemaProp;
   label: Content;

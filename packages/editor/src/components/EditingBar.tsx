@@ -126,6 +126,38 @@ export function EditingBar() {
           ay="start"
           gap="200"
         >
+          {/*
+            Buffered changes, and the one thing that applies them.
+
+            `pendingTemplate` is what a validated patch goes to on a read-only template, and it was
+            rendered by nothing: the assistant said "✓ Template updated", the preview showed the
+            unchanged template, and the work sat in a buffer with no sign it existed and no
+            affordance that would land it. `hasPendingChanges` was declared on the editor's host
+            contract for exactly this and read nowhere.
+
+            Beside the history controls rather than in the AI panel, because the answer — fork —
+            is a thing you do to the *session*, and because the panel can be closed.
+          */}
+          <Show when={session.hasPendingChanges()}>
+            <Row
+              ay="center"
+              gap="200"
+              bg="page"
+              border="1px solid border"
+              r="var(--we-theme-control-radius, var(--we-radius-400))"
+              px="300"
+              py="200"
+            >
+              <we-icon name="warning" color="warning-text" size="16px" />
+              <we-text variant="footnote" color="text-muted">
+                Changes are ready
+              </we-text>
+              <we-button size="xs" variant="primary" onClick={() => session.startFork()}>
+                Fork to apply
+              </we-button>
+            </Row>
+          </Show>
+
           {/* History */}
           <Row
             ay="center"

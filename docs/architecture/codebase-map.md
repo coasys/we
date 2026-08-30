@@ -111,13 +111,24 @@ store, spatial index, camera, expansion state, pointer behaviours), `@we/graph-e
 binding into the app lives at `packages/app-shell/src/frameworks/solid/components/GraphHost.tsx`.
 See `packages/graph-system/README.md` for the decisions worth knowing before changing anything.
 
-## Template kit
+## The two fragment kits
 
-`@we/template-kit` holds reusable template fragments — authoring-time helpers that expand to plain
-schema nodes (`marketplaceList`, `installedList`, `cardShell`, `emptyState`, …). What belongs in
-the kit, the extraction threshold, and the options-object API are documented in
-`packages/templates/kit/CONVENTIONS.md`; the direction of travel is `template-fragments.md` in
-this directory.
+Reusable template fragments — authoring-time helpers that expand to plain schema nodes — live in
+**two** packages, split by whether the fragment names a store.
+
+- **`@we/schema-kit`** is the portable tier: `cardShell`, `emptyState`, `confirmModal`, `formModal`,
+  `railShell`, `kanbanBoard`. It names no store, which `kit.test.ts` enforces by reading the source,
+  so a fragment here works on any deployment whose renderer registers the same components.
+- **`@we/template-kit`** is the same idea for fragments that read WE's own stores —
+  `marketplaceList`, `installedList`, `agentByline`. It re-exports the portable kit, so a caller
+  importing from `@we/template-kit` gets both and does not have to know which tier a fragment is in.
+
+Attributing `cardShell`/`emptyState` to `@we/template-kit` was true before the split and is the
+reason the tier is worth stating: they are the examples of the portable half.
+
+What belongs in a kit, the extraction threshold, and the options-object API are documented in
+`packages/templates/kit/CONVENTIONS.md` — it governs both; the direction of travel is
+`template-fragments.md` in this directory.
 
 ## Block & editor system
 

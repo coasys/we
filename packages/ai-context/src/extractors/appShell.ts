@@ -17,7 +17,7 @@
  * ## What stays hand-authored, and why
  *
  * **Prose and shape metadata.** A member's *description* is judgement, and `StateMemberMeta`'s
- * `properties`/`model` is what lets the validator check `$store: 'spaceStore.currentSpace.name'` one
+ * `properties`/`model` is what lets the validator check `{ $: 'spaceStore.currentSpace.name' }` one
  * level deeper — neither is recoverable from `Accessor<Space | null>` without resolving the type.
  *
  * So the split is: **source owns the names, the fragment owns the meaning.** `generate.ts` joins

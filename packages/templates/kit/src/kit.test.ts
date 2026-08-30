@@ -268,11 +268,31 @@ describe('@we/schema-kit names no store, as a package', () => {
 
   const withoutComments = (code: string) => code.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
 
+  /*
+    What a store reference actually looks like now.
+
+    The checks below it are `/\$store\s*:/` — a token #169 deleted — and `'$agent'`, so between them
+    they matched nothing a fragment would write today and this walk passed for everything. Live
+    evidence: `lists/kanbanBoard.ts` hard-coded `$action: 'spaceStore.moveChild'` inside the package
+    whose one promise is that it names no store, in the file the README points at as the example,
+    and the guard was green.
+
+    Two spellings reach a store now: an expression whose reference starts at one
+    (`{ $: 'spaceStore.x' }`) and an action naming one (`$action: 'spaceStore.y'`). Matched against
+    the `…Store.` *shape* rather than a list of names, so a store added later is covered without
+    this file being told about it.
+
+    `modules.<id>.…` is deliberately not matched: a module namespace is optional by construction and
+    resolves to nothing when the module is absent, which is degradation this tier is allowed.
+  */
+  const STORE_REFERENCE = /\$(?::|action:)?\s*['"`][a-z][A-Za-z]*Store\./;
+
   for (const file of sources(SRC)) {
     it(file.slice(SRC.length + 1), () => {
       const code = withoutComments(readFileSync(file, 'utf-8'));
       expect(code).not.toMatch(/\$store\s*:/);
       expect(code).not.toMatch(/'\$agent'/);
+      expect(code, `${file} names a store — the portable tier takes one from its caller`).not.toMatch(STORE_REFERENCE);
     });
   }
 });

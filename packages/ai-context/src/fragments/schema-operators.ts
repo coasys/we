@@ -62,7 +62,15 @@ A schema is a tree of nodes. Each node can have:
 - slots: Named slots for advanced composition (optional)
 - slot: The name of the slot this node should be rendered into (optional)
 - routes: For routing components, an array of nestable route objects (optional)
+- $localState / $queries: ephemeral state and hoisted subscriptions declared on the node (optional; see Dynamic Logic)
 - styles: Raw CSS escape hatch — Record<string, string | number> applied as inline styles on a **wrapper div** that surrounds the component. Use only for CSS that must live on a wrapper: filter, clip-path, backdrop-filter, mix-blend-mode. When present the wrapper participates in layout (no display:contents), so CSS effects apply correctly. **Important:** this is NOT the same as props.styles. If you want to apply custom CSS to a Column, Row, or Grid's own element (e.g. a background image), put it in props.styles instead — node-level styles go on a wrapper div around the component and will be hidden behind the component's own background.
+
+The ROOT node carries one more, and it is required:
+
+- meta: { name, description, icon } — what the template is called and how it is listed. Optional
+  keys: role: 'view' for a section rather than a shell (absent means shell), themeId for a theme the
+  template was designed with, panels for the surfaces the interface has (see Panels), and
+  chromeReserve for a band the shell pins over the content. A root node without meta is refused.
 
 Example node:
 {

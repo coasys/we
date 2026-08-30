@@ -15,7 +15,7 @@
  *   addRouteChild (mutate inside route definition)
  *
  * Tokens exercised:
- *   $store, $action, $routes, $concat, $if (prop-level)
+ *   expressions ({ $: … }), $action, $routes
  *
  * This replaces the old TestTemplate.schema.ts with a clean, focused design.
  */

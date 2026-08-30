@@ -14,7 +14,7 @@
  *
  * ## The `modules` namespace must always exist
  *
- * Subtle and easy to get wrong. `$store` resolution splits on `.`, and a **single-segment** path does
+ * Subtle and easy to get wrong. Store-path resolution splits on `.`, and a **single-segment** path does
  * `stores[storeName][prop]` with no guard — so reading `modules.notes` throws if the `modules`
  * key is absent, rather than returning undefined. Deeper paths go through `walkPath`, which does
  * degrade safely.

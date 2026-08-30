@@ -34,7 +34,7 @@ contribution one rung too high permanently costs more than it should.
 | Change a space's whole chrome, arrangement and route table                 | **Shell template**             | —                                                                                             |
 | Reuse an arrangement across templates                                      | **Fragment**                   | A component would make it opaque to the editor and unforkable by the people using it          |
 | Add a stateless piece of UI that needs measurement, focus or a browser API | **Primitive** or **component** | A fragment cannot express behaviour; this is the line the rule above draws                    |
-| Add schema boilerplate that is component-agnostic                          | **Schema operator**            | A fragment would bake design-system knowledge into something meant to be neutral              |
+| Computation the expression library lacks                                   | **Expression function**        | An operator would be new syntax, and the grammar is closed — see "no new value operators"     |
 | Add a new kind of content a user composes into a page                      | **Block type**                 | —                                                                                             |
 | Add a stateful capability a community turns on                             | **Feature module**             | Modules hold state and talk to ports; if yours holds neither, it is a fragment or a component |
 | Add a new source of nodes, or a new arrangement, in a graph                | **Graph plugin**               | A module would rebuild the engine; expanders and layouts plug into the one that exists        |
@@ -88,30 +88,30 @@ trust boundary as data; the right column merges.
 
 ## The surfaces
 
-| Surface                                     | What it is                                      | Reaches people by         |
-| ------------------------------------------- | ----------------------------------------------- | ------------------------- |
-| [Themes](#themes)                           | Token overrides + CSS, as a visual identity     | Install at runtime · repo |
-| [Shell templates](#shell-templates)         | A whole space interface, as a schema            | Install at runtime · repo |
-| [Views](#views)                             | One section of a space, as a schema             | Install at runtime · repo |
-| [Portable fragments](#portable-fragments)   | A named arrangement that expands to plain nodes | Repo                      |
-| [WE-domain fragments](#we-domain-fragments) | The same, allowed to name WE's stores           | Repo                      |
-| [Design tokens](#design-tokens)             | Spacing, colour, radius… and the semantic roles | Repo                      |
-| [Primitives](#primitives)                   | Lit web components — framework-neutral currency | Repo                      |
-| [Components](#components)                   | Solid layout and composite components           | Repo                      |
-| [Widgets](#widgets)                         | The highest design-system layer                 | Repo                      |
-| [Block types](#block-types)                 | A kind of content a user composes into a page   | Repo                      |
-| [Schema operators](#schema-operators)       | New vocabulary in the schema language           | Repo                      |
-| [Stores](#stores)                           | Shell state and actions — schema-facing API     | Repo                      |
-| [Models](#models)                           | A kind of thing that gets stored                | Repo                      |
-| [Feature modules](#feature-modules)         | A stateful capability a community turns on      | Repo (bundled)            |
-| [Graph plugins](#graph-plugins)             | Expanders, layouts, renderers, behaviours       | Repo                      |
-| [Globe layers](#globe-layers)               | A layer on the Cesium globe                     | Repo                      |
-| [Seeds](#seeds)                             | What a deployment _is_                          | Fork                      |
-| [Backend adapters](#backend-adapters)       | WE over something other than AD4M               | Repo                      |
-| [Platform hosts](#platform-hosts)           | WE on a new platform                            | Repo                      |
+| Surface                                       | What it is                                      | Reaches people by         |
+| --------------------------------------------- | ----------------------------------------------- | ------------------------- |
+| [Themes](#themes)                             | Token overrides + CSS, as a visual identity     | Install at runtime · repo |
+| [Shell templates](#shell-templates)           | A whole space interface, as a schema            | Install at runtime · repo |
+| [Views](#views)                               | One section of a space, as a schema             | Install at runtime · repo |
+| [Portable fragments](#portable-fragments)     | A named arrangement that expands to plain nodes | Repo                      |
+| [WE-domain fragments](#we-domain-fragments)   | The same, allowed to name WE's stores           | Repo                      |
+| [Design tokens](#design-tokens)               | Spacing, colour, radius… and the semantic roles | Repo                      |
+| [Primitives](#primitives)                     | Lit web components — framework-neutral currency | Repo                      |
+| [Components](#components)                     | Solid layout and composite components           | Repo                      |
+| [Widgets](#widgets)                           | The highest design-system layer                 | Repo                      |
+| [Block types](#block-types)                   | A kind of content a user composes into a page   | Repo                      |
+| [Expression functions](#expression-functions) | Computation the expression library lacks        | Repo                      |
+| [Stores](#stores)                             | Shell state and actions — schema-facing API     | Repo                      |
+| [Models](#models)                             | A kind of thing that gets stored                | Repo                      |
+| [Feature modules](#feature-modules)           | A stateful capability a community turns on      | Repo (bundled)            |
+| [Graph plugins](#graph-plugins)               | Expanders, layouts, renderers, behaviours       | Repo                      |
+| [Globe layers](#globe-layers)                 | A layer on the Cesium globe                     | Repo                      |
+| [Seeds](#seeds)                               | What a deployment _is_                          | Fork                      |
+| [Backend adapters](#backend-adapters)         | WE over something other than AD4M               | Repo                      |
+| [Platform hosts](#platform-hosts)             | WE on a new platform                            | Repo                      |
 
 "Install at runtime" means the thing can be published and installed by a person using WE, without
-touching this repository. Only two surfaces can do that today — see
+touching this repository. Only three surfaces can do that today — templates, themes and views — see
 [How a contribution reaches other people](#how-a-contribution-reaches-other-people) for why, and for
 what is planned.
 
@@ -271,7 +271,7 @@ context, and known to the validator from there.
 ### Stores
 
 State and actions the app shell holds — and, because every member is reachable from a template via
-`$store`/`$action`, **schema-facing public API**. Name members for template authors rather than for
+an expression (`{ $: 'spaceStore.members' }`) or `$action`, **schema-facing public API**. Name members for template authors rather than for
 the code that calls them, and treat a removal as breaking.
 
 This surface has the strictest registration on the page, and both halves fail the build rather than

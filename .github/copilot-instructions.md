@@ -315,7 +315,15 @@ A schema is a tree of nodes. Each node can have:
 - slots: Named slots for advanced composition (optional)
 - slot: The name of the slot this node should be rendered into (optional)
 - routes: For routing components, an array of nestable route objects (optional)
+- $localState / $queries: ephemeral state and hoisted subscriptions declared on the node (optional; see Dynamic Logic)
 - styles: Raw CSS escape hatch — Record<string, string | number> applied as inline styles on a **wrapper div** that surrounds the component. Use only for CSS that must live on a wrapper: filter, clip-path, backdrop-filter, mix-blend-mode. When present the wrapper participates in layout (no display:contents), so CSS effects apply correctly. **Important:** this is NOT the same as props.styles. If you want to apply custom CSS to a Column, Row, or Grid's own element (e.g. a background image), put it in props.styles instead — node-level styles go on a wrapper div around the component and will be hidden behind the component's own background.
+
+The ROOT node carries one more, and it is required:
+
+- meta: { name, description, icon } — what the template is called and how it is listed. Optional
+  keys: role: 'view' for a section rather than a shell (absent means shell), themeId for a theme the
+  template was designed with, panels for the surfaces the interface has (see Panels), and
+  chromeReserve for a band the shell pins over the content. A root node without meta is refused.
 
 Example node:
 {
@@ -997,7 +1005,7 @@ Most @we/primitives also accept Design System Props (see next section for detail
   Props: orientation: 'horizontal' | 'vertical' = 'horizontal', variant: 'solid' | 'dashed' | 'dotted' = 'solid', color?: string | undefined, thickness?: string | undefined
 - we-draggable (LayoutElement) — Makes whatever is inside it something that can be picked up and carried somewhere else.
 
-## Why this exists as a primitive
+#### Why this exists as a primitive
 
 A post card, a member row and a space in the sidebar are rendered by **templates**, which are
 data. If making one draggable were a code change, every future draggable surface would be a code
@@ -1011,14 +1019,14 @@ no new operator, and nothing added to the expression grammar.
   "children": [ "…the card…" ] }
 ```
 
-## What it carries
+#### What it carries
 
 A **reference** — `{ dataset?, entity, id }` — never DOM, and never the row object. `dataset` is
 deliberately left empty here: a card fragment cannot name its own dataset without reading a
 store, and portable fragments name no store by construction. The receiver stamps it, from
 whichever dataset was current when the drop happened.
 
-## `display: contents`
+#### `display: contents`
 
 The wrapper must not exist as a box. A card inside a grid track, a row inside a flex column: a
 real element in between would take the track and leave the card laid out against the wrapper
@@ -1039,20 +1047,20 @@ so a template can make a region a drop target without a code change.
   "children": [ "…the panel…" ] }
 ```
 
-## It emits intent, it never mutates
+#### It emits intent, it never mutates
 
 Exactly `we-sortable`'s rule, and for the same reason: what a drop *means* differs. A panel writes
 a record, a composer inserts a block, a board records a position. A primitive that assumed one of
 those would be useless to the others.
 
-## `accepts` is a list of entity names, as a string
+#### `accepts` is a list of entity names, as a string
 
 A comma-separated string rather than an array because that is what an HTML attribute is, and
 because a schema writing `"accepts": "CollectionBlock,Space"` needs no expression. Empty means
 "anything", which is right for a general-purpose tray and wrong for a composer — say what you
 take.
 
-## Zones nest, and the innermost one wins
+#### Zones nest, and the innermost one wins
 
 A folder inside a panel, a card inside a board. Hit-testing picks the innermost accepting zone
 and fires exactly one drop — and these events **do not bubble**, so that decision survives the
@@ -1113,7 +1121,7 @@ Use DropdownMenu component for dropdown menus.
   Props: checked: boolean = false, disabled: boolean = false, name: string = '', label: string = '', value: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-resize-handle (LayoutElement) — A drag target that reports how far it has moved, and nothing else.
 
-## Why it reports a delta rather than owning a size
+#### Why it reports a delta rather than owning a size
 
 The obvious design is a handle that resizes its neighbour. It is the wrong one, because "what does
 this drag mean" is never the handle's business: the editor's panel rails grow *leftwards* from a
@@ -1127,7 +1135,7 @@ captures its own starting size and applies whatever sign and limits it has. Delt
 rather than incremental, because every consumer would otherwise have to accumulate, and one of
 them would get it wrong after a dropped event.
 
-## Why a primitive rather than a hook
+#### Why a primitive rather than a hook
 
 There were two implementations of this before it existed and they diverged in ways nobody chose:
 the editor's is mouse-only, so it does not work on a touchscreen at all, and its rail is a plain
@@ -1145,13 +1153,13 @@ Use for form fields, settings, filters. Set searchable=true for type-to-filter.
   Props: value: number = 0, min: number = 0, max: number = 100, step: number = 1, disabled: boolean = false, name: string = '', label: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', showValue: boolean = false
 - we-sortable (DesignSystemElement) — A drop zone whose items can be picked up, reordered, and moved to other zones.
 
-## One element, not two
+#### One element, not two
 
 A zone *is* the container and its children *are* the items, which is what makes nesting free: a
 sortable inside an item of another sortable is simply a zone inside a zone, with no special case
 anywhere. A separate `we-drag-item` would buy nothing and cost boilerplate at every call site.
 
-## It emits intent, it never mutates
+#### It emits intent, it never mutates
 
 A drop fires SortableMoveDetail — "this item moved from there to here, at this index" —
 and nothing else. What that *means* is the consumer's business, and it differs: a kanban route
@@ -1162,7 +1170,7 @@ This is also why the element does not reorder its own DOM. The list is rendered 
 data changes; the list re-renders. A primitive that moved nodes itself would fight whatever
 renders them.
 
-## Nesting, and why cycles are not a problem
+#### Nesting, and why cycles are not a problem
 
 The hard part of nested drag-and-drop is refusing to drop a container into its own descendant.
 Because nesting here is expressed *in the DOM*, that check is `dragged.contains(zone)` — correct
@@ -1170,14 +1178,14 @@ by construction, needing no knowledge of the consumer's data shape. The innermos
 under the pointer wins, so dropping into a nested list does not also count as dropping into its
 parent.
 
-## Keyboard
+#### Keyboard
 
 Space or Enter picks up the focused item; the arrow keys move it, along the list and across
 zones; Space drops and Escape cancels. Built in rather than added later, because a board that can
 only be operated by dragging is a board some people cannot operate at all — and because the
 events are identical, a consumer gets it for nothing.
 
-## Items that contain form controls: `[data-we-handle]`
+#### Items that contain form controls: `[data-we-handle]`
 
 By default the whole item is the grab area, which is right for a card or a nav row. It is wrong
 the moment an item contains a text field: dragging to select text would start a drag, and — worse
@@ -1823,6 +1831,15 @@ zIndex: 'dropdown', 'sticky', 'chrome', 'modal', 'popover', 'toast', 'tooltip'
 ## Block & Entity Models
 
 Available data models for $query and store data:
+
+A `json` field is a stored blob rather than a queryable value. `TextBlock.marks` is the one worth
+knowing: it holds inline structure over `text` as standoff annotations — a JSON array of
+`{ start, end, type, ...data }` ranges, offsets in Unicode **code points** — with types `strong`,
+`em`, `underline`, `strike`, `code`, `link` (`href`), `nodeLink` and `mention` (`did`). A block
+with `text` and no `marks` is one unmarked span, which is why a transcriber can write a
+well-formed block without knowing marks exist. Render from it; never filter on it — anything
+queryable is written beside it as a relation (a mention is also a `we://mention` link on the root,
+which is where "who is named in this post" is answered).
 
 AgentSettings extends Ad4mModel:
   Fields:

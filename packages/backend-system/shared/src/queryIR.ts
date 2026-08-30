@@ -1,6 +1,6 @@
 /**
  * The query IR — a backend-neutral, specified, versioned description of the data a template needs.
- * It is what a `$query` resolves to (bindings like `$local`/`$store` are evaluated *above* this, so
+ * It is what a `$query` resolves to (bindings — `local.x`, a store path in an expression — are evaluated *above* this, so
  * the IR only ever holds concrete values), and what a backend adapter compiles to its native query.
  *
  * One grammar: this is both what an author writes and what an adapter consumes (bindings resolved).

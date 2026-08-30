@@ -158,7 +158,7 @@ export interface DockContribution {
    *
    * A store key rather than a value because both halves of that change while the app runs. Named
    * like {@link ModuleLauncher.action} is, and for the same reason — the host reads it, and a module
-   * cannot build a `$store` path to itself.
+   * cannot build a `modules.<id>.<key>` path to itself.
    */
   edge: string;
   /**

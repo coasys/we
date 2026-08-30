@@ -868,6 +868,26 @@ export function EditorStoreProvider(props: ParentProps) {
     let allTextContent = '';
     const maxContinuations = 5; // Safety limit to prevent infinite loops
 
+    /**
+     * The template each turn patches — carried across turns, not re-read from the store.
+     *
+     * ## What re-reading lost
+     *
+     * `accumulatedSchema` was cloned from `templateStore.currentTemplate` at the top of every
+     * continuation turn, on the assumption that the previous turn's patches are in the store by
+     * then. For a *read-only* template they are not: the apply branch puts them in
+     * `pendingTemplate` and deliberately leaves the store alone. So each turn patched the original
+     * again and the buffer was overwritten — of five tool calls across five turns, only the last
+     * one's work survived to the fork, and the assistant reported all five as applied.
+     *
+     * Held here instead, and updated wherever a turn's patches are accepted. `pendingTemplate` is
+     * the seed rather than `currentTemplate`, so a conversation resumed against a template with
+     * buffered changes continues from them rather than reverting them.
+     */
+    let workingSchema: SchemaNode = ensureNodeIds(
+      deepClone(pendingTemplate() ?? templateStore.currentTemplate) as SchemaNode,
+    );
+
     const showInlineStatus = (status: string) => {
       const sep = allTextContent ? '\n\n' : '';
       setStreamingContent(allTextContent + sep + `<span class="shimmer">*${status}*</span>`);
@@ -946,7 +966,9 @@ export function EditorStoreProvider(props: ParentProps) {
       // --- Atomic patching: accumulate all patches before applying ---
       // We clone the template once and apply all tool calls' patches to it.
       // Only after ALL patches succeed and validate do we apply to the store.
-      let accumulatedSchema: SchemaNode = ensureNodeIds(deepClone(templateStore.currentTemplate) as SchemaNode);
+      // From the running total, so a turn builds on the last one's patches rather than on the
+      // template as it was when the conversation started. See `workingSchema`.
+      let accumulatedSchema: SchemaNode = ensureNodeIds(deepClone(workingSchema) as SchemaNode);
 
       // Capture baseline validation issues so we only reject patches that introduce NEW problems
       const baselineSemantic = validateSemantic(accumulatedSchema as TemplateSchema, getValidationCtx());
@@ -1069,6 +1091,7 @@ export function EditorStoreProvider(props: ParentProps) {
             if (import.meta.env.DEV)
               console.log('[EditorStore] Semantic validation passed — buffering (read-only template)');
             pushSnapshot();
+            workingSchema = mergedTemplate as SchemaNode;
             setPendingTemplate(stripNodeIds(mergedTemplate) as TemplateSchema);
             for (const tr of toolResults) {
               tr.content = 'Schema changes validated and buffered. Template is read-only — user must fork to apply.';
@@ -1076,6 +1099,7 @@ export function EditorStoreProvider(props: ParentProps) {
           } else {
             if (import.meta.env.DEV) console.log('[EditorStore] Semantic validation passed — applying to store');
             pushSnapshot();
+            workingSchema = mergedTemplate as SchemaNode;
             templateStore.updateTemplate({
               ...stripNodeIds(mergedTemplate),
               id: templateStore.currentTemplate.id,
@@ -1139,8 +1163,15 @@ export function EditorStoreProvider(props: ParentProps) {
       }
     }
 
-    // Add current message with latest schema (with node IDs for ID-based patching)
-    const schemaWithIds = ensureNodeIds(deepClone(templateStore.currentTemplate) as SchemaNode);
+    /*
+      The schema the assistant is shown: buffered changes if there are any, else the store's.
+
+      `currentTemplate` alone is wrong on a read-only template, where a validated patch goes to
+      `pendingTemplate` and the store is deliberately untouched — so the model was shown the
+      original, patched it again, and its second answer conflicted with a first it could not see.
+      Same reason `workingSchema` in `sendMessage` carries across turns rather than re-reading.
+    */
+    const schemaWithIds = ensureNodeIds(deepClone(pendingTemplate() ?? templateStore.currentTemplate) as SchemaNode);
     const manifest = datasetStore.currentDatasetEntities();
     const payload: Record<string, unknown> = {
       request: latestText,

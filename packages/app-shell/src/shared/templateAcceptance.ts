@@ -13,7 +13,7 @@
  *   template synced in with the space.
  * - **A schema reaching past its tier.** `buildTemplateBag` already refuses those references, so
  *   this is not what stops them. What it stops is their *invisibility*: a blocked `$action` renders
- *   a button that takes the click and does nothing, and a blocked `$store` renders an empty list.
+ *   a button that takes the click and does nothing, and a blocked store read renders an empty list.
  *   A template that is quietly half-broken looks exactly like a template that is fine.
  *
  * ## Refuse, or admit and complain
