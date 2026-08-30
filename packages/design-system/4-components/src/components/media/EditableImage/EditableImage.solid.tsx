@@ -16,6 +16,15 @@ const DEFAULTS: Partial<EditableImageProps> = {
   overflow: 'hidden',
   cursor: 'pointer',
   bg: 'neutral-200',
+  /*
+    The hover label's size, since the label inherits it (see the overlay below).
+
+    Unset, it inherited the page's 16px, which is body copy — too loud for a caption whose whole job
+    is to name what the icon above it already means. 14px is the label size, which is what this is.
+    Still only a default: a caller with a small tile passes its own, as the avatar in the
+    create-space modal does.
+  */
+  fontSize: '200',
 };
 
 /** The same, for a tile sizing itself by ratio — see `baseStyle`. */
@@ -242,12 +251,19 @@ export function EditableImage(allProps: EditableImageProps) {
 
         {/* Hover overlay */}
         <Column class="editable-image__overlay" ax="center" ay="center" p="300" gap="200" position="absolute">
-          {/* A pencil over an empty tile promises editing something that does not exist yet. */}
-          <we-icon name={props.src ? 'pencil' : 'upload-simple'} size="24px" color="#fff" />
+          {/*
+            A pencil over an empty tile promises editing something that does not exist yet.
+
+            28px, not 24px. The glyph is the thing being read here — the label only names what the
+            glyph already says — and at 24px it was *smaller* than the 32px placeholder icon it
+            covers, so hovering an empty tile shrank the symbol under the pointer.
+          */}
+          <we-icon name={props.src ? 'pencil' : 'upload-simple'} size="28px" color="#fff" />
           {/*
             No `fontSize` here on purpose. Unset, the custom property resolves to `inherit` for an
             inherited property, so the label takes its size from this component's own `fontSize` DS
             prop — a small tile can shrink the label without the component growing an API for it.
+            The component's own default sets the resting size; see DEFAULTS.
 
             `textAlign` because the label wraps on a narrow tile, and a wrapped line was left-
             aligned inside a centred box, which reads as a misalignment rather than as wrapping.
