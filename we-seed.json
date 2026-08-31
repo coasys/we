@@ -8,7 +8,7 @@
   "features": {
     "useQueryIR": true
   },
-  "modules": ["globe", "graph", "notes", "pocket", "call", "transcribe"],
+  "modules": ["call", "transcribe", "pocket", "notes", "globe", "graph"],
   "templates": ["default", "discord", "twitter", "instagram", "youtube", "kanban", "events", "workshop"],
   "views": ["about", "cards", "graph", "globe", "tasks", "calendar"],
   "ad4m": {
