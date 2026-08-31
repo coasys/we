@@ -20,6 +20,7 @@
  * $routes outlets work with a real router context, without touching the browser URL.
  */
 import { registerHostChromeReserve } from '@shared/registries/dockRegistry';
+import { slotRegistry } from '@shared/registries/slotRegistry';
 import { setTemplatePanels } from '@shared/registries/templatePanels';
 import { buildTemplateBag, CHROME_TIER } from '@shared/registries/templateSurface';
 import { isValidThemeKey } from '@shared/registries/themeRegistry';
@@ -122,7 +123,10 @@ function ShellOverlayInner({
   */
   const shellRouteBag = buildTemplateBag({ routeStore: shellRouteStore }, { grants: CHROME_TIER }).routeStore;
   const shellStores: Stores = { ...chromeStores, routeStore: shellRouteBag, ...(storeEntries as Partial<Stores>) };
-  const schema = reactiveSchema ?? view.schema;
+  // Resolve `$slot` markers in the template so module-contributed chrome (nav items, pages)
+  // is spliced into the tree before the renderer sees it. Without this, markers inside shell
+  // view templates (settings, profile) pass through unresolved and render nothing.
+  const schema = slotRegistry.resolveTemplate(reactiveSchema ?? view.schema) as TemplateSchema;
 
   return (
     <MemoryRouter
