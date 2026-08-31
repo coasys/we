@@ -1,5 +1,5 @@
 import type { DesignSystemProps, FlexDirection } from '@we/design-types';
-import { font, role, semanticValues, type Tier, TIERS } from '@we/tokens';
+import { font, radius, role, semanticValues, shadow, space, type Tier, TIERS } from '@we/tokens';
 
 import { tierQuery } from './surface';
 
@@ -308,6 +308,32 @@ const SEMANTIC: Record<string, Record<string, string>> = {
 };
 
 /**
+ * The **named** tokens each scale actually has, so a real one is not reported as a typo.
+ *
+ * Most scales are numbered, and a numbered name never reaches the check below — it is filtered out
+ * as "not shaped like a name". Several scales are not: radius ends in `pill` and `full`, letter
+ * spacing and line height are named throughout, and `base` is a font size. Every one of those was
+ * being reported as unknown, with the advice that it "resolves to a variable nothing declares" —
+ * which is exactly false, since `--we-radius-pill` is declared and paints. A warning that fires on
+ * correct code is worse than none: the console filled with it, and a real typo sat in the middle of
+ * the noise looking the same as the rest.
+ *
+ * Keyed by the prefix each caller passes, including the two spellings of font size — `dsPropsToStyle`
+ * says `font` and the Lit path says `font-size`.
+ */
+const SCALE_NAMES: Record<string, Set<string>> = {
+  radius: new Set(Object.keys(radius)),
+  space: new Set(Object.keys(space)),
+  shadow: new Set(Object.keys(shadow)),
+  font: new Set(Object.keys(font.size)),
+  'font-size': new Set(Object.keys(font.size)),
+  'font-weight': new Set(Object.keys(font.weight)),
+  'font-family': new Set(Object.keys(font.family)),
+  'line-height': new Set(Object.keys(font.lineHeight)),
+  'letter-spacing': new Set(Object.keys(font.letterSpacing)),
+};
+
+/**
  * Which family names this value may use.
  *
  * Only needed where the prefix does not settle it. `radius` implies its own axis; `space` is shared
@@ -351,7 +377,8 @@ export function tokenVar(prefix: string, token?: string, fallback = '0', axis?: 
   const family = SEMANTIC[prefix === 'radius' ? 'radius' : (axis ?? '')]?.[token];
   if (family) return family;
 
-  warnUnknownToken(prefix, token, axis);
+  // A real named token of this scale — `r: 'pill'`, `letterSpacing: 'wide'` — is not a typo.
+  if (!SCALE_NAMES[prefix]?.has(token)) warnUnknownToken(prefix, token, axis);
 
   // Otherwise return CSS variable
   return `var(--we-${prefix}-${token})`;
@@ -991,7 +1018,11 @@ export function buildLayoutStyles(props: LayoutStyleProps, direction: 'row' | 'c
   if (props.textAlign) style['text-align'] = props.textAlign;
   if (props.fontFamily) style['font-family'] = resolveFontFamily(props.fontFamily);
   if (props.fontWeight) style['font-weight'] = resolveFontWeight(props.fontWeight);
-  if (props.fontSize) style['font-size'] = tokenVar('font', props.fontSize);
+  // `font-size`, not `font`: the tokens are emitted as `--we-font-size-300`, so the shorter prefix
+  // built `var(--we-font-300)` — undeclared, invalid at computed-value time, and therefore a
+  // `fontSize` that silently did nothing on every Solid layout component. The Lit path always
+  // spelled it in full, which is why `we-text` was unaffected and a `Column` was not.
+  if (props.fontSize) style['font-size'] = tokenVar('font-size', props.fontSize);
   if (props.lineHeight) style['line-height'] = resolveLineHeight(props.lineHeight);
   if (props.letterSpacing) style['letter-spacing'] = props.letterSpacing;
   if (props.textDecoration) style['text-decoration'] = props.textDecoration;

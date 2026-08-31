@@ -88,3 +88,40 @@ describe('a name nobody declared is loud', () => {
     expect(warn).toHaveBeenCalledOnce();
   });
 });
+
+/**
+ * A real token is not a typo, and a warning that says otherwise is worse than none.
+ *
+ * `warnUnknownToken` knew the theme families and nothing else, so every *named* token of a scale —
+ * radius `pill` and `full`, letter spacing `wide`, font size `base` — was reported as unknown, with
+ * the advice that it "resolves to a variable nothing declares, which paints nothing". `--we-radius-pill`
+ * is declared and does paint. The console filled with warnings about correct code, which is exactly
+ * where a real one goes unnoticed.
+ */
+describe('named tokens of a scale', () => {
+  const warn = () => vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it.each([
+    ['radius', 'pill'],
+    ['radius', 'full'],
+    ['letter-spacing', 'wide'],
+    ['font-size', 'base'],
+    ['shadow', 'lg'],
+  ])('resolves %s "%s" without reporting it', (prefix, token) => {
+    const spy = warn();
+
+    expect(tokenVar(prefix, token)).toBe(`var(--we-${prefix}-${token})`);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('still reports a name no scale and no family has', () => {
+    const spy = warn();
+
+    // A name of its own: reports are deduped for the life of the process, so a name another test
+    // has already used would pass this whatever the rule underneath did.
+    expect(tokenVar('radius', 'recessed')).toBe('var(--we-radius-recessed)');
+    expect(spy).toHaveBeenCalledOnce();
+  });
+});
