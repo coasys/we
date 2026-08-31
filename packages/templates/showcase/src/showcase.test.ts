@@ -141,3 +141,120 @@ describe('the showcase templates', () => {
     expect(absolute).toEqual([]);
   });
 });
+
+/**
+ * The workshop is about one call, and which call that is lives in the address.
+ *
+ * Three things it used to be, all wrong in the same way: `modules.transcribe.collectionId` means
+ * "the call I am recording into", so looking at a finished call meant joining a call first, a reload
+ * came back to no call at all, and the board you were looking at could not be sent to anybody.
+ *
+ * A **query parameter**, not a path segment, and that is the part worth pinning: a record id is a
+ * URI, so `./board/we://…/<uuid>` is several segments, `/board/:callId` matches none of them, and
+ * every click landed on the catch-all saying "Page not found". Nothing in the expression language
+ * can percent-encode; `setParam` writes through `URLSearchParams`, so it does not have to.
+ */
+describe('the workshop template’s call selection', () => {
+  const workshop = showcase.workshopTemplate as Schema & {
+    meta?: { panels?: { id: string; node?: unknown; module?: string; route?: string | string[] }[] };
+  };
+
+  it('has one board route, whichever call it is about', () => {
+    const paths = (workshop.routes ?? []).map((route) => route.path);
+
+    expect(paths).toContain('/board');
+    // The spelling that could never match: a record id is a URI, so it is not one segment.
+    expect(paths).not.toContain('/board/:callId');
+  });
+
+  it('carries the call in a query parameter, and falls back to the live one', () => {
+    const json = JSON.stringify(workshop);
+
+    expect(json).toContain('routeStore.params.call');
+    expect(json).toContain('modules.transcribe.liveCollectionId');
+    expect(json).not.toContain('./board/$');
+  });
+
+  it('changes the call in one navigation, on the page you are already on', () => {
+    /*
+      Two things this pins. **One** action: the router commits a navigation in a transition, so a
+      `setParam` after it wrote the parameter onto the *old* pathname while the router's own write
+      landed afterwards — the parameter took effect and the address ended up somewhere no route
+      matched, which read as "the panels work and every route says Page not found".
+
+      And the **page it lands on**, which is the one you were on. Naming `board` outright threw you
+      onto the board every time you picked a call from the tasks list. Absolute either way, because
+      the control doing it is a panel: host chrome, rendered outside the route tree, where a relative
+      path has nothing dependable to resolve against.
+    */
+    const select = JSON.stringify(workshop.meta?.panels?.find((panel) => panel.id === 'calls'));
+
+    expect(select).toContain('spaceStore.spacePath}/${routeStore.templateSegments[0]');
+    expect(select).not.toContain('spacePath}/board?call=');
+    expect(select).not.toContain('routeStore.setParam');
+  });
+
+  it('stops naming a call when a new one starts', () => {
+    // `CALL` prefers what the address names, so a new call opened *behind* the one you had been
+    // looking at: the transcript and the readout went on showing a finished meeting while a new one
+    // was recorded beside them.
+    const calls = JSON.stringify(workshop.meta?.panels?.find((panel) => panel.id === 'calls'));
+    const start = calls.slice(calls.indexOf('modules.call.goToCall'));
+
+    expect(start).toContain("?call=${''}");
+  });
+
+  it('keeps a calendar where the archive of calls used to be', () => {
+    // The calls panel does the choosing, from every route, and the transcript panel already shows
+    // whichever call is on screen — so the archive was a second copy of both. What a conversation
+    // produces and a list cannot show is the half with dates on it.
+    const paths = (workshop.routes ?? []).map((route) => route.path);
+
+    expect(paths).toContain('/events');
+    expect(paths).not.toContain('/calls');
+  });
+
+  it('leaves its panels standing across every route', () => {
+    /*
+      They were scoped `route: 'board'`, which does not hide a panel — it unregisters the dock, so
+      the transcript's scroll position, its subscription and wherever it had been dragged were
+      destroyed on the way to the tasks list and rebuilt on the way back. Surviving navigation is
+      the whole difference between a panel and a region of a page.
+    */
+    const scoped = (workshop.meta?.panels ?? []).filter((p) => 'route' in p);
+
+    expect(workshop.meta?.panels?.length).toBeGreaterThan(0);
+    expect(scoped).toEqual([]);
+  });
+
+  it('carries the call from page to page in the switcher', () => {
+    // Panels that stand on every route are about `CALL`, so a link that dropped the parameter would
+    // show one call's transcript beside another call's board.
+    expect(JSON.stringify(workshop)).toContain("/${nav.segment}?call=${routeStore.params.call ?? ''}");
+  });
+
+  it('asks before deleting a call, because a panel is not guarded by the tier', () => {
+    /*
+      A space template's destructive actions are guarded at the tier boundary — `templateBag` puts
+      the host's own prompt in front of anything marked destructive, which is why the calls list in
+      `CardsView` needs no dialog. A panel is drawn with the *chrome* bag, which has no guard, so a
+      delete there would take a meeting and its whole transcript on one click with nothing in
+      between. The dialog is the panel's own.
+    */
+    const calls = JSON.stringify(workshop.meta?.panels?.find((panel) => panel.id === 'calls'));
+
+    expect(calls).toContain('spaceStore.deleteCollection');
+    expect(calls).toContain('Delete this call?');
+    // The delete names what the dialog is holding, never the row — the row is gone by then.
+    expect(calls).toContain('{"$":"local.confirming"}');
+  });
+
+  it('supplies its own transcript rather than placing the module’s', () => {
+    // The module's panel reads the call being recorded into. Placed here it would be one surface
+    // about a different meeting beside three about the one on screen.
+    const transcript = workshop.meta?.panels?.find((panel) => panel.id === 'transcript');
+
+    expect(transcript?.node).toBeDefined();
+    expect(transcript?.module).toBeUndefined();
+  });
+});
