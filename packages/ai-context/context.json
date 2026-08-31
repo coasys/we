@@ -6522,6 +6522,9 @@
         },
         "layoutDirty": {
           "type": "boolean"
+        },
+        "panelSupplied": {
+          "type": "object"
         }
       },
       "actions": [
@@ -6937,6 +6940,7 @@
     "EditorInspectorPanel",
     "EditorThemePanel",
     "TemplateCard",
+    "TemplatePanelBody",
     "WeCube"
   ],
   "sources": [

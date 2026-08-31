@@ -100,3 +100,38 @@ describe('a template panel’s contents', () => {
     expect(JSON.stringify(frame)).toContain('shellStore.beginDockMove');
   });
 });
+
+/**
+ * A module's presentation is a default, not a monopoly.
+ *
+ * An interface that wants a module's panel arranged differently used to have one option: hand-write
+ * a replacement and declare it as a panel of its own. Then both were on screen — and since pressing
+ * record anywhere opens the module's panel, the workshop template showed two transcripts of the
+ * same call the moment recording started.
+ *
+ * A declaration carrying **both** `module` and `node` means "that module's panel, arranged here".
+ * The module keeps whether it is open and how big; only the contents move.
+ */
+describe('a module panel the interface supplies', () => {
+  it('is not registered as a second panel of its own', () => {
+    // `activePanels` passes it through — it is a panel of this interface — but the shell's authored
+    // registration filters on `node && !module`, which is what keeps the count at one.
+    const supplied = { id: 'transcript', module: 'transcribe', node: { type: 'Column' } } as TemplatePanel;
+
+    const authored = activePanels([supplied], undefined, ['space', 'abc', 'board']).filter(
+      (panel) => panel.node && !panel.module,
+    );
+
+    expect(authored).toEqual([]);
+  });
+
+  it('is addressed by module, so the module’s own frame can find it', () => {
+    const supplied = { id: 'transcript', module: 'transcribe', node: { type: 'Column' } } as TemplatePanel;
+
+    const byModule = activePanels([supplied], undefined, ['space', 'abc', 'board']).find(
+      (panel) => panel.module === 'transcribe' && panel.node,
+    );
+
+    expect(byModule?.id).toBe('transcript');
+  });
+});

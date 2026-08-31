@@ -19,15 +19,22 @@ import type { SchemaNode } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import { createMemo, createSignal, onCleanup } from 'solid-js';
 
-export function TemplatePanelBody(props: { panelId?: string }) {
+export function TemplatePanelBody(props: { panelId?: string; moduleId?: string }) {
   // The declaration is a plain array behind a change channel, so a signal is what makes reading it
   // reactive — the same shape `ShellStore` uses to follow the same registry.
   const [version, setVersion] = createSignal(0);
   onCleanup(onTemplatePanelsChanged(() => setVersion((v) => v + 1)));
 
+  /*
+    By panel id for a panel the interface supplied outright, by module id for one where it supplied
+    the *contents* of a module's panel. Two ways in because the two are addressed differently: the
+    first has a frame of its own, the second is inside the module's.
+  */
   const node = createMemo(() => {
     version();
-    const panel = templatePanels().find((entry) => entry.id === props.panelId);
+    const panel = templatePanels().find((entry) =>
+      props.moduleId ? entry.module === props.moduleId && entry.node : entry.id === props.panelId,
+    );
     return panel?.node as SchemaNode | undefined;
   });
 

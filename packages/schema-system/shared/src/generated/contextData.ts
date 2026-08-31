@@ -2580,6 +2580,7 @@ export const contextData: ContextData = {
         activeInsert: { type: 'string' },
         layoutPinned: { type: 'object' },
         layoutDirty: { type: 'boolean' },
+        panelSupplied: { type: 'object' },
       },
       actions: [
         'openShellView',
@@ -2824,6 +2825,7 @@ export const contextData: ContextData = {
     'EditorInspectorPanel',
     'EditorThemePanel',
     'TemplateCard',
+    'TemplatePanelBody',
     'WeCube',
   ],
   sources: [

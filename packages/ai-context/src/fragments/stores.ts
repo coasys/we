@@ -1316,6 +1316,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
         insertSlots:
           "{ index, edge, mode: 'strip' | 'column', top, left, width, height }[] — the gaps in a strip of panels a dragged panel could join, while one is being dragged over it. Empty otherwise",
         activeInsert: 'string | null — the slot a drop would take right now, as <edge>:<index>, or null',
+        panelSupplied:
+          "Record<moduleId, boolean> — modules whose panel this interface supplies itself, by declaring a `meta.panels` entry that names the module and carries a `node`. What a module's dock frame asks before drawing its own contents; the module still owns whether the panel is open and how big it is",
         layoutDirty:
           'boolean — the interface on screen has been rearranged: one of its panels moved, resized or closed. What a whole-arrangement "reset layout" control is gated on, and not the same question as any layoutPinned entry — a closed panel has no placement, and a panel declared for another route is not among the docks at all. False for an interface declaring no panels',
       },

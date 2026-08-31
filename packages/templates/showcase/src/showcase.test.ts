@@ -249,12 +249,17 @@ describe('the workshop template’s call selection', () => {
     expect(calls).toContain('{"$":"local.confirming"}');
   });
 
-  it('supplies its own transcript rather than placing the module’s', () => {
-    // The module's panel reads the call being recorded into. Placed here it would be one surface
-    // about a different meeting beside three about the one on screen.
+  it('arranges the transcribe module’s panel rather than placing or duplicating it', () => {
+    /*
+      `module` *and* `node`. The module's own panel reads the call being recorded into, so placing it
+      would be one surface about a different meeting beside three about the one on screen — and
+      declaring a separate panel instead put both on screen at once, since pressing record anywhere
+      opens the module's. Naming the module says "that panel, arranged here": it keeps whether the
+      surface is up, this decides what is in it.
+    */
     const transcript = workshop.meta?.panels?.find((panel) => panel.id === 'transcript');
 
     expect(transcript?.node).toBeDefined();
-    expect(transcript?.module).toBeUndefined();
+    expect(transcript?.module).toBe('transcribe');
   });
 });

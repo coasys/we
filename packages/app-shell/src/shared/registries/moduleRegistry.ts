@@ -183,6 +183,31 @@ function declaredEntities(schemas: SchemaPort, scope: ModuleScope): unknown[] {
   });
 }
 
+/**
+ * The interface's own composition of this module's panel, or the module's default.
+ *
+ * The middle rung of the content chain — the same shape position and openness already have. A
+ * module's presentation is a *default*, not a monopoly: an interface that wants the pieces arranged
+ * differently used to have to hand-write copies and place them beside the module's panel, which is
+ * how the workshop template ended up with two transcripts on screen the moment somebody pressed
+ * record.
+ *
+ * Resolved at render rather than at registration, because a template is chosen and re-chosen while
+ * the module stays installed, and a `$if` is how a schema asks a question it cannot answer when it
+ * is written. The module's dock is untouched: its edge, size and open flag still decide *whether*
+ * the surface is up, which is the module's to say. Only what is inside it moves.
+ */
+function suppliedOrOwn(moduleId: string, own: SchemaNode): SchemaNode {
+  return {
+    type: '$if',
+    props: {
+      condition: { $: `shellStore.panelSupplied['${moduleId}']` },
+      then: { type: 'TemplatePanelBody', props: { moduleId } },
+      else: own,
+    },
+  };
+}
+
 export const moduleRegistry = {
   /**
    * Register a module against this host.
@@ -286,7 +311,7 @@ export const moduleRegistry = {
         id: `dock:${id}`,
         node: gateOnSpace(
           definition.id,
-          dockFrame({ ...dock, id, moduleId: definition.id }, dock.node),
+          dockFrame({ ...dock, id, moduleId: definition.id }, suppliedOrOwn(definition.id, dock.node)),
           definition.holdsWhen,
         ),
       });

@@ -1565,7 +1565,24 @@ export const workshopTemplate: TemplateSchema = {
         answer on its own. What the module owns is unchanged: the microphone, the buffering and every
         write. This is arrangement, which is the layer templates are made of.
       */
-      { id: 'transcript', node: transcriptPanel, title: 'Transcript', snap: 'left', order: 0, size: 'sm', grow: 1 },
+      /*
+        The transcribe module's panel, arranged here.
+
+        `module` *and* `node` together: the module goes on owning whether the surface is up — press
+        record anywhere and it opens — and this owns what is inside it. Declared as a panel of its
+        own instead, as it was, the module's panel opened beside this one on the first press and the
+        screen carried two transcripts of the same call.
+      */
+      {
+        id: 'transcript',
+        module: 'transcribe',
+        node: transcriptPanel,
+        title: 'Transcript',
+        snap: 'left',
+        order: 0,
+        size: 'sm',
+        grow: 1,
+      },
       {
         id: 'extraction',
         node: extractionPanel,

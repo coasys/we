@@ -329,6 +329,15 @@ export interface ShellStore {
    */
   layoutDirty: Accessor<boolean>;
   /**
+   * Modules whose panel this interface is supplying itself, by module id.
+   *
+   * What a module's own dock frame asks before drawing its default contents. A module's
+   * presentation is a default, not a monopoly: an interface that arranges the pieces differently
+   * says so by declaring a panel that names the module, and the module goes on owning whether the
+   * surface is up and how big it is.
+   */
+  panelSupplied: Accessor<Record<string, boolean>>;
+  /**
    * Put a panel back where the interface asked for it, forgetting where it was dragged.
    *
    * Deletes the stored placement rather than writing the declared one, so the panel keeps following
@@ -1752,6 +1761,12 @@ export function ShellStoreProvider(props: ParentProps) {
         return next;
       });
     },
+
+    panelSupplied: createMemo(() => {
+      const supplied: Record<string, boolean> = {};
+      for (const panel of declaredPanels()) if (panel.module && panel.node) supplied[panel.module] = true;
+      return supplied;
+    }),
 
     layoutDirty: () => {
       const scope = templatePanelScope();
