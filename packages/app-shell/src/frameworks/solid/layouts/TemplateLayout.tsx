@@ -19,6 +19,7 @@
  * The shell overlay uses ShellRouteStoreProvider + <MemoryRouter> so shell schema
  * $routes outlets work with a real router context, without touching the browser URL.
  */
+import { activePanels as panelsFor } from '@shared/panelScope';
 import { registerHostChromeReserve } from '@shared/registries/dockRegistry';
 import { setTemplatePanels } from '@shared/registries/templatePanels';
 import { buildTemplateBag, CHROME_TIER } from '@shared/registries/templateSurface';
@@ -229,22 +230,12 @@ export function TemplateLayout(
    * the screen is the one that gets to overrule it.
    */
   const activePanels = createMemo(() => {
-    const shell = stores.templateStore.currentTemplate?.meta?.panels ?? [];
     const segments = stores.routeStore.segments();
+    // The section on screen, matched the same way its route is, so the two agree about where you
+    // are. Everything after that is `panelScope`'s, where it can be tested without a router.
     const view = stores.spaceStore.spaceViews().find((section) => segments.includes(section.segment))?.schema
       ?.meta?.panels;
-    const merged = (() => {
-      if (!view?.length) return shell;
-      const overridden = new Set(shell.map((panel) => panel.id));
-      return [...view.filter((panel) => !overridden.has(panel.id)), ...shell];
-    })();
-
-    /*
-      A declaration may scope itself to a route segment, which is how a shell that routes *itself*
-      varies its layout — every showcase template does, and has no sections to hang a declaration on.
-      Matched the same way the section above is, so the two agree about what "where you are" means.
-    */
-    return merged.filter((panel) => !panel.route || segments.includes(panel.route));
+    return panelsFor(stores.templateStore.currentTemplate?.meta?.panels ?? [], view, segments);
   });
 
   createEffect(() => setTemplatePanels(activePanels(), stores.templateStore.currentTemplate?.id ?? ''));

@@ -26,7 +26,7 @@
  * carrying `right: '72px'` — a hardcoded copy of geometry it had no way to keep in step.
  */
 import type { DockContribution } from '@we/module-shared';
-import type { SchemaNode } from '@we/schema-shared';
+import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
 import type { SnapPoint } from '../dockGeometry';
 import { createRegistry } from './createRegistry';
@@ -46,6 +46,22 @@ export interface DockEntry extends DockContribution {
    * own stores are named outright. Defaults to the module form, which is right for every module.
    */
   storeRef?: string;
+  /**
+   * The close button's action, written out, for a dock whose close cannot be named as a member.
+   *
+   * A module names a method and the titlebar builds `<store>.<method>`. That works because a module
+   * store *has* that member; a **template panel's** does not. Its keys are minted per panel
+   * (`close:extraction`) into `hostDockStores`, which is where the shell reads `edge`/`size`/`float`
+   * from in TypeScript — but the close button is rendered as a schema `$action`, and the renderer
+   * resolves `shellStore` to the real store surface, where no such member exists. So the button
+   * rendered, took the click, and logged `method "close:extraction" not found on store "shellStore"`:
+   * an authored panel could not be closed at all.
+   *
+   * A whole handler rather than another key, because the answer needs an argument — one real method
+   * taking the panel's id, rather than a synthetic member per panel that the template surface could
+   * never classify.
+   */
+  closeAction?: SchemaProp;
 }
 
 /**
@@ -452,7 +468,7 @@ function titleBar(entry: DockEntry): SchemaNode {
       whileRestored(entry.id, positionMenu(entry)),
       // Last, and after the menu: the one control whose consequence cannot be undone by clicking it
       // again wants to be the one furthest from the others.
-      ...(entry.close ? [closeButton(entry)] : []),
+      ...(entry.close || entry.closeAction ? [closeButton(entry)] : []),
     ],
   };
 }
@@ -575,6 +591,8 @@ function maximiseButton(id: string): SchemaNode {
  */
 function closeButton(entry: DockEntry): SchemaNode {
   const store = entry.storeRef ?? `modules.${entry.moduleId}`;
+  // A written-out handler wins, for a dock whose close takes an argument — see `closeAction`.
+  const onClick = entry.closeAction ?? { $action: `${store}.${entry.close}` };
 
   return {
     type: 'we-tooltip',
@@ -586,7 +604,7 @@ function closeButton(entry: DockEntry): SchemaNode {
           size: 'xs',
           square: true,
           variant: 'ghost',
-          onClick: { $action: `${store}.${entry.close}` },
+          onClick,
         },
         children: [{ type: 'we-icon', props: { name: 'x' } }],
       },

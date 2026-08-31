@@ -6519,6 +6519,9 @@
         },
         "layoutPinned": {
           "type": "object"
+        },
+        "layoutDirty": {
+          "type": "boolean"
         }
       },
       "actions": [
@@ -6539,6 +6542,9 @@
         "moveDock",
         "endDockMove",
         "resetDockToLayout",
+        "closeTemplatePanel",
+        "openTemplatePanel",
+        "resetTemplateLayout",
         "snapDock",
         "insertDock",
         "toggleMaximiseDock",

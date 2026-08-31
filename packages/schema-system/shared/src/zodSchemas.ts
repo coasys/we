@@ -268,7 +268,9 @@ export const zTemplateMeta: z.ZodType<TemplateMeta> = z
           size: z.enum(['sm', 'md', 'lg', 'full']).optional(),
           grow: z.number().optional(),
           displace: z.boolean().optional(),
-          route: z.string().optional(),
+          // One segment or several — see `route` on `TemplatePanel` for why it is a list and why
+          // it says *whether* rather than *where*.
+          route: z.union([z.string(), z.array(z.string())]).optional(),
           open: z.boolean().optional(),
         }),
       )

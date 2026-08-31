@@ -1316,6 +1316,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
         insertSlots:
           "{ index, edge, mode: 'strip' | 'column', top, left, width, height }[] — the gaps in a strip of panels a dragged panel could join, while one is being dragged over it. Empty otherwise",
         activeInsert: 'string | null — the slot a drop would take right now, as <edge>:<index>, or null',
+        layoutDirty:
+          'boolean — the interface on screen has been rearranged: one of its panels moved, resized or closed. What a whole-arrangement "reset layout" control is gated on, and not the same question as any layoutPinned entry — a closed panel has no placement, and a panel declared for another route is not among the docks at all. False for an interface declaring no panels',
       },
       actions: {
         beginDockResize:
@@ -1350,6 +1352,12 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(): opens or closes the settings panel for the space on screen. What a gear in chrome should call \u2014 a control that is always present toggles, so a second press puts back what the first press changed',
         resetDockToLayout:
           '(panelId: string): puts a panel back where meta.panels asked for it, forgetting where it was dragged. Forgets rather than rewrites, so the panel keeps following the layout afterwards \u2014 including when the template changes it. Pair with layoutPinned',
+        closeTemplatePanel:
+          "(panelId: string): dismisses a panel the interface declared in meta.panels, by that panel's id. What its titlebar's close button calls",
+        openTemplatePanel:
+          '(panelId: string): puts a closed one back. The only way back to a panel that has been closed — it has no titlebar left to ask from — so a template offering a close should offer this too',
+        resetTemplateLayout:
+          '(): puts every panel of the interface on screen back the way meta.panels declared them, and reopens the ones that were closed. The whole-arrangement counterpart of resetDockToLayout, and the only way back for a closed panel, which has no titlebar to reset itself from. Scoped to the template rather than the route, so a declaration that varies by route is reset once. Pair with layoutDirty',
         openSpaceSettings:
           '(): opens that panel without closing it again. For a control that sits on the very fields it leads to (the About view\u2019s pencil), where a toggle would break the promise to show them',
         closeSpaceSettings: '(): closes the space-settings panel',

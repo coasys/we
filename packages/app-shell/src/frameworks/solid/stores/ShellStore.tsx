@@ -320,12 +320,45 @@ export interface ShellStore {
    */
   layoutPinned: Accessor<Record<string, boolean>>;
   /**
+   * Whether the interface on screen has been rearranged at all — any of its panels moved, or closed.
+   *
+   * The whole-arrangement counterpart of `layoutPinned`, and it is not derivable from that map: a
+   * closed panel has no placement, and a panel declared for a route somebody is not standing on is
+   * not among the docks at all. Both are things a reset has to undo, so both have to be visible to
+   * whatever offers one.
+   */
+  layoutDirty: Accessor<boolean>;
+  /**
    * Put a panel back where the interface asked for it, forgetting where it was dragged.
    *
    * Deletes the stored placement rather than writing the declared one, so the panel keeps following
    * the layout afterwards — including when the template changes it.
    */
   resetDockToLayout: (id: string) => void;
+  /**
+   * Close a panel this interface supplied, and open it again.
+   *
+   * Real methods taking an id, rather than the per-panel keys the dock entries used to name. The
+   * keys still answer `edge`/`size`/`float`, which the shell reads in TypeScript — but a close
+   * button is a schema `$action`, and `shellStore.close:extraction` names nothing on this store, so
+   * the button rendered and did nothing but log. See `closeAction` in `dockRegistry.ts`.
+   *
+   * Reachable by a template as well, which is the other half: a panel with a close button and no
+   * opener is a panel you lose once.
+   */
+  closeTemplatePanel: (id: string) => void;
+  openTemplatePanel: (id: string) => void;
+  /**
+   * Put *every* panel of the interface on screen back the way it declared them.
+   *
+   * The one gesture for "this is not the arrangement the template designed" — three panels dragged
+   * out of place is one decision, not three, and a panel closed has no titlebar left to reset it
+   * from. Forgets rather than rewrites, exactly as `resetDockToLayout` does.
+   *
+   * Scoped to the template, not to the route: a declaration that varies by route is one arrangement
+   * seen from three places, so resetting it three times would be the same thing said three ways.
+   */
+  resetTemplateLayout: () => void;
   /** Park a panel at one of the eight, from the position menu — the keyboard's way to move it. */
   snapDock: (id: string, snap: SnapPoint) => void;
   /**
@@ -1092,20 +1125,20 @@ export function ShellStoreProvider(props: ParentProps) {
     const keys: Record<string, unknown> = {};
     for (const panel of authored) {
       const dockId = templatePanelDockId(panel.id);
-      // One key answering both "where" and "whether", exactly as a module's does: closed is null.
-      // Scoped by the same key positions use, so one template's "closed" is not another's.
-      keys[`edge:${panel.id}`] = () =>
-        closedPanels()[placementKey(panel.id)] ? null : (edgeOfSnap(panel.snap ?? null) ?? 'right');
+      /*
+        One key answering both "where" and "whether", exactly as a module's does: closed is null.
+
+        Scoped by the same key positions use — and asked with the **dock** id, which is what makes
+        that true. `placementKey` scopes a key only when a declaration exists for it, and
+        `declarationFor` is indexed by dock id, so asking with the bare panel id answered "no
+        declaration" every time and closed state fell back to the unscoped key it was meant to have
+        left behind. Inert until now, because the map is cleared on a template switch anyway; a
+        reset for the whole arrangement has to be able to find these.
+      */
+      const closedKey = placementKey(dockId);
+      keys[`edge:${panel.id}`] = () => (closedPanels()[closedKey] ? null : (edgeOfSnap(panel.snap ?? null) ?? 'right'));
       keys[`size:${panel.id}`] = () => panel.size ?? 'md';
       keys[`float:${panel.id}`] = () => !panel.displace;
-      keys[`close:${panel.id}`] = () => setClosedPanels((prev) => ({ ...prev, [placementKey(panel.id)]: true }));
-      // The way back. A panel with a close button and no opener is a panel you lose once.
-      keys[`open:${panel.id}`] = () =>
-        setClosedPanels((prev) => {
-          const next = { ...prev };
-          delete next[placementKey(panel.id)];
-          return next;
-        });
 
       if (!registeredPanels.includes(dockId)) {
         const entry = {
@@ -1114,7 +1147,16 @@ export function ShellStoreProvider(props: ParentProps) {
           edge: `edge:${panel.id}`,
           size: `size:${panel.id}`,
           float: `float:${panel.id}`,
-          close: `close:${panel.id}`,
+          /*
+            A written-out action rather than a `close:<id>` key beside the three above.
+
+            Those three are read in TypeScript, through `readDockKey`, which resolves against
+            `hostDockStores` — where these keys live. The close button is not: it is rendered into the
+            titlebar as a schema `$action` against `storeRef`, and the renderer resolves `shellStore`
+            to this store's real surface, where `close:extraction` is not a member. It rendered, took
+            the click, and logged. See `closeAction` in `dockRegistry.ts`.
+          */
+          closeAction: { $action: 'shellStore.closeTemplatePanel', args: [panel.id] },
           // Named outright rather than through `modules.<id>`, the way the editor's and the shell's
           // own docks are — this store is the host's, not an installable module's.
           storeRef: 'shellStore',
@@ -1683,6 +1725,58 @@ export function ShellStoreProvider(props: ParentProps) {
         savePlacements(next);
         return next;
       });
+    },
+
+    // Keyed exactly as the panel's own `edge:` accessor keys it — one spelling, so a close and the
+    // edge that answers it cannot disagree about which panel was meant.
+    closeTemplatePanel: (id) => {
+      const key = placementKey(templatePanelDockId(id));
+      setClosedPanels((prev) => ({ ...prev, [key]: true }));
+    },
+
+    openTemplatePanel: (id) => {
+      const key = placementKey(templatePanelDockId(id));
+      setClosedPanels((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+    },
+
+    layoutDirty: () => {
+      const scope = templatePanelScope();
+      if (!scope) return false;
+      const prefix = `${scope}::`;
+      return (
+        Object.keys(placements()).some((key) => key.startsWith(prefix)) ||
+        Object.entries(closedPanels()).some(([key, closed]) => closed && key.startsWith(prefix))
+      );
+    },
+
+    resetTemplateLayout: () => {
+      const scope = templatePanelScope();
+      if (!scope) return;
+      const prefix = `${scope}::`;
+      /*
+        Every key under this template, rather than the panels currently declared.
+
+        A `route`-scoped declaration only names the panels of the route on screen, so iterating those
+        would leave the board's transcript where it was dragged while claiming the layout had been
+        reset. The prefix is what the whole arrangement is stored under.
+
+        Panels nothing declares keep the unscoped key, so a notes panel somebody positioned in an
+        ordinary space is untouched: this says "put *this template's* panels back", not "forget
+        everywhere I have ever moved anything".
+      */
+      setPlacements((prev) => {
+        const next = Object.fromEntries(Object.entries(prev).filter(([key]) => !key.startsWith(prefix)));
+        if (Object.keys(next).length === Object.keys(prev).length) return prev;
+        savePlacements(next);
+        return next;
+      });
+      // And the panels closed under it, which is the half `resetDockToLayout` cannot reach — a closed
+      // panel has no titlebar, so its own menu is not on screen to be opened.
+      setClosedPanels((prev) => Object.fromEntries(Object.entries(prev).filter(([key]) => !key.startsWith(prefix))));
     },
 
     snapDock: (id, snap) => {

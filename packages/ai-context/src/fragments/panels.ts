@@ -60,7 +60,7 @@ Two kinds of entry, one list:
 | \`size\`     | \`sm\` \`md\` \`lg\` \`full\`. Named, never pixels: only the host can see the viewport.             |
 | \`grow\`     | Share of the *spare* room in a column, relative to neighbours. Absent means 1; 0 pins a height. |
 | \`displace\` | Push the content aside instead of covering it. Edge snaps only — ignored on a corner.          |
-| \`route\`    | Only while this segment is in the path. Absent means every route.                               |
+| \`route\`    | Only while one of these segments is in the path — a segment or a list. Absent means every route. |
 | \`open\`     | Whether to open it as well as place it. Absent means yes — see the warning below.               |
 
 **\`open: false\` when a module's launcher does more than open a panel.** Placing a \`module\` panel
@@ -92,7 +92,10 @@ the template's declaration; then the module's own opening bid. The declaration i
 never written, so switching template or section is non-destructive.
 
 A shell that routes itself — every showcase template does — scopes a declaration with \`route\`
-instead, since it has no sections to hang one on.
+instead, since it has no sections to hang one on. \`route\` says **whether**, never **where**: a
+panel that changed position from one page to the next would work until the reader dragged it once,
+since a stored placement is keyed by template and panel rather than by route and outranks every
+declaration. A page that genuinely needs its own arrangement wants to be a view.
 
 A **section** (\`meta.role: 'view'\`) may declare panels too, and should when the layout is about
 that section rather than the whole interface — a graph wants a transcript beside it and an inbox

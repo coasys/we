@@ -2601,6 +2601,7 @@ ShellStore:
   - insertSlots: { index, edge, mode: 'strip' | 'column', top, left, width, height }[] — the gaps in a strip of panels a dragged panel could join, while one is being dragged over it. Empty otherwise
   - activeInsert: string | null — the slot a drop would take right now, as <edge>:<index>, or null
   - layoutPinned: Record<string, boolean> keyed by panel id — whether that panel has been dragged away from where meta.panels declared it. False for a panel no layout mentions, since there is nothing to go back to. Gate a "reset to layout" affordance on it rather than on a placement merely existing
+  - layoutDirty: boolean — the interface on screen has been rearranged: one of its panels moved, resized or closed. What a whole-arrangement "reset layout" control is gated on, and not the same question as any layoutPinned entry — a closed panel has no placement, and a panel declared for another route is not among the docks at all. False for an interface declaring no panels
 - Actions:
   - openShellView(id: string, path?: string): opens a shell overlay by id, optionally at a route inside it — the overlay keeps its own memory router, so this never touches the browser URL
   - closeShellView(): closes the currently open shell overlay
@@ -2619,6 +2620,9 @@ ShellStore:
   - moveDock(id: string, dx: number, dy: number): applies a move, in pixels from where beginDockMove was called
   - endDockMove(id: string): drops the panel — onto the snap or insert slot it is over, or where it is if that is nowhere
   - resetDockToLayout(panelId: string): puts a panel back where meta.panels asked for it, forgetting where it was dragged. Forgets rather than rewrites, so the panel keeps following the layout afterwards — including when the template changes it. Pair with layoutPinned
+  - closeTemplatePanel(panelId: string): dismisses a panel the interface declared in meta.panels, by that panel's id. What its titlebar's close button calls
+  - openTemplatePanel(panelId: string): puts a closed one back. The only way back to a panel that has been closed — it has no titlebar left to ask from — so a template offering a close should offer this too
+  - resetTemplateLayout(): puts every panel of the interface on screen back the way meta.panels declared them, and reopens the ones that were closed. The whole-arrangement counterpart of resetDockToLayout, and the only way back for a closed panel, which has no titlebar to reset itself from. Scoped to the template rather than the route, so a declaration that varies by route is reset once. Pair with layoutDirty
   - snapDock(id: string, snap: SnapPoint): parks a panel at one of the eight positions from a menu — the keyboard's way to move it
   - insertDock(id: string, edge: 'left' | 'right' | 'top' | 'bottom', position: number, mode?: 'strip' | 'column'): joins the strip of panels on that edge at that position, renumbering it — what a drop on a gap does
   - toggleMaximiseDock(id: string): covers the content region with the panel, or goes back to being a card. Nothing about where the panel was is overwritten while it is on
@@ -3915,7 +3919,7 @@ Two kinds of entry, one list:
 | `size`     | `sm` `md` `lg` `full`. Named, never pixels: only the host can see the viewport.             |
 | `grow`     | Share of the *spare* room in a column, relative to neighbours. Absent means 1; 0 pins a height. |
 | `displace` | Push the content aside instead of covering it. Edge snaps only — ignored on a corner.          |
-| `route`    | Only while this segment is in the path. Absent means every route.                               |
+| `route`    | Only while one of these segments is in the path — a segment or a list. Absent means every route. |
 | `open`     | Whether to open it as well as place it. Absent means yes — see the warning below.               |
 
 **`open: false` when a module's launcher does more than open a panel.** Placing a `module` panel
@@ -3947,7 +3951,10 @@ the template's declaration; then the module's own opening bid. The declaration i
 never written, so switching template or section is non-destructive.
 
 A shell that routes itself — every showcase template does — scopes a declaration with `route`
-instead, since it has no sections to hang one on.
+instead, since it has no sections to hang one on. `route` says **whether**, never **where**: a
+panel that changed position from one page to the next would work until the reader dragged it once,
+since a stored placement is keyed by template and panel rather than by route and outranks every
+declaration. A page that genuinely needs its own arrangement wants to be a view.
 
 A **section** (`meta.role: 'view'`) may declare panels too, and should when the layout is about
 that section rather than the whole interface — a graph wants a transcript beside it and an inbox

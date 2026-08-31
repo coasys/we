@@ -144,3 +144,37 @@ describe('the way back to the layout an interface declared', () => {
     expect(items[0]?.label).toBe('Reset to layout');
   });
 });
+
+/**
+ * A panel the *interface* supplied, whose close cannot be named as a store member.
+ *
+ * A module names a method and the titlebar builds `<store>.<method>`, which works because the
+ * module's store has it. A template panel's keys are minted per panel into `hostDockStores` — where
+ * the shell reads `edge`/`size`/`float` in TypeScript — and the close button is not read that way:
+ * it is a schema `$action`, resolved against the real `shellStore` surface, which has no
+ * `close:extraction`. So the button rendered, took the click, and logged
+ * `method "close:extraction" not found on store "shellStore"`: an authored panel could not be
+ * closed at all, and the log was the only sign.
+ */
+describe('a dock whose close takes an argument', () => {
+  const authored = {
+    id: 'template:extraction',
+    moduleId: 'template',
+    edge: 'edge:extraction',
+    storeRef: 'shellStore',
+    closeAction: { $action: 'shellStore.closeTemplatePanel', args: ['extraction'] },
+  } as unknown as DockEntry;
+
+  const frame = dockFrame(authored, { type: 'Column' });
+
+  it('renders the button on the written-out action alone, with no close key', () => {
+    expect(names(frame, 'Close')).toBe(true);
+    expect(JSON.stringify(frame)).toContain('shellStore.closeTemplatePanel');
+    // The failing spelling, which would be built from a `close` key it does not have.
+    expect(JSON.stringify(frame)).not.toContain('close:extraction');
+  });
+
+  it('leaves a module’s own close exactly as it was', () => {
+    expect(JSON.stringify(dockFrame(entry as DockEntry, { type: 'Column' }))).toContain('modules.call.closeStage');
+  });
+});

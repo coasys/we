@@ -2579,6 +2579,7 @@ export const contextData: ContextData = {
         insertSlots: { type: 'array' },
         activeInsert: { type: 'string' },
         layoutPinned: { type: 'object' },
+        layoutDirty: { type: 'boolean' },
       },
       actions: [
         'openShellView',
@@ -2598,6 +2599,9 @@ export const contextData: ContextData = {
         'moveDock',
         'endDockMove',
         'resetDockToLayout',
+        'closeTemplatePanel',
+        'openTemplatePanel',
+        'resetTemplateLayout',
         'snapDock',
         'insertDock',
         'toggleMaximiseDock',
