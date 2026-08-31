@@ -184,6 +184,7 @@ export type {
   InterpretationProposal,
   InterpretationRequest,
   InterpretationResult,
+  InterpretationScope,
   TranscriptTurn,
   WatchRequest,
 } from './interpretation';

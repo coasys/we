@@ -1093,6 +1093,39 @@ describe('staged suggestions', () => {
     expect(h.store.proposals()[0].summary).toBe('title: Ship the docs');
   });
 
+  it('asks about this call rather than about the whole space', async () => {
+    /*
+      A proposal outlives the pass that made it. One nobody resolved an hour ago is still staged, so
+      an unscoped read hands it to the next call's review list looking like something that call just
+      found — and accepting it commits a record parented to the *earlier* call, which then never
+      appears on the board of the call the reviewer is sitting in.
+
+      Asserted on the argument rather than on the result, because the narrowing happens in the
+      backend: what this store owes is naming the conversation it is asking about.
+    */
+    const scopes: (string | undefined)[] = [];
+    const h = harness(inCall, {
+      interpretation: {
+        available: () => true,
+        runOnCollection: async () => ({ turns: 5, ids: ['t1'], proposed: ['t1'] }),
+        proposals: async (_target: unknown, collection?: string) => {
+          scopes.push(collection);
+          return [];
+        },
+        accept: async () => true,
+        reject: async () => true,
+      },
+    });
+    await h.say('hello');
+
+    await h.store.extract();
+    // And a finished call extracted from the calls list asks about *that* one — reviewing what it
+    // found is the whole point of being able to extract it.
+    await h.store.extractCollection('older-call');
+
+    expect(scopes).toEqual([RECORD, 'older-call']);
+  });
+
   it('leads a summary with the field that identifies the record', async () => {
     // A person deciding whether to keep a suggestion reads it rather than inspecting it, and
     // whichever key happened to come first is not a useful thing to lead with.

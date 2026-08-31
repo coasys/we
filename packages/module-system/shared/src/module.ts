@@ -1045,8 +1045,16 @@ export interface ModuleInterpretationAccess {
    * reason. Interpretation follows the call, and a call now outlives the space on screen, so
    * "proposals here" was answering about wherever the reader had wandered to. Absent still means the
    * space on screen.
+   *
+   * `collection` narrows it to what was staged on **that collection's contents**, and a review
+   * surface about one conversation should always pass it. A staged suggestion outlives the pass that
+   * made it: one nobody resolved an hour ago is still staged, so without this it arrives in the next
+   * call's list looking like something that call just found — and accepting it commits a record
+   * parented to the earlier call, where the reviewer is not looking. A module names the collection
+   * and nothing else; resolving what containment means here is the host's, exactly as it is for
+   * {@link runOnCollection}.
    */
-  proposals: (target?: DatasetTarget) => Promise<InterpretationProposal[]>;
+  proposals: (target?: DatasetTarget, collection?: string) => Promise<InterpretationProposal[]>;
   /** Commit a staged suggestion — the whole record, or one property by name. */
   accept: (id: string, property?: string, target?: DatasetTarget) => Promise<boolean>;
   /** Drop a staged suggestion. */

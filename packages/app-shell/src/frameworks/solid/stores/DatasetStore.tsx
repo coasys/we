@@ -334,6 +334,34 @@ export function DatasetStoreProvider(props: ParentProps) {
       },
 
       /*
+        The staged suggestions belonging to one call, rather than to the whole space.
+
+        Here rather than on the port wrapper above for the same reason `interpretCollection` is: the
+        scope is a containment predicate, and resolving one needs the dataset's models — which the
+        port has not got and a module must never learn.
+
+        A proposal outlives the pass that made it, so an unresolved one from this morning's call is
+        still staged this afternoon. Unscoped, it arrived in the next call's review list looking like
+        something that call had just found — and accepting it committed a record parented to the
+        earlier call, which is real, correct, and invisible on the board of the call the reviewer is
+        actually sitting in.
+
+        The dataset is the *caller's*, not `currentDataset()`: a call outlives the space on screen,
+        and answering about wherever the reader wandered to is the bug `targeted` exists to prevent.
+        The predicate is resolved against that same dataset for the same reason.
+      */
+      proposalsForCollection: async (dataset, collectionId) => {
+        const port = session.backendPorts()?.interpretation;
+        if (!port) return [];
+        const modelFor = (entity: string) => getEntitiesForPerspective(entity, dataset);
+        const predicate = containmentPredicate(modelFor, currentDatasetEntities());
+        // Unscoped rather than empty when containment cannot be named here: too many suggestions is
+        // a nuisance, none is a review surface that looks broken.
+        if (!predicate) return port.proposals(dataset);
+        return port.proposals(dataset, { parent: { id: collectionId, predicate } });
+      },
+
+      /*
         The standing version of the same thing, and the reason it lives here rather than on the module
         surface.
 

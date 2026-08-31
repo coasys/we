@@ -617,22 +617,35 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
 
   /** Write what has accumulated, if anything. Safe to call at any point, including teardown. */
   /**
-   * Re-read the staged suggestions.
+   * Re-read the staged suggestions — this call's, not the whole dataset's.
    *
-   * Reads the whole dataset's proposals rather than this call's. The port has no per-parent filter,
-   * and inventing one client-side would need each proposal's parent, which an overlay does not
-   * carry. In practice the two coincide — the only thing writing proposals here is this call's own
-   * extraction — and showing one more than expected is a much better failure than hiding one.
+   * It used to be the whole dataset's, on the reasoning that the two coincide in practice: the only
+   * thing staging proposals here is this call's own extraction. They do not coincide, because a
+   * proposal outlives the pass that made it. One nobody accepted or rejected an hour ago is still
+   * staged, so it arrived the moment the next call started — reading as something that call had
+   * just found, in a panel that had been on screen for ten seconds.
+   *
+   * Accepting one made it worse rather than harmless. The instance was parented to the *earlier*
+   * call when that pass ran, and accepting commits its values without moving it; so the record went
+   * on existing exactly where it always had, and never appeared on the board of the call the
+   * reviewer was sitting in. "Showing one more than expected" was not the cost — the cost was a
+   * suggestion nobody could act on from where they were.
+   *
+   * `collection` names which conversation to ask about. A caller that has just run a pass passes the
+   * one it ran, so extracting a *past* call from the calls list can still review what that found;
+   * the default is the call in progress, and outside a call there is none — which asks the whole
+   * space, the right answer for a surface that is about no one conversation.
    *
    * Never throws: this runs after a pass that already succeeded, and turning a successful extraction
    * into an error because the review list could not be fetched would be a lie about what happened.
    */
-  async function loadProposals(): Promise<void> {
+  async function loadProposals(collection?: string): Promise<void> {
     if (!interpretation) return;
     try {
       // The call's space, for the same reason the writes use it: a call outlives the space on
-      // screen, so "proposals here" was answering about wherever the reader had wandered to.
-      const staged = await interpretation.proposals(callTarget());
+      // screen, so "proposals here" was answering about wherever the reader had wandered to. The
+      // collection narrows it from that space to one conversation.
+      const staged = await interpretation.proposals(callTarget(), collection ?? collectionId() ?? undefined);
       setProposals(staged.map((p) => ({ id: p.id, kind: p.kind, summary: summarise(p.values) })));
     } catch {
       setProposals([]);
@@ -717,7 +730,11 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       setExtractStatus('done');
       // Only worth a round trip when the pass actually staged something. A backend with no
       // provenance gate reports nothing proposed and never had a list to fetch.
-      if (result.proposed.length) await loadProposals();
+      //
+      // Named rather than defaulted, because this pass is not always over the call in progress: the
+      // calls list extracts a finished one, and reviewing what that found is the whole point of
+      // being able to.
+      if (result.proposed.length) await loadProposals(collection);
     } catch (error) {
       setExtractError(error instanceof Error ? error.message : String(error));
       setExtractedId(collection);
