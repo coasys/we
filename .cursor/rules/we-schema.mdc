@@ -1657,7 +1657,7 @@ we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
 | overflow | "hidden" \| "auto" \| "overlay" | Overflow behavior, both axes |
 | overflowX | "hidden" \| "auto" \| "overlay" | Horizontal overflow alone — a nav strip or tab bar that scrolls sideways instead of pushing the page wide |
 | overflowY | "hidden" \| "auto" \| "overlay" | Vertical overflow alone |
-| scrollbarWidth | "auto" \| "thin" \| "none" | How much room the scrollbar takes. `none` for a strip in fixed-height chrome, where a gutter would not fit |
+| scrollbarWidth | "auto" \| "thin" \| "none" | How much room the scrollbar takes. `none` for a strip in fixed-height chrome, where a gutter would not fit. **Use `none` or leave it unset — never `thin` or `auto`:** Chromium reads this property as "use the platform scrollbar" and drops the app's own styling for that element, so it becomes the one scroll region that does not match the rest (a different colour, square corners, and stepper arrows on Linux). `none` is safe because a hidden bar has nothing to style. |
 | scrollbarGutter | "auto" \| "stable" \| "stable both-edges" | Reserve the gutter whether or not it scrolls, so content does not shift when a scrollbar appears |
 | m | SpaceValue | Margin (all sides) |
 | mx | SpaceValue | Margin left + right |

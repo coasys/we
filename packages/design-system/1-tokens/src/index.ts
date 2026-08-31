@@ -8,7 +8,7 @@ import { animation } from './animation.js';
 import { border } from './border.js';
 import { breakpoint, TIERS } from './breakpoint.js';
 import { color, FILL_LIGHTNESS } from './color.js';
-import { component } from './component.js';
+import { component, scrollbarRules } from './component.js';
 import { font } from './font.js';
 import { layout } from './layout.js';
 import { role, ROLE_ALIASES, ROLE_RELATIVE_FALLBACK } from './role.js';
@@ -26,6 +26,7 @@ export {
   breakpoint,
   color,
   component,
+  scrollbarRules,
   componentHeight,
   FILL_LIGHTNESS,
   font,
