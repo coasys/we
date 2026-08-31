@@ -66,6 +66,8 @@ const accountSection: SchemaNode = {
     },
     // Billing: credits, email, billing-portal link — shown only on metered hosted nodes.
     billingSection,
+    // Extension point for module-contributed account content (e.g. email, tier, billing link).
+    { type: '$slot', props: { anchor: 'account-content' } },
     accountSettings,
   ],
 };
