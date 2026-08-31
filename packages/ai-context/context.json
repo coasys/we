@@ -12,6 +12,12 @@
           "default": "'primary'"
         },
         {
+          "name": "appearance",
+          "type": "'soft' | 'accent'",
+          "optional": false,
+          "default": "'soft'"
+        },
+        {
           "name": "dismissible",
           "type": "boolean",
           "optional": false,
@@ -119,6 +125,12 @@
           "type": "'neutral' | 'primary' | 'success' | 'warning' | 'danger'",
           "optional": false,
           "default": "'neutral'"
+        },
+        {
+          "name": "appearance",
+          "type": "'soft' | 'solid'",
+          "optional": false,
+          "default": "'soft'"
         },
         {
           "name": "size",

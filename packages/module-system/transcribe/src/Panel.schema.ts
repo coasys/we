@@ -106,7 +106,11 @@ const meter: SchemaNode = {
               props: {
                 height: '100%',
                 r: 'pill',
-                bg: { $: "modules.transcribe.speaking ? 'success-500' : 'surface-active'" },
+                // The `success` FILL, not `success-500`: a scale position is one theme's idea of a
+                // green and cannot follow a theme that pins the role. It also hid from `role-audit`,
+                // which until now only read colours written as plain strings and not ones inside an
+                // expression.
+                bg: { $: "modules.transcribe.speaking ? 'success' : 'surface-active'" },
                 // `styles` rather than `width`, because the value is computed per frame and a DS prop
                 // takes a token. This is the escape hatch working as intended.
                 styles: {
@@ -237,32 +241,48 @@ const proposals: SchemaNode = {
           type: '$each',
           props: { items: { $: 'modules.transcribe.proposals' }, as: 'proposal' },
           children: [
+            /*
+              An alert, not a tinted box drawn by hand — a proposal waiting on a decision is exactly
+              what `role="alert"` and a warning glyph are for, and the icon is what makes the status
+              readable to someone who cannot tell the colours apart.
+
+              `accent` rather than the tint it replaces: these arrive as a *column*, and a run of
+              filled warning panels is a stack of competing rectangles that in a dark theme reads as
+              brown before it reads as a warning. The edge says the same thing at the volume a list
+              can carry.
+            */
             {
-              type: 'Column',
-              props: { bg: 'warning-surface', r: '300', p: '300', gap: '200' },
+              type: 'we-alert',
+              props: { variant: 'warning', appearance: 'accent', r: '300', px: '300', py: '300', gap: '300' },
               children: [
-                { type: 'we-text', props: { variant: 'footnote' }, children: [{ $: 'proposal.summary' }] },
                 {
-                  type: 'Row',
-                  props: { gap: '200', ay: 'center' },
+                  type: 'Column',
+                  props: { gap: '200' },
                   children: [
+                    { type: 'we-text', props: { variant: 'footnote' }, children: [{ $: 'proposal.summary' }] },
                     {
-                      type: 'we-button',
-                      props: {
-                        size: 'xs',
-                        variant: 'secondary',
-                        onClick: { $action: 'modules.transcribe.acceptProposal', args: [{ $: 'proposal.id' }] },
-                      },
-                      children: ['Keep'],
-                    },
-                    {
-                      type: 'we-button',
-                      props: {
-                        size: 'xs',
-                        variant: 'ghost',
-                        onClick: { $action: 'modules.transcribe.rejectProposal', args: [{ $: 'proposal.id' }] },
-                      },
-                      children: ['Discard'],
+                      type: 'Row',
+                      props: { gap: '200', ay: 'center' },
+                      children: [
+                        {
+                          type: 'we-button',
+                          props: {
+                            size: 'xs',
+                            variant: 'secondary',
+                            onClick: { $action: 'modules.transcribe.acceptProposal', args: [{ $: 'proposal.id' }] },
+                          },
+                          children: ['Keep'],
+                        },
+                        {
+                          type: 'we-button',
+                          props: {
+                            size: 'xs',
+                            variant: 'ghost',
+                            onClick: { $action: 'modules.transcribe.rejectProposal', args: [{ $: 'proposal.id' }] },
+                          },
+                          children: ['Discard'],
+                        },
+                      ],
                     },
                   ],
                 },
@@ -681,7 +701,14 @@ export const panel: SchemaNode = {
                   type: '$if',
                   props: {
                     condition: { $: 'modules.transcribe.listening' },
-                    then: { type: 'we-badge', props: { variant: 'danger', size: 'xs' }, children: ['REC'] },
+                    // `solid`: this is the news, not an annotation on it. Soft would paint the dark
+                    // tint and a pale label, which reads as a note about recording rather than as
+                    // the fact that it is happening.
+                    then: {
+                      type: 'we-badge',
+                      props: { variant: 'danger', appearance: 'solid', size: 'xs' },
+                      children: ['REC'],
+                    },
                   },
                 },
               ],
@@ -707,8 +734,19 @@ export const panel: SchemaNode = {
                       type: 'we-icon',
                       props: {
                         name: 'record',
-                        weight: { $: "modules.transcribe.listening ? 'fill' : 'regular'" },
-                        color: { $: "modules.transcribe.listening ? 'danger-text' : ''" },
+                        /*
+                          Not `weight: 'fill'` while listening, and not `danger-text` — the two bugs
+                          `CallControl.schema.ts` documents fixing on the call bar's own record
+                          button, still here on the panel's.
+
+                          Only the `regular` weight of any icon is bundled, so every other weight is
+                          a CDN fetch; this one fired at the moment recording started, which on an
+                          offline machine made the icon vanish as you pressed it. And `danger-text`
+                          is a foreground measured for reading against a page — `danger-700`, which
+                          inverts to a pale pink in a dark theme. A record dot is a mark, so it wants
+                          the fill.
+                        */
+                        color: { $: "modules.transcribe.listening ? 'danger' : ''" },
                       },
                     },
                   ],

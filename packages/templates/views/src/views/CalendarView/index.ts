@@ -326,7 +326,9 @@ const monthGrid: SchemaNode = {
                   what is inside legible.
                 */
                 bg: { $: "cell.date == local.day ? 'accent-muted' : cell.inMonth ? '' : 'page'" },
-                border: { $: "cell.date == local.day ? '1px solid primary-500' : '1px solid transparent'" },
+                // `accent`, matching the `accent-muted` fill in the line above — the outline and the
+                // tint are one decision and were written as a role and a step.
+                border: { $: "cell.date == local.day ? '1px solid accent' : '1px solid transparent'" },
                 hoverProps: {
                   bg: { $: "cell.date == local.day ? 'accent-muted' : 'surface-sunken'" },
                 },

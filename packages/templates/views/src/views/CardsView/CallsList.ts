@@ -271,9 +271,13 @@ export const callsList: SchemaNode = {
                                   type: '$if',
                                   props: {
                                     condition: { $: 'call.id == modules.transcribe.liveCollectionId' },
+                                    // `solid`: a call happening right now is the news on this card,
+                                    // not a note about it. The soft pair is a dark tint under pale
+                                    // text, which is the treatment "Retired" and "Not a WE space"
+                                    // want and this does not.
                                     then: {
                                       type: 'we-badge',
-                                      props: { variant: 'success', size: 'xs' },
+                                      props: { variant: 'success', appearance: 'solid', size: 'xs' },
                                       children: ['Live'],
                                     },
                                   },
