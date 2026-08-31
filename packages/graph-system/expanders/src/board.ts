@@ -271,12 +271,25 @@ export function boardSeed(): SeedSource {
       const wanted = passes.filter((pass) => pass.entity !== placementEntity && declared(pass.entity));
       const results = await Promise.all(wanted.map((pass) => read(pass.entity, pass.where)));
 
+      /*
+        Rows a row-to-node could make nothing of, counted rather than passed over in silence.
+
+        `rowToNode` returns null for a row with no string `id`, which is the one shape of failure
+        that produces an empty board out of a successful read — and from outside the walk it is
+        indistinguishable from a read that found nothing.
+      */
+      let dropped = 0;
+
       for (const [index, pass] of wanted.entries()) {
         const entity = pass.entity;
         const shape = shapes.find((s) => s.name === entity);
         for (const row of results[index]) {
           const node = rowToNode(row, entity, dataset, shape, 'board');
-          if (!node) continue;
+          if (!node) {
+            dropped += 1;
+            context.trace?.('board:row-dropped', { entity, keys: Object.keys(row).slice(0, 8) });
+            continue;
+          }
           // A record both placed and owned answers both passes; the first one wins, and it is the
           // placed one, which is the one carrying a position.
           if (seen.has(node.id)) continue;
@@ -337,6 +350,15 @@ export function boardSeed(): SeedSource {
           });
         }
       }
+
+      context.trace?.('board:built', {
+        board: options.board,
+        placements: placements.length,
+        rows: Object.fromEntries(wanted.map((pass, index) => [pass.entity, results[index].length])),
+        nodes: nodes.length,
+        edges: edges.length,
+        dropped,
+      });
 
       return { nodes, edges, total: nodes.length };
     },

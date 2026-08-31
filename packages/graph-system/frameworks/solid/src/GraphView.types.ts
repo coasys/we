@@ -276,6 +276,16 @@ export interface GraphHostBindings {
    * decides what to watch from the reads its seeds performed — nothing calls this directly.
    */
   watch?(request: { entity: string; dataset?: string }, onChange: () => void): () => void;
+  /**
+   * Say what happened inside a load, for whoever is debugging an empty canvas.
+   *
+   * Optional, and a host without a trace sink omits it. Not `warn`: a warning is for the reader and
+   * appears in the status strip, where "the board read one row and built no nodes" is neither
+   * actionable nor interesting. It is the *only* place that difference is visible, though — a seed
+   * that read nothing, a seed that read rows and dropped them, and a graph whose nodes are all off
+   * screen are the same blank rectangle.
+   */
+  trace?(event: string, detail?: Record<string, unknown>): void;
   defaultDataset(): string | null;
   models(dataset?: string): {
     name: string;

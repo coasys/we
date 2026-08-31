@@ -825,6 +825,21 @@ export class GraphEngine {
     // A fit that could not run yet (no surface measured) is remembered, not dropped.
     if (options?.fit && !this.positions.size) this.pendingFit = true;
     if (result.running) this.scheduleTick();
+
+    /*
+      The last line of the load, and the one that says which kind of empty this is.
+
+      A graph with no nodes, a graph whose nodes never got a position, and a graph laid out three
+      thousand world-units from the camera are the same blank rectangle on screen. These four numbers
+      separate them, and only here are all four in one place.
+    */
+    this.context.trace?.('layout', {
+      layout: spec.type,
+      nodes: this.store.nodeCount,
+      edges: [...this.store.edges()].length,
+      positioned: this.positions.size,
+      viewport: { width, height },
+    });
   }
 
   /**

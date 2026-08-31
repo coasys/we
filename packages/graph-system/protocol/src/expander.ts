@@ -105,6 +105,17 @@ export interface ExpanderContext {
   watch?(request: WatchQuery, onChange: () => void): () => void;
   /** Structured, non-fatal reporting. An expander that cannot answer says so; it does not throw. */
   warn(message: string): void;
+  /**
+   * Say what happened, for somebody watching. Off unless the host has a sink; absent on hosts with
+   * none.
+   *
+   * Distinct from `warn`, which is for a reader: a warning appears in the graph's own status strip
+   * and describes something that went wrong. This is for whoever is debugging *an empty canvas*,
+   * which is the failure a graph is worst at explaining — a seed that read nothing, a seed that read
+   * rows and built no nodes, and a graph whose nodes are all off screen look identical, and the
+   * numbers that tell them apart are known only inside the walk.
+   */
+  trace?(event: string, detail?: Record<string, unknown>): void;
 }
 
 /** A read an expander asks for, in neutral terms. */

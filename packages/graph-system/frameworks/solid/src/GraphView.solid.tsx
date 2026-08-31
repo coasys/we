@@ -192,6 +192,9 @@ export function GraphView(props: GraphViewProps) {
       defaultDataset: () => props.host?.defaultDataset() ?? null,
       models: (dataset) => props.host?.models(dataset) ?? [],
       warn: () => undefined,
+      // Spread like `watch`, so an expander asking whether it can trace gets the honest answer
+      // rather than a stub that swallows everything.
+      ...(props.host?.trace && { trace: (event, detail) => props.host!.trace!(event, detail) }),
     },
     onEvent: (event) => {
       switch (event.type) {

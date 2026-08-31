@@ -352,6 +352,14 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
       };
     },
 
+    /*
+      The same `graph` scope the reads above report into, so one `we:trace` switch covers the whole
+      path: what a seed asked the backend, and what it made of the answer. Rows arriving and nodes
+      appearing are two different claims, and until both are on one timeline the gap between them
+      is invisible.
+    */
+    trace: (event, detail) => trace('graph', event, detail),
+
     defaultDataset: () => {
       const current = datasetStore.currentDataset();
       // Prefer the shared id: it is identical on every agent, which is what makes a node address
