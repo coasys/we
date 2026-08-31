@@ -63,6 +63,60 @@ const accountSection: SchemaNode = {
       ],
     },
     accountSettings,
+
+    // Platform-hosted account info (email, plan). Present only when the platform module is loaded —
+    // `modules.platform.*` resolves to nothing when the module is not installed, so the `$if` gates
+    // the block and generic WE deployments never see it.
+    {
+      type: '$if',
+      props: {
+        condition: { $store: 'modules.platform.email' },
+        then: {
+          type: 'Card',
+          props: { bg: 'surface' },
+          children: [
+            {
+              type: 'Column',
+              props: { gap: '200' },
+              children: [
+                {
+                  type: 'Row',
+                  props: { gap: '200' },
+                  children: [
+                    {
+                      type: 'we-text',
+                      props: { variant: 'body', fontWeight: 'medium' },
+                      children: ['Email'],
+                    },
+                    {
+                      type: 'we-text',
+                      props: { variant: 'body' },
+                      children: [{ $store: 'modules.platform.email' }],
+                    },
+                  ],
+                },
+                {
+                  type: 'Row',
+                  props: { gap: '200' },
+                  children: [
+                    {
+                      type: 'we-text',
+                      props: { variant: 'body', fontWeight: 'medium' },
+                      children: ['Plan'],
+                    },
+                    {
+                      type: 'we-text',
+                      props: { variant: 'body' },
+                      children: [{ $store: 'modules.platform.tier' }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    },
   ],
 };
 
@@ -716,6 +770,81 @@ function page(children: SchemaNode[]): SchemaNode {
 }
 
 /**
+ * Platform billing section — plan, credits, upgrade/buy buttons and billing portal link.
+ *
+ * Reads `modules.platform.*` stores — resolves to nothing when the platform module is absent, so
+ * the `$if` condition on the nav item hides the route entirely for generic WE deployments.
+ */
+const platformBillingSection: SchemaNode = {
+  type: 'Column',
+  props: { gap: '300' },
+  children: [
+    { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Billing'] },
+    {
+      type: 'Card',
+      props: { bg: 'surface' },
+      children: [
+        {
+          type: 'Column',
+          props: { gap: '200' },
+          children: [
+            {
+              type: 'Row',
+              props: { gap: '200', ax: 'between', ay: 'center' },
+              children: [
+                { type: 'we-text', props: { variant: 'body', fontWeight: 'medium' }, children: ['Current plan'] },
+                { type: 'we-text', props: { variant: 'body' }, children: [{ $store: 'modules.platform.tier' }] },
+              ],
+            },
+            {
+              type: 'Row',
+              props: { gap: '200', ax: 'between', ay: 'center' },
+              children: [
+                { type: 'we-text', props: { variant: 'body', fontWeight: 'medium' }, children: ['Credits'] },
+                {
+                  type: 'we-text',
+                  props: { variant: 'body' },
+                  children: [{ $store: 'modules.platform.creditDisplay' }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    {
+      type: 'Row',
+      props: { gap: '300' },
+      children: [
+        {
+          type: 'we-button',
+          props: { size: 'sm', onClick: { $action: 'modules.platform.upgrade' } },
+          children: ['Upgrade plan'],
+        },
+        {
+          type: 'we-button',
+          props: {
+            variant: 'outline',
+            size: 'sm',
+            onClick: { $action: 'modules.platform.topUpCredits' },
+          },
+          children: ['Buy credits'],
+        },
+      ],
+    },
+    {
+      type: 'we-button',
+      props: {
+        variant: 'ghost',
+        size: 'sm',
+        onClick: { $action: 'modules.platform.openBillingPortal' },
+      },
+      children: ['Manage billing →'],
+    },
+  ],
+};
+
+/**
  * Settings, as a set of pages rather than one scroll.
  *
  * `routes` sits on the root because the router only reads it there — the `$routes` outlet below can
@@ -765,6 +894,8 @@ export const settingsTemplate: TemplateSchema = {
       ...page([runtimeError, trustedAgents, peerNetwork, logging]),
     },
     { path: '/connections', ...page([runtimeError, hostSection, connectedApps, mcpServer]) },
+    // Platform billing — present only when the platform module is loaded.
+    { path: '/billing', ...page([platformBillingSection]) },
     // Anything else lands on Account rather than an empty frame.
     { path: '*', ...page([accountSection]) },
   ],
@@ -783,6 +914,14 @@ export const settingsTemplate: TemplateSchema = {
               props: { gap: '100', width: '200px', minWidth: '200px' },
               children: [
                 navItem('Account', 'user', '/'),
+                // Platform billing — only when the platform module is present.
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $store: 'modules.platform.email' },
+                    then: navItem('Billing', 'credit-card', '/billing'),
+                  },
+                },
                 navItem('Appearance', 'palette', '/appearance'),
                 navItem('Spaces & data', 'stack', '/spaces'),
                 navItem('Modules', 'squares-four', '/modules'),
