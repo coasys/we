@@ -22,6 +22,7 @@ import type {
   Placement,
   Point,
   StyleRules,
+  WatchQuery,
 } from '@we/graph-protocol';
 import { addressKind } from '@we/graph-protocol';
 
@@ -137,15 +138,33 @@ const DEFAULT_EXPAND_LIMIT = 50;
  */
 const WATCH_DEBOUNCE_MS = 250;
 
-/** What the seeds read, and so what is worth watching. */
-interface WatchTarget {
-  entity: string;
-  dataset?: string;
-}
+/**
+ * What the seeds read, and so what is worth watching — the read itself, not merely its type.
+ *
+ * A host subscribes to what it is given, and a backend that reports "this query's answer changed"
+ * can only report about a query somebody asked. See `ExpanderContext.watch` for what the coarse
+ * form cost: a board whose records arrived behind an existing one was never told.
+ */
+type WatchTarget = WatchQuery;
 
-/** Identity of a watch. Only ever compared, never parsed back — the target is carried alongside it. */
+/**
+ * Identity of a watch. Only ever compared, never parsed back — the target is carried alongside it.
+ *
+ * Two spellings of one filter (the same keys in a different order) key as two watches. Harmless:
+ * duplicates cost a subscription and answer identically, where a key that tried to canonicalise
+ * would have to know what every field of a read means.
+ */
 function watchKey(target: WatchTarget): string {
-  return `${target.entity} ${target.dataset ?? ''}`;
+  return JSON.stringify([
+    target.entity,
+    target.dataset ?? '',
+    target.scope ?? null,
+    target.where ?? null,
+    target.order ?? null,
+    target.limit ?? null,
+    target.offset ?? null,
+    target.include ?? null,
+  ]);
 }
 
 export class GraphEngine {
@@ -462,7 +481,9 @@ export class GraphEngine {
     const recording: ExpanderContext = {
       ...this.context,
       query: (request) => {
-        const target: WatchTarget = { entity: request.entity, dataset: request.dataset };
+        // The whole read, less the signal — a standing watch must not hold the abort signal of the
+        // load that happened to make the read.
+        const { signal: _signal, ...target } = request;
         read.set(watchKey(target), target);
         return this.context.query(request);
       },

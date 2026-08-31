@@ -364,9 +364,9 @@ describe('refreshing keeps the graph the user is looking at', () => {
  * what it read. The engine derives its watches from the reads themselves, so a seed that fabricates
  * nodes without querying — every other seed in this file — is correctly watched for nothing.
  */
-function watchableFixture(entity: string) {
+function watchableFixture(entity: string, read: Record<string, unknown> = {}) {
   const fired: (() => void)[] = [];
-  const watched: { entity: string; dataset?: string }[] = [];
+  const watched: Record<string, unknown>[] = [];
   let stopped = 0;
 
   const context: ExpanderContext = {
@@ -386,7 +386,7 @@ function watchableFixture(entity: string) {
   const seed: SeedSource = {
     id: 'test',
     async seed(_options, ctx) {
-      const rows = await ctx.query({ entity, dataset: 'ds' });
+      const rows = await ctx.query({ entity, dataset: 'ds', ...read });
       return {
         nodes: rows.map((row) => ({
           id: String((row as { id: string }).id),
@@ -414,6 +414,40 @@ describe('following the data', () => {
     await engine.start();
 
     expect(fixture.watched).toEqual([{ entity: 'Post', dataset: 'ds' }]);
+  });
+
+  it('hands over the whole read, not only the type it was of', async () => {
+    /*
+      A host subscribes to what it is given, and a backend that reports "this query's answer
+      changed" can say nothing about a query nobody asked. WE's does exactly that, so the coarse
+      form — entity and dataset — became a one-row probe over the type, silent for every change
+      that left that row alone: a board's second extracted record never appeared while the panel
+      beside it, subscribed to its own narrower question, updated.
+    */
+    const fixture = watchableFixture('TaskBlock', {
+      scope: { anchor: 'CollectionBlock', via: 'children', anchorId: 'call-1' },
+      limit: 200,
+    });
+    const registry = new PluginRegistry({ seeds: [fixture.seed], layouts });
+    const engine = new GraphEngine({
+      spec: { seeds: { source: 'test' }, layout: { type: 'grid' } },
+      registry,
+      context: fixture.context,
+    });
+
+    await engine.start();
+
+    expect(fixture.watched).toEqual([
+      {
+        entity: 'TaskBlock',
+        dataset: 'ds',
+        scope: { anchor: 'CollectionBlock', via: 'children', anchorId: 'call-1' },
+        limit: 200,
+      },
+    ]);
+    // The signal belongs to the load that made the read; a standing watch holding a spent one would
+    // be subscribed on behalf of a fetch that is over.
+    expect(fixture.watched[0]).not.toHaveProperty('signal');
   });
 
   it('re-reads when a watch fires, and coalesces a burst into one pass', async () => {

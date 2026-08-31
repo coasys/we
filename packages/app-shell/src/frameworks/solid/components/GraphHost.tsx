@@ -25,7 +25,7 @@ import { manifestEntries } from '@we/backend-shared';
 import { BlockRenderer } from '@we/block-solid';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import { placementStyle } from '@we/graph-expanders';
-import type { EntityShape, GraphNode, GraphValue } from '@we/graph-protocol';
+import type { EntityShape, GraphNode, GraphValue, WatchQuery } from '@we/graph-protocol';
 import { GraphView, type GraphViewProps } from '@we/graph-solid';
 import { createMemo, Show } from 'solid-js';
 
@@ -91,6 +91,18 @@ function toEntityShape(entry: EntityManifestEntry): EntityShape {
  * resolves to a `data:…;base64,…` blob rather than to JSON, and `BlockRenderer` already knows to
  * decode a string; parsing it here first threw on every card and rendered nothing, which is why they
  * all looked empty.
+ *
+ * ## Why it draws the label when there is no document
+ *
+ * A style rule names `content` for every card it matches, and a board holds more than one kind of
+ * record: the workshop board is `TaskBlock`s and `EventBlock`s beside composed cards, and only a
+ * `CollectionBlock` has an `editorState` at all. The renderer's own fallback does not cover this —
+ * it draws the label when the *component* is missing, which is not the same as a component that
+ * renders nothing — so a freshly extracted task arrived as a card with nothing in it, and a board of
+ * them read as an empty canvas. That is the worst possible rendering of "extraction worked".
+ *
+ * The same class the renderer's fallback uses, so a card that falls back here is indistinguishable
+ * from one whose rule never asked for content.
  */
 function BlockCard(props: { node: GraphNode }) {
   const datasetStore = useDatasetStore();
@@ -101,7 +113,7 @@ function BlockCard(props: { node: GraphNode }) {
   });
 
   return (
-    <Show when={editorState()}>
+    <Show when={editorState()} fallback={<span class="we-graph__card-text">{props.node.label}</span>}>
       {(state) => <BlockRenderer editorState={state() as never} perspective={datasetStore.currentDataset()?.handle} />}
     </Show>
   );
@@ -162,6 +174,29 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
         ? datasetStore.datasets().find((d) => d.id === dataset || d.sharedId === dataset)?.handle
         : datasetStore.currentDataset()?.handle;
     return bound.$getEntitiesForPerspective?.(entity, handle) ?? bound.$getEntity?.(entity);
+  }
+
+  /**
+   * A neutral read, as the ORM's options — the one translation, shared by the fetch and the watch.
+   *
+   * They must not drift: a watch subscribes in order to fingerprint the rows the fetch would
+   * return, so a difference between the two is a change the graph is never told about. `undefined`
+   * means the read resolves to nothing at all, which is a scope this dataset cannot name.
+   */
+  function queryOptions(request: WatchQuery): QueryOptions | undefined {
+    const { where, order, limit, offset, include, scope } = request;
+    const options: QueryOptions = {};
+    if (where) options.where = where;
+    if (order) options.order = order;
+    if (limit !== undefined) options.limit = limit;
+    if (offset !== undefined) options.offset = offset;
+    if (include) options.include = include;
+    if (scope) {
+      const parent = parentFor(scope);
+      if (!parent) return undefined;
+      (options as Record<string, unknown>).parent = parent;
+    }
+    return options;
   }
 
   /** Resolve a neutral drill-down to the parent handle the ORM takes. Mirrors the query adapter. */
@@ -234,21 +269,39 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
     confirmPending: (recordIds) => recordStore.confirmPending(recordIds),
 
     /**
-     * Tell the graph when records of a type change here.
+     * Tell the graph when the answer to one of its reads changes here.
      *
      * The same live path `$query` uses — `EntityClass.query(...).subscribe(...)` — which is why a
      * post appears in the cards route the moment it is written. The graph took `findAll` instead,
      * so it read once and never again; that is the whole difference between a map of a space and a
      * picture of one.
      *
-     * `limit: 1` because the rows are thrown away. What is wanted is the *notification*, and the
-     * engine's response is to re-run its own seeds with their own filters and paging — asking for
-     * the full set here would fetch every row twice on every change.
+     * ## Why it subscribes to the seed's own query
+     *
+     * It used to subscribe to `{ limit: 1 }` over the type, on the reasoning that the rows are
+     * thrown away and only the notification matters. That is not what an AD4M model subscription
+     * is. It re-runs *its own* query on a change and fingerprints the rows, and calls back **only
+     * when that fingerprint differs** — so a one-row probe over a type is silent for every change
+     * that leaves its single row alone. A space with one task in it already: extract a second, and
+     * the probe's answer is the same first row, so nothing fires and the board stays as loaded.
+     * The extraction panel beside it updated, because its `$query` subscribes to its own narrower
+     * question and that question's answer really had changed — which is what made this look like a
+     * board bug rather than a notification one.
+     *
+     * So the engine hands over the read it made and this subscribes to exactly that. The rows are
+     * still thrown away; what they are for is the fingerprint, and it now covers the same records
+     * the seed drew. Cost is one subscription per distinct read — four for a board — each paging
+     * exactly what the seed would have fetched anyway.
      */
     watch(request, onChange) {
       const model = modelFor(request.entity, request.dataset);
       const handle = datasetStore.currentDataset()?.handle;
       if (!model || !handle) return () => undefined;
+
+      const options = queryOptions(request);
+      // A read whose scope cannot be resolved reads as nothing; watching it would be a subscription
+      // to a question with no answer.
+      if (!options) return () => undefined;
 
       let live = true;
       /*
@@ -263,7 +316,7 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
       let primed = false;
       let pending = false;
 
-      const subscription = model.query(handle, { limit: 1 });
+      const subscription = model.query(handle, options);
       subscription
         .subscribe(() => {
           if (!live) return;
@@ -322,17 +375,8 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
       const model = modelFor(entity, dataset);
       if (!model) return [];
 
-      const options: QueryOptions = {};
-      if (where) options.where = where;
-      if (order) options.order = order;
-      if (limit !== undefined) options.limit = limit;
-      if (offset !== undefined) options.offset = offset;
-      if (include) options.include = include;
-      if (scope) {
-        const parent = parentFor(scope);
-        if (!parent) return [];
-        (options as Record<string, unknown>).parent = parent;
-      }
+      const options = queryOptions({ entity, dataset, where, order, limit, offset, include, scope });
+      if (!options) return [];
 
       const rows = await model.findAll(handle, options);
       return rows as Record<string, unknown>[];

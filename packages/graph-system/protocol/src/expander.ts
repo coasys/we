@@ -82,18 +82,27 @@ export interface ExpanderContext {
   /** Entity shapes available in a dataset, for expanders that work off the schema rather than a fixed model. */
   models(dataset?: string): EntityShape[];
   /**
-   * Ask to be told when records of a type change, and get back a function that stops the watch.
+   * Ask to be told when a read's answer changes, and get back a function that stops the watch.
    *
-   * Coarse on purpose — the entity and the dataset, not the query. The signal is "look again", and
-   * the engine's answer is to re-run its seeds and reconcile, which is idempotent; a watch that
-   * mirrored the exact where-clause would cost one subscription per query for no better an answer,
-   * and would go stale the moment a clause referenced something reactive.
+   * **The whole read, not just the type.** This was coarse — entity and dataset only — on the
+   * reasoning that the signal is "look again" and the engine's answer is to re-run its seeds, which
+   * is idempotent. The reasoning was sound and the premise was not: a host implements this over
+   * whatever change notification its backend has, and a backend that reports "this query's answer
+   * changed" cannot report anything about a query nobody asked. WE's does exactly that — its model
+   * subscriptions fire only when the rows of *their own* query change — so a coarse watch was
+   * subscribed to a one-row probe over the whole type, and a record created behind an existing one
+   * left that probe's answer identical. The board that read it never heard, and stayed as loaded
+   * while the panel beside it, subscribed to its own narrower query, updated.
+   *
+   * So a watch carries the read it came from, and a host subscribes to *that*. The cost the coarse
+   * form was avoiding — one subscription per distinct read — is what makes the answer trustworthy,
+   * and it is bounded by what the seeds actually asked for: a board makes four.
    *
    * Optional because it is a *capability*, not a requirement: a host with no change notification
    * (a fixture, a static export) simply omits it and the graph stays as loaded. Nothing calls this
    * directly — the engine derives what to watch from the reads its seeds performed.
    */
-  watch?(request: { entity: string; dataset?: string }, onChange: () => void): () => void;
+  watch?(request: WatchQuery, onChange: () => void): () => void;
   /** Structured, non-fatal reporting. An expander that cannot answer says so; it does not throw. */
   warn(message: string): void;
 }
@@ -111,6 +120,14 @@ export interface ExpanderQuery {
   scope?: { anchor: string; via: string; anchorId: string; direction?: 'in' | 'out' };
   signal?: AbortSignal;
 }
+
+/**
+ * A read to be watched: the query as it was asked, less the abort signal.
+ *
+ * The signal belongs to the load that made the read and is already spent by the time anything
+ * subscribes; carrying it would tie a standing watch to a cancelled fetch.
+ */
+export type WatchQuery = Omit<ExpanderQuery, 'signal'>;
 
 /**
  * An entity type as the engine sees it — the neutral projection of whatever the backend calls a
