@@ -12,6 +12,7 @@
  * template being edited re-declares on every keystroke. The id is stable; the declaration is looked
  * up when it renders.
  */
+import { resolveParts } from '@shared/registries/moduleParts';
 import { templateBag } from '@shared/registries/templateBag';
 import { onTemplatePanelsChanged, templatePanels } from '@shared/registries/templatePanels';
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
@@ -35,7 +36,11 @@ export function TemplatePanelBody(props: { panelId?: string; moduleId?: string }
     const panel = templatePanels().find((entry) =>
       props.moduleId ? entry.module === props.moduleId && entry.node : entry.id === props.panelId,
     );
-    return panel?.node as SchemaNode | undefined;
+    if (!panel?.node) return undefined;
+    // `$part` is expanded here rather than by the renderer, the same way `$slot` is — see
+    // `moduleParts.ts`. A panel is the first place an interface reaches for a module's pieces.
+    const expanded = resolveParts(panel.node as SchemaNode);
+    return (Array.isArray(expanded) ? expanded[0] : expanded) as SchemaNode | undefined;
   });
 
   /*

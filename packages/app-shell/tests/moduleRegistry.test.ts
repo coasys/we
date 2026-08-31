@@ -189,9 +189,23 @@ describe('moduleRegistry', () => {
     moduleRegistry.register(mod({ id: 'a', schemas: { panel: { type: 'Column' } } }), host);
     moduleRegistry.register(mod({ id: 'b', schemas: { panel: { type: 'Row' } } }), host);
 
+    // Normalised on the way out: a part written as a bare node comes back as one with no subject,
+    // so a placer has one shape to handle rather than two.
     expect(moduleRegistry.schemas()).toEqual({
-      'a.panel': { type: 'Column' },
-      'b.panel': { type: 'Row' },
+      'a.panel': { node: { type: 'Column' } },
+      'b.panel': { node: { type: 'Row' } },
+    });
+  });
+
+  it('keeps the subject a part names, which is what lets a placer repoint it', () => {
+    moduleRegistry.register(
+      mod({ id: 'a', schemas: { feed: { node: { type: 'Column' }, subject: 'modules.a.collectionId' } } }),
+      host,
+    );
+
+    expect(moduleRegistry.schemas()['a.feed']).toEqual({
+      node: { type: 'Column' },
+      subject: 'modules.a.collectionId',
     });
   });
 

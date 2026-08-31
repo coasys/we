@@ -85,6 +85,32 @@ one with \`grow: 0\`.
 Below 900px of window width a column collapses — every member takes the whole content region as a
 full-bleed sheet, since two narrow cards over content leave nothing of either.
 
+### Placing a module's own pieces
+
+A module publishes **named parts** and composes its own panel out of them, so an interface that
+wants them arranged differently places the pieces rather than copying them:
+
+\`\`\`json
+{ "type": "$part", "props": { "id": "transcribe.transcriptFeed" } }
+\`\`\`
+
+\`subject\` points a part at a different record from the one its module is about — a transcript feed
+over a call somebody opened from a link rather than the one being recorded:
+
+\`\`\`json
+{ "type": "$part", "props": { "id": "transcribe.transcriptFeed", "subject": { "$": "routeStore.params.call" } } }
+\`\`\`
+
+A part naming a module nobody has installed renders nothing and reports itself, the same way a
+contribution to an unprovided anchor does. Placing the module's *whole* panel is still
+\`{ "module": "<id>" }\` in \`meta.panels\`; parts are for building something else out of it.
+
+**Supplying a module's panel yourself.** A \`meta.panels\` entry carrying **both** \`module\` and
+\`node\` means "that module's panel, arranged here": the module goes on deciding whether the surface
+is up and how big it is, and the entry decides what is inside. Without it, an interface that wrote
+its own version got *two* panels — the module opens its own when its state says so, and it had no
+way to know somebody else was already showing it.
+
 ### It is a suggestion, not a setting
 
 \`meta.panels\` is the middle rung of three. Whatever the reader last dragged a panel to wins; then

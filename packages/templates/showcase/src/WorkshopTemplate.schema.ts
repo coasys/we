@@ -529,44 +529,6 @@ const startCall: SchemaNode = {
 };
 
 /**
- * One call's utterances, oldest first.
- *
- * A function because two surfaces draw it against different anchors — this template's transcript
- * panel, about the call on screen, and a row in the calls list, about that row's call. Written once
- * here rather than extracted to the kit: two uses in one file is a shared local, not a fragment
- * anybody else can use.
- *
- * Attribution needs no diarization — each agent transcribes their own microphone, so the block's
- * author *is* the speaker, and `agentByline` turns that DID into a face and a name.
- */
-function transcriptFeed(anchorId: SchemaProp): SchemaNode {
-  return {
-    type: '$each',
-    props: {
-      items: {
-        $query: {
-          entity: 'TextBlock',
-          scope: { anchor: 'CollectionBlock', via: 'children', anchorId },
-          // Oldest first, because a transcript read backwards is not a transcript.
-          order: { createdAt: 'asc' },
-        },
-      },
-      as: 'utterance',
-    },
-    children: [
-      agentByline({
-        did: { $: 'utterance.author' },
-        as: 'speaker',
-        stacked: true,
-        nameColor: 'text-muted',
-        timestamp: { $: 'utterance.createdAt' },
-        children: [{ type: 'we-text', props: { color: 'text' }, children: [{ $: 'utterance.text' }] }],
-      }),
-    ],
-  };
-}
-
-/**
  * The transcript of the call on screen — this template's own, not the module's.
  *
  * `@we/module-transcribe` has a perfectly good transcript panel and this template used to place it.
@@ -675,13 +637,15 @@ const transcriptPanel: SchemaNode = {
       type: '$if',
       props: {
         condition: CALL,
-        then: {
-          // Follows the tail while somebody is at the tail, and holds still while they read further
-          // up — the live case this exists for, and harmless on a finished call.
-          type: 'we-scroll-area',
-          props: { pin: 'end', flex: '1', minHeight: '0' },
-          children: [{ type: 'Column', props: { gap: '300' }, children: [transcriptFeed(CALL)] }],
-        },
+        /*
+          The transcribe module's own feed, pointed at the call on screen.
+
+          This was a copy — the same query, the same byline, written out again here because a
+          template cannot import a module. It is published as a part with its subject named, so
+          placing it is naming it, and the attribution, the pinned scroll and every later fix to
+          them arrive from the module rather than being re-made here.
+        */
+        then: { type: '$part', props: { id: 'transcribe.transcriptFeed', subject: CALL } },
         else: emptyState({ icon: 'microphone', label: 'a transcript' }),
       },
     },

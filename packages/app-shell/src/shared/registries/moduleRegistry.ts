@@ -531,12 +531,19 @@ export const moduleRegistry = {
       }));
   },
 
-  /** Named schema fragments, keyed `<moduleId>.<fragment>` so two modules can't collide. */
-  schemas(): Record<string, unknown> {
-    const out: Record<string, unknown> = {};
+  /**
+   * Named schema fragments, keyed `<moduleId>.<fragment>` so two modules can't collide.
+   *
+   * Normalised: a part written as a bare node comes back as one with no subject, so a caller has one
+   * shape to handle rather than two. See `ModulePart` — the subject is what lets a placer point a
+   * part at a record the module never knew about.
+   */
+  schemas(): Record<string, { node: SchemaNode; subject?: string }> {
+    const out: Record<string, { node: SchemaNode; subject?: string }> = {};
     for (const { definition } of moduleRegistry.all()) {
-      for (const [name, node] of Object.entries(definition.schemas ?? {})) {
-        out[`${definition.id}.${name}`] = node;
+      for (const [name, part] of Object.entries(definition.schemas ?? {})) {
+        const normalised = 'node' in part ? (part as { node: SchemaNode; subject?: string }) : { node: part };
+        out[`${definition.id}.${name}`] = normalised;
       }
     }
     return out;

@@ -93,8 +93,14 @@ export const transcribeModule = defineModule({
    *
    * Only the feed, deliberately. The rest of the panel has no second caller, and a fragment nobody
    * else places is an extraction waiting to be got wrong.
+   *
+   * With its **subject** named, so a placer can point it at a call this module is not recording —
+   * an archive, or a board somebody opened from a link. The feed is written against this module's
+   * own state and stays valid on its own; the host substitutes the expression when somebody asks
+   * for another. Without that a part is welded to the state its module happens to hold, which is
+   * what made these uncomposable while the field sat here unread.
    */
-  schemas: { transcriptFeed },
+  schemas: { transcriptFeed: { node: transcriptFeed, subject: 'modules.transcribe.collectionId' } },
 
   slots: [
     // Into the call module's own bar. It declares the anchor; we never name the module.

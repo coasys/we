@@ -272,6 +272,21 @@ export function seedCapabilityToModule(capability: string): ModuleCapability {
   return `data:${capability}`;
 }
 
+/**
+ * A named fragment that is *about* something, and can be pointed at something else.
+ *
+ * The subject is named as the expression the module itself uses, so the part stays valid on its own
+ * — it is the module's own working node, not a template with a hole in it — and a placer that wants
+ * it over a different record says so, and the host substitutes. Without this, every part is welded
+ * to the state its module happens to hold, which is the coupling that made them uncomposable in the
+ * first place.
+ */
+export interface ModulePart {
+  node: SchemaNode;
+  /** The expression this part is about, e.g. `modules.transcribe.collectionId`. */
+  subject?: string;
+}
+
 export interface ModuleDefinition {
   /** Stable, unique. Namespaces this module's stores (`modules.<id>.*`) and its slot ordering ties. */
   id: string;
@@ -327,8 +342,26 @@ export interface ModuleDefinition {
    */
   components?: Record<string, unknown>;
 
-  /** Named schema fragments a template can place, and this module's own slot nodes can reference. */
-  schemas?: Record<string, SchemaNode>;
+  /**
+   * Named schema fragments a template can place, and this module's own nodes can reference.
+   *
+   * A module's presentation is a **default, not a monopoly**. Its panel is usually several surfaces
+   * in one — a feed, a control, a readout — and an interface that wants them arranged differently
+   * could only hand-write copies, which is how one template ended up with its own transcript beside
+   * the module's. Publishing the pieces lets it compose instead, and the module goes on composing
+   * its own panel out of the same ones.
+   *
+   * Keyed `<moduleId>.<name>` by the registry, and placed as
+   * `{ type: '$part', props: { id: 'transcribe.feed' } }`.
+   *
+   * **A part is public API.** It cannot be reshaped without breaking templates this module has never
+   * heard of, so keep the set small and name each for what it *is* rather than for how it looks.
+   *
+   * A part written as a bare node is used as it stands. One written as {@link ModulePart} names the
+   * expression that is its **subject** — the record it is about — and a placer may substitute a
+   * different one, which is what makes a feed reusable over a call it was not written for.
+   */
+  schemas?: Record<string, SchemaNode | ModulePart>;
 
   /** Persistent chrome. Rendered by the host outside the router, so it survives navigation. */
   slots?: SlotContribution[];
