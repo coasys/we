@@ -21,7 +21,7 @@
 import '@we/graph-solid/styles';
 
 import type { EntityClass, EntityManifestEntry, QueryOptions } from '@we/backend-shared';
-import { manifestEntries } from '@we/backend-shared';
+import { manifestEntries, trace } from '@we/backend-shared';
 import { BlockRenderer } from '@we/block-solid';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import { placementStyle } from '@we/graph-expanders';
@@ -296,12 +296,22 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
     watch(request, onChange) {
       const model = modelFor(request.entity, request.dataset);
       const handle = datasetStore.currentDataset()?.handle;
-      if (!model || !handle) return () => undefined;
+      if (!model || !handle) {
+        // A watch that never attached is the other silence: the graph then never hears about
+        // anything, and looks exactly like a graph whose data has not changed.
+        trace('graph', 'watch:not-attached', {
+          entity: request.entity,
+          model: Boolean(model),
+          handle: Boolean(handle),
+        });
+        return () => undefined;
+      }
 
       const options = queryOptions(request);
       // A read whose scope cannot be resolved reads as nothing; watching it would be a subscription
       // to a question with no answer.
       if (!options) return () => undefined;
+      trace('graph', 'watch', { entity: request.entity, parent: (options as { parent?: { id?: string } }).parent?.id });
 
       let live = true;
       /*
@@ -373,12 +383,34 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
       }
 
       const model = modelFor(entity, dataset);
-      if (!model) return [];
+      /*
+        Both of these return nothing and say nothing, which is how a board comes to draw an empty
+        canvas over a space full of records. The seed cannot report them — it never learns *why* a
+        read was empty — so they are traced here, where the reason is known.
+
+        Turned on with `localStorage.setItem('we:trace', 'graph')` and a reload; every read then
+        prints its entity, the parent it asked under and how many rows came back. See
+        `installConsoleTrace`.
+      */
+      if (!model) {
+        trace('graph', 'read:no-model', { entity, dataset });
+        return [];
+      }
 
       const options = queryOptions({ entity, dataset, where, order, limit, offset, include, scope });
-      if (!options) return [];
+      if (!options) {
+        trace('graph', 'read:unresolved-scope', { entity, scope });
+        return [];
+      }
 
       const rows = await model.findAll(handle, options);
+      trace('graph', 'read', {
+        entity,
+        rows: (rows as unknown[]).length,
+        parent: (options as { parent?: { id?: string } }).parent?.id,
+        where,
+        limit,
+      });
       return rows as Record<string, unknown>[];
     },
   };
