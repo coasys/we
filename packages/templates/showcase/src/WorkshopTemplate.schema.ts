@@ -1576,9 +1576,22 @@ export const workshopTemplate: TemplateSchema = {
     ],
   },
   type: 'Column',
-  // `minHeight` rather than `height`: a route taller than the viewport must grow rather than clip,
-  // or this node's background stops at the fold while the content keeps scrolling.
-  props: { bg: 'page', width: '100%', minHeight: '100%' },
+  /*
+    A **definite** height, which is the one thing a full-bleed route needs from its root.
+
+    This was `minHeight: '100%'`, so that a route taller than the viewport grew rather than clipped.
+    It does grow — and the box growing is not the same as the height being *definite*. A flex item's
+    post-flex main size counts as definite only where its container's main size is, and `height:
+    auto` with a min-height clamp is not: so the board route stretched down the screen while the
+    canvas inside it resolved `height: 100%` against an indefinite height, got `auto`, and measured
+    zero. The board grew; the percentage inside it did not.
+
+    Nothing is lost by pinning it. The hazard `minHeight` was avoiding — this node's background
+    stopping at the fold under a long task list — belongs to the scroll container above, which paints
+    `page` across its whole scrollable area and says so. A tall route overflows this box, is not
+    clipped (no `overflow` here), and scrolls in that container exactly as before.
+  */
+  props: { bg: 'page', width: '100%', height: '100%' },
   children: [switcher, { type: '$routes' }],
   routes: [
     /*

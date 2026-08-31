@@ -263,20 +263,29 @@ describe('the workshop template’s call selection', () => {
     expect(transcript?.module).toBe('transcribe');
   });
 
-  it('grows the board into the root rather than asking for a percentage of it', () => {
+  it('gives the board a height to be laid out in, the whole way down', () => {
     /*
-      The root is `minHeight: '100%'` — the task list and the calendar are taller than the viewport
-      and must grow — which leaves its specified height `auto`. A percentage height against an
-      auto-height parent is `auto`, so a board route asking for `height: '100%'` was as tall as its
-      content, and its content is a canvas that sizes itself from its container: the graph read its
-      row, built its node, positioned it, and laid it out into a box 0 pixels high.
+      Both halves, because fixing the lower one alone left the board exactly as blank.
 
-      Nothing on screen distinguishes that from a call that produced nothing, which is why it is
-      pinned rather than left to be noticed. A flex-grown item has a definite used height, so the
-      percentage inside it resolves.
+      The canvas sizes itself from its container, so every box above it has to have a height a
+      percentage can resolve against. The root was `minHeight: '100%'` — the task list and the
+      calendar are taller than the viewport and must grow — which leaves its specified height `auto`,
+      and a flex item's post-flex main size counts as definite only where its container's does. So
+      the board route stretched down the screen and the canvas inside it still resolved `height:
+      100%` to `auto`, to its content, to nothing: the graph read its row, built its node, positioned
+      it, and laid it out into a box 2009 pixels wide and 0 high.
+
+      Nothing on screen distinguishes that from a call that produced nothing, which is what it was
+      taken for. Pinned rather than left to be noticed again.
     */
+    const root = workshop as { props?: Record<string, unknown> };
     const board = (workshop.routes ?? []).find((route) => route.path === '/board') as
       { props?: Record<string, unknown> } | undefined;
+
+    // Definite, so what grows inside it can resolve against it. The scroll container above paints
+    // the page background across its whole scrollable area, so pinning this clips nothing.
+    expect(root.props?.height).toBe('100%');
+    expect(root.props?.minHeight).toBeUndefined();
 
     expect(board?.props?.flex).toBe('1');
     expect(board?.props?.height).toBeUndefined();
