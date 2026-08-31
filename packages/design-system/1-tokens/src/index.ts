@@ -79,7 +79,7 @@ export type { ZIndexLayer, ZIndexValue } from './z-index.js';
 export type { LayoutToken } from './layout.js';
 export { CHROMA_CEILING, CHROMA_PER_SATURATION, chromaTaper, RAMP, STATE_STEPS } from './color.js';
 export type { Polarity } from './color.js';
-export { AVATAR_TONES, avatarToneColor, avatarToneRing } from './color.js';
+export { AVATAR_TONE_ROLES, AVATAR_TONES, avatarToneColor, avatarToneLabel, avatarToneRing } from './color.js';
 export type { AvatarTone } from './color.js';
 export type { RoleToken } from './role.js';
 

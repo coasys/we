@@ -22,7 +22,8 @@ import type { AvatarInfo, AvatarStackProps } from './AvatarStack.types';
   same kind of face, and the two spellings had already diverged — scale positions here, role names
   there — so the same word meant two colours depending on which grammar you wrote it in.
 
-  Why the colours stay scale positions rather than becoming roles is argued at `avatarToneRing`.
+  They are fills now rather than the `-500` steps they started as — why, and why each tone carries
+  a label as well, is argued at `AvatarTone`.
 */
 function ringFor(avatar: AvatarInfo, fallback?: string): string | undefined {
   return avatar.tone ? avatarToneRing(avatar.tone) : fallback;

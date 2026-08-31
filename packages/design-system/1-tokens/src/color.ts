@@ -283,23 +283,74 @@ export const color = {
 /**
  * The tones a mark on a face may take — a ring around an avatar, or the disc of a badge on one.
  *
- * The five hue families, and deliberately *scale positions* rather than roles. A tone labels a
- * person or a place by a category the caller assigns — available, away, busy, in a call — and a
- * theme pinning `dangerText` is saying "make my error text this", not "recolour whoever is marked
- * busy". They still follow the hue and saturation parameters, so a retinted theme carries them
- * along; what they do not follow is a decision the theme made about something else.
- *
  * One vocabulary, two grammars: a component imports {@link avatarToneRing}, a schema names the tone
- * and lets the same `-500` step answer. It replaces two hand-written maps that had already drifted
- * apart — one on `AvatarStack` in scale positions, one in the rail's live ring in role names — plus
- * a third ring baked into `we-avatar` as a `selected` boolean that nothing ever set.
+ * and lets {@link AVATAR_TONE_ROLES} answer. It replaces two hand-written maps that had already
+ * drifted apart — one on `AvatarStack` in scale positions, one in the rail's live ring in role
+ * names — plus a third ring baked into `we-avatar` as a `selected` boolean that nothing ever set.
+ *
+ * ## These were scale positions, and are now fills
+ *
+ * The argument for `-500` was that a tone labels a person by a category the caller assigns, and a
+ * theme pinning `dangerText` means "make my error text this", not "recolour whoever is marked busy".
+ * That is right about *label* roles and wrong about fills, and three things settled it:
+ *
+ * - **The same fact came out two colours.** A live call rings the space in the rail and badges the
+ *   card in the list. Once the badge moved onto the `success` fill the two were visibly apart: in
+ *   `dark`, `success-500` lands at L 60.4% C 0.143 and the fill at L 75% C 0.177 — 15 lightness
+ *   points and a quarter more chroma, both in the same direction.
+ * - **Nothing could move them together.** The theme editor's "Status fills" sliders drive the fills;
+ *   a ring on a step could not hear them, so the control was inert against half the greens on
+ *   screen — the same defect as a variable every state rule reads and nothing can set.
+ * - **A ring is drawn over arbitrary imagery.** It is the one place more lightness and more chroma
+ *   are simply better, and a step is tapered and capped precisely to be neither.
+ *
+ * A step is also duller *by construction*, not by accident: `CHROMA_CEILING` caps it and
+ * {@link chromaTaper} pulls it toward grey as it approaches either end of the ramp. Both exist so a
+ * ramp reads as one family. A fill opts out of both, because being at full strength is its job.
+ *
+ * ## Why each tone carries a label as well as a fill
+ *
+ * A tone is painted in two places and only one of them is a bare colour: the ring is, and the
+ * badge disc has a glyph sitting on it. Pairing them here is what stops those disagreeing —
+ * `badgedAvatar` used to paint a `success-500` disc and colour its glyph `on-accent`, which is the
+ * label for a different fill entirely. It read correctly in `dark` by luck, because that theme pins
+ * `onAccent` to a near-black lavender that happens to work on light green; a `danger` disc would
+ * have put a near-black glyph on dark red.
+ *
+ * `neutral` is the one tone that is not a status hue. It means *offline* — no signal rather than a
+ * bad one — and offline peers are filtered before rendering, so it is the fallback for one slipping
+ * through. `surfaceInverse`/`onInverse` is the real fill-and-label pair for "deliberately opposite
+ * to the page", which is what an absent peer should look like, and unlike `borderStrong` it comes
+ * with a label a glyph can use.
  */
 export type AvatarTone = 'success' | 'warning' | 'danger' | 'primary' | 'neutral';
 
 export const AVATAR_TONES = ['success', 'warning', 'danger', 'primary', 'neutral'] as const;
 
+/**
+ * The fill each tone paints, and the label that sits on it — kebab-case, as both grammars spell it.
+ *
+ * `primary` maps to `accent` because that is what the *role* is called: the parameter names the
+ * role, not the hue family it is built from. The same rename `FILL_LIGHTNESS_KEY` makes.
+ */
+export const AVATAR_TONE_ROLES = {
+  success: { fill: 'success', label: 'on-success' },
+  warning: { fill: 'warning', label: 'on-warning' },
+  danger: { fill: 'danger', label: 'on-danger' },
+  primary: { fill: 'accent', label: 'on-accent' },
+  neutral: { fill: 'surface-inverse', label: 'on-inverse' },
+} as const satisfies Record<AvatarTone, { fill: string; label: string }>;
+
 /** The tone's colour, as a CSS value either grammar can use. */
-export const avatarToneColor = (tone: AvatarTone): string => `var(--we-color-${tone}-500)`;
+export const avatarToneColor = (tone: AvatarTone): string => `var(--we-role-${AVATAR_TONE_ROLES[tone].fill})`;
+
+/**
+ * What to colour a glyph sitting **on** the tone — never the tone itself.
+ *
+ * These are the corrected `on<Fill>` roles, so a glyph follows its own fill wherever a theme puts
+ * it. Returns the role name rather than a `var()`, since its one caller is a schema prop.
+ */
+export const avatarToneLabel = (tone: AvatarTone): string => AVATAR_TONE_ROLES[tone].label;
 
 /**
  * The tone as a ring.

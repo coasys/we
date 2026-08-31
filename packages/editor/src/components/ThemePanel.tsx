@@ -1019,10 +1019,27 @@ export function ThemePanel() {
   });
 
   function previewStrip() {
-    const chip = (bg: string, fg: string, text: string) => (
-      <Column bg={bg} color={fg} px="200" py="100" r="200" fontSize="100">
-        {text}
-      </Column>
+    /*
+      Real badges, in both appearances — not hand-drawn chips.
+
+      These were five `Column`s painting `danger-surface` on `danger-text` and so on, which is a
+      copy of `we-badge`'s own soft table in another package. Two things were wrong with that. It
+      could drift from the component it was standing in for, which is the failure this repo keeps
+      finding; and because every chip was a *tint*, the preview showed no fill anywhere — so the
+      "Status fills" sliders below had nothing on screen to move, and reasonably read as broken.
+
+      Both rows, because the two appearances are the two halves of the status palette and a theme
+      author is choosing for both at once: `soft` shows what `*-surface` and `*-text` do, `solid`
+      shows the fills and their corrected labels — the ones the sliders drive.
+    */
+    const badgeRow = (appearance: 'soft' | 'solid') => (
+      <Row gap="100" wrap ay="center">
+        {(['neutral', 'primary', 'success', 'warning', 'danger'] as const).map((variant) => (
+          <we-badge variant={variant} appearance={appearance} size="xs">
+            {variant}
+          </we-badge>
+        ))}
+      </Row>
     );
     return (
       <div ref={setPreviewEl} style={{ 'border-radius': tokenVar('radius', '300'), overflow: 'hidden' }}>
@@ -1049,12 +1066,16 @@ export function ThemePanel() {
               </we-button>
             </Row>
             <we-input size="sm" placeholder="An input…" />
-            <Row gap="100" wrap>
-              {chip('danger-surface', 'danger-text', 'Danger')}
-              {chip('success-surface', 'success-text', 'Success')}
-              {chip('warning-surface', 'warning-text', 'Warning')}
-              {chip('accent-muted', 'accent-text', 'Accent')}
-            </Row>
+            <Column gap="100">
+              <we-text fontSize="100" color="text-faint">
+                Soft
+              </we-text>
+              {badgeRow('soft')}
+              <we-text fontSize="100" color="text-faint">
+                Solid
+              </we-text>
+              {badgeRow('solid')}
+            </Column>
           </Column>
           <Row gap="200" ay="center">
             <Column bg="surface-raised" px="300" py="200" r="300" shadow="md" fontSize="100" color="text">
@@ -1217,7 +1238,7 @@ export function ThemePanel() {
       /*
         No background of its own: the dock frame paints the panel's surface.
 
-        Every dock is wrapped in a frame that sets `surface-sunken`, precisely so a docked panel does
+        Every dock is wrapped in a frame that sets `page`, precisely so a docked panel does
         not have to decide what it is made of — see the note in dockRegistry.ts. The editor's panels
         painted `surface-raised` over the top of it, ten lightness points above the page, so they read
         as a different material from every module panel docked at the same edge.
@@ -1324,14 +1345,24 @@ export function ThemePanel() {
 
                 It cannot simply go transparent — being sticky, the sections scroll *under* it, and
                 anything see-through would show them sliding past behind the preview. So it has to
-                paint something, and the something has to be whatever the panel body is: it was
-                `surface`, which sat a step above the body and made the preview read as a card
-                floating in a panel rather than as part of it.
+                paint something, and the something has to be whatever the panel body is.
 
-                Tied to the frame's choice by hand, which is the weak part. If the dock frame ever
-                paints something else this has to follow, and nothing enforces that.
+                **`page`, because that is what the dock frame paints** — see the note on `bg` in
+                `dockRegistry.ts`. This said `surface-sunken`, which was right when it was written
+                and stopped being right when the frame moved off that role; `surface-sunken` is
+                `page` minus lightness, so the preview came out darker than every section under it
+                and read as a well cut into the panel.
+
+                That is the second time this drifted, and the last note here predicted it: the tie to
+                the frame's choice is by hand and nothing enforces it. It still is — the frame is in
+                `@we/app-shell`, which depends on this package, so the constant cannot be shared
+                without inverting the dependency. Worth doing if it moves a third time.
+
+                One case this does not follow: a *floating* panel's frame is translucent glass, and
+                this band stays opaque over it. Matching that would mean reading the dock's floating
+                state, which is the same import that is not available.
               */
-              bg="surface-sunken"
+              bg="page"
               borderBottom={`1px solid ${tokenVar('color', 'neutral-100')}`}
               pb="300"
               pt="300"

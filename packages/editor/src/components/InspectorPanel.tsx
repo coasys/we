@@ -491,7 +491,7 @@ export function InspectorPanel() {
         No background of its own: the dock frame paints the panel's surface.
 
         The same correction the code and theme panels already carry. Every dock is wrapped in a frame
-        that sets `surface-sunken`, precisely so a docked panel does not have to decide what it is
+        that sets `page`, precisely so a docked panel does not have to decide what it is
         made of — see the note in dockRegistry.ts. This one still painted `surface` over the top, so
         it sat lighter than every other panel docked at the same edge and read as a different
         material. It was the last of the three.
