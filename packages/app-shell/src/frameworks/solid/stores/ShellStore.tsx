@@ -1168,7 +1168,17 @@ export function ShellStoreProvider(props: ParentProps) {
           anchor: 'dock-right',
           order: panel.order,
           id: `dock:${dockId}`,
-          node: dockFrame(entry, panel.node as SchemaNode),
+          /*
+            The frame wraps a *marker*, not the node.
+
+            Everything in the slot registry is drawn with the chrome bag, because everything in it is
+            chrome — including this frame, whose grip and menus name `host-layout` members no
+            template may have. The node inside is the template's, and rendered through the same bag
+            it could name `runtimeStore`, `editorStore` and the rest: an escalation reached by
+            declaring a panel rather than by being granted anything. `TemplatePanelBody` looks the
+            declaration up by id and renders it with the template's own bag.
+          */
+          node: dockFrame(entry, { type: 'TemplatePanelBody', props: { panelId: panel.id } }),
         });
       }
     }

@@ -8,6 +8,7 @@
  * being wrong. Neither needs a router to decide, so neither needs one to test.
  */
 import { activePanels } from '@shared/panelScope';
+import { type DockEntry, dockFrame } from '@shared/registries/dockRegistry';
 import type { TemplatePanel } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
@@ -59,5 +60,43 @@ describe('the panels on screen', () => {
     const view = [panel('legend', 'graph'), panel('stray', 'board')];
 
     expect(ids(activePanels([], view, ['space', 'abc', 'graph']))).toEqual(['legend']);
+  });
+});
+
+/**
+ * A panel's frame and its contents have different authors, so they get different grants.
+ *
+ * The frame is chrome — its grip, its snap menu and its reset name `host-layout` members, which the
+ * space tier does not have. Its contents are the template's. Rendered as one tree through the chrome
+ * bag, as it was, a template's panel node could name `runtimeStore`, `editorStore` and every other
+ * chrome-only member: an escalation reached by *declaring a panel*, which is the one thing
+ * `templateSurface` exists to prevent.
+ *
+ * Asserted on what the frame wraps, because the alternative is asserting about grants a render would
+ * have to be mounted to observe.
+ */
+describe('a template panel’s contents', () => {
+  it('are wrapped in a body the host renders with the template’s own bag', () => {
+    const frame = dockFrame(
+      { id: 'template:extraction', moduleId: 'template', edge: 'edge:extraction' } as unknown as DockEntry,
+      { type: 'TemplatePanelBody', props: { panelId: 'extraction' } },
+    );
+
+    const json = JSON.stringify(frame);
+    expect(json).toContain('TemplatePanelBody');
+    // The id, not the node: a node passed as a prop goes through the prop resolver on the way in,
+    // and freezes the declaration at the moment the frame was registered.
+    expect(json).toContain('"panelId":"extraction"');
+  });
+
+  it('the frame itself still names the host-layout members it needs', () => {
+    // The other half of the split: taking chrome grants away from the *frame* would break the grip
+    // and the position menu, which is why the fix is two bags rather than one demotion.
+    const frame = dockFrame(
+      { id: 'template:extraction', moduleId: 'template', edge: 'edge:extraction' } as unknown as DockEntry,
+      { type: 'TemplatePanelBody', props: { panelId: 'extraction' } },
+    );
+
+    expect(JSON.stringify(frame)).toContain('shellStore.beginDockMove');
   });
 });

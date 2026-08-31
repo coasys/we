@@ -2,6 +2,7 @@ import { queryIRFlag } from '@shared/queryIRFlag';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry';
 import { onSlotRegistryChanged, slotRegistry } from '@shared/registries/slotRegistry';
+import { provideTemplateBag } from '@shared/registries/templateBag';
 import { buildTemplateBag, CHROME_TIER, SPACE_TIER } from '@shared/registries/templateSurface';
 import { hostSourceBag } from '@shared/sources';
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
@@ -427,6 +428,10 @@ export default function TemplateProvider() {
     invented for: it arrives from a stranger, so whether it asks before deleting is the stranger's
     decision, and this takes that decision away from them.
   */
+  /*
+    Lent to `TemplatePanelBody`, which renders a template's panel contents inside a chrome-authored
+    frame. Grants follow authorship, not render site — see `shared/registries/templateBag.ts`.
+  */
   const templateBag = buildTemplateBag(stores, {
     grants: SPACE_TIER,
     onDestructive: (path, args) => shellStore.requestDestructive(path, args),
@@ -434,6 +439,8 @@ export default function TemplateProvider() {
     // members reach past the space on screen — see `ModuleStoreSurface`.
     moduleChromeOnly: moduleRegistry.chromeOnlyStoreMembers(),
   });
+
+  onCleanup(provideTemplateBag(templateBag));
 
   /*
     What a drag looks like. Registered from here because it is the same kind of knowledge as
