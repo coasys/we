@@ -6011,6 +6011,18 @@
         "hasActivity": {
           "type": "boolean"
         },
+        "runningPasses": {
+          "type": "array"
+        },
+        "settledPasses": {
+          "type": "array"
+        },
+        "settledCount": {
+          "type": "number"
+        },
+        "detailWithheld": {
+          "type": "boolean"
+        },
         "capable": {
           "type": "boolean"
         }

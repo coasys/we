@@ -1602,57 +1602,18 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      */
     watchProblem,
 
-    // ── Live extraction ──────────────────────────────────────────────────────
     /*
-      Forwarded from the host rather than tracked here, and every field already a string.
+      ── Live extraction ──────────────────────────────────────────────────────
 
-      Three reasons this is a pass-through and not state. The feed covers passes this module did not
-      start — a standing watch runs whether or not anyone has this panel open, and a peer's pass is
-      not this module's to know about at all. It has to survive the panel closing, since the bar
-      that renders it lives under the call bar rather than in the transcript. And the strings it
-      carries ("0:42", "Extracted 3 records") need arithmetic and a clock, neither of which a schema
-      has.
+      The feed, its two halves, its counts and the sharing footnote used to be published here, as
+      pass-throughs to the host's own interpretation state. They are `interpretationStore`'s now,
+      and this module names none of them.
 
-      Empty means nothing is running. It is indistinguishable from a backend that cannot report
-      progress, and deliberately so — the bar's `hasActivity` guard is the same either way.
+      Not tidying: they were a *second* publisher of one capability's state, so the same rows had
+      two addresses and nothing chose which was canonical — and re-exporting another capability is
+      how a module comes to depend on one. What is left below is transcription: a microphone, a
+      buffer, the record this session writes into, and who else is recording.
     */
-    activity: () => interpretation?.activity() ?? [],
-    /**
-     * The passes still in flight, and the ones already finished.
-     *
-     * Split rather than filtered in the schema because the two are shown differently: running
-     * passes are always listed, finished ones fold behind a count. A long call runs a pass every
-     * few minutes and each completed one used to stay on screen, so the bar grew all conversation
-     * and pushed the call's own chrome down to make room for a history nobody asked to see.
-     */
-    runningPasses: () => (interpretation?.activity() ?? []).filter((pass) => pass.running),
-    settledPasses: () => (interpretation?.activity() ?? []).filter((pass) => !pass.running),
-    activityCount: () => (interpretation?.activity() ?? []).filter((pass) => pass.running).length,
-    settledCount: () => (interpretation?.activity() ?? []).filter((pass) => !pass.running).length,
-    /**
-     * Whether a peer's row is on show and the space has chosen not to share what is behind it.
-     *
-     * What the bar's one footnote is gated on. The explanation used to be a tooltip on every row,
-     * which put it where nobody reads and repeated it per pass; the fact it conveys — a peer's
-     * exchange never left their machine, and a space can choose otherwise — is worth saying exactly
-     * once, and only while that choice is the reason.
-     *
-     * The *setting*, deliberately, rather than "a peer row with nothing to open". The latter is
-     * what this used to test, and it is true for reasons the footnote does not explain: a peer's
-     * pass that has not reached the model yet, a skipped pass that never had an exchange, a row
-     * broadcast before the switch synced to its runner. Every one of those kept the note on screen
-     * after somebody had turned sharing on — which is the one moment it is plainly wrong.
-     */
-    detailWithheld: () =>
-      !(interpretation?.detailShared?.() ?? false) && (interpretation?.activity() ?? []).some((pass) => !pass.mine),
-    /**
-     * Whether the status bar should exist at all.
-     *
-     * Counts settled rows too, which the running count deliberately does not: a pass that just
-     * finished is the moment its result is worth reading, and a bar that vanished on completion
-     * would take "Extracted 3 records" with it before anyone saw it.
-     */
-    hasActivity: () => (interpretation?.activity() ?? []).length > 0,
 
     /**
      * The band this module's chrome adds to the top of the window, for panels to keep clear of.

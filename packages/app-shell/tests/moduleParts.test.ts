@@ -11,7 +11,7 @@
 import { resolveParts } from '@shared/registries/moduleParts';
 import { moduleRegistry } from '@shared/registries/moduleRegistry';
 import type { ModuleDefinition } from '@we/module-shared';
-import type { SchemaNode } from '@we/schema-shared';
+import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const feed: SchemaNode = {
@@ -34,8 +34,11 @@ const definition = {
   },
 } as unknown as ModuleDefinition;
 
+/** What every module is registered against here; nothing in these tests depends on either name. */
+const host = { backend: 'ad4m', framework: 'solid' };
+
 function withModule<T>(run: () => T): T {
-  moduleRegistry.register(definition);
+  moduleRegistry.register(definition, host);
   try {
     return run();
   } finally {
@@ -43,7 +46,7 @@ function withModule<T>(run: () => T): T {
   }
 }
 
-const place = (props: Record<string, unknown>): SchemaNode => ({
+const place = (props: Record<string, SchemaProp>): SchemaNode => ({
   type: 'Column',
   children: [{ type: '$part', props }],
 });
@@ -93,7 +96,7 @@ describe('placing a module part', () => {
         },
       },
     } as unknown as ModuleDefinition;
-    moduleRegistry.register(mentions);
+    moduleRegistry.register(mentions, host);
     try {
       const resolved = resolveParts(place({ id: 'demo.feed', subject: 'other' }));
       expect(JSON.stringify(resolved)).toContain('modules.demo.collectionId ? 1 : 2');

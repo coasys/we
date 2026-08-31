@@ -961,6 +961,10 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     activity: state('presence'),
     runningCount: state('presence'),
     hasActivity: state('presence'),
+    runningPasses: state('presence'),
+    settledPasses: state('presence'),
+    settledCount: state('presence'),
+    detailWithheld: state('presence'),
     dismissSettled: action('view-state'),
   },
 

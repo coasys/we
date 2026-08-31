@@ -436,7 +436,7 @@ const passEntry: SchemaNode = {
 /** The passes still in flight. Always listed — this is the half somebody is waiting on. */
 const runningList: SchemaNode = {
   type: '$each',
-  props: { items: { $: 'modules.transcribe.runningPasses' }, as: 'pass' },
+  props: { items: { $: 'interpretationStore.runningPasses' }, as: 'pass' },
   children: [passEntry],
 };
 
@@ -455,7 +455,7 @@ const runningList: SchemaNode = {
 const settledSection: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $: 'modules.transcribe.settledCount' },
+    condition: { $: 'interpretationStore.settledCount' },
     then: {
       type: 'Column',
       props: { gap: '200', width: '100%' },
@@ -481,9 +481,9 @@ const settledSection: SchemaNode = {
                   type: 'we-text',
                   props: { fontSize: '200', color: 'text-muted', flex: '1', textAlign: 'left' },
                   children: [
-                    { $: 'modules.transcribe.settledCount' },
+                    { $: 'interpretationStore.settledCount' },
                     ' ',
-                    { $: "plural(modules.transcribe.settledCount, 'extraction processed', 'extractions processed')" },
+                    { $: "plural(interpretationStore.settledCount, 'extraction processed', 'extractions processed')" },
                   ],
                 },
                 {
@@ -510,7 +510,7 @@ const settledSection: SchemaNode = {
               children: [
                 {
                   type: '$each',
-                  props: { items: { $: 'modules.transcribe.settledPasses' }, as: 'pass' },
+                  props: { items: { $: 'interpretationStore.settledPasses' }, as: 'pass' },
                   children: [passEntry],
                 },
               ],
@@ -584,7 +584,7 @@ const activityLocalState = {
 export const extractionActivity: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $: 'modules.transcribe.hasActivity' },
+    condition: { $: 'interpretationStore.hasActivity' },
     then: {
       type: 'Column',
       $localState: activityLocalState,
@@ -614,7 +614,7 @@ export const extractionActivity: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $: 'modules.transcribe.detailWithheld' },
+            condition: { $: 'interpretationStore.detailWithheld' },
             then: {
               type: 'we-text',
               props: { variant: 'footnote', color: 'text-faint' },
@@ -656,7 +656,7 @@ export const extractionActivity: SchemaNode = {
 export const extractionSignal: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $: 'modules.transcribe.runningCount' },
+    condition: { $: 'interpretationStore.runningCount' },
     // Slides down from behind the bar rather than appearing. The bar is a fixed object somebody is
     // already looking at, and something materialising a few pixels under it reads as a glitch.
     enterTransition: [
@@ -684,23 +684,23 @@ export const extractionSignal: SchemaNode = {
             // One pass reads as itself — the label is already a whole clause ("Anna is waiting on
             // the model"). Several collapse to a count, because naming them all is the growth this
             // exists to avoid.
-            condition: { $: 'modules.transcribe.runningCount == 1' },
+            condition: { $: 'interpretationStore.runningCount == 1' },
             then: {
               type: 'we-text',
               props: { variant: 'label', truncate: true },
-              children: [{ $: 'first(modules.transcribe.activity).label' }],
+              children: [{ $: 'first(interpretationStore.activity).label' }],
             },
             else: {
               type: 'we-text',
               props: { variant: 'label', truncate: true },
-              children: [{ $: '`${modules.transcribe.runningCount} extractions running`' }],
+              children: [{ $: '`${interpretationStore.runningCount} extractions running`' }],
             },
           },
         },
         {
           type: 'we-text',
           props: { variant: 'footnote', color: 'text-muted' },
-          children: [{ $: 'first(modules.transcribe.activity).elapsed' }],
+          children: [{ $: 'first(interpretationStore.activity).elapsed' }],
         },
       ],
     },
