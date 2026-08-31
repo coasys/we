@@ -262,4 +262,23 @@ describe('the workshop template’s call selection', () => {
     expect(transcript?.node).toBeDefined();
     expect(transcript?.module).toBe('transcribe');
   });
+
+  it('grows the board into the root rather than asking for a percentage of it', () => {
+    /*
+      The root is `minHeight: '100%'` — the task list and the calendar are taller than the viewport
+      and must grow — which leaves its specified height `auto`. A percentage height against an
+      auto-height parent is `auto`, so a board route asking for `height: '100%'` was as tall as its
+      content, and its content is a canvas that sizes itself from its container: the graph read its
+      row, built its node, positioned it, and laid it out into a box 0 pixels high.
+
+      Nothing on screen distinguishes that from a call that produced nothing, which is why it is
+      pinned rather than left to be noticed. A flex-grown item has a definite used height, so the
+      percentage inside it resolves.
+    */
+    const board = (workshop.routes ?? []).find((route) => route.path === '/board') as
+      { props?: Record<string, unknown> } | undefined;
+
+    expect(board?.props?.flex).toBe('1');
+    expect(board?.props?.height).toBeUndefined();
+  });
 });

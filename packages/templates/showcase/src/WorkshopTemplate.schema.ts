@@ -978,7 +978,20 @@ const board: SchemaNode = {
  */
 const boardBody: Omit<RouteSchema, 'path'> = {
   type: 'Column',
-  props: { width: '100%', height: '100%' },
+  /*
+    `flex: 1`, not `height: '100%'` — and the difference is the whole board.
+
+    The root is `minHeight: '100%'`, because the task list and the calendar are taller than the
+    viewport and must grow. That leaves its *specified* height `auto`, and a percentage height
+    against an auto-height parent is `auto`: so this box was as tall as its content, and its content
+    is a canvas that sizes itself from its container. The graph read its row, built its node, placed
+    it and laid it out into a box 2009 pixels wide and 0 high — a blank rectangle indistinguishable
+    from a call that produced nothing, which is where three sittings of this went.
+
+    A flex-grown item has a definite used height, so the percentage inside it resolves. This is the
+    chain the graph view in `templates/views` uses, and the one the panels above already use.
+  */
+  props: { width: '100%', flex: '1', minHeight: '0', overflow: 'hidden' },
   $localState: { connecting: { type: 'boolean', initial: false } },
   children: [
     {
