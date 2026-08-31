@@ -16,6 +16,9 @@ export * from './schemas';
 export * from './integrationComposer';
 export * from './initializeIntegrations';
 
+// Module registration — lets deployments add their own modules before boot.
+export { bundledModules, type BundledModuleFactory } from './registries/bundledModules';
+
 // Utils
 export * from './utils';
 
