@@ -320,6 +320,13 @@ export interface TextBlockRecord extends WeNodeRecord {
   version: number;
 }
 
+export interface TopicRecord extends WeNodeRecord {
+  name: string;
+  description: string;
+  icon: string;
+  color: string;
+}
+
 export interface ThemeRecord extends WeNodeRecord {
   name: string;
   description: string;

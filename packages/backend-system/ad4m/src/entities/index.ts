@@ -36,6 +36,7 @@ export * from './TagBlock';
 export * from './TaskBlock';
 export * from './Template';
 export * from './TextBlock';
+export * from './Topic';
 export * from './Theme';
 export * from './TypeStyle';
 export * from './VideoBlock';

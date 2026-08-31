@@ -2193,6 +2193,13 @@ TextBlock extends WeNode:
   - marks: json [we://marks]
   - version: number [we://version]
 
+Topic extends WeNode:
+  Fields:
+  - name: string (required) [we://name]
+  - description: string [we://description]
+  - icon: string [we://icon]
+  - color: string [we://color]
+
 Theme extends WeNode:
   Fields:
   - name: string [we://name]

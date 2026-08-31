@@ -5240,6 +5240,38 @@
       "relations": []
     },
     {
+      "name": "Topic",
+      "className": "Topic",
+      "extends": "WeNode",
+      "fields": [
+        {
+          "name": "name",
+          "type": "string",
+          "predicate": "we://name",
+          "required": true
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "predicate": "we://description",
+          "required": false
+        },
+        {
+          "name": "icon",
+          "type": "string",
+          "predicate": "we://icon",
+          "required": false
+        },
+        {
+          "name": "color",
+          "type": "string",
+          "predicate": "we://color",
+          "required": false
+        }
+      ],
+      "relations": []
+    },
+    {
       "name": "Theme",
       "className": "Theme",
       "extends": "WeNode",

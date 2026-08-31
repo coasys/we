@@ -15,6 +15,7 @@ import { LocationBlock } from './LocationBlock';
 import { TagBlock } from './TagBlock';
 import { TaskBlock } from './TaskBlock';
 import { TextBlock } from './TextBlock';
+import { Topic } from './Topic';
 import { VideoBlock } from './VideoBlock';
 
 // The neutral contract, on the package's public surface. The conformance assertions that hold the
@@ -79,6 +80,7 @@ export const CORE_DEFS: Record<string, CoreEntityDef> = {
   TaskBlock,
   Template,
   TextBlock,
+  Topic,
   Theme,
   TypeStyle,
   VideoBlock,
