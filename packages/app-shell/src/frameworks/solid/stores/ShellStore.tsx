@@ -827,7 +827,23 @@ export function ShellStoreProvider(props: ParentProps) {
 
   /** A declaration by the dock id it resolves to, for the placement chain to consult. */
   const declarationFor = createMemo(() => {
-    dockRegistryVersion();
+    /*
+      **No `dockRegistryVersion()` here, and it must stay that way.**
+
+      `registerHostDockStore` announces to the dock registry, and the effect that registers an
+      interface's own panels calls it on every run — while reading this memo, through
+      `placementKey`, for each panel it registers. Taking the announcement as a dependency therefore
+      makes that effect invalidate itself: register, announce, re-run, register, until the stack
+      gives out.
+
+      Which is why it only ever happened on an interface that declares panels of its own. The read
+      is inside the loop over those panels, so an interface with none never depends on this and
+      never loops — the default template was fine and the workshop froze for five seconds and left
+      its docks half-built.
+
+      `dockIdFor` resolves from module definitions precisely so this memo needs nothing reactive: a
+      module's docks and their names are fixed when it registers.
+    */
     const byDock: Record<string, TemplatePanel> = {};
     for (const panel of declaredPanels()) {
       const id = dockIdFor(panel);
