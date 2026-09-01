@@ -755,6 +755,13 @@ const moduleSettingsSection: SchemaNode = {
       props: { gap: '300', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
       children: [
         {
+          type: 'we-text',
+          props: { variant: 'footnote', color: 'text-faint' },
+          children: [
+            'Two answers per row where both apply: yours here, then the community’s. Neither can switch on what the other has switched off.',
+          ],
+        },
+        {
           type: '$each',
           props: { items: { $: 'spaceStore.spaceModuleSettings' }, as: 'setting' },
           children: [
@@ -816,6 +823,40 @@ const moduleSettingsSection: SchemaNode = {
                     },
                   },
                 },
+                /*
+                  Mine, beside the community's — the two-answers-per-row shape the module list uses,
+                  and for the same reason: they are answers to different questions about one thing,
+                  and two rows with the same label reads as a duplicate rather than as a pair.
+
+                  Found rather than iterated, because the two lists are filtered by level and a row
+                  exists in each only if that level may decide it. A setting the community owns alone
+                  simply has nothing here.
+                */
+                {
+                  type: '$if',
+                  props: {
+                    condition: {
+                      $: 'find(spaceStore.myModuleSettings, { group: setting.group, key: setting.key })',
+                    },
+                    then: {
+                      type: 'we-switch',
+                      props: {
+                        size: 'sm',
+                        title: 'Just for you, in this space',
+                        checked: {
+                          $: 'find(spaceStore.myModuleSettings, { group: setting.group, key: setting.key }).value',
+                        },
+                        disabled: {
+                          $: 'find(spaceStore.myModuleSettings, { group: setting.group, key: setting.key }).locked',
+                        },
+                        onChange: {
+                          $action: 'spaceStore.setMyModuleSetting',
+                          args: [{ $: 'setting.group' }, { $: 'setting.key' }, { $: 'event.detail' }],
+                        },
+                      },
+                    },
+                  },
+                },
                 {
                   type: '$if',
                   props: {
@@ -824,6 +865,7 @@ const moduleSettingsSection: SchemaNode = {
                       type: 'we-switch',
                       props: {
                         size: 'sm',
+                        title: 'For everyone in this space',
                         checked: { $: 'setting.value' },
                         disabled: { $: '!space.canAdminister || setting.locked' },
                         // Bare `event.detail` — an operator around it would resolve at render time,
