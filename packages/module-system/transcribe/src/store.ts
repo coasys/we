@@ -714,6 +714,23 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   const hasTargets = (collection: string): boolean => targetsFor(collection).some((t) => t.selected);
 
   /**
+   * The record a decision about what to extract is written against.
+   *
+   * `collectionId` is what this agent is *writing into*, and it is null until somebody speaks — the
+   * transcriber adopts the call's record on the first flush. So a call that had just started had no
+   * collection, which meant the chips saying what would be extracted rendered against `''`: every
+   * candidate came back unnarrowed and looking selected, and every press was refused by a guard that
+   * said nothing. Choosing what a meeting looks for, before the meeting, is exactly when somebody
+   * wants to.
+   *
+   * The call's own record is there from the first second — `startCall` writes it and publishes it on
+   * presence — which is the same correction `CALL` in the workshop template already makes for the
+   * same reason. Falling back to it rather than replacing `collectionId`, because once there *is* a
+   * transcript the two are the same record and the adopted one is the more direct answer.
+   */
+  const targetCollection = (): string => collectionId() ?? myCall()?.recordId ?? '';
+
+  /**
    * One extraction pass over a named collection.
    *
    * Flushes only when the named collection is the live one, which is exactly right: pressing
@@ -1581,6 +1598,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      */
     canExtract: () =>
       Boolean(collectionId()) && (interpretation?.available() ?? false) && hasTargets(collectionId() ?? ''),
+
     /**
      * What this call can have extracted, and whether each is on — `{ entity, label, selected }`.
      *
@@ -1589,7 +1607,16 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * which is a real state worth saying rather than an error.
      */
     extractionTargets: () =>
-      targetsFor(collectionId() ?? '').map((target) => ({ ...target, label: humanise(target.entity) })),
+      targetsFor(targetCollection()).map((target) => ({ ...target, label: humanise(target.entity) })),
+    /**
+     * Whether a press on one of those would actually record anything.
+     *
+     * Both halves fail silently and differently: no call means there is nothing to record a choice
+     * against, and a host with no `setTarget` cannot record one at all. Published so a surface can
+     * say which rather than offering chips that absorb the click — which is what they did, and what
+     * made this look broken rather than unavailable.
+     */
+    canChooseTargets: () => Boolean(targetCollection()) && typeof interpretation?.setTarget === 'function',
     /**
      * Include or exclude one model from what **this call** extracts, for everyone in it.
      *
@@ -1603,7 +1630,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * the new list.
      */
     toggleExtractionTarget: async (entity: string) => {
-      const live = collectionId();
+      const live = targetCollection();
       if (!live || typeof interpretation?.setTarget !== 'function') return;
       const current = targetsFor(live).find((target) => target.entity === entity);
       try {

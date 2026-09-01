@@ -1370,3 +1370,65 @@ describe('what is shown while an utterance is being written', () => {
     expect(h.store.pending()).toBe('second');
   });
 });
+
+/**
+ * Choosing what a call looks for, before it has said anything.
+ *
+ * `collectionId` is the record this agent is *writing into*, and it is null until somebody speaks —
+ * the transcriber adopts the call's record on the first flush. So a call that had just started had
+ * no collection: the chips rendered against `''`, every candidate came back unnarrowed and looking
+ * selected, and every press hit a guard that returned without a word. Which is exactly when somebody
+ * wants to choose — before the conversation, not after it.
+ */
+describe('what a call extracts, before anybody has spoken', () => {
+  const targets = [
+    { entity: 'TaskBlock', selected: true },
+    { entity: 'EventBlock', selected: false },
+  ];
+
+  function withInterpretation(peers: Peer[]) {
+    const set: { collection: string; entity: string; on: boolean }[] = [];
+    const h = harness(peers, {
+      interpretation: {
+        available: () => true,
+        targets: (collection: string) => (collection ? targets : []),
+        setTarget: async (collection: string, entity: string, on: boolean) => {
+          set.push({ collection, entity, on });
+        },
+      },
+    });
+    return { h, set };
+  }
+
+  it('records a choice against the call’s own record, with no transcript yet', async () => {
+    const { h, set } = withInterpretation([peer(ME, { type: 'call', id: CALL, record: RECORD })]);
+
+    expect(h.store.canChooseTargets()).toBe(true);
+    expect(h.store.extractionTargets()).toHaveLength(2);
+
+    await h.store.toggleExtractionTarget('EventBlock');
+
+    // The call's record, which presence has carried since the call started — not the collection the
+    // transcriber has not adopted yet.
+    expect(set).toEqual([{ collection: RECORD, entity: 'EventBlock', on: true }]);
+  });
+
+  it('says it cannot rather than absorbing the press when there is no call', () => {
+    // Outside a call there is nothing to record a choice against. That was a guard in the store that
+    // returned in silence, so the chips took the click and did nothing — which reads as broken.
+    const { h } = withInterpretation([]);
+
+    expect(h.store.canChooseTargets()).toBe(false);
+  });
+
+  it('says it cannot on a host that has no way to store one', async () => {
+    const h = harness([peer(ME, { type: 'call', id: CALL, record: RECORD })], {
+      interpretation: { available: () => true, targets: () => targets },
+    });
+
+    expect(h.store.canChooseTargets()).toBe(false);
+    // And the action stays safe to call: a surface that offers it anyway does nothing, rather than
+    // throwing on a missing method.
+    await expect(h.store.toggleExtractionTarget('EventBlock')).resolves.toBeUndefined();
+  });
+});

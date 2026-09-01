@@ -388,6 +388,25 @@ export const extractionTargets: SchemaNode = {
       },
     },
     /*
+      Why the chips below cannot be pressed, when they cannot.
+
+      A choice is recorded against the call's own record, so outside a call there is nothing to
+      record it on — and a host with no way to store one cannot either. Both used to be a guard in
+      the store that returned without a word, so the chips took the click and did nothing, which
+      reads as broken rather than as unavailable. They are disabled now, and this says which.
+    */
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'count(modules.transcribe.extractionTargets) && !modules.transcribe.canChooseTargets' },
+        then: {
+          type: 'we-text',
+          props: { variant: 'footnote', color: 'text-faint', italic: true },
+          children: ["This space's default. Join a call to choose what that conversation looks for."],
+        },
+      },
+    },
+    /*
       One chip per model, ticked when this call is looking for it.
 
       A group decision rather than a private one, and it has to be: the same list drives
@@ -420,6 +439,8 @@ export const extractionTargets: SchemaNode = {
                   fading along with the card they were anchored to.
                 */
                 variant: { $: "target.selected ? 'secondary' : 'outline'" },
+                // Refused visibly rather than in the store, where it was refused in silence.
+                disabled: { $: '!modules.transcribe.canChooseTargets' },
                 onClick: {
                   $action: 'modules.transcribe.toggleExtractionTarget',
                   args: [{ $: 'target.entity' }],
