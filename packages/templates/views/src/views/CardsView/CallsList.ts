@@ -270,7 +270,7 @@ export const callsList: SchemaNode = {
                                 {
                                   type: '$if',
                                   props: {
-                                    condition: { $: 'call.id == modules.transcribe.liveCollectionId' },
+                                    condition: { $: 'call.id == modules.call.callRecordId' },
                                     // `solid`: a call happening right now is the news on this card,
                                     // not a note about it. The soft pair is a dark tint under pale
                                     // text, which is the treatment "Retired" and "Not a WE space"
@@ -435,7 +435,7 @@ export const callsList: SchemaNode = {
                               type: '$if',
                               props: {
                                 condition: {
-                                  $: 'modules.call.canCall && (!modules.call.active || call.id == modules.transcribe.liveCollectionId)',
+                                  $: 'modules.call.canCall && (!modules.call.active || call.id == modules.call.callRecordId)',
                                 },
                                 // A real tooltip rather than the button's `title`, which the browser draws
                                 // itself: unthemed, after its own delay, and never on a keyboard focus.

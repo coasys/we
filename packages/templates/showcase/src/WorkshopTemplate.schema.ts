@@ -50,7 +50,7 @@
  *   *joins a call* when there is not one. Placed, never opened.
  */
 import type { RouteSchema, SchemaNode, SchemaProp, TemplateSchema } from '@we/schema-shared';
-import { agentByline, confirmModal, emptyState, gatePrompt } from '@we/template-kit';
+import { agentByline, confirmModal, emptyState } from '@we/template-kit';
 
 /**
  * What extraction is allowed to make from a transcript.
@@ -80,8 +80,18 @@ const EXTRACTED = ['TaskBlock', 'EventBlock'];
  * `/board/:callId` matches none of them, and every click landed on the catch-all with "Page not
  * found". A query value takes those characters as they are, which is why the host's own record
  * links are `…/record/<Entity>?id=<id>` and not a segment either.
+ *
+ * ## The call module, not the transcriber
+ *
+ * The fallback asks **the capability that owns the fact**. `modules.transcribe.liveCollectionId`
+ * means "the record I am writing into", and the transcriber only adopts the call's record when it
+ * first has something to write — so for the whole opening stretch of a meeting its honest answer is
+ * "nothing", and every surface here waited for somebody to speak before it would admit a call was
+ * happening. The record exists from the first second: `startCall` writes it before anyone joins and
+ * publishes it on presence. `callRecordId` is that, which is the question these surfaces are
+ * actually asking.
  */
-const CALL_EXPR = 'routeStore.params.call ? routeStore.params.call : modules.transcribe.liveCollectionId';
+const CALL_EXPR = 'routeStore.params.call ? routeStore.params.call : modules.call.callRecordId';
 const CALL = { $: CALL_EXPR };
 
 /** Whether the call on screen is the one being recorded, as opposed to one being looked back at. */
@@ -681,7 +691,7 @@ const continueCall: SchemaNode = {
   type: '$if',
   props: {
     condition: {
-      $: 'modules.call.canCall && (!modules.call.active || call.id == modules.transcribe.liveCollectionId)',
+      $: 'modules.call.canCall && (!modules.call.active || call.id == modules.call.callRecordId)',
     },
     then: {
       type: 'we-tooltip',
@@ -821,7 +831,7 @@ const callsPanel: SchemaNode = {
                               props: {
                                 name: 'phone-call',
                                 color: {
-                                  $: "call.id == modules.transcribe.liveCollectionId ? 'danger-text' : 'text-faint'",
+                                  $: "call.id == modules.call.callRecordId ? 'danger-text' : 'text-faint'",
                                 },
                               },
                             },
@@ -945,6 +955,17 @@ const board: SchemaNode = {
     controls: ['zoom-in', 'zoom-out', 'fit', 'lock'],
     height: '100%',
     /*
+      The board's own words for an empty canvas, in the canvas.
+
+      One expression rather than two branches, which is what lets one surface answer both states: no
+      call to be about, and a call that has not produced anything yet. The generic
+      "Nothing to show yet." is right for a graph whose host has no opinion and wrong here, where
+      there is something to do about it.
+    */
+    empty: {
+      $: `${CALL_EXPR} ? 'Nothing from this call yet. Tasks and events appear here as the conversation produces them — drag them into an arrangement and join them up.' : 'Start a call. What the conversation produces appears here as cards you can move and join up.'`,
+    },
+    /*
       The graph's own status strip, on.
 
       Every read a seed makes is caught and reported through `context.warn` rather than thrown — a
@@ -993,36 +1014,20 @@ const boardBody: Omit<RouteSchema, 'path'> = {
   */
   props: { width: '100%', flex: '1', minHeight: '0', overflow: 'hidden' },
   $localState: { connecting: { type: 'boolean', initial: false } },
-  children: [
-    {
-      type: '$if',
-      props: {
-        condition: CALL,
-        then: board,
-        /*
-          No collection means nothing has been said yet — the record is created on the first
-          utterance, so its absence is exactly "this call has produced nothing".
+  /*
+    The board itself, always — never a placeholder standing in front of it.
 
-          Padded clear of the switcher, where the board itself is not. A graph is *meant* to run under
-          the floating bar — that is what a full-bleed view with chrome over it looks like, and its
-          own controls sit at the other corners. Text centred in the same box is not: it reads as
-          content that has slid underneath something, because that is exactly what it is.
-        */
-        else: {
-          type: 'Column',
-          props: { width: '100%', height: '100%', pt: '900' },
-          children: [
-            gatePrompt({
-              icon: 'graph',
-              iconColor: 'text-faint',
-              title: 'Nothing to arrange yet',
-              body: 'Start a call and turn on recording. What the conversation produces appears here as cards you can move and join up.',
-            }),
-          ],
-        },
-      },
-    },
-  ],
+    There were two, and they swapped. This route gated on `CALL` and drew its own prompt when there
+    was none; the graph drew its own "Nothing to show yet." once mounted with no nodes. So the first
+    words a call showed were replaced, a second or two in, by weaker ones on a different background —
+    two surfaces disagreeing about the same emptiness, which is what having two placeholders always
+    comes to.
+
+    One now, inside the canvas, saying whichever of the two things is true. The graph's `board` seed
+    loads nothing until it is given a board, so mounting it with no call costs a read of nothing and
+    keeps the surface constant from the first frame.
+  */
+  children: [board],
 };
 
 const boardRoute: RouteSchema = { path: '/board', ...boardBody };

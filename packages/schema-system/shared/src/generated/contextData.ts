@@ -1326,6 +1326,8 @@ export const contextData: ContextData = {
         { name: 'height', type: 'string', optional: true },
         { name: 'bg', type: 'string', optional: true },
         { name: 'showStatus', type: 'boolean', optional: true },
+        { name: 'empty', type: 'string', optional: true },
+        { name: 'emptyIcon', type: 'string', optional: true },
         { name: 'showControls', type: 'boolean', optional: true },
         { name: 'controls', type: 'string[]', optional: true },
         {

@@ -96,6 +96,22 @@ export interface GraphViewProps {
   bg?: string;
   /** Show the loading/paging/warning strip. Defaults to true. */
   showStatus?: boolean;
+  /**
+   * What the canvas says when it has nothing on it.
+   *
+   * The default — "Nothing to show yet." — is the honest thing for a graph whose host has no
+   * opinion, and it is the wrong thing wherever there is something to *do* about the emptiness. A
+   * board that fills as a conversation produces records can say so; the widget cannot know that, and
+   * a caller that wraps its own placeholder around the graph instead ends up with two — one over the
+   * page and one over the canvas, swapping as data arrives, with different words and a different
+   * background.
+   *
+   * An expression, like any prop, so one line can answer both cases a caller has: what to do when
+   * there is no subject yet, and what to expect once there is.
+   */
+  empty?: string;
+  /** The icon above it. Defaults to `graph`. */
+  emptyIcon?: string;
   /** Show the controls. Defaults to true. Superseded by `controls`, which names them individually. */
   showControls?: boolean;
   /**

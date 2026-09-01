@@ -1160,10 +1160,10 @@ export function GraphView(props: GraphViewProps) {
           <Show
             when={loadingWholeGraph()}
             fallback={
-              <Column ax="center" ay="center" gap="200">
-                <we-icon name="graph" size="lg" color="text-faint" />
-                <we-text variant="footnote" color="text-faint">
-                  Nothing to show yet.
+              <Column ax="center" ay="center" gap="200" maxWidth="34ch" px="400">
+                <we-icon name={props.emptyIcon ?? 'graph'} size="lg" color="text-faint" />
+                <we-text variant="footnote" color="text-faint" textAlign="center">
+                  {props.empty ?? 'Nothing to show yet.'}
                 </we-text>
               </Column>
             }

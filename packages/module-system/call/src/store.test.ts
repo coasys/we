@@ -728,3 +728,90 @@ describe('the spotlight', () => {
     expect(store.solo()).toBe(false);
   });
 });
+
+/**
+ * Which call this is, published so a surface can follow it.
+ *
+ * The record is written by `startCall` before anyone joins and republished on every participant's
+ * activity, so "which call is this" is answerable from the first second. It was held in a plain
+ * `let`, though — a closure over it returns the right value whenever it is *called*, and tells the
+ * reactive graph nothing. So anything binding to `callRecordId` was evaluated once, against the
+ * frame before the call existed, and never re-evaluated: a board, a transcript feed and an
+ * extraction readout sat empty beside a call that was plainly running.
+ *
+ * Pinned against a **tracking** primitive rather than the closure the harness above injects,
+ * because a plain `let` passes every assertion a non-tracking signal can make — which is the whole
+ * bug. Written out here rather than imported: a module depends on no framework, so the test that
+ * proves it uses the host's reactivity cannot reach for one either.
+ */
+describe('the call record a surface follows', () => {
+  /** The smallest thing that is actually reactive: a read inside an effect re-runs on a write. */
+  function tracking() {
+    let listener: (() => void) | null = null;
+    return {
+      signal: <T>(initial: T): [() => T, (next: T) => void] => {
+        let value = initial;
+        const readers = new Set<() => void>();
+        return [
+          () => {
+            if (listener) readers.add(listener);
+            return value;
+          },
+          (next: T) => {
+            value = next;
+            for (const run of [...readers]) run();
+          },
+        ];
+      },
+      effect: (fn: () => void) => {
+        const run = () => {
+          const outer = listener;
+          listener = run;
+          try {
+            fn();
+          } finally {
+            listener = outer;
+          }
+        };
+        run();
+      },
+    };
+  }
+
+  it('notifies a reader when the call gets its record', async () => {
+    let created = 0;
+    const scope = {
+      capabilities: { unicast: 'emulated', broadcast: true, coalesce: true, confidential: false },
+      channel: () => ({ publish: () => {}, onMessage: () => () => {} }),
+      dispose: () => {},
+    };
+
+    const { signal, effect } = tracking();
+    const store = createCallStore({
+      signal,
+      effect,
+      dataset: () => ({ id: 'ds' }),
+      datasetUri: () => 'inmemory://ds',
+      datasets: { get: () => undefined, open: () => {}, openRef: () => {}, onRemoved: () => () => {} },
+      selfId: () => 'did:test:me',
+      ephemeral: () => scope,
+      presence: { peers: () => [], setActivity: () => {}, clearActivity: () => {} },
+      onDispose: () => {},
+      createEntity: async () => `rec-${++created}`,
+      createPeerConnection: () => ({}) as RTCPeerConnection,
+    } as never) as ReturnType<typeof createCallStore>;
+
+    const seen: string[] = [];
+    effect(() => seen.push(store.callRecordId()));
+
+    // Nothing to follow yet, and the reader has run once against that.
+    expect(seen).toEqual(['']);
+
+    await store.startCall();
+    await Promise.resolve();
+
+    expect(store.callRecordId()).toBe('rec-1');
+    // The half a plain `let` fails: the reader heard about it.
+    expect(seen).toContain('rec-1');
+  });
+});

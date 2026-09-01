@@ -500,8 +500,14 @@ export function createCallStore(deps: CallStoreDeps) {
    *
    * Held beside `anchor` and for the same reason: it is republished on every activity, so reading it
    * from one place is what stops a later `publishActivity` dropping it.
+   *
+   * A **signal**, unlike `anchor`, because it is published on the store as `callRecordId` and a
+   * template binds to it. A plain `let` is invisible to the reactive graph, so every surface reading
+   * "which call is this" resolved once — against the frame before the call existed — and never
+   * heard about the record that arrived a moment later. It read as the board, the transcript and
+   * the extraction panel all ignoring a call that was plainly running.
    */
-  let callRecord: string | null = null;
+  const [callRecord, setCallRecord] = signal<string | null>(null);
 
   /** Republish the call activity so peers see mute/camera/screen changes. */
   function publishActivity() {
@@ -515,7 +521,7 @@ export function createCallStore(deps: CallStoreDeps) {
       // What lets transcribe write into the right record without electing a creator, and what a
       // joining peer adopts rather than deriving. Every participant republishes it, so the record
       // survives the starter leaving.
-      ...(callRecord ? { record: callRecord } : {}),
+      ...(callRecord() ? { record: callRecord() } : {}),
     });
   }
 
@@ -533,7 +539,7 @@ export function createCallStore(deps: CallStoreDeps) {
     if (id) presence?.clearActivity('call', id);
     setCallId(null);
     anchor = undefined;
-    callRecord = null;
+    setCallRecord(null);
     setVisible(false);
     setFocusedId(null);
     focusIsManual = false;
@@ -694,7 +700,7 @@ export function createCallStore(deps: CallStoreDeps) {
     // Given by `startCall`, otherwise read off whoever is already in this call. A call with neither
     // is one whose starter has left and whose record nobody republished, which the roster cannot
     // happen while anyone is in it.
-    callRecord = recordId ?? liveCalls().find((call) => call.id === id)?.recordId ?? null;
+    setCallRecord(recordId ?? liveCalls().find((call) => call.id === id)?.recordId ?? null);
 
     // Every refusal lives in `openCallScope`, so joining from the roster and starting a call check
     // exactly the same things and say exactly the same words.
@@ -1015,7 +1021,7 @@ export function createCallStore(deps: CallStoreDeps) {
     // ── State ────────────────────────────────────────────────────────────────
     callId,
     /** The call record this agent's call writes into — what transcribe and the panels read. */
-    callRecordId: () => callRecord ?? '',
+    callRecordId: () => callRecord() ?? '',
     liveCalls,
     tiles,
     tileStates,

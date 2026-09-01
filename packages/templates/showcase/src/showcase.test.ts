@@ -171,8 +171,25 @@ describe('the workshop template’s call selection', () => {
     const json = JSON.stringify(workshop);
 
     expect(json).toContain('routeStore.params.call');
-    expect(json).toContain('modules.transcribe.liveCollectionId');
     expect(json).not.toContain('./board/$');
+  });
+
+  it('asks the call module which call is live, not the transcriber', () => {
+    /*
+      `liveCollectionId` means "the record I am writing into", and the transcriber adopts the call's
+      record only when it first has something to write — so for the opening stretch of every meeting
+      its honest answer is "nothing". Every surface here waited for somebody to speak before it would
+      admit a call was happening: an empty board, an empty feed, and a calls list that did not mark
+      the call you were sitting in.
+
+      The record exists from the first second — `startCall` writes it before anyone joins — and
+      `callRecordId` is that. Asserted over the whole schema rather than at the one definition,
+      because the same question is asked in four places and only one of them was `CALL`.
+    */
+    const json = JSON.stringify(workshop);
+
+    expect(json).toContain('modules.call.callRecordId');
+    expect(json).not.toContain('modules.transcribe.liveCollectionId');
   });
 
   it('changes the call in one navigation, on the page you are already on', () => {
