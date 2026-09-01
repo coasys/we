@@ -98,6 +98,42 @@ moved into data; naming records means any producer writing the same shape feeds 
 which is what makes both sides reusable. The selector needs no new language — `{ entity, where }` is
 the where-object `$query`, `filter` and `find` already take.
 
+## Configuration: availability intersects, settings resolve
+
+A capability answers to two different kinds of decision and they must not be confused, because the
+rule that makes one correct makes the other useless.
+
+**Whether it runs here is availability**, and it is four answers to one boolean — registered ∩
+installed ∩ enabled, less muted. Every layer can only _subtract_, because "available" is the kind of
+thing anyone in the chain may withhold: the deployment says what exists, the agent says what they
+want anywhere, the community says what it runs, the agent says what they want here.
+
+**What it does when it runs is a setting**, and a setting is a value. Those resolve by
+**specificity** — deployment, then the agent everywhere, then the community here, then the agent
+here — because a community choosing a value is choosing it rather than setting a floor. AND-ing
+values would make it impossible to express anything but a boolean, and impossible to express that
+except as a veto.
+
+The veto is real for some settings, so it is declared per setting rather than assumed: `restrict` is
+the AND, for the ones a lower level may refuse and never grant. Recording is the case — a community
+that has switched it off is not overridable by a member, and a member who has switched it off is not
+overridable by the community. A decision about a microphone travels in one direction only.
+
+Two rules that hold at every level. **Absent is not off**: a level that has never been touched has no
+opinion, so a setting added later does not silently take effect as `false` in every space that
+predates it. And **clearing writes silence**, never a value that happens to equal the default — a
+stored default goes on overruling everything less specific while its control reads as untouched.
+
+A capability declares its settings and reads back resolved values; it never sees a level, and it
+never reads a `Space`. That is what keeps the policy beside the state that holds it rather than in
+the module, and it is why the declaration also renders the control: a module that adds a setting
+gets a screen with nothing to register, which is the step whose omission is otherwise silent.
+
+**What is not a setting**: a processor's own configuration. `Space.autoInterpret` and
+`Space.extractionTargets` look like settings and are the parameters of a _wire_ — whether one exists,
+and what its processor writes. They stay where they are until wires do, because moving them onto the
+settings layer would be migrating them twice.
+
 ## Composition: a capability's presentation is a default, not a monopoly
 
 Modules ship presentation, as data. `@we/module-notes` and `@we/module-call` contain no framework
@@ -171,6 +207,11 @@ dock frame, which is itself chrome and needs `host-layout` members the template 
   spends an LLM budget on whichever peer runs it. `autoInterpret` already has this property; a wire
   is far more expressive, so node-level consent should be explicit rather than implied by
   membership.
+- **A group the host declares.** Settings are grouped by module id today, so a capability the host
+  holds rather than a module — interpretation — has nowhere to declare one. The storage is keyed by
+  a string and cares about nothing else, so a host group is additive with no migration; it is unbuilt
+  because it would have no members until interpretation is a module, and a declaration nothing reads
+  is the globe's catalogue again.
 - **Space presets.** A space's setup is already a bundle of records — template, theme, enabled
   modules and views, shapes, signal types — with no name, so every space is assembled by hand. Seed
   is to deployment as preset would be to space. Worth naming once wires exist and not before.
