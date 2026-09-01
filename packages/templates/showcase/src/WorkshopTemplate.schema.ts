@@ -338,8 +338,16 @@ const proposalsReview: SchemaNode = {
           props: { items: { $: 'modules.transcribe.proposals' }, as: 'proposal' },
           children: [
             {
+              /*
+                `appearance: 'accent'` — a thick warning edge rather than a filled warning panel.
+
+                The module's own panel arrived at this and wrote down why: these come as a *column*,
+                and a run of filled warning boxes is a stack of competing rectangles that in a dark
+                theme reads as brown before it reads as a warning. The edge says the same thing at
+                the volume a list can carry. Same shape here, because it is the same list.
+              */
               type: 'we-alert',
-              props: { variant: 'warning' },
+              props: { variant: 'warning', appearance: 'accent', r: '300', px: '300', py: '300', gap: '300' },
               children: [
                 {
                   type: 'Column',
@@ -1275,9 +1283,30 @@ const board: SchemaNode = {
     expansion: { defaultDepth: 0 },
     layout: { type: 'manual' },
     nodeStyle: [
-      { style: { shape: 'card', width: 180, content: 'block', contentMinZoom: 0.5 } },
-      { when: { type: 'TaskBlock' }, style: { color: 'primary-50', labelColor: 'primary-800' } },
-      { when: { type: 'EventBlock' }, style: { color: 'warning-50', labelColor: 'warning-800' } },
+      {
+        /*
+          Roles, not scale positions — which is why these were all but black in a dark theme.
+
+          `primary-50` is a step on a ramp, and the ramp flips with the theme's polarity: the pale
+          tint it names in a light theme is a near-black in a dark one, and there is no number that
+          is right in both. A role is the thing a theme redefines, and these three are the tinted
+          panels the design system already maintains for exactly this — legible in either polarity,
+          with a foreground that is corrected against them.
+
+          The board's own per-type colours and each card's own colour still override these, and both
+          are palettes rather than meanings, so a scale position stays right there.
+        */
+        style: {
+          shape: 'card',
+          width: 180,
+          content: 'block',
+          contentMinZoom: 0.5,
+          color: 'surface',
+          labelColor: 'text',
+        },
+      },
+      { when: { type: 'TaskBlock' }, style: { color: 'accent-muted', labelColor: 'text' } },
+      { when: { type: 'EventBlock' }, style: { color: 'warning-surface', labelColor: 'text' } },
       // The card's own presentation, in front of the rules above — a size and colour somebody chose
       // is a fact about the card, where the rules are this template's opinion about a kind.
       {
@@ -1371,6 +1400,20 @@ const board: SchemaNode = {
       the reason `recordType` is on a single click at all.
     */
     onNodeClick: [
+      { $setLocal: 'inspecting', value: { $: 'event.recordId' } },
+      { $setLocal: 'inspectingType', value: { $: 'event.recordType' } },
+    ],
+    /*
+      A line is a record here too, so clicking one inspects it.
+
+      The board draws its connections from `Relationship`, a reified entity — which means each line
+      *stands for* something with an author, a label and a description, and the inspector was the
+      one surface that could not show it. `recordId` is absent on an ordinary edge, which stands for
+      a declared relation and has no record of its own; setting both from an empty value clears the
+      panel rather than leaving the last card in it, which is the honest answer for a line there is
+      nothing to say about.
+    */
+    onEdgeClick: [
       { $setLocal: 'inspecting', value: { $: 'event.recordId' } },
       { $setLocal: 'inspectingType', value: { $: 'event.recordType' } },
     ],

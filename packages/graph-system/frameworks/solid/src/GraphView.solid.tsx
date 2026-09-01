@@ -23,6 +23,7 @@
  * node is drawn on. That is the property that keeps a dense canvas renderer additive later.
  */
 import { Column, Row } from '@we/components/solid';
+import { ROLE_NAMES } from '@we/design-utils';
 import {
   DEFAULT_CONTROLS,
   defaultBehaviours,
@@ -149,11 +150,26 @@ function readableFields(node: GraphNode): { name: string; value: string }[] {
   });
 }
 
-/** Design tokens resolve against the live theme; anything else is passed through as CSS. */
+/**
+ * A **role** first, then a scale position, then raw CSS.
+ *
+ * The same precedence the design system's own resolver uses, and it was missing here — every colour
+ * in a graph resolved to `--we-color-<token>`, so a style rule could only ever name a scale
+ * position. That is the one thing a scale position cannot do: it is a step on a ramp that flips with
+ * the theme's polarity, so cards picked to look like pale tints in a light theme came out as deep
+ * ones in a dark theme, and no choice of number fixes both. A role is what a theme *redefines*.
+ *
+ * Scale positions stay, and stay right for what they are for: a palette, where the colours mean
+ * "different from each other" rather than "this kind of thing".
+ *
+ * Unknown names fall through to `--we-color-<token>` exactly as before, so nothing that worked
+ * stops — including a name this build's role list has not heard of.
+ */
 function color(value: string | undefined, fallback: string): string {
   const token = value ?? fallback;
   if (!token) return fallback;
   if (/^(#|rgb|hsl|var\(|transparent$|currentcolor$)/i.test(token)) return token;
+  if (ROLE_NAMES.has(token)) return `var(--we-role-${token})`;
   return `var(--we-color-${token})`;
 }
 

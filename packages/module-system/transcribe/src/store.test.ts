@@ -1437,3 +1437,50 @@ describe('what a call extracts, before anybody has spoken', () => {
     await expect(h.store.toggleExtractionTarget('EventBlock')).resolves.toBeUndefined();
   });
 });
+
+/**
+ * Turning recording off, and having it stay off.
+ *
+ * It took two presses. The auto-join effect reads `enabled` and `optedOut`, and under a real
+ * reactive runtime a signal write runs it synchronously — so with `setEnabled(false)` written first,
+ * the effect ran while `optedOut` still said false. That is an agent in a call, not recording, and
+ * not having declined: exactly the state it exists to answer, so it turned recording back on. The
+ * next press worked, because by then the opt-out had landed.
+ *
+ * The ordering itself is not reachable from here — these signals do not notify, so no write re-runs
+ * an effect and the re-entrancy cannot happen. What *is* reachable is the property the fix depends
+ * on, and the one that would take the bug back if it broke: a later run of that effect, after a
+ * refusal, leaves recording alone.
+ */
+describe('stopping a recording', () => {
+  it('is not undone by the next run of the auto-join effect', () => {
+    const h = harness([peer(ME, { type: 'call', id: CALL, record: RECORD })], {
+      // The effect needs a dataset before it will start anything.
+      dataset: () => ({ id: 'ds' }),
+    });
+
+    h.store.toggle();
+    expect(h.store.enabled()).toBe(true);
+
+    h.store.toggle();
+    expect(h.store.enabled()).toBe(false);
+
+    // A presence tick — a peer joining, somebody's availability changing — re-runs every effect.
+    // Without the refusal recorded, this is where recording would come back.
+    h.setPeers([peer(ME, { type: 'call', id: CALL, record: RECORD }), peer(THEM)]);
+
+    expect(h.store.enabled()).toBe(false);
+  });
+
+  it('starts again on the next press', () => {
+    // A refusal for this call, not for good: the way back is the same button, and pressing it has to
+    // clear the flag that keeps the effect out.
+    const h = harness([peer(ME, { type: 'call', id: CALL, record: RECORD })], { dataset: () => ({ id: 'ds' }) });
+
+    h.store.toggle();
+    h.store.toggle();
+    h.store.toggle();
+
+    expect(h.store.enabled()).toBe(true);
+  });
+});

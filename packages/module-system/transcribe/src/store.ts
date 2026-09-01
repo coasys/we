@@ -1723,9 +1723,22 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      */
     toggle: () => {
       const next = !enabled();
-      setEnabled(next);
-      setAutoJoined(false);
+      /*
+        `optedOut` **before** `enabled`, and that ordering is the whole of a two-press bug.
+
+        The auto-join effect reads both, and a signal write runs it synchronously. Written the other
+        way round, `setEnabled(false)` ran the effect while `optedOut` still said false — so it saw
+        an agent in a call who was not recording and had not declined, which is exactly the state it
+        exists to answer, and turned recording straight back on. The press after it worked, because
+        by then the opt-out had landed.
+
+        Setting the refusal first means every run of that effect sees a decision that is already
+        whole: on the way out `enabled` is still true and it returns, and on the write after it
+        `optedOut` is true and it returns again.
+      */
       setOptedOut(!next);
+      setAutoJoined(false);
+      setEnabled(next);
       if (next) setOpen(true);
       /*
         Publish the decision immediately, before a word has been said.

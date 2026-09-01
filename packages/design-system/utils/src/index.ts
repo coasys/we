@@ -281,7 +281,17 @@ export const resolveFontFamily = makeTokenResolver(new Set(Object.keys(font.fami
  * No collision with colour tokens: those are `{hue}-{shade}` over a closed set of five hues, and no
  * role name begins with one.
  */
-const ROLE_NAMES = new Set(Object.keys(role).map((name) => name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)));
+/**
+ * Every semantic role, in the spelling a schema writes — `surface-sunken`, not `surfaceSunken`.
+ *
+ * Derived from the token definitions rather than restated, so a role added there is namable here
+ * without a second edit. Exported because the design system is not the only resolver: the graph
+ * paints its own nodes and edges, and a role it could not recognise is a colour a theme cannot
+ * redefine.
+ */
+export const ROLE_NAMES = new Set(
+  Object.keys(role).map((name) => name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)),
+);
 
 /**
  * Radius names that resolve to a theme group rather than a scale position — see `SemanticRadius`.
