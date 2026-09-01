@@ -148,6 +148,19 @@ export interface DockAspect {
  */
 export interface DockContribution {
   /**
+   * A key on this module's store that **opens** this panel — the half `close` was missing.
+   *
+   * A template declaring a panel is asking for it to be open, and the host used to arrange that by
+   * invoking the module's *launcher*. That worked while a module had one panel and one launcher; it
+   * is not answerable once it has two, because nothing says which launcher opens which panel. A
+   * dock already names how to close itself, so naming how to open itself is the missing half rather
+   * than a new idea.
+   *
+   * Optional, and the launcher is still the fallback — every module with one panel keeps working
+   * with nothing added.
+   */
+  open?: string;
+  /**
    * Which panel this is, for a module that contributes more than one.
    *
    * The dock's id is `<moduleId>:<name>`, and a placement is remembered against it — so this is

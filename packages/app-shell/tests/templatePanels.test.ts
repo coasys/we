@@ -94,3 +94,45 @@ describe('the scope a placement is remembered under', () => {
     expect(templatePanelScope()).toBe('');
   });
 });
+
+/**
+ * What happens to a template's own panels when the template goes.
+ *
+ * They are registered as docks by the shell, and the declaration they render from is looked up by
+ * id — so a dock that outlived its declaration would be a frame on screen with nothing in it. That
+ * is the shape of the report: switching away from an interface left its panels open and empty.
+ */
+describe('withdrawing an interface’s panels', () => {
+  it('announces the change when the interface goes, so the docks can be withdrawn', () => {
+    const seen: number[] = [];
+    const off = onTemplatePanelsChanged(() => seen.push(templatePanels().length));
+
+    setTemplatePanels([{ id: 'inspector', node: { type: 'Column' } }], 'workshop');
+    setTemplatePanels([], 'default');
+
+    // The empty list is a real announcement, not a no-op: an interface that declares nothing has to
+    // be distinguishable from one that has not spoken, or the last one's panels stay on screen.
+    expect(seen).toEqual([1, 0]);
+    expect(templatePanels()).toEqual([]);
+    off();
+  });
+
+  it('re-announces an identical list from a different interface', () => {
+    /*
+      The guard against re-announcing exists so a template re-rendering mid-drag does not rebuild its
+      dock entries. It compares the scope as well as the list, and it has to: two interfaces can
+      declare panels that are equal by identity — the same imported node — and the placements are
+      scoped per interface, so treating that as "no change" would leave the previous one's scope in
+      force.
+    */
+    const panel = { id: 'notes', node: { type: 'Column' } };
+    const seen: string[] = [];
+    const off = onTemplatePanelsChanged(() => seen.push(templatePanelScope()));
+
+    setTemplatePanels([panel], 'workshop');
+    setTemplatePanels([panel], 'default');
+
+    expect(seen).toEqual(['workshop', 'default']);
+    off();
+  });
+});

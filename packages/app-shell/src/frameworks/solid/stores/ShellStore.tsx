@@ -1327,37 +1327,70 @@ export function ShellStoreProvider(props: ParentProps) {
     holding live state — leaving the graph view would stop a recording.
   */
   const layoutOpened = new Set<string>();
-  const toggleModulePanel = (moduleId: string, wantOpen: boolean): void => {
+  /**
+   * Put one of a module's panels into the state a declaration asks for.
+   *
+   * By **dock**, not by module, and that is what broke when transcription grew a second panel. This
+   * used to invoke the module's `launcher.action`, which answers "how is this module opened" — a
+   * question with no answer once a module has two panels, and one that stopped having an answer at
+   * all the moment transcription moved from `launcher` to `launchers`. Neither of the workshop's
+   * declared panels opened, silently, because a missing launcher is also what a module with no
+   * panels looks like.
+   *
+   * A dock knows how to open and close itself: `close` was already declared, and `open` is the half
+   * it was missing. The launcher stays as the fallback, so every module with one panel keeps working
+   * with nothing added — and where a dock names neither, `edge` still answers whether it is open,
+   * which is the one question that never needed a launcher.
+   */
+  const toggleModulePanel = (dockId: string, wantOpen: boolean): void => {
+    const dock = dockRegistry.ordered().find((entry) => entry.id === dockId);
+    if (!dock) return;
+    const moduleId = dock.moduleId;
+    const store = moduleStores[moduleId] as Record<string, unknown> | undefined;
+    // The dock's own `edge` key: null is closed, which is the same one answer the host reads for
+    // geometry, so a layout cannot disagree with the panel about whether it is up.
+    const isOpen = readModuleKey(moduleId, dock.edge) !== null;
+    if (isOpen === wantOpen) return;
+
+    const named = wantOpen ? dock.open : dock.close;
+    if (named) {
+      const fn = store?.[named];
+      if (typeof fn === 'function') (fn as () => void)();
+      return;
+    }
+
+    // No key of its own — the module's single launcher, as before.
     const launcher = moduleRegistry.get(moduleId)?.definition.launcher;
     if (!launcher?.action) return;
-    const store = moduleStores[moduleId] as Record<string, unknown> | undefined;
-    const active = launcher.activeWhen ? readModuleKey(moduleId, launcher.activeWhen) : undefined;
-    // Nothing to do if it is already how the layout wants it. A module with no `activeWhen` cannot
-    // be asked, so it is opened once and never toggled back — an unanswerable question is better
-    // left alone than guessed at.
-    if (Boolean(active) === wantOpen) return;
     if (!wantOpen && launcher.activeWhen === undefined) return;
     const fn = store?.[launcher.action];
     if (typeof fn === 'function') (fn as () => void)();
   };
 
   createEffect(() => {
+    dockRegistryVersion();
     const wanted = declaredPanels()
-      // `open: false` places without opening. The module's launcher action is not always "open a
-      // panel" — the call module's is `goToCall`, which joins a call when there is not one — so a
-      // template that placed the call window would otherwise start a call on entering the space.
+      // `open: false` places without opening. Opening a panel is not always harmless — the call
+      // module's launcher is `goToCall`, which joins a call when there is not one — so a template
+      // that placed the call window would otherwise start a call on entering the space.
       .filter((panel) => panel.module && panel.open !== false)
-      .map((panel) => panel.module as string);
+      /*
+        By dock, not by module. A module with two declared panels used to collapse to one entry
+        here — the set is keyed by what it holds — so at most one of them was ever opened, and with
+        the launcher lookup broken neither was.
+      */
+      .map((panel) => dockIdFor(panel))
+      .filter((id): id is string => id !== null);
 
-    for (const moduleId of wanted) {
-      if (layoutOpened.has(moduleId)) continue;
-      layoutOpened.add(moduleId);
-      toggleModulePanel(moduleId, true);
+    for (const dockId of wanted) {
+      if (layoutOpened.has(dockId)) continue;
+      layoutOpened.add(dockId);
+      toggleModulePanel(dockId, true);
     }
-    for (const moduleId of [...layoutOpened]) {
-      if (wanted.includes(moduleId)) continue;
-      layoutOpened.delete(moduleId);
-      toggleModulePanel(moduleId, false);
+    for (const dockId of [...layoutOpened]) {
+      if (wanted.includes(dockId)) continue;
+      layoutOpened.delete(dockId);
+      toggleModulePanel(dockId, false);
     }
   });
 

@@ -1540,6 +1540,9 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     extractionDockFloat: () => false,
     /** Open or close the extraction panel — what its rail button and its titlebar call. */
     toggleExtractionPanel: () => setExtractionOpen(!extractionOpen()),
+    // Named on the dock as its `open`, so an interface declaring this panel gets *this* one opened
+    // rather than whichever the module's first launcher happens to point at.
+    openExtractionPanel: () => setExtractionOpen(true),
     closeExtractionPanel: () => setExtractionOpen(false),
     level,
     speaking,
@@ -1851,6 +1854,8 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       name, and a way to hide the notice while still being recorded.
     */
     togglePanel: () => setOpen(!open()),
+    // Named on the dock as its `open` — see `openExtractionPanel` for why a dock says this itself.
+    openPanel: () => setOpen(true),
     closePanel: () => setOpen(false),
     /**
      * Text heard, from wherever it came.

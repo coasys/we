@@ -225,6 +225,7 @@ export const transcribeModule = defineModule({
   docks: [
     {
       name: 'transcript',
+      open: 'openPanel',
       edge: 'dockEdge',
       size: 'dockSize',
       float: 'dockFloat',
@@ -234,6 +235,7 @@ export const transcribeModule = defineModule({
     },
     {
       name: 'extraction',
+      open: 'openExtractionPanel',
       edge: 'extractionDockEdge',
       size: 'extractionDockSize',
       float: 'extractionDockFloat',
