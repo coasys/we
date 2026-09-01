@@ -218,6 +218,10 @@
   border: var(--node-border-width) solid var(--node-border);
   overflow: hidden;
   transition: box-shadow 120ms ease-out;
+
+  // The node's fade, on what is *drawn* — see `--node-opacity`. Set on the wrapper it would take the
+  // resize handles and the action buttons with it, and a faded control reads as a disabled one.
+  opacity: var(--node-opacity, 1);
 }
 
 .we-graph__image {
@@ -248,6 +252,9 @@
   // translate resolves against the element's own box.
   transform-origin: 50% 0;
   transform: translateX(-50%) scale(var(--label-scale, 1));
+
+  // See `.we-graph__dot`: a node's fade is about what it draws, and a label is part of that.
+  opacity: var(--node-opacity, 1);
 
   // Sizes to its text up to the cap, so `text-overflow` has a width to work against.
   width: max-content;
@@ -280,6 +287,9 @@
   border: var(--node-border-width) solid var(--node-border);
   box-shadow: var(--we-shadow-sm);
   overflow: hidden;
+
+  // See `.we-graph__dot`: the fade belongs to the card, not to the chrome anchored beside it.
+  opacity: var(--node-opacity, 1);
 }
 
 /**

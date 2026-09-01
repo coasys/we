@@ -995,7 +995,17 @@ export function GraphView(props: GraphViewProps) {
                 '--node-label-color': color(entry.visual.labelColor, 'neutral-800'),
                 '--node-label-size': `${entry.visual.labelSize ?? 12}px`,
                 '--label-scale': entry.visual.scaleLabelWithZoom ? '1' : 'calc(1 / var(--graph-zoom))',
-                opacity: entry.visual.opacity ?? 1,
+                /*
+                  Published for the drawn parts to read rather than set here, because `opacity`
+                  composites the *whole* subtree and this element is not only the node — it also
+                  anchors the resize handles and the action buttons.
+
+                  A faded card is a statement about the record: unsettled, not yours yet. Faded
+                  controls on top of it say the controls are unavailable, which is the opposite of
+                  true — they are the way to settle it. So the fade goes on what is drawn and the
+                  chrome anchored beside it stays legible.
+                */
+                '--node-opacity': String(entry.visual.opacity ?? 1),
               }}
               title={entry.visual.label}
             >

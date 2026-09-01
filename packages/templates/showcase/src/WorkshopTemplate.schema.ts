@@ -1092,14 +1092,23 @@ const board: SchemaNode = {
       cross appear on exactly the cards the rule above faded — one fact, read twice, which is what
       stops the two from ever disagreeing. `data.` prefix included: see the note up there.
 
-      Delete is offered on everything, suggestion or not. Extraction proposes things that are simply
-      wrong about a conversation, and until now the only way to remove one that had been accepted was
-      to find it in another view.
+      Delete appears once a card is settled, and not before. On a suggestion it would be a second
+      button that looks like it does the same thing as the cross — and it is not the same thing:
+      discarding resolves the suggestion, where deleting only removes the record and leaves the
+      staged overlay behind it, so the extraction panel would go on offering a decision about
+      something that no longer exists. Two buttons, one of them subtly wrong, is worse than one.
+
+      `{ exists: false }` rather than `{ not: true }`, because the seed writes the flag only on the
+      cards it applies to — "not pending" is the absence of the field, which is what this asks.
+
+      It is still offered on everything else. Extraction proposes things that are simply wrong about
+      a conversation, and until now the only way to remove one that had been accepted was to find it
+      in another view.
     */
     nodeActions: [
       { id: 'accept', icon: 'check', title: 'Keep this', when: { 'data.pending': true } },
       { id: 'reject', icon: 'x', title: 'Discard this', when: { 'data.pending': true }, danger: true },
-      { id: 'delete', icon: 'trash', title: 'Delete', danger: true },
+      { id: 'delete', icon: 'trash', title: 'Delete', when: { 'data.pending': { exists: false } }, danger: true },
     ],
     /*
       One handler, branching on which was pressed — the shape a handler array is for.

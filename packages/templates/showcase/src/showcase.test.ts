@@ -351,8 +351,22 @@ describe('the workshop template’s call selection', () => {
     */
     const json = JSON.stringify(workshop);
 
-    expect(json).toContain('{"id":"delete","icon":"trash","title":"Delete","danger":true}');
+    expect(json).toContain('"id":"delete","icon":"trash"');
     expect(json).toContain('record.delete');
+  });
+
+  it('does not offer delete beside discard on a card still awaiting a decision', () => {
+    /*
+      They look like the same button and are not. Discarding resolves the suggestion; deleting only
+      removes the record, leaving the staged overlay behind it — so the extraction panel would go on
+      offering a decision about something that no longer exists.
+
+      `{ exists: false }` rather than `{ not: true }`: the seed writes the flag only on the cards it
+      applies to, so "settled" is the absence of the field.
+    */
+    const json = JSON.stringify(workshop);
+
+    expect(json).toContain('{"id":"delete","icon":"trash","title":"Delete","when":{"data.pending":{"exists":false}}');
   });
 
   it('shows the transcript panel what the microphone is doing, not only what it saved', () => {
