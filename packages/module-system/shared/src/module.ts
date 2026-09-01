@@ -75,6 +75,12 @@ export interface SlotContribution {
    * order leaks into layout and chrome reshuffles for no visible reason.
    */
   order?: number;
+  /**
+   * When true, this contribution renders regardless of whether the module is active in the current
+   * space. Use for account-level chrome that should always be visible (billing, account info,
+   * platform settings nav items).
+   */
+  global?: boolean;
 }
 
 /**

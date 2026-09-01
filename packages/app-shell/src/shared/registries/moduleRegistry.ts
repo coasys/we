@@ -266,7 +266,9 @@ export const moduleRegistry = {
     for (const [index, slot] of (definition.slots ?? []).entries()) {
       slotRegistry.register({
         ...slot,
-        node: gateOnSpace(definition.id, slot.node, definition.holdsWhen),
+        // Global slots bypass the per-space gate — they render regardless of which space is active.
+        // Use for account-level chrome (billing, settings nav) that should always be visible.
+        node: slot.global ? slot.node : gateOnSpace(definition.id, slot.node, definition.holdsWhen),
         // Namespaced, and indexed so one module can contribute more than one piece of chrome.
         id: `${definition.id}:${index}`,
       });

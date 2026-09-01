@@ -890,6 +890,8 @@ export const settingsTemplate: TemplateSchema = {
                     then: navItem('Developer', 'flask', '/developer'),
                   },
                 },
+                // Future: module-contributed settings nav items will go here once
+                // the schema renderer supports $slot resolution in template content.
               ],
             },
             { type: 'Column', props: { flex: '1', gap: '600' }, children: [{ type: '$routes' }] },
