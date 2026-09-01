@@ -1704,8 +1704,14 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     toggleAutoExtract: async () => {
       const live = collectionId() ?? myCall()?.recordId ?? '';
       if (!live || typeof interpretation?.setAuto !== 'function') return;
+      const next = !autoEnabled(live);
+      // Switching it on shows what it makes, once — the same rule `toggle` follows for recording,
+      // and for the same reason: starting something invisible and saying nothing about it is how a
+      // feature comes to look broken. Switching it off leaves the panel alone, since what it already
+      // found is still worth reading.
+      if (next) setExtractionOpen(true);
       try {
-        await interpretation.setAuto(live, !autoEnabled(live));
+        await interpretation.setAuto(live, next);
       } catch (error) {
         console.warn('[transcribe] could not change whether this call extracts as it happens', error);
       }

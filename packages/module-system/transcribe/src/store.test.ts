@@ -1517,6 +1517,22 @@ describe('turning automatic extraction off for one call', () => {
     expect(h.store.autoExtract()).toBe(false);
   });
 
+  it('shows what it makes when switched on, and leaves the panel alone when switched off', async () => {
+    /*
+      The rule recording follows: starting something invisible and saying nothing about it is how a
+      feature comes to look broken. Off is not symmetrical — what a pass already found is still worth
+      reading, so closing the panel is the reader's decision rather than a consequence.
+    */
+    const { h } = withAuto([peer(ME, { type: 'call', id: CALL, record: RECORD })], { [RECORD]: false });
+    expect(h.store.extractionOpen()).toBe(false);
+
+    await h.store.toggleAutoExtract();
+    expect(h.store.extractionOpen()).toBe(true);
+
+    await h.store.toggleAutoExtract();
+    expect(h.store.extractionOpen()).toBe(true);
+  });
+
   it('writes the decision against that call', async () => {
     const { h, set } = withAuto([peer(ME, { type: 'call', id: CALL, record: RECORD })], { [RECORD]: true });
 

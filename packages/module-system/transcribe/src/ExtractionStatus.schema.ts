@@ -600,50 +600,73 @@ export const extractionActivity: SchemaNode = {
 };
 
 /**
- * The way into the extraction panel, from where a call already is.
+ * Read this call as it happens, or stop — the extraction counterpart of the record button.
  *
- * Replaces the one-line status strip that used to sit under the controls. That strip existed
- * because a pass runs for minutes — almost all of it one LLM call — and outlived the panel that
- * started it, while extraction itself lived inside the *transcript* panel, which may be closed and
- * is about something else. The person most likely to want to know a pass is running is one of the
- * four in five who did not start it.
+ * ## Why a verb and not a way in
  *
- * Extraction has a panel of its own now, so the honest thing in a row of controls is a control: it
- * opens that panel, and it spins in place of its icon while a pass is in flight. One object doing
- * both jobs, which the strip could never manage — its whole design constraint was that it must not
- * grow, since a floating thing reflowing while somebody reaches for a control under it is worse
- * than one that says less, so it collapsed concurrent passes to a count and had nothing to open.
- * A button is fixed by construction, and opening is what it is for.
+ * It opened the extraction panel first, which the rail already does, so the bar carried a second
+ * button for something a person could already reach. The record button beside it is not a way in
+ * either: it *starts and stops the thing*, and opening the panel is a side effect of switching it
+ * on. That is the pairing the bar wants — one control for capturing the conversation, one for
+ * reading it — and the rail keeps the panels.
+ *
+ * ## The three states are the record button's three states
+ *
+ * Off is `ghost`, matching the call's own mute and camera buttons so the row reads as one set of
+ * controls. On but idle is `secondary` — the watch is registered and waiting for something to be
+ * said. A pass actually in flight is `danger`, and it is the same argument recording makes: a state
+ * that arrives on its own, spending somebody's tokens, has to be legible without being looked for,
+ * and the loudest thing in the bar is the way out of it.
+ *
+ * ## What it changes is everyone's
+ *
+ * The button beside it is this agent's microphone; this is the whole call's. A standing watch is one
+ * registration the neighbourhood shares, so it cannot be a private preference — which makes two
+ * near-identical squares with different blast radii, and the tooltip is the only place that can say
+ * so. It says so.
+ *
+ * Absent where there is no call to decide about, rather than disabled: `canChooseTargets` asks about
+ * the same record, and a control explaining why it cannot work belongs in the panel, which has room
+ * for a sentence.
  */
 export const extractionControl: SchemaNode = {
-  type: 'we-tooltip',
+  type: '$if',
   props: {
-    title: {
-      $: "interpretationStore.runningCount ? 'Extraction running — open the panel' : 'Open extraction'",
-    },
-    placement: 'top',
-  },
-  children: [
-    {
-      type: 'we-button',
+    condition: { $: 'modules.transcribe.canChooseTargets' },
+    then: {
+      type: 'we-tooltip',
       props: {
-        variant: { $: "modules.transcribe.extractionOpen ? 'secondary' : 'ghost'" },
-        size: 'sm',
-        square: true,
-        onClick: { $action: 'modules.transcribe.toggleExtractionPanel' },
+        title: {
+          $: "modules.transcribe.autoExtract ? 'Stop reading this call for everyone in it' : 'Read this call as it happens, for everyone in it'",
+        },
+        placement: 'bottom',
       },
       children: [
         {
-          // The state, in the control rather than beside it: a spinner where the icon is says a pass
-          // is running without a second object appearing next to the one being pointed at.
-          type: '$if',
+          type: 'we-button',
           props: {
-            condition: { $: 'interpretationStore.runningCount' },
-            then: { type: 'we-spinner', props: { size: 'xs' } },
-            else: { type: 'we-icon', props: { name: 'sparkle' } },
+            // No `size`, and `square`, for `callControl`'s reasons: a contributed button is only one
+            // of the bar's controls while it is the same shape as the rest of them.
+            square: true,
+            variant: {
+              $: "interpretationStore.runningCount ? 'danger' : modules.transcribe.autoExtract ? 'secondary' : 'ghost'",
+            },
+            onClick: { $action: 'modules.transcribe.toggleAutoExtract' },
           },
+          children: [
+            {
+              // A spinner while a pass is in flight, so "on" and "working right now" are told apart
+              // in the control rather than by a second object appearing beside it.
+              type: '$if',
+              props: {
+                condition: { $: 'interpretationStore.runningCount' },
+                then: { type: 'we-spinner', props: { size: 'xs' } },
+                else: { type: 'we-icon', props: { name: 'sparkle' } },
+              },
+            },
+          ],
         },
       ],
     },
-  ],
+  },
 };
