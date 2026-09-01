@@ -9,6 +9,7 @@ import { expr } from '@we/schema-shared';
 
 import { accountSettings } from './AccountSettings.schema.ts';
 import { aiSection } from './AiSettings.schema.ts';
+import { billingSection } from './BillingSection.schema.ts';
 import { hostSection } from './HostSettings.schema.ts';
 import { languagesLocalState, languagesSection } from './LanguageSettings.schema.ts';
 import {
@@ -63,6 +64,8 @@ const accountSection: SchemaNode = {
         },
       ],
     },
+    // Billing: credits, email, billing-portal link — shown only on metered hosted nodes.
+    billingSection,
     accountSettings,
   ],
 };
