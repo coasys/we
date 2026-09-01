@@ -39,7 +39,7 @@
   },
   "dependencies": {
     "@coasys/ad4m": "0.13.0-test-interpretation-2",
-    "@solidjs/router": "^0.15.3",
+    "@solidjs/router": "^0.16.3",
     "@we/ai-context": "workspace:*",
     "@we/backend-ad4m": "workspace:*",
     "@we/backend-shared": "workspace:*",
@@ -80,7 +80,7 @@
   },
   "devDependencies": {
     "@solidjs/testing-library": "^0.8.10",
-    "@types/node": "^26.3.0",
+    "@types/node": "^26.4.0",
     "@types/three": "^0.185.4",
     "@vitest/coverage-v8": "^4.1.11",
     "@we/backend-inmemory": "workspace:*",
