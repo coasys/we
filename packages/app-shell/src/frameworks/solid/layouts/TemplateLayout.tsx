@@ -21,6 +21,7 @@
  */
 import { activePanels as panelsFor } from '@shared/panelScope';
 import { registerHostChromeReserve } from '@shared/registries/dockRegistry';
+import { resolveParts } from '@shared/registries/moduleParts';
 import { setTemplatePanels } from '@shared/registries/templatePanels';
 import { buildTemplateBag, CHROME_TIER } from '@shared/registries/templateSurface';
 import { isValidThemeKey } from '@shared/registries/themeRegistry';
@@ -241,6 +242,23 @@ export function TemplateLayout(
   createEffect(() => setTemplatePanels(activePanels(), stores.templateStore.currentTemplate?.id ?? ''));
   onCleanup(() => setTemplatePanels([], ''));
 
+  /**
+   * The template's root node with its `$part` markers expanded.
+   *
+   * The root is a template's *chrome* — it is rendered here rather than by the router, so it is the
+   * one part of an interface the route table never sees. An interface putting a module's fragment
+   * in a bar that stands over every page writes it here, and until now the marker reached the
+   * renderer intact and mounted nothing.
+   *
+   * A memo, so the walk happens per template rather than per render. `resolveParts` returns the
+   * node by identity when there is nothing to expand, which is every interface that places no
+   * parts — so this costs one comparison for all of them and changes nothing downstream.
+   */
+  const templateWithParts = createMemo(() => {
+    const expanded = resolveParts(stores.templateStore.currentTemplate);
+    return (Array.isArray(expanded) ? expanded[0] : expanded) ?? stores.templateStore.currentTemplate;
+  });
+
   // Taken back on unmount. A template switch unmounts this layout, and without the cleanup the
   // store kept navigating through the dead router — a link that silently did nothing.
   onCleanup(stores.routeStore.setNavigateFunction(navigate));
@@ -453,7 +471,7 @@ export function TemplateLayout(
           >
             <Show when={stores.templateStore.currentTemplate.id || 'empty'} keyed>
               <RenderSchema
-                node={stores.templateStore.currentTemplate}
+                node={templateWithParts()}
                 stores={templateStores}
                 registry={registry}
                 /*

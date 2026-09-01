@@ -8,7 +8,7 @@
  * it at a record the module has never heard of, which is the difference between a reusable fragment
  * and one welded to whatever state its module happens to hold.
  */
-import { resolveParts } from '@shared/registries/moduleParts';
+import { resolveParts, resolvePartsInRoutes } from '@shared/registries/moduleParts';
 import { moduleRegistry } from '@shared/registries/moduleRegistry';
 import type { ModuleDefinition } from '@we/module-shared';
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
@@ -115,5 +115,74 @@ describe('placing a module part', () => {
 
     expect(resolved.children).toEqual([]);
     expect(warn).toHaveBeenCalledOnce();
+  });
+});
+
+/**
+ * Parts outside a panel.
+ *
+ * `TemplatePanelBody` was the only thing that expanded them, so an interface could compose a
+ * module's fragments in a panel and nowhere else — not on one of its own pages, and not in the
+ * chrome standing over every page. That was never decided, only where the need first appeared, and
+ * the failure it produced was the silent one this whole mechanism warns about: the marker survived
+ * the walk, reached the renderer, and mounted nothing.
+ */
+describe('placing a part outside a panel', () => {
+  it('expands inside a route body', () => {
+    withModule(() => {
+      const routes = [{ path: '/board', type: 'Column', children: [{ type: '$part', props: { id: 'demo.plain' } }] }];
+
+      const resolved = resolvePartsInRoutes(routes) as typeof routes;
+
+      expect(JSON.stringify(resolved)).toContain('we-badge');
+      expect(JSON.stringify(resolved)).not.toContain('$part');
+    });
+  });
+
+  it('descends into a route that carries no type of its own', () => {
+    /*
+      The trap that made the first attempt at this wrong. A route is `{ path, children, routes }`
+      and often carries no `type` at all — so it failed the "is this a node" test, and its whole
+      subtree went unexamined while looking exactly like a subtree with no parts in it. The host
+      wraps every template's routes in one of these, so it was every template.
+    */
+    withModule(() => {
+      const routes = [
+        {
+          path: '/space/:spaceId',
+          children: [{ type: '$routes' }],
+          routes: [{ path: '/board', type: 'Column', children: [{ type: '$part', props: { id: 'demo.plain' } }] }],
+        },
+      ];
+
+      expect(JSON.stringify(resolvePartsInRoutes(routes))).toContain('we-badge');
+    });
+  });
+
+  it('expands in a template’s root node, which is its chrome', () => {
+    // The root is rendered outside the router, so the route table never sees it — an interface with
+    // a bar standing over every page puts a module's fragment there and nowhere a route walk looks.
+    withModule(() => {
+      const root = {
+        type: 'Column',
+        meta: { name: 'Demo', description: '', icon: 'circle' },
+        children: [{ type: '$part', props: { id: 'demo.plain' } }],
+      } as unknown as SchemaNode;
+
+      const resolved = resolveParts(root) as SchemaNode;
+
+      expect(JSON.stringify(resolved)).toContain('we-badge');
+      // The walk rebuilds the node, so anything hanging off it has to survive the copy — `meta` is
+      // what says a template is a template, and losing it would unname the interface.
+      expect((resolved as unknown as { meta: { name: string } }).meta.name).toBe('Demo');
+    });
+  });
+
+  it('returns a route table with no parts in it by identity', () => {
+    // What makes this free for every interface that places none: a memo built on it re-runs nothing
+    // downstream, because nothing downstream sees a new object.
+    const routes = [{ path: '/board', type: 'Column', children: [{ type: 'we-text' }] }];
+
+    expect(resolvePartsInRoutes(routes)).toBe(routes);
   });
 });

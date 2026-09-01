@@ -1339,11 +1339,52 @@ export function occupiedFor(requests: DockRequest[], index: number, viewport: Vi
 }
 
 /**
+ * What floating panels are covering, per edge — the counterpart to {@link contentInset}.
+ *
+ * `contentInset` answers "how much smaller is the content region", and floating panels contribute
+ * nothing to it by definition: they take no room. But they still sit *over* the content, and a
+ * surface that draws into its own box has no way to know which part of itself is hidden. Nothing
+ * asked until a board put its unplaced cards in the top-left of what it believed was in view, which
+ * was underneath the transcript panel — visible to the graph, invisible to the reader.
+ *
+ * ## The maximum per edge, where `contentInset` sums
+ *
+ * The two arrangements are different. Displacing panels on one edge form a **strip**: each spans the
+ * edge and the next sits further in, so their thicknesses add. Floating panels on one edge form a
+ * **column**: they divide the edge along its length, one above the other, so the band they cover is
+ * as wide as the widest of them, not as wide as both. Summing here would report a left edge twice as
+ * covered as it is and push everything into the middle of the screen.
+ *
+ * Corner snaps are skipped — `edgeOfSnap` answers null for them — because a corner panel covers a
+ * corner rather than a band, and calling that a full-height edge would give up a strip of screen
+ * that is mostly clear. Under-reporting is the right direction to be wrong in: content lands
+ * slightly nearer a panel than intended, rather than being crowded out of a region nothing occupies.
+ *
+ * A maximised panel is skipped for the opposite reason — it covers everything, and there is no
+ * uncovered region left for an answer to be about.
+ */
+export function coveredInset(requests: DockRequest[], viewport: Viewport): ContentInset {
+  const covered: ContentInset = { left: 0, right: 0, top: 0, bottom: 0 };
+
+  for (const request of requests) {
+    if (!request.edge || request.size === 'full') continue;
+    const placement = request.placement ?? seedPlacement(request, viewport);
+    if (placement.maximised || displaces(placement, viewport)) continue;
+    const edge = edgeOfSnap(placement.snap);
+    if (!edge) continue;
+    covered[edge] = Math.max(covered[edge], thicknessOf(placement, edge));
+  }
+
+  return covered;
+}
+
+/**
  * What the content viewport gives up, summed across every panel.
  *
- * Floating panels contribute nothing by definition. Two displacing panels on the same edge stack
- * their thicknesses — which is the honest answer even though nothing places them side by side yet:
- * an inset that under-reported would put the second panel over content the app believes is visible.
+ * Floating panels contribute nothing by definition — see {@link coveredInset} for what they do
+ * instead. Two displacing panels on the same edge stack their thicknesses, which is the honest
+ * answer even though nothing places them side by side yet: an inset that under-reported would put
+ * the second panel over content the app believes is visible.
  */
 export function contentInset(requests: DockRequest[], viewport: Viewport): ContentInset {
   const inset: ContentInset = { left: 0, right: 0, top: 0, bottom: 0 };

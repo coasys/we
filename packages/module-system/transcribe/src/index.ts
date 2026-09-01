@@ -68,12 +68,28 @@ import { defineModule, type ModuleStoreDeps } from '@we/module-shared';
 
 import { CALL_CONTROLS_ANCHOR, callControl } from './CallControl.schema';
 import { CALL_STATUS_ANCHOR, extractionSignal } from './ExtractionStatus.schema';
-import { panel, transcriptFeed } from './Panel.schema';
+import {
+  captureMeter,
+  captureStatus,
+  coverage,
+  panel,
+  pendingUtterance,
+  transcriptFeed,
+  transcriptLines,
+} from './Panel.schema';
 import { createTranscribeStore } from './store';
 
 export { CALL_CONTROLS_ANCHOR, callControl } from './CallControl.schema';
 export { CALL_STATUS_ANCHOR, extractionActivity, extractionSignal } from './ExtractionStatus.schema';
-export { panel, transcriptFeed } from './Panel.schema';
+export {
+  captureMeter,
+  captureStatus,
+  coverage,
+  panel,
+  pendingUtterance,
+  transcriptFeed,
+  transcriptLines,
+} from './Panel.schema';
 export { createTranscribeStore, TRANSCRIBE_ACTIVITY, type TranscribeStatus } from './store';
 export { WORKLET_NAME, WORKLET_SOURCE } from './workletSource';
 
@@ -98,16 +114,54 @@ export const transcribeModule = defineModule({
    * template that wants a transcript beside a graph, or inside a panel of its own, places this
    * rather than the whole panel, and gets the live record with speaker attribution for free.
    *
-   * Only the feed, deliberately. The rest of the panel has no second caller, and a fragment nobody
-   * else places is an extraction waiting to be got wrong.
-   *
    * With its **subject** named, so a placer can point it at a call this module is not recording —
    * an archive, or a board somebody opened from a link. The feed is written against this module's
    * own state and stays valid on its own; the host substitutes the expression when somebody asks
    * for another. Without that a part is welded to the state its module happens to hold, which is
    * what made these uncomposable while the field sat here unread.
+   *
+   * ## The two that go with it
+   *
+   * The feed alone was not enough, and the reason is worth stating because it is not obvious from
+   * looking at it: a transcript shows what has been *written*, and writing an utterance takes the
+   * speaker stopping, the audio reaching the model and the block landing. For those seconds the
+   * feed is identical to a feed that has stopped working. The module's own panel never had that
+   * problem — the meter and the unsaved line sit above it — but a template placing only the feed
+   * inherited a several-second silence after every sentence and no way to tell it from a dead
+   * microphone.
+   *
+   * So `captureMeter` (is it hearing me) and `pendingUtterance` (here is what it heard, not saved
+   * yet) are named too. Neither takes a `subject`: both are about the microphone this agent is
+   * running right now, which belongs to the session rather than to any call record — a live meter
+   * pointed at last month's meeting would be measuring nothing.
+   *
+   * ## And the two that say why there is nothing
+   *
+   * `captureStatus` and `coverage` are here for a different reason from the first three, and it is
+   * not that an interface ought to show them. Whether to is a design decision, and an interface
+   * that judges its readers better served by less is entitled to make it. What it may not be is
+   * *unable* to: with these trapped inside the default panel, a template arranging the pieces
+   * itself could not have offered "no transcription model is installed" or "2 of 5 transcribing"
+   * even having decided it wanted to.
+   *
+   * That is the line this map draws. A module's presentation is a default rather than a monopoly,
+   * so what belongs here is everything an interface could reasonably want to place — and the
+   * default panel then becomes one arrangement of these rather than the only one.
+   *
+   * The capture controls are the exception that proves it: the record button, the close button and
+   * the header are the *panel's* chrome rather than pieces of what this module knows, and an
+   * interface supplying a body writes its own — the workshop's transcript header is a Record button
+   * and a Continue button that exist nowhere in here.
    */
-  schemas: { transcriptFeed: { node: transcriptFeed, subject: 'modules.transcribe.collectionId' } },
+  schemas: {
+    transcriptFeed: { node: transcriptFeed, subject: 'modules.transcribe.collectionId' },
+    transcriptLines: { node: transcriptLines, subject: 'modules.transcribe.collectionId' },
+    // Bare nodes rather than `{ node }`: the wrapper exists to name a subject, and these have none.
+    captureMeter,
+    captureStatus,
+    coverage,
+    pendingUtterance,
+  },
 
   slots: [
     // Into the call module's own bar. It declares the anchor; we never name the module.

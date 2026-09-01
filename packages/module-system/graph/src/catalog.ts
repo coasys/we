@@ -71,6 +71,12 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
           description:
             'Entity holding this board\'s colour per kind of thing — WE passes "TypeStyle". Read onto every node as `boardTypeColor`, for a style rule to pick up with `{ from: "data.boardTypeColor" }`. This is what a board\'s key writes.',
         },
+        {
+          name: 'pending',
+          type: 'string[]',
+          description:
+            'Record ids whose card stands for a suggestion nobody has agreed to yet — an extraction pass can stage a whole record, so it is on the board and answers every query the accepted ones do. Read onto the matching node as `pending: true`, for a style rule to pick up with `{ when: { pending: true } }`. Ids rather than a query because only the capability that staged them knows which they are.',
+        },
         { name: 'limit', type: 'number', description: 'Rows per type. Default 200.' },
       ],
       example: `{ "source": "board", "options": { "board": { "$": "local.boardId" } } }`,

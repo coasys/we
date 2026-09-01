@@ -250,20 +250,120 @@ describe('the workshop template’s call selection', () => {
     expect(JSON.stringify(workshop)).toContain("/${nav.segment}?call=${routeStore.params.call ?? ''}");
   });
 
-  it('asks before deleting a call, because a panel is not guarded by the tier', () => {
+  it('leaves the delete confirmation to the host, panel or not', () => {
     /*
-      A space template's destructive actions are guarded at the tier boundary — `templateBag` puts
-      the host's own prompt in front of anything marked destructive, which is why the calls list in
-      `CardsView` needs no dialog. A panel is drawn with the *chrome* bag, which has no guard, so a
-      delete there would take a meeting and its whole transcript on one click with nothing in
-      between. The dialog is the panel's own.
+      This panel used to ask for itself, on the argument that a panel is drawn with the *chrome*
+      bag and so escapes the tier's guard. It is not: `TemplatePanelBody` renders a supplied
+      panel's contents with the **template** bag, because grants follow authorship rather than
+      render site — so `shellStore.requestDestructive` sits in front of this delete exactly as it
+      does in `CardsView`. Asking as well produced two dialogs for one click, the template's and
+      then the host's.
     */
     const calls = JSON.stringify(workshop.meta?.panels?.find((panel) => panel.id === 'calls'));
 
     expect(calls).toContain('spaceStore.deleteCollection');
-    expect(calls).toContain('Delete this call?');
-    // The delete names what the dialog is holding, never the row — the row is gone by then.
-    expect(calls).toContain('{"$":"local.confirming"}');
+    expect(calls).not.toContain('Delete this call?');
+    // The row's own id, not a dialog's holding pen — there is no dialog in between any more.
+    expect(calls).toContain('"args":[{"$":"call.id"}]');
+    /*
+      Whether the deleted call was the one on screen is captured on the click, not asked afterwards:
+      by the time the delete resolves the record is gone and the row with it, so an `onSuccess`
+      comparing against it would be comparing against nothing.
+    */
+    expect(calls).toContain('{"$setLocal":"deletingIsCurrent"');
+    expect(calls).toContain('{"$":"local.deletingIsCurrent"}');
+  });
+
+  it('marks a live recording in a red that reads as one', () => {
+    /*
+      `dangerText` is a derived foreground — its lightness is moved until it is legible against a
+      card, which in a dark theme lifts it into a pale pink. Right for an error sentence somebody
+      has to read; wrong for a recording indicator, which is not text and has to register as an
+      alarm at a glance. The fill role holds a pinned lightness and full chroma.
+    */
+    const json = JSON.stringify(workshop);
+
+    expect(json).not.toContain("'danger-text'");
+    expect(json).toContain("modules.transcribe.listening ? 'danger' : 'text-muted'");
+    expect(json).toContain("modules.call.callRecordId ? 'danger' : 'text-faint'");
+  });
+
+  it('keeps the unsaved line inside the scroll region, with the rows', () => {
+    /*
+      Outside it, the line is pinned to an edge of the panel while a short transcript sits at the
+      other, and the first sentence written appears to leap the gap between them. Inside, it follows
+      the last row whether there are two of them or two hundred.
+
+      `transcriptLines` rather than the module's whole feed, because the feed carries the unsaved
+      line unconditionally and this template has to omit it on a past call — that buffer is this
+      agent's live microphone, and last month's meeting is not what it is saying.
+    */
+    const transcript = JSON.stringify(workshop.meta?.panels?.find((panel) => panel.id === 'transcript'));
+
+    expect(transcript).toContain('transcribe.transcriptLines');
+    expect(transcript).toContain('"pin":"end"');
+    // Gated, where the rows are not: the rows are about the call on screen, the buffer is not.
+    expect(transcript).toContain('transcribe.pendingUtterance');
+    expect(transcript).not.toContain('transcribe.transcriptFeed');
+  });
+
+  it('draws a card nobody has agreed to yet as unsettled, and offers the decision on it', () => {
+    /*
+      An extraction pass can stage a whole record, and a staged record is in the graph: it answers
+      the board's query exactly as an accepted one does, so the card was indistinguishable from one
+      somebody had said yes to. The proposal list is the only thing that knows the difference.
+    */
+    const json = JSON.stringify(workshop);
+
+    expect(json).toContain('modules.transcribe.proposals.map(p, p.id)');
+    expect(json).toContain('{"when":{"pending":true},"style":{"opacity":0.5}}');
+    /*
+      Resolvable from the card itself, so deciding about one you can see does not mean finding its
+      line in a list somewhere else and matching them up by reading.
+
+      The controls carry the same `{ pending: true }` clause the fade does — one fact read twice, so
+      the cards that look unsettled and the cards offering the decision cannot come apart.
+    */
+    expect(json).toContain('modules.transcribe.acceptProposal');
+    expect(json).toContain('modules.transcribe.rejectProposal');
+    expect(json).toContain('{"id":"accept","icon":"check","title":"Keep this","when":{"pending":true}}');
+    expect(json).toContain('"id":"reject"');
+  });
+
+  it('offers a delete on every card, not only on the unsettled ones', () => {
+    /*
+      Extraction proposes things that are simply wrong about a conversation, and one that has been
+      accepted — or predates the proposal machinery — had no way off the board from the board.
+
+      Through `record.delete` rather than a store action, so it is guarded by the host's own
+      confirmation like every destructive call a template can name. The accept and discard controls
+      need none: discarding a suggestion removes something nobody agreed to, and a dialog in front of
+      that is a question about a question.
+    */
+    const json = JSON.stringify(workshop);
+
+    expect(json).toContain('{"id":"delete","icon":"trash","title":"Delete","danger":true}');
+    expect(json).toContain('record.delete');
+  });
+
+  it('shows the transcript panel what the microphone is doing, not only what it saved', () => {
+    /*
+      An utterance becomes a row only once the speaker stops, the audio reaches the model and the
+      block lands — seconds in which a feed of saved lines is indistinguishable from a dead
+      microphone. The module's own panel never had that problem because the meter and the unsaved
+      line sit with it; this template supplies its own panel, so it places the same two parts.
+
+      Both gated on being on the live call: they are about the microphone this agent is running
+      now, which says nothing about a past call opened from a link.
+    */
+    const transcript = JSON.stringify(workshop.meta?.panels?.find((panel) => panel.id === 'transcript'));
+
+    expect(transcript).toContain('transcribe.captureMeter');
+    expect(transcript).toContain('transcribe.pendingUtterance');
+    // After the feed, so it stays put outside the feed's own scroll area as the transcript grows.
+    expect(transcript!.indexOf('transcribe.pendingUtterance')).toBeGreaterThan(
+      transcript!.indexOf('transcribe.transcriptFeed'),
+    );
   });
 
   it('arranges the transcribe module’s panel rather than placing or duplicating it', () => {

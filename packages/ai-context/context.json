@@ -3817,6 +3817,16 @@
           "optional": true
         },
         {
+          "name": "nodeActions",
+          "type": "NodeAction[]",
+          "optional": true
+        },
+        {
+          "name": "onNodeAction",
+          "type": "((payload: { action: string; id: string; recordId?: string; recordType?: string; }) => void)",
+          "optional": true
+        },
+        {
           "name": "host",
           "type": "GraphHostBindings",
           "optional": true
@@ -6531,6 +6541,9 @@
           "type": "object"
         },
         "contentInset": {
+          "type": "object"
+        },
+        "coveredInset": {
           "type": "object"
         },
         "dockResizing": {

@@ -270,6 +270,19 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   /** What has been heard but not yet written — shown live, so the user can see it working. */
   const [pending, setPending] = signal<string>('');
   /**
+   * Words that have left the buffer and are being written, held until the write lands.
+   *
+   * The preview used to clear the instant a flush began, and the row it becomes does not exist until
+   * a create has gone to the backend and come back through the feed's subscription. Between those
+   * two moments the transcript said nothing at all — a sentence vanishing and reappearing somewhere
+   * else, which reads as a glitch rather than as saving.
+   *
+   * Separate from the buffer rather than a delayed clear of it, because speech does not stop for a
+   * write: anything said during one accumulates in `buffer` as usual, and the two are shown in
+   * whichever order they will be written.
+   */
+  const [settling, setSettling] = signal<string>('');
+  /**
    * Microphone loudness as the VAD measures it, 0–1, and whether it currently counts as speech.
    *
    * The same RMS the onset decision is made on rather than a second measurement of the same signal,
@@ -760,6 +773,9 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     buffer = '';
     setPending('');
     if (!text) return;
+    // Out of the buffer, not yet a row. Cleared in `finally`, so every exit from here — written,
+    // refused, or thrown — puts the preview back in agreement with what the feed can show.
+    setSettling(text);
 
     try {
       const slot = await ensureCollection();
@@ -784,6 +800,9 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
         waitingFlushes += 1;
         buffer = buffer ? `${text} ${buffer}` : text;
         setPending(buffer);
+        // Back in the buffer, so they are pending again rather than in flight — without this the
+        // same words would be shown twice while the record was awaited.
+        setSettling('');
         clearTimer();
         flushTimer = setTimeout(() => void flush(), FLUSH_AFTER_MS);
         return;
@@ -808,6 +827,8 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       // Reported but not surfaced as a failed state: the transcript continues, and losing one block
       // is better than stopping a call's transcription over a single write.
       console.error('transcribe: could not write block', cause);
+    } finally {
+      setSettling('');
     }
   }
 
@@ -1420,7 +1441,17 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     // ── State ────────────────────────────────────────────────────────────────
     status,
     error,
-    pending,
+    /**
+     * What has been heard and is not yet a row in the transcript — buffering, or being written.
+     *
+     * The union of the two, because from the reader's side they are one state: these words are not
+     * in the record yet. Splitting them would put a seam in the middle of a sentence, and there is
+     * nothing a panel could usefully do differently either side of it.
+     *
+     * Newest last, matching the order they will be written in. Both are non-empty only while
+     * somebody carries on talking through a write, which is the case the join exists for.
+     */
+    pending: () => [settling(), pending()].filter(Boolean).join(' '),
     enabled,
     open,
     /**

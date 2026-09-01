@@ -851,11 +851,18 @@ export class GraphEngine {
    *
    * Only when there is a surface to measure: before the first resize the numbers are zero, and a
    * rectangle of nothing at the origin is worse than no answer at all.
+   *
+   * **What the reader can see, not what the canvas spans.** A host may float panels over the graph
+   * without shrinking its box — the covered pixels are still canvas — so the two differ, and this is
+   * the one that answers the question a layout asks. `manual` puts a node with no stored position in
+   * the top-left of this rectangle, which is right where a transcript panel sits: on the workshop's
+   * board every freshly extracted card appeared underneath one, present and unreachable. See
+   * `Viewport.setObscured`.
    */
   private visibleWorldRect(): { x: number; y: number; width: number; height: number } {
-    const { width, height } = this.viewport.get();
-    const topLeft = this.viewport.toWorld({ x: 0, y: 0 });
-    const bottomRight = this.viewport.toWorld({ x: width, y: height });
+    const rect = this.viewport.visibleRect();
+    const topLeft = this.viewport.toWorld({ x: rect.x, y: rect.y });
+    const bottomRight = this.viewport.toWorld({ x: rect.x + rect.width, y: rect.y + rect.height });
     return {
       x: topLeft.x,
       y: topLeft.y,

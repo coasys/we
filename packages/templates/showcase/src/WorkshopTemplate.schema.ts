@@ -50,7 +50,7 @@
  *   *joins a call* when there is not one. Placed, never opened.
  */
 import type { RouteSchema, SchemaNode, SchemaProp, TemplateSchema } from '@we/schema-shared';
-import { agentByline, confirmModal, emptyState } from '@we/template-kit';
+import { agentByline, emptyState } from '@we/template-kit';
 
 /**
  * What extraction is allowed to make from a transcript.
@@ -547,10 +547,17 @@ const startCall: SchemaNode = {
  * here would have been about different calls whenever somebody opened a past one. A panel that
  * disagrees with the board beside it is worse than one more `$query`.
  *
- * So the arrangement is the template's, which is the whole thesis of this package: the feed is a
- * query, the record button is `modules.transcribe.toggle`, and the module still owns everything that
- * is not arrangement — the microphone, the buffering, the writes. The module's own panel is one
- * click away in the chrome rail for anyone who wants it.
+ * So the arrangement is the template's, which is the whole thesis of this package: the pieces are
+ * the module's own published parts, the record button is `modules.transcribe.toggle`, and the module
+ * still owns everything that is not arrangement — the microphone, the buffering, the writes, and
+ * whether this surface is up at all.
+ *
+ * That last one is why the module's own panel is **not** one click away in the chrome rail, as this
+ * used to claim. Supplying a body replaces what is inside the module's dock rather than adding a
+ * second panel beside it, so the rail's launcher opens *this* while the workshop is the interface on
+ * screen. That is the intended behaviour — two transcripts of one call is the failure this replaced
+ * — but it means an interface supplying a body has taken on saying anything the module's panel would
+ * have said, and there is no fallback that says it instead.
  */
 const transcriptPanel: SchemaNode = {
   type: 'Column',
@@ -601,7 +608,18 @@ const transcriptPanel: SchemaNode = {
                       props: {
                         name: 'microphone',
                         weight: { $: "modules.transcribe.listening ? 'fill' : 'regular'" },
-                        color: { $: "modules.transcribe.listening ? 'danger-text' : 'text-muted'" },
+                        /*
+                          The `danger` FILL, not `danger-text`.
+
+                          `dangerText` is a derived foreground: its lightness is moved until it is
+                          legible against a card, which in a dark theme means lifting it into a pale
+                          pink. That is right for an error sentence somebody has to read, and wrong
+                          here — this is not text, it is an indicator that something is being
+                          recorded, and it has to read as an alarm at a glance. The fill role holds
+                          a pinned lightness and full chroma, so it is the same saturated red in
+                          either polarity.
+                        */
+                        color: { $: "modules.transcribe.listening ? 'danger' : 'text-muted'" },
                       },
                     },
                     {
@@ -643,19 +661,63 @@ const transcriptPanel: SchemaNode = {
         },
       ],
     },
+    /*
+      Is it hearing me?
+
+      The feed below cannot answer that, and the gap is bigger than it looks: an utterance is only a
+      row once the speaker has stopped, the audio has reached the model and the block has been
+      written, so for those seconds a transcript of saved lines is indistinguishable from a dead
+      microphone. Long enough that the honest reading of the panel is "this isn't working".
+
+      Only on the live call. The meter is about the microphone *this agent* is running now, which
+      has nothing to do with a past call somebody opened from a link — a bar moving beside last
+      month's meeting would be measuring the wrong thing and saying so confidently. It gates itself
+      on recording as well, so this adds the second condition rather than the first.
+    */
+    {
+      type: '$if',
+      props: { condition: VIEWING_LIVE, then: { type: '$part', props: { id: 'transcribe.captureMeter' } } },
+    },
     {
       type: '$if',
       props: {
         condition: CALL,
         /*
-          The transcribe module's own feed, pointed at the call on screen.
+          The module's rows and its unsaved line, in a scroll area this template owns.
 
-          This was a copy — the same query, the same byline, written out again here because a
-          template cannot import a module. It is published as a part with its subject named, so
-          placing it is naming it, and the attribution, the pinned scroll and every later fix to
-          them arrive from the module rather than being re-made here.
+          `transcriptLines` rather than `transcriptFeed`, and the scroll area written out here, for
+          one reason: the unsaved line has to be *inside* the scrolling region — immediately after
+          the last saved row, so a sentence does not appear to leap a gap of empty panel when it is
+          written — and it has to be absent on a past call, because that buffer is this agent's live
+          microphone and last month's meeting is not what it is saying. Placing the module's whole
+          feed would give the right position and the wrong call; placing the line beneath the feed
+          gave the right call and the wrong position. Owning the box is what allows both.
+
+          The rows themselves are still the module's, pointed at the call on screen — the query, the
+          attribution and every later fix to them arrive from there rather than being re-made here.
         */
-        then: { type: '$part', props: { id: 'transcribe.transcriptFeed', subject: CALL } },
+        then: {
+          type: 'we-scroll-area',
+          // Follows the tail while somebody is at the tail, and holds still while they read further
+          // up — the module's own feed does the same, for the same reason.
+          props: { pin: 'end', flex: '1', minHeight: '0' },
+          children: [
+            {
+              type: 'Column',
+              props: { gap: '300' },
+              children: [
+                { type: '$part', props: { id: 'transcribe.transcriptLines', subject: CALL } },
+                {
+                  type: '$if',
+                  props: {
+                    condition: VIEWING_LIVE,
+                    then: { type: '$part', props: { id: 'transcribe.pendingUtterance' } },
+                  },
+                },
+              ],
+            },
+          ],
+        },
         else: emptyState({ icon: 'microphone', label: 'a transcript' }),
       },
     },
@@ -755,20 +817,17 @@ const callsPanel: SchemaNode = {
   type: 'Column',
   props: { width: '100%', height: '100%', p: '300', gap: '300', overflow: 'hidden' },
   /*
-    Which call a delete is about, held on the panel rather than on the row.
+    Whether the call being deleted is the one every other surface is reading, captured on the click
+    rather than asked for afterwards.
 
-    A row cannot hold it: `$localState` names are fixed when the template is written and the rows
-    come from a query, so there is no name per row — the id is the state. One dialog outside the
-    list, told which call it is for.
-
-    `confirmingIsCurrent` is captured at the same moment and for a reason worth stating: after the
-    delete the dialog's own close clears `confirming`, so an `onSuccess` asking "was that the call on
-    screen?" would be comparing against an id that is already gone.
+    By the time the delete resolves its row is gone from the query and the record it named no longer
+    exists, so an `onSuccess` asking "was that the call on screen?" would be comparing against
+    something already deleted. A row cannot hold the answer either — `$localState` names are fixed
+    when the template is written and the rows come from a query — so it lives on the panel, written
+    by whichever row was clicked.
   */
   $localState: {
-    confirming: { type: 'string', initial: '' },
-    confirmingIsCurrent: { type: 'boolean', initial: false },
-    deleting: { type: 'boolean', initial: false },
+    deletingIsCurrent: { type: 'boolean', initial: false },
   },
   $queries: {
     calls: { entity: 'CollectionBlock', where: { kind: 'call' }, order: { createdAt: 'desc' }, limit: 30 },
@@ -830,8 +889,11 @@ const callsPanel: SchemaNode = {
                               type: 'we-icon',
                               props: {
                                 name: 'phone-call',
+                                // The fill role, for the reason the record icon above uses it: a
+                                // live-call marker is a signal rather than a sentence, and the
+                                // derived foreground goes pale in a dark theme.
                                 color: {
-                                  $: "call.id == modules.call.callRecordId ? 'danger-text' : 'text-faint'",
+                                  $: "call.id == modules.call.callRecordId ? 'danger' : 'text-faint'",
                                 },
                               },
                             },
@@ -855,9 +917,27 @@ const callsPanel: SchemaNode = {
                                 square: true,
                                 color: 'text-faint',
                                 hoverProps: { color: 'danger-text' },
+                                /*
+                                  No `confirmModal`: the host raises its own in front of every
+                                  destructive store action, and a panel is guarded like any other
+                                  part of the template. Grants — and the guard with them — follow
+                                  *authorship*, not render site: `TemplatePanelBody` draws this
+                                  content with the space bag inside a chrome-authored frame. A
+                                  dialog here would be the second question about one click.
+                                  See DestructivePrompt.schema.ts.
+                                */
                                 onClick: [
-                                  { $setLocal: 'confirming', value: { $: 'call.id' } },
-                                  { $setLocal: 'confirmingIsCurrent', value: { $: `call.id == (${CALL_EXPR})` } },
+                                  { $setLocal: 'deletingIsCurrent', value: { $: `call.id == (${CALL_EXPR})` } },
+                                  {
+                                    $action: 'spaceStore.deleteCollection',
+                                    args: [{ $: 'call.id' }],
+                                    // Only when the record just deleted is the one every other
+                                    // surface is reading. Deleting some other call must not move you
+                                    // off the one you are looking at.
+                                    onSuccess: [
+                                      { $if: { condition: { $: 'local.deletingIsCurrent' }, then: openLiveCall } },
+                                    ],
+                                  },
                                 ],
                               },
                               children: [{ type: 'we-icon', props: { name: 'trash' } }],
@@ -875,34 +955,6 @@ const callsPanel: SchemaNode = {
         else: emptyState({ icon: 'archive', label: 'recorded calls' }),
       },
     },
-    /*
-      Asked for here, rather than left to the host's own destructive prompt.
-
-      A space template's actions are guarded at the tier boundary — `templateBag` puts
-      `shellStore.requestDestructive` in front of every action marked destructive, which is why the
-      calls list in `CardsView` needs no dialog of its own. A **panel** is not rendered through that
-      bag: its frame is registered into the slot registry and drawn with the *chrome* bag, which has
-      no guard, because chrome is authored in this repo and asks its own questions. So this one asks.
-      Without it, a click one pixel from "continue this call" would delete a meeting and everything
-      said in it, with nothing in between.
-    */
-    confirmModal({
-      open: { $: 'local.confirming' },
-      close: { $setLocal: 'confirming', value: '' },
-      title: 'Delete this call?',
-      body: 'The recording, its transcript and everything extracted from it go with it. This cannot be undone.',
-      confirmLabel: 'Delete',
-      // A recursive delete walks the whole collection, so it is not instant — without a spinner the
-      // button absorbs the click and invites a second one.
-      busyLocal: 'deleting',
-      confirm: {
-        $action: 'spaceStore.deleteCollection',
-        args: [{ $: 'local.confirming' }],
-        // Only when the record just deleted is the one every other surface is reading. Deleting some
-        // other call must not move you off the one you are looking at.
-        onSuccess: [{ $if: { condition: { $: 'local.confirmingIsCurrent' }, then: openLiveCall } }],
-      },
-    }),
   ],
 };
 
@@ -923,7 +975,21 @@ const board: SchemaNode = {
   props: {
     seeds: {
       source: 'board',
-      options: { board: CALL, contains: EXTRACTED, connections: 'Relationship' },
+      /*
+        `pending` is what makes a suggestion look like one.
+
+        An extraction pass can stage a *whole* record rather than writing it, and a staged record is
+        in the graph: it answers the board's query exactly as an accepted one does, so until now a
+        card nobody had agreed to was indistinguishable from a card somebody had. The proposal list
+        is the only thing that knows the difference, and its `id` is the record's own — so handing
+        the ids over is the whole of the connection.
+      */
+      options: {
+        board: CALL,
+        contains: EXTRACTED,
+        connections: 'Relationship',
+        pending: { $: 'modules.transcribe.proposals.map(p, p.id)' },
+      },
     },
     // Nothing opens automatically: a card's own blocks are fragments of it, not more cards.
     expansion: { defaultDepth: 0 },
@@ -941,6 +1007,15 @@ const board: SchemaNode = {
           color: { from: 'data.boardColor' },
         },
       },
+      /*
+        Last, so it survives the card's own colour: a suggestion is faded whatever shade it is.
+
+        Faded rather than hidden. The cards are worth seeing as they arrive — that is the point of a
+        board beside a live call — and half opacity says "this is not settled yet" without asking
+        anybody to go and look somewhere else first. What it is *not* is a decision: accepting or
+        discarding is the bar below, which appears when one of these is selected.
+      */
+      { when: { pending: true }, style: { opacity: 0.5 } },
     ],
     behaviours: [
       // Before drag-node, which is what makes arming mean anything: both claim a press on a node.
@@ -990,6 +1065,55 @@ const board: SchemaNode = {
       args: [CALL, { $: 'event.recordId' }, { $: 'event.recordType' }, { $: 'event.x' }, { $: 'event.y' }],
     },
     onNodeResize: { $action: 'recordStore.resizeOnBoard', args: [CALL, { $: 'event' }] },
+    /*
+      The decision, on the card that raised it.
+
+      A suggestion is resolvable from the extraction panel too, and that is the right surface for
+      working through a backlog. It is the wrong one when the thing you are looking at is in front
+      of you: the card is what asked the question, so finding its line in a list somewhere else and
+      matching the two up by reading is work the board created and should absorb.
+
+      `when` is the style rules' own match clause against the same node data, so the tick and the
+      cross appear on exactly the cards `{ pending: true }` faded — one fact, read twice, which is
+      what stops the two from ever disagreeing.
+
+      Delete is offered on everything, suggestion or not. Extraction proposes things that are simply
+      wrong about a conversation, and until now the only way to remove one that had been accepted was
+      to find it in another view.
+    */
+    nodeActions: [
+      { id: 'accept', icon: 'check', title: 'Keep this', when: { pending: true } },
+      { id: 'reject', icon: 'x', title: 'Discard this', when: { pending: true }, danger: true },
+      { id: 'delete', icon: 'trash', title: 'Delete', danger: true },
+    ],
+    /*
+      One handler, branching on which was pressed — the shape a handler array is for.
+
+      Delete goes through `record.delete` rather than a store action, so it is guarded by the host's
+      own confirmation like every destructive call a template can name. The other two need none:
+      discarding a suggestion removes something nobody has agreed to, and a second dialog in front of
+      that is a question about a question.
+    */
+    onNodeAction: [
+      {
+        $if: {
+          condition: { $: "event.action == 'accept'" },
+          then: { $action: 'modules.transcribe.acceptProposal', args: [{ $: 'event.recordId' }] },
+        },
+      },
+      {
+        $if: {
+          condition: { $: "event.action == 'reject'" },
+          then: { $action: 'modules.transcribe.rejectProposal', args: [{ $: 'event.recordId' }] },
+        },
+      },
+      {
+        $if: {
+          condition: { $: "event.action == 'delete'" },
+          then: { $action: 'record.delete', args: [{ $: 'event.recordType' }, { $: 'event.recordId' }] },
+        },
+      },
+    ],
   },
 };
 

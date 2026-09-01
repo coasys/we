@@ -540,3 +540,49 @@ describe('agent-scoped modules', () => {
     expect(compiled).toEqual(['PocketItem']);
   });
 });
+
+/**
+ * A module's panel contents, replaced by the interface that declared the panel.
+ *
+ * The gate is keyed by **dock id** though the template's declaration names a module, and the two
+ * only diverge for a module contributing more than one panel — where keying by module would have
+ * put one supplied body inside every one of them. None does today, which is the reason to pin it:
+ * the day one does, the failure is a panel quietly showing the wrong contents.
+ */
+describe('supplying a module panel’s contents', () => {
+  beforeEach(reset);
+
+  const twoDocks = {
+    id: 'twin',
+    name: 'Twin',
+    docks: [
+      { edge: 'edgeA', node: { type: 'we-text', children: ['first'] } },
+      { edge: 'edgeB', node: { type: 'we-text', children: ['second'] } },
+    ],
+    createStore: () => ({}),
+  } as unknown as ModuleDefinition;
+
+  it('gates each dock on its own id, not on the module’s', () => {
+    moduleRegistry.register(twoDocks, host);
+
+    const frames = slotRegistry.all().filter((entry) => entry.id.startsWith('dock:twin'));
+    const json = frames.map((entry) => JSON.stringify(entry.node));
+
+    expect(frames).toHaveLength(2);
+    expect(json[0]).toContain("shellStore.panelSupplied['twin:0']");
+    expect(json[1]).toContain("shellStore.panelSupplied['twin:1']");
+    // Neither asks about the bare module name — that is the key that would answer for both at once.
+    for (const entry of json) expect(entry).not.toContain("panelSupplied['twin']");
+  });
+
+  it('still renders the module’s own contents on the other side of the gate', () => {
+    // The override is a branch, not a replacement: a module whose panel nobody supplies is
+    // unaffected, which is what makes this safe to key on something no template writes directly.
+    moduleRegistry.register(twoDocks, host);
+
+    const first = JSON.stringify(slotRegistry.get('dock:twin:0')?.node);
+
+    expect(first).toContain('first');
+    expect(first).toContain('TemplatePanelBody');
+  });
+});

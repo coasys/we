@@ -15,6 +15,7 @@ import {
   columnSlots,
   type ContentInset,
   contentInset,
+  coveredInset,
   displaces,
   type DockGeometry,
   type DockRequest,
@@ -106,9 +107,13 @@ function describeDestructive(path: string, args: unknown[]): { title: string; bo
         body: 'It will be removed for everyone in this space. This cannot be undone.',
       };
     case 'spaceStore.deleteCollection':
+      // Deliberately not "the post". A collection is kind-agnostic — a post, a recorded call and a
+      // notes collection are the same shape and the same recursive delete — so naming one of them
+      // asks the wrong question about the other two, and the transcript a call is about to lose
+      // does not read as "a block".
       return {
         title: 'Delete this and everything in it?',
-        body: 'The post and every block inside it will be removed for everyone in this space. This cannot be undone.',
+        body: 'Everything inside it will be removed for everyone in this space. This cannot be undone.',
       };
     case 'shapeStore.deleteShape':
       return {
@@ -121,6 +126,26 @@ function describeDestructive(path: string, args: unknown[]): { title: string; bo
         body: 'This cannot be undone.',
       };
   }
+}
+
+/** Module ids already reported, so a memo re-running does not repeat itself every frame. */
+const ambiguousSupply = new Set<string>();
+
+/**
+ * A template asked to supply "that module's panel" for a module that contributes several.
+ *
+ * Reported rather than guessed at. The entry has no way to say *which* panel it means, so the
+ * honest answer is that the declaration is under-specified — and saying so names the fix (a panel
+ * entry that identifies the dock) where picking one silently would not.
+ */
+function warnAmbiguousSupply(moduleId: string, count: number): void {
+  if (ambiguousSupply.has(moduleId)) return;
+  ambiguousSupply.add(moduleId);
+  console.warn(
+    `[panels] an interface supplies contents for module "${moduleId}", which contributes ${count} panels. ` +
+      'A panel entry names a module, so there is no way to tell which one is meant — none is supplied, ' +
+      "and each keeps the module's own contents.",
+  );
 }
 
 export interface ShellStore {
@@ -226,6 +251,15 @@ export interface ShellStore {
   dockGeometry: Accessor<Record<string, DockGeometry>>;
   /** What the content viewport gives up to docked panels, in pixels per edge. */
   contentInset: Accessor<ContentInset>;
+  /**
+   * What floating panels are *covering*, in pixels per edge — the counterpart to `contentInset`.
+   *
+   * A floating panel takes no room, so it contributes nothing to `contentInset` and the content
+   * region is the whole area. It still sits over part of it, and a surface drawing into its own box
+   * cannot see which part. Read this to keep something in the clear — a board putting a new card
+   * where the reader can actually see it, a toast, a first-run pointer.
+   */
+  coveredInset: Accessor<ContentInset>;
   /** True while a dock is being dragged, so transitions can be suspended and the edge track the cursor. */
   dockResizing: Accessor<boolean>;
   /**
@@ -329,12 +363,16 @@ export interface ShellStore {
    */
   layoutDirty: Accessor<boolean>;
   /**
-   * Modules whose panel this interface is supplying itself, by module id.
+   * Docks whose contents this interface is supplying itself, **by dock id** (`transcribe:0`).
    *
    * What a module's own dock frame asks before drawing its default contents. A module's
    * presentation is a default, not a monopoly: an interface that arranges the pieces differently
    * says so by declaring a panel that names the module, and the module goes on owning whether the
    * surface is up and how big it is.
+   *
+   * By dock rather than by module, though the declaration names a module: keyed by module, one
+   * supplied body would land in every panel that module contributes. See the memo for how a module
+   * name is resolved to a dock, and what it does when that is ambiguous.
    */
   panelSupplied: Accessor<Record<string, boolean>>;
   /**
@@ -992,6 +1030,14 @@ export function ShellStoreProvider(props: ParentProps) {
   });
 
   const inset = createMemo(() => contentInset(dockRequests(), viewport()));
+  /*
+    The same requests, asked the other question: not what the panels take, but what they hide.
+
+    Its own memo rather than a second return from `contentInset`, because the two walks disagree
+    about arithmetic — a strip of displacing panels sums and a column of floating ones takes the
+    maximum — and a function answering both would have to explain which number it was returning.
+  */
+  const covered = createMemo(() => coveredInset(dockRequests(), viewport()));
 
   /**
    * Publish where the content's edges are, as CSS custom properties, so chrome can sit against the
@@ -1301,6 +1347,7 @@ export function ShellStoreProvider(props: ParentProps) {
     },
     dockGeometry,
     contentInset: inset,
+    coveredInset: covered,
     dockResizing,
     panelMaximised,
 
@@ -1762,9 +1809,32 @@ export function ShellStoreProvider(props: ParentProps) {
       });
     },
 
+    /*
+      Which *docks* an interface has supplied the contents of, keyed by dock id.
+
+      A template's entry names a module, because "the transcribe panel, arranged my way" is the
+      question its author is asking. Resolving that name to a dock is this memo's job, and it is
+      done here rather than at the gate because only the shell can see the dock registry.
+
+      One dock is the whole of the current world and the easy case. None means the module is not
+      installed in this deployment, which is ordinary — an interface declaring a panel for a module
+      a deployment left out should render nothing, not complain.
+
+      Several is the case worth refusing. Supplying all of them would put one body inside every
+      panel that module contributes, so overriding its transcript would silently overwrite its
+      settings panel; picking the first would be a guess that reads as correct until it isn't.
+      So it supplies none and says why — a panel showing the module's own contents is a visible,
+      correctable outcome, where the wrong contents in the right frame is not.
+    */
     panelSupplied: createMemo(() => {
+      dockRegistryVersion();
       const supplied: Record<string, boolean> = {};
-      for (const panel of declaredPanels()) if (panel.module && panel.node) supplied[panel.module] = true;
+      for (const panel of declaredPanels()) {
+        if (!panel.module || !panel.node) continue;
+        const docks = dockRegistry.ordered().filter((entry) => entry.moduleId === panel.module);
+        if (docks.length === 1) supplied[docks[0].id] = true;
+        else if (docks.length > 1) warnAmbiguousSupply(panel.module, docks.length);
+      }
       return supplied;
     }),
 

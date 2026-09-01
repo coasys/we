@@ -33,6 +33,7 @@ import { useDatasetStore } from '../stores/DatasetStore';
 import { useProfileStore } from '../stores/ProfileStore';
 import { useRecordStore } from '../stores/RecordStore';
 import { useSessionStore } from '../stores/SessionStore';
+import { useShellStore } from '../stores/ShellStore';
 
 /**
  * How many rows a reverse lookup will read before giving up.
@@ -122,6 +123,7 @@ function BlockCard(props: { node: GraphNode }) {
 export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
   const datasetStore = useDatasetStore();
   const recordStore = useRecordStore();
+  const shellStore = useShellStore();
   const sessionStore = useSessionStore();
   const profileStore = useProfileStore();
 
@@ -243,6 +245,21 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
 
   const host: GraphViewProps['host'] = {
     nodeContent: { block: BlockCard },
+
+    /**
+     * The parts of the graph's box the shell's floating panels are sitting over.
+     *
+     * A floating panel takes no room, so the graph is handed the whole content region and every
+     * pixel of it counts as on screen — including the ones behind a transcript panel. The board's
+     * `manual` layout parks an unplaced card in the top-left of what it believes is in view, which
+     * is exactly where a left-snapped panel is, so every freshly extracted record appeared
+     * underneath one: drawn, draggable, and invisible until somebody moved the panel.
+     *
+     * Supplied here rather than by the template because it is the *shell's* arrangement, which a
+     * template cannot see and should not have to restate. Every graph in the app is mounted through
+     * this component, so they all get it.
+     */
+    obscured: () => shellStore.coveredInset(),
 
     /**
      * What the board has just written and not yet seen come back.

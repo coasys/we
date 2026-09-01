@@ -27,11 +27,54 @@ export interface Bounds {
 const MIN_ZOOM = 0.02;
 const MAX_ZOOM = 8;
 
+/** Screen-space pixels along each edge that something is drawn over — see `Viewport.setObscured`. */
+export interface ScreenInset {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
+const NO_INSET: ScreenInset = { top: 0, right: 0, bottom: 0, left: 0 };
+
 export class Viewport {
   private state: ViewportState = { x: 0, y: 0, zoom: 1, width: 0, height: 0 };
 
+  /**
+   * The parts of the canvas something else is covering, in screen pixels per edge.
+   *
+   * The graph fills its box; the host may float panels over that box without shrinking it. The
+   * camera is unaffected — the covered pixels are still canvas, still rendered, still pannable —
+   * but anything asking "what can the reader see" wants this subtracted. Zero unless a host says
+   * otherwise, so nothing outside an app shell has to know the concept exists.
+   */
+  private obscured: ScreenInset = NO_INSET;
+
   get(): Readonly<ViewportState> {
     return this.state;
+  }
+
+  setObscured(inset: Partial<ScreenInset> | null | undefined): void {
+    this.obscured = inset ? { ...NO_INSET, ...inset } : NO_INSET;
+  }
+
+  /**
+   * The screen rectangle a reader can actually see, which is the whole viewport minus what is
+   * covering it.
+   *
+   * Clamped so an inset wider than the viewport gives an empty rect at the origin rather than a
+   * negative one — a panel maximised over a narrow window can genuinely cover everything, and a
+   * negative width propagates into world coordinates as a rectangle inside out.
+   */
+  visibleRect(): { x: number; y: number; width: number; height: number } {
+    const { width, height } = this.state;
+    const { top, right, bottom, left } = this.obscured;
+    return {
+      x: Math.min(left, width),
+      y: Math.min(top, height),
+      width: Math.max(0, width - left - right),
+      height: Math.max(0, height - top - bottom),
+    };
   }
 
   resize(width: number, height: number): void {

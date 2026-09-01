@@ -1314,3 +1314,59 @@ describe('extracting by id', () => {
     expect(i.calls).toEqual(['call-a']);
   });
 });
+
+/**
+ * The gap between the preview clearing and the row appearing.
+ *
+ * `pending` used to be emptied at the top of a flush, and the row it becomes does not exist until a
+ * create has gone to the backend and come back through the feed's subscription. Between those two
+ * moments the transcript said nothing at all — a sentence vanishing and reappearing somewhere else,
+ * which reads as a glitch rather than as saving.
+ */
+describe('what is shown while an utterance is being written', () => {
+  /** A harness whose writes hang until the returned function is called. */
+  function slowWrites(peers: Peer[]) {
+    let release!: () => void;
+    const written = new Promise<void>((resolve) => (release = resolve));
+    let nextId = 1;
+    const h = harness(peers, {
+      createEntity: async () => {
+        await written;
+        return `id-${nextId++}`;
+      },
+    });
+    return { h, release: () => release() };
+  }
+
+  it('keeps the words visible until the write lands, then lets the row have them', async () => {
+    const { h, release } = slowWrites([peer(ME, { type: 'call', id: CALL, record: RECORD })]);
+
+    h.store.receiveText('the whole sentence');
+    const writing = h.store.flushNow();
+
+    // Out of the buffer, into the write — and still on screen, because it is still not a row.
+    expect(h.store.pending()).toBe('the whole sentence');
+
+    release();
+    await writing;
+
+    expect(h.store.pending()).toBe('');
+  });
+
+  it('shows words said during a write after the ones being written', async () => {
+    // Speech does not stop for a round trip. Both are pending from the reader's side — neither is in
+    // the record — and they are shown in the order they will be written.
+    const { h, release } = slowWrites([peer(ME, { type: 'call', id: CALL, record: RECORD })]);
+
+    h.store.receiveText('first');
+    const writing = h.store.flushNow();
+    h.store.receiveText('second');
+
+    expect(h.store.pending()).toBe('first second');
+
+    release();
+    await writing;
+
+    expect(h.store.pending()).toBe('second');
+  });
+});

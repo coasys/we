@@ -1,5 +1,6 @@
 import { queryIRFlag } from '@shared/queryIRFlag';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
+import { resolvePartsInRoutes } from '@shared/registries/moduleParts';
 import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry';
 import { onSlotRegistryChanged, slotRegistry } from '@shared/registries/slotRegistry';
 import { provideTemplateBag } from '@shared/registries/templateBag';
@@ -615,21 +616,37 @@ export default function TemplateProvider() {
   const routesWithViews = createMemo(() => {
     const routes = templateSchema.routes ?? [];
     const extras = HOST_ROUTES as unknown as (typeof routes)[number][];
+    /*
+      `$part` expanded over the whole route table, before the router sees it.
+
+      Parts used to be a panel-only mechanism — `TemplatePanelBody` was the single call site — so an
+      interface could compose a module's fragments in a panel and nowhere else. That was never a
+      decision, only where the need first appeared: a template wanting a transcript on one of its
+      own pages, or a *view* built out of a module's pieces, wrote a `$part` that survived the walk
+      and reached the renderer, which mounts nothing for a type it does not know.
+
+      Here, for the same reason `$views` is expanded here: it is a property of the schema rather
+      than of the walk, so everything downstream — the router, the keep-alive stubs, the `$nav`
+      depths — goes on seeing an ordinary route tree. Views come through this memo too, so a section
+      gets parts for nothing.
+    */
     if (hasViewsMarker(routes)) {
-      return expandViewRoutes(routes, spaceStore.routableViews(), {
-        activeIds: 'spaceStore.enabledViewIds',
-        notInSpace: noSectionsNode,
-        extraRoutes: extras,
-      });
+      return resolvePartsInRoutes(
+        expandViewRoutes(routes, spaceStore.routableViews(), {
+          activeIds: 'spaceStore.enabledViewIds',
+          notInSpace: noSectionsNode,
+          extraRoutes: extras,
+        }),
+      );
     }
     if (!routes.length) return routes;
-    return [
+    return resolvePartsInRoutes([
       {
         path: SPACE_ROUTE_PATH,
         children: [{ type: '$routes' }],
         routes: [...routes, ...extras],
       } as unknown as (typeof routes)[number],
-    ];
+    ]);
   });
 
   /**

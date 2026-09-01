@@ -905,6 +905,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     */
     dockGeometry: state('host-layout'),
     contentInset: state('host-layout'),
+    coveredInset: state('host-layout'),
     dockResizing: state('host-layout'),
     // Read by the sidebar and the module rail, which hide while a panel is maximised.
     panelMaximised: state('host-layout'),

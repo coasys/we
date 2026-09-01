@@ -17,6 +17,7 @@ import type {
   GraphNode,
   GraphValue,
   LayoutSpec,
+  MatchClause,
   NodeStyleRules,
   SeedSpec,
 } from '@we/graph-protocol';
@@ -231,10 +232,43 @@ export interface GraphViewProps {
   }) => void;
 
   /**
+   * Small controls that appear above a node while it is selected — a tick, a cross, a bin.
+   *
+   * The sibling of the resize handles, and the same bargain: only on the selection, because
+   * furniture on every node would cover the content it is there to show, and selecting first is how
+   * you say which node you mean anyway.
+   *
+   * `when` is the **same match clause the style rules take**, tested against the same node data — so
+   * "offer this only on a card nobody has agreed to yet" is `{ when: { pending: true } }`, and the
+   * vocabulary an interface already knows for deciding how a node *looks* decides what it can
+   * *do*. An action with no `when` is offered on every node.
+   *
+   * Nothing here says what an action means. The graph reports that one was pressed, on which record,
+   * and the interface decides — deleting, accepting a suggestion, opening something. A widget that
+   * knew what a tick meant would be a widget only one template could use.
+   */
+  nodeActions?: NodeAction[];
+  /** One of {@link nodeActions} was pressed on a node. */
+  onNodeAction?: (payload: { action: string; id: string; recordId?: string; recordType?: string }) => void;
+  /**
    * Data-layer bindings, injected by the host's component registry rather than written in a template.
    * Templates never supply these.
    */
   host?: GraphHostBindings;
+}
+
+/** One control offered above a selected node — see {@link GraphViewProps.nodeActions}. */
+export interface NodeAction {
+  /** Reported back as `action` when it is pressed. */
+  id: string;
+  /** Phosphor icon name. */
+  icon: string;
+  /** The tooltip, and the accessible name — an icon with neither is a button nobody can identify. */
+  title?: string;
+  /** Offered only on nodes this matches. Omit for every node. */
+  when?: MatchClause;
+  /** Draw it as destructive. For a control that removes something, so it does not look like the rest. */
+  danger?: boolean;
 }
 
 /**
@@ -274,6 +308,23 @@ export interface GraphHostBindings {
    * Reactive: read inside the render, so a host signal here re-draws the nodes it names.
    */
   pendingData?(): Record<string, Record<string, GraphValue>>;
+  /**
+   * The parts of the graph's own box something else is drawn over, in screen pixels per edge.
+   *
+   * The graph fills the region the host gave it, and the host may float panels over that region
+   * without shrinking it — so the canvas the engine believes is on screen and the canvas a reader
+   * can see are different rectangles. Nothing noticed until a board parked its unplaced cards in
+   * the top-left of the first one, which was underneath a panel: the cards were drawn, present and
+   * findable by every gesture, and invisible.
+   *
+   * Only affects questions about what is *visible* — where to put a node nobody has placed, and
+   * anything else that has to choose a spot. Panning, zooming and hit-testing are unchanged: the
+   * covered pixels are still canvas.
+   *
+   * Reactive, read inside an effect, so a panel being dragged or resized is followed. Omitted by a
+   * host with nothing over its graph, which is every host but an app shell.
+   */
+  obscured?(): { top: number; right: number; bottom: number; left: number };
   /**
    * These records' pending fields are now carried by the graph's own data, so the host can forget
    * them.

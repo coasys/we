@@ -210,12 +210,25 @@ function declaredEntities(schemas: SchemaPort, scope: ModuleScope): unknown[] {
  * the module stays installed, and a `$if` is how a schema asks a question it cannot answer when it
  * is written. The module's dock is untouched: its edge, size and open flag still decide *whether*
  * the surface is up, which is the module's to say. Only what is inside it moves.
+ *
+ * ## Keyed by dock, not by module
+ *
+ * A template's entry names a *module* — `{ module: 'transcribe', node }` — because that is the
+ * question a template author is asking. The gate is keyed by **dock id** anyway, and the difference
+ * only shows up for a module contributing more than one panel: keyed by module, one supplied body
+ * would have replaced the contents of every one of them, so a template overriding a module's
+ * transcript panel would silently have overwritten its settings panel with the same node.
+ *
+ * No module contributes two docks today, which is exactly why it is worth keying correctly now —
+ * the day one does, the failure is a panel showing the wrong thing rather than an error. Resolving
+ * a module name to a dock id is `ShellStore.panelSupplied`'s job, and it refuses the ambiguous case
+ * out loud rather than picking.
  */
-function suppliedOrOwn(moduleId: string, own: SchemaNode): SchemaNode {
+function suppliedOrOwn(moduleId: string, dockId: string, own: SchemaNode): SchemaNode {
   return {
     type: '$if',
     props: {
-      condition: { $: `shellStore.panelSupplied['${moduleId}']` },
+      condition: { $: `shellStore.panelSupplied['${dockId}']` },
       then: { type: 'TemplatePanelBody', props: { moduleId } },
       else: own,
     },
@@ -350,7 +363,7 @@ export const moduleRegistry = {
         id: `dock:${id}`,
         node: gateOnSpace(
           definition.id,
-          dockFrame({ ...dock, id, moduleId: definition.id }, suppliedOrOwn(definition.id, dock.node)),
+          dockFrame({ ...dock, id, moduleId: definition.id }, suppliedOrOwn(definition.id, id, dock.node)),
           definition.holdsWhen,
         ),
       });

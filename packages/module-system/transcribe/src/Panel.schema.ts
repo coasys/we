@@ -61,8 +61,21 @@ function note(status: string, icon: string, text: string, action?: SchemaNode): 
  *
  * Both widths arrive from the store as CSS percentages — the scale factor is a property of how loud
  * speech is, and belongs next to the numbers rather than in a template.
+ *
+ * ## Why this is named
+ *
+ * Named as a part because a template that supplies its own transcript panel — the workshop
+ * template does, since its panels are about the call in the *path* rather than the one being
+ * recorded into — otherwise loses the answer to "is it hearing me". That is the one question a
+ * transcript cannot answer for itself: an utterance takes seconds to buffer, transcribe and write,
+ * so a panel showing only saved lines is indistinguishable from a broken microphone for the whole
+ * of that delay.
+ *
+ * No `subject`. Unlike the feed, this is about the microphone *this agent* is running right now,
+ * which is a property of the session and not of any call record — pointing it at another call
+ * would be pointing a live meter at something that is not being measured.
  */
-const meter: SchemaNode = {
+export const captureMeter: SchemaNode = {
   type: '$if',
   props: {
     condition: { $: 'modules.transcribe.enabled' },
@@ -161,8 +174,13 @@ const meter: SchemaNode = {
  *
  * Absent outside a call, where `callAgents` is empty. There is no coverage question about a
  * transcript with no other participants, and "1 of 1" would be noise on every solo recording.
+ *
+ * Named as a part so an interface that arranges this module's pieces itself can place it. Whether
+ * to show it is a design decision an interface is entitled to make; being unable to make it is not.
+ * No `subject`: coverage is about the call being recorded right now, which is the only call anyone
+ * can still act on.
  */
-const coverage: SchemaNode = {
+export const coverage: SchemaNode = {
   type: '$if',
   props: {
     condition: { $: 'count(modules.transcribe.callAgents)' },
@@ -564,16 +582,290 @@ const extract: SchemaNode = {
  * The same query the calls list already uses for a finished meeting. See
  * `docs/architecture/transcripts.md`.
  *
- * ## Why this one is named and the rest of the panel is not
+ * ## The rows, without the box they scroll in
  *
- * It is the half that means something on its own: a template placing a transcript beside a graph
- * wants these lines and none of the capture chrome around them. Registered in `schemas` so a
- * template can place it by name.
+ * This is the utterances alone. `transcriptFeed` below is these plus the unsaved line, inside a
+ * scroll area that follows the tail — the arrangement almost everything wants, and the one the
+ * panel places.
  *
- * The capture controls are deliberately *not* split out to match — nothing places them separately,
- * and a fragment with no second caller is an extraction waiting to be got wrong. The extraction
- * schemas are already their own file for a different reason: one of the two nodes there is
- * contributed to the call bar rather than composed into this panel.
+ * They are separate because *where the unsaved line goes* is a decision only the placer can make.
+ * It belongs immediately after the last saved row, inside the same scroll region — anywhere else
+ * and it is separated from the words it is about to become by however much empty panel there
+ * happens to be. But an interface showing a **past** call has to leave it out: the buffer is this
+ * agent's live microphone, and appending it to last month's transcript would be showing one
+ * meeting's words under another meeting's heading. Owning the scroll area is what lets such an
+ * interface put the line in the right place *and* omit it on the wrong call, which is exactly what
+ * the workshop template does.
+ */
+export const transcriptLines: SchemaNode = {
+  type: 'Column',
+  props: { gap: '300' },
+  children: [
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'modules.transcribe.collectionId' },
+        then: {
+          type: '$each',
+          props: {
+            items: {
+              $query: {
+                entity: 'TextBlock',
+                scope: {
+                  anchor: 'CollectionBlock',
+                  via: 'children',
+                  anchorId: { $: 'modules.transcribe.collectionId' },
+                },
+                // Oldest first, because a transcript read backwards is not a transcript.
+                order: { createdAt: 'asc' },
+              },
+            },
+            as: 'utterance',
+          },
+          children: [
+            /*
+                  Attribution needs no diarization: each agent transcribes only their own
+                  microphone, so the block's author *is* the speaker. `$agent` turns that DID
+                  into a profile and demand-fetches it, so a peer gets a real name and face
+                  rather than a generated blob — and it reaches anyone, not only this space's
+                  members.
+                */
+            {
+              type: '$agent',
+              props: { did: { $: 'utterance.author' }, as: 'speaker' },
+              children: [
+                {
+                  type: 'Column',
+                  props: { bg: 'surface-sunken', r: '300', p: '300', gap: '100' },
+                  children: [
+                    {
+                      type: 'Row',
+                      props: { gap: '200', ay: 'center' },
+                      children: [
+                        {
+                          type: 'we-avatar',
+                          props: {
+                            size: 'xxs',
+                            image: { $: 'speaker.avatar' },
+                            // Always alongside `image`, never instead of it: a stable
+                            // generated avatar keeps somebody whose profile has not
+                            // arrived visually distinct from everybody else whose
+                            // profile has not arrived.
+                            hash: { $: 'utterance.author' },
+                          },
+                        },
+                        {
+                          type: 'we-text',
+                          props: { variant: 'footnote', color: 'text-muted', truncate: true },
+                          children: [{ $: 'speaker.name' }],
+                        },
+                        {
+                          type: 'we-timestamp',
+                          props: {
+                            value: { $: 'utterance.createdAt' },
+                            relative: true,
+                            fontSize: '100',
+                            color: 'text-faint',
+                          },
+                        },
+                      ],
+                    },
+                    { type: 'we-text', props: { color: 'text' }, children: [{ $: 'utterance.text' }] },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    },
+  ],
+};
+
+/**
+ * Why nothing is happening, when nothing is.
+ *
+ * Every reason this module can produce no text, in one place: still starting, nothing to listen to,
+ * a backend with no speech-to-text, no model installed — and the error alert when it failed outright.
+ * From the reader's side an empty panel means all of those equally well, and only some of them are
+ * worth acting on, so each one says which it is and the fixable one carries the button that fixes it.
+ *
+ * ## Why this is named
+ *
+ * It is the difference between "this isn't working" and "this can't work here, and here is why".
+ * An interface arranging the module's pieces itself gets the transcript, the meter and the unsaved
+ * line — all of which look normal-and-idle on a node with no transcription model at all — so
+ * without this the one state that needs a person to do something is the one state with nothing on
+ * screen. Placing it is a choice; not having it available was not.
+ *
+ * One part rather than five, because they are one sentence answered five ways and no interface has
+ * a reason to take the missing-model case and refuse the no-audio one. The `Column` is the panel's
+ * own gap made explicit, so this reads identically whether placed here or somewhere else.
+ *
+ * No `subject`: these are facts about this agent's session and this node, not about a call record.
+ */
+export const captureStatus: SchemaNode = {
+  type: 'Column',
+  props: { gap: '400' },
+  children: [
+    {
+      type: '$if',
+      props: {
+        condition: { $: "modules.transcribe.status == 'starting'" },
+        then: {
+          type: 'Row',
+          props: { gap: '200', ay: 'center' },
+          children: [
+            { type: 'we-spinner', props: { size: 'sm' } },
+            { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: ['Starting…'] },
+          ],
+        },
+      },
+    },
+    {
+      // The panel opened, nothing recorded yet, nothing wrong. Without this the box is empty and
+      // reads as broken rather than as waiting.
+      //
+      // Gated on there being no *record*, not on a session buffer being empty. The buffer was
+      // session-local, so re-opening the panel on a call that had already been transcribed
+      // offered to start recording as though nothing had ever been said. A collection is created
+      // on the first utterance, so its absence is exactly "nothing has been said here".
+      type: '$if',
+      props: {
+        condition: { $: '!modules.transcribe.enabled && !modules.transcribe.collectionId' },
+        then: {
+          type: 'we-text',
+          props: { variant: 'footnote', color: 'text-muted', italic: true },
+          children: [
+            {
+              $: "modules.transcribe.available ? 'Press record to transcribe what is said into text blocks in this space.' : 'Join a call and press record to transcribe what is said.'",
+            },
+          ],
+        },
+      },
+    },
+    note('no-audio', 'microphone-slash', 'Nothing to listen to. Start or join a call and this will follow it.'),
+    note('no-backend', 'plugs', 'This backend cannot transcribe — no speech-to-text is reachable from here.'),
+    note(
+      'no-model',
+      'warning',
+      'No transcription model is installed. Add one and transcription will start on its own.',
+      {
+        // Offered only where the section exists. AI administration is node-scoped, so a guest on
+        // somebody else's executor — which includes every web session against a remote host —
+        // has no AI settings to open, and a button that opens Settings to nothing is worse than
+        // no button. The `else` says who can fix it instead.
+        type: '$if',
+        props: {
+          condition: { $: 'runtimeStore.canManageAi' },
+          then: {
+            type: 'we-button',
+            props: {
+              size: 'sm',
+              variant: 'secondary',
+              // The point of naming the reason is that it can be acted on, so the panel goes
+              // there rather than describing where to look.
+              onClick: { $action: 'shellStore.openShellView', args: ['settings', '/ai'] },
+            },
+            children: ['Open AI settings'],
+          },
+          else: {
+            type: 'we-text',
+            props: { variant: 'footnote', color: 'text-faint' },
+            children: ['Models are configured on the node this app is connected to.'],
+          },
+        },
+      },
+    ),
+    {
+      type: '$if',
+      props: {
+        condition: { $: "modules.transcribe.status == 'error'" },
+        then: {
+          type: 'we-alert',
+          props: { variant: 'warning' },
+          children: [{ $: 'modules.transcribe.error' }],
+        },
+      },
+    },
+  ],
+};
+
+/**
+ * What has been heard but not written down yet.
+ *
+ * The other half of "is this working", and the half the feed structurally cannot show. An utterance
+ * is only a record once the speaker has stopped, the audio has gone to the model and the block has
+ * been written — several seconds during which a panel showing saved lines alone looks exactly like
+ * a panel that has stopped listening. This is that gap, said out loud.
+ *
+ * `accent-muted` rather than the feed's `surface-sunken`, and labelled: it is deliberately not one
+ * of the transcript's rows. What it holds is provisional — the model has not seen it, so the words
+ * can change before they land — and a block that looked like the others would be quietly asserting
+ * otherwise.
+ *
+ * ## Why this is named
+ *
+ * Same reason as `captureMeter`, and it is the more useful of the two: a template placing the feed
+ * gets the saved lines and, without this, a several-second silence after every sentence. Placed
+ * *below* the feed rather than above it — the feed pins to its own end, so the two together read as
+ * one column that keeps filling downward, and the unsaved line sits where the saved one is about to
+ * appear.
+ *
+ * No `subject`, for `captureMeter`'s reason: this is this agent's own buffer, not a property of any
+ * call record.
+ */
+export const pendingUtterance: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'modules.transcribe.pending' },
+    then: {
+      type: 'Column',
+      props: { bg: 'accent-muted', r: '300', p: '300', gap: '200' },
+      children: [
+        {
+          type: 'Row',
+          props: { ax: 'between', ay: 'center' },
+          children: [
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-muted', uppercase: true },
+              children: ['Not saved yet'],
+            },
+            {
+              // The buffer flushes on its own; this is for somebody who has stopped talking and
+              // wants the line in the record now rather than at the end of the window.
+              type: 'we-button',
+              props: { variant: 'ghost', size: 'xs', onClick: { $action: 'modules.transcribe.flushNow' } },
+              children: ['Save now'],
+            },
+          ],
+        },
+        { type: 'we-text', children: [{ $: 'modules.transcribe.pending' }] },
+      ],
+    },
+  },
+};
+
+/**
+ * The transcript as almost everything wants it: the saved lines and the one being said, scrolling
+ * together and following the tail.
+ *
+ * ## Why the unsaved line is *inside* the scroll area
+ *
+ * It used to sit outside it, above the feed in this panel and below it in the workshop's, and both
+ * were wrong in the same way. The scroll region takes the panel's spare height, so on a transcript
+ * with two lines in it the saved words are at one end of a mostly-empty box and the unsaved line is
+ * pinned at the other — and the first sentence to be written appears to leap the gap. Put in the
+ * flow with the rows, it sits immediately after the last one whether there are two of them or two
+ * hundred, and `pin: 'end'` follows it down. The words never move.
+ *
+ * ## Composed from the part rather than repeating it
+ *
+ * `$part` inside a part, which the resolver expands recursively — and the subject substitution
+ * reaches the inner marker, because it is a whole-token rewrite over this node before the nesting
+ * is resolved. So pointing this feed at another call points its rows at that call too, and there is
+ * one query in the codebase rather than two that have to agree.
  */
 export const transcriptFeed: SchemaNode = {
   type: 'we-scroll-area',
@@ -586,83 +878,10 @@ export const transcriptFeed: SchemaNode = {
       props: { gap: '300' },
       children: [
         {
-          type: '$if',
-          props: {
-            condition: { $: 'modules.transcribe.collectionId' },
-            then: {
-              type: '$each',
-              props: {
-                items: {
-                  $query: {
-                    entity: 'TextBlock',
-                    scope: {
-                      anchor: 'CollectionBlock',
-                      via: 'children',
-                      anchorId: { $: 'modules.transcribe.collectionId' },
-                    },
-                    // Oldest first, because a transcript read backwards is not a transcript.
-                    order: { createdAt: 'asc' },
-                  },
-                },
-                as: 'utterance',
-              },
-              children: [
-                /*
-                  Attribution needs no diarization: each agent transcribes only their own
-                  microphone, so the block's author *is* the speaker. `$agent` turns that DID
-                  into a profile and demand-fetches it, so a peer gets a real name and face
-                  rather than a generated blob — and it reaches anyone, not only this space's
-                  members.
-                */
-                {
-                  type: '$agent',
-                  props: { did: { $: 'utterance.author' }, as: 'speaker' },
-                  children: [
-                    {
-                      type: 'Column',
-                      props: { bg: 'surface-sunken', r: '300', p: '300', gap: '100' },
-                      children: [
-                        {
-                          type: 'Row',
-                          props: { gap: '200', ay: 'center' },
-                          children: [
-                            {
-                              type: 'we-avatar',
-                              props: {
-                                size: 'xxs',
-                                image: { $: 'speaker.avatar' },
-                                // Always alongside `image`, never instead of it: a stable
-                                // generated avatar keeps somebody whose profile has not
-                                // arrived visually distinct from everybody else whose
-                                // profile has not arrived.
-                                hash: { $: 'utterance.author' },
-                              },
-                            },
-                            {
-                              type: 'we-text',
-                              props: { variant: 'footnote', color: 'text-muted', truncate: true },
-                              children: [{ $: 'speaker.name' }],
-                            },
-                            {
-                              type: 'we-timestamp',
-                              props: {
-                                value: { $: 'utterance.createdAt' },
-                                relative: true,
-                                fontSize: '100',
-                                color: 'text-faint',
-                              },
-                            },
-                          ],
-                        },
-                        { type: 'we-text', props: { color: 'text' }, children: [{ $: 'utterance.text' }] },
-                      ],
-                    },
-                  ],
-                },
-              ],
-            },
-          },
+          type: '$part',
+          props: { id: 'transcribe.transcriptLines', subject: { $: 'modules.transcribe.collectionId' } },
         },
+        pendingUtterance,
       ],
     },
   ],
@@ -757,126 +976,20 @@ export const panel: SchemaNode = {
         },
 
         // ── Is it hearing me? ────────────────────────────────────────────────
-        meter,
+        captureMeter,
 
         // ── Is it hearing everyone else? ─────────────────────────────────────
         coverage,
 
         // ── Why nothing is happening, when nothing is ────────────────────────
-        {
-          type: '$if',
-          props: {
-            condition: { $: "modules.transcribe.status == 'starting'" },
-            then: {
-              type: 'Row',
-              props: { gap: '200', ay: 'center' },
-              children: [
-                { type: 'we-spinner', props: { size: 'sm' } },
-                { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: ['Starting…'] },
-              ],
-            },
-          },
-        },
-        {
-          // The panel opened, nothing recorded yet, nothing wrong. Without this the box is empty and
-          // reads as broken rather than as waiting.
-          //
-          // Gated on there being no *record*, not on a session buffer being empty. The buffer was
-          // session-local, so re-opening the panel on a call that had already been transcribed
-          // offered to start recording as though nothing had ever been said. A collection is created
-          // on the first utterance, so its absence is exactly "nothing has been said here".
-          type: '$if',
-          props: {
-            condition: { $: '!modules.transcribe.enabled && !modules.transcribe.collectionId' },
-            then: {
-              type: 'we-text',
-              props: { variant: 'footnote', color: 'text-muted', italic: true },
-              children: [
-                {
-                  $: "modules.transcribe.available ? 'Press record to transcribe what is said into text blocks in this space.' : 'Join a call and press record to transcribe what is said.'",
-                },
-              ],
-            },
-          },
-        },
-        note('no-audio', 'microphone-slash', 'Nothing to listen to. Start or join a call and this will follow it.'),
-        note('no-backend', 'plugs', 'This backend cannot transcribe — no speech-to-text is reachable from here.'),
-        note(
-          'no-model',
-          'warning',
-          'No transcription model is installed. Add one and transcription will start on its own.',
-          {
-            // Offered only where the section exists. AI administration is node-scoped, so a guest on
-            // somebody else's executor — which includes every web session against a remote host —
-            // has no AI settings to open, and a button that opens Settings to nothing is worse than
-            // no button. The `else` says who can fix it instead.
-            type: '$if',
-            props: {
-              condition: { $: 'runtimeStore.canManageAi' },
-              then: {
-                type: 'we-button',
-                props: {
-                  size: 'sm',
-                  variant: 'secondary',
-                  // The point of naming the reason is that it can be acted on, so the panel goes
-                  // there rather than describing where to look.
-                  onClick: { $action: 'shellStore.openShellView', args: ['settings', '/ai'] },
-                },
-                children: ['Open AI settings'],
-              },
-              else: {
-                type: 'we-text',
-                props: { variant: 'footnote', color: 'text-faint' },
-                children: ['Models are configured on the node this app is connected to.'],
-              },
-            },
-          },
-        ),
-        {
-          type: '$if',
-          props: {
-            condition: { $: "modules.transcribe.status == 'error'" },
-            then: {
-              type: 'we-alert',
-              props: { variant: 'warning' },
-              children: [{ $: 'modules.transcribe.error' }],
-            },
-          },
-        },
+        captureStatus,
 
         // ── Turning it into records ──────────────────────────────────────────
         extract,
 
-        // ── What has been heard ──────────────────────────────────────────────
-        {
-          type: '$if',
-          props: {
-            condition: { $: 'modules.transcribe.pending' },
-            then: {
-              type: 'Column',
-              props: { bg: 'accent-muted', r: '300', p: '300', gap: '200' },
-              children: [
-                {
-                  type: 'Row',
-                  props: { ax: 'between', ay: 'center' },
-                  children: [
-                    {
-                      type: 'we-text',
-                      props: { variant: 'footnote', color: 'text-muted', uppercase: true },
-                      children: ['Not saved yet'],
-                    },
-                    {
-                      type: 'we-button',
-                      props: { variant: 'ghost', size: 'xs', onClick: { $action: 'modules.transcribe.flushNow' } },
-                      children: ['Save now'],
-                    },
-                  ],
-                },
-                { type: 'we-text', children: [{ $: 'modules.transcribe.pending' }] },
-              ],
-            },
-          },
-        },
+        // ── What has been heard, and what is still being said ────────────────
+        // One node, not two: the unsaved line lives inside the feed's scroll region, immediately
+        // after the last saved row. See `transcriptFeed`.
         transcriptFeed,
       ],
     },

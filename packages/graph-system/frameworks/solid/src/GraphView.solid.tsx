@@ -31,6 +31,7 @@ import {
   dispatchPointer,
   edgeVisual,
   GraphEngine,
+  matches,
   nodeVisual,
   PluginRegistry,
   resolveStyle,
@@ -361,6 +362,37 @@ export function GraphView(props: GraphViewProps) {
   // Following the data is not part of what the graph *is*, so toggling it neither reloads nor
   // re-lays-out — it only starts or stops the listening.
   createEffect(() => engine.setLive(props.live !== false));
+  /*
+    What the host has floating over the canvas, so "in view" means what a reader can see.
+
+    An effect rather than a construction argument because panels move: dragging one across the
+    board changes which part of it is clear, and a card parked afterwards should land in the part
+    that is clear *now*.
+  */
+  createEffect(() => engine.viewport.setObscured(props.host?.obscured?.()));
+
+  /**
+   * The graph's own chrome, kept out from under whatever the host has floating over the canvas.
+   *
+   * The status strip sits at the bottom-left of the graph's box, which on the workshop's board is
+   * behind the transcript panel: a warning nobody could read, about a board that was working. Same
+   * inset the layout uses, for the same reason — the box and the visible part of it are different
+   * rectangles once a host floats panels over one.
+   *
+   * Offsets rather than a shrunken container, so the canvas keeps every pixel it had. Only the
+   * chrome moves; nothing about what is drawn or where it can be dragged changes.
+   */
+  const clear = createMemo(() => {
+    const inset = props.host?.obscured?.();
+    return {
+      left: inset?.left ?? 0,
+      right: inset?.right ?? 0,
+      top: inset?.top ?? 0,
+      bottom: inset?.bottom ?? 0,
+    };
+  });
+  /** A space token plus however many pixels are covered on that edge. */
+  const past = (edge: 'left' | 'right' | 'top' | 'bottom') => `calc(var(--we-space-300) + ${clear()[edge]}px)`;
 
   // An expansion asked for from outside a gesture. Compared by value for the same reason `seeds` is:
   // a host that rebuilds its prop object would otherwise re-expand on every unrelated change.
@@ -591,6 +623,15 @@ export function GraphView(props: GraphViewProps) {
     if (visual.contentMinZoom !== undefined && zoom() < visual.contentMinZoom) return undefined;
     return props.host?.nodeContent?.[visual.content];
   };
+
+  /**
+   * Which of the offered controls this node gets.
+   *
+   * Not memoised per node: the list is a handful of entries and `matches` is a field comparison, so
+   * this costs less than the map that would key it — and it is only ever called for the selection,
+   * which is one node.
+   */
+  const actionsFor = (node: GraphNode) => (props.nodeActions ?? []).filter((action) => matches(node, action.when));
 
   const status = createMemo(() => {
     statusVersion();
@@ -1039,6 +1080,53 @@ export function GraphView(props: GraphViewProps) {
                   )}
                 </For>
               </Show>
+              {/*
+                The node's own controls, above it, while it is selected.
+
+                Above rather than over: a card's content is the reason it is on the board, and
+                furniture inside the box hides the thing being decided about. Above the top edge is
+                also where nothing else is — the resize handles ring the box, so a toolbar on any
+                other side would sit on one of them.
+
+                `matches` is the style rules' own clause, so which controls a node offers is written
+                in the vocabulary that already decides how it looks. Filtered per node rather than
+                once, because that is the point: a suggestion gets a tick and a cross, everything
+                else gets whatever the interface offers for an ordinary card.
+              */}
+              <Show when={entry.selected && actionsFor(entry.node).length > 0}>
+                <div class="we-graph__actions">
+                  <For each={actionsFor(entry.node)}>
+                    {(action) => (
+                      <button
+                        type="button"
+                        class="we-graph__action"
+                        classList={{ 'we-graph__action--danger': action.danger === true }}
+                        title={action.title ?? action.id}
+                        aria-label={action.title ?? action.id}
+                        /*
+                          `pointerdown`, stopped, as well as the click.
+
+                          The canvas hit-tests in world space from a pointer press on the layer
+                          beneath, so a press that reached it would start a drag of the very node
+                          this button sits above — the button would work and the card would move.
+                        */
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          const at = parseAddress(entry.node.id);
+                          props.onNodeAction?.({
+                            action: action.id,
+                            id: entry.node.id,
+                            ...(at?.kind === 'entity' && { recordId: at.id, recordType: at.type }),
+                          });
+                        }}
+                      >
+                        <we-icon name={action.icon} size="14px" />
+                      </button>
+                    )}
+                  </For>
+                </div>
+              </Show>
             </div>
           )}
         </For>
@@ -1057,7 +1145,7 @@ export function GraphView(props: GraphViewProps) {
         exactly that: the canvas, plus where these overlays sit.
       */}
       <Show when={controls().length > 0}>
-        <Column position="absolute" right="300" bottom="300" gap="100">
+        <Column position="absolute" right={past('right')} bottom={past('bottom')} gap="100">
           <For each={controls()}>
             {(control) => {
               /*
@@ -1101,8 +1189,8 @@ export function GraphView(props: GraphViewProps) {
           class="we-graph__status"
           pointerEvents="none"
           position="absolute"
-          left="300"
-          bottom="300"
+          left={past('left')}
+          bottom={past('bottom')}
           gap="100"
           maxWidth="60%"
         >

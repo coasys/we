@@ -103,8 +103,39 @@ export function resolveParts(node: SchemaNode): SchemaNode | SchemaNode[] {
   const children = resolveList(node.children);
   const slots = resolveValue(node.slots);
   const props = resolveValue(node.props);
-  if (children === node.children && slots === node.slots && props === node.props) return node;
-  return { ...node, children, slots, props } as SchemaNode;
+  /*
+    `routes` as well, and it is a separate key rather than part of `props` or `children`.
+
+    Missed while parts were only ever expanded inside a panel, where there are no routes. A template
+    placing a module's fragment on one of its own pages puts it inside a route body, so without this
+    the marker survives the walk untouched and reaches the renderer, which knows nothing about
+    `$part` and mounts nothing — the same silent-empty failure the warning above exists to prevent.
+  */
+  const routes = resolveValue((node as { routes?: unknown }).routes);
+  if (
+    children === node.children &&
+    slots === node.slots &&
+    props === node.props &&
+    routes === (node as { routes?: unknown }).routes
+  ) {
+    return node;
+  }
+  return { ...node, children, slots, props, routes } as SchemaNode;
+}
+
+/**
+ * Expand every `$part` in a route table.
+ *
+ * A route is not a node — it carries a `path` and may carry no `type` at all — so it needs its own
+ * way in rather than being handed to {@link resolveParts}, which would refuse it. The walk beneath
+ * is the same one.
+ *
+ * Returns the list unchanged, by identity, when it holds no parts — which is every template that
+ * places none, so a memo built on this re-runs nothing downstream.
+ */
+export function resolvePartsInRoutes<T>(routes: T[]): T[] {
+  const out = resolveList(routes);
+  return (Array.isArray(out) ? out : routes) as T[];
 }
 
 const isNode = (value: unknown): value is SchemaNode =>
@@ -117,7 +148,18 @@ function resolveList(children: unknown): unknown {
   const out: unknown[] = [];
   for (const child of children) {
     if (!isNode(child)) {
-      out.push(child);
+      /*
+        Walked rather than passed over, because not everything in a list of "children" is a node.
+
+        A **route** is the case that matters: `{ path, children, routes }` carries no `type`, so it
+        failed `isNode` and its whole subtree went unexamined — which made a `$part` inside any
+        route invisible while looking exactly like one that had been expanded to nothing. Strings
+        and numbers still pass straight through, and an expression token is an object whose entries
+        never change, so it comes back by identity and costs nothing.
+      */
+      const walked = child && typeof child === 'object' ? resolveValue(child) : child;
+      if (walked !== child) changed = true;
+      out.push(walked);
       continue;
     }
     const next = resolveParts(child);
