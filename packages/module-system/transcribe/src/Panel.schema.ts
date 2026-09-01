@@ -367,10 +367,22 @@ export const extractionTargets: SchemaNode = {
       type: '$if',
       props: {
         condition: { $: 'count(modules.transcribe.extractionTargets)' },
+        /*
+          Which list this is, said out loud, because it is two lists.
+
+          Outside a call there is no conversation to narrow, so what is shown is the space's own
+          default — the one every call here starts from. Inside one it is that call's list. They look
+          identical and a press on them means very different things, so the heading is the only thing
+          that can tell them apart.
+        */
         then: {
           type: 'we-text',
           props: { variant: 'footnote', color: 'text-muted' },
-          children: ['Look through what was said for:'],
+          children: [
+            {
+              $: "modules.transcribe.canChooseTargets ? 'Look through what was said for:' : \"This space's calls look for:\"",
+            },
+          ],
         },
         /*
           Not a failure, and phrased as the one thing a person can act on.
@@ -395,14 +407,23 @@ export const extractionTargets: SchemaNode = {
       the store that returned without a word, so the chips took the click and did nothing, which
       reads as broken rather than as unavailable. They are disabled now, and this says which.
     */
+    /*
+      Why the chips cannot be pressed, in the one case where they cannot.
+
+      A member who may not change the space's defaults, and who is not in a call, has neither list to
+      write to. That was a guard in the store returning without a word, so the chips took the click
+      and did nothing — which reads as broken rather than as somebody else's decision.
+    */
     {
       type: '$if',
       props: {
-        condition: { $: 'count(modules.transcribe.extractionTargets) && !modules.transcribe.canChooseTargets' },
+        condition: {
+          $: 'count(modules.transcribe.extractionTargets) && !modules.transcribe.canChooseTargets && !spaceStore.canAdministerCurrentSpace',
+        },
         then: {
           type: 'we-text',
           props: { variant: 'footnote', color: 'text-faint', italic: true },
-          children: ["This space's default. Join a call to choose what that conversation looks for."],
+          children: ['Set by this space. Join a call to choose what that conversation looks for.'],
         },
       },
     },
@@ -439,11 +460,37 @@ export const extractionTargets: SchemaNode = {
                   fading along with the card they were anchored to.
                 */
                 variant: { $: "target.selected ? 'secondary' : 'outline'" },
-                // Refused visibly rather than in the store, where it was refused in silence.
-                disabled: { $: '!modules.transcribe.canChooseTargets' },
+                // Only where neither list is this agent's to change. Refused visibly rather than in
+                // the store, where it was refused in silence.
+                disabled: {
+                  $: '!modules.transcribe.canChooseTargets && !spaceStore.canAdministerCurrentSpace',
+                },
+                /*
+                  The press edits whichever list is on screen — and outside a call that is the
+                  space's own default, which is the whole reason this looked broken.
+
+                  There is no call record to hang a per-call decision on until somebody is in a call,
+                  so `toggleExtractionTarget` returned early and the chips absorbed every click. But
+                  the list being shown in that state is not nothing: it is the space's default, and
+                  editing the thing you are looking at is what a chip is for. In a call it is that
+                  call's list, which is narrower and does not touch the default.
+
+                  Two blast radii behind one control, so the heading above says which — a press that
+                  changes what every future call here looks for must not be indistinguishable from
+                  one that changes this afternoon's meeting.
+                */
                 onClick: {
-                  $action: 'modules.transcribe.toggleExtractionTarget',
-                  args: [{ $: 'target.entity' }],
+                  $if: {
+                    condition: { $: 'modules.transcribe.canChooseTargets' },
+                    then: {
+                      $action: 'modules.transcribe.toggleExtractionTarget',
+                      args: [{ $: 'target.entity' }],
+                    },
+                    else: {
+                      $action: 'spaceStore.setExtractionTarget',
+                      args: [{ $: 'target.entity' }, { $: '!target.selected' }],
+                    },
+                  },
                 },
               },
               children: [

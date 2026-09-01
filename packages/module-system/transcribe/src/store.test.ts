@@ -1413,12 +1413,17 @@ describe('what a call extracts, before anybody has spoken', () => {
     expect(set).toEqual([{ collection: RECORD, entity: 'EventBlock', on: true }]);
   });
 
-  it('says it cannot rather than absorbing the press when there is no call', () => {
-    // Outside a call there is nothing to record a choice against. That was a guard in the store that
-    // returned in silence, so the chips took the click and did nothing — which reads as broken.
+  it('still lists the space’s own defaults outside a call, and says it cannot narrow them', () => {
+    /*
+      The state that looked broken. Outside a call there is no record to hang a per-call decision on,
+      so `canChooseTargets` is false — but the list is not empty and never was: `forCall` falls back
+      to the space's defaults, which is why the chips showed the right ticks while refusing every
+      press. The panel edits that list instead now, and this is the flag it branches on.
+    */
     const { h } = withInterpretation([]);
 
     expect(h.store.canChooseTargets()).toBe(false);
+    expect(h.store.extractionTargets()).toEqual([]);
   });
 
   it('says it cannot on a host that has no way to store one', async () => {
