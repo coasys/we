@@ -207,7 +207,12 @@ export function GraphView(props: GraphViewProps) {
           const at = parseAddress(node.id);
           props.onNodeClick?.({
             ...node,
-            ...(at?.kind === 'entity' && { recordId: at.id }),
+            // `recordType` beside `recordId`, as every other payload here carries them — a template
+            // that wants to *do* something with the record needs its class: `$query` cannot ask what
+            // type an id is, and neither can `recordStore.displays`. Double-click and the node
+            // actions both carried it already; this was the one that made a caller reach for the
+            // double-click handler to answer a single click's question.
+            ...(at?.kind === 'entity' && { recordId: at.id, recordType: at.type }),
             fields: readableFields(node),
           });
           break;

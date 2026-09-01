@@ -1332,7 +1332,7 @@ export const contextData: ContextData = {
         { name: 'controls', type: 'string[]', optional: true },
         {
           name: 'onNodeClick',
-          type: '((node: GraphNode & { recordId?: string; fields: { name: string; value: string; }[]; }) => void)',
+          type: '((node: GraphNode & { recordId?: string; recordType?: string; fields: { name: string; value: string; }[]; }) => void)',
           optional: true,
         },
         {

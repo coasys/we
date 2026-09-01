@@ -130,7 +130,9 @@ export interface GraphViewProps {
    * that wants to show what a node actually holds needs `fields`, and deriving it here is the only
    * place it can be done at all.
    */
-  onNodeClick?: (node: GraphNode & { recordId?: string; fields: { name: string; value: string }[] }) => void;
+  onNodeClick?: (
+    node: GraphNode & { recordId?: string; recordType?: string; fields: { name: string; value: string }[] },
+  ) => void;
   /**
    * Ask the graph to open a node, from outside a gesture.
    *

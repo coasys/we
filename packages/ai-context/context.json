@@ -3773,7 +3773,7 @@
         },
         {
           "name": "onNodeClick",
-          "type": "((node: GraphNode & { recordId?: string; fields: { name: string; value: string; }[]; }) => void)",
+          "type": "((node: GraphNode & { recordId?: string; recordType?: string; fields: { name: string; value: string; }[]; }) => void)",
           "optional": true
         },
         {

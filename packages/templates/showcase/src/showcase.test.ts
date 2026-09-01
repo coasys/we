@@ -361,6 +361,30 @@ describe('the workshop template’s call selection', () => {
     expect(json).not.toContain('"TaskBlock","EventBlock"');
   });
 
+  it('inspects the selected card from a panel, through the model’s own declaration', () => {
+    /*
+      A community defines a model, extraction writes one, and it lands on the board as a card nobody
+      can look inside. The panel names no property of anything: `recordStore.displays` is derived
+      from the model's own declaration, so a model adopted this morning renders with nothing written
+      for it.
+
+      The selection travels in the address rather than in a local, because a panel is not inside the
+      route's tree — the two cannot share a `$localState`, and the address is the one thing both can
+      read. Two parameters, since a schema cannot ask what type an id is.
+    */
+    const inspector = workshop.meta?.panels?.find((panel) => panel.id === 'inspector');
+    const json = JSON.stringify(workshop);
+
+    expect(inspector).toBeTruthy();
+    expect(JSON.stringify(inspector)).toContain('recordStore.displays[routeStore.params.cardType]');
+    expect(json).toContain('"syncParam":"card"');
+    expect(json).toContain('"syncParam":"cardType"');
+    // Set from the click, cleared only when the selection actually empties — an unguarded clear
+    // would race the click that set it.
+    expect(json).toContain('{"$setLocal":"inspectingType","value":{"$":"event.recordType"}}');
+    expect(json).toContain('"condition":{"$":"!count(arg)"}');
+  });
+
   it('offers a delete on every card, not only on the unsettled ones', () => {
     /*
       Extraction proposes things that are simply wrong about a conversation, and one that has been

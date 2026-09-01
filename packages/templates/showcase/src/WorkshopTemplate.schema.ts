@@ -868,6 +868,223 @@ const continueCall: SchemaNode = {
 };
 
 /**
+ * One card, opened out — its type, its properties, and the way to its own page.
+ *
+ * ## Why a panel and not the record page
+ *
+ * There is a record page already, at `/record/:entity?id=`, and it is reachable from here: the host
+ * appends it to every template's route table, self-routing ones included. It is the better surface
+ * for reading one thing properly, and this links to it.
+ *
+ * It is the wrong surface for the question a board asks. Navigating away to read a card loses the
+ * arrangement the card is *in* — which is the whole reason the thing is on a board rather than in a
+ * list — so the two are different acts, and this template is the one that argues for the panel:
+ * every other surface here is already beside the content rather than instead of it.
+ *
+ * ## Nothing here names a property of anything
+ *
+ * Which is the point, and the case that prompted it: a community defines a model, extraction writes
+ * one, and it appears on the board as a card nobody can look inside. `recordStore.displays` is
+ * derived from the model's own declaration, so the fields, their labels and their kinds all arrive
+ * from the same place the create form gets them. A model adopted this morning renders here with
+ * nothing written for it.
+ *
+ * Relations are deliberately absent for now. `displays` carries properties only, so "what this is
+ * connected to" would mean reading `Relationship` records for the community-named half and leaving
+ * the declared half silently missing — worse than not answering.
+ */
+const inspectorPanel: SchemaNode = {
+  type: 'Column',
+  props: { width: '100%', height: '100%', p: '300', gap: '300', overflow: 'hidden' },
+  $queries: {
+    /*
+      The record itself, by id. `limit: 1` because an id names one thing — the list is the shape a
+      query answers in, not a set worth iterating.
+
+      `entity` as an expression is what makes this work for a model this template was not written
+      for; the cost is that the validator cannot check the name, and a name that has not arrived yet
+      reads as "not ready" rather than as an error, which is the right way round while a route is
+      settling.
+    */
+    card: {
+      entity: { $: 'routeStore.params.cardType' },
+      where: { id: { $: 'routeStore.params.card' } },
+      limit: 1,
+    },
+  },
+  children: [
+    {
+      type: 'we-text',
+      props: {
+        variant: 'label',
+        color: 'text-muted',
+        textTransform: 'uppercase',
+        letterSpacing: 'wide',
+      },
+      children: ['Inspector'],
+    },
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'count(local.card)' },
+        then: {
+          type: 'we-scroll-area',
+          props: { flex: '1', minHeight: '0' },
+          children: [
+            {
+              type: '$each',
+              props: { items: { $: 'local.card' }, as: 'record' },
+              children: [
+                {
+                  type: 'Column',
+                  props: { gap: '300' },
+                  /*
+                    The model's own declaration, held for the subtree rather than read at each use.
+
+                    An object local rather than five reads of `recordStore.displays[…]`: the fields
+                    below index into it repeatedly, and one name is easier to follow than the same
+                    expression written out six times.
+                  */
+                  $localState: {
+                    display: { type: 'object', initial: { $: 'recordStore.displays[routeStore.params.cardType]' } },
+                  },
+                  children: [
+                    {
+                      type: 'Row',
+                      props: { gap: '200', ay: 'center' },
+                      children: [
+                        {
+                          type: '$if',
+                          props: {
+                            condition: { $: 'local.display.icon' },
+                            then: {
+                              type: 'we-icon',
+                              props: { name: { $: 'local.display.icon' }, color: 'accent-text' },
+                            },
+                          },
+                        },
+                        {
+                          type: 'we-text',
+                          props: { variant: 'footnote', color: 'text-muted' },
+                          children: [{ $: 'local.display.label' }],
+                        },
+                      ],
+                    },
+                    {
+                      type: 'we-text',
+                      props: { variant: 'heading-sm' },
+                      children: [{ $: 'record[local.display.title]' }],
+                    },
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $: 'local.display.summary' },
+                        then: {
+                          type: 'we-text',
+                          props: { color: 'text-muted' },
+                          children: [{ $: 'record[local.display.summary]' }],
+                        },
+                      },
+                    },
+                    /*
+                      Every field the model declares, drawn by its kind.
+
+                      The same switch the record page makes, and the same reason: `kind` is resolved
+                      once in the store so a template branches on one word rather than knowing what
+                      a property is. A date wants a timestamp, a boolean a badge, and everything else
+                      reads as text.
+                    */
+                    {
+                      type: '$each',
+                      props: { items: { $: 'local.display.fields' }, as: 'field' },
+                      children: [
+                        {
+                          type: '$if',
+                          props: {
+                            // A field with nothing in it is not worth a row: an empty label over
+                            // blank space reads as something failing to load.
+                            condition: { $: 'record[field.name]' },
+                            then: {
+                              type: 'Column',
+                              props: { gap: '050', py: '100', borderTop: '1px solid border' },
+                              children: [
+                                {
+                                  type: 'we-text',
+                                  props: { variant: 'footnote', color: 'text-faint' },
+                                  children: [{ $: 'field.label' }],
+                                },
+                                {
+                                  type: '$if',
+                                  props: {
+                                    condition: { $: "field.kind == 'datetime' || field.kind == 'date'" },
+                                    then: {
+                                      type: 'we-timestamp',
+                                      props: { value: { $: 'record[field.name]' }, relative: true },
+                                    },
+                                    else: {
+                                      type: '$if',
+                                      props: {
+                                        condition: { $: "field.kind == 'boolean'" },
+                                        then: {
+                                          type: 'we-badge',
+                                          props: { size: 'xs' },
+                                          children: [{ $: "record[field.name] ? 'Yes' : 'No'" }],
+                                        },
+                                        else: {
+                                          type: 'we-text',
+                                          props: { variant: 'footnote' },
+                                          children: [{ $: 'record[field.name]' }],
+                                        },
+                                      },
+                                    },
+                                  },
+                                },
+                              ],
+                            },
+                          },
+                        },
+                      ],
+                    },
+                    /*
+                      The full record, for reading it properly.
+
+                      Absolute, from `spaceStore.spacePath`: this is a panel, so it is drawn outside
+                      the route tree and "wherever you are" is not something it can resolve against.
+                      The id rides in the query for the reason `CALL` does — it is a URI.
+                    */
+                    {
+                      type: 'we-button',
+                      props: {
+                        size: 'sm',
+                        variant: 'ghost',
+                        gap: '200',
+                        onClick: {
+                          $action: 'routeStore.navigate',
+                          args: [
+                            {
+                              $: '`${spaceStore.spacePath}/record/${routeStore.params.cardType}?id=${routeStore.params.card}`',
+                            },
+                          ],
+                        },
+                      },
+                      children: [
+                        { type: 'we-icon', props: { name: 'arrow-square-out' } },
+                        { type: 'we-text', props: { variant: 'footnote' }, children: ['Open full record'] },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        else: emptyState({ icon: 'cursor-click', label: 'a card selected' }),
+      },
+    },
+  ],
+};
+
+/**
  * The calls, as a panel — how you change which call every other surface is about.
  *
  * The same list the `/calls` route draws, without the transcripts: choosing is a two-second act and
@@ -1134,6 +1351,39 @@ const board: SchemaNode = {
     },
     onNodeResize: { $action: 'recordStore.resizeOnBoard', args: [CALL, { $: 'event' }] },
     /*
+      What is selected, in the address — because the inspector is a *panel*.
+
+      A panel is not inside this route's tree, so the two cannot share a `$localState`: the board
+      would be writing a name the inspector has no way to read. The address is the one thing both
+      can see, and it is what this template already uses to say which call it is about — with the
+      same benefits, that a reload comes back to the same card and the link can be sent.
+
+      Two parameters rather than one, because a schema cannot ask what type an id is: `$query` needs
+      an entity, and so does `recordStore.displays`. The graph carries both on the payload, which is
+      the reason `recordType` is on a single click at all.
+    */
+    onNodeClick: [
+      { $setLocal: 'inspecting', value: { $: 'event.recordId' } },
+      { $setLocal: 'inspectingType', value: { $: 'event.recordType' } },
+    ],
+    /*
+      Clearing on a background click, and only then.
+
+      `select` emits this on every selection change, so an unguarded clear would race the click that
+      set it — which of the two won would depend on the order the behaviour happens to emit them in.
+      The empty list is the state actually worth acting on: nothing is selected, so there is nothing
+      to inspect.
+    */
+    onSelectionChange: {
+      $if: {
+        condition: { $: '!count(arg)' },
+        then: [
+          { $setLocal: 'inspecting', value: '' },
+          { $setLocal: 'inspectingType', value: '' },
+        ],
+      },
+    },
+    /*
       The decision, on the card that raised it.
 
       A suggestion is resolvable from the extraction panel too, and that is the right surface for
@@ -1220,7 +1470,19 @@ const boardBody: Omit<RouteSchema, 'path'> = {
     chain the graph view in `templates/views` uses, and the one the panels above already use.
   */
   props: { width: '100%', flex: '1', minHeight: '0', overflow: 'hidden' },
-  $localState: { connecting: { type: 'boolean', initial: false } },
+  /*
+    `syncParam`, so the inspector panel can read what the board selected — see `onNodeClick`.
+
+    View state rather than a preference: if this address is sent to somebody, they should arrive
+    looking at the same card. `push: false` (the default) because moving between cards is not
+    something to walk back through with the Back button — the call, which *is* a place, keeps its
+    own entry.
+  */
+  $localState: {
+    connecting: { type: 'boolean', initial: false },
+    inspecting: { type: 'string', initial: '', syncParam: 'card' },
+    inspectingType: { type: 'string', initial: '', syncParam: 'cardType' },
+  },
   /*
     The board itself, always — never a placeholder standing in front of it.
 
@@ -1783,8 +2045,16 @@ export const workshopTemplate: TemplateSchema = {
         // "the transcript takes most of the height" is made of.
         grow: 0,
       },
-      { id: 'calls', node: callsPanel, title: 'Calls', snap: 'right', order: 0, size: 'sm', open: false },
-      { id: 'call', module: 'call', snap: 'right', order: 1, size: 'sm', open: false },
+      /*
+        The inspector, open by default and on the edge the board's own controls are not.
+
+        Open, because a panel that has to be found before it can explain a card is a panel nobody
+        discovers — and its empty state is a sentence rather than a blank box, so an unused one says
+        what it is for.
+      */
+      { id: 'inspector', node: inspectorPanel, title: 'Inspector', snap: 'right', order: 0, size: 'sm', grow: 1 },
+      { id: 'calls', node: callsPanel, title: 'Calls', snap: 'right', order: 1, size: 'sm', open: false },
+      { id: 'call', module: 'call', snap: 'right', order: 2, size: 'sm', open: false },
     ],
   },
   type: 'Column',
