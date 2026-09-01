@@ -517,26 +517,39 @@
 /**
  * The controls above a selected node — see `nodeActions`.
  *
- * Pinned to the top edge of the box and lifted clear of it, then scaled back by the camera so the
- * buttons stay the size a finger expects at every zoom. `bottom: 100%` rather than a negative top,
- * because the node's own height is a CSS variable and this way the arithmetic is the browser's.
+ * Off the **card's** top-left corner, and scaled back by the camera so the buttons stay the size a
+ * finger expects at every zoom.
  *
- * `transform-origin: bottom left` keeps the row anchored to the corner it grew from as it unscales —
- * origin at the centre and the strip drifts sideways as you zoom, which reads as the buttons sliding
- * off the card they belong to.
+ * `bottom: 100%` was the obvious spelling and it put the row in the middle of the card.
+ * `.we-graph__node` is a zero-size anchor point — every visible part of a node positions itself
+ * against it, and the card is centred there — so a percentage resolved against nothing and left the
+ * strip at the anchor. Its top-left is half the width left and half the height up, which is how the
+ * resize handles reach their edges too.
  */
 .we-graph__actions {
   position: absolute;
-  bottom: calc(100% + 6px / var(--graph-zoom));
-  left: 0;
+  left: calc(var(--node-width) / -2);
+  top: calc(var(--node-height) / -2);
   display: flex;
-  gap: calc(4px / var(--graph-zoom));
+  gap: 4px;
 
   // The node layer is inert so the canvas can hit-test in world space; these take their own presses.
   pointer-events: auto;
 
-  transform: scale(calc(1 / var(--graph-zoom)));
-  transform-origin: bottom left;
+  /*
+    Scaled last in the list, so the lift is measured before it is scaled.
+
+    A transform list applies right to left: the row is lifted by its own height plus a gap in its own
+    unscaled units, and the whole displacement is scaled with it — so the strip sits a constant six
+    screen pixels above the card's top edge at every zoom. Written the other way round the gap would
+    be in world units and drift as the camera moved.
+
+    Everything inside is therefore already in screen pixels: 24px buttons, a 4px gap, and no
+    `/ var(--graph-zoom)` on either. Dividing there as well was the double compensation that made the
+    row grow as the board was zoomed out.
+  */
+  transform: scale(calc(1 / var(--graph-zoom))) translateY(calc(-100% - 6px));
+  transform-origin: top left;
 }
 
 .we-graph__action {

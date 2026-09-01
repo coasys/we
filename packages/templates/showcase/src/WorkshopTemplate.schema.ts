@@ -1022,10 +1022,15 @@ const board: SchemaNode = {
 
         Faded rather than hidden. The cards are worth seeing as they arrive — that is the point of a
         board beside a live call — and half opacity says "this is not settled yet" without asking
-        anybody to go and look somewhere else first. What it is *not* is a decision: accepting or
-        discarding is the bar below, which appears when one of these is selected.
+        anybody to go and look somewhere else first. What it is *not* is a decision: that is on the
+        card, in `nodeActions` below.
+
+        `data.pending`, with the prefix. A bare key reads a node's *own* field — `type`, `label` —
+        and anything a seed put in the node's data bag is behind `data.`. Written without it this
+        matched nothing at all, silently, which is the failure mode a match clause has: no card
+        faded and no card offered the decision, on a board full of suggestions.
       */
-      { when: { pending: true }, style: { opacity: 0.5 } },
+      { when: { 'data.pending': true }, style: { opacity: 0.5 } },
     ],
     behaviours: [
       // Before drag-node, which is what makes arming mean anything: both claim a press on a node.
@@ -1084,16 +1089,16 @@ const board: SchemaNode = {
       matching the two up by reading is work the board created and should absorb.
 
       `when` is the style rules' own match clause against the same node data, so the tick and the
-      cross appear on exactly the cards `{ pending: true }` faded — one fact, read twice, which is
-      what stops the two from ever disagreeing.
+      cross appear on exactly the cards the rule above faded — one fact, read twice, which is what
+      stops the two from ever disagreeing. `data.` prefix included: see the note up there.
 
       Delete is offered on everything, suggestion or not. Extraction proposes things that are simply
       wrong about a conversation, and until now the only way to remove one that had been accepted was
       to find it in another view.
     */
     nodeActions: [
-      { id: 'accept', icon: 'check', title: 'Keep this', when: { pending: true } },
-      { id: 'reject', icon: 'x', title: 'Discard this', when: { pending: true }, danger: true },
+      { id: 'accept', icon: 'check', title: 'Keep this', when: { 'data.pending': true } },
+      { id: 'reject', icon: 'x', title: 'Discard this', when: { 'data.pending': true }, danger: true },
       { id: 'delete', icon: 'trash', title: 'Delete', danger: true },
     ],
     /*

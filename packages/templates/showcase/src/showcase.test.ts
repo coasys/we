@@ -316,7 +316,16 @@ describe('the workshop template’s call selection', () => {
     const json = JSON.stringify(workshop);
 
     expect(json).toContain('modules.transcribe.proposals.map(p, p.id)');
-    expect(json).toContain('{"when":{"pending":true},"style":{"opacity":0.5}}');
+    /*
+      `data.pending`, with the prefix — the thing that was wrong the first time.
+
+      A match clause reads a node's own field for a bare key and the seed's data bag behind `data.`,
+      so `{ pending: true }` named a field that is not there and matched nothing at all: no card
+      faded, no card offered the decision, on a board full of suggestions. Nothing failed, because
+      nothing matching is what a clause does when it is right and there is nothing to match.
+    */
+    expect(json).toContain('{"when":{"data.pending":true},"style":{"opacity":0.5}}');
+    expect(json).not.toContain('"when":{"pending"');
     /*
       Resolvable from the card itself, so deciding about one you can see does not mean finding its
       line in a list somewhere else and matching them up by reading.
@@ -326,7 +335,7 @@ describe('the workshop template’s call selection', () => {
     */
     expect(json).toContain('modules.transcribe.acceptProposal');
     expect(json).toContain('modules.transcribe.rejectProposal');
-    expect(json).toContain('{"id":"accept","icon":"check","title":"Keep this","when":{"pending":true}}');
+    expect(json).toContain('{"id":"accept","icon":"check","title":"Keep this","when":{"data.pending":true}}');
     expect(json).toContain('"id":"reject"');
   });
 

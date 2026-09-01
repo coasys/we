@@ -238,10 +238,15 @@ export interface GraphViewProps {
    * furniture on every node would cover the content it is there to show, and selecting first is how
    * you say which node you mean anyway.
    *
-   * `when` is the **same match clause the style rules take**, tested against the same node data — so
-   * "offer this only on a card nobody has agreed to yet" is `{ when: { pending: true } }`, and the
-   * vocabulary an interface already knows for deciding how a node *looks* decides what it can
-   * *do*. An action with no `when` is offered on every node.
+   * `when` is the **same match clause the style rules take**, so the vocabulary an interface already
+   * knows for deciding how a node *looks* decides what it can *do*. An action with no `when` is
+   * offered on every node.
+   *
+   * Which means the same prefix rule: a bare key reads a node's own field (`type`, `label`), and
+   * anything a **seed** put in the node's data bag is behind `data.`. "Offer this only on a card
+   * nobody has agreed to yet" is `{ when: { 'data.pending': true } }`, and written without the
+   * prefix it matches nothing, silently — which is what a clause does when it names a field that is
+   * not there.
    *
    * Nothing here says what an action means. The graph reports that one was pressed, on which record,
    * and the interface decides — deleting, accepting a suggestion, opening something. A widget that
