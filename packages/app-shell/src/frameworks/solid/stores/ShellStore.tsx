@@ -1343,9 +1343,12 @@ export function ShellStoreProvider(props: ParentProps) {
    * which is the one question that never needed a launcher.
    */
   const toggleModulePanel = (dockId: string, wantOpen: boolean): void => {
-    const dock = dockRegistry.ordered().find((entry) => entry.id === dockId);
+    // From the definition rather than the registry, for `dockIdFor`'s reason: reading the dock
+    // registry inside an effect that registers into it is what closed the loop.
+    const moduleId = dockId.slice(0, dockId.lastIndexOf(':'));
+    const docks = moduleRegistry.get(moduleId)?.definition.docks ?? [];
+    const dock = docks.find((entry, index) => `${moduleId}:${entry.name ?? index}` === dockId);
     if (!dock) return;
-    const moduleId = dock.moduleId;
     const store = moduleStores[moduleId] as Record<string, unknown> | undefined;
     // The dock's own `edge` key: null is closed, which is the same one answer the host reads for
     // geometry, so a layout cannot disagree with the panel about whether it is up.
