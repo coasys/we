@@ -39,17 +39,23 @@
  *
  * ## Who decides that it runs
  *
- * Being *first* to transcribe a call is a press of the button in the call bar, and nothing in this
- * module decides it — that is a decision about the conversation, and it belongs to a space's
- * settings rather than here. Once somebody has made it, every other agent joins on their own.
+ * Being in a call starts it. Not a press of a button, and not conditional on a peer having pressed
+ * one — those were treated as two questions for a while, and the split made the ordinary case the
+ * unreliable one: whether a meeting was recorded came down to whether whoever arrived first
+ * remembered. A transcript that exists four times out of five is worse than either default, since
+ * nothing separates "we chose not to" from "nobody pressed it".
  *
- * Those are separate questions, and only the first is really about consent. Transcription is per
- * microphone: an agent who declines is not preventing a record of the call, only removing their own
- * words from one that is being made anyway — which is a decision that looks like privacy, buys
- * almost none, and used to be taken by accident by everyone who ignored a prompt. What it produced
- * was a five-person meeting recorded from one microphone, which reads exactly like a transcript of
- * the meeting. See the auto-join effect in `store.ts` for the guards, and `Panel.schema.ts` for the
- * coverage readout that says how much of the call is actually in the record.
+ * Declining is per microphone, which is why it is a button rather than a prompt. An agent who stops
+ * recording is not preventing a record of the call, only removing their own words from one being
+ * made anyway — which looks like a privacy decision, buys almost none, and used to be taken by
+ * accident by everyone who ignored a prompt. What it produced was a five-person meeting recorded
+ * from one microphone, which reads exactly like a transcript of the meeting. See the effect in
+ * `store.ts` for the guards, and `Panel.schema.ts` for the coverage readout that says how much of
+ * the call is actually in the record.
+ *
+ * A space that does not want its calls recorded has no way to say so yet. That is a setting beside
+ * `autoInterpret`, not a guard in this module: nothing here can see a space's decisions, and giving
+ * it that view to answer one question would put the policy in the wrong place.
  *
  * ## What it is not yet
  *

@@ -331,15 +331,18 @@ describe('continuing a call', () => {
 });
 
 /**
- * Being joined to a transcript somebody else started.
+ * Recording the call you are in.
  *
- * The thing this replaces was a prompt, and the prompt was ignored — reliably enough that the
- * ordinary outcome of a group call was a transcript containing one person, which is not a smaller
- * record than the real one but a wrong one. So the default flipped, and everything worth testing
- * here is about the ways it must *not* fire: over a decision somebody made, on a node that cannot
- * transcribe, into a call nobody else is recording, and against silence.
+ * Two things this replaces, both of which produced a transcript nobody could trust. A prompt, which
+ * was ignored reliably enough that the ordinary outcome of a group call was a record containing one
+ * person — not a smaller record than the real one but a wrong one. And, after that, a rule that
+ * joined a transcript somebody else had started but never started one: which left whether a meeting
+ * was recorded at all resting on whoever arrived first remembering to press a button.
+ *
+ * So being in a call is the whole condition, and everything worth testing is the ways it must *not*
+ * fire: over a decision somebody made, on a node that cannot transcribe, and against silence.
  */
-describe('joining a transcript somebody else started', () => {
+describe('recording the call you are in', () => {
   /**
    * The two deps auto-join checks that nothing else here does.
    *
@@ -377,6 +380,31 @@ describe('joining a transcript somebody else started', () => {
 
     expect(h.store.enabled()).toBe(true);
     expect(h.store.autoJoined()).toBe(true);
+  });
+
+  it('starts recording a call nobody else is recording', () => {
+    /*
+      The half this used to refuse, on the reasoning that being *first* is a decision about the
+      conversation rather than about a microphone. True, and it left the decision to whoever arrived
+      first noticing a button — so the common case was a meeting with no record and nothing to say
+      why. A space that wants its calls left alone says so in its own settings; it is not this
+      effect's job to guess that from the roster.
+    */
+    const h = harness([peer(ME, { type: 'call', id: CALL, record: RECORD }), peer(THEM, { type: 'call', id: CALL })], {
+      ...IN_A_SPACE,
+      transcription: CAN_TRANSCRIBE,
+    });
+
+    expect(h.store.enabled()).toBe(true);
+    expect(h.store.autoJoined()).toBe(true);
+  });
+
+  it('records nothing while there is no call to record', () => {
+    // The condition, stated the other way round. Being in a space is not being in a conversation,
+    // and a microphone that opens on entering a space is the thing nobody asked for.
+    const h = harness([peer(ME)], { ...IN_A_SPACE, transcription: CAN_TRANSCRIBE });
+
+    expect(h.store.enabled()).toBe(false);
   });
 
   it('announces it immediately, rather than waiting for the first word', () => {
@@ -432,20 +460,6 @@ describe('joining a transcript somebody else started', () => {
     h.setPeers(THEIR_TRANSCRIPT);
 
     expect(h.store.enabled()).toBe(true);
-  });
-
-  it('does not start recording a call nobody else is recording', () => {
-    // The whole scope of this. Being *first* to transcribe is a decision about the conversation, and
-    // it is not this effect's to take — it belongs to a space's settings.
-    const h = harness(
-      [peer(ME, { type: 'call', id: CALL, record: RECORD }), peer(THEM, { type: 'call', id: CALL, record: RECORD })],
-      {
-        ...IN_A_SPACE,
-        transcription: CAN_TRANSCRIBE,
-      },
-    );
-
-    expect(h.store.enabled()).toBe(false);
   });
 
   it('does not start when there is nothing to listen to', () => {

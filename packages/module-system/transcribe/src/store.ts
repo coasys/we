@@ -358,7 +358,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    */
   const [optedOut, setOptedOut] = signal(false);
   /**
-   * Recording is running because a peer was already transcribing, not because this agent said so.
+   * Recording is running because the call is, not because this agent said so.
    *
    * Kept because the two are the same state to everything downstream and different things to say:
    * one is a thing you did, the other is a thing that happened to you and has to be declared. It is
@@ -1279,33 +1279,36 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   });
 
   /**
-   * Join a transcript somebody else has already started.
+   * Record the call you are in.
    *
-   * The module's one piece of policy, and the reasoning is narrower than "transcription should be
-   * on". Nothing here decides to record a call that nobody is recording — that is a decision about
-   * the conversation, it belongs to a space's settings rather than to this effect, and this does not
-   * make it. All this answers is what happens once a peer has *already* made it.
+   * The module's one piece of policy, and it is now the whole of it: being in a call is what starts
+   * recording, whether or not anybody else is already doing it.
    *
-   * Declining that used to be the default, by way of a prompt people did not answer. It reads like a
-   * privacy decision and is not one: the call is being transcribed either way, so the only thing a
-   * refusal changes is whether this agent's own words are in the record of a conversation they are
-   * part of. What that produced was a transcript of a five-person meeting containing one person,
-   * which is not a smaller record than the real one — it is a wrong one, and nothing about it says
-   * so to whoever reads it later.
+   * It used to stop short of that on purpose — joining a transcript somebody else had started was
+   * held to be a different question from starting one, and starting one was left to a space's
+   * settings that were never built. In practice the two are the same question asked at different
+   * moments, and splitting them made the ordinary case the unreliable one: whether a meeting was
+   * recorded depended on whether whoever happened to arrive first remembered to press a button. A
+   * transcript that exists for four meetings out of five is worse than either alternative, because
+   * nothing distinguishes "we chose not to record that one" from "nobody pressed it".
    *
-   * So the default flips, and the notice changes job with it: the prompt asked, and this tells. What
-   * survives is the way out — `optedOut` is checked first here, and pressing Leave or stopping
-   * recording by hand sets it for the rest of the call.
+   * The argument for joining carries over unchanged, and it is not a privacy argument: a refusal
+   * does not stop the conversation being recorded, it only removes this agent's own words from the
+   * record of a conversation they are part of, which produces a wrong transcript rather than a
+   * smaller one. What survives from the old shape is the way out — `optedOut` is checked first, and
+   * pressing Leave or stopping recording by hand sets it for the rest of the call.
    *
-   * Four guards before it fires, and each of them is a case where starting would be wrong rather
-   * than merely unhelpful:
+   * Three guards, and each is a case where starting would be wrong rather than merely unhelpful:
    * - no dataset: there is nowhere for the words to go. Also the one that must be tested rather than
    *   left to the teardown effect below, which switches recording off whenever the space is gone:
    *   that effect and this one would take turns for as long as no dataset was bound.
    * - no audio: there is nothing to record, and `enabled` would sit true against silence.
    * - a backend that cannot transcribe: caught here because `available` is answerable synchronously.
    *   Having no *model* is not, so that one is caught in `start` — see `giveUpAutoJoin`.
-   * - no peer recording: the whole condition. Being first to record is not this effect's decision.
+   *
+   * A space that does not want its calls recorded is still the missing piece, and it is a setting
+   * rather than a guard here: this effect has no view of a space's decisions, and inventing one
+   * would put policy in the module rather than beside the state it reads.
    *
    * Deliberately not routed through `toggle`, which opens the panel: a person pressing record wants
    * to see what it produces, and a call that opens a panel on its own every time is chrome nobody
@@ -1318,7 +1321,6 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     if (!call) return;
     if ((audioInput?.() ?? null) === null) return;
     if (transcription?.available?.() === false) return;
-    if (peerRecordersOf(call.id).length === 0) return;
 
     setAutoJoined(true);
     setEnabled(true);
