@@ -667,6 +667,45 @@ export function createCallStore(deps: CallStoreDeps) {
   }
 
   /**
+   * Start a call **on a record that already exists** — picking a past conversation back up.
+   *
+   * `startCall` writes a record and joins the call that record names. Continuing one is the same act
+   * with the first half already done, and doing it through `startCall` was the bug: pressing
+   * "continue this call" wrote a *second* `CollectionBlock` and joined that, so the space gained an
+   * empty call, every surface reading `callRecordId` pointed at it, and the transcript went to the
+   * record you had actually chosen. Two calls where you asked for one, disagreeing about which
+   * meeting you were in.
+   *
+   * A call *is* its record — `recordCallId` derives the id from it — so continuing needs no new
+   * identity and no write. Anyone else who picks the same record up lands in the same call, which is
+   * the property that makes this safe to press twice.
+   *
+   * Joining rather than checking for a live one first, as `goToCall` does: this names the call it
+   * wants, so "is something else running" is not the question. `join` tears down whatever is running
+   * before it starts, which is the same one-call-at-a-time rule every other entry point obeys.
+   */
+  async function continueCall(recordId: string) {
+    if (!recordId) return;
+    const uri = datasetUri?.() ?? null;
+    if (!uri) {
+      setProblem('A call needs a space.');
+      return;
+    }
+    setProblem(null);
+
+    // The same question `startCall` asks before it writes: can this transport carry a call at all?
+    // Asked here too, so continuing into a space that cannot host one says so rather than failing
+    // silently halfway through a join.
+    const opened = openCallScope();
+    if ('reason' in opened) {
+      setProblem(opened.reason);
+      return;
+    }
+
+    await join(recordCallId(recordId), { datasetUri: uri }, recordId, opened.scope);
+  }
+
+  /**
    * `preopened` is the scope `startCall` already opened to decide whether to write a record at all.
    * Passed through rather than opened again, so one join is one reference however it was reached.
    */
@@ -1430,6 +1469,15 @@ export function createCallStore(deps: CallStoreDeps) {
 
     /** Start a new call here, whether or not one is already running. Resolves once it is joined. */
     startCall: (anchorNodeId?: string) => startCall(anchorNodeId),
+
+    /**
+     * Pick a past call back up: start one on the record it already has, writing nothing new.
+     *
+     * What "continue this call" needs and `goToCall` cannot give it — that verb is a *direction*, so
+     * with nothing running it starts a fresh call, which is right for a launcher and wrong for a row
+     * naming the meeting it means.
+     */
+    continueCall: (recordId: string) => continueCall(recordId),
 
     /** Join a call somebody else started, by the id the roster carries. */
     joinCall: (id: string) => {

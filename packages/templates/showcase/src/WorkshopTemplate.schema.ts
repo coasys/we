@@ -581,10 +581,11 @@ const transcriptPanel: SchemaNode = {
         /*
           Recording is about the call you are *in*, so the control is only offered there.
 
-          On a past call the honest offer is to pick it back up — `goToCall` to be in a call at all,
-          then `resume` to point the recorder at this record. Gated exactly as the calls list gates
-          the same pair: mid-call, on some other call's board, `resume` would re-point every peer's
-          live transcript at this one, since peers adopt an announced record over their own.
+          On a past call the honest offer is to pick it back up — `continueCall` to start a call on
+          the record already on screen, then `resume` to point the recorder at it without waiting for
+          a presence round trip. Gated exactly as the calls list gates the same pair: mid-call, on
+          some other call's board, `resume` would re-point every peer's live transcript at this one,
+          since peers adopt an announced record over their own.
         */
         {
           type: '$if',
@@ -642,7 +643,8 @@ const transcriptPanel: SchemaNode = {
                     gap: '200',
                     variant: 'ghost',
                     onClick: [
-                      { $action: 'modules.call.goToCall' },
+                      // The record on screen, not a new one — see `continueCall` in the calls panel.
+                      { $action: 'modules.call.continueCall', args: [{ $: 'routeStore.params.call' }] },
                       { $action: 'modules.transcribe.resume', args: [{ $: 'routeStore.params.call' }] },
                       // And stop naming it: the recorder has just adopted this record, so it is the
                       // live call now, and an address still pinning to it would say the opposite for
@@ -783,11 +785,19 @@ const continueCall: SchemaNode = {
               {
                 $if: {
                   condition: { $: '!modules.call.active' },
-                  // Two actions rather than one with an `onSuccess`: `goToCall` returns nothing for a
-                  // lifecycle key to hang off, and `resume` holds the record until there is a call to
-                  // attach it to, so the order they resolve in does not matter.
+                  /*
+                    `continueCall`, not `goToCall`. The latter is a *direction* — with nothing
+                    running it starts a fresh call, so pressing continue wrote a second record and
+                    joined that, leaving an empty call in the space and every surface reading
+                    `callRecordId` pointing at it while the transcript went to the record actually
+                    chosen. This names the record, and a call *is* its record, so there is nothing
+                    to create.
+
+                    `resume` stays beside it: the transcriber adopts the call's own record through
+                    presence, which is a round trip, and this says the answer immediately.
+                  */
                   then: [
-                    { $action: 'modules.call.goToCall' },
+                    { $action: 'modules.call.continueCall', args: [{ $: 'call.id' }] },
                     { $action: 'modules.transcribe.resume', args: [{ $: 'call.id' }] },
                   ],
                 },

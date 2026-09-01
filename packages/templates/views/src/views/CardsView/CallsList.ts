@@ -476,13 +476,20 @@ export const callsList: SchemaNode = {
                                           {
                                             $if: {
                                               condition: { $: '!modules.call.active' },
-                                              // Two actions rather than one with an `onSuccess`, because
-                                              // `goToCall` returns nothing for a lifecycle key to hang
-                                              // off. `resume` is built for that: it holds the record until
-                                              // there is a call to attach it to, so the order these resolve
-                                              // in does not matter.
+                                              /*
+                                                `continueCall`, which names this record, rather than
+                                                `goToCall`, which is a direction: with nothing running
+                                                the latter starts a *fresh* call, so continuing a past
+                                                one wrote a second record and joined that — an empty
+                                                call left in the space, and every surface reading
+                                                `callRecordId` about it instead of the meeting chosen.
+
+                                                `resume` stays: the transcriber learns the call's
+                                                record through presence, which is a round trip, and
+                                                this says the answer immediately.
+                                              */
                                               then: [
-                                                { $action: 'modules.call.goToCall' },
+                                                { $action: 'modules.call.continueCall', args: [{ $: 'call.id' }] },
                                                 { $action: 'modules.transcribe.resume', args: [{ $: 'call.id' }] },
                                               ],
                                             },

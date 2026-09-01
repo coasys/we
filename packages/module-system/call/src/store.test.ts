@@ -531,8 +531,59 @@ describe('going to the call', () => {
         uri = nextUri;
         for (const fn of effects) fn();
       },
+      recordsCreated: () => created,
     };
   }
+
+  /**
+   * Continuing a past call, which is not the same act as going to one.
+   *
+   * `goToCall` is a *direction*, so with nothing running it starts a fresh call — right for a
+   * launcher, wrong for a row naming the meeting it means. Every "continue this call" button was
+   * built out of it, so pressing one wrote a *second* record and joined that: an empty call left in
+   * the space, every surface reading `callRecordId` about it, and the transcript going to the record
+   * the user had actually chosen. Two calls where one was asked for, disagreeing about which meeting
+   * you were in.
+   */
+  describe('continuing a call that already has a record', () => {
+    it('joins the record it is given and writes nothing', async () => {
+      const { store, recordsCreated } = railable();
+
+      store.continueCall('rec-from-last-week');
+      await Promise.resolve();
+
+      expect(store.active()).toBe(true);
+      expect(store.callRecordId()).toBe('rec-from-last-week');
+      // The whole bug in one assertion: continuing is not creating.
+      expect(recordsCreated()).toBe(0);
+    });
+
+    it('lands two people who continue the same record in the same call', async () => {
+      // A call *is* its record, so the id is derived rather than minted — which is what makes this
+      // safe to press twice, and what makes a second person picking the same meeting up join the
+      // first rather than start a parallel one beside it.
+      const first = railable();
+      const second = railable();
+
+      first.store.continueCall('rec-shared');
+      second.store.continueCall('rec-shared');
+      await Promise.resolve();
+
+      expect(first.store.callId()).toBe(second.store.callId());
+    });
+
+    it('does nothing without a record, rather than starting a call', async () => {
+      // The empty-string case a template reaches on a row whose id has not arrived. Starting a fresh
+      // call there would be the exact failure this replaced.
+      const { store, recordsCreated } = railable();
+
+      store.continueCall('');
+      await Promise.resolve();
+
+      expect(store.active()).toBe(false);
+      expect(recordsCreated()).toBe(0);
+    });
+  });
 
   it('starts the space call when there is not one', async () => {
     const { store } = railable();
