@@ -266,6 +266,15 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   const [enabled, setEnabled] = signal(false);
   /** Whether the transcript panel is showing. Independent of recording, so a finished session can be read. */
   const [open, setOpen] = signal(false);
+  /**
+   * Whether the extraction panel is showing — its own flag, because it is its own surface.
+   *
+   * Separate from `open` for the reason the two panels are separate: a transcript is read while
+   * somebody talks and extraction is read afterwards, so wanting one on screen says nothing about
+   * wanting the other. Sharing a flag would mean opening either opened both, which is the bundled
+   * panel again with two titlebars.
+   */
+  const [extractionOpen, setExtractionOpen] = signal(false);
   const [error, setError] = signal<string>('');
   /** What has been heard but not yet written — shown live, so the user can see it working. */
   const [pending, setPending] = signal<string>('');
@@ -630,6 +639,25 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   }
 
   /** Write what has accumulated, if anything. Safe to call at any point, including teardown. */
+  /**
+   * Show the extraction panel when a pass starts — anybody's, not only this agent's.
+   *
+   * The same rule recording follows, and the reason the one-line signal in the call bar can go:
+   * starting something invisible and saying nothing about it is how a feature comes to look broken.
+   * A pass takes minutes and spends somebody's tokens, and most of them are started by a standing
+   * watch rather than by a press — so the four people in five who did not start it are exactly the
+   * ones who need telling.
+   *
+   * Once, on the edge. Re-opening a panel somebody has deliberately closed, every time a pass
+   * settles and another begins, is chrome arguing with its reader.
+   */
+  let sawRunning = false;
+  effect?.(() => {
+    const running = (interpretation?.activity?.() ?? []).some((row) => row.running);
+    if (running && !sawRunning) setExtractionOpen(true);
+    sawRunning = running;
+  });
+
   /**
    * Re-read the staged suggestions — this call's, not the whole dataset's.
    *
@@ -1498,6 +1526,21 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     dockEdge: () => (open() ? 'right' : null),
     dockSize: () => 'md',
     dockFloat: () => false,
+    /**
+     * The extraction panel's own edge, size and openness — the same three keys, a second time.
+     *
+     * `right` as well, so the two arrive on the same edge and the host stacks them; an interface
+     * that wants them apart moves one, and the host remembers. Its own keys rather than shared ones
+     * because a dock's `edge` answers both "where" and "whether", and two panels answering that
+     * with one key could not be open independently.
+     */
+    extractionOpen,
+    extractionDockEdge: () => (extractionOpen() ? 'right' : null),
+    extractionDockSize: () => 'sm',
+    extractionDockFloat: () => false,
+    /** Open or close the extraction panel — what its rail button and its titlebar call. */
+    toggleExtractionPanel: () => setExtractionOpen(!extractionOpen()),
+    closeExtractionPanel: () => setExtractionOpen(false),
     level,
     speaking,
     /**

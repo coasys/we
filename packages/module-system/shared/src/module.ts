@@ -148,6 +148,18 @@ export interface DockAspect {
  */
 export interface DockContribution {
   /**
+   * Which panel this is, for a module that contributes more than one.
+   *
+   * The dock's id is `<moduleId>:<name>`, and a placement is remembered against it — so this is
+   * stable in the way a panel id is, and renaming one forgets wherever somebody had dragged it.
+   * Omitted, the index stands in, which is right for the single-dock case and wrong the moment a
+   * second is added *before* the first in the list.
+   *
+   * It is also what a template's `meta.panels` entry names to supply one panel's contents rather
+   * than another's — see `TemplatePanel.dock`.
+   */
+  name?: string;
+  /**
    * A key on this module's own store returning {@link DockEdge}: where the panel would *like* to
    * open, and `null` while it is closed.
    *
@@ -415,6 +427,19 @@ export interface ModuleDefinition {
    * host that has to keep them from colliding.
    */
   launcher?: ModuleLauncher;
+  /**
+   * More than one, for a module whose panels are separate things to open.
+   *
+   * `docks` has always been a list; `launcher` was not, on the reasonable reading that a module is
+   * one capability and so has one way in. Transcription broke it: recording and extraction are two
+   * surfaces with different lifetimes — one follows the microphone and the other follows a pass that
+   * may be somebody else's — and a single rail button cannot open both.
+   *
+   * Each needs a `key`, since that is what the rail addresses. Declaring both this and `launcher`
+   * is not an error; they are concatenated, which keeps a module that grows a second one from having
+   * to rewrite the first.
+   */
+  launchers?: ModuleLauncher[];
 
   /**
    * Durable entity types this module owns, installed by the host into the relevant dataset.
@@ -979,6 +1004,14 @@ export interface ModuleEmbed {
 
 /** A module's entry point in the host's module rail. */
 export interface ModuleLauncher {
+  /**
+   * Which launcher this is, for a module that has more than one — omitted where there is one.
+   *
+   * The rail addresses an entry by it, so it has to be stable: it is half of the key
+   * `launchModule` dereferences. A module with a single launcher needs none and keeps the plain
+   * module id it always had.
+   */
+  key?: string;
   /** Icon name, resolved by the host's icon set. */
   icon: string;
   /** Shown on hover, and read by assistive tech — the rail itself is icon-only. */

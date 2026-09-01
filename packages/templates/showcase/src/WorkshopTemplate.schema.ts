@@ -2097,6 +2097,15 @@ export const workshopTemplate: TemplateSchema = {
       {
         id: 'transcript',
         module: 'transcribe',
+        /*
+          Named, now that the module contributes two panels.
+
+          Without it the host cannot tell which body this is, and refuses to supply either rather
+          than guessing — a transcript inside an extraction panel is a silent wrong answer. The two
+          entries below line up one-to-one with the module's two docks, which is what stops this
+          template showing a second copy of anything the module also draws.
+        */
+        dock: 'transcript',
         node: transcriptPanel,
         title: 'Transcript',
         snap: 'left',
@@ -2106,6 +2115,10 @@ export const workshopTemplate: TemplateSchema = {
       },
       {
         id: 'extraction',
+        // The module's own extraction panel, arranged here — see `transcript` above. It was a
+        // panel of this template's own, so the module's opened beside it the moment a pass ran.
+        module: 'transcribe',
+        dock: 'extraction',
         node: extractionPanel,
         title: 'Extraction',
         snap: 'left',

@@ -67,11 +67,12 @@
 import { defineModule, type ModuleStoreDeps } from '@we/module-shared';
 
 import { CALL_CONTROLS_ANCHOR, callControl } from './CallControl.schema';
-import { CALL_STATUS_ANCHOR, extractionSignal } from './ExtractionStatus.schema';
+import { extractionControl } from './ExtractionStatus.schema';
 import {
   captureMeter,
   captureStatus,
   coverage,
+  extractionPanel,
   extractionTargets,
   panel,
   pendingUtterance,
@@ -81,7 +82,7 @@ import {
 import { createTranscribeStore } from './store';
 
 export { CALL_CONTROLS_ANCHOR, callControl } from './CallControl.schema';
-export { CALL_STATUS_ANCHOR, extractionActivity, extractionSignal } from './ExtractionStatus.schema';
+export { extractionActivity, extractionControl } from './ExtractionStatus.schema';
 export {
   captureMeter,
   captureStatus,
@@ -170,14 +171,15 @@ export const transcribeModule = defineModule({
     // Into the call module's own bar. It declares the anchor; we never name the module.
     { anchor: CALL_CONTROLS_ANCHOR, node: callControl, order: 10 },
     /*
-      And under it, where a thing that takes minutes can report on itself.
+      And the way into extraction, beside it.
 
-      A separate anchor rather than a second entry in the bar, because the bar is a row of controls
-      and this is a sentence. Contributed by *this* module rather than by the host: extraction from
-      a call is what this module is for, and the host has no opinion about where a readout of it
-      belongs. A deployment without the call module gets no bar and loses nothing else.
+      This was a readout on a second anchor under the bar — a sentence rather than a control, there
+      because a pass takes minutes and extraction had nowhere of its own to report from. It has a
+      panel now, so what belongs in a row of controls is a control: it opens that panel, and it
+      spins while a pass is running, which is the whole of what the strip said in an object that
+      cannot grow. The call module's `call-status` anchor has nothing left to hold.
     */
-    { anchor: CALL_STATUS_ANCHOR, node: extractionSignal, order: 10 },
+    { anchor: CALL_CONTROLS_ANCHOR, node: extractionControl, order: 20 },
   ],
 
   /*
@@ -203,7 +205,43 @@ export const transcribeModule = defineModule({
    * outside a notes panel sharing the edge, which is only a tiebreak: the host stacks whatever is
    * there rather than letting two panels land in the same box.
    */
-  docks: [{ edge: 'dockEdge', size: 'dockSize', float: 'dockFloat', close: 'closePanel', node: panel, order: 90 }],
+  /**
+   * Two panels, because they are two things.
+   *
+   * A transcript follows this agent's microphone and is read while somebody talks; extraction
+   * follows a pass that may be a peer's, takes minutes, spends tokens and is read afterwards. In one
+   * column that was a transcript, a meter, a coverage line, four status notes, an extract control, a
+   * chip row and a proposal list — two surfaces wearing one coat, and the reason nobody could find
+   * the half they wanted.
+   *
+   * Named, because a placement is remembered against a dock's id: unnamed they are `transcribe:0`
+   * and `transcribe:1`, and inserting a third at the top would renumber both and throw away wherever
+   * anybody had dragged them. The names are also what a template's `meta.panels` entry says to
+   * supply one body rather than the other.
+   *
+   * Both open on the right, so the host stacks them; an interface that wants them apart moves one
+   * and the host remembers.
+   */
+  docks: [
+    {
+      name: 'transcript',
+      edge: 'dockEdge',
+      size: 'dockSize',
+      float: 'dockFloat',
+      close: 'closePanel',
+      node: panel,
+      order: 90,
+    },
+    {
+      name: 'extraction',
+      edge: 'extractionDockEdge',
+      size: 'extractionDockSize',
+      float: 'extractionDockFloat',
+      close: 'closeExtractionPanel',
+      node: extractionPanel,
+      order: 91,
+    },
+  ],
   /**
    * What a space, and an agent, may decide about recording.
    *
@@ -239,12 +277,32 @@ export const transcribeModule = defineModule({
    * offering nothing — now it opens a panel that can explain why there is nothing to record, which is
    * strictly more use than an absent button. Recording moved to where the microphone already is.
    */
-  launcher: {
-    icon: 'waveform',
-    label: 'Transcript',
-    action: 'togglePanel',
-    activeWhen: 'open',
-  },
+  /**
+   * Two ways in, one per panel.
+   *
+   * `launcher` was singular on the reasonable reading that a module is one capability and so has one
+   * entry point. Two surfaces with different lifetimes break it: a single rail button cannot open
+   * both, and choosing which one it opens makes the other reachable only by accident.
+   *
+   * The first keeps no `key`, so its rail entry is the plain module id it has always been — nothing
+   * about the transcript button changes. The second names itself, and is addressed as
+   * `transcribe:extraction`.
+   */
+  launchers: [
+    {
+      icon: 'waveform',
+      label: 'Transcript',
+      action: 'togglePanel',
+      activeWhen: 'open',
+    },
+    {
+      key: 'extraction',
+      icon: 'sparkle',
+      label: 'Extraction',
+      action: 'toggleExtractionPanel',
+      activeWhen: 'extractionOpen',
+    },
+  ],
 
   createStore: (deps: ModuleStoreDeps) => createTranscribeStore(deps),
 });

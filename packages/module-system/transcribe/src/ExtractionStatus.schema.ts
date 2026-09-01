@@ -32,34 +32,6 @@
 import { type SchemaNode, type SchemaProp } from '@we/schema-shared';
 import { expr } from '@we/schema-shared';
 
-/** Must match `CALL_STATUS_ANCHOR` in `@we/module-call`. Deliberately not imported — a shared
- *  constant would be a hard dependency on the module this is meant to work without, exactly as
- *  `CALL_CONTROLS_ANCHOR` explains at greater length. */
-export const CALL_STATUS_ANCHOR = 'call-status';
-
-/**
- * The panel's own corners — the theme's **surface** radius, not the control radius the bar above it
- * takes.
- *
- * The two look interchangeable and are not. `control-radius` describes a capsule, and a capsule is
- * only coherent on a box about one line tall: the call bar is exactly that, so it follows it and a
- * `pill` theme rounds it beautifully. This panel is a stack of disclosures hundreds of pixels tall,
- * and the same variable turned it into a lozenge with its own text running off both ends.
- *
- * `surface-radius` is the theme's answer for a box that is not a capsule — modals, drawers and
- * alerts all take it — and every preset already caps it for that reason: WE's own `pill` preset sets
- * controls to `pill` and surfaces to `600`.
- */
-const STATUS_RADIUS = 'var(--we-theme-surface-radius, var(--we-radius-400))';
-
-/**
- * Matching the call bar's material exactly.
- *
- * Two floating strips a spacing token apart that disagreed about their surface would read as one
- * piece of chrome and one bug. Restated rather than imported for the reason the anchor is.
- */
-const STATUS_SURFACE = { bg: 'page', border: '1px solid border', shadow: 'md' } as const;
-
 /**
  * How big the leading glyph is, whichever glyph it happens to be.
  *
@@ -628,81 +600,50 @@ export const extractionActivity: SchemaNode = {
 };
 
 /**
- * The glance: one line under the call bar saying something is happening.
+ * The way into the extraction panel, from where a call already is.
  *
- * ## Why anything stays in the chrome at all
+ * Replaces the one-line status strip that used to sit under the controls. That strip existed
+ * because a pass runs for minutes — almost all of it one LLM call — and outlived the panel that
+ * started it, while extraction itself lived inside the *transcript* panel, which may be closed and
+ * is about something else. The person most likely to want to know a pass is running is one of the
+ * four in five who did not start it.
  *
- * A pass runs for minutes — almost all of it one LLM call, and on a local model several minutes —
- * and it outlives the panel that started it. The person most likely to want to know it is running
- * is one of the four in five who did *not* start it and has no reason to have the transcript panel
- * open. Reporting it only in the panel would mean the app silently spends two minutes of somebody's
- * node on something nobody in the call can see.
- *
- * So the fact stays; the reading moves. This says who and for how long, in a line that cannot grow,
- * and {@link extractionActivity} in the transcript panel holds everything else.
- *
- * ## Why it cannot grow
- *
- * The version this replaces was the whole readout, and it moved the call's furniture to do its job:
- * opening one pass widened the strip to 520px, and each concurrent pass added a row. A floating
- * object that reflows while somebody is reaching for a control under it is worse than one that says
- * less. So concurrent passes collapse to a count here rather than to a list, and there is nothing to
- * open.
- *
- * Absent entirely when nothing is happening — not empty, absent. A permanently reserved strip would
- * be chrome whose only job is to report, sitting there reporting nothing, and pushing the rest of
- * the call's furniture down to do it.
+ * Extraction has a panel of its own now, so the honest thing in a row of controls is a control: it
+ * opens that panel, and it spins in place of its icon while a pass is in flight. One object doing
+ * both jobs, which the strip could never manage — its whole design constraint was that it must not
+ * grow, since a floating thing reflowing while somebody reaches for a control under it is worse
+ * than one that says less, so it collapsed concurrent passes to a count and had nothing to open.
+ * A button is fixed by construction, and opening is what it is for.
  */
-export const extractionSignal: SchemaNode = {
-  type: '$if',
+export const extractionControl: SchemaNode = {
+  type: 'we-tooltip',
   props: {
-    condition: { $: 'interpretationStore.runningCount' },
-    // Slides down from behind the bar rather than appearing. The bar is a fixed object somebody is
-    // already looking at, and something materialising a few pixels under it reads as a glitch.
-    enterTransition: [
-      { type: 'reveal', duration: 220 },
-      { type: 'fade', duration: 160 },
-    ],
-    then: {
-      type: 'Row',
+    title: {
+      $: "interpretationStore.runningCount ? 'Extraction running — open the panel' : 'Open extraction'",
+    },
+    placement: 'top',
+  },
+  children: [
+    {
+      type: 'we-button',
       props: {
-        ...STATUS_SURFACE,
-        r: STATUS_RADIUS,
-        px: '300',
-        py: '200',
-        gap: '200',
-        ay: 'center',
-        // Capped, and with nothing inside it that can outgrow the cap: the label truncates and the
-        // count is a number. This is the whole of "cannot grow".
-        maxWidth: '320px',
+        variant: { $: "modules.transcribe.extractionOpen ? 'secondary' : 'ghost'" },
+        size: 'sm',
+        square: true,
+        onClick: { $action: 'modules.transcribe.toggleExtractionPanel' },
       },
       children: [
-        { type: 'we-spinner', props: { size: 'xs' } },
         {
+          // The state, in the control rather than beside it: a spinner where the icon is says a pass
+          // is running without a second object appearing next to the one being pointed at.
           type: '$if',
           props: {
-            // One pass reads as itself — the label is already a whole clause ("Anna is waiting on
-            // the model"). Several collapse to a count, because naming them all is the growth this
-            // exists to avoid.
-            condition: { $: 'interpretationStore.runningCount == 1' },
-            then: {
-              type: 'we-text',
-              props: { variant: 'label', truncate: true },
-              children: [{ $: 'first(interpretationStore.activity).label' }],
-            },
-            else: {
-              type: 'we-text',
-              props: { variant: 'label', truncate: true },
-              children: [{ $: '`${interpretationStore.runningCount} extractions running`' }],
-            },
+            condition: { $: 'interpretationStore.runningCount' },
+            then: { type: 'we-spinner', props: { size: 'xs' } },
+            else: { type: 'we-icon', props: { name: 'sparkle' } },
           },
-        },
-        {
-          type: 'we-text',
-          props: { variant: 'footnote', color: 'text-muted' },
-          children: [{ $: 'first(interpretationStore.activity).elapsed' }],
         },
       ],
     },
-  },
+  ],
 };

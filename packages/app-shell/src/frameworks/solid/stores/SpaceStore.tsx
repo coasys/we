@@ -3054,22 +3054,31 @@ export function SpaceStoreProvider(props: ParentProps) {
 
   const moduleLaunchers = createMemo(() => {
     const on = new Set(activeModules());
-    return moduleRegistry
-      .all()
-      .filter(({ definition }) => definition.launcher && on.has(definition.id))
-      .filter(({ definition }) => read(definition.id, definition.launcher!.availableWhen, true))
-      .map(({ definition }) => {
-        const launcher = definition.launcher!;
-        const active = read(definition.id, launcher.activeWhen, false);
-        return {
-          id: definition.id,
-          icon: launcher.icon,
-          // The active label where there is one, so a tooltip cannot describe an act the button has
-          // stopped performing. Most launchers declare none and this is `label` in both states.
-          label: (active && launcher.activeLabel) || launcher.label,
-          active,
-        };
-      });
+    return (
+      moduleRegistry
+        .all()
+        .filter(({ definition }) => on.has(definition.id))
+        /*
+        A module may offer more than one way in, and transcription is why: recording and extraction
+        are two surfaces with different lifetimes — one follows this agent's microphone, the other
+        follows a pass that may be somebody else's — so one button cannot open both. The key is the
+        plain module id for a module with a single launcher, which is every other one, so nothing
+        about their rail entries changes.
+      */
+        .flatMap(({ definition }) => moduleRegistry.launchersOf(definition).map((entry) => ({ definition, ...entry })))
+        .filter(({ definition, launcher }) => read(definition.id, launcher.availableWhen, true))
+        .map(({ definition, key, launcher }) => {
+          const active = read(definition.id, launcher.activeWhen, false);
+          return {
+            id: key,
+            icon: launcher.icon,
+            // The active label where there is one, so a tooltip cannot describe an act the button has
+            // stopped performing. Most launchers declare none and this is `label` in both states.
+            label: (active && launcher.activeLabel) || launcher.label,
+            active,
+          };
+        })
+    );
   });
 
   /**
@@ -3080,13 +3089,21 @@ export function SpaceStoreProvider(props: ParentProps) {
    * this dereferences it.
    */
   function launchModule(moduleId: string) {
-    const definition = moduleRegistry.get(moduleId)?.definition;
-    const action = definition?.launcher?.action;
+    /*
+      The rail's key, which is the module id for a module with one launcher and `<id>:<key>` for one
+      with several. Split rather than looked up twice: the whole of the addressing is in the key, so
+      a rail iterating over entries needs nothing else, which is the constraint that put this here
+      rather than in a schema in the first place.
+    */
+    const [id] = moduleId.split(':');
+    const definition = moduleRegistry.get(id)?.definition;
+    if (!definition) return;
+    const action = moduleRegistry.launchersOf(definition).find((entry) => entry.key === moduleId)?.launcher.action;
     if (!action) return;
-    const store = moduleStores[moduleId] as Record<string, unknown> | undefined;
+    const store = moduleStores[id] as Record<string, unknown> | undefined;
     const fn = store?.[action];
     if (typeof fn === 'function') (fn as () => void)();
-    else console.warn(`module "${moduleId}" declares launcher action "${action}" but its store has no such method`);
+    else console.warn(`module "${id}" declares launcher action "${action}" but its store has no such method`);
   }
 
   /**

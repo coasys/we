@@ -20,7 +20,7 @@ import type { SchemaNode } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import { createMemo, createSignal, onCleanup } from 'solid-js';
 
-export function TemplatePanelBody(props: { panelId?: string; moduleId?: string }) {
+export function TemplatePanelBody(props: { panelId?: string; moduleId?: string; dock?: string }) {
   // The declaration is a plain array behind a change channel, so a signal is what makes reading it
   // reactive — the same shape `ShellStore` uses to follow the same registry.
   const [version, setVersion] = createSignal(0);
@@ -33,9 +33,19 @@ export function TemplatePanelBody(props: { panelId?: string; moduleId?: string }
   */
   const node = createMemo(() => {
     version();
-    const panel = templatePanels().find((entry) =>
-      props.moduleId ? entry.module === props.moduleId && entry.node : entry.id === props.panelId,
-    );
+    /*
+      By dock rather than by module, where the frame gave one.
+
+      A module with two panels has two frames asking this, and matching on the module alone would
+      hand both of them the first supplied entry — the transcript body inside the extraction panel,
+      silently. The frame knows which dock it is, so it says so, and the entry that names that dock
+      is the only one that answers.
+    */
+    const panel = templatePanels().find((entry) => {
+      if (!props.moduleId) return entry.id === props.panelId;
+      if (!entry.node || entry.module !== props.moduleId) return false;
+      return props.dock ? entry.dock === props.dock : true;
+    });
     if (!panel?.node) return undefined;
     // `$part` is expanded here rather than by the renderer, the same way `$slot` is — see
     // `moduleParts.ts`. A panel is the first place an interface reaches for a module's pieces.

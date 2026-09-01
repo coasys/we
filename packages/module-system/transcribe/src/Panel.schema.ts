@@ -1043,6 +1043,78 @@ export const transcriptFeed: SchemaNode = {
   ],
 };
 
+/**
+ * Extraction, as a surface of its own.
+ *
+ * It used to be the lower half of the transcript panel, and the two were one panel because they are
+ * one module. They are not one *thing*: a transcript follows this agent's microphone and is read
+ * while somebody talks, and extraction follows a pass that may be a peer's, takes minutes, spends
+ * tokens and is read afterwards. Bundled, the column was a transcript, a meter, a coverage line,
+ * four status notes, an extract control, a chip row and a proposal list — two surfaces wearing one
+ * coat, and the reason nobody could find the half they wanted.
+ *
+ * Opening itself when a pass starts is what makes this safe to separate, and it is the rule
+ * recording already follows: starting something invisible and saying nothing about it is how a
+ * feature comes to look broken. A pass any member starts opens this for everyone who has the module,
+ * which is what the one-line signal in the call bar used to be for.
+ */
+export const extractionPanel: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'datasetStore.currentDataset && modules.transcribe.extractionOpen' },
+    then: {
+      type: 'Column',
+      props: { width: '100%', height: '100%', p: '400', gap: '400', overflow: 'hidden' },
+      children: [
+        {
+          type: 'Row',
+          props: { ax: 'between', ay: 'center', gap: '300' },
+          children: [
+            { type: 'we-text', props: { variant: 'heading-sm' }, children: ['Extraction'] },
+            /*
+              Whether this conversation is read as it happens, and it is a *call's* switch.
+
+              The space has a standing answer and an administrator sets it; this is the people in the
+              room deciding about the room. Disabled where there is no call to record a decision
+              against — `canChooseTargets` asks about the same record, which is why it answers for
+              both — rather than absorbing a press and looking broken.
+            */
+            {
+              type: 'we-switch',
+              props: {
+                size: 'sm',
+                label: 'As it happens',
+                checked: { $: 'modules.transcribe.autoExtract' },
+                disabled: { $: '!modules.transcribe.canChooseTargets' },
+                onChange: { $action: 'modules.transcribe.toggleAutoExtract' },
+              },
+            },
+          ],
+        },
+        /*
+          Absent outside a call rather than disabled, and the sentence says which.
+
+          Every other reason extraction is unavailable is about the node — no model, an executor that
+          cannot interpret — and `extract` says those itself. This one is that there is no
+          conversation yet, which is not a fault and not fixable from here.
+        */
+        {
+          type: '$if',
+          props: {
+            condition: { $: '!modules.transcribe.extractable' },
+            then: {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-muted', italic: true },
+              children: ['Nothing to read yet. What a call produces appears here as it is found.'],
+            },
+          },
+        },
+        extract,
+      ],
+    },
+  },
+};
+
 export const panel: SchemaNode = {
   type: '$if',
   props: {
@@ -1139,9 +1211,6 @@ export const panel: SchemaNode = {
 
         // ── Why nothing is happening, when nothing is ────────────────────────
         captureStatus,
-
-        // ── Turning it into records ──────────────────────────────────────────
-        extract,
 
         // ── What has been heard, and what is still being said ────────────────
         // One node, not two: the unsaved line lives inside the feed's scroll region, immediately

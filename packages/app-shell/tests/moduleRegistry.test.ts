@@ -575,6 +575,48 @@ describe('supplying a module panel’s contents', () => {
     for (const entry of json) expect(entry).not.toContain("panelSupplied['twin']");
   });
 
+  it('names each dock, so a placement survives a second panel being added', () => {
+    /*
+      The id was `<moduleId>:<index>`, which is stable only while nothing is inserted before it. A
+      placement is remembered against that id, so adding a panel at the top of the list renumbered
+      every one below it and threw away wherever anybody had dragged them.
+    */
+    const named = {
+      id: 'twin',
+      name: 'Twin',
+      docks: [
+        { edge: 'edgeA', name: 'transcript', node: { type: 'we-text' } },
+        { edge: 'edgeB', name: 'extraction', node: { type: 'we-text' } },
+      ],
+      createStore: () => ({}),
+    } as unknown as ModuleDefinition;
+    moduleRegistry.register(named, host);
+
+    const ids = slotRegistry
+      .all()
+      .filter((entry) => entry.id.startsWith('dock:twin'))
+      .map((entry) => entry.id);
+
+    expect(ids).toEqual(['dock:twin:transcript', 'dock:twin:extraction']);
+  });
+
+  it('tells a supplied body which dock it is for', () => {
+    // Two frames ask, and a body matched on the module alone would land in whichever asked first —
+    // the transcript inside the extraction panel, silently.
+    const named = {
+      id: 'twin',
+      name: 'Twin',
+      docks: [
+        { edge: 'edgeA', name: 'transcript', node: { type: 'we-text' } },
+        { edge: 'edgeB', name: 'extraction', node: { type: 'we-text' } },
+      ],
+      createStore: () => ({}),
+    } as unknown as ModuleDefinition;
+    moduleRegistry.register(named, host);
+
+    expect(JSON.stringify(slotRegistry.get('dock:twin:extraction')?.node)).toContain('"dock":"extraction"');
+  });
+
   it('still renders the module’s own contents on the other side of the gate', () => {
     // The override is a branch, not a replacement: a module whose panel nobody supplies is
     // unaffected, which is what makes this safe to key on something no template writes directly.

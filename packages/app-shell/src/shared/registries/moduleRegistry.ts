@@ -28,6 +28,7 @@ import { type EntityClass, getEntityPredicates, registerEntity, unregisterEntity
 import {
   checkModuleCompatibility,
   type ModuleDefinition,
+  type ModuleLauncher,
   modulePredicatePrefix,
   modulePredicateViolations,
   type ModuleScope,
@@ -224,12 +225,14 @@ function declaredEntities(schemas: SchemaPort, scope: ModuleScope): unknown[] {
  * a module name to a dock id is `ShellStore.panelSupplied`'s job, and it refuses the ambiguous case
  * out loud rather than picking.
  */
-function suppliedOrOwn(moduleId: string, dockId: string, own: SchemaNode): SchemaNode {
+function suppliedOrOwn(moduleId: string, dockId: string, dock: string, own: SchemaNode): SchemaNode {
   return {
     type: '$if',
     props: {
       condition: { $: `shellStore.panelSupplied['${dockId}']` },
-      then: { type: 'TemplatePanelBody', props: { moduleId } },
+      // The dock's own name travels with the request: a module with two panels has two frames
+      // asking, and a body found by module alone would land in whichever asked first.
+      then: { type: 'TemplatePanelBody', props: { moduleId, dock } },
       else: own,
     },
   };
@@ -355,7 +358,9 @@ export const moduleRegistry = {
     // has wrapped it in a positioned box it is ordinary shell chrome and needs no second render
     // path. The `dock:` id prefix keeps the two namespaces from colliding.
     for (const [index, dock] of (definition.docks ?? []).entries()) {
-      const id = `${definition.id}:${index}`;
+      // The declared name where there is one, so a module that adds a second panel does not
+      // renumber the first and throw away wherever anybody had dragged it.
+      const id = `${definition.id}:${dock.name ?? index}`;
       dockRegistry.register({ ...dock, id, moduleId: definition.id });
       slotRegistry.register({
         anchor: 'dock-right',
@@ -363,7 +368,10 @@ export const moduleRegistry = {
         id: `dock:${id}`,
         node: gateOnSpace(
           definition.id,
-          dockFrame({ ...dock, id, moduleId: definition.id }, suppliedOrOwn(definition.id, id, dock.node)),
+          dockFrame(
+            { ...dock, id, moduleId: definition.id },
+            suppliedOrOwn(definition.id, id, dock.name ?? String(index), dock.node),
+          ),
           definition.holdsWhen,
         ),
       });
@@ -509,6 +517,24 @@ export const moduleRegistry = {
    * rather than memoised: modules register and unregister at runtime, and this is consulted once per
    * bag construction, not per read.
    */
+  /**
+   * A module's launchers, however it declared them.
+   *
+   * `launcher` and `launchers` concatenated rather than one superseding the other, so a module that
+   * grows a second entry point does not have to rewrite the first — and so every module that
+   * declares only the singular keeps behaving exactly as it did.
+   *
+   * The key is what the rail addresses: the plain module id for a launcher that names none, which
+   * is every module with one, and `<moduleId>:<key>` otherwise.
+   */
+  launchersOf(definition: ModuleDefinition): { key: string; launcher: ModuleLauncher }[] {
+    const all = [...(definition.launcher ? [definition.launcher] : []), ...(definition.launchers ?? [])];
+    return all.map((launcher) => ({
+      key: launcher.key ? `${definition.id}:${launcher.key}` : definition.id,
+      launcher,
+    }));
+  },
+
   chromeOnlyStoreMembers(): Record<string, readonly string[]> {
     const out: Record<string, readonly string[]> = {};
     for (const { definition } of moduleRegistry.all()) {

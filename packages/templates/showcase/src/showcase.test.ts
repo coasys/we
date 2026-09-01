@@ -413,6 +413,24 @@ describe('the workshop template’s call selection', () => {
     expect(json).toContain('recordStore.saveRecord');
   });
 
+  it('supplies both of the module’s panels, so neither is drawn twice', () => {
+    /*
+      The transcript entry named the module and the extraction entry named nothing, so the module's
+      own extraction surface had no counterpart here — it opened *beside* this template's version the
+      moment a pass ran. Two entries naming two docks line up one-to-one with what the module
+      contributes, which is what makes "the interface supplies this" mean something.
+
+      The dock names are required now that there are two: without them the host refuses to supply
+      either rather than guessing, because a transcript body inside an extraction panel is a silent
+      wrong answer.
+    */
+    const panels = workshop.meta?.panels ?? [];
+    const supplied = panels.filter((panel) => panel.module === 'transcribe');
+
+    expect(supplied.map((panel) => panel.dock).sort()).toEqual(['extraction', 'transcript']);
+    for (const panel of supplied) expect(panel.node).toBeTruthy();
+  });
+
   it('offers a delete on every card, not only on the unsettled ones', () => {
     /*
       Extraction proposes things that are simply wrong about a conversation, and one that has been

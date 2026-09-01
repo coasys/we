@@ -138,6 +138,20 @@ const ambiguousSupply = new Set<string>();
  * honest answer is that the declaration is under-specified — and saying so names the fix (a panel
  * entry that identifies the dock) where picking one silently would not.
  */
+/** Panel entries already reported, so a memo re-running does not repeat itself every frame. */
+const unknownDock = new Set<string>();
+
+/** A panel entry named a dock that module does not contribute. */
+function warnUnknownDock(moduleId: string, dock: string): void {
+  const key = `${moduleId}:${dock}`;
+  if (unknownDock.has(key)) return;
+  unknownDock.add(key);
+  console.warn(
+    `[panels] an interface supplies contents for "${key}", which module "${moduleId}" does not contribute. ` +
+      'Nothing is supplied, so that module keeps its own contents — check the dock name against the module.',
+  );
+}
+
 function warnAmbiguousSupply(moduleId: string, count: number): void {
   if (ambiguousSupply.has(moduleId)) return;
   ambiguousSupply.add(moduleId);
@@ -1857,6 +1871,15 @@ export function ShellStoreProvider(props: ParentProps) {
       for (const panel of declaredPanels()) {
         if (!panel.module || !panel.node) continue;
         const docks = dockRegistry.ordered().filter((entry) => entry.moduleId === panel.module);
+        // Named, so the entry says which of a module's panels it is supplying — the only answer once
+        // there is more than one, since supplying a transcript body into an extraction panel is a
+        // silent wrong answer rather than a visible failure.
+        if (panel.dock) {
+          const named = docks.find((entry) => entry.id === `${panel.module}:${panel.dock}`);
+          if (named) supplied[named.id] = true;
+          else warnUnknownDock(panel.module, panel.dock);
+          continue;
+        }
         if (docks.length === 1) supplied[docks[0].id] = true;
         else if (docks.length > 1) warnAmbiguousSupply(panel.module, docks.length);
       }
