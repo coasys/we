@@ -414,16 +414,43 @@ export const extractionTargets: SchemaNode = {
       write to. That was a guard in the store returning without a word, so the chips took the click
       and did nothing — which reads as broken rather than as somebody else's decision.
     */
+    /*
+      Where the list on screen comes from, when it is not a call's.
+
+      Outside a call the chips are the space's default and cannot be pressed, which without a word is
+      the state that reads as broken. Two sentences: what this is, and where it is changed — and the
+      second is a control rather than an instruction, because "in the space's settings" is a place
+      somebody then has to find.
+
+      The tab is named, so the panel opens where the setting actually is instead of on About.
+    */
     {
       type: '$if',
       props: {
         condition: {
-          $: 'count(modules.transcribe.extractionTargets) && !modules.transcribe.canChooseTargets && !spaceStore.canAdministerCurrentSpace',
+          $: 'count(modules.transcribe.extractionTargets) && !modules.transcribe.canChooseTargets',
         },
         then: {
-          type: 'we-text',
-          props: { variant: 'footnote', color: 'text-faint', italic: true },
-          children: ['Set by this space. Join a call to choose what that conversation looks for.'],
+          type: 'Row',
+          props: { gap: '200', ay: 'center', wrap: true },
+          children: [
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-faint', italic: true },
+              children: ['Join a call to narrow it for that conversation.'],
+            },
+            {
+              type: 'we-button',
+              props: {
+                size: 'xs',
+                variant: 'bare',
+                textDecoration: 'underline',
+                color: 'accent-text',
+                onClick: { $action: 'shellStore.openSpaceSettings', args: ['features'] },
+              },
+              children: ['Change the default'],
+            },
+          ],
         },
       },
     },
@@ -462,35 +489,23 @@ export const extractionTargets: SchemaNode = {
                 variant: { $: "target.selected ? 'secondary' : 'outline'" },
                 // Only where neither list is this agent's to change. Refused visibly rather than in
                 // the store, where it was refused in silence.
-                disabled: {
-                  $: '!modules.transcribe.canChooseTargets && !spaceStore.canAdministerCurrentSpace',
-                },
+                // Outside a call there is no conversation to narrow, so these state the space's
+                // default rather than offering a change to it. The link below leads to the change.
+                disabled: { $: '!modules.transcribe.canChooseTargets' },
                 /*
-                  The press edits whichever list is on screen — and outside a call that is the
-                  space's own default, which is the whole reason this looked broken.
+                  One meaning: this call's list, and only this call's.
 
-                  There is no call record to hang a per-call decision on until somebody is in a call,
-                  so `toggleExtractionTarget` returned early and the chips absorbed every click. But
-                  the list being shown in that state is not nothing: it is the space's default, and
-                  editing the thing you are looking at is what a chip is for. In a call it is that
-                  call's list, which is narrower and does not touch the default.
-
-                  Two blast radii behind one control, so the heading above says which — a press that
-                  changes what every future call here looks for must not be indistinguishable from
-                  one that changes this afternoon's meeting.
+                  It briefly did two — the call's in a call, the space's default outside one, on the
+                  reasoning that editing what you are looking at is what a chip is for. That is one
+                  control with two blast radii, told apart by a heading: narrowing this afternoon's
+                  meeting and changing what every future call in the community starts from, behind
+                  the same press. In a personal space, where every member administers, the heavier of
+                  the two was also the default. A link to where the default lives is the honest
+                  version, and it is two clicks rather than one.
                 */
                 onClick: {
-                  $if: {
-                    condition: { $: 'modules.transcribe.canChooseTargets' },
-                    then: {
-                      $action: 'modules.transcribe.toggleExtractionTarget',
-                      args: [{ $: 'target.entity' }],
-                    },
-                    else: {
-                      $action: 'spaceStore.setExtractionTarget',
-                      args: [{ $: 'target.entity' }, { $: '!target.selected' }],
-                    },
-                  },
+                  $action: 'modules.transcribe.toggleExtractionTarget',
+                  args: [{ $: 'target.entity' }],
                 },
               },
               children: [

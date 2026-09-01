@@ -224,6 +224,18 @@ export interface ShellStore {
    */
   spaceSettingsOpen: Accessor<boolean>;
   /**
+   * The tab the space-settings panel should open on — `'about'` unless a caller asked for another.
+   *
+   * Read once, as the panel's own `$localState` initial, so it is a starting position rather than a
+   * controlled value: somebody who opens the panel at Features and then walks to Vocabulary must not
+   * be pulled back by the thing that sent them. The panel unmounts when closed, so the next open
+   * re-reads it.
+   *
+   * Handed over rather than navigated to, for the reason `takePendingPath` exists: what shows a tab
+   * is state inside a subtree that does not exist until the panel mounts.
+   */
+  spaceSettingsTab: Accessor<string>;
+  /**
    * Where that panel would like to open, or null while it is closed — the key its dock names.
    *
    * `right` because that is the edge the rail's gear is on and the edge every other panel opens at.
@@ -237,7 +249,13 @@ export interface ShellStore {
    */
   provideModuleGate: (gate: (moduleId: string) => boolean) => void;
   toggleSpaceSettings: () => void;
-  openSpaceSettings: () => void;
+  /**
+   * Open the panel, optionally on a named tab — `'about'`, `'features'`, `'vocabulary'`.
+   *
+   * The tab argument is what lets a control elsewhere point at the setting it is about instead of
+   * naming it in prose and leaving the reader to find it. See `spaceSettingsTab`.
+   */
+  openSpaceSettings: (tab?: string) => void;
   closeSpaceSettings: () => void;
   /** Smooth-scroll the element with the given DOM id into view. */
   scrollToId: (id: string) => void;
@@ -599,6 +617,9 @@ export function ShellStoreProvider(props: ParentProps) {
   const lastShellPath: Record<string, string> = {};
   const [createSpaceOpen, setCreateSpaceOpen] = createSignal(false);
   const [spaceSettingsOpen, setSpaceSettingsOpen] = createSignal(false);
+  // Where the panel starts, for a caller that knows which setting it is sending somebody to. Not a
+  // controlled value — see `spaceSettingsTab`.
+  const [spaceSettingsTab, setSpaceSettingsTab] = createSignal('about');
 
   const [pendingDestructive, setPendingDestructive] = createSignal<PendingDestructive | null>(null);
   /** Resolves the promise `requestDestructive` handed back. Null when no question is outstanding. */
@@ -1325,11 +1346,15 @@ export function ShellStoreProvider(props: ParentProps) {
     cancelDestructive: () => settleDestructive(false),
     requestDestructive,
     spaceSettingsOpen,
+    spaceSettingsTab,
     spaceSettingsEdge: () => (spaceSettingsOpen() ? 'right' : null),
     // Wrapped, because `setSignal` treats a function argument as an updater.
     provideModuleGate: (gate) => setModuleGate(() => gate),
     toggleSpaceSettings: () => setSpaceSettingsOpen((open) => !open),
-    openSpaceSettings: () => setSpaceSettingsOpen(true),
+    openSpaceSettings: (tab?: string) => {
+      setSpaceSettingsTab(tab ?? 'about');
+      setSpaceSettingsOpen(true);
+    },
     closeSpaceSettings: () => setSpaceSettingsOpen(false),
     takePendingPath: () => {
       const path = pendingPath();

@@ -2583,6 +2583,7 @@ export const contextData: ContextData = {
         createSpaceOpen: { type: 'boolean' },
         pendingDestructive: { type: 'object' },
         spaceSettingsOpen: { type: 'boolean' },
+        spaceSettingsTab: { type: 'string' },
         dockGeometry: { type: 'object' },
         contentInset: { type: 'object' },
         coveredInset: { type: 'object' },

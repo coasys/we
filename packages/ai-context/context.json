@@ -6537,6 +6537,9 @@
         "spaceSettingsOpen": {
           "type": "boolean"
         },
+        "spaceSettingsTab": {
+          "type": "string"
+        },
         "dockGeometry": {
           "type": "object"
         },

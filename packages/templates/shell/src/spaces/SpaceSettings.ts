@@ -1237,7 +1237,14 @@ export function spaceSettingsBody(uuid: SchemaProp, chrome: SchemaNode[], fill?:
     */
     type: 'Column',
     props: { width: '100%', ...fills },
-    $localState: { tab: { type: 'string', initial: 'about' } },
+    /*
+      Where this opens, from whoever opened it — see `shellStore.spaceSettingsTab`.
+
+      An `initial` rather than a bound value, and the difference is the whole point: a control
+      elsewhere can point at the tab holding the setting it is about, and the reader is then free to
+      walk away from it. Bound, they would be dragged back the moment anything re-evaluated.
+    */
+    $localState: { tab: { type: 'string', initial: { $: 'shellStore.spaceSettingsTab' } } },
     children: [
       {
         type: '$each',

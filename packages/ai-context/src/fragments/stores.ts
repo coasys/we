@@ -1304,6 +1304,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           "string | null — id of the currently open shell overlay ('profile' | 'settings' | 'schema-tests' | 'landing-page'), or null",
         spaceSettingsOpen:
           'boolean — the space-settings panel is open. It configures whichever space is open, so it needs no id; bind a launcher\u2019s active state to this',
+        spaceSettingsTab:
+          "string — the tab the space-settings panel opens on ('about' | 'features' | 'vocabulary'). A starting position read once as the panel mounts, not a controlled value: somebody who then walks to another tab stays there. Set it by passing a tab to openSpaceSettings",
         pendingDestructive:
           "the destructive action a space template just asked for ({ path, title, body }), or null. The host raises its own confirmation in front of every one of them — a space template arrives from a stranger, so whether it asks before deleting is not the stranger's decision. Host chrome renders it; a template writing its own dialog for a destructive store action would be a second question about one click",
         layoutPinned:

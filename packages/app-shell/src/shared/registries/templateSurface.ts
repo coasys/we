@@ -878,6 +878,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       pointing at something it is not allowed to call.
     */
     spaceSettingsOpen: state('navigation'),
+    spaceSettingsTab: state('navigation'),
     openSpaceSettings: action('navigation'),
     closeSpaceSettings: action('navigation'),
     toggleSpaceSettings: action('navigation'),
