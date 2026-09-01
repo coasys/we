@@ -50,7 +50,7 @@
  *   *joins a call* when there is not one. Placed, never opened.
  */
 import type { RouteSchema, SchemaNode, SchemaProp, TemplateSchema } from '@we/schema-shared';
-import { agentByline, emptyState } from '@we/template-kit';
+import { agentByline, emptyState, recordFormModal } from '@we/template-kit';
 
 /**
  * What extraction is allowed to make from a transcript — asked, rather than restated.
@@ -1503,7 +1503,27 @@ const boardBody: Omit<RouteSchema, 'path'> = {
     loads nothing until it is given a board, so mounting it with no call costs a read of nothing and
     keeps the surface constant from the first frame.
   */
-  children: [board],
+  children: [
+    board,
+    /*
+      Where a connection is actually written down.
+
+      Drawing a line between two cards sets `recordStore.pendingLink` and opens the record form on a
+      `Relationship` — and a form whose non-nullness mounts a modal needs something to mount it.
+      Nothing here did: the modal is placed by the *default* template's graph view, and this template
+      supplies its own board. So the drag completed, the store opened a draft, and the screen showed
+      nothing at all — the connection gesture looked like it had silently failed when what had
+      failed was the surface that asks about it.
+
+      Above the canvas rather than inside it, for the reason the graph view gives: a graph is a
+      transformed, zoomable surface and text entry on one is its own project, while what is being
+      authored is a record and has nothing to do with where it will land.
+
+      No `onCreated`. The default's graph bumps a `revision` to force a reload; this board watches
+      the entity it draws connections from, so a new `Relationship` arrives on its own.
+    */
+    recordFormModal(),
+  ],
 };
 
 const boardRoute: RouteSchema = { path: '/board', ...boardBody };

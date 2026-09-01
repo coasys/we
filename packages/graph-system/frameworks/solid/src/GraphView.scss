@@ -632,44 +632,59 @@
  * something you did not ask for. A grab area that exists only on the edge of a selected card needs no
  * mode, because the target is what makes the gesture unambiguous.
  *
+ * ## The target is bigger than the dot
+ *
+ * The element is a 26px box and the dot inside it is 10px, because those answer different questions.
+ * The dot is a *hint* — four of them around a selected card, and four large discs would be furniture
+ * competing with the card's own contents. The box is what a mouse has to land on, and a 10px target
+ * beside a resize strip is a thing you miss and then miss again. Drawn as `::before` so the two sizes
+ * are independent; the hit area never changes, only what is painted in it.
+ *
  * Sized in `px / var(--graph-zoom)`, like the resize grips: the layer is scaled by the camera, so
  * dividing first is what keeps a dot the same size on screen at every zoom. No `scale()` here, which
  * is what lets `translate(-50%, -50%)` centre them honestly — a percentage translate resolves against
  * the unscaled box, so the two together mis-centre by however far the camera is from 1.
  */
 .we-graph__connect {
-  --dot: calc(9px / var(--graph-zoom));
-  --reach: calc(14px / var(--graph-zoom));
+  --hit: calc(26px / var(--graph-zoom));
+  --dot: calc(10px / var(--graph-zoom));
+  --reach: calc(16px / var(--graph-zoom));
   --half-w: calc(var(--node-width) / 2);
   --half-h: calc(var(--node-height) / 2);
 
   position: absolute;
-  width: var(--dot);
-  height: var(--dot);
+  width: var(--hit);
+  height: var(--hit);
   transform: translate(-50%, -50%);
-  border-radius: 50%;
-
-  background: var(--we-role-accent);
-  border: calc(1.5px / var(--graph-zoom)) solid var(--we-color-neutral-0);
-  opacity: 0.55;
 
   // The node layer is inert so the canvas can hit-test in world space; these take their own presses.
   pointer-events: auto;
   touch-action: none;
   cursor: crosshair;
+}
 
+// What is actually painted: small at rest, and the size of the target once reached for.
+.we-graph__connect::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: var(--dot);
+  height: var(--dot);
+  border-radius: 50%;
+  background: var(--we-role-accent);
+  border: calc(1.5px / var(--graph-zoom)) solid var(--we-color-neutral-0);
+  opacity: 0.6;
   transition:
     opacity 100ms ease-out,
     width 100ms ease-out,
     height 100ms ease-out;
+}
 
-  &:hover {
-    // Grown, so the thing under the cursor is the thing being pressed — a 9px target is findable
-    // because it is on a card you already selected, and small until you reach for it.
-    --dot: calc(20px / var(--graph-zoom));
-
-    opacity: 1;
-  }
+.we-graph__connect:hover::before {
+  width: calc(22px / var(--graph-zoom));
+  height: calc(22px / var(--graph-zoom));
+  opacity: 1;
 }
 
 /**
@@ -685,8 +700,8 @@
   position: absolute;
   inset: 0;
   margin: auto;
-  width: calc(6px / var(--graph-zoom));
-  height: calc(6px / var(--graph-zoom));
+  width: calc(7px / var(--graph-zoom));
+  height: calc(7px / var(--graph-zoom));
   border-top: calc(2px / var(--graph-zoom)) solid var(--we-role-on-accent);
   border-right: calc(2px / var(--graph-zoom)) solid var(--we-role-on-accent);
   opacity: 0;

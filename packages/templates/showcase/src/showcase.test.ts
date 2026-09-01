@@ -400,6 +400,17 @@ describe('the workshop template’s call selection', () => {
     expect(json).not.toContain('connect-nodes');
     expect(json).not.toContain('local.connecting');
     expect(json).toContain('recordStore.connectNodes');
+    /*
+      And the form that asks what the connection *is*.
+
+      `connectNodes` opens a draft, and a draft whose non-nullness mounts a modal needs something to
+      mount it. The modal is placed by the default template's graph view, and this template supplies
+      its own board — so the drag completed, the store opened a form, and the screen showed nothing.
+      The gesture looked like it had silently failed when what had failed was the surface that asks
+      about it.
+    */
+    expect(json).toContain('recordStore.recordDraft');
+    expect(json).toContain('recordStore.saveRecord');
   });
 
   it('offers a delete on every card, not only on the unsettled ones', () => {

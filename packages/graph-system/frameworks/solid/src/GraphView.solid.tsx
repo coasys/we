@@ -51,6 +51,7 @@ import { parseAddress } from '@we/graph-protocol';
 import { batch, createEffect, createMemo, createSignal, For, onCleanup, onMount, Show, untrack } from 'solid-js';
 import { Dynamic } from 'solid-js/web';
 
+import { connectionTarget } from './connect';
 import type { GraphViewProps, NodeContent } from './GraphView.types';
 import { isSettled, patched } from './pending';
 import { type Grip, HANDLES, resizeBox } from './resize';
@@ -749,7 +750,6 @@ export function GraphView(props: GraphViewProps) {
     };
 
     const move = (moved: PointerEvent) => {
-      moved.stopPropagation();
       // The same guard the behaviour keeps: a dropped pointer-up would otherwise leave a line
       // following the cursor around the canvas with no way to put it down.
       if (moved.buttons === 0) {
@@ -760,18 +760,13 @@ export function GraphView(props: GraphViewProps) {
     };
 
     const end = (ended: PointerEvent) => {
-      ended.stopPropagation();
-      handle.removeEventListener('pointermove', move);
-      handle.removeEventListener('pointerup', end);
-      handle.removeEventListener('pointercancel', end);
-      const [target] = ctx.hitTest(ctx.toWorld(at(ended)));
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', end);
+      window.removeEventListener('pointercancel', end);
+      const [hit] = ctx.hitTest(ctx.toWorld(at(ended)));
       ctx.drawConnection(null);
-      /*
-        A release on empty canvas is an abandoned gesture rather than a connection to nothing, and a
-        node cannot be joined to itself. Both end quietly — the line goes and nothing is emitted, so
-        no dialog opens about a connection nobody made.
-      */
-      if (!target || target === source) return;
+      const target = connectionTarget(hit, source);
+      if (!target) return;
       ctx.emit({
         type: 'edgeCreate',
         source: { id: source, kind: 'entity', type: '' },
@@ -779,9 +774,23 @@ export function GraphView(props: GraphViewProps) {
       });
     };
 
-    handle.addEventListener('pointermove', move);
-    handle.addEventListener('pointerup', end);
-    handle.addEventListener('pointercancel', end);
+    /*
+      On `window`, not on the handle — and this is what made the drop do nothing.
+
+      A press sets pointer capture, which *usually* routes the rest of the gesture back to the
+      element it started on. Usually is not good enough here: the handle is a node in a list the
+      renderer rebuilds, it is inside a subtree whose `:hover` sizing changes the moment the pointer
+      leaves it, and capture is released outright if the element goes away. Any of those and the
+      `pointerup` lands somewhere with no listener, so the line follows the cursor to another card
+      and releasing it does nothing at all — which is exactly the failure, and it is invisible,
+      because the half of the gesture that draws worked fine.
+
+      The window sees the release wherever it happens. Capture stays because it keeps the events
+      coming while the element does exist, and they bubble up to here either way.
+    */
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', end);
+    window.addEventListener('pointercancel', end);
   }
 
   function beginResize(
