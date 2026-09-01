@@ -314,6 +314,148 @@ const proposals: SchemaNode = {
 };
 
 /**
+ * What a pass will look for, and the switch for each — the models, not a fixed sentence.
+ *
+ * It read "Find the tasks and events in what was said", which was true while those two classes were
+ * compiled into this module and is a lie in a space that defined its own. These chips both say what
+ * will be looked for and let a call narrow it, so the sentence becomes a lead-in rather than
+ * something to rewrite every time a community adopts a model.
+ *
+ * ## One list, not two
+ *
+ * `extractionTargets` is already the union: every model this space may extract, each flagged with
+ * whether this call is looking for it. So "what is on" and "what could be added" are one row of
+ * chips rather than a list of pills and a search behind a button — which would be two surfaces that
+ * have to agree, over a set that is a handful of entries.
+ *
+ * ## The state is said in colour, not in opacity
+ *
+ * An off chip is muted; it is not faded. Reduced opacity is what a *disabled* control looks like,
+ * and these are the opposite of disabled — an unselected chip is the one thing on the row you are
+ * most likely to want to press. The same confusion had the card's own action buttons fading with
+ * the card they sat on.
+ *
+ * ## What a press actually changes
+ *
+ * A **group** decision recorded beside the call, not a private preference: the standing watch is one
+ * registration the whole neighbourhood shares, so per-agent lists would have peers overwriting each
+ * other's in a loop. It does not touch the space's own default, which is a community setting with
+ * its own screen. And it applies to what is said from *here on*, because a watch keeps a
+ * processed-turn cursor — which is why the note under the Extract button says pressing it is how the
+ * rest of the conversation gets swept.
+ *
+ * ## Why this is named
+ *
+ * An interface that supplies its own extraction panel otherwise has no way to say what is being
+ * extracted or to change it — the workshop template had exactly that gap. Registered so placing it
+ * is naming it. No `subject`: what a call extracts is a fact about the call being recorded.
+ */
+export const extractionTargets: SchemaNode = {
+  type: 'Column',
+  props: { gap: '200' },
+  children: [
+    /*
+      What this press will look for — the models, not a fixed sentence.
+
+      It read "Find the tasks and events in what was said", which was true while those
+      two classes were compiled into this module and is a lie in a space that defined
+      its own. The chips below both say what will be looked for and let this agent
+      narrow it; the sentence would have to be rewritten every time a community adopts
+      a model, so it becomes a lead-in instead.
+    */
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'count(modules.transcribe.extractionTargets)' },
+        then: {
+          type: 'we-text',
+          props: { variant: 'footnote', color: 'text-muted' },
+          children: ['Look through what was said for:'],
+        },
+        /*
+          Not a failure, and phrased as the one thing a person can act on.
+
+          Every other reason extraction is unavailable is about this node — no model
+          configured, an executor that cannot interpret — and none of them can be fixed
+          from here. This one can: it is a decision the community has not made yet, and
+          the place to make it is the space's own models.
+        */
+        else: {
+          type: 'we-text',
+          props: { variant: 'footnote', color: 'text-muted' },
+          children: ['No models are set up for AI extraction here. A space chooses its own in its settings.'],
+        },
+      },
+    },
+    /*
+      One chip per model, ticked when this call is looking for it.
+
+      A group decision rather than a private one, and it has to be: the same list drives
+      the standing watch, whose registration is one row every peer shares. Two members
+      holding different lists would each remove-then-add over the other's in a loop.
+
+      Changing it applies from here on, because a watch keeps a processed-turn cursor —
+      the note under the button says so, since the answer for the rest of the
+      conversation is the button itself.
+    */
+    {
+      type: 'Row',
+      props: { gap: '100', wrap: true },
+      children: [
+        {
+          type: '$each',
+          props: { items: { $: 'modules.transcribe.extractionTargets' }, as: 'target' },
+          children: [
+            {
+              type: 'we-button',
+              props: {
+                size: 'xs',
+                gap: '100',
+                /*
+                  On is filled, off is an outline — the state is in the *weight* of the chip.
+
+                  Deliberately not opacity. A faded control is what a disabled one looks like, and an
+                  unselected chip is the opposite of disabled: it is the thing on this row somebody
+                  is most likely to want to press. The same confusion had a card's action buttons
+                  fading along with the card they were anchored to.
+                */
+                variant: { $: "target.selected ? 'secondary' : 'outline'" },
+                onClick: {
+                  $action: 'modules.transcribe.toggleExtractionTarget',
+                  args: [{ $: 'target.entity' }],
+                },
+              },
+              children: [
+                /*
+                  The model's own icon, joined from its declaration.
+
+                  Not carried on the target itself, and it should not be: the port answers with an
+                  entity name and whether it is on, which is what extraction knows. How a model is
+                  *shown* is the record layer's, and `recordStore.displays` is where every other
+                  surface reads it — so a space that gives its own model an icon gets it here for
+                  nothing, and a model with none renders no glyph rather than a placeholder.
+                */
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: 'recordStore.displays[target.entity].icon' },
+                    then: {
+                      type: 'we-icon',
+                      props: { name: { $: 'recordStore.displays[target.entity].icon' } },
+                    },
+                  },
+                },
+                { type: 'we-text', props: { variant: 'footnote' }, children: [{ $: 'target.label' }] },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+/**
  * Turning what was heard into tasks and events.
  *
  * Sits below the transcript rather than in the header, because it is a thing you do *to* what is
@@ -342,76 +484,7 @@ const extract: SchemaNode = {
               props: { gap: '050' },
               children: [
                 { type: 'we-text', props: { variant: 'footnote', fontWeight: '600' }, children: ['Extract'] },
-                /*
-                  What this press will look for — the models, not a fixed sentence.
-
-                  It read "Find the tasks and events in what was said", which was true while those
-                  two classes were compiled into this module and is a lie in a space that defined
-                  its own. The chips below both say what will be looked for and let this agent
-                  narrow it; the sentence would have to be rewritten every time a community adopts
-                  a model, so it becomes a lead-in instead.
-                */
-                {
-                  type: '$if',
-                  props: {
-                    condition: { $: 'count(modules.transcribe.extractionTargets)' },
-                    then: {
-                      type: 'we-text',
-                      props: { variant: 'footnote', color: 'text-muted' },
-                      children: ['Look through what was said for:'],
-                    },
-                    /*
-                      Not a failure, and phrased as the one thing a person can act on.
-
-                      Every other reason extraction is unavailable is about this node — no model
-                      configured, an executor that cannot interpret — and none of them can be fixed
-                      from here. This one can: it is a decision the community has not made yet, and
-                      the place to make it is the space's own models.
-                    */
-                    else: {
-                      type: 'we-text',
-                      props: { variant: 'footnote', color: 'text-muted' },
-                      children: [
-                        'No models are set up for AI extraction here. A space chooses its own in its settings.',
-                      ],
-                    },
-                  },
-                },
-                /*
-                  One chip per model, ticked when this call is looking for it.
-
-                  A group decision rather than a private one, and it has to be: the same list drives
-                  the standing watch, whose registration is one row every peer shares. Two members
-                  holding different lists would each remove-then-add over the other's in a loop.
-
-                  Changing it applies from here on, because a watch keeps a processed-turn cursor —
-                  the note under the button says so, since the answer for the rest of the
-                  conversation is the button itself.
-                */
-                {
-                  type: 'Row',
-                  props: { gap: '100', wrap: true },
-                  children: [
-                    {
-                      type: '$each',
-                      props: { items: { $: 'modules.transcribe.extractionTargets' }, as: 'target' },
-                      children: [
-                        {
-                          type: 'we-button',
-                          props: {
-                            size: 'xs',
-                            variant: { $: "target.selected ? 'secondary' : 'ghost'" },
-                            text: { $: 'target.label' },
-                            onClick: {
-                              $action: 'modules.transcribe.toggleExtractionTarget',
-                              args: [{ $: 'target.entity' }],
-                            },
-                          },
-                        },
-                      ],
-                    },
-                  ],
-                },
+                { type: '$part', props: { id: 'transcribe.extractionTargets' } },
               ],
             },
             {

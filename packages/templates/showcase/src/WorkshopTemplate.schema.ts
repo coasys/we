@@ -53,14 +53,20 @@ import type { RouteSchema, SchemaNode, SchemaProp, TemplateSchema } from '@we/sc
 import { agentByline, emptyState } from '@we/template-kit';
 
 /**
- * What extraction is allowed to make from a transcript.
+ * What extraction is allowed to make from a transcript — asked, rather than restated.
  *
- * The same two classes `@we/module-transcribe` names, restated because `templates → modules` is a
- * sideways edge. If that list grows, this one has to grow with it — the board would simply stop
- * showing the new kind, silently, which is the failure `docs/architecture/transcripts.md` exists to
- * make visible.
+ * This was `['TaskBlock', 'EventBlock']`, a copy of the two classes the module used to compile in,
+ * with a comment admitting that the board would silently stop showing a new kind if that list ever
+ * grew. It grew: what a space extracts is a community decision now, and the extraction panel offers
+ * it as chips somebody can change mid-call. So the constant went from a maintenance note to a bug
+ * one click away — turn on `Sighting`, extract, and the records land in the collection while the
+ * board shows nothing and says nothing.
+ *
+ * The call's own list, not the space's: those differ the moment somebody narrows a call, and it is
+ * the call that this board is about. Every entity in it, whether or not it is currently ticked — a
+ * model switched off half way through a meeting must not take what it already found off the board.
  */
-const EXTRACTED = ['TaskBlock', 'EventBlock'];
+const EXTRACTED = { $: 'modules.transcribe.extractionTargets.map(t, t.entity)' };
 
 /**
  * The call on screen — **named in the address**, or the one being recorded when it names none.
@@ -236,36 +242,71 @@ const switcher: SchemaNode = {
  * nothing in common to sort by across the pair. Newest first, because this is a "what just
  * happened" readout rather than a record — the board and the calendar are where they are kept.
  */
-function extractedRows(entity: string, icon: string, label: string): SchemaNode {
-  return {
-    type: '$each',
-    props: {
-      items: {
-        $query: {
-          entity,
+/**
+ * What the pass made, whatever kind it is.
+ *
+ * It was two calls with `'TaskBlock'` and `'EventBlock'` written into them, matching the constant the
+ * board used to carry — so a community that adopted its own model and switched it on for extraction
+ * got records in the collection, cards on the board, and a readout that quietly listed neither. The
+ * comment above the two calls already said this list and the board's should be the same one; they
+ * were the same *literal*, which is not the same thing.
+
+ * One group per target, each with its own subscription: a schema cannot sum a list of queries whose
+ * length it does not know, so there is no total here, and none is wanted — the interesting number is
+ * per kind. `entity` as an expression means the validator cannot check the name, which is the trade
+ * this pattern makes and the reason the list comes from a store rather than from anything typed here.
+ *
+ * The icon and the title property come from the model's own declaration through
+ * `recordStore.displays`, exactly as a card of any type reads them. A community that gives its model
+ * an icon gets it here, and one that does not gets the row without a glyph rather than a wrong one.
+ */
+const extractedRows: SchemaNode = {
+  type: '$each',
+  props: { items: EXTRACTED, as: 'target' },
+  children: [
+    {
+      type: 'Column',
+      props: { gap: '200' },
+      $queries: {
+        found: {
+          entity: { $: 'target' },
           scope: { anchor: 'CollectionBlock', via: 'children', anchorId: CALL },
           order: { createdAt: 'desc' },
           limit: 12,
         },
       },
-      as: 'item',
+      children: [
+        {
+          type: '$each',
+          props: { items: { $: 'local.found' }, as: 'item' },
+          children: [
+            {
+              type: 'Row',
+              props: { gap: '200', ay: 'center', bg: 'surface-sunken', r: '300', px: '300', py: '200' },
+              children: [
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: 'recordStore.displays[target].icon' },
+                    then: {
+                      type: 'we-icon',
+                      props: { name: { $: 'recordStore.displays[target].icon' }, color: 'accent-text' },
+                    },
+                  },
+                },
+                {
+                  type: 'we-text',
+                  props: { variant: 'footnote', flex: '1', truncate: true },
+                  children: [{ $: 'item[recordStore.displays[target].title]' }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
     },
-    children: [
-      {
-        type: 'Row',
-        props: { gap: '200', ay: 'center', bg: 'surface-sunken', r: '300', px: '300', py: '200' },
-        children: [
-          { type: 'we-icon', props: { name: icon, color: 'accent-text' } },
-          {
-            type: 'we-text',
-            props: { variant: 'footnote', flex: '1', truncate: true },
-            children: [{ $: `item.${label}` }],
-          },
-        ],
-      },
-    ],
-  };
-}
+  ],
+};
 
 /**
  * Suggestions the backend staged rather than wrote, and the two buttons that resolve them.
@@ -364,6 +405,18 @@ const extractionPanel: SchemaNode = {
           type: 'Column',
           props: { width: '100%', flex: '1', minHeight: '0', gap: '300' },
           children: [
+            /*
+              What is being looked for, and the switch for each.
+
+              The module's own chips, placed rather than re-made. Without them this panel reported
+              what extraction had *done* and never what it was *for*, so the one question it could
+              not answer was the one somebody watching it asks first — and the answer already
+              existed, in a part the module publishes.
+
+              A group decision about this call, not a change to the space's own list, and it applies
+              to what is said from here on. Both of those are said where the chips are.
+            */
+            { type: '$part', props: { id: 'transcribe.extractionTargets' } },
             // What is running, if anything. `activity` is empty in the ordinary case, which means
             // "nothing is happening" rather than "not supported" — hence the separate `capable` gate
             // above, and no empty state here.
@@ -455,15 +508,15 @@ const extractionPanel: SchemaNode = {
                       props: { gap: '200' },
                       children: [
                         /*
-                          Both kinds, because both are what a pass may write — `EXTRACTED` is the
-                          list, and the board draws from the same one.
+                          Every kind a pass may write, off the same list the board draws from.
 
-                          It queried `TaskBlock` alone, so an extracted event was invisible here
-                          while sitting on the board next to it: the readout that exists to say
-                          "here is what the model just made" was quietly saying half of it.
+                          It queried `TaskBlock` alone once, so an extracted event was invisible here
+                          while sitting on the board beside it — the readout that exists to say "here
+                          is what the model just made" quietly saying half of it. Naming the two
+                          fixed that instance and left the shape: the moment a community switched a
+                          third model on, this said two thirds of it instead.
                         */
-                        extractedRows('TaskBlock', 'check-square', 'title'),
-                        extractedRows('EventBlock', 'calendar', 'title'),
+                        extractedRows,
                       ],
                     },
                     else: emptyState({ icon: 'sparkle', label: 'extracted records' }),

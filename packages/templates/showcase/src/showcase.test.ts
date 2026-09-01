@@ -343,6 +343,24 @@ describe('the workshop template’s call selection', () => {
     expect(json).toContain('"id":"reject"');
   });
 
+  it('says what is being extracted, and draws the board and the readout off that same list', () => {
+    /*
+      What a space extracts is a community decision, changeable mid-call from the chips this panel
+      places. Everything downstream that named the kinds itself was therefore a bug waiting on one
+      click: `['TaskBlock', 'EventBlock']` was written into the board's `contains` and into the
+      readout's two queries, so turning a third model on produced records in the collection, nothing
+      on the board, and nothing in the readout — with no sign of why in any of the three.
+
+      One list now, read from the call's own targets rather than the space's: those differ the moment
+      somebody narrows a call, and the call is what these surfaces are about.
+    */
+    const json = JSON.stringify(workshop);
+
+    expect(json).toContain('transcribe.extractionTargets');
+    expect(json).toContain('modules.transcribe.extractionTargets.map(t, t.entity)');
+    expect(json).not.toContain('"TaskBlock","EventBlock"');
+  });
+
   it('offers a delete on every card, not only on the unsettled ones', () => {
     /*
       Extraction proposes things that are simply wrong about a conversation, and one that has been

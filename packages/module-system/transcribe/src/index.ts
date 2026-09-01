@@ -72,6 +72,7 @@ import {
   captureMeter,
   captureStatus,
   coverage,
+  extractionTargets,
   panel,
   pendingUtterance,
   transcriptFeed,
@@ -85,6 +86,7 @@ export {
   captureMeter,
   captureStatus,
   coverage,
+  extractionTargets,
   panel,
   pendingUtterance,
   transcriptFeed,
@@ -160,6 +162,7 @@ export const transcribeModule = defineModule({
     captureMeter,
     captureStatus,
     coverage,
+    extractionTargets,
     pendingUtterance,
   },
 
