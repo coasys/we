@@ -8,7 +8,7 @@
     "generate-templates": "node scripts/generateTemplateRegistry.mjs",
     "generate-views": "node scripts/generateViewRegistry.mjs",
     "publish-templates": "tsx scripts/publishTemplates.mjs",
-    "build:steps": "tsup",
+    "build:steps": "node scripts/generateTemplateRegistry.mjs && tsup",
     "build": "we-build",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
