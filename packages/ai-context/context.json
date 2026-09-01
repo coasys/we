@@ -3921,6 +3921,12 @@
           "type": "string",
           "predicate": "we://installed_modules",
           "required": false
+        },
+        {
+          "name": "moduleSettings",
+          "type": "string",
+          "predicate": "we://module_settings",
+          "required": false
         }
       ],
       "relations": [
@@ -4974,6 +4980,12 @@
           "default": "true"
         },
         {
+          "name": "moduleSettings",
+          "type": "string",
+          "predicate": "we://module_settings",
+          "required": false
+        },
+        {
           "name": "shareExtractionDetail",
           "type": "boolean",
           "predicate": "we://share_extraction_detail",
@@ -5005,6 +5017,12 @@
           "name": "mutedModules",
           "type": "string",
           "predicate": "we://muted_modules",
+          "required": false
+        },
+        {
+          "name": "moduleSettings",
+          "type": "string",
+          "predicate": "we://module_settings",
           "required": false
         },
         {
@@ -6717,6 +6735,15 @@
           "type": "array",
           "properties": ["id", "author", "createdAt"]
         },
+        "spaceModuleSettings": {
+          "type": "array"
+        },
+        "myModuleSettings": {
+          "type": "array"
+        },
+        "agentModuleSettings": {
+          "type": "array"
+        },
         "autoInterpret": {
           "type": "boolean"
         },
@@ -6748,6 +6775,9 @@
         "setSpaceDefaultTemplate",
         "setSpaceDefaultTheme",
         "setModuleEnabled",
+        "setSpaceModuleSetting",
+        "setMyModuleSetting",
+        "setAgentModuleSetting",
         "setAutoInterpret",
         "setShareExtractionDetail",
         "setExtractionTarget",

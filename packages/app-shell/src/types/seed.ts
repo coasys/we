@@ -49,6 +49,19 @@ export interface WeSeedFile {
   modules?: string[];
 
   /**
+   * What this deployment believes each capability's settings should start as.
+   *
+   * `{ "<group>": { "<key>": value } }`, where a group is a module id. The least specific of the
+   * four levels a setting resolves through — a white-label that ships with call recording off says
+   * so here rather than by patching the module's declared default, and every space it creates
+   * inherits that without anyone touching a switch.
+   *
+   * Unlisted keys are **silence**, not a value: a deployment that says nothing leaves the module's
+   * own default standing. See `moduleSettings.ts` for the order and for `restrict`.
+   */
+  settings?: Record<string, Record<string, boolean | string | number>>;
+
+  /**
    * Built-in template ids this deployment ships, matched against the bundled template set.
    *
    * The counterpart to `modules`, and until now the missing half of the seed: a deployment could

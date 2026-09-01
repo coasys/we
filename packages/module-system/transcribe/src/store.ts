@@ -252,6 +252,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     audioInput,
     transcription,
     interpretation,
+    settings,
     createEntity,
     linkEntity,
     dataset,
@@ -1285,8 +1286,8 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * recording, whether or not anybody else is already doing it.
    *
    * It used to stop short of that on purpose — joining a transcript somebody else had started was
-   * held to be a different question from starting one, and starting one was left to a space's
-   * settings that were never built. In practice the two are the same question asked at different
+   * held to be a different question from starting one, and starting one was left to a space setting
+   * that did not exist. In practice the two are the same question asked at different
    * moments, and splitting them made the ordinary case the unreliable one: whether a meeting was
    * recorded depended on whether whoever happened to arrive first remembered to press a button. A
    * transcript that exists for four meetings out of five is worse than either alternative, because
@@ -1306,9 +1307,11 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * - a backend that cannot transcribe: caught here because `available` is answerable synchronously.
    *   Having no *model* is not, so that one is caught in `start` — see `giveUpAutoJoin`.
    *
-   * A space that does not want its calls recorded is still the missing piece, and it is a setting
-   * rather than a guard here: this effect has no view of a space's decisions, and inventing one
-   * would put policy in the module rather than beside the state it reads.
+   * A fourth guard is the space's, and the agent's: `recordCalls`, declared on the module and
+   * resolved by the host across every level that had an opinion — so a community that does not want
+   * its calls recorded, or somebody who does not want their own recorded here, is answered without
+   * this effect knowing that either exists. Defaulted true where a host has no settings layer at
+   * all, which is the behaviour every deployment had before there was one.
    *
    * Deliberately not routed through `toggle`, which opens the panel: a person pressing record wants
    * to see what it produces, and a call that opens a panel on its own every time is chrome nobody
@@ -1321,6 +1324,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     if (!call) return;
     if ((audioInput?.() ?? null) === null) return;
     if (transcription?.available?.() === false) return;
+    if (settings?.().recordCalls === false) return;
 
     setAutoJoined(true);
     setEnabled(true);

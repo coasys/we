@@ -512,6 +512,87 @@ export interface ModuleDefinition {
    * right default for a module whose store only touches the space on screen.
    */
   chromeOnlyStoreMembers?: readonly string[];
+
+  /**
+   * What this module lets a space or an agent decide — see {@link ModuleSetting}.
+   *
+   * The values arrive back through `deps.settings`, already resolved for wherever the agent is. A
+   * module declares the question and reads the answer; who is allowed to answer it, and how the
+   * control looks, are the host's.
+   */
+  settings?: readonly ModuleSetting[];
+}
+
+/**
+ * Where a settings value may be decided.
+ *
+ * Ordered from the least specific to the most, which is also the order they resolve in: whichever
+ * level has an opinion last wins. Every one of them is optional and silent by default — a level that
+ * has never been touched says nothing, rather than saying "off".
+ */
+export type SettingLevel =
+  /** The seed. What this build of the app ships believing. */
+  | 'deployment'
+  /** This agent, everywhere. Private, held in their own root dataset. */
+  | 'agent'
+  /** The community. Shared, and the only level another member can see. */
+  | 'space'
+  /** This agent, in this one space. Private, and the most specific answer there is. */
+  | 'agent-in-space';
+
+/**
+ * How several levels combine when more than one has an opinion.
+ *
+ * `override` is the ordinary case and what a value setting means: the most specific level wins, and
+ * a community's choice is a choice, not a floor.
+ *
+ * `restrict` is for the ones where a lower level must not be able to undo a higher one — a space
+ * that has switched recording off is not overridable by a member who would rather it were on. Only
+ * meaningful for a boolean, where it is an AND across every level that has spoken.
+ */
+export type SettingResolution = 'override' | 'restrict';
+
+/**
+ * One thing a capability lets a space or an agent decide.
+ *
+ * ## Why this exists rather than a field on `Space`
+ *
+ * `autoInterpret`, `extractionTargets` and `shareExtractionDetail` are all settings of a capability,
+ * and all three are columns on the core `Space` entity — each with its own accessor, its own setter
+ * and its own hand-written row in the settings panel, because there was nowhere else to put them.
+ * The fourth would have been recording. A declaration is the alternative: the value has a home that
+ * is not the space's schema, and the control that edits it is rendered from this rather than written
+ * — the same move `recordStore.displays` makes for a record's own form, and for the same reason. A
+ * setting nobody wrote a screen for still has one.
+ *
+ * ## What it is not
+ *
+ * Not availability. Whether a module runs here at all is four booleans that intersect —
+ * registered ∩ installed ∩ enabled, less muted — and every layer can only subtract. A setting is a
+ * *value*, and values resolve by specificity. Conflating the two is how a settings system ends up
+ * unable to express "the community chose green".
+ */
+export interface ModuleSetting {
+  /** Stable, and namespaced by its group — `recordCalls`, not `transcribe.recordCalls`. */
+  key: string;
+  /** What a person reads beside the control. */
+  label: string;
+  /** A sentence under it, where the label cannot carry the reason on its own. */
+  description?: string;
+  type: 'boolean' | 'string' | 'number' | 'enum';
+  /** Required for `enum`, ignored otherwise. */
+  options?: readonly { label: string; value: string }[];
+  /** What it is when nothing has an opinion. */
+  default: boolean | string | number;
+  /**
+   * Which levels may decide it, and so which screens offer a control.
+   *
+   * Naming a level is what makes it appear, so a setting that is only ever a community decision
+   * lists `space` and gets exactly one control rather than three that mostly do nothing.
+   */
+  levels: readonly SettingLevel[];
+  /** Defaults to `override`. */
+  resolution?: SettingResolution;
 }
 
 /**
@@ -773,6 +854,19 @@ export interface ModuleStoreDeps {
    * concurrent writers, and this covers the add-only cases without pretending to have one.
    */
   linkEntity?: (entity: string, id: string, relation: string, value: string, options?: DatasetTarget) => Promise<void>;
+
+  /**
+   * This module's own settings, resolved for where the agent is right now.
+   *
+   * Keyed by the `key` of each {@link ModuleSetting} the module declared, already reduced across
+   * every level that had an opinion, and defaulted for the ones that did not — so a module reads a
+   * value and never a chain. Reactive: it follows the space, so walking into a community that has
+   * switched something off takes effect without a reload.
+   *
+   * Absent on a host that has no settings layer, which is why every read should carry the module's
+   * own default rather than assume the key is there.
+   */
+  settings?: () => Record<string, boolean | string | number>;
 }
 
 /**

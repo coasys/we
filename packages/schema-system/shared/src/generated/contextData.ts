@@ -1434,6 +1434,7 @@ export const contextData: ContextData = {
         },
         { name: 'themeScope', type: 'string', predicate: 'we://theme_scope', required: false },
         { name: 'installedModules', type: 'string', predicate: 'we://installed_modules', required: false },
+        { name: 'moduleSettings', type: 'string', predicate: 'we://module_settings', required: false },
       ],
       relations: [
         { name: 'installedTemplates', kind: 'HasMany', predicate: 'we://installed_template', target: 'Template' },
@@ -1775,6 +1776,7 @@ export const contextData: ContextData = {
         { name: 'enabledViews', type: 'string', predicate: 'we://enabled_views', required: false },
         { name: 'extractionTargets', type: 'string', predicate: 'we://extraction_targets', required: false },
         { name: 'autoInterpret', type: 'boolean', predicate: 'we://auto_interpret', required: false, default: 'true' },
+        { name: 'moduleSettings', type: 'string', predicate: 'we://module_settings', required: false },
         {
           name: 'shareExtractionDetail',
           type: 'boolean',
@@ -1792,6 +1794,7 @@ export const contextData: ContextData = {
       fields: [
         { name: 'spaceUuid', type: 'string', predicate: 'we://space_uuid', required: false },
         { name: 'mutedModules', type: 'string', predicate: 'we://muted_modules', required: false },
+        { name: 'moduleSettings', type: 'string', predicate: 'we://module_settings', required: false },
         { name: 'hiddenViews', type: 'string', predicate: 'we://hidden_views', required: false },
         { name: 'templateId', type: 'string', predicate: 'we://template_id', required: false },
         { name: 'themeId', type: 'string', predicate: 'we://theme_id', required: false },
@@ -2675,6 +2678,9 @@ export const contextData: ContextData = {
         readMarkers: { type: 'array' },
         unreadNodeIds: { type: 'array' },
         myMentions: { type: 'array', properties: ['id', 'author', 'createdAt'] },
+        spaceModuleSettings: { type: 'array' },
+        myModuleSettings: { type: 'array' },
+        agentModuleSettings: { type: 'array' },
         autoInterpret: { type: 'boolean' },
         shareExtractionDetail: { type: 'boolean' },
         extractionTargets: { type: 'array' },
@@ -2698,6 +2704,9 @@ export const contextData: ContextData = {
         'setSpaceDefaultTemplate',
         'setSpaceDefaultTheme',
         'setModuleEnabled',
+        'setSpaceModuleSetting',
+        'setMyModuleSetting',
+        'setAgentModuleSetting',
         'setAutoInterpret',
         'setShareExtractionDetail',
         'setExtractionTarget',

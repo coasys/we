@@ -155,7 +155,7 @@ describe('the Continue button on a call card', () => {
     */
     const guards = guardsAround('Continue this call');
     expect(guards.length).toBeGreaterThan(0);
-    expect(guards.some((guard) => guard.includes('modules.transcribe.liveCollectionId'))).toBe(true);
+    expect(guards.some((guard) => guard.includes('modules.call.callRecordId'))).toBe(true);
     // And still gated on the space being able to hold a call at all — the older guard, still needed.
     expect(guards.some((guard) => guard.includes('modules.call.canCall'))).toBe(true);
   });
@@ -165,11 +165,17 @@ describe('the Continue button on a call card', () => {
       Without it every card looks finished, and the one whose button behaves differently is
       indistinguishable from the rest — which reads as the button behaving at random.
 
-      Compared against the transcript's live *record*, not against `modules.call.active`: a
-      space-wide call publishes one id derived from the space, so "am I in a call" cannot tell this
-      morning's meeting from this afternoon's, and every card would light up at once.
+      Compared against the call's own *record*, not against `modules.call.active`: a space-wide call
+      publishes one id derived from the space, so "am I in a call" cannot tell this morning's meeting
+      from this afternoon's, and every card would light up at once.
+
+      And the call module's record rather than the transcriber's. `liveCollectionId` means "what I am
+      writing into", which the transcriber only adopts once there is something to write — so for the
+      opening stretch of every meeting the running call was marked as finished, and the button beside
+      it offered nothing.
     */
-    expect(view).toContain('modules.transcribe.liveCollectionId');
+    expect(view).toContain('modules.call.callRecordId');
+    expect(view).not.toContain('modules.transcribe.liveCollectionId');
     expect(view).not.toContain('"condition":{"$store":"modules.call.active"},"then":{"type":"we-badge"');
   });
 
@@ -187,5 +193,12 @@ describe('the Continue button on a call card', () => {
     // Empty rather than null with no call, so `$eq` against a record id can never accidentally match
     // an absent one — two falsy values would otherwise read as equal enough.
     expect((store.liveCollectionId as () => unknown)()).toBe('');
+
+    // The key the list actually compares against, and the same rule about emptiness.
+    moduleRegistry.register(callModule, { backend: 'ad4m', framework: 'solid' }, storeDeps);
+    const call = moduleStores.call as Record<string, unknown>;
+
+    expect(typeof call.callRecordId).toBe('function');
+    expect((call.callRecordId as () => unknown)()).toBe('');
   });
 });

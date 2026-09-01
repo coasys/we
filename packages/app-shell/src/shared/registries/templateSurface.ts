@@ -480,6 +480,16 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       indicator that silently never rendered.
     */
     autoInterpret: state('space-settings'),
+    /*
+      A capability's settings, at each of the three levels a screen can edit.
+
+      `space-settings` for all three reads: the rows carry what the community decided, which every
+      member can already see on the space, and the two personal lists are this agent's own answers
+      about themselves. None of them is a grant to change anything — the setters below are.
+    */
+    spaceModuleSettings: state('space-settings'),
+    myModuleSettings: state('space-settings'),
+    agentModuleSettings: state('space-settings'),
     extractionTargets: state('space-settings'),
     setExtractionTarget: action('space-settings'),
     shareExtractionDetail: state('space-settings'),
@@ -503,6 +513,18 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     setSpaceDefaultTheme: hereOnly('space-settings', 1),
     setModuleEnabled: hereOnly('space-settings', 2),
     setAutoInterpret: hereOnly('space-settings', 1),
+    /*
+      Writing one. `hereOnly` on the community setter for the reason every other community write has
+      it: the space id is the last parameter, so a template that could pass one could reconfigure a
+      space it is not rendering — and this one can switch a capability off for every member.
+
+      Three arguments before the id, since a setting is named by its group and its key and the third
+      is the value; omitting the value clears the level rather than writing a falsy one.
+    */
+    setSpaceModuleSetting: hereOnly('space-settings', 3),
+    setMyModuleSetting: hereOnly('space-settings', 3),
+    // Personal and global, so there is no space id to withhold in the first place.
+    setAgentModuleSetting: action('space-settings'),
     /*
       Which sections the space has, and in what order — the community's decision, so the same tier
       and the same arity guard as `setModuleEnabled`.

@@ -1,9 +1,20 @@
 import { buildGuestLink } from '@shared/guestLink';
 import { containmentPredicate, gatherTranscriptTurns, type TurnRecord } from '@shared/interpretation/transcriptTurns';
+import {
+  clearSetting,
+  type LevelValues,
+  parseSettings,
+  resolveGroup,
+  type SettingRow,
+  settingRows,
+  type SettingValue,
+  writeSetting,
+} from '@shared/moduleSettings';
 import { resolveRecordRef } from '@shared/recordNavigation';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { moduleRegistry, moduleStores, type ModuleSurface, moduleSurface } from '@shared/registries/moduleRegistry';
 import { defaultViewOrder, viewRegistry } from '@shared/registries/viewRegistry';
+import { getSeed } from '@shared/seedRegistry';
 import {
   isSpaceSelf,
   type LocationData,
@@ -624,6 +635,30 @@ export interface SpaceStore {
   setSpaceDefaultTemplate: (templateId: string, spaceUuid?: string) => Promise<void>;
   setSpaceDefaultTheme: (themeId: string, spaceUuid?: string) => Promise<void>;
   setModuleEnabled: (moduleId: string, enabled: boolean, spaceUuid?: string) => Promise<void>;
+  /**
+   * What each capability that declares settings is currently set to **for this community**, as rows
+   * a screen renders directly: the declaration, the resolved value, where it came from, and whether
+   * something less specific has forced it.
+   *
+   * Built from what modules declare rather than from a list anyone maintains, so a module that adds
+   * a setting gets a control with nothing to register — the step whose omission is otherwise silent.
+   */
+  spaceModuleSettings: Accessor<SettingRow[]>;
+  /** The same, for this agent in this one space. Private, and the most specific level there is. */
+  myModuleSettings: Accessor<SettingRow[]>;
+  /** The same, for this agent in every space. Private, and the least specific of the personal two. */
+  agentModuleSettings: Accessor<SettingRow[]>;
+  /**
+   * Set one of this space's module settings, for everyone. Omit `value` to withdraw the opinion.
+   *
+   * Clearing writes **silence**, not a value: a stored `false` that happens to equal the default
+   * goes on overruling every less specific level while its control reads as untouched.
+   */
+  setSpaceModuleSetting: (group: string, key: string, value?: SettingValue, spaceUuid?: string) => Promise<void>;
+  /** The same, for this agent here. Never written to the space, so no other member sees it. */
+  setMyModuleSetting: (group: string, key: string, value?: SettingValue, spaceUuid?: string) => Promise<void>;
+  /** The same, for this agent everywhere. */
+  setAgentModuleSetting: (group: string, key: string, value?: SettingValue) => Promise<void>;
   /** Whether this space has calls interpreted as they happen. A community decision; defaults off. */
   autoInterpret: Accessor<boolean>;
   setAutoInterpret: (enabled: boolean, spaceUuid?: string) => Promise<void>;
@@ -2101,6 +2136,108 @@ export function SpaceStoreProvider(props: ParentProps) {
   const enabledModules = createMemo<string[]>(() => resolveEnabledModules(currentSpace()?.enabledModules));
 
   /*
+    ── Module settings ──────────────────────────────────────────────────────────────────────────
+
+    The four levels a capability's settings resolve through, read from the four places they live.
+    `moduleSettings.ts` owns the resolution and the reasoning; this owns only the reading.
+
+    A capability could be switched on and off four ways here and could not carry a single *value*,
+    which is why `autoInterpret`, `extractionTargets` and `shareExtractionDetail` are columns on the
+    core `Space` entity. Those three stay where they are — they are extraction's configuration, and
+    where that lands is a question about wires rather than about settings — but nothing new joins
+    them.
+  */
+  const settingLevels = createMemo<LevelValues>(() => {
+    const uuid = datasetStore.currentDataset()?.id;
+    return {
+      deployment: (getSeed().settings ?? {}) as LevelValues['deployment'],
+      agent: parseSettings(datasetStore.agentSettings()?.moduleSettings, 'AgentSettings.moduleSettings'),
+      space: parseSettings(currentSpace()?.moduleSettings, 'Space.moduleSettings'),
+      'agent-in-space': parseSettings(preferenceFor(uuid)?.moduleSettings, 'SpacePreference.moduleSettings'),
+    };
+  });
+
+  /** Every module that declares settings, as the screens and the resolver both want them. */
+  const settingGroups = createMemo(() => moduleRegistry.settingGroups());
+
+  /*
+    Hand each module its own answers.
+
+    Read at call time inside the module's store, so a module built once at boot follows the space it
+    is in — which is the whole point of a per-space level. Registered here because this is the store
+    that can see all four levels; `moduleRegistry` sits below it and knows about none of them.
+  */
+  onCleanup(
+    moduleRegistry.provideSettings((group) =>
+      resolveGroup(
+        settingGroups().find((entry) => entry.id === group) ?? { id: group, label: group, settings: [] },
+        settingLevels(),
+      ),
+    ),
+  );
+
+  const spaceModuleSettings = createMemo<SettingRow[]>(() => settingRows(settingGroups(), 'space', settingLevels()));
+  const myModuleSettings = createMemo<SettingRow[]>(() =>
+    settingRows(settingGroups(), 'agent-in-space', settingLevels()),
+  );
+  const agentModuleSettings = createMemo<SettingRow[]>(() => settingRows(settingGroups(), 'agent', settingLevels()));
+
+  /**
+   * Write, or withdraw, the community's opinion about one setting.
+   *
+   * `undefined` clears rather than writing a value, because a level that has been reset must go back
+   * to **silence** — a stored `false` that happens to equal the default goes on deciding, and the
+   * control that wrote it then reads as untouched while still overruling everything less specific.
+   */
+  async function setSpaceModuleSetting(
+    group: string,
+    key: string,
+    value?: SettingValue,
+    spaceUuid?: string,
+  ): Promise<void> {
+    const ds = targetDataset(spaceUuid);
+    const space = ds ? mySpaces().find((entry) => isSpaceSelf(entry, ds)) : undefined;
+    if (!ds || !space) return;
+    const raw = (space as unknown as { moduleSettings?: string }).moduleSettings;
+    const next = value === undefined ? clearSetting(raw, group, key) : writeSetting(raw, group, key, value);
+    try {
+      await Space.update(ds.handle, space.id, { moduleSettings: next } as Partial<Space>);
+    } catch (error) {
+      console.error('SpaceStore: could not persist a module setting', error);
+      toastService.error('Could not save this change for the space.');
+      throw error;
+    }
+    updateSpaceInCache(ds, { moduleSettings: next } as never);
+    if (!isCurrent(ds)) return;
+    setCurrentSpace((prev) =>
+      prev
+        ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, { moduleSettings: next }) as Space)
+        : prev,
+    );
+  }
+
+  /** The same, for this agent in this one space. Private — written to the root dataset. */
+  async function setMyModuleSetting(
+    group: string,
+    key: string,
+    value?: SettingValue,
+    spaceUuid?: string,
+  ): Promise<void> {
+    const uuid = spaceUuid ?? datasetStore.currentDataset()?.id;
+    if (!uuid) return;
+    const raw = preferenceFor(uuid)?.moduleSettings;
+    const next = value === undefined ? clearSetting(raw, group, key) : writeSetting(raw, group, key, value);
+    await updateSpacePreference(uuid, { moduleSettings: next } as Partial<SpacePreference>);
+  }
+
+  /** The same, for this agent everywhere. Also private, and also the root dataset. */
+  async function setAgentModuleSetting(group: string, key: string, value?: SettingValue): Promise<void> {
+    const raw = datasetStore.agentSettings()?.moduleSettings;
+    const next = value === undefined ? clearSetting(raw, group, key) : writeSetting(raw, group, key, value);
+    await datasetStore.updateAgentSettings({ moduleSettings: next });
+  }
+
+  /*
     Does this space want its calls interpreted as they happen.
 
     Read off the space rather than stored here, so it answers for whichever space is on screen, and
@@ -3460,6 +3597,12 @@ export function SpaceStoreProvider(props: ParentProps) {
     setSpaceDefaultTheme,
     setModuleEnabled,
     autoInterpret,
+    spaceModuleSettings,
+    myModuleSettings,
+    agentModuleSettings,
+    setSpaceModuleSetting,
+    setMyModuleSetting,
+    setAgentModuleSetting,
     setAutoInterpret,
     shareExtractionDetail,
     setShareExtractionDetail,

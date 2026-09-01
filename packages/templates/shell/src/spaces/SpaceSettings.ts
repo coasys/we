@@ -733,6 +733,150 @@ const modulesSection: SchemaNode = {
 };
 
 /**
+ * What each capability lets this space decide — rendered from what the modules declare.
+ *
+ * Nothing here names a setting. The rows come from `spaceStore.spaceModuleSettings`, which is built
+ * from every installed module's `settings` declaration, so a module that adds one gets a control
+ * with nothing to register anywhere — the step whose omission is otherwise silent, and the same
+ * trick `recordStore.displays` plays for a record's own form.
+ *
+ * Two things the row has to say that a plain switch cannot. **Whether this level has an opinion at
+ * all**, since silence is not `false` and a reset has to be able to restore it — hence the
+ * `Use default` beside a row that has been set. And **whether something less specific has forced the
+ * value**: a `restrict` setting an agent has refused for themselves cannot be switched back on here,
+ * and a control that took the press and sprang back would read as broken rather than as a rule.
+ */
+const moduleSettingsSection: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'count(spaceStore.spaceModuleSettings)' },
+    then: {
+      type: 'Column',
+      props: { gap: '300', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+      children: [
+        {
+          type: '$each',
+          props: { items: { $: 'spaceStore.spaceModuleSettings' }, as: 'setting' },
+          children: [
+            {
+              type: 'Row',
+              props: { width: '100%', gap: '400', ay: 'center' },
+              children: [
+                {
+                  type: 'Column',
+                  props: { gap: '100', flex: '1', minWidth: '0' },
+                  children: [
+                    {
+                      type: 'Row',
+                      props: { gap: '200', ay: 'center', wrap: true },
+                      children: [
+                        { type: 'we-text', props: { variant: 'label' }, children: [{ $: 'setting.label' }] },
+                        {
+                          type: 'we-badge',
+                          props: { size: 'xs' },
+                          children: [{ $: 'setting.groupLabel' }],
+                        },
+                      ],
+                    },
+                    {
+                      type: 'we-text',
+                      props: { variant: 'footnote', color: 'text-faint' },
+                      children: [
+                        {
+                          /*
+                            The reason, or — where a stricter level has taken the decision away —
+                            what took it. Saying nothing there leaves a disabled control with no
+                            account of itself, which is the failure this whole row shape exists to
+                            avoid.
+                          */
+                          $: "setting.locked ? 'Switched off for you already, so this space cannot turn it back on.' : (setting.description ?? '')",
+                        },
+                      ],
+                    },
+                  ],
+                },
+                {
+                  type: '$if',
+                  props: {
+                    // Something to undo only where this level itself has spoken — a value inherited
+                    // from the deployment or forced from elsewhere is not this screen's to reset.
+                    condition: { $: 'setting.set && space.canAdminister' },
+                    then: {
+                      type: 'we-button',
+                      props: {
+                        variant: 'ghost',
+                        size: 'xs',
+                        title: 'Stop deciding this here',
+                        onClick: {
+                          $action: 'spaceStore.setSpaceModuleSetting',
+                          args: [{ $: 'setting.group' }, { $: 'setting.key' }],
+                        },
+                      },
+                      children: ['Use default'],
+                    },
+                  },
+                },
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: "setting.type == 'boolean'" },
+                    then: {
+                      type: 'we-switch',
+                      props: {
+                        size: 'sm',
+                        checked: { $: 'setting.value' },
+                        disabled: { $: '!space.canAdminister || setting.locked' },
+                        // Bare `event.detail` — an operator around it would resolve at render time,
+                        // before the event exists. Same reason as the module switches above.
+                        onChange: {
+                          $action: 'spaceStore.setSpaceModuleSetting',
+                          args: [{ $: 'setting.group' }, { $: 'setting.key' }, { $: 'event.detail' }],
+                        },
+                      },
+                    },
+                    else: {
+                      type: '$if',
+                      props: {
+                        condition: { $: "setting.type == 'enum'" },
+                        then: {
+                          type: 'we-select',
+                          props: {
+                            size: 'sm',
+                            options: { $: 'setting.options' },
+                            value: { $: 'setting.value' },
+                            disabled: { $: '!space.canAdminister || setting.locked' },
+                            onChange: {
+                              $action: 'spaceStore.setSpaceModuleSetting',
+                              args: [{ $: 'setting.group' }, { $: 'setting.key' }, { $: 'event.detail' }],
+                            },
+                          },
+                        },
+                        else: {
+                          type: 'we-input',
+                          props: {
+                            size: 'sm',
+                            value: { $: 'setting.value' },
+                            disabled: { $: '!space.canAdminister || setting.locked' },
+                            onInput: {
+                              $action: 'spaceStore.setSpaceModuleSetting',
+                              args: [{ $: 'setting.group' }, { $: 'setting.key' }, { $: 'event.detail' }],
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
+/**
  * Automatic extraction — a community decision, and priced like one.
  *
  * Its own section rather than a row in Modules, because it is not a module: it is what one of them
@@ -1164,6 +1308,7 @@ export function spaceSettingsBody(uuid: SchemaProp, chrome: SchemaNode[], fill?:
                           groupHeading('Everyone in this space', 'What this space does on its own, for every member.', {
                             $: 'space.canAdminister',
                           }),
+                          moduleSettingsSection,
                           autoInterpretSection,
                           extractionTargetsSection,
                           shareExtractionDetailSection,

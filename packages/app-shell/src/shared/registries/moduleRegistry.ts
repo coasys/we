@@ -35,6 +35,7 @@ import {
 } from '@we/module-shared';
 import { collectComponentTypes, type SchemaNode } from '@we/schema-shared';
 
+import type { SettingGroup, SettingValue } from '../moduleSettings';
 import { dockFrame, dockRegistry } from './dockRegistry';
 import { slotRegistry } from './slotRegistry';
 
@@ -92,6 +93,19 @@ export interface RegisteredModule {
 }
 
 const modules = new Map<string, RegisteredModule>();
+
+/**
+ * What each module's settings currently resolve to, answered by whoever can see a space.
+ *
+ * Injected rather than computed here for the reason every `provide*` on `DatasetStore` is: the
+ * answer lives on a `Space`, on a `SpacePreference` and in the agent's own root dataset, and this
+ * registry mounts below all three and knows about none of them. Defaults to silence, so a host that
+ * has not wired it hands every module its declared defaults rather than nothing at all.
+ *
+ * Read at *call* time, not at registration: a module store is built once at boot and the space it is
+ * in changes underneath it all day.
+ */
+let readSettings: (group: string) => Record<string, SettingValue> = () => ({});
 
 /**
  * Wrap a module's chrome so it only renders where the community has the module turned on.
@@ -275,7 +289,13 @@ export const moduleRegistry = {
     // than running none.
     const disposers: Array<() => void> = [];
     const store = storeDeps
-      ? definition.createStore?.({ ...storeDeps, onDispose: (fn) => disposers.push(fn) })
+      ? definition.createStore?.({
+          ...storeDeps,
+          onDispose: (fn) => disposers.push(fn),
+          // Its own group, never the whole map: a module reads what it declared and has no business
+          // knowing what another one was configured with.
+          settings: () => readSettings(definition.id),
+        })
       : undefined;
     modules.set(definition.id, { definition, store, disposers });
     if (store) moduleStores[definition.id] = store;
@@ -331,6 +351,37 @@ export const moduleRegistry = {
    * nowhere, which looks exactly like a module that is simply switched off. The same reason
    * `activateSeedModules` reports ids this build does not contain.
    */
+  /**
+   * Say what each module's settings resolve to. Returns a function that takes it back.
+   *
+   * The counterpart of `DatasetStore.provideAutoInterpretGate`, and injected for the same reason —
+   * see `readSettings`.
+   */
+  provideSettings(reader: (group: string) => Record<string, SettingValue>): () => void {
+    readSettings = reader;
+    return () => {
+      if (readSettings === reader) readSettings = () => ({});
+    };
+  },
+
+  /**
+   * Every registered module that declares settings, as a group a screen can render.
+   *
+   * A module's group id is its module id, and its label is the module's name — so a settings screen
+   * is built from what is installed rather than from a list somebody maintains, which is the
+   * registration step that otherwise fails silently.
+   */
+  settingGroups(): SettingGroup[] {
+    return [...modules.values()]
+      .filter((entry) => entry.definition.settings?.length)
+      .map((entry) => ({
+        id: entry.definition.id,
+        label: entry.definition.name,
+        ...(entry.definition.description ? { description: entry.definition.description } : {}),
+        settings: entry.definition.settings ?? [],
+      }));
+  },
+
   danglingAnchors(): string[] {
     const provided = new Set([...modules.values()].flatMap(({ definition }) => definition.anchors ?? []));
     return slotRegistry.contributedAnchors().filter((anchor) => !provided.has(anchor));

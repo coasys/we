@@ -462,6 +462,31 @@ describe('recording the call you are in', () => {
     expect(h.store.enabled()).toBe(true);
   });
 
+  it('does not start where the space, or this agent, has said not to', () => {
+    /*
+      The fourth guard, and the only one that is a decision rather than an impossibility. It arrives
+      already resolved across every level that had an opinion — this effect does not know a space
+      exists, let alone which of four levels refused, which is what keeps the policy beside the state
+      that holds it rather than in the module.
+    */
+    const h = harness(THEIR_TRANSCRIPT, {
+      ...IN_A_SPACE,
+      transcription: CAN_TRANSCRIBE,
+      settings: () => ({ recordCalls: false }),
+    });
+
+    expect(h.store.enabled()).toBe(false);
+  });
+
+  it('records where a host has no settings layer at all', () => {
+    // `settings` is optional on the contract, and absent must read as the declared default rather
+    // than as a refusal — otherwise adding the layer would have silently switched recording off for
+    // every deployment that had not adopted it.
+    const h = harness(THEIR_TRANSCRIPT, { ...IN_A_SPACE, transcription: CAN_TRANSCRIBE, settings: undefined });
+
+    expect(h.store.enabled()).toBe(true);
+  });
+
   it('does not start when there is nothing to listen to', () => {
     const h = harness(THEIR_TRANSCRIPT, { ...IN_A_SPACE, transcription: CAN_TRANSCRIBE, audioInput: () => null });
 

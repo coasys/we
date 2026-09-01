@@ -33,6 +33,7 @@ export interface AgentSettingsRecord extends RecordInstance {
   useTemplateTheme: boolean;
   themeScope: string;
   installedModules: string;
+  moduleSettings: string;
   installedTemplates: TemplateRecord[];
   installedThemes: ThemeRecord[];
   spaceTemplatePreferences: SpaceTemplatePreferenceRecord[];
@@ -258,6 +259,7 @@ export interface SpaceRecord extends WeNodeRecord {
   enabledViews: string;
   extractionTargets: string;
   autoInterpret: boolean;
+  moduleSettings: string;
   shareExtractionDetail: boolean;
   location?: LocationBlockRecord;
   setLocation(value: LocationBlockRecord): Promise<unknown>;
@@ -266,6 +268,7 @@ export interface SpaceRecord extends WeNodeRecord {
 export interface SpacePreferenceRecord extends WeNodeRecord {
   spaceUuid: string;
   mutedModules: string;
+  moduleSettings: string;
   hiddenViews: string;
   templateId: string;
   themeId: string;

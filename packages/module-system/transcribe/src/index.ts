@@ -53,9 +53,10 @@
  * `store.ts` for the guards, and `Panel.schema.ts` for the coverage readout that says how much of
  * the call is actually in the record.
  *
- * A space that does not want its calls recorded has no way to say so yet. That is a setting beside
- * `autoInterpret`, not a guard in this module: nothing here can see a space's decisions, and giving
- * it that view to answer one question would put the policy in the wrong place.
+ * A community that does not want its calls recorded says so through `settings`, and so does an agent
+ * who does not want their own recorded — see the declaration below. Declared rather than read off
+ * the space: nothing in this module can see a space's decisions, and giving it that view to answer
+ * one question would put the policy in the module and the space's schema in a module's reach.
  *
  * ## What it is not yet
  *
@@ -146,6 +147,33 @@ export const transcribeModule = defineModule({
    * there rather than letting two panels land in the same box.
    */
   docks: [{ edge: 'dockEdge', size: 'dockSize', float: 'dockFloat', close: 'closePanel', node: panel, order: 90 }],
+  /**
+   * What a space, and an agent, may decide about recording.
+   *
+   * One setting, and every level may answer it — which is what `restrict` is for. Recording is on
+   * by default because that is what makes a transcript trustworthy: a record that exists four
+   * meetings out of five is worse than either default, since nothing separates "we chose not to"
+   * from "nobody pressed the button". From there a community can switch it off for everyone, and an
+   * agent can switch it off for themselves everywhere or in one space — and none of them can force
+   * it back **on** against somebody else's refusal, which is the only direction a microphone
+   * decision may travel.
+   *
+   * Declared rather than read off the space directly: this module has no view of a space's
+   * decisions, and giving it one to answer a single question would put the policy in the module and
+   * the space's schema in a module's reach. What comes back through `deps.settings` is one boolean.
+   */
+  settings: [
+    {
+      key: 'recordCalls',
+      label: 'Record calls automatically',
+      description:
+        'Transcription starts when a call does, without anyone pressing record. Leaving a recording, or stopping it by hand, still only affects your own microphone for that call.',
+      type: 'boolean',
+      default: true,
+      levels: ['deployment', 'agent', 'space', 'agent-in-space'],
+      resolution: 'restrict',
+    },
+  ],
 
   /**
    * The rail opens the transcript; the call bar records into it.
