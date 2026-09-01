@@ -129,6 +129,67 @@ describe('a restricted setting, which a lower level may only refuse', () => {
   });
 });
 
+describe('turning a restricted setting back on', () => {
+  it('is exactly what the level that turned it off may do', () => {
+    /*
+      `restrict` is not "off forever". It stops a level overruling *somebody else's* refusal; whoever
+      made the decision can unmake it, by flipping their own answer or by clearing it. Without this
+      the flag would be a trapdoor, and the switch that closed it would be the only one in the app
+      that could not be pressed twice.
+    */
+    const levels: LevelValues = { space: { transcribe: { recordCalls: true } } };
+    const [row] = settingRows([group], 'space', levels);
+
+    expect(row.value).toBe(true);
+    expect(row.locked).toBe(false);
+  });
+
+  it('is also what clearing does, since silence is not a refusal', () => {
+    expect(resolveSetting(recordCalls, 'transcribe', {}).value).toBe(true);
+  });
+});
+
+describe('whose refusal binds whom', () => {
+  it('does not let one member’s private answer turn the community’s control off', () => {
+    /*
+      The bug this rule was written for. A row used to show the *fully* resolved value, so a member
+      switching recording off for their own microphone showed the community's switch as off — and it
+      was enabled, so pressing it wrote the community's `true` under a refusal that outranked it and
+      the switch sprang straight back. A control that lies, which is what `locked` exists to prevent
+      and what showing the wrong value smuggled back in.
+
+      The levels are two chains meeting at the deployment, not one line: a private answer says
+      nothing about what a space does.
+    */
+    const levels: LevelValues = { 'agent-in-space': { transcribe: { recordCalls: false } } };
+    const [row] = settingRows([group], 'space', levels);
+
+    expect(row.value).toBe(true);
+    expect(row.locked).toBe(false);
+  });
+
+  it('still binds that member, whatever the community decides', () => {
+    // The other half, and the reason the refusal is worth anything: it holds for them.
+    const levels: LevelValues = {
+      space: { transcribe: { recordCalls: true } },
+      'agent-in-space': { transcribe: { recordCalls: false } },
+    };
+    const [row] = settingRows([group], 'agent-in-space', levels);
+
+    expect(row.value).toBe(false);
+    // Their own answer, so nothing is locked — they may take it back.
+    expect(row.locked).toBe(false);
+  });
+
+  it('is what a capability reads: everything in force, here, for this agent', () => {
+    // No level is named, so the whole chain applies — which is the question a module is asking when
+    // it reads `deps.settings`, and a different one from what any single screen shows.
+    const levels: LevelValues = { 'agent-in-space': { transcribe: { recordCalls: false } } };
+
+    expect(resolveGroup(group, levels).recordCalls).toBe(false);
+  });
+});
+
 describe('what a settings screen draws', () => {
   it('offers only the settings its own level may decide', () => {
     // What makes a screen a screen: space settings asks what the community may decide, and a

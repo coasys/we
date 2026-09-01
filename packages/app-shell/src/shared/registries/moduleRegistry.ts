@@ -271,6 +271,25 @@ export const moduleRegistry = {
       }
     }
 
+    /*
+      Two ways a settings declaration is inert, and both are silent without this.
+
+      A `restrict` setting that defaults to `false` can never be true: restriction is an AND, so no
+      level can grant what the default withholds. And an `enum` with no options offers nothing to
+      pick. Reported rather than refused — a module is still worth having with one dud setting, and
+      taking the whole thing out of the app over a declaration mistake is the larger failure.
+    */
+    for (const setting of definition.settings ?? []) {
+      if (setting.resolution === 'restrict' && setting.default === false) {
+        console.warn(
+          `module "${definition.id}" setting "${setting.key}" is restrict and defaults to false, so no level can ever turn it on`,
+        );
+      }
+      if (setting.type === 'enum' && !setting.options?.length) {
+        console.warn(`module "${definition.id}" setting "${setting.key}" is an enum with no options`);
+      }
+    }
+
     const compatibility = checkModuleCompatibility(definition, host);
     if (!compatibility.compatible) {
       console.warn(`module "${definition.id}" not registered: ${compatibility.problems.join('; ')}`);

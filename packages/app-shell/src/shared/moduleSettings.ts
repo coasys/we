@@ -135,18 +135,56 @@ function admissible(setting: ModuleSetting, value: unknown): value is SettingVal
 }
 
 /**
- * Resolve one setting across the levels.
+ * Which levels an answer at one level has to live with.
+ *
+ * Not simply "everything less specific", which is what it looked like and is wrong in one direction
+ * that matters. **A member's private refusal does not bind the community**: one person switching
+ * recording off for their own microphone says nothing about what the space does, so the community's
+ * own control must go on showing — and writing — the community's answer. The same for an agent's
+ * global preference, which one space's decision does not overrule everywhere.
+ *
+ * So the levels form two chains that meet at the deployment rather than one line:
+ *
+ * - the community answers to the deployment
+ * - an agent's answer everywhere answers to the deployment
+ * - an agent's answer *here* answers to all three, because all three apply to them in this space
+ *
+ * Read for two purposes, and both are the same question — what is true for the people this level
+ * speaks for: the value a screen shows, and whether a refusal it cannot undo has already been made.
+ */
+const BINDING: Record<SettingLevel, readonly SettingLevel[]> = {
+  deployment: ['deployment'],
+  agent: ['deployment', 'agent'],
+  space: ['deployment', 'space'],
+  'agent-in-space': ['deployment', 'agent', 'space', 'agent-in-space'],
+};
+
+/**
+ * Resolve one setting.
  *
  * `restrict` is an AND over every level that spoke, *including the default* — so a setting that
  * defaults off cannot be turned on by any level, which is the honest reading of "levels may only
  * restrict this". `override` takes the last level with an admissible opinion.
+ *
+ * `speakingFor` narrows it to what is true for the people one level speaks for. Absent, it is the
+ * whole chain — what is actually in force for this agent in this space, which is what a capability
+ * reading `deps.settings` wants. A *screen* passes its own level, because a control that showed the
+ * fully resolved answer would show a community switch turned off by one member's private preference,
+ * and pressing it would write the community's `true` under a refusal that outranks it: a switch that
+ * springs back, which is the failure `lockedBy` exists to make impossible.
  */
-export function resolveSetting(setting: ModuleSetting, group: string, levels: LevelValues): ResolvedSetting {
+export function resolveSetting(
+  setting: ModuleSetting,
+  group: string,
+  levels: LevelValues,
+  speakingFor?: SettingLevel,
+): ResolvedSetting {
+  const consulted = speakingFor ? BINDING[speakingFor] : SETTING_LEVELS;
   const spoken: { level: SettingLevel; value: SettingValue }[] = [];
   for (const level of SETTING_LEVELS) {
     // A level that may not decide this setting is not consulted, so a stale value left behind by an
     // earlier declaration cannot go on deciding something it is no longer allowed to.
-    if (!setting.levels.includes(level)) continue;
+    if (!setting.levels.includes(level) || !consulted.includes(level)) continue;
     const value = levels[level]?.[group]?.[setting.key];
     if (admissible(setting, value)) spoken.push({ level, value });
   }
@@ -200,7 +238,9 @@ export function settingRows(groups: readonly SettingGroup[], level: SettingLevel
   for (const group of groups) {
     for (const setting of group.settings) {
       if (!setting.levels.includes(level)) continue;
-      const resolved = resolveSetting(setting, group.id, levels);
+      // Resolved for the people this screen speaks for — see `BINDING`. A community switch must show
+      // the community's answer, not one turned off by a member's private preference.
+      const resolved = resolveSetting(setting, group.id, levels, level);
       rows.push({
         ...resolved,
         group: group.id,
@@ -210,13 +250,15 @@ export function settingRows(groups: readonly SettingGroup[], level: SettingLevel
         type: setting.type,
         ...(setting.options ? { options: setting.options } : {}),
         set: admissible(setting, levels[level]?.[group.id]?.[setting.key]),
-        // Forced from somewhere less specific than the screen being drawn. A `restrict` value set at
-        // *this* level is not a lock — it is what this screen just did.
-        locked: Boolean(
-          resolved.lockedBy &&
-          resolved.lockedBy !== level &&
-          SETTING_LEVELS.indexOf(resolved.lockedBy) < SETTING_LEVELS.indexOf(level),
-        ),
+        /*
+          A refusal this screen cannot undo.
+
+          Only from a level that binds it, and only from a level that is not *its own* — a `restrict`
+          value set here is what this screen just did rather than something overruling it. Everything
+          else is enabled, including a control whose answer some more specific level does not follow:
+          the community may decide what it decides, whether or not one member has opted out of it.
+        */
+        locked: Boolean(resolved.lockedBy && resolved.lockedBy !== level),
       });
     }
   }
