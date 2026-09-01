@@ -1106,9 +1106,15 @@ const board: SchemaNode = {
       in another view.
     */
     nodeActions: [
-      { id: 'accept', icon: 'check', title: 'Keep this', when: { 'data.pending': true } },
-      { id: 'reject', icon: 'x', title: 'Discard this', when: { 'data.pending': true }, danger: true },
-      { id: 'delete', icon: 'trash', title: 'Delete', when: { 'data.pending': { exists: false } }, danger: true },
+      { id: 'accept', icon: 'check', title: 'Keep this', when: { 'data.pending': true }, tone: 'positive' },
+      { id: 'reject', icon: 'x', title: 'Discard this', when: { 'data.pending': true }, tone: 'danger' },
+      {
+        id: 'delete',
+        icon: 'trash',
+        title: 'Delete',
+        when: { 'data.pending': { exists: false } },
+        tone: 'danger',
+      },
     ],
     /*
       One handler, branching on which was pressed — the shape a handler array is for.

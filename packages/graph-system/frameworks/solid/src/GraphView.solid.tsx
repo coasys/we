@@ -1110,7 +1110,10 @@ export function GraphView(props: GraphViewProps) {
                       <button
                         type="button"
                         class="we-graph__action"
-                        classList={{ 'we-graph__action--danger': action.danger === true }}
+                        classList={{
+                          'we-graph__action--positive': action.tone === 'positive',
+                          'we-graph__action--danger': action.tone === 'danger',
+                        }}
                         title={action.title ?? action.id}
                         aria-label={action.title ?? action.id}
                         /*

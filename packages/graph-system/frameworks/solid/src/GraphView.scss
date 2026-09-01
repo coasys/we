@@ -592,6 +592,27 @@
 // Destructive, and said in colour rather than only in the icon: a bin and a tick the same shade is
 // a pair of buttons you have to read before pressing, on a control small enough that reading it is
 // most of the work.
+/*
+ * The two answers, coloured — a status foreground at rest, filling on hover.
+ *
+ * The foreground role rather than the fill for the resting state, because at 24px the icon *is* the
+ * button and it has to stay legible against the raised surface behind it; `dangerText` and
+ * `successText` are the two that are corrected for exactly that. The fill takes over on hover,
+ * where its own label role answers for the contrast.
+ *
+ * A pair, always. A red cross beside a grey tick is one decision that looks real and one that looks
+ * unavailable, which is the wrong hint on the half people are usually looking for.
+ */
+.we-graph__action--positive {
+  color: var(--we-role-success-text);
+
+  &:hover {
+    color: var(--we-role-on-success);
+    background: var(--we-role-success);
+    border-color: var(--we-role-success);
+  }
+}
+
 .we-graph__action--danger {
   color: var(--we-role-danger-text);
 

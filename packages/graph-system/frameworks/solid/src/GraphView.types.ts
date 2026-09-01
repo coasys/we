@@ -272,8 +272,16 @@ export interface NodeAction {
   title?: string;
   /** Offered only on nodes this matches. Omit for every node. */
   when?: MatchClause;
-  /** Draw it as destructive. For a control that removes something, so it does not look like the rest. */
-  danger?: boolean;
+  /**
+   * What kind of answer this is, said in colour: `positive` for the one that keeps something,
+   * `danger` for the one that removes it. Omit for a control that is neither.
+   *
+   * One axis rather than a flag each, because they are three points on it and a pair of booleans
+   * would admit a fourth that means nothing. It was `danger?: boolean`, which left the accepting
+   * half of a tick-and-cross pair with no way to say so — a red cross beside a grey tick reads as
+   * one real choice and one placeholder.
+   */
+  tone?: 'positive' | 'danger';
 }
 
 /**

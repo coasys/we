@@ -335,7 +335,11 @@ describe('the workshop template’s call selection', () => {
     */
     expect(json).toContain('modules.transcribe.acceptProposal');
     expect(json).toContain('modules.transcribe.rejectProposal');
-    expect(json).toContain('{"id":"accept","icon":"check","title":"Keep this","when":{"data.pending":true}}');
+    // Both halves toned, which is the point of the pair: a red cross beside a grey tick reads as one
+    // real decision and one placeholder.
+    expect(json).toContain('"id":"accept","icon":"check","title":"Keep this"');
+    expect(json).toContain('"when":{"data.pending":true},"tone":"positive"');
+    expect(json).toContain('"when":{"data.pending":true},"tone":"danger"');
     expect(json).toContain('"id":"reject"');
   });
 
@@ -366,7 +370,7 @@ describe('the workshop template’s call selection', () => {
     */
     const json = JSON.stringify(workshop);
 
-    expect(json).toContain('{"id":"delete","icon":"trash","title":"Delete","when":{"data.pending":{"exists":false}}');
+    expect(json).toContain('"id":"delete","icon":"trash","title":"Delete","when":{"data.pending":{"exists":false}}');
   });
 
   it('shows the transcript panel what the microphone is doing, not only what it saved', () => {
