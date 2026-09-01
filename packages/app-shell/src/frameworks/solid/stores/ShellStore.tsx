@@ -311,6 +311,13 @@ export interface ShellStore {
    * not own — cheaper than two actions that would have to agree about one origin.
    */
   resizeDock: (id: string, side: ResizeSide, dx: number, dy: number) => void;
+  /**
+   * Move the boundary between this panel and the one under it in a floating column.
+   *
+   * What the upper panel's bottom grip calls when it has a neighbour. One number, because a
+   * boundary has one degree of freedom: what one panel gains the other gives up.
+   */
+  resizeColumn: (id: string, dy: number) => void;
   endDockResize: () => void;
   /**
    * Shrink the panel to the shape its contents actually want, when the module says what that is.
@@ -691,6 +698,8 @@ export function ShellStoreProvider(props: ParentProps) {
   const [activeInsert, setActiveInsert] = createSignal<string | null>(null);
   /** The rect a drag started from, so every move is measured against one fixed origin. */
   let dragOrigin: FloatPlacement | null = null;
+  /** The two stored bases a divider drag moves the boundary between — see `resizeColumn`. */
+  let columnDrag: { top: number; bottom: number } | null = null;
   /** Where the pointer was when it started, for restoring a maximised panel beneath it. */
   let dragPointer: { x: number; y: number } | null = null;
 
@@ -1081,18 +1090,47 @@ export function ShellStoreProvider(props: ParentProps) {
     return seats;
   });
 
+  /**
+   * Who sits directly under whom in a floating column, and who above.
+   *
+   * A column's members share boundaries, and a boundary belongs to *both* panels — which is the
+   * thing the two edge grips could not express. Published so the frame can turn one panel's bottom
+   * grip into the divider for the pair and take the other's top grip away, leaving one line to pull
+   * rather than two stacked a few pixels apart.
+   */
+  const columnNeighbours = createMemo(() => {
+    const requests = dockRequests();
+    const panels = requests
+      .map((request, index) => ({ id: request.id, index, placement: placementOf(request) }))
+      .filter((panel) => requests[panel.index].edge);
+
+    const below: Record<string, string> = {};
+    const above: Record<string, string> = {};
+    for (const edge of ['left', 'right', 'top', 'bottom'] as const) {
+      const members = columnMembers(panels, edge, viewport());
+      if (members.length < 2) continue;
+      members.forEach((member, i) => {
+        const next = members[i + 1];
+        if (!next) return;
+        below[member.id] = next.id;
+        above[next.id] = member.id;
+      });
+    }
+    return { below, above };
+  });
+
   const dockGeometry = createMemo(() => {
     const requests = dockRequests();
     const seats = columnSeats();
+    const { below, above } = columnNeighbours();
     const resolved: Record<string, DockGeometry> = {};
     requests.forEach((request, index) => {
-      resolved[request.id] = resolveDock(
-        request,
-        viewport(),
-        occupiedOf(index, requests),
-        floatChrome(),
-        seats[request.id],
-      );
+      resolved[request.id] = {
+        ...resolveDock(request, viewport(), occupiedOf(index, requests), floatChrome(), seats[request.id]),
+        // Empty rather than absent, so a schema condition reads a string either way.
+        below: below[request.id] ?? '',
+        above: above[request.id] ?? '',
+      };
     });
     return resolved;
   });
@@ -1477,6 +1515,16 @@ export function ShellStoreProvider(props: ParentProps) {
     beginDockResize: (id) => {
       const request = dockRequests().find((entry) => entry.id === id);
       if (!request?.edge) return;
+      /*
+        A divider drag is measured from the two *stored* bases, not from the boxes on screen.
+
+        The rendered heights include each panel's share of the column's spare room, and the bases are
+        what a placement holds — so measuring one and writing the other is the double count this
+        exists to avoid. Their sum is the room the boundary moves within, and it does not change.
+      */
+      const belowId = dockGeometry()[id]?.below;
+      const lower = belowId ? dockRequests().find((entry) => entry.id === belowId) : undefined;
+      columnDrag = lower ? { top: placementOf(request).h, bottom: placementOf(lower).h } : null;
       // The *resolved* rect, not the stored one: a snapped panel has no stored x/y, so a drag
       // measured from them would jump to the origin on the first frame. Same reason `beginDockMove`
       // reads the geometry.
@@ -1584,8 +1632,41 @@ export function ShellStoreProvider(props: ParentProps) {
       );
     },
 
+    /**
+     * Move the boundary between two stacked panels, giving one what the other loses.
+     *
+     * A column member's *rendered* height is its stored base plus a share of the column's spare
+     * room, and `resizeDock` writes what it measured — the rendered height — back into the base. In
+     * a column that is the same slack counted twice: the panel jumped taller by its own share the
+     * instant a drag began, before the pointer had moved. That is what made the pair unresizable
+     * rather than merely awkward.
+     *
+     * A divider has no such problem, because it does not change the total. Moving the boundary adds
+     * to one base exactly what it takes from the other, so the sum is unchanged, so the slack is
+     * unchanged, and each panel's rendered height moves by precisely the pixels the pointer did.
+     *
+     * Both floors apply at once. Pushing past either end stops the boundary rather than letting one
+     * panel eat the other and slide on — the same rule the edge grips keep, asked of a pair.
+     */
+    resizeColumn: (id, dy) => {
+      const belowId = dockGeometry()[id]?.below;
+      if (!belowId || !columnDrag) return;
+      const upper = dockRequests().find((entry) => entry.id === id);
+      const lower = dockRequests().find((entry) => entry.id === belowId);
+      if (!upper || !lower) return;
+
+      const room = columnDrag.top + columnDrag.bottom;
+      const ceiling = Math.max(MIN_FLOAT_PX, room - MIN_FLOAT_PX);
+      const top = Math.min(ceiling, Math.max(MIN_FLOAT_PX, columnDrag.top + dy));
+      const bottom = room - top;
+
+      writePlacement(id, { ...placementOf(upper), h: top });
+      writePlacement(belowId, { ...placementOf(lower), h: bottom });
+    },
+
     endDockResize: () => {
       dragOrigin = null;
+      columnDrag = null;
       setDockResizing(false);
     },
 

@@ -342,6 +342,17 @@ export const PANEL_CHROME = { x: FRAME_BORDER_PX, y: TITLE_BAR_PX + FRAME_BORDER
 export interface DockGeometry {
   edge: DockEdge;
   /**
+   * The panel directly under this one in a floating column, or `''`.
+   *
+   * A boundary between two stacked panels belongs to both of them, which two independent edge grips
+   * cannot say: they sit a few pixels apart, each resizing only its own panel, so the pair reads as
+   * two lines and behaves as neither. The upper panel's bottom grip becomes the divider for the pair
+   * and the lower one's top grip goes — see `above`.
+   */
+  below?: string;
+  /** The panel directly above this one in a floating column, or `''`. See {@link below}. */
+  above?: string;
+  /**
    * Which side of the panel carries the width handle, and which the height handle.
    *
    * Named as *sides of the panel* rather than directions of travel, because that is what the frame

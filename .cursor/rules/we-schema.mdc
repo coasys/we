@@ -2631,6 +2631,7 @@ ShellStore:
   - scrollToId(id: string): smooth-scrolls the element with that DOM id into view
   - beginDockResize(id: string): remembers a panel's current size so the drag that follows is measured from it. Wire it to we-resize-handle's resizestart
   - resizeDock(id: string, side: 'left' | 'right' | 'top' | 'bottom' | 'top-left' | …, dx: number, dy: number): applies a resize drag from that side or corner, in screen pixels since it began. Wire it to resize with { $: 'arg.detail.delta' }
+  - resizeColumn(id, dy): moves the boundary between this panel and the one under it in a floating column, giving one what the other loses. What the upper panel's bottom grip calls when it has a neighbour — a boundary belongs to both panels, so only one of them draws it
   - endDockResize(): ends the drag and persists the size
   - fitDock(id: string): shrinks a panel to the shape its content wants, keeping the width the user chose — only when the module declares an aspect for its panel
   - beginDockMove(id: string, pointerX: number, pointerY: number): begins moving a panel, remembering where it and the pointer started. A maximised panel shrinks back under the cursor

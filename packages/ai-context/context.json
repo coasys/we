@@ -6601,6 +6601,7 @@
         "scrollToId",
         "beginDockResize",
         "resizeDock",
+        "resizeColumn",
         "endDockResize",
         "fitDock",
         "beginDockMove",

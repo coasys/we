@@ -923,6 +923,9 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // Written by the host layout, which can see the editor's widths — never by a template.
     beginDockResize: action('host-layout'),
     resizeDock: action('host-layout'),
+    // The divider between two stacked panels — one number, because a boundary has one degree of
+    // freedom and what one panel gains the other gives up.
+    resizeColumn: action('host-layout'),
     endDockResize: action('host-layout'),
     /*
       Moving a panel, which is the same capability as resizing one and is listed for the same reason.

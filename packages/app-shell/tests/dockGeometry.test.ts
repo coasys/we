@@ -1298,3 +1298,55 @@ describe('what floating panels cover', () => {
     expect(coveredInset([request], desktop)).toEqual({ left: 0, right: 0, top: 0, bottom: 0 });
   });
 });
+
+/**
+ * A column member's height is a base plus a share of the spare room.
+ *
+ * Which is what made dragging the boundary between two of them impossible rather than merely
+ * awkward: a resize measured the *rendered* height and wrote it back as the base, so the share was
+ * counted twice and the panel jumped taller by exactly that share the moment a drag began, before
+ * the pointer had moved. A divider avoids it by construction — it moves the boundary rather than
+ * setting a height, so the total is unchanged, the slack is unchanged, and each panel moves by the
+ * pixels the pointer did.
+ */
+describe('a floating column', () => {
+  const member = (over: Partial<FloatPlacement> = {}): FloatPlacement =>
+    placement({ snap: 'left', displace: false, w: 320, h: 200, ...over });
+
+  it('divides the spare room by grow, so two shares against one is about two thirds', () => {
+    const [top, bottom] = columnLayout([member({ grow: 2 }), member({ grow: 1 })], 'left', desktop);
+
+    /*
+      The *slack* splits two to one, which is what `grow` says: equal bases, so each height is that
+      base plus its share. Asserted as the ratio of what was handed out rather than as a number,
+      because the room a column has is the region less whatever chrome is reserved — and this is
+      about the division, not about how much there was to divide.
+
+      Exactly two thirds of the *column* would need the bases in the same ratio too, which is why
+      `grow` is documented as a share of the spare room rather than of the whole.
+    */
+    expect(top.h - 200).toBeCloseTo((bottom.h - 200) * 2, 0);
+  });
+
+  it('gives a member with no grow its base and nothing more', () => {
+    // The workshop declared `1` against a `0` and got a panel towering over a strip: no grow does not
+    // mean "less", it means the other one takes every pixel of the slack.
+    const [, bottom] = columnLayout([member({ grow: 1 }), member({ grow: 0 })], 'left', desktop);
+
+    expect(bottom.h).toBe(200);
+  });
+
+  it('keeps the total when the boundary moves, which is what makes a divider safe', () => {
+    /*
+      The property the divider action relies on. Adding to one base exactly what is taken from the
+      other leaves the sum — and therefore the slack, and therefore every share — untouched, so each
+      rendered height moves by precisely the base delta and nothing is counted twice.
+    */
+    const before = columnLayout([member({ h: 200 }), member({ h: 200 })], 'left', desktop);
+    const after = columnLayout([member({ h: 260 }), member({ h: 140 })], 'left', desktop);
+
+    expect(after[0].h - before[0].h).toBe(60);
+    expect(after[1].h - before[1].h).toBe(-60);
+    expect(after[0].h + after[1].h).toBe(before[0].h + before[1].h);
+  });
+});

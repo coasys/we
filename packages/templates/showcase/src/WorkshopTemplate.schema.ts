@@ -2111,7 +2111,16 @@ export const workshopTemplate: TemplateSchema = {
         snap: 'left',
         order: 0,
         size: 'sm',
-        grow: 1,
+        /*
+          Two shares against one, so the transcript takes about two thirds of the column.
+
+          It was `1` against a `0`, which does not mean "most of it" — it means *all* the spare room,
+          because a member with no grow keeps its base and nothing else. On a tall window that left
+          the extraction panel at its minimum with a transcript towering over it. Grow is a ratio of
+          the *slack*, so this is approximate rather than exactly two thirds, and the taller the
+          column the closer it gets.
+        */
+        grow: 2,
       },
       {
         id: 'extraction',
@@ -2124,9 +2133,9 @@ export const workshopTemplate: TemplateSchema = {
         snap: 'left',
         order: 1,
         size: 'sm',
-        // Pinned to its own height while the transcript above absorbs the slack — which is what
-        // "the transcript takes most of the height" is made of.
-        grow: 0,
+        // One share to the transcript's two. Not `0`, which pins it to its base and gives the
+        // transcript every pixel of the slack — a column that reads as one panel and one strip.
+        grow: 1,
       },
       /*
         The inspector, open by default and on the edge the board's own controls are not.

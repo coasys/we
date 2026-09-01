@@ -2612,6 +2612,7 @@ export const contextData: ContextData = {
         'scrollToId',
         'beginDockResize',
         'resizeDock',
+        'resizeColumn',
         'endDockResize',
         'fitDock',
         'beginDockMove',

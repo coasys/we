@@ -831,16 +831,34 @@ function grips(id: string): SchemaNode[] {
   */
   const grippable = `!${geo('maximised')} && ${geo('floating')}`;
 
-  const edges: SchemaNode[] = (['left', 'right', 'top', 'bottom'] as const).map((side) => ({
-    type: '$if',
-    props: {
-      // Shown when the panel floats, or when this is the single side a displacing panel can trade.
-      condition: {
-        $: `(${grippable}) || ${geo(side === 'left' || side === 'right' ? 'handleX' : 'handleY')} == '${side}'`,
-      },
-      then: resizeEdge(id, side),
-    },
-  }));
+  const edges: SchemaNode[] = (['left', 'right', 'top', 'bottom'] as const).map((side) => {
+    const shown = `(${grippable}) || ${geo(side === 'left' || side === 'right' ? 'handleX' : 'handleY')} == '${side}'`;
+    /*
+      A boundary in a column belongs to both panels, so only one of them draws it.
+
+      Stacked, the lower panel's top edge and the upper panel's bottom edge are the same line a few
+      pixels apart — two grips for one boundary, each resizing only its own panel, which is why
+      pulling it felt like neither. The upper one becomes the divider for the pair (see `below`) and
+      the lower one's top grip is not drawn at all.
+    */
+    if (side === 'top') {
+      return {
+        type: '$if',
+        props: { condition: { $: `(${shown}) && !${geo('above')}` }, then: resizeEdge(id, side) },
+      };
+    }
+    if (side === 'bottom') {
+      return {
+        type: '$if',
+        props: {
+          condition: { $: `${geo('below')}` },
+          then: resizeEdge(id, side, true),
+          else: { type: '$if', props: { condition: { $: shown }, then: resizeEdge(id, side) } },
+        },
+      };
+    }
+    return { type: '$if', props: { condition: { $: shown }, then: resizeEdge(id, side) } };
+  });
 
   const corners: SchemaNode[] = (['top-left', 'top-right', 'bottom-left', 'bottom-right'] as const).map((corner) => ({
     type: '$if',
@@ -851,7 +869,7 @@ function grips(id: string): SchemaNode[] {
 }
 
 /** One side, dragged along its own axis. */
-function resizeEdge(id: string, side: 'left' | 'right' | 'top' | 'bottom'): SchemaNode {
+function resizeEdge(id: string, side: 'left' | 'right' | 'top' | 'bottom', divider = false): SchemaNode {
   const vertical = side === 'left' || side === 'right';
 
   return {
@@ -871,21 +889,34 @@ function resizeEdge(id: string, side: 'left' | 'right' | 'top' | 'bottom'): Sche
         every window corner anybody has dragged. Keyboard focus still shows: see `line` on the
         primitive.
       */
-      line: { $: `${dockGeometryPath(id, 'floating')} ? 'none' : 'auto'` },
+      /*
+        A divider draws its line; a floating card's own edge does not.
+
+        A seam between two panels is a real boundary and the 3px bar answering under the pointer is
+        what a splitter looks like everywhere else. A lone card has no seam, so the bar would be a
+        stripe stuck to its side.
+      */
+      line: divider ? 'auto' : { $: `${dockGeometryPath(id, 'floating')} ? 'none' : 'auto'` },
       styles: { '--we-resize-handle-thickness': '3px' },
       position: 'absolute',
       zIndex: 'sticky',
-      // Pinned to its own side and stretched along the other axis, so one node serves all four.
+      /*
+        Pinned to its own side and stretched along the other axis, so one node serves all four — and
+        a divider straddles the gap between the two panels rather than hugging one of them, which is
+        what makes it feel like the line between them rather than the edge of the upper one.
+      */
       ...(vertical
         ? { top: '0', bottom: '0', [side]: '0', width: '8px' }
-        : { left: '0', right: '0', [side]: '0', height: '8px' }),
+        : { left: '0', right: '0', [side]: divider ? '-6px' : '0', height: divider ? '12px' : '8px' }),
       onResizestart: { $action: 'shellStore.beginDockResize', args: [id] },
-      onResize: {
-        $action: 'shellStore.resizeDock',
-        // The axis this side does not own is passed as zero rather than omitted: one action signature
-        // serves edges and corners, and an edge simply contributes nothing on the axis it is pinned to.
-        args: vertical ? [id, side, { $: 'arg.detail.delta' }, 0] : [id, side, 0, { $: 'arg.detail.delta' }],
-      },
+      onResize: divider
+        ? { $action: 'shellStore.resizeColumn', args: [id, { $: 'arg.detail.delta' }] }
+        : {
+            $action: 'shellStore.resizeDock',
+            // The axis this side does not own is passed as zero rather than omitted: one action
+            // signature serves edges and corners, and an edge contributes nothing on its own axis.
+            args: vertical ? [id, side, { $: 'arg.detail.delta' }, 0] : [id, side, 0, { $: 'arg.detail.delta' }],
+          },
       onResizeend: { $action: 'shellStore.endDockResize' },
     },
   };
