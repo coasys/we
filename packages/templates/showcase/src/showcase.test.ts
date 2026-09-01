@@ -385,6 +385,23 @@ describe('the workshop template’s call selection', () => {
     expect(json).toContain('"condition":{"$":"!count(arg)"}');
   });
 
+  it('connects from the card rather than from a mode', () => {
+    /*
+      `connect-nodes` claims a press anywhere on a node, so it has to be armed: a switch turned on to
+      connect and off again to move cards. Forgetting it in either direction is a gesture doing
+      something nobody asked for — drawing a line when you meant to move a card, or moving a card
+      when you meant to draw a line.
+
+      The handles on a selected card's edges need no arming, because the target is what makes the
+      gesture unambiguous. They end in the same `edgeCreate`, so the handler is unchanged.
+    */
+    const json = JSON.stringify(workshop);
+
+    expect(json).not.toContain('connect-nodes');
+    expect(json).not.toContain('local.connecting');
+    expect(json).toContain('recordStore.connectNodes');
+  });
+
   it('offers a delete on every card, not only on the unsettled ones', () => {
     /*
       Extraction proposes things that are simply wrong about a conversation, and one that has been

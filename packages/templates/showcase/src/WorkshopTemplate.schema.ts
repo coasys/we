@@ -1302,9 +1302,17 @@ const board: SchemaNode = {
       */
       { when: { 'data.pending': true }, style: { opacity: 0.5 } },
     ],
+    /*
+      No `connect-nodes`. Connecting is a handle on the card now, not a mode.
+
+      That behaviour claims a press *anywhere on a node*, so it has to be armed — a switch somebody
+      turns on to connect and off again to move cards, which is a thing to remember and a thing to
+      forget, and forgetting it either way is a gesture doing something nobody asked for. The dots
+      off a selected card's edges need no arming, because the target is what makes the gesture
+      unambiguous. Nothing else changes: they end in the same `edgeCreate`, so `onEdgeCreate` below
+      is unchanged.
+    */
     behaviours: [
-      // Before drag-node, which is what makes arming mean anything: both claim a press on a node.
-      { type: 'connect-nodes', options: { armed: { $: 'local.connecting' } } },
       'select',
       { type: 'drag-node', options: { pin: true } },
       // Last, because it is the background fallback — listed earlier it claims the press `select`
@@ -1479,7 +1487,6 @@ const boardBody: Omit<RouteSchema, 'path'> = {
     own entry.
   */
   $localState: {
-    connecting: { type: 'boolean', initial: false },
     inspecting: { type: 'string', initial: '', syncParam: 'card' },
     inspectingType: { type: 'string', initial: '', syncParam: 'cardType' },
   },

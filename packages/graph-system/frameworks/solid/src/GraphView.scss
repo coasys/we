@@ -622,3 +622,118 @@
     border-color: var(--we-role-danger);
   }
 }
+
+/**
+ * Connection handles — a dot off each edge of a selected card, and an arrow once you reach for it.
+ *
+ * The alternative was a mode: a button that arms `connect-nodes`, which claims a press anywhere on a
+ * node, so it has to be switched on to connect and off again to go back to moving cards. That is a
+ * thing to remember and a thing to forget, and forgetting it in either direction is a gesture doing
+ * something you did not ask for. A grab area that exists only on the edge of a selected card needs no
+ * mode, because the target is what makes the gesture unambiguous.
+ *
+ * Sized in `px / var(--graph-zoom)`, like the resize grips: the layer is scaled by the camera, so
+ * dividing first is what keeps a dot the same size on screen at every zoom. No `scale()` here, which
+ * is what lets `translate(-50%, -50%)` centre them honestly — a percentage translate resolves against
+ * the unscaled box, so the two together mis-centre by however far the camera is from 1.
+ */
+.we-graph__connect {
+  --dot: calc(9px / var(--graph-zoom));
+  --reach: calc(14px / var(--graph-zoom));
+  --half-w: calc(var(--node-width) / 2);
+  --half-h: calc(var(--node-height) / 2);
+
+  position: absolute;
+  width: var(--dot);
+  height: var(--dot);
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+
+  background: var(--we-role-accent);
+  border: calc(1.5px / var(--graph-zoom)) solid var(--we-color-neutral-0);
+  opacity: 0.55;
+
+  // The node layer is inert so the canvas can hit-test in world space; these take their own presses.
+  pointer-events: auto;
+  touch-action: none;
+  cursor: crosshair;
+
+  transition:
+    opacity 100ms ease-out,
+    width 100ms ease-out,
+    height 100ms ease-out;
+
+  &:hover {
+    // Grown, so the thing under the cursor is the thing being pressed — a 9px target is findable
+    // because it is on a card you already selected, and small until you reach for it.
+    --dot: calc(20px / var(--graph-zoom));
+
+    opacity: 1;
+  }
+}
+
+/**
+ * The arrow, out of the edge it belongs to.
+ *
+ * Two borders on a square, turned — a chevron rather than a filled triangle, because a triangle at
+ * this size reads as a blob and a chevron keeps a direction at every zoom. Hidden until the dot is
+ * reached for: four permanent arrows around a card would be four claims about where its connections
+ * go, and there is no such claim to make.
+ */
+.we-graph__connect::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: calc(6px / var(--graph-zoom));
+  height: calc(6px / var(--graph-zoom));
+  border-top: calc(2px / var(--graph-zoom)) solid var(--we-role-on-accent);
+  border-right: calc(2px / var(--graph-zoom)) solid var(--we-role-on-accent);
+  opacity: 0;
+  transition: opacity 100ms ease-out;
+}
+
+.we-graph__connect:hover::after {
+  opacity: 1;
+}
+
+// A square bearing its top and right borders points north-east; each edge is that, turned to face
+// away from the card. The nudge keeps the chevron optically centred, since its mass sits on two
+// sides rather than in the middle.
+.we-graph__connect--n::after {
+  transform: rotate(-45deg) translate(calc(1px / var(--graph-zoom)), calc(1px / var(--graph-zoom)));
+}
+
+.we-graph__connect--e::after {
+  transform: rotate(45deg) translate(calc(-1px / var(--graph-zoom)), calc(1px / var(--graph-zoom)));
+}
+
+.we-graph__connect--s::after {
+  transform: rotate(135deg) translate(calc(-1px / var(--graph-zoom)), calc(-1px / var(--graph-zoom)));
+}
+
+.we-graph__connect--w::after {
+  transform: rotate(-135deg) translate(calc(1px / var(--graph-zoom)), calc(-1px / var(--graph-zoom)));
+}
+
+// Off the edge rather than on it: the edges and corners of the box are already grab areas for
+// resizing, and two affordances sharing a pixel is a coin toss every time somebody reaches for one.
+.we-graph__connect--n {
+  left: 0;
+  top: calc((var(--half-h) + var(--reach)) * -1);
+}
+
+.we-graph__connect--s {
+  left: 0;
+  top: calc(var(--half-h) + var(--reach));
+}
+
+.we-graph__connect--w {
+  left: calc((var(--half-w) + var(--reach)) * -1);
+  top: 0;
+}
+
+.we-graph__connect--e {
+  left: calc(var(--half-w) + var(--reach));
+  top: 0;
+}

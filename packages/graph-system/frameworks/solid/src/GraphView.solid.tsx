@@ -708,6 +708,82 @@ export function GraphView(props: GraphViewProps) {
    * `grip` is which way that handle pulls: `-1`, `0` or `1` per axis, so a corner moves both and an
    * edge moves one. Zero on an axis is what makes an edge handle leave the other dimension alone.
    */
+  /**
+   * The four edges a connection can be drawn from, as the DOM knows them.
+   *
+   * Midpoints rather than corners, because the corners are the resize grips — an affordance for
+   * "make this bigger" and one for "join this to something" sharing a pixel is a coin toss every
+   * time somebody reaches for either.
+   */
+  const CONNECT_EDGES = ['n', 'e', 's', 'w'] as const;
+
+  /**
+   * Drag a connection out of one edge of a card.
+   *
+   * A DOM handle rather than the `connect-nodes` behaviour, and the difference is the whole reason
+   * this exists. That behaviour claims a press *anywhere on a node*, so it has to be armed — a mode
+   * switch somebody turns on to connect and off to go back to moving cards, which is a thing to
+   * remember and a thing to forget. A grab area that only exists on the edge of a selected card
+   * needs no mode: the gesture is unambiguous because the target is.
+   *
+   * Everything after the press is the same machinery the behaviour uses, reached through
+   * `behaviourContext` exactly as the resize handles reach `pin`: the same preview line, the same
+   * world-space hit test, and the same `edgeCreate` event — so a connection drawn this way is
+   * indistinguishable downstream from one drawn any other, and a template needs no second handler.
+   */
+  function beginConnect(event: PointerEvent, entry: { node: GraphNode }) {
+    // Never reaches the canvas dispatcher: the node under the handle is the node being connected
+    // *from*, so a press that fell through would also start dragging it across the board.
+    event.stopPropagation();
+    event.preventDefault();
+    const handle = event.currentTarget as HTMLElement;
+    handle.setPointerCapture?.(event.pointerId);
+    const ctx = engine.behaviourContext();
+    const source = entry.node.id;
+
+    // Surface-relative, like `toInput` — the canvas sits inside a template with panels and headers,
+    // and page coordinates would put every hit test out by however much chrome precedes it.
+    const at = (moved: PointerEvent) => {
+      const box = surface?.getBoundingClientRect();
+      return { x: moved.clientX - (box?.left ?? 0), y: moved.clientY - (box?.top ?? 0) };
+    };
+
+    const move = (moved: PointerEvent) => {
+      moved.stopPropagation();
+      // The same guard the behaviour keeps: a dropped pointer-up would otherwise leave a line
+      // following the cursor around the canvas with no way to put it down.
+      if (moved.buttons === 0) {
+        ctx.drawConnection(null);
+        return;
+      }
+      ctx.drawConnection(source, ctx.toWorld(at(moved)));
+    };
+
+    const end = (ended: PointerEvent) => {
+      ended.stopPropagation();
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', end);
+      handle.removeEventListener('pointercancel', end);
+      const [target] = ctx.hitTest(ctx.toWorld(at(ended)));
+      ctx.drawConnection(null);
+      /*
+        A release on empty canvas is an abandoned gesture rather than a connection to nothing, and a
+        node cannot be joined to itself. Both end quietly — the line goes and nothing is emitted, so
+        no dialog opens about a connection nobody made.
+      */
+      if (!target || target === source) return;
+      ctx.emit({
+        type: 'edgeCreate',
+        source: { id: source, kind: 'entity', type: '' },
+        target: { id: target, kind: 'entity', type: '' },
+      });
+    };
+
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', end);
+    handle.addEventListener('pointercancel', end);
+  }
+
   function beginResize(
     event: PointerEvent,
     entry: { node: GraphNode; at: { x: number; y: number }; visual: { width?: number; height?: number } },
@@ -1108,6 +1184,29 @@ export function GraphView(props: GraphViewProps) {
                 once, because that is the point: a suggestion gets a tick and a cross, everything
                 else gets whatever the interface offers for an ordinary card.
               */}
+              {/*
+                A dot off each edge of a selected card: press one and drag to connect.
+
+                Only where the template is listening, like the resize handles — a gesture that ends
+                in nothing is worse than an affordance that was never offered. Only on the selection,
+                for the same reason as those: dots on every card would ring the whole board with
+                furniture over the content it is there to show, and selecting first is how you say
+                which card you mean anyway.
+
+                Off the edge rather than on it, so they do not sit on the resize strips: the corners
+                and edges of the box are already a grab area for changing its size.
+              */}
+              <Show when={props.onEdgeCreate && entry.selected && entry.visual.shape === 'card'}>
+                <For each={CONNECT_EDGES}>
+                  {(edge) => (
+                    <div
+                      class={`we-graph__connect we-graph__connect--${edge}`}
+                      title="Drag to connect"
+                      onPointerDown={(event) => beginConnect(event, entry)}
+                    />
+                  )}
+                </For>
+              </Show>
               <Show when={entry.selected && actionsFor(entry.node).length > 0}>
                 <div class="we-graph__actions">
                   <For each={actionsFor(entry.node)}>
