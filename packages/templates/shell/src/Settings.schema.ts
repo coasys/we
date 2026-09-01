@@ -518,9 +518,11 @@ function moduleRow(control: SchemaNode): SchemaNode {
  * from the declarations rather than written out, so a module that adds a setting appears here with
  * nothing to register; a deployment whose modules declare none renders no section at all.
  *
- * A `restrict` setting can only be refused from here, never granted, which is what the disabled
- * control says when something less specific has already refused it. Explaining that is the whole
- * job of the sentence under the label: a switch that takes a press and springs back reads as broken.
+ * One control per row rather than the pair space settings shows, because there is no second audience
+ * here: this is what you want everywhere, and a community's answer about its own space does not
+ * overrule it — see `BINDING` in `moduleSettings.ts`. The only thing that can take the decision away
+ * is the deployment, which is what the disabled control says. Explaining that is the whole job of the
+ * sentence under the label: a switch that takes a press and springs back reads as broken.
  */
 const agentModuleSettingsSection: SchemaNode = {
   type: '$if',
@@ -577,7 +579,7 @@ const agentModuleSettingsSection: SchemaNode = {
                       props: { variant: 'footnote', color: 'text-faint' },
                       children: [
                         {
-                          $: "setting.locked ? 'Switched off somewhere more specific, so this cannot turn it back on.' : (setting.description ?? '')",
+                          $: "setting.locked ? 'Set by this deployment, so it cannot be changed here.' : (setting.description ?? '')",
                         },
                       ],
                     },

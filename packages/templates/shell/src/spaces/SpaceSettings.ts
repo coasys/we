@@ -733,6 +733,56 @@ const modulesSection: SchemaNode = {
 };
 
 /**
+ * One capability setting's control, for one level.
+ *
+ * Written once and used for both columns, because the two differ only in what they read and what
+ * they write — and because the personal column used to render a `we-switch` whatever the setting's
+ * type was, which would have bound a select's string to a checkbox the moment anything but a boolean
+ * was declared.
+ */
+function settingControl(options: {
+  value: SchemaProp;
+  disabled: SchemaProp;
+  action: string;
+  args: SchemaProp[];
+}): SchemaNode {
+  const { value, disabled, action, args } = options;
+  // A bare `event.detail`, never wrapped: an operator object around it would be evaluated at render
+  // time, before the event exists. The same rule as the module switches above.
+  const write = { $action: action, args: [...args, { $: 'event.detail' }] };
+  return {
+    type: '$if',
+    props: {
+      condition: { $: "setting.type == 'boolean'" },
+      then: { type: 'we-switch', props: { size: 'sm', checked: value, disabled, onChange: write } },
+      else: {
+        type: '$if',
+        props: {
+          condition: { $: "setting.type == 'enum'" },
+          then: {
+            type: 'we-select',
+            props: { size: 'sm', options: { $: 'setting.options' }, value, disabled, onChange: write },
+          },
+          else: { type: 'we-input', props: { size: 'sm', value, disabled, onInput: write } },
+        },
+      },
+    },
+  };
+}
+
+/** A control under the word saying who it answers for — the shape the module rows above use. */
+function settingColumn(label: string, control: SchemaNode): SchemaNode {
+  return {
+    type: 'Column',
+    props: { gap: '100', ax: 'center' },
+    children: [{ type: 'we-text', props: { variant: 'footnote', color: 'text-faint' }, children: [label] }, control],
+  };
+}
+
+/** This agent's own answer to the setting the row is about, or nothing where they have no say. */
+const MINE = 'find(spaceStore.myModuleSettings, { group: setting.group, key: setting.key })';
+
+/**
  * What each capability lets this space decide — rendered from what the modules declare.
  *
  * Nothing here names a setting. The rows come from `spaceStore.spaceModuleSettings`, which is built
@@ -740,11 +790,15 @@ const modulesSection: SchemaNode = {
  * with nothing to register anywhere — the step whose omission is otherwise silent, and the same
  * trick `recordStore.displays` plays for a record's own form.
  *
- * Two things the row has to say that a plain switch cannot. **Whether this level has an opinion at
- * all**, since silence is not `false` and a reset has to be able to restore it — hence the
- * `Use default` beside a row that has been set. And **whether something less specific has forced the
- * value**: a `restrict` setting an agent has refused for themselves cannot be switched back on here,
- * and a control that took the press and sprang back would read as broken rather than as a rule.
+ * Two answers per row where both apply, under `For me` and `For everyone`, exactly as the module
+ * list above does — the labels are what make a pair of switches legible as a pair rather than as two
+ * unexplained controls.
+ *
+ * Two things a row has to say that a plain switch cannot. **Whether this level has an opinion at
+ * all**, since silence is not `false` and a reset has to be able to restore it — hence `Use default`
+ * beside a row that has been set. And **whether a level it answers to has already refused**: a
+ * community that has switched recording off cannot be overruled from the personal column, and a
+ * control that took the press and sprang back would read as broken rather than as a rule.
  */
 const moduleSettingsSection: SchemaNode = {
   type: '$if',
@@ -754,13 +808,6 @@ const moduleSettingsSection: SchemaNode = {
       type: 'Column',
       props: { gap: '300', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
       children: [
-        {
-          type: 'we-text',
-          props: { variant: 'footnote', color: 'text-faint' },
-          children: [
-            'Two answers per row where both apply: yours here, then the community’s. Neither can switch on what the other has switched off.',
-          ],
-        },
         {
           type: '$each',
           props: { items: { $: 'spaceStore.spaceModuleSettings' }, as: 'setting' },
@@ -778,11 +825,7 @@ const moduleSettingsSection: SchemaNode = {
                       props: { gap: '200', ay: 'center', wrap: true },
                       children: [
                         { type: 'we-text', props: { variant: 'label' }, children: [{ $: 'setting.label' }] },
-                        {
-                          type: 'we-badge',
-                          props: { size: 'xs' },
-                          children: [{ $: 'setting.groupLabel' }],
-                        },
+                        { type: 'we-badge', props: { size: 'xs' }, children: [{ $: 'setting.groupLabel' }] },
                       ],
                     },
                     {
@@ -791,12 +834,12 @@ const moduleSettingsSection: SchemaNode = {
                       children: [
                         {
                           /*
-                            The reason, or — where a stricter level has taken the decision away —
-                            what took it. Saying nothing there leaves a disabled control with no
-                            account of itself, which is the failure this whole row shape exists to
-                            avoid.
+                            The reason, or — where a level this space answers to has taken the
+                            decision away — what took it. Saying nothing there leaves a disabled
+                            control with no account of itself, which is the failure the whole row
+                            shape exists to avoid.
                           */
-                          $: "setting.locked ? 'Switched off for you already, so this space cannot turn it back on.' : (setting.description ?? '')",
+                          $: `setting.locked ? 'Set by this deployment, so it cannot be changed here.' : (${MINE}.locked ? 'Switched off for everyone in this space, so you cannot turn it on for yourself.' : (setting.description ?? ''))`,
                         },
                       ],
                     },
@@ -806,7 +849,7 @@ const moduleSettingsSection: SchemaNode = {
                   type: '$if',
                   props: {
                     // Something to undo only where this level itself has spoken — a value inherited
-                    // from the deployment or forced from elsewhere is not this screen's to reset.
+                    // from the deployment is not this screen's to reset.
                     condition: { $: 'setting.set && space.canAdminister' },
                     then: {
                       type: 'we-button',
@@ -823,91 +866,40 @@ const moduleSettingsSection: SchemaNode = {
                     },
                   },
                 },
-                /*
-                  Mine, beside the community's — the two-answers-per-row shape the module list uses,
-                  and for the same reason: they are answers to different questions about one thing,
-                  and two rows with the same label reads as a duplicate rather than as a pair.
-
-                  Found rather than iterated, because the two lists are filtered by level and a row
-                  exists in each only if that level may decide it. A setting the community owns alone
-                  simply has nothing here.
-                */
                 {
-                  type: '$if',
-                  props: {
-                    condition: {
-                      $: 'find(spaceStore.myModuleSettings, { group: setting.group, key: setting.key })',
-                    },
-                    then: {
-                      type: 'we-switch',
-                      props: {
-                        size: 'sm',
-                        title: 'Just for you, in this space',
-                        checked: {
-                          $: 'find(spaceStore.myModuleSettings, { group: setting.group, key: setting.key }).value',
-                        },
-                        disabled: {
-                          $: 'find(spaceStore.myModuleSettings, { group: setting.group, key: setting.key }).locked',
-                        },
-                        onChange: {
-                          $action: 'spaceStore.setMyModuleSetting',
-                          args: [{ $: 'setting.group' }, { $: 'setting.key' }, { $: 'event.detail' }],
-                        },
-                      },
-                    },
-                  },
-                },
-                {
-                  type: '$if',
-                  props: {
-                    condition: { $: "setting.type == 'boolean'" },
-                    then: {
-                      type: 'we-switch',
-                      props: {
-                        size: 'sm',
-                        title: 'For everyone in this space',
-                        checked: { $: 'setting.value' },
-                        disabled: { $: '!space.canAdminister || setting.locked' },
-                        // Bare `event.detail` — an operator around it would resolve at render time,
-                        // before the event exists. Same reason as the module switches above.
-                        onChange: {
-                          $action: 'spaceStore.setSpaceModuleSetting',
-                          args: [{ $: 'setting.group' }, { $: 'setting.key' }, { $: 'event.detail' }],
-                        },
-                      },
-                    },
-                    else: {
+                  type: 'Row',
+                  props: { gap: '400', ay: 'center', flexShrink: '0' },
+                  children: [
+                    {
+                      /*
+                        Mine, and only where this setting is mine to answer. The two lists are
+                        filtered by level, so a setting the community owns alone has nothing here
+                        rather than a control that does nothing.
+                      */
                       type: '$if',
                       props: {
-                        condition: { $: "setting.type == 'enum'" },
-                        then: {
-                          type: 'we-select',
-                          props: {
-                            size: 'sm',
-                            options: { $: 'setting.options' },
-                            value: { $: 'setting.value' },
-                            disabled: { $: '!space.canAdminister || setting.locked' },
-                            onChange: {
-                              $action: 'spaceStore.setSpaceModuleSetting',
-                              args: [{ $: 'setting.group' }, { $: 'setting.key' }, { $: 'event.detail' }],
-                            },
-                          },
-                        },
-                        else: {
-                          type: 'we-input',
-                          props: {
-                            size: 'sm',
-                            value: { $: 'setting.value' },
-                            disabled: { $: '!space.canAdminister || setting.locked' },
-                            onInput: {
-                              $action: 'spaceStore.setSpaceModuleSetting',
-                              args: [{ $: 'setting.group' }, { $: 'setting.key' }, { $: 'event.detail' }],
-                            },
-                          },
-                        },
+                        condition: { $: MINE },
+                        then: settingColumn(
+                          'For me',
+                          settingControl({
+                            value: { $: `${MINE}.value` },
+                            disabled: { $: `${MINE}.locked` },
+                            action: 'spaceStore.setMyModuleSetting',
+                            args: [{ $: 'setting.group' }, { $: 'setting.key' }],
+                          }),
+                        ),
                       },
                     },
-                  },
+                    settingColumn(
+                      'For everyone',
+                      settingControl({
+                        value: { $: 'setting.value' },
+                        disabled: { $: '!space.canAdminister || setting.locked' },
+                        action: 'spaceStore.setSpaceModuleSetting',
+                        args: [{ $: 'setting.group' }, { $: 'setting.key' }],
+                      }),
+                    ),
+                  ],
                 },
               ],
             },
