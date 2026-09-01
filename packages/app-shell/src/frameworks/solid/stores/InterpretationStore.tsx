@@ -433,15 +433,22 @@ export function InterpretationStoreProvider(props: ParentProps) {
       */
       interpretationDetailShared: () => shareDetail(),
       /*
-        The community's decision about automatic extraction, published for the same reason the sharing
-        one is: a module has to be able to *react* to it.
+        Whether automatic extraction is on, published for the same reason the sharing one is: a module
+        has to be able to *react* to it.
 
         Its only reader used to be a throw inside `datasetStore.watchCollection`, which meant switching
         it on mid-call changed nothing — nothing re-ran the registration, so a call kept reporting that
         auto-extraction was unavailable until everybody left and rejoined. Published here, a module's
         watch effect depends on it and follows the toggle.
+
+        Asked about a *call* now, with the space's answer underneath it. Participants can stop a
+        standing pass on this conversation without the community changing its mind about every future
+        one — and without needing whoever administers the space to be in the room, which was the only
+        way to stop one before. Called with no id, it answers for the space, which is what a surface
+        asking "does this space do this at all" wants.
       */
-      autoInterpretEnabled: () => spaceStore.autoInterpret(),
+      autoInterpretEnabled: (collectionId?: string) =>
+        collectionId ? spaceStore.autoInterpretForCall(collectionId) : spaceStore.autoInterpret(),
     }),
   );
 

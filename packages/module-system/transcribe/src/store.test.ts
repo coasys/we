@@ -1484,3 +1484,55 @@ describe('stopping a recording', () => {
     expect(h.store.enabled()).toBe(true);
   });
 });
+
+/**
+ * Whether a call is extracted as it happens, decided by the people in it.
+ *
+ * The space has a standing answer and an administrator sets it. That was the only control, so
+ * stopping a pass on a conversation that had wandered somewhere nobody wanted records of meant
+ * finding whoever owns the space — or leaving the call. This is the same layer the target chips
+ * write at: a group decision beside the call, leaving the community's default alone.
+ */
+describe('turning automatic extraction off for one call', () => {
+  function withAuto(peers: Peer[], auto: Record<string, boolean>) {
+    const set: { collection: string; on: boolean }[] = [];
+    const h = harness(peers, {
+      interpretation: {
+        available: () => true,
+        autoEnabled: (collection?: string) => (collection ? (auto[collection] ?? true) : true),
+        setAuto: async (collection: string, on: boolean) => {
+          set.push({ collection, on });
+          auto[collection] = on;
+        },
+      },
+    });
+    return { h, set };
+  }
+
+  it('asks about the call, not the space', () => {
+    // The record exists from the moment the call starts, so this is answerable before anybody has
+    // spoken — which is when somebody deciding not to record a conversation would say so.
+    const { h } = withAuto([peer(ME, { type: 'call', id: CALL, record: RECORD })], { [RECORD]: false });
+
+    expect(h.store.autoExtract()).toBe(false);
+  });
+
+  it('writes the decision against that call', async () => {
+    const { h, set } = withAuto([peer(ME, { type: 'call', id: CALL, record: RECORD })], { [RECORD]: true });
+
+    await h.store.toggleAutoExtract();
+
+    expect(set).toEqual([{ collection: RECORD, on: false }]);
+    expect(h.store.autoExtract()).toBe(false);
+  });
+
+  it('does nothing where there is no call to record it against', async () => {
+    // The same quiet refusal `toggleExtractionTarget` makes, and the same surface answers for both:
+    // `canChooseTargets` is about the same record.
+    const { h, set } = withAuto([], {});
+
+    await h.store.toggleAutoExtract();
+
+    expect(set).toEqual([]);
+  });
+});

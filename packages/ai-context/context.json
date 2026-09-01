@@ -4053,6 +4053,12 @@
           "type": "string",
           "predicate": "we://extraction_targets",
           "required": false
+        },
+        {
+          "name": "auto",
+          "type": "string",
+          "predicate": "we://auto_interpret",
+          "required": false
         }
       ],
       "relations": []
@@ -6794,6 +6800,8 @@
         "setSpaceModuleSetting",
         "setMyModuleSetting",
         "setAgentModuleSetting",
+        "autoInterpretForCall",
+        "setAutoInterpretForCall",
         "setAutoInterpret",
         "setShareExtractionDetail",
         "setExtractionTarget",

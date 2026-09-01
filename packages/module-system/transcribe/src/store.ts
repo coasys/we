@@ -1139,8 +1139,8 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * predates this reads as *on*, which keeps its behaviour exactly as it was: the host's own gate
    * still refuses the registration, and the panel still reports it.
    */
-  const autoEnabled = (): boolean =>
-    typeof interpretation?.autoEnabled === 'function' ? interpretation.autoEnabled() : true;
+  const autoEnabled = (collection?: string): boolean =>
+    typeof interpretation?.autoEnabled === 'function' ? interpretation.autoEnabled(collection) : true;
 
   async function syncWatch(next: string | null): Promise<void> {
     // Keyed on what this call currently extracts, so a group changing it mid-call moves the watch.
@@ -1197,13 +1197,13 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       }
     }
 
-    if (next && !autoEnabled()) {
+    if (next && !autoEnabled(next)) {
       // Not a failure and not a capability — a decision, stated as one. The host would refuse the
       // registration anyway; saying it here is what makes the sentence on screen the true one, and
       // what stops a pointless call to a backend that is going to throw. The unwatch above has
       // already run, so switching the setting off mid-call stops the watch rather than leaving it
       // spending an LLM call per pass for a community that just said stop.
-      setWatchProblem('Automatic extraction is off for this space.');
+      setWatchProblem('Automatic extraction is off for this call.');
       return;
     }
 
@@ -1273,7 +1273,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       Read here, both directions land while the call is running, which is the only behaviour anybody
       would predict from a switch.
     */
-    void autoEnabled();
+    void autoEnabled(live);
     void syncWatch(live);
   });
 
@@ -1637,6 +1637,34 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
         await interpretation.setTarget(live, entity, !current?.selected);
       } catch (error) {
         console.warn('[transcribe] could not change what this call extracts', error);
+      }
+    },
+    /**
+     * Whether this call is extracted as it happens — its participants' answer, else the space's.
+     *
+     * What a switch in the extraction panel binds to. Absent a call it answers for the space, which
+     * is the honest reading of "does this happen here" when there is no conversation to be about.
+     */
+    autoExtract: () => autoEnabled(collectionId() ?? myCall()?.recordId ?? undefined),
+    /**
+     * Turn it on or off for **this call**, for everyone in it.
+     *
+     * A group decision beside the call, like `toggleExtractionTarget` — the standing watch is one
+     * registration the whole neighbourhood shares. It leaves the space's own default alone, so a
+     * conversation that has wandered somewhere nobody wants records of can be stopped without the
+     * community changing its mind about every future call.
+     *
+     * Refused quietly where there is no call to record it against, in the same shape and for the
+     * same reason as `toggleExtractionTarget` — pair it with `canChooseTargets`, which answers the
+     * same question about the same record.
+     */
+    toggleAutoExtract: async () => {
+      const live = collectionId() ?? myCall()?.recordId ?? '';
+      if (!live || typeof interpretation?.setAuto !== 'function') return;
+      try {
+        await interpretation.setAuto(live, !autoEnabled(live));
+      } catch (error) {
+        console.warn('[transcribe] could not change whether this call extracts as it happens', error);
       }
     },
     /** True when the backend could interpret but there is no transcript yet — a waiting state. */

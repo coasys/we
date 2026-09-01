@@ -661,6 +661,15 @@ export interface SpaceStore {
   setAgentModuleSetting: (group: string, key: string, value?: SettingValue) => Promise<void>;
   /** Whether this space has calls interpreted as they happen. A community decision; defaults off. */
   autoInterpret: Accessor<boolean>;
+  /**
+   * Whether one call is extracted as it happens: its participants' answer, else the space's.
+   *
+   * The counterpart of `extractionTargetsForCall`, and the same three states behind two — a call
+   * with no record of its own has not decided, and follows the space.
+   */
+  autoInterpretForCall: (collectionId: string) => boolean;
+  /** Turn it on or off for one call, for everyone in it. A participant's decision, not an admin's. */
+  setAutoInterpretForCall: (collectionId: string, on: boolean) => Promise<void>;
   setAutoInterpret: (enabled: boolean, spaceUuid?: string) => Promise<void>;
   /**
    * Whether extraction passes in this space broadcast their prompt and response to every member.
@@ -2293,6 +2302,48 @@ export function SpaceStoreProvider(props: ParentProps) {
    * with no record has not been touched and answers the space's list — which is exactly the
    * distinction the record exists to make, and why this cannot be a set of links.
    */
+  /**
+   * Whether one call is extracted as it happens: its own answer if it has one, else the space's.
+   *
+   * The same shape as `extractionTargetsForCall` and the same absent-means-undecided rule — but
+   * stored as `'on'` / `'off'` / `''` rather than a boolean, because a boolean has two states and
+   * this needs three. A record is created the moment somebody narrows the *targets*, so an untouched
+   * auto flag on it must not read as a refusal of the space's default.
+   *
+   * A participant's decision, unlike `Space.autoInterpret`, which administers the space. Stopping a
+   * standing pass mid-meeting is about this conversation, and needing whoever owns the space to be
+   * in the room for it makes the honest response "leave the call".
+   */
+  const autoInterpretForCall = (collectionId: string): boolean => {
+    const own = callExtractions().find((row) => row.callId === collectionId)?.auto;
+    if (own === 'on') return true;
+    if (own === 'off') return false;
+    return autoInterpret();
+  };
+
+  /**
+   * Turn automatic extraction on or off for one call, for everyone in it.
+   *
+   * Writes the decision rather than a diff, and writes it even when it agrees with the space — the
+   * point of the record is that it *has* decided, so a space that later changes its default does not
+   * silently change this call's mind mid-conversation.
+   */
+  async function setAutoInterpretForCall(collectionId: string, on: boolean): Promise<void> {
+    const dataset = datasetStore.currentDataset();
+    if (!dataset || !collectionId) return;
+    const auto = on ? 'on' : 'off';
+    const existing = callExtractions().find((row) => row.callId === collectionId);
+    try {
+      if (existing) await CallExtraction.update(dataset.handle, existing.id, { auto });
+      else await CallExtraction.create(dataset.handle, { callId: collectionId, auto });
+      setCallExtractions(await CallExtraction.findAll(dataset.handle));
+    } catch (error) {
+      console.error('SpaceStore: could not save whether this call extracts as it happens', error);
+      toastService.error('Could not save whether this call extracts as it happens.');
+      throw error;
+    }
+  }
+
   const extractionTargetsForCall = (collectionId: string): string[] => {
     const candidates = shapeStore.extractionCandidates();
     const own = parseEntityList(callExtractions().find((row) => row.callId === collectionId)?.entities);
@@ -2336,6 +2387,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     datasetStore.provideCallExtraction({
       forCall: extractionTargetsForCall,
       setForCall: setCallExtractionTarget,
+      autoForCall: autoInterpretForCall,
+      setAutoForCall: setAutoInterpretForCall,
     }),
   );
   /*
@@ -3597,6 +3650,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     setSpaceDefaultTheme,
     setModuleEnabled,
     autoInterpret,
+    autoInterpretForCall,
+    setAutoInterpretForCall,
     spaceModuleSettings,
     myModuleSettings,
     agentModuleSettings,

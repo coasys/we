@@ -1486,6 +1486,7 @@ export const contextData: ContextData = {
       fields: [
         { name: 'callId', type: 'string', predicate: 'we://call_id', required: false },
         { name: 'entities', type: 'string', predicate: 'we://extraction_targets', required: false },
+        { name: 'auto', type: 'string', predicate: 'we://auto_interpret', required: false },
       ],
       relations: [],
     },
@@ -2715,6 +2716,8 @@ export const contextData: ContextData = {
         'setSpaceModuleSetting',
         'setMyModuleSetting',
         'setAgentModuleSetting',
+        'autoInterpretForCall',
+        'setAutoInterpretForCall',
         'setAutoInterpret',
         'setShareExtractionDetail',
         'setExtractionTarget',

@@ -1003,6 +1003,10 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(nodeId: string, spaceUuid?): marks a node read as of now, so it leaves unreadNodeIds. Silent on failure — a lost marker is a stale dot, not an error',
         setAutoInterpret:
           '(enabled: boolean, spaceUuid?): turns automatic call interpretation on or off for a space. Omit spaceUuid for the space on screen',
+        autoInterpretForCall:
+          "(collectionId): whether ONE CALL is extracted as it happens — its participants' answer if they gave one, else the space's. A function rather than a value because the answer is per call, like canAdministerSpace",
+        setAutoInterpretForCall:
+          "(collectionId, on) => turns automatic extraction on or off for ONE CALL, for everyone in it. A participant's decision, unlike setAutoInterpret, which administers the space — and it leaves the space's default alone. Does not stop a pass already running: those tokens are spent",
         setSpaceModuleSetting:
           "(group: string, key: string, value?, spaceUuid?): sets one of a capability's settings for everyone in a space — `group` is the module id and `key` the setting's key, both off the row. **Omit `value` to clear it**, which returns the level to having no opinion: a stored value that happens to equal the default goes on overruling everything less specific while its control reads as untouched. Omit spaceUuid for the space on screen",
         setMyModuleSetting:

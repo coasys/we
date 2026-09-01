@@ -1951,6 +1951,7 @@ CallExtraction extends WeNode:
   Fields:
   - callId: string [we://call_id]
   - entities: string [we://extraction_targets]
+  - auto: string [we://auto_interpret]
 
 ChatMessage extends WeNode:
   Fields:
@@ -2710,6 +2711,8 @@ SpaceStore:
   - setSpaceModuleSetting(group: string, key: string, value?, spaceUuid?): sets one of a capability's settings for everyone in a space — `group` is the module id and `key` the setting's key, both off the row. **Omit `value` to clear it**, which returns the level to having no opinion: a stored value that happens to equal the default goes on overruling everything less specific while its control reads as untouched. Omit spaceUuid for the space on screen
   - setMyModuleSetting(group: string, key: string, value?, spaceUuid?): the same, for this agent in one space. Private — written to the root dataset, never to the space. Omitting `value` clears it
   - setAgentModuleSetting(group: string, key: string, value?): the same, for this agent in every space. Private, and global, so there is no space to name. Omitting `value` clears it
+  - autoInterpretForCall(collectionId): whether ONE CALL is extracted as it happens — its participants' answer if they gave one, else the space's. A function rather than a value because the answer is per call, like canAdministerSpace
+  - setAutoInterpretForCall(collectionId, on) => turns automatic extraction on or off for ONE CALL, for everyone in it. A participant's decision, unlike setAutoInterpret, which administers the space — and it leaves the space's default alone. Does not stop a pass already running: those tokens are spent
   - setAutoInterpret(enabled: boolean, spaceUuid?): turns automatic call interpretation on or off for a space. Omit spaceUuid for the space on screen
   - setShareExtractionDetail(enabled: boolean, spaceUuid?): turns broadcasting of extraction prompts and responses on or off for a space. Omit spaceUuid for the space on screen
   - setExtractionTarget(entity: string, on: boolean, spaceUuid?): adds or removes one model from what this space's calls start out extracting. Writes the resolved list, so the first toggle also pins whatever was on by fallback. The community's decision; a call's participants override it per call

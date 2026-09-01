@@ -110,7 +110,16 @@ export interface ModuleHostServices {
    * conflating them put the wrong sentence on screen: a space with the setting off reported that
    * this node could not auto-extract, which is neither true nor something anybody can act on.
    */
-  autoInterpretEnabled?: () => boolean;
+  /**
+   * Whether a call is extracted as it happens — its participants' answer, else the space's.
+   *
+   * Takes a collection because the answer is per call: a community's standing decision is the
+   * default, and the people in one conversation may turn it off for that conversation. Omit it to
+   * ask about the space itself.
+   */
+  autoInterpretEnabled?: (collectionId?: string) => boolean;
+  /** Turn it on or off for one call, for everyone in it. */
+  setAutoInterpret?: (collectionId: string, on: boolean) => Promise<void>;
   /**
    * Whether this space shares the model exchange between peers — the space setting, reactive.
    *
@@ -267,7 +276,12 @@ export function createModuleStoreDeps(framework: {
       // The community's decision, read through on every call so a module's standing watch follows a
       // mid-call toggle. Absent reads as off, matching the gate in DatasetStore — the right way
       // round for something that spends somebody's LLM budget.
-      autoEnabled: () => services.autoInterpretEnabled?.() ?? false,
+      autoEnabled: (collectionId?: string) => services.autoInterpretEnabled?.(collectionId) ?? false,
+      setAuto: async (collectionId: string, on: boolean) => {
+        const set = services.setAutoInterpret;
+        if (!set) throw new Error('interpretation: this host cannot record a call’s extraction settings');
+        await set(collectionId, on);
+      },
       // Read through on every call rather than captured, like every accessor here: a module store
       // outlives a space switch, and a captured list would offer the previous space's models.
       targets: (collectionId) => services.extractionTargets?.(collectionId) ?? [],

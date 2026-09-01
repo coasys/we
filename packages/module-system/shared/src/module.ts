@@ -1064,8 +1064,31 @@ export interface ModuleInterpretationAccess {
    * standing watch has to follow the setting while a call is running. Toggling it used to change
    * nothing until everybody left the call and rejoined, because the only thing that read it was a
    * throw inside `watchCollection`, and nothing re-ran that.
+   *
+   * Takes a collection, because the answer is per call. The community's standing decision is the
+   * default and the people in one conversation may turn it off for that conversation — a design
+   * review that has wandered on to something nobody wants records of. Called with no id it answers
+   * for the space, which is what a surface asking "does this space do this at all" wants.
    */
-  autoEnabled: () => boolean;
+  autoEnabled: (collectionId?: string) => boolean;
+  /**
+   * Turn automatic extraction on or off for one call, for everyone in it.
+   *
+   * A **group** decision recorded beside the call, exactly as {@link setTarget} is and for the same
+   * reason: the standing watch is one registration the whole neighbourhood shares, so per-agent
+   * answers would have peers re-registering over each other in a loop.
+   *
+   * A participant's decision rather than an administrator's, which the space-wide setting is not.
+   * Stopping a standing pass mid-meeting is about this conversation, and needing whoever owns the
+   * space to be present for it makes the honest response "leave the call".
+   *
+   * Does not stop a pass already in flight — those tokens are spent, and killing the run loses what
+   * it found for no saving. It stops the next one.
+   *
+   * Rejects on a host that cannot record it, so a module can offer the affordance only where it
+   * means something rather than silently dropping a press.
+   */
+  setAuto: (collectionId: string, on: boolean) => Promise<void>;
   /**
    * What this call extracts, and what else it could — one row per model, ticked when it is on.
    *

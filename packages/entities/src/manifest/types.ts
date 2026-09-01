@@ -67,6 +67,7 @@ export interface CalloutBlockRecord extends WeNodeRecord {
 export interface CallExtractionRecord extends WeNodeRecord {
   callId: string;
   entities: string;
+  auto: string;
 }
 
 export interface ChatMessageRecord extends WeNodeRecord {

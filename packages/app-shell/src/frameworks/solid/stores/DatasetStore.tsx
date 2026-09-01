@@ -146,6 +146,9 @@ export interface DatasetStore {
   provideCallExtraction: (access: {
     forCall: (collectionId: string) => string[];
     setForCall: (collectionId: string, entity: string, on: boolean) => Promise<void>;
+    /** Whether *this call* is extracted as it happens — its own answer, else the space's. */
+    autoForCall: (collectionId: string) => boolean;
+    setAutoForCall: (collectionId: string, on: boolean) => Promise<void>;
   }) => () => void;
 }
 
@@ -218,6 +221,8 @@ export function DatasetStoreProvider(props: ParentProps) {
   const callExtraction = hostSlot<{
     forCall: (collectionId: string) => string[];
     setForCall: (collectionId: string, entity: string, on: boolean) => Promise<void>;
+    autoForCall: (collectionId: string) => boolean;
+    setAutoForCall: (collectionId: string, on: boolean) => Promise<void>;
   }>();
 
   /**
@@ -293,6 +298,11 @@ export function DatasetStoreProvider(props: ParentProps) {
           entity,
           selected: active.includes(entity),
         }));
+      },
+      setAutoInterpret: async (collectionId: string, on: boolean) => {
+        const extraction = callExtraction.get();
+        if (!extraction) throw new Error('interpretation: this host cannot record a call’s extraction settings');
+        await extraction.setAutoForCall(collectionId, on);
       },
       setExtractionTarget: async (collectionId: string, entity: string, on: boolean) => {
         const extraction = callExtraction.get();
@@ -381,7 +391,17 @@ export function DatasetStoreProvider(props: ParentProps) {
         // The community's decision, read through a gate SpaceStore supplies — this store sits below
         // it and cannot reach a Space. Absent (no gate provided yet, or no space) reads as off, which
         // is the right way round for something that spends somebody's LLM budget.
-        if (!autoInterpretGate.get()?.()) throw new Error('interpretation: automatic extraction is off for this space');
+        /*
+          Asked about *this call*, not about the space.
+
+          The space's switch is still the answer for a call whose participants have not decided —
+          `autoForCall` resolves that — but a call that has been turned off has to stay off, and a
+          gate that could only see the space would re-register the watch on the next tick. Falls back
+          to the space-wide gate where the call layer has not been wired, which keeps a host that
+          predates it behaving as it did.
+        */
+        const auto = callExtraction.get()?.autoForCall(collectionId) ?? autoInterpretGate.get()?.();
+        if (!auto) throw new Error('interpretation: automatic extraction is off for this call');
         const dataset = currentDataset();
         if (!dataset) throw new Error('interpretation: no dataset to interpret into');
 
