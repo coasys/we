@@ -8,6 +8,7 @@
 import type { ModuleDefinition } from '@we/module-shared';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { resolveParts } from '../src/shared/registries/moduleParts';
 import { moduleRegistry, moduleStores } from '../src/shared/registries/moduleRegistry';
 import { registerCoreSlots, slotRegistry } from '../src/shared/registries/slotRegistry';
 
@@ -615,6 +616,40 @@ describe('supplying a module panel’s contents', () => {
     moduleRegistry.register(named, host);
 
     expect(JSON.stringify(slotRegistry.get('dock:twin:extraction')?.node)).toContain('"dock":"extraction"');
+  });
+
+  it('composes its own chrome out of its own parts, expanded before it renders', () => {
+    /*
+      A module building its panel from its own published fragments is ordinary — the transcript panel
+      builds its feed from `transcriptLines`. Only a *template* placing a part expanded one, so a
+      module's own chrome reached the renderer with the marker intact and drew "Unknown component
+      $part" in a red box where each fragment should have been. Invisible in an interface that
+      supplies the body, which is why it showed up in the default template and not the workshop.
+    */
+    const withPart = {
+      id: 'twin',
+      name: 'Twin',
+      schemas: { row: { type: 'we-text', children: ['from the part'] } },
+      docks: [
+        {
+          edge: 'edgeA',
+          name: 'transcript',
+          node: { type: 'Column', children: [{ type: '$part', props: { id: 'twin.row' } }] },
+        },
+      ],
+      createStore: () => ({}),
+    } as unknown as ModuleDefinition;
+    moduleRegistry.register(withPart, host);
+
+    const rendered = JSON.stringify(
+      slotRegistry.nodes().map((node) => {
+        const expanded = resolveParts(node);
+        return Array.isArray(expanded) ? expanded : [expanded];
+      }),
+    );
+
+    expect(rendered).toContain('from the part');
+    expect(rendered).not.toContain('$part');
   });
 
   it('still renders the module’s own contents on the other side of the gate', () => {

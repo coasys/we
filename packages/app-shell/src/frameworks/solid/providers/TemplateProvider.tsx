@@ -1,6 +1,6 @@
 import { queryIRFlag } from '@shared/queryIRFlag';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
-import { resolvePartsInRoutes } from '@shared/registries/moduleParts';
+import { resolveParts, resolvePartsInRoutes } from '@shared/registries/moduleParts';
 import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry';
 import { onSlotRegistryChanged, slotRegistry } from '@shared/registries/slotRegistry';
 import { provideTemplateBag } from '@shared/registries/templateBag';
@@ -495,7 +495,24 @@ export default function TemplateProvider() {
     props: { styles: { display: 'contents' } },
     get children() {
       slotVersion();
-      return slotRegistry.nodes();
+      /*
+        `$part` expanded here as well as `$slot`, which the registry does on its way out.
+
+        A module composing its own chrome out of its own published parts is an ordinary thing to
+        write — the transcript panel builds its feed from `transcriptLines`, and the extraction panel
+        its chips from `extractionTargets` — and until now the only thing that expanded a part was a
+        *template* placing one. So the workshop, which supplies both panel bodies and renders them
+        through `TemplatePanelBody`, worked; the default template rendered the module's own panels
+        through this path and drew "Unknown component $part" in a red box where each fragment should
+        have been.
+
+        Not in the slot registry itself, which `moduleParts` already imports for the parts map —
+        putting it there makes a cycle out of two modules that currently only point one way.
+      */
+      return slotRegistry.nodes().flatMap((node) => {
+        const expanded = resolveParts(node);
+        return Array.isArray(expanded) ? expanded : [expanded];
+      });
     },
   };
 

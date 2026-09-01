@@ -799,16 +799,6 @@ export function ShellStoreProvider(props: ParentProps) {
     setClosedPanels({});
   });
 
-  /** A declaration by the dock id it resolves to, for the placement chain to consult. */
-  const declarationFor = createMemo(() => {
-    const byDock: Record<string, TemplatePanel> = {};
-    for (const panel of declaredPanels()) {
-      // A template either places somebody else's panel or supplies its own; the dock id differs.
-      byDock[panel.module ? `${panel.module}:0` : templatePanelDockId(panel.id)] = panel;
-    }
-    return byDock;
-  });
-
   /*
     A dependency on *registration itself*, so a store that arrives late is picked up.
 
@@ -818,6 +808,33 @@ export function ShellStoreProvider(props: ParentProps) {
   */
   const [dockRegistryVersion, setDockRegistryVersion] = createSignal(0);
   onCleanup(onDockRegistryChanged(() => setDockRegistryVersion((v) => v + 1)));
+
+  /**
+   * The dock a declaration is about, or null when it names one that is not there.
+   *
+   * One resolver, because there were two and they drifted the moment docks stopped being numbered:
+   * `panelSupplied` learned to read `dock` and this did not, so it went on looking for
+   * `<module>:0` — an id nothing has any more. The declarations still resolved to nothing, silently,
+   * and every panel a template had placed fell back to the module's own opening bid. The workshop's
+   * transcript and extraction moved from the left edge to the right and nothing said why.
+   */
+  const dockIdFor = (panel: TemplatePanel): string | null => {
+    if (!panel.module) return templatePanelDockId(panel.id);
+    if (panel.dock) return `${panel.module}:${panel.dock}`;
+    const docks = dockRegistry.ordered().filter((entry) => entry.moduleId === panel.module);
+    return docks.length === 1 ? docks[0].id : null;
+  };
+
+  /** A declaration by the dock id it resolves to, for the placement chain to consult. */
+  const declarationFor = createMemo(() => {
+    dockRegistryVersion();
+    const byDock: Record<string, TemplatePanel> = {};
+    for (const panel of declaredPanels()) {
+      const id = dockIdFor(panel);
+      if (id) byDock[id] = panel;
+    }
+    return byDock;
+  });
 
   /**
    * Whether a module's chrome renders here at all — injected, because only `SpaceStore` knows.
@@ -1870,18 +1887,16 @@ export function ShellStoreProvider(props: ParentProps) {
       const supplied: Record<string, boolean> = {};
       for (const panel of declaredPanels()) {
         if (!panel.module || !panel.node) continue;
-        const docks = dockRegistry.ordered().filter((entry) => entry.moduleId === panel.module);
-        // Named, so the entry says which of a module's panels it is supplying — the only answer once
-        // there is more than one, since supplying a transcript body into an extraction panel is a
-        // silent wrong answer rather than a visible failure.
-        if (panel.dock) {
-          const named = docks.find((entry) => entry.id === `${panel.module}:${panel.dock}`);
-          if (named) supplied[named.id] = true;
-          else warnUnknownDock(panel.module, panel.dock);
+        // The same resolver the placement chain uses — see `dockIdFor`. Two copies of this question
+        // is how the placements broke: one learned about named docks and the other did not.
+        const id = dockIdFor(panel);
+        if (id && dockRegistry.ordered().some((entry) => entry.id === id)) {
+          supplied[id] = true;
           continue;
         }
-        if (docks.length === 1) supplied[docks[0].id] = true;
-        else if (docks.length > 1) warnAmbiguousSupply(panel.module, docks.length);
+        if (panel.dock) warnUnknownDock(panel.module, panel.dock);
+        else
+          warnAmbiguousSupply(panel.module, dockRegistry.ordered().filter((e) => e.moduleId === panel.module).length);
       }
       return supplied;
     }),
