@@ -26,8 +26,32 @@ export default {
   directories: {
     output: 'dist-electron',
   },
+  /*
+    `files` governs what goes into app.asar, which serves the MAIN PROCESS ONLY. The renderer is
+    not in here: `extraResources` copies the Vite bundle to `resources/app/dist`, and main.js loads
+    it from `process.resourcesPath` (see `launcherDir`).
+
+    electron-builder additionally packs everything in `dependencies`, and that is where 311 MB of a
+    345 MB download came from — Cesium, three, leaflet and the @we packages, shipped twice over: once
+    compiled and tree-shaken into the 12 MB bundle that runs, and once as raw npm packages nothing
+    can reach. Only 0.2 MB of the asar was reachable from `electron/*.js`.
+
+    So the renderer's libraries live in `devDependencies`, which electron-builder never packs, and
+    `dependencies` holds exactly what the main process imports: electron-context-menu, express, uuid.
+    Adding a runtime `import` to electron/*.js therefore means moving that package back into
+    `dependencies` — otherwise it resolves in dev and is absent from the package.
+  */
   files: ['dist/**/*', 'electron/**/*'],
-  extraResources,
+  /*
+    `icon` above packages the .desktop entry and the hicolor theme; neither gives a *running window*
+    an icon, which on Linux comes from `_NET_WM_ICON` and so from BrowserWindow's own `icon` option.
+    That needs the file on disk at runtime, so it is copied in beside the executor and the renderer
+    bundle — see `windowIcon()` in electron/main.js, which reads it from `process.resourcesPath`.
+  */
+  extraResources: [...extraResources, { from: 'build/icon.png', to: 'icon.png' }],
+  // Without this the artifact is `WE-0.1.0.AppImage`, naming neither platform nor architecture —
+  // which stops being merely untidy the moment a second target sits beside it in a release.
+  artifactName: '${productName}-${version}-${os}-${arch}.${ext}',
   mac: {
     category: 'public.app-category.social-networking',
   },

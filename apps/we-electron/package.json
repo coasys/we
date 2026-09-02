@@ -25,18 +25,18 @@
   },
   "main": "electron/main.js",
   "dependencies": {
-    "@coasys/ad4m": "0.13.0-test-interpretation-2",
-    "@we/app-shell": "workspace:*",
     "electron-context-menu": "^4.1.1",
     "express": "^5.2.1",
-    "solid-js": "^1.9.15",
-    "uuid": "^14.0.2",
-    "@we/backend-ad4m": "workspace:*"
+    "uuid": "^14.0.2"
   },
   "devDependencies": {
+    "@coasys/ad4m": "0.13.0-test-interpretation-2",
     "@types/node": "^26.3.0",
+    "@we/app-shell": "workspace:*",
+    "@we/backend-ad4m": "workspace:*",
     "@we/cli": "workspace:*",
     "concurrently": "^10.0.5",
+    "solid-js": "^1.9.15",
     "electron": "^33.4.11",
     "electron-builder": "^26.15.3",
     "typescript": "^5.7.2",

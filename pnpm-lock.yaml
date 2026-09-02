@@ -227,31 +227,28 @@ importers:
 
   apps/we-electron:
     dependencies:
-      '@coasys/ad4m':
-        specifier: 0.13.0-test-interpretation-2
-        version: 0.13.0-test-interpretation-2
-      '@we/app-shell':
-        specifier: workspace:*
-        version: link:../../packages/app-shell
-      '@we/backend-ad4m':
-        specifier: workspace:*
-        version: link:../../packages/backend-system/ad4m
       electron-context-menu:
         specifier: ^4.1.1
         version: 4.1.2
       express:
         specifier: ^5.2.1
         version: 5.2.1
-      solid-js:
-        specifier: ^1.9.15
-        version: 1.9.15
       uuid:
         specifier: ^14.0.2
         version: 14.0.2
     devDependencies:
+      '@coasys/ad4m':
+        specifier: 0.13.0-test-interpretation-2
+        version: 0.13.0-test-interpretation-2
       '@types/node':
         specifier: ^26.3.0
         version: 26.3.0
+      '@we/app-shell':
+        specifier: workspace:*
+        version: link:../../packages/app-shell
+      '@we/backend-ad4m':
+        specifier: workspace:*
+        version: link:../../packages/backend-system/ad4m
       '@we/cli':
         specifier: workspace:*
         version: link:../../packages/cli
@@ -264,6 +261,9 @@ importers:
       electron-builder:
         specifier: ^26.15.3
         version: 26.15.3(electron-builder-squirrel-windows@25.1.8)
+      solid-js:
+        specifier: ^1.9.15
+        version: 1.9.15
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
