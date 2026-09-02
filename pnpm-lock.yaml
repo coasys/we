@@ -578,6 +578,9 @@ importers:
       '@we/backend-inmemory':
         specifier: workspace:*
         version: link:../backend-system/inmemory
+      '@we/brand':
+        specifier: workspace:*
+        version: link:../brand
       '@we/cli':
         specifier: workspace:*
         version: link:../cli

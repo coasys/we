@@ -187,14 +187,29 @@ function composeIcon(size = 1024): string {
 
 // ─── Emit ───────────────────────────────────────────────────────────────────────
 
+const APPS = ['we-web', 'we-electron', 'we-tauri'];
+
 /** Apps serve the mark from their own `public/`, because the sidebar names it by URL (`/we-text.svg`). */
-const WORDMARK_TARGETS = ['we-web', 'we-electron', 'we-tauri'].map((app) =>
-  join(REPO, 'apps', app, 'public', 'we-text.svg'),
-);
+const WORDMARK_TARGETS = APPS.map((app) => join(REPO, 'apps', app, 'public', 'we-text.svg'));
+
+/**
+ * A favicon per app, in `public/`, served at `/favicon.ico`.
+ *
+ * The one place a browser looks without being told, and the only location that works in both `vite
+ * dev` and a built bundle. It previously lived in `packages/app-shell/src/shared/assets/` and was
+ * referenced as `/src/assets/favicon.ico` — a path that resolves to the *app*, where no such
+ * directory exists — so every app had a broken favicon link and the file itself was read by nothing.
+ */
+const FAVICON_TARGETS = APPS.map((app) => join(REPO, 'apps', app, 'public', 'favicon.ico'));
 
 const TAURI_ICONS = join(REPO, 'apps', 'we-tauri', 'src-tauri', 'icons');
 const ELECTRON_ICON = join(REPO, 'apps', 'we-electron', 'build', 'icon.png');
-const FAVICON = join(REPO, 'packages', 'app-shell', 'src', 'shared', 'assets', 'favicon.ico');
+
+/**
+ * The mark as the app switcher renders it — imported as a module by `AppStore`, not fetched by URL,
+ * which is why it lives in the shell's assets rather than in a `public/` directory.
+ */
+const APP_SWITCHER_ICON = join(REPO, 'packages', 'app-shell', 'src', 'shared', 'assets', 'we-icon.png');
 
 /**
  * Hash of the composed icon, so `icon.icns` can be left alone when nothing has changed.
@@ -297,9 +312,13 @@ function main() {
   copyFileSync(join(master, '1024x1024.png'), ELECTRON_ICON);
   rmSync(master, { recursive: true, force: true });
 
-  // The favicon is the multi-size .ico the set above already produced, so nothing is scaled twice.
-  copyFileSync(join(TAURI_ICONS, 'icon.ico'), FAVICON);
-  console.log(`✅ Electron master (1024, alpha) and web favicon written`);
+  // Both are files the set above already produced, so nothing is scaled twice.
+  for (const target of FAVICON_TARGETS) {
+    mkdirSync(dirname(target), { recursive: true });
+    copyFileSync(join(TAURI_ICONS, 'icon.ico'), target);
+  }
+  copyFileSync(join(TAURI_ICONS, '128x128.png'), APP_SWITCHER_ICON);
+  console.log(`✅ Electron master (1024, alpha), ${FAVICON_TARGETS.length} favicons, app-switcher icon written`);
 }
 
 main();

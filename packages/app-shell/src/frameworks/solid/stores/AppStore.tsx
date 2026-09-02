@@ -1,7 +1,7 @@
 import { moduleRegistry, type RegisteredEmbed } from '@shared/registries/moduleRegistry';
 import { Accessor, createContext, createEffect, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
-import weLogo from '../../../shared/assets/we-logo-small.png';
+import weLogo from '../../../shared/assets/we-icon.png';
 
 export interface AppStore {
   /**
