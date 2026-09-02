@@ -2,6 +2,10 @@ import { z } from 'zod';
 
 import type { RouteSchema, SchemaNode, SchemaProp, TemplateMeta, TemplateSchema } from './types';
 
+// Zod's JIT probe trips Electron's production CSP — see the note in @we/backend-shared's
+// queryIR.ts. Repeated per module because the probe fires on the first `z.object()`.
+z.config({ jitless: true });
+
 const lazySchemaNode = z.lazy(() => zSchemaNode);
 const lazySchemaProp = z.lazy(() => zSchemaProp);
 const lazyRouteSchema = z.lazy(() => zRouteSchema);

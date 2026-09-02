@@ -15,6 +15,10 @@
  */
 import { z } from 'zod';
 
+// Zod's JIT probe trips Electron's production CSP — see the note in queryIR.ts. Repeated per
+// module because the probe fires on the first `z.object()`, and nothing orders these two.
+z.config({ jitless: true });
+
 export type ScalarType = 'string' | 'number' | 'boolean' | 'datetime' | 'json';
 export type Cardinality = 'one' | 'many';
 

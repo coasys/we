@@ -9,6 +9,21 @@
  */
 import { z } from 'zod';
 
+/*
+  Zod's object parser JIT-compiles a fast path with `new Function`, and probes for it with a
+  `new Function('')` in a try/catch. Electron's production CSP grants no 'unsafe-eval' (see
+  `contentSecurityPolicy` in apps/we-electron/electron/navigationPolicy.js), so the probe throws —
+  caught, and Zod falls back to the interpreted parser, so nothing misbehaves — but Chromium
+  reports the violation to the console regardless of the catch. A "Refused to evaluate a string as
+  JavaScript" that nobody can act on costs more than the parse speed it buys, and the fast path was
+  already unreachable under that CSP.
+
+  `jitless` skips the probe entirely. It must run before the first `z.object()` in this module,
+  which is when the probe fires — hence here rather than in an entry point, whose body executes
+  after every import has already been evaluated.
+*/
+z.config({ jitless: true });
+
 // ─── Filter ────────────────────────────────────────────────────────────────────
 
 export type Op =
