@@ -25,13 +25,14 @@
  * ## Why the Tauri CLI does the rasterising
  *
  * It is the only SVG rasteriser in the tree (no ImageMagick, sharp or resvg), and it is already
- * authoritative for the Tauri icon set — 50 files including `.ico` and `.icns`, which would
- * otherwise have to be re-implemented here. Electron's master and the web favicon are then taken
- * from its output, so all three targets come from a single rasterisation of a single source.
+ * authoritative for the Tauri icon set — 54 files including `.ico` and `.icns`, which would
+ * otherwise have to be re-implemented here. The web favicon is the `.ico` from that same set;
+ * Electron's 1024 master is a second `--png` pass over the same SVG, for the reason given at the
+ * call site. Every target therefore comes from one source and one rasteriser.
  */
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -55,6 +56,16 @@ const ICON_THEME = 'dark' as const;
 
 /** Share of the tile left as margin on each side. The mark is wide, so this is what stops it touching the edges. */
 const PADDING = 0.12;
+
+/**
+ * Corner radius, as a share of the tile — and with it, transparency outside the corners.
+ *
+ * A full-bleed square is the odd one out on a Linux desktop: unlike macOS and Windows, nothing masks
+ * an icon's shape for you here, so whatever the PNG contains is exactly what the panel draws. Every
+ * other app on a stock Mint bar is a rounded tile on transparency, and a hard-edged square beside
+ * them reads as unfinished rather than as a choice.
+ */
+const CORNER_RADIUS = 0.18;
 
 /**
  * `linear-gradient(135deg, …)` runs top-left to bottom-right, which in SVG is (0,0) → (w,h).
@@ -158,7 +169,7 @@ function composeIcon(size = 1024): string {
     a clipPath because clipPath children are restricted to shapes, and this artwork is nested groups.
   */
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-  <rect width="${size}" height="${size}" fill="${page}"/>
+  <rect width="${size}" height="${size}" rx="${Math.round(size * CORNER_RADIUS)}" fill="${page}"/>
   <svg x="${inset}" y="${inset}" width="${box}" height="${box}" viewBox="0 0 ${vw} ${vh}" preserveAspectRatio="xMidYMid meet">
     <defs>
       <!-- ${GRADIENT_ANGLE_NOTE} -->
@@ -200,7 +211,48 @@ const FAVICON = join(REPO, 'packages', 'app-shell', 'src', 'shared', 'assets', '
  */
 const SOURCE_STAMP = join(HERE, '..', 'icon-source.hash');
 
+/** A PNG's width, straight out of the IHDR chunk — no decoder needed for two integers. */
+function pngWidth(file: string): number {
+  return readFileSync(file).readUInt32BE(16);
+}
+
+/**
+ * Smallest window icon that still looks sharp on a panel, and the largest worth embedding.
+ *
+ * `tauri-codegen`'s `find_icon` is `config.bundle.icon.iter().find(|i| i.ends_with(".png"))` — the
+ * FIRST png, not the largest — so the array is a priority list where it reads like a manifest. The
+ * conventional Tauri ordering starts with `icons/32x32.png`, which is why the window icon looked
+ * blurred beside Electron's while both came from the same artwork.
+ *
+ * The ceiling is the less obvious half. Unlike Electron, which hands the toolkit several sizes,
+ * Tauri sets one image as `_NET_WM_ICON`, and a very large single icon is not reliably rendered —
+ * putting the 512 first made the Mint panel show nothing at all. 256 is comfortably above any panel
+ * size in use and well inside what gets drawn.
+ *
+ * Nothing in `tauri.conf.json` can carry this reasoning: it is plain JSON and takes no comments. So
+ * the check lives here, where the icons are made.
+ */
+const WINDOW_ICON_MIN = 256;
+const WINDOW_ICON_MAX = 256;
+
+function assertTauriIconOrder() {
+  const confPath = join(REPO, 'apps', 'we-tauri', 'src-tauri', 'tauri.conf.json');
+  const icons: string[] = JSON.parse(readFileSync(confPath, 'utf8')).bundle?.icon ?? [];
+  const firstPng = icons.find((i) => i.endsWith('.png'));
+  if (!firstPng) throw new Error('[brand] tauri.conf.json lists no .png, so Tauri has no window icon to embed.');
+
+  const width = pngWidth(join(REPO, 'apps', 'we-tauri', 'src-tauri', firstPng));
+  if (width < WINDOW_ICON_MIN || width > WINDOW_ICON_MAX) {
+    throw new Error(
+      `[brand] tauri.conf.json lists "${firstPng}" (${width}px) first, and Tauri embeds the first ` +
+        `.png as the window icon. Put a ${WINDOW_ICON_MIN}px one first — smaller is upscaled and ` +
+        'looks blurred, larger is not reliably drawn. See assertTauriIconOrder.',
+    );
+  }
+}
+
 function main() {
+  assertTauriIconOrder();
   const mark = readFileSync(MARK, 'utf8');
   for (const target of WORDMARK_TARGETS) {
     mkdirSync(dirname(target), { recursive: true });
@@ -228,12 +280,26 @@ function main() {
   writeFileSync(SOURCE_STAMP, `${hash}\n`);
   console.log(`✅ Tauri icon set regenerated${keptIcns ? ' (icon.icns unchanged — source is the same)' : ''}`);
 
-  // The 1024 master electron-builder wants, and the multi-size .ico the web favicon wants — both
-  // already produced by the rasterisation above, so nothing is scaled twice.
+  /*
+    Electron's master is rendered separately at 1024 rather than taken from the set above.
+
+    The only 1024 in that set is `ios/AppIcon-512@2x.png`, and iOS icons are FLATTENED — Apple
+    forbids alpha there, so Tauri composites them onto an opaque background. Copying it gave Electron
+    a square-cornered tile while every other output had the rounded, transparent corners the artwork
+    actually has. `--png` renders the size we want from the same SVG, with alpha intact.
+  */
+  const master = join(HERE, '..', '.icon-1024');
+  execFileSync('pnpm', ['exec', 'tauri', 'icon', composed, '-o', master, '--png', '1024'], {
+    cwd: join(HERE, '..'),
+    stdio: 'pipe',
+  });
   mkdirSync(dirname(ELECTRON_ICON), { recursive: true });
-  copyFileSync(join(TAURI_ICONS, 'ios', 'AppIcon-512@2x.png'), ELECTRON_ICON);
+  copyFileSync(join(master, '1024x1024.png'), ELECTRON_ICON);
+  rmSync(master, { recursive: true, force: true });
+
+  // The favicon is the multi-size .ico the set above already produced, so nothing is scaled twice.
   copyFileSync(join(TAURI_ICONS, 'icon.ico'), FAVICON);
-  console.log(`✅ Electron master and web favicon taken from the same render`);
+  console.log(`✅ Electron master (1024, alpha) and web favicon written`);
 }
 
 main();
