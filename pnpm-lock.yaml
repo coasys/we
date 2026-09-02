@@ -249,6 +249,9 @@ importers:
       '@we/backend-ad4m':
         specifier: workspace:*
         version: link:../../packages/backend-system/ad4m
+      '@we/brand':
+        specifier: workspace:*
+        version: link:../../packages/brand
       '@we/cli':
         specifier: workspace:*
         version: link:../../packages/cli
@@ -347,6 +350,9 @@ importers:
       '@types/three':
         specifier: ^0.185.4
         version: 0.185.4
+      '@we/brand':
+        specifier: workspace:*
+        version: link:../../packages/brand
       '@we/cli':
         specifier: workspace:*
         version: link:../../packages/cli
@@ -384,6 +390,9 @@ importers:
         specifier: ^1.9.15
         version: 1.9.15
     devDependencies:
+      '@we/brand':
+        specifier: workspace:*
+        version: link:../../packages/brand
       '@we/cli':
         specifier: workspace:*
         version: link:../../packages/cli
@@ -772,6 +781,31 @@ importers:
       vitest:
         specifier: ^4.1.11
         version: 4.1.11(@types/node@26.3.0)(@vitest/coverage-v8@4.1.11)(happy-dom@20.11.6)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.2.2(@types/node@26.3.0)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.103.1)(tsx@4.23.12)(yaml@2.9.0))
+
+  packages/brand:
+    dependencies:
+      '@we/themes':
+        specifier: workspace:*
+        version: link:../design-system/2-themes
+      '@we/tokens':
+        specifier: workspace:*
+        version: link:../design-system/1-tokens
+    devDependencies:
+      '@tauri-apps/cli':
+        specifier: ^2.11.4
+        version: 2.11.4
+      '@types/node':
+        specifier: ^26.3.0
+        version: 26.3.0
+      '@we/cli':
+        specifier: workspace:*
+        version: link:../cli
+      tsx:
+        specifier: ^4.23.12
+        version: 4.23.12
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
 
   packages/cli:
     devDependencies:

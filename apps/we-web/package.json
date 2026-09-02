@@ -20,6 +20,7 @@
     "@we/backend-ad4m": "workspace:*"
   },
   "devDependencies": {
+    "@we/brand": "workspace:*",
     "@we/cli": "workspace:*",
     "typescript": "^5.7.2",
     "vite": "^8.2.2",

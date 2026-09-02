@@ -28,6 +28,7 @@
   "devDependencies": {
     "@tauri-apps/cli": "2.11.4",
     "@types/three": "^0.185.4",
+    "@we/brand": "workspace:*",
     "@we/cli": "workspace:*",
     "concurrently": "^10.0.5",
     "typescript": "^5.7.2",

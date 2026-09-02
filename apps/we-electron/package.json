@@ -34,17 +34,18 @@
     "@types/node": "^26.3.0",
     "@we/app-shell": "workspace:*",
     "@we/backend-ad4m": "workspace:*",
+    "@we/brand": "workspace:*",
     "@we/cli": "workspace:*",
     "concurrently": "^10.0.5",
-    "solid-js": "^1.9.15",
     "electron": "^33.4.11",
     "electron-builder": "^26.15.3",
+    "solid-js": "^1.9.15",
     "typescript": "^5.7.2",
     "vite": "^8.2.2",
     "vite-plugin-solid": "^2.11.14",
     "vite-plugin-static-copy": "^4.1.1",
-    "wait-on": "^9.1.0",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.11",
+    "wait-on": "^9.1.0"
   },
   "desktopName": "io.weco.electron.desktop"
 }
