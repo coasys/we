@@ -34,7 +34,7 @@
     "@we/cli": "workspace:*",
     "tsup": "^8.5.1",
     "vitest": "^4.1.11",
-    "tsx": "^4.23.12"
+    "tsx": "^4.23.13"
   },
   "publishConfig": {
     "access": "public"

@@ -24,7 +24,7 @@
   },
   "devDependencies": {
     "@we/cli": "workspace:*",
-    "happy-dom": "^20.11.6",
+    "happy-dom": "^20.12.0",
     "typescript": "^5.7.2",
     "vite": "^8.2.2",
     "vite-plugin-solid": "^2.11.14",

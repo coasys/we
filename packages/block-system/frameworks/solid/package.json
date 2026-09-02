@@ -56,7 +56,7 @@
     "@we/components": "workspace:*",
     "@we/primitives": "workspace:*",
     "esbuild-plugin-solid": "^0.6.0",
-    "happy-dom": "^20.11.6",
+    "happy-dom": "^20.12.0",
     "sass": "^1.103.1",
     "solid-js": "^1.9.15",
     "tsup": "^8.5.1",
