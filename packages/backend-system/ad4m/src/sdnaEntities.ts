@@ -33,6 +33,7 @@ import {
   Template,
   TextBlock,
   Theme,
+  Topic,
   TypeStyle,
   VideoBlock,
   WeNode,
@@ -458,6 +459,19 @@ export const SPACE_MODELS = [
   // The kinds of connection this community makes — its own vocabulary, alongside SignalType, which
   // is the same idea for reactions.
   RelationshipType,
+  /*
+    And the subjects it talks about — the third member of that family, and it was missing.
+
+    Declared in the manifest, generated as a class, exported, listed in the core manifest, rendered
+    by a section of space settings, and never registered here — so `getEntity('Topic')` threw and
+    every visit to Vocabulary raised "Model Topic is not available in this perspective". The section
+    was complete and the model it queries did not exist as far as the renderer was concerned.
+
+    A space model rather than a root one, for `RelationshipType`'s reason: what a community is about
+    is a claim made *to* that community, and one held privately would be a note to self wearing the
+    shape of a shared term.
+  */
+  Topic,
   // Where things sit on a board. Shared for the same reason: a board everyone sees arranged
   // differently is not a board, it is everyone's own sketch of one.
   Placement,
