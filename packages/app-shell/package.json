@@ -84,6 +84,7 @@
     "@types/three": "^0.185.4",
     "@vitest/coverage-v8": "^4.1.11",
     "@we/backend-inmemory": "workspace:*",
+    "@we/brand": "workspace:*",
     "@we/cli": "workspace:*",
     "jsdom": "^30.0.1",
     "tsup": "^8.5.1",

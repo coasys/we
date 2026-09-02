@@ -131,9 +131,17 @@ export function contentSecurityPolicy({ dev = false, origins = [] } = {}) {
       what Vite's HMR needs; a production build needs neither, which is why the two are written
       apart — so the strict one is what ships.
     */
+    /*
+      `'wasm-unsafe-eval'` is what lets WebAssembly compile, and it is a *narrower* grant than its
+      name suggests: it permits `WebAssembly.instantiate` and nothing else — no `eval`, no `new
+      Function`. Without it, `script-src` governs WASM too, and Cesium's meshoptimizer, Draco,
+      Basis, zip and splat modules all fail with "Refused to compile or instantiate WebAssembly
+      module" the moment the globe chunk loads. Dev needs no separate clause: `'unsafe-eval'`
+      already covers WASM.
+    */
     dev
       ? `script-src 'self' blob: ${CESIUM_CDN} 'unsafe-eval' 'unsafe-inline'`
-      : `script-src 'self' blob: ${CESIUM_CDN}`,
+      : `script-src 'self' blob: ${CESIUM_CDN} 'wasm-unsafe-eval'`,
     `worker-src 'self' blob: ${CESIUM_CDN}`,
     // `data:` covers the bundled icon set; `blob:` the object URL for a picked image before it is
     // uploaded; `https:` the avatars, thumbnails and map tiles a post or a template can point at.

@@ -416,9 +416,26 @@ function policyOptions() {
 
 const trusted = (url) => isTrusted(url, trustedOrigins(policyOptions()));
 
+/**
+ * The window's own icon, which on Linux is what a taskbar or dock actually shows.
+ *
+ * Packaging an icon (electron-builder's `icon`) writes the .desktop entry and the hicolor theme
+ * inside the AppImage, and neither reaches a running window: a desktop environment matches a window
+ * to a .desktop entry by WM_CLASS, and an AppImage installs no .desktop entry unless the user asks
+ * for one. So the panel had nothing to match and fell back to a generic square. Electron sets
+ * `_NET_WM_ICON` from this option and nothing else — which is why the Tauri build, whose config
+ * lists its icons, was showing the mark while this one was not.
+ *
+ * The file therefore has to exist at runtime rather than only at package time; it is copied to
+ * `resources/icon.png` by `extraResources`, alongside the executor and the renderer bundle.
+ */
+const windowIcon = () =>
+  app.isPackaged ? join(process.resourcesPath, 'icon.png') : join(__dirname, '..', 'build', 'icon.png');
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     show: false, // Don't show until ready
+    icon: windowIcon(),
     width: 1200,
     height: 800,
     webPreferences: {
