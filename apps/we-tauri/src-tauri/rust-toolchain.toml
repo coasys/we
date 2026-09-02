@@ -9,5 +9,10 @@
 #
 # Pinning the toolchain is what makes `Cargo.lock` reproducible here, so keep the two channels in
 # step: if ad4m moves, this moves with it.
+#
+# It did move, and this did not, which is the second way this file can be wrong: too old rather than
+# absent. ad4m went to 1.96.1 and patches sqlx to a fork needing 1.94, so on 1.92 cargo refused the
+# build outright — "rustc 1.92.0 is not supported by the following packages". A pin that has fallen
+# behind reads as deliberate, so check this against ad4m's whenever a tauri build stops resolving.
 [toolchain]
-channel = "1.92"
+channel = "1.96.1"
