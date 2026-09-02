@@ -68,6 +68,12 @@ const PADDING = 0.12;
 const CORNER_RADIUS = 0.18;
 
 /**
+ * The favicon carries no tile, so it needs far less margin — the browser supplies the surrounding
+ * space, and at 16px every pixel spent on padding is one the mark does not get.
+ */
+const FAVICON_PADDING = 0.04;
+
+/**
  * `linear-gradient(135deg, …)` runs top-left to bottom-right, which in SVG is (0,0) → (w,h).
  *
  * Written without a double hyphen: XML forbids one inside a comment, and resvg rejects the whole
@@ -147,7 +153,16 @@ function resolvePalette() {
 
 // ─── Composition ────────────────────────────────────────────────────────────────
 
-function composeIcon(size = 1024): string {
+/**
+ * @param tile - draw the page-coloured rounded backdrop behind the mark.
+ *
+ * True for a desktop icon, which sits on a wallpaper or a panel and needs to read as an object.
+ * False for a favicon: browser chrome is a colour the icon cannot know — Chrome's tab strip is
+ * near-black in dark mode and near-white in light — and a dark tile disappears into one of them.
+ * The mark alone on transparency is legible against both, and gets the padding back as size, which
+ * a 16px tab icon needs more than it needs a border.
+ */
+function composeIcon(size = 1024, tile = true): string {
   const svg = readFileSync(MARK, 'utf8');
   const viewBox = /viewBox="([\d.\s-]+)"/.exec(svg);
   if (!viewBox) throw new Error(`[brand] ${MARK} has no viewBox — cannot place the mark in a square.`);
@@ -157,8 +172,11 @@ function composeIcon(size = 1024): string {
   // edit to the mark needs no change here.
   const body = svg.slice(svg.indexOf('<g\n     id="layer1"'), svg.lastIndexOf('</svg>'));
   const { page, from, to } = resolvePalette();
-  const inset = Math.round(size * PADDING);
+  const inset = Math.round(size * (tile ? PADDING : FAVICON_PADDING));
   const box = size - inset * 2;
+  const backdrop = tile
+    ? `\n  <rect width="${size}" height="${size}" rx="${Math.round(size * CORNER_RADIUS)}" fill="${page}"/>`
+    : '';
 
   /*
     The gradient is painted ONCE, on a single rect, with the mark as a mask.
@@ -168,8 +186,7 @@ function composeIcon(size = 1024): string {
     90 degrees — so each letter got its own gradient and one of them was rotated. A mask rather than
     a clipPath because clipPath children are restricted to shapes, and this artwork is nested groups.
   */
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-  <rect width="${size}" height="${size}" rx="${Math.round(size * CORNER_RADIUS)}" fill="${page}"/>
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${backdrop}
   <svg x="${inset}" y="${inset}" width="${box}" height="${box}" viewBox="0 0 ${vw} ${vh}" preserveAspectRatio="xMidYMid meet">
     <defs>
       <!-- ${GRADIENT_ANGLE_NOTE} -->
@@ -312,12 +329,22 @@ function main() {
   copyFileSync(join(master, '1024x1024.png'), ELECTRON_ICON);
   rmSync(master, { recursive: true, force: true });
 
-  // Both are files the set above already produced, so nothing is scaled twice.
+  copyFileSync(join(TAURI_ICONS, '128x128.png'), APP_SWITCHER_ICON);
+
+  /*
+    The favicon is its own composition — the mark without the tile — so it needs its own render
+    rather than the `.ico` from the set above. Only `icon.ico` is kept; the rest of that pass is
+    discarded, which is cheaper than reimplementing an ICO writer for six PNG sizes.
+  */
+  const favDir = join(HERE, '..', '.favicon');
+  const favSvg = join(HERE, '..', 'favicon.generated.svg');
+  writeFileSync(favSvg, composeIcon(1024, false));
+  execFileSync('pnpm', ['exec', 'tauri', 'icon', favSvg, '-o', favDir], { cwd: join(HERE, '..'), stdio: 'pipe' });
   for (const target of FAVICON_TARGETS) {
     mkdirSync(dirname(target), { recursive: true });
-    copyFileSync(join(TAURI_ICONS, 'icon.ico'), target);
+    copyFileSync(join(favDir, 'icon.ico'), target);
   }
-  copyFileSync(join(TAURI_ICONS, '128x128.png'), APP_SWITCHER_ICON);
+  rmSync(favDir, { recursive: true, force: true });
   console.log(`✅ Electron master (1024, alpha), ${FAVICON_TARGETS.length} favicons, app-switcher icon written`);
 }
 
