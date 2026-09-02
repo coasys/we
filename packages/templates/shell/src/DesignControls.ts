@@ -250,6 +250,29 @@ export function templatePicker(): SchemaNode {
                     closeTemplatePicker,
                   ],
                   actions: [
+                    /*
+                      The way back to the arrangement this template designed — its panels where it
+                      put them, and the ones somebody closed open again.
+
+                      On the row for the template you are looking at, and only while there is
+                      something to undo, which is what `layoutDirty` answers. That is the same shape
+                      the theme pin below follows: a control attached to the row it is about, costing
+                      nothing in the ordinary case because it renders nothing.
+
+                      Here rather than in a panel's own position menu, which already carries a
+                      per-panel "Reset to layout". Three panels dragged out of place is one decision,
+                      not three — and a panel somebody *closed* has no titlebar left to open a menu
+                      from, so the per-panel control cannot be the only way back.
+                    */
+                    {
+                      icon: 'arrow-counter-clockwise',
+                      tooltip: "Reset panels to this template's layout",
+                      when: { $: 'template.id == templateStore.currentSwitcherId && shellStore.layoutDirty' },
+                      // Deliberately does not close the picker: the panels move behind it, which is
+                      // the confirmation that the click landed, and the row's control disappearing
+                      // is the other half of that. Same argument as the theme rows below.
+                      onClick: { $action: 'shellStore.resetTemplateLayout' },
+                    },
                     {
                       icon: 'pencil-simple',
                       tooltip: 'Edit this template',

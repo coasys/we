@@ -22,11 +22,11 @@ import {
 
 export const bundledTemplates: Record<string, TemplateSchema> = {
   default: defaultTemplate,
+  workshop: workshopTemplate,
   discord: discordTemplate,
   twitter: twitterTemplate,
   instagram: instagramTemplate,
   youtube: youtubeTemplate,
   kanban: kanbanTemplate,
   events: eventsTemplate,
-  workshop: workshopTemplate,
 };

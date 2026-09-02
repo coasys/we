@@ -281,6 +281,16 @@ function trayPosition(input: LayoutInput, index: number, gap: number): Point {
 export function manualLayout(rawOptions?: Record<string, unknown>): Layout {
   const options = { xField: 'x', yField: 'y', gap: 160, ...(rawOptions as ManualLayoutOptions) };
   const pinned = new Map<string, Point>();
+  /*
+    Nodes this layout parked itself, so a later run can tell its own work from somebody else's.
+
+    Without it the warning below fires on every healthy board. A card that has never been dragged
+    carries no coordinate, so the first run parks it — and on the *second* run that parked position
+    arrives as `previous`, which counts as reused. Nothing was read from data, nothing new was
+    parked, something was reused: the exact shape of "this layout did nothing", reported at a board
+    that had just laid out a set of freshly extracted cards perfectly well.
+  */
+  const parked = new Set<string>();
 
   return {
     id: 'manual',
@@ -305,16 +315,23 @@ export function manualLayout(rawOptions?: Record<string, unknown>): Layout {
         const y = Number(node.data?.[options.yField]);
         if (Number.isFinite(x) && Number.isFinite(y)) {
           positions.set(node.id, { x, y, fixed: true });
+          // It has a coordinate of its own now — somebody dragged it — so this layout is no longer
+          // the reason it is where it is. Forgetting keeps the set from growing for the life of the
+          // board and from excusing a genuine no-op later.
+          parked.delete(node.id);
           fromData += 1;
           continue;
         }
         const previous = input.previous?.get(node.id);
         if (previous) {
           positions.set(node.id, previous);
-          reused += 1;
+          // A position this layout invented is not evidence that it had nothing to do — it is the
+          // evidence that it did something, one run ago.
+          if (!parked.has(node.id)) reused += 1;
           continue;
         }
         positions.set(node.id, { ...trayPosition(input, unplaced, options.gap), fixed: true });
+        parked.add(node.id);
         unplaced += 1;
       }
 

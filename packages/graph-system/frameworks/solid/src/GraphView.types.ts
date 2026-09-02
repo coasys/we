@@ -17,6 +17,7 @@ import type {
   GraphNode,
   GraphValue,
   LayoutSpec,
+  MatchClause,
   NodeStyleRules,
   SeedSpec,
 } from '@we/graph-protocol';
@@ -96,6 +97,22 @@ export interface GraphViewProps {
   bg?: string;
   /** Show the loading/paging/warning strip. Defaults to true. */
   showStatus?: boolean;
+  /**
+   * What the canvas says when it has nothing on it.
+   *
+   * The default — "Nothing to show yet." — is the honest thing for a graph whose host has no
+   * opinion, and it is the wrong thing wherever there is something to *do* about the emptiness. A
+   * board that fills as a conversation produces records can say so; the widget cannot know that, and
+   * a caller that wraps its own placeholder around the graph instead ends up with two — one over the
+   * page and one over the canvas, swapping as data arrives, with different words and a different
+   * background.
+   *
+   * An expression, like any prop, so one line can answer both cases a caller has: what to do when
+   * there is no subject yet, and what to expect once there is.
+   */
+  empty?: string;
+  /** The icon above it. Defaults to `graph`. */
+  emptyIcon?: string;
   /** Show the controls. Defaults to true. Superseded by `controls`, which names them individually. */
   showControls?: boolean;
   /**
@@ -113,7 +130,9 @@ export interface GraphViewProps {
    * that wants to show what a node actually holds needs `fields`, and deriving it here is the only
    * place it can be done at all.
    */
-  onNodeClick?: (node: GraphNode & { recordId?: string; fields: { name: string; value: string }[] }) => void;
+  onNodeClick?: (
+    node: GraphNode & { recordId?: string; recordType?: string; fields: { name: string; value: string }[] },
+  ) => void;
   /**
    * Ask the graph to open a node, from outside a gesture.
    *
@@ -215,10 +234,56 @@ export interface GraphViewProps {
   }) => void;
 
   /**
+   * Small controls that appear above a node while it is selected — a tick, a cross, a bin.
+   *
+   * The sibling of the resize handles, and the same bargain: only on the selection, because
+   * furniture on every node would cover the content it is there to show, and selecting first is how
+   * you say which node you mean anyway.
+   *
+   * `when` is the **same match clause the style rules take**, so the vocabulary an interface already
+   * knows for deciding how a node *looks* decides what it can *do*. An action with no `when` is
+   * offered on every node.
+   *
+   * Which means the same prefix rule: a bare key reads a node's own field (`type`, `label`), and
+   * anything a **seed** put in the node's data bag is behind `data.`. "Offer this only on a card
+   * nobody has agreed to yet" is `{ when: { 'data.pending': true } }`, and written without the
+   * prefix it matches nothing, silently — which is what a clause does when it names a field that is
+   * not there.
+   *
+   * Nothing here says what an action means. The graph reports that one was pressed, on which record,
+   * and the interface decides — deleting, accepting a suggestion, opening something. A widget that
+   * knew what a tick meant would be a widget only one template could use.
+   */
+  nodeActions?: NodeAction[];
+  /** One of {@link nodeActions} was pressed on a node. */
+  onNodeAction?: (payload: { action: string; id: string; recordId?: string; recordType?: string }) => void;
+  /**
    * Data-layer bindings, injected by the host's component registry rather than written in a template.
    * Templates never supply these.
    */
   host?: GraphHostBindings;
+}
+
+/** One control offered above a selected node — see {@link GraphViewProps.nodeActions}. */
+export interface NodeAction {
+  /** Reported back as `action` when it is pressed. */
+  id: string;
+  /** Phosphor icon name. */
+  icon: string;
+  /** The tooltip, and the accessible name — an icon with neither is a button nobody can identify. */
+  title?: string;
+  /** Offered only on nodes this matches. Omit for every node. */
+  when?: MatchClause;
+  /**
+   * What kind of answer this is, said in colour: `positive` for the one that keeps something,
+   * `danger` for the one that removes it. Omit for a control that is neither.
+   *
+   * One axis rather than a flag each, because they are three points on it and a pair of booleans
+   * would admit a fourth that means nothing. It was `danger?: boolean`, which left the accepting
+   * half of a tick-and-cross pair with no way to say so — a red cross beside a grey tick reads as
+   * one real choice and one placeholder.
+   */
+  tone?: 'positive' | 'danger';
 }
 
 /**
@@ -259,6 +324,23 @@ export interface GraphHostBindings {
    */
   pendingData?(): Record<string, Record<string, GraphValue>>;
   /**
+   * The parts of the graph's own box something else is drawn over, in screen pixels per edge.
+   *
+   * The graph fills the region the host gave it, and the host may float panels over that region
+   * without shrinking it — so the canvas the engine believes is on screen and the canvas a reader
+   * can see are different rectangles. Nothing noticed until a board parked its unplaced cards in
+   * the top-left of the first one, which was underneath a panel: the cards were drawn, present and
+   * findable by every gesture, and invisible.
+   *
+   * Only affects questions about what is *visible* — where to put a node nobody has placed, and
+   * anything else that has to choose a spot. Panning, zooming and hit-testing are unchanged: the
+   * covered pixels are still canvas.
+   *
+   * Reactive, read inside an effect, so a panel being dragged or resized is followed. Omitted by a
+   * host with nothing over its graph, which is every host but an app shell.
+   */
+  obscured?(): { top: number; right: number; bottom: number; left: number };
+  /**
    * These records' pending fields are now carried by the graph's own data, so the host can forget
    * them.
    *
@@ -276,6 +358,16 @@ export interface GraphHostBindings {
    * decides what to watch from the reads its seeds performed — nothing calls this directly.
    */
   watch?(request: { entity: string; dataset?: string }, onChange: () => void): () => void;
+  /**
+   * Say what happened inside a load, for whoever is debugging an empty canvas.
+   *
+   * Optional, and a host without a trace sink omits it. Not `warn`: a warning is for the reader and
+   * appears in the status strip, where "the board read one row and built no nodes" is neither
+   * actionable nor interesting. It is the *only* place that difference is visible, though — a seed
+   * that read nothing, a seed that read rows and dropped them, and a graph whose nodes are all off
+   * screen are the same blank rectangle.
+   */
+  trace?(event: string, detail?: Record<string, unknown>): void;
   defaultDataset(): string | null;
   models(dataset?: string): {
     name: string;

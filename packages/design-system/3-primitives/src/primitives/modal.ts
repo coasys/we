@@ -18,14 +18,17 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   bg: 'var(--we-role-surface)',
   r: '600',
   /*
-    32px, not the 64px this used to be.
+    The floor, for a modal with no size — 40px. What each size actually uses is below, at
+    `--we-modal-size-padding`.
 
-    `space-900` is the padding of a full page section, and around a two-line confirmation it was
-    most of the dialog: "Delete this?" plus a sentence came out ~300px wide with 128px of that
-    being padding, which is a large part of why modals read as small and empty. 32px is still
-    generous against the 24px a card gets, which is the relationship a sheet should have to a card.
+    This figure has swung twice for one reason: it was being asked to be right for a 420px
+    confirmation *and* a 900px workspace, and there is no such number. 64px was the padding of a
+    full page section, and around a two-line confirmation it was most of the dialog. 32px fixed that
+    and overshot — only 8px more than the 24px a card gets, so a sheet floating over the page was
+    barely more generous than a card sitting in it. Both readings were correct about the sheet in
+    front of whoever made the change.
   */
-  p: '600',
+  p: '700',
   ax: 'stretch',
   /*
     Start, not centre. The base grows with its content, so centring on the main axis does nothing
@@ -87,6 +90,43 @@ const CSS_STYLES = css`
   :host {
     align-items: center;
     justify-content: center;
+  }
+
+  /*
+    Padding grows with the sheet, because one figure cannot serve both ends of the scale: the same
+    40px that frames a 420px confirmation generously leaves a 640px form looking crowded against the
+    edge, and a 900px workspace more so. As a fraction of the sheet these run 9.5%, 7.5% and 7.1% —
+    close enough to read as one decision rather than three.
+
+    A size-aware default inside the cascade chain, exactly as we-button does its radius, and NOT a
+    per-size entry in SIZE_DEFAULTS. Those are applied as instance props, which sit above the theme
+    in the chain — so spelling it there would take modals out of --we-theme-surface-padding's reach
+    and quietly remove a theme's ability to set their padding at all. Here it is the last resort
+    instead: an explicit prop wins, then the theme, then this.
+
+    Fullscreen is deliberately not the widest of these. The content is the size — it is a lightbox —
+    so padding there is room taken from the thing somebody opened it to look at.
+  */
+  :host([size='sm']) {
+    --we-modal-size-padding: var(--we-space-700);
+  }
+  :host([size='md']) {
+    --we-modal-size-padding: var(--we-space-800);
+  }
+  /*
+    lg holds at 48px rather than stepping up again.
+
+    It was 64px, extrapolated from the sm → md step on the reasoning that padding should stay a
+    constant fraction of the sheet. The arithmetic was fine and the result was not: a composer at
+    64px reads as a lot of empty sheet, and 64px is the figure this file already calls the padding
+    of a full page section. The step that matters is confirmation → form; a workspace is already
+    260px wider than a form, so it does not need a second one.
+  */
+  :host([size='lg']) {
+    --we-modal-size-padding: var(--we-space-800);
+  }
+  :host([size='fullscreen']) {
+    --we-modal-size-padding: var(--we-space-800);
   }
 
   [part='backdrop'] {

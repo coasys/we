@@ -15,13 +15,45 @@ Most @we/primitives inherit **all** layers below. Props use design token values 
 |---|---|
 | SpaceValue | "0", "100", "200", "300", "400", "500", "600", "700", "800", "900", "1000" (or CSS length e.g. "16px") |
 | ColorValue | A **role** — see the table below — or a scale position "{hue}-{shade}" where hue = neutral, primary, success, warning, danger and shade = 0, 25, 50, 75, 100, 200–900, 1000. Also "white", "black". (or CSS color). **Prefer a role.** |
-| RadiusValue | "0", "100", "200", "300", "400", "500", "600", "700", "800", "900", "pill", "full" (or CSS length). Also two *semantic* values that follow the theme instead of naming a size: "avatar" (circular by default; use for anything square that reads as a profile picture) and "media" (square by default; images, video, embeds). Prefer these on an \`EditableImage\` or a raw element standing in for one — a pinned "full" or "pill" cannot follow a theme's shape settings. Note "full" is 50%, so it is an ellipse on any box that is not square; reach for "pill" on wide boxes. |
+| RadiusValue | "0", "100", "200", "300", "400", "500", "600", "700", "800", "900", "pill", "full" (or CSS length). Also five *theme-family* names that follow the theme instead of naming a size — see "Theme families" below. Prefer them on an \`EditableImage\`, a \`Card\`, or a raw element standing in for one: a pinned "full" or "pill" cannot follow a theme's shape settings. Note "full" is 50%, so it is an ellipse on any box that is not square; reach for "pill" on wide boxes. |
 | ShadowValue | "sm", "md", "lg", "xl" |
 | FontSizeValue | "base", "100", "200", "300", "400", "500", "600", "700", "800", "900", "1000" (or CSS length) |
 | FontFamilyValue | "base" (or CSS font-family) |
 | LineHeightValue | "none", "tight", "snug", "normal", "relaxed", "loose" (or CSS value) |
 | LetterSpacingValue | "tighter", "tight", "normal", "wide", "wider", "widest" (or CSS value) |
 | FontWeightValue | Named tokens: "regular" (400), "medium" (500), "semibold" (600), "bold" (700). Numeric: "100"–"900". CSS pass-through: "light", "normal", "bolder". |
+
+### Theme families — for \`r\`, \`p\` and \`gap\`, the counterpart of a colour role
+
+A colour role says what a colour is *for*. A **family** says what kind of thing a box *is*, so the
+theme can decide its shape and density: buttons are rounded like this, sheets like that. Naming one
+is how a box follows a theme's \`surfaceRadius\` or \`surfacePadding\` instead of pinning a number.
+
+| Name | \`r\` | \`p\` | \`gap\` | For |
+|---|---|---|---|---|
+| \`control\` | ✓ | | ✓ | Buttons, badges, tags — anything pressed. |
+| \`surface\` | ✓ | ✓ | ✓ | Cards, modals, sheets — **and anything inset inside one**. |
+| \`input\` | ✓ | | | Fields, selects, pickers. |
+| \`avatar\` | ✓ | | | Anything square that reads as a profile picture. |
+| \`media\` | ✓ | | | A **full-bleed** banner, video or embed spanning an edge. |
+
+\`surface\` and \`media\` read the same theme variable and differ only in what they fall back to when a
+theme sets nothing: \`surface\` is rounded like a card, \`media\` is **square**. Pick by whether the box
+is inset in something rounded or spans the edge — a cover image inside a modal is \`surface\`, the
+same image as a page-width header is \`media\`.
+
+\`\`\`json
+{ "type": "Column", "props": { "bg": "surface", "r": "surface", "p": "surface", "gap": "surface" } }
+\`\`\`
+
+**The blanks are constraints, not gaps.** A family only takes \`p\` when its theme value is a single
+length: \`control\`'s padding is horizontal-only (the vertical comes from the control's height, per
+size) and \`input\`'s is a full shorthand, and padding is assembled as four values in one declaration,
+so either would produce an invalid rule.
+
+**Only these props.** A family is meaningless on a margin or an offset — it says how much room a box
+puts *inside* itself, which answers nothing about the space between it and its neighbour. \`m:
+"surface"\` resolves to nothing and warns.
 
 ### Semantic Colour Roles — reach for these before a scale position
 
@@ -47,7 +79,8 @@ a user-chosen swatch.
 | \`surface\` | A card, panel or sheet sitting on the page. |
 | \`surface-raised\` | Something floating above the page — a popover, a floating bar, a docked rail with a shadow. |
 | \`surface-sunken\` | A well recessed into a surface — an inset box, a code block, an input trough. |
-| \`surface-hover\` / \`surface-active\` | Row and item feedback. Use inside \`hoverProps\` / \`activeProps\`. |
+| \`surface-hover\` / \`surface-active\` | Row and item feedback — something sitting **on** a surface. Use inside \`hoverProps\` / \`activeProps\`. |
+| \`surface-sunken-hover\` | A **well** lifted — an input, a textarea, a picker trigger. Hovering one with \`surface-hover\` lands it at about surface level and it stops looking recessed, so use this wherever the resting fill is \`surface-sunken\`. One state, not a hover/pressed pair: a field is clicked *into* rather than pushed, so hover, press and focus all resolve here and the ring is what says "focused". |
 | \`control-surface\` | The filled neutral of a *control* — a slider or switch track, a progress trough, a scrollbar thumb, a secondary button, a count chip. Not a surface and not a state. |
 | \`text\` | Primary body and heading text. |
 | \`text-muted\` | Secondary text — captions, labels, metadata. |
@@ -55,7 +88,8 @@ a user-chosen swatch.
 | \`surface-inverse\` | A surface deliberately opposite to the page — a tooltip. Holds a fixed lightness, so it does *not* flip with the theme. |
 | \`on-inverse\` | Text or an icon **on top of** \`surface-inverse\` — a tooltip's own text. **Not** for text on the accent, which is \`on-accent\`. |
 | \`border\` | Default borders and dividers. |
-| \`border-strong\` | Emphasised separation. |
+| \`border-strong\` | Emphasised separation — two regions that are genuinely apart. Not a hover state. |
+| \`border-hover\` | The edge of an interactive box under the pointer. Sits between \`border\` and \`border-strong\`, which are three ramp steps apart; borrowing the latter for hover makes an outline jump rather than acknowledge. |
 | \`accent\` | An accent *fill* — a primary button, a selected disc. |
 | \`accent-hover\` / \`accent-active\` | Hover and pressed states of an accent fill. |
 | \`on-accent\` | Text or an icon **on top of** an accent fill. |
@@ -115,7 +149,7 @@ we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
 | overflow | "hidden" \\| "auto" \\| "overlay" | Overflow behavior, both axes |
 | overflowX | "hidden" \\| "auto" \\| "overlay" | Horizontal overflow alone — a nav strip or tab bar that scrolls sideways instead of pushing the page wide |
 | overflowY | "hidden" \\| "auto" \\| "overlay" | Vertical overflow alone |
-| scrollbarWidth | "auto" \\| "thin" \\| "none" | How much room the scrollbar takes. \`none\` for a strip in fixed-height chrome, where a gutter would not fit |
+| scrollbarWidth | "auto" \\| "thin" \\| "none" | How much room the scrollbar takes. \`none\` for a strip in fixed-height chrome, where a gutter would not fit. **Use \`none\` or leave it unset — never \`thin\` or \`auto\`:** Chromium reads this property as "use the platform scrollbar" and drops the app's own styling for that element, so it becomes the one scroll region that does not match the rest (a different colour, square corners, and stepper arrows on Linux). \`none\` is safe because a hidden bar has nothing to style. |
 | scrollbarGutter | "auto" \\| "stable" \\| "stable both-edges" | Reserve the gutter whether or not it scrolls, so content does not shift when a scrollbar appears |
 | m | SpaceValue | Margin (all sides) |
 | mx | SpaceValue | Margin left + right |

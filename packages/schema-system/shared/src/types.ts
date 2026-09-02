@@ -29,6 +29,15 @@ export type TemplatePanel = {
   id: string;
   /** The module whose panel this places. Mutually exclusive with `node`. */
   module?: string;
+  /**
+   * Which of that module's panels, where it contributes more than one — its declared `name`.
+   *
+   * Unnecessary for a module with a single panel, which is most of them: the host resolves the name
+   * to that one dock. A module with several has no default worth guessing — supplying a transcript
+   * body into a settings panel is a silent wrong answer — so the host refuses and says so until an
+   * entry names one.
+   */
+  dock?: string;
   /** The panel's content, for a panel the template supplies. Mutually exclusive with `module`. */
   node?: SchemaNode;
   /** Shown in the titlebar. Only meaningful with `node`; a module's panel names itself. */
@@ -49,14 +58,25 @@ export type TemplatePanel = {
   /** Push the content aside rather than covering it. Honoured on an edge snap only. */
   displace?: boolean;
   /**
-   * Only while this segment is in the path. Absent means every route.
+   * Only while one of these segments is in the path. Absent means every route.
    *
    * What makes a layout change as somebody moves between sections — a graph wants a transcript
    * beside it and a task list does not. A section that declares its own `meta.panels` needs none of
    * this; `route` is for a shell that routes itself, which is how every showcase template works and
    * which has no sections to hang a declaration on.
+   *
+   * A list because "these two pages, not the third" is an ordinary thing to want and a single
+   * segment could not say it. The alternative people reached for — the same `id` declared twice with
+   * different routes — happens to work, since exactly one survives the filter and the dock id is
+   * stable, but it is one panel written down twice for the two to disagree about later.
+   *
+   * It says *whether*, never *where*. A panel that moved from one route to the next would work
+   * until the reader dragged it once: a stored placement is keyed by template and panel, not by
+   * route, and it outranks every declaration — so per-route positions would silently stop applying
+   * the first time somebody used the panel. Where a page genuinely needs its own arrangement, it
+   * wants to be a **view** with its own `meta.panels`.
    */
-  route?: string;
+  route?: string | string[];
   /**
    * Whether to open the panel as well as place it. Absent means yes.
    *

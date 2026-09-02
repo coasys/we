@@ -493,3 +493,41 @@ describe('boardSeed', () => {
     expect(asked).not.toContain('Ghost');
   });
 });
+
+/**
+ * Cards that stand for a suggestion nobody has agreed to yet.
+ *
+ * An extraction pass can stage a whole record rather than writing it, and a staged record is in the
+ * graph: it answers this seed's query exactly as an accepted one does. So a board drew a card for
+ * something nobody had said yes to, identical to the cards for everything they had. Only the
+ * capability that staged it knows which those are, which is why this arrives as ids.
+ */
+describe('the board seed — pending records', () => {
+  it('marks the named records and leaves the rest alone', async () => {
+    const { context: ctx } = context({
+      Placement: [{ id: 'p1', node: 'task-1', nodeType: 'TaskBlock', x: 10, y: 20 }],
+      TaskBlock: [
+        { id: 'task-1', title: 'Agreed' },
+        { id: 'task-2', title: 'Suggested' },
+      ],
+    });
+
+    const { nodes } = await boardSeed().seed({ board: 'b1', contains: ['TaskBlock'], pending: ['task-2'] }, ctx);
+
+    expect(nodes.find((n) => n.id.endsWith('task-2'))?.data?.pending).toBe(true);
+    // Absent, not false: a rule matching `{ pending: true }` and one matching nothing are the two
+    // states, and an explicit false is a third value a rule could accidentally match on.
+    expect(nodes.find((n) => n.id.endsWith('task-1'))?.data).not.toHaveProperty('pending');
+  });
+
+  it('costs nothing when no ids are given', async () => {
+    const { context: ctx } = context({
+      Placement: [{ id: 'p1', node: 'task-1', nodeType: 'TaskBlock', x: 0, y: 0 }],
+      TaskBlock: [{ id: 'task-1', title: 'Agreed' }],
+    });
+
+    const { nodes } = await boardSeed().seed({ board: 'b1', contains: ['TaskBlock'] }, ctx);
+
+    expect(nodes[0]?.data).not.toHaveProperty('pending');
+  });
+});

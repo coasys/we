@@ -32,34 +32,6 @@
 import { type SchemaNode, type SchemaProp } from '@we/schema-shared';
 import { expr } from '@we/schema-shared';
 
-/** Must match `CALL_STATUS_ANCHOR` in `@we/module-call`. Deliberately not imported — a shared
- *  constant would be a hard dependency on the module this is meant to work without, exactly as
- *  `CALL_CONTROLS_ANCHOR` explains at greater length. */
-export const CALL_STATUS_ANCHOR = 'call-status';
-
-/**
- * The panel's own corners — the theme's **surface** radius, not the control radius the bar above it
- * takes.
- *
- * The two look interchangeable and are not. `control-radius` describes a capsule, and a capsule is
- * only coherent on a box about one line tall: the call bar is exactly that, so it follows it and a
- * `pill` theme rounds it beautifully. This panel is a stack of disclosures hundreds of pixels tall,
- * and the same variable turned it into a lozenge with its own text running off both ends.
- *
- * `surface-radius` is the theme's answer for a box that is not a capsule — modals, drawers and
- * alerts all take it — and every preset already caps it for that reason: WE's own `pill` preset sets
- * controls to `pill` and surfaces to `600`.
- */
-const STATUS_RADIUS = 'var(--we-theme-surface-radius, var(--we-radius-400))';
-
-/**
- * Matching the call bar's material exactly.
- *
- * Two floating strips a spacing token apart that disagreed about their surface would read as one
- * piece of chrome and one bug. Restated rather than imported for the reason the anchor is.
- */
-const STATUS_SURFACE = { bg: 'page', border: '1px solid border', shadow: 'md' } as const;
-
 /**
  * How big the leading glyph is, whichever glyph it happens to be.
  *
@@ -436,7 +408,7 @@ const passEntry: SchemaNode = {
 /** The passes still in flight. Always listed — this is the half somebody is waiting on. */
 const runningList: SchemaNode = {
   type: '$each',
-  props: { items: { $: 'modules.transcribe.runningPasses' }, as: 'pass' },
+  props: { items: { $: 'interpretationStore.runningPasses' }, as: 'pass' },
   children: [passEntry],
 };
 
@@ -455,7 +427,7 @@ const runningList: SchemaNode = {
 const settledSection: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $: 'modules.transcribe.settledCount' },
+    condition: { $: 'interpretationStore.settledCount' },
     then: {
       type: 'Column',
       props: { gap: '200', width: '100%' },
@@ -481,9 +453,9 @@ const settledSection: SchemaNode = {
                   type: 'we-text',
                   props: { fontSize: '200', color: 'text-muted', flex: '1', textAlign: 'left' },
                   children: [
-                    { $: 'modules.transcribe.settledCount' },
+                    { $: 'interpretationStore.settledCount' },
                     ' ',
-                    { $: "plural(modules.transcribe.settledCount, 'extraction processed', 'extractions processed')" },
+                    { $: "plural(interpretationStore.settledCount, 'extraction processed', 'extractions processed')" },
                   ],
                 },
                 {
@@ -510,7 +482,7 @@ const settledSection: SchemaNode = {
               children: [
                 {
                   type: '$each',
-                  props: { items: { $: 'modules.transcribe.settledPasses' }, as: 'pass' },
+                  props: { items: { $: 'interpretationStore.settledPasses' }, as: 'pass' },
                   children: [passEntry],
                 },
               ],
@@ -584,7 +556,7 @@ const activityLocalState = {
 export const extractionActivity: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $: 'modules.transcribe.hasActivity' },
+    condition: { $: 'interpretationStore.hasActivity' },
     then: {
       type: 'Column',
       $localState: activityLocalState,
@@ -614,7 +586,7 @@ export const extractionActivity: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $: 'modules.transcribe.detailWithheld' },
+            condition: { $: 'interpretationStore.detailWithheld' },
             then: {
               type: 'we-text',
               props: { variant: 'footnote', color: 'text-faint' },
@@ -628,79 +600,71 @@ export const extractionActivity: SchemaNode = {
 };
 
 /**
- * The glance: one line under the call bar saying something is happening.
+ * Read this call as it happens, or stop — the extraction counterpart of the record button.
  *
- * ## Why anything stays in the chrome at all
+ * ## Why a verb and not a way in
  *
- * A pass runs for minutes — almost all of it one LLM call, and on a local model several minutes —
- * and it outlives the panel that started it. The person most likely to want to know it is running
- * is one of the four in five who did *not* start it and has no reason to have the transcript panel
- * open. Reporting it only in the panel would mean the app silently spends two minutes of somebody's
- * node on something nobody in the call can see.
+ * It opened the extraction panel first, which the rail already does, so the bar carried a second
+ * button for something a person could already reach. The record button beside it is not a way in
+ * either: it *starts and stops the thing*, and opening the panel is a side effect of switching it
+ * on. That is the pairing the bar wants — one control for capturing the conversation, one for
+ * reading it — and the rail keeps the panels.
  *
- * So the fact stays; the reading moves. This says who and for how long, in a line that cannot grow,
- * and {@link extractionActivity} in the transcript panel holds everything else.
+ * ## The three states are the record button's three states
  *
- * ## Why it cannot grow
+ * Off is `ghost`, matching the call's own mute and camera buttons so the row reads as one set of
+ * controls. On but idle is `secondary` — the watch is registered and waiting for something to be
+ * said. A pass actually in flight is `danger`, and it is the same argument recording makes: a state
+ * that arrives on its own, spending somebody's tokens, has to be legible without being looked for,
+ * and the loudest thing in the bar is the way out of it.
  *
- * The version this replaces was the whole readout, and it moved the call's furniture to do its job:
- * opening one pass widened the strip to 520px, and each concurrent pass added a row. A floating
- * object that reflows while somebody is reaching for a control under it is worse than one that says
- * less. So concurrent passes collapse to a count here rather than to a list, and there is nothing to
- * open.
+ * ## What it changes is everyone's
  *
- * Absent entirely when nothing is happening — not empty, absent. A permanently reserved strip would
- * be chrome whose only job is to report, sitting there reporting nothing, and pushing the rest of
- * the call's furniture down to do it.
+ * The button beside it is this agent's microphone; this is the whole call's. A standing watch is one
+ * registration the neighbourhood shares, so it cannot be a private preference — which makes two
+ * near-identical squares with different blast radii, and the tooltip is the only place that can say
+ * so. It says so.
+ *
+ * Absent where there is no call to decide about, rather than disabled: `canChooseTargets` asks about
+ * the same record, and a control explaining why it cannot work belongs in the panel, which has room
+ * for a sentence.
  */
-export const extractionSignal: SchemaNode = {
+export const extractionControl: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $: 'modules.transcribe.runningCount' },
-    // Slides down from behind the bar rather than appearing. The bar is a fixed object somebody is
-    // already looking at, and something materialising a few pixels under it reads as a glitch.
-    enterTransition: [
-      { type: 'reveal', duration: 220 },
-      { type: 'fade', duration: 160 },
-    ],
+    condition: { $: 'modules.transcribe.canChooseTargets' },
     then: {
-      type: 'Row',
+      type: 'we-tooltip',
       props: {
-        ...STATUS_SURFACE,
-        r: STATUS_RADIUS,
-        px: '300',
-        py: '200',
-        gap: '200',
-        ay: 'center',
-        // Capped, and with nothing inside it that can outgrow the cap: the label truncates and the
-        // count is a number. This is the whole of "cannot grow".
-        maxWidth: '320px',
+        title: {
+          $: "modules.transcribe.autoExtract ? 'Stop reading this call for everyone in it' : 'Read this call as it happens, for everyone in it'",
+        },
+        placement: 'bottom',
       },
       children: [
-        { type: 'we-spinner', props: { size: 'xs' } },
         {
-          type: '$if',
+          type: 'we-button',
           props: {
-            // One pass reads as itself — the label is already a whole clause ("Anna is waiting on
-            // the model"). Several collapse to a count, because naming them all is the growth this
-            // exists to avoid.
-            condition: { $: 'modules.transcribe.runningCount == 1' },
-            then: {
-              type: 'we-text',
-              props: { variant: 'label', truncate: true },
-              children: [{ $: 'first(modules.transcribe.activity).label' }],
+            // No `size`, and `square`, for `callControl`'s reasons: a contributed button is only one
+            // of the bar's controls while it is the same shape as the rest of them.
+            square: true,
+            variant: {
+              $: "interpretationStore.runningCount ? 'danger' : modules.transcribe.autoExtract ? 'secondary' : 'ghost'",
             },
-            else: {
-              type: 'we-text',
-              props: { variant: 'label', truncate: true },
-              children: [{ $: '`${modules.transcribe.runningCount} extractions running`' }],
-            },
+            onClick: { $action: 'modules.transcribe.toggleAutoExtract' },
           },
-        },
-        {
-          type: 'we-text',
-          props: { variant: 'footnote', color: 'text-muted' },
-          children: [{ $: 'first(modules.transcribe.activity).elapsed' }],
+          children: [
+            {
+              // A spinner while a pass is in flight, so "on" and "working right now" are told apart
+              // in the control rather than by a second object appearing beside it.
+              type: '$if',
+              props: {
+                condition: { $: 'interpretationStore.runningCount' },
+                then: { type: 'we-spinner', props: { size: 'xs' } },
+                else: { type: 'we-icon', props: { name: 'sparkle' } },
+              },
+            },
+          ],
         },
       ],
     },

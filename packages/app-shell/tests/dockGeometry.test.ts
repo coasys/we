@@ -19,6 +19,7 @@ import {
   columnSlots,
   type ContentInset,
   contentInset,
+  coveredInset,
   displaces,
   DOCK_GAP_PX,
   type DockRequest,
@@ -1235,5 +1236,117 @@ describe('a template’s declared placement', () => {
     // The corner every picture-in-picture has trained people to look for, and what seedPlacement
     // already does for a module that asks to float.
     expect(placementFromDeclaration({}, desktop).snap).toBe('bottom-right');
+  });
+});
+
+/**
+ * What floating panels are covering, which is the question `contentInset` deliberately does not
+ * answer.
+ *
+ * A floating panel takes no room, so the content region stays the whole area and a surface drawing
+ * into it has no way to know which part of itself is hidden. The board found out the hard way: its
+ * layout parks an unplaced card in the top-left of what it believes is in view, which is where a
+ * left-snapped transcript panel sits, so every freshly extracted record was drawn underneath one.
+ */
+describe('what floating panels cover', () => {
+  const floating = (over: Partial<FloatPlacement> = {}) => placement({ displace: false, ...over });
+
+  it('reports a floating panel that contentInset reports as nothing', () => {
+    const request = dock({ placement: floating({ snap: 'left', w: 320 }) });
+
+    expect(contentInset([request], desktop).left).toBe(0);
+    expect(coveredInset([request], desktop).left).toBe(320);
+  });
+
+  it('reports nothing for a panel that displaces, which contentInset has already counted', () => {
+    // The two are complementary, not overlapping: a panel takes room or covers it, never both, so
+    // adding them is always the honest total.
+    const request = dock({ placement: placement({ snap: 'left', w: 320 }) });
+
+    expect(coveredInset([request], desktop)).toEqual({ left: 0, right: 0, top: 0, bottom: 0 });
+  });
+
+  it('takes the widest of two panels sharing an edge, not their sum', () => {
+    /*
+      The geometry `contentInset` gets right in the other direction. Displacing panels on one edge
+      form a strip and stack inward, so their thicknesses add; floating ones form a column and divide
+      the edge along its length, one above the other, so the covered band is as wide as the widest.
+      Summing would report the left edge twice as covered as it is.
+    */
+    const covered = coveredInset(
+      [
+        dock({ id: 'transcript', placement: floating({ snap: 'left', w: 320 }) }),
+        dock({ id: 'extraction', placement: floating({ snap: 'left', w: 240 }) }),
+      ],
+      desktop,
+    );
+
+    expect(covered.left).toBe(320);
+  });
+
+  it('ignores a corner panel, which covers a corner rather than a band', () => {
+    // Under-reporting is the right direction to be wrong in: content lands slightly nearer a panel
+    // than intended, rather than being crowded out of a strip that is mostly clear.
+    const request = dock({ placement: floating({ snap: 'top-left', w: 320 }) });
+
+    expect(coveredInset([request], desktop)).toEqual({ left: 0, right: 0, top: 0, bottom: 0 });
+  });
+
+  it('ignores a maximised panel, which leaves no uncovered region to be about', () => {
+    const request = dock({ placement: floating({ snap: 'left', maximised: true }) });
+
+    expect(coveredInset([request], desktop)).toEqual({ left: 0, right: 0, top: 0, bottom: 0 });
+  });
+});
+
+/**
+ * A column member's height is a base plus a share of the spare room.
+ *
+ * Which is what made dragging the boundary between two of them impossible rather than merely
+ * awkward: a resize measured the *rendered* height and wrote it back as the base, so the share was
+ * counted twice and the panel jumped taller by exactly that share the moment a drag began, before
+ * the pointer had moved. A divider avoids it by construction — it moves the boundary rather than
+ * setting a height, so the total is unchanged, the slack is unchanged, and each panel moves by the
+ * pixels the pointer did.
+ */
+describe('a floating column', () => {
+  const member = (over: Partial<FloatPlacement> = {}): FloatPlacement =>
+    placement({ snap: 'left', displace: false, w: 320, h: 200, ...over });
+
+  it('divides the spare room by grow, so two shares against one is about two thirds', () => {
+    const [top, bottom] = columnLayout([member({ grow: 2 }), member({ grow: 1 })], 'left', desktop);
+
+    /*
+      The *slack* splits two to one, which is what `grow` says: equal bases, so each height is that
+      base plus its share. Asserted as the ratio of what was handed out rather than as a number,
+      because the room a column has is the region less whatever chrome is reserved — and this is
+      about the division, not about how much there was to divide.
+
+      Exactly two thirds of the *column* would need the bases in the same ratio too, which is why
+      `grow` is documented as a share of the spare room rather than of the whole.
+    */
+    expect(top.h - 200).toBeCloseTo((bottom.h - 200) * 2, 0);
+  });
+
+  it('gives a member with no grow its base and nothing more', () => {
+    // The workshop declared `1` against a `0` and got a panel towering over a strip: no grow does not
+    // mean "less", it means the other one takes every pixel of the slack.
+    const [, bottom] = columnLayout([member({ grow: 1 }), member({ grow: 0 })], 'left', desktop);
+
+    expect(bottom.h).toBe(200);
+  });
+
+  it('keeps the total when the boundary moves, which is what makes a divider safe', () => {
+    /*
+      The property the divider action relies on. Adding to one base exactly what is taken from the
+      other leaves the sum — and therefore the slack, and therefore every share — untouched, so each
+      rendered height moves by precisely the base delta and nothing is counted twice.
+    */
+    const before = columnLayout([member({ h: 200 }), member({ h: 200 })], 'left', desktop);
+    const after = columnLayout([member({ h: 260 }), member({ h: 140 })], 'left', desktop);
+
+    expect(after[0].h - before[0].h).toBe(60);
+    expect(after[1].h - before[1].h).toBe(-60);
+    expect(after[0].h + after[1].h).toBe(before[0].h + before[1].h);
   });
 });

@@ -1,9 +1,20 @@
 import { buildGuestLink } from '@shared/guestLink';
 import { containmentPredicate, gatherTranscriptTurns, type TurnRecord } from '@shared/interpretation/transcriptTurns';
+import {
+  clearSetting,
+  type LevelValues,
+  parseSettings,
+  resolveGroup,
+  type SettingRow,
+  settingRows,
+  type SettingValue,
+  writeSetting,
+} from '@shared/moduleSettings';
 import { resolveRecordRef } from '@shared/recordNavigation';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { moduleRegistry, moduleStores, type ModuleSurface, moduleSurface } from '@shared/registries/moduleRegistry';
 import { defaultViewOrder, viewRegistry } from '@shared/registries/viewRegistry';
+import { getSeed } from '@shared/seedRegistry';
 import {
   isSpaceSelf,
   type LocationData,
@@ -69,7 +80,7 @@ import {
 } from 'solid-js';
 
 import { useAppStore } from './AppStore';
-import { type AppDataset, useDatasetStore } from './DatasetStore';
+import { type AppDataset, canonicalSpaceId, useDatasetStore } from './DatasetStore';
 import { useProfileStore } from './ProfileStore';
 import { useRouteStore } from './RouteStore';
 import { useSessionStore } from './SessionStore';
@@ -624,8 +635,41 @@ export interface SpaceStore {
   setSpaceDefaultTemplate: (templateId: string, spaceUuid?: string) => Promise<void>;
   setSpaceDefaultTheme: (themeId: string, spaceUuid?: string) => Promise<void>;
   setModuleEnabled: (moduleId: string, enabled: boolean, spaceUuid?: string) => Promise<void>;
+  /**
+   * What each capability that declares settings is currently set to **for this community**, as rows
+   * a screen renders directly: the declaration, the resolved value, where it came from, and whether
+   * something less specific has forced it.
+   *
+   * Built from what modules declare rather than from a list anyone maintains, so a module that adds
+   * a setting gets a control with nothing to register — the step whose omission is otherwise silent.
+   */
+  spaceModuleSettings: Accessor<SettingRow[]>;
+  /** The same, for this agent in this one space. Private, and the most specific level there is. */
+  myModuleSettings: Accessor<SettingRow[]>;
+  /** The same, for this agent in every space. Private, and the least specific of the personal two. */
+  agentModuleSettings: Accessor<SettingRow[]>;
+  /**
+   * Set one of this space's module settings, for everyone. Omit `value` to withdraw the opinion.
+   *
+   * Clearing writes **silence**, not a value: a stored `false` that happens to equal the default
+   * goes on overruling every less specific level while its control reads as untouched.
+   */
+  setSpaceModuleSetting: (group: string, key: string, value?: SettingValue, spaceUuid?: string) => Promise<void>;
+  /** The same, for this agent here. Never written to the space, so no other member sees it. */
+  setMyModuleSetting: (group: string, key: string, value?: SettingValue, spaceUuid?: string) => Promise<void>;
+  /** The same, for this agent everywhere. */
+  setAgentModuleSetting: (group: string, key: string, value?: SettingValue) => Promise<void>;
   /** Whether this space has calls interpreted as they happen. A community decision; defaults off. */
   autoInterpret: Accessor<boolean>;
+  /**
+   * Whether one call is extracted as it happens: its participants' answer, else the space's.
+   *
+   * The counterpart of `extractionTargetsForCall`, and the same three states behind two — a call
+   * with no record of its own has not decided, and follows the space.
+   */
+  autoInterpretForCall: (collectionId: string) => boolean;
+  /** Turn it on or off for one call, for everyone in it. A participant's decision, not an admin's. */
+  setAutoInterpretForCall: (collectionId: string, on: boolean) => Promise<void>;
   setAutoInterpret: (enabled: boolean, spaceUuid?: string) => Promise<void>;
   /**
    * Whether extraction passes in this space broadcast their prompt and response to every member.
@@ -1737,7 +1781,12 @@ export function SpaceStoreProvider(props: ParentProps) {
 
     const segs = routeStore.segments();
     const currentView = view ?? (segs[0] === 'space' && segs[2] ? segs[2] : 'about');
-    const targetPath = '/space/' + spaceId + '/' + currentView;
+    /*
+      The canonical segment, not the one the caller happened to hold. `spaceId` here may be either
+      form — a sidebar row passes the local id, a share link the shared one — and both resolve, so
+      without this one space ended up with two addresses depending on how you reached it.
+    */
+    const targetPath = '/space/' + (ds ? canonicalSpaceId(ds) : spaceId) + '/' + currentView;
     shellStore.closeShellView();
     routeStore.navigate(targetPath);
     // Notify embedded app iframes (e.g. Flux) after the dataset has switched
@@ -2096,6 +2145,108 @@ export function SpaceStoreProvider(props: ParentProps) {
   const enabledModules = createMemo<string[]>(() => resolveEnabledModules(currentSpace()?.enabledModules));
 
   /*
+    ── Module settings ──────────────────────────────────────────────────────────────────────────
+
+    The four levels a capability's settings resolve through, read from the four places they live.
+    `moduleSettings.ts` owns the resolution and the reasoning; this owns only the reading.
+
+    A capability could be switched on and off four ways here and could not carry a single *value*,
+    which is why `autoInterpret`, `extractionTargets` and `shareExtractionDetail` are columns on the
+    core `Space` entity. Those three stay where they are — they are extraction's configuration, and
+    where that lands is a question about wires rather than about settings — but nothing new joins
+    them.
+  */
+  const settingLevels = createMemo<LevelValues>(() => {
+    const uuid = datasetStore.currentDataset()?.id;
+    return {
+      deployment: (getSeed().settings ?? {}) as LevelValues['deployment'],
+      agent: parseSettings(datasetStore.agentSettings()?.moduleSettings, 'AgentSettings.moduleSettings'),
+      space: parseSettings(currentSpace()?.moduleSettings, 'Space.moduleSettings'),
+      'agent-in-space': parseSettings(preferenceFor(uuid)?.moduleSettings, 'SpacePreference.moduleSettings'),
+    };
+  });
+
+  /** Every module that declares settings, as the screens and the resolver both want them. */
+  const settingGroups = createMemo(() => moduleRegistry.settingGroups());
+
+  /*
+    Hand each module its own answers.
+
+    Read at call time inside the module's store, so a module built once at boot follows the space it
+    is in — which is the whole point of a per-space level. Registered here because this is the store
+    that can see all four levels; `moduleRegistry` sits below it and knows about none of them.
+  */
+  onCleanup(
+    moduleRegistry.provideSettings((group) =>
+      resolveGroup(
+        settingGroups().find((entry) => entry.id === group) ?? { id: group, label: group, settings: [] },
+        settingLevels(),
+      ),
+    ),
+  );
+
+  const spaceModuleSettings = createMemo<SettingRow[]>(() => settingRows(settingGroups(), 'space', settingLevels()));
+  const myModuleSettings = createMemo<SettingRow[]>(() =>
+    settingRows(settingGroups(), 'agent-in-space', settingLevels()),
+  );
+  const agentModuleSettings = createMemo<SettingRow[]>(() => settingRows(settingGroups(), 'agent', settingLevels()));
+
+  /**
+   * Write, or withdraw, the community's opinion about one setting.
+   *
+   * `undefined` clears rather than writing a value, because a level that has been reset must go back
+   * to **silence** — a stored `false` that happens to equal the default goes on deciding, and the
+   * control that wrote it then reads as untouched while still overruling everything less specific.
+   */
+  async function setSpaceModuleSetting(
+    group: string,
+    key: string,
+    value?: SettingValue,
+    spaceUuid?: string,
+  ): Promise<void> {
+    const ds = targetDataset(spaceUuid);
+    const space = ds ? mySpaces().find((entry) => isSpaceSelf(entry, ds)) : undefined;
+    if (!ds || !space) return;
+    const raw = (space as unknown as { moduleSettings?: string }).moduleSettings;
+    const next = value === undefined ? clearSetting(raw, group, key) : writeSetting(raw, group, key, value);
+    try {
+      await Space.update(ds.handle, space.id, { moduleSettings: next } as Partial<Space>);
+    } catch (error) {
+      console.error('SpaceStore: could not persist a module setting', error);
+      toastService.error('Could not save this change for the space.');
+      throw error;
+    }
+    updateSpaceInCache(ds, { moduleSettings: next } as never);
+    if (!isCurrent(ds)) return;
+    setCurrentSpace((prev) =>
+      prev
+        ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, { moduleSettings: next }) as Space)
+        : prev,
+    );
+  }
+
+  /** The same, for this agent in this one space. Private — written to the root dataset. */
+  async function setMyModuleSetting(
+    group: string,
+    key: string,
+    value?: SettingValue,
+    spaceUuid?: string,
+  ): Promise<void> {
+    const uuid = spaceUuid ?? datasetStore.currentDataset()?.id;
+    if (!uuid) return;
+    const raw = preferenceFor(uuid)?.moduleSettings;
+    const next = value === undefined ? clearSetting(raw, group, key) : writeSetting(raw, group, key, value);
+    await updateSpacePreference(uuid, { moduleSettings: next } as Partial<SpacePreference>);
+  }
+
+  /** The same, for this agent everywhere. Also private, and also the root dataset. */
+  async function setAgentModuleSetting(group: string, key: string, value?: SettingValue): Promise<void> {
+    const raw = datasetStore.agentSettings()?.moduleSettings;
+    const next = value === undefined ? clearSetting(raw, group, key) : writeSetting(raw, group, key, value);
+    await datasetStore.updateAgentSettings({ moduleSettings: next });
+  }
+
+  /*
     Does this space want its calls interpreted as they happen.
 
     Read off the space rather than stored here, so it answers for whichever space is on screen, and
@@ -2151,6 +2302,48 @@ export function SpaceStoreProvider(props: ParentProps) {
    * with no record has not been touched and answers the space's list — which is exactly the
    * distinction the record exists to make, and why this cannot be a set of links.
    */
+  /**
+   * Whether one call is extracted as it happens: its own answer if it has one, else the space's.
+   *
+   * The same shape as `extractionTargetsForCall` and the same absent-means-undecided rule — but
+   * stored as `'on'` / `'off'` / `''` rather than a boolean, because a boolean has two states and
+   * this needs three. A record is created the moment somebody narrows the *targets*, so an untouched
+   * auto flag on it must not read as a refusal of the space's default.
+   *
+   * A participant's decision, unlike `Space.autoInterpret`, which administers the space. Stopping a
+   * standing pass mid-meeting is about this conversation, and needing whoever owns the space to be
+   * in the room for it makes the honest response "leave the call".
+   */
+  const autoInterpretForCall = (collectionId: string): boolean => {
+    const own = callExtractions().find((row) => row.callId === collectionId)?.auto;
+    if (own === 'on') return true;
+    if (own === 'off') return false;
+    return autoInterpret();
+  };
+
+  /**
+   * Turn automatic extraction on or off for one call, for everyone in it.
+   *
+   * Writes the decision rather than a diff, and writes it even when it agrees with the space — the
+   * point of the record is that it *has* decided, so a space that later changes its default does not
+   * silently change this call's mind mid-conversation.
+   */
+  async function setAutoInterpretForCall(collectionId: string, on: boolean): Promise<void> {
+    const dataset = datasetStore.currentDataset();
+    if (!dataset || !collectionId) return;
+    const auto = on ? 'on' : 'off';
+    const existing = callExtractions().find((row) => row.callId === collectionId);
+    try {
+      if (existing) await CallExtraction.update(dataset.handle, existing.id, { auto });
+      else await CallExtraction.create(dataset.handle, { callId: collectionId, auto });
+      setCallExtractions(await CallExtraction.findAll(dataset.handle));
+    } catch (error) {
+      console.error('SpaceStore: could not save whether this call extracts as it happens', error);
+      toastService.error('Could not save whether this call extracts as it happens.');
+      throw error;
+    }
+  }
+
   const extractionTargetsForCall = (collectionId: string): string[] => {
     const candidates = shapeStore.extractionCandidates();
     const own = parseEntityList(callExtractions().find((row) => row.callId === collectionId)?.entities);
@@ -2194,6 +2387,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     datasetStore.provideCallExtraction({
       forCall: extractionTargetsForCall,
       setForCall: setCallExtractionTarget,
+      autoForCall: autoInterpretForCall,
+      setAutoForCall: setAutoInterpretForCall,
     }),
   );
   /*
@@ -2859,22 +3054,31 @@ export function SpaceStoreProvider(props: ParentProps) {
 
   const moduleLaunchers = createMemo(() => {
     const on = new Set(activeModules());
-    return moduleRegistry
-      .all()
-      .filter(({ definition }) => definition.launcher && on.has(definition.id))
-      .filter(({ definition }) => read(definition.id, definition.launcher!.availableWhen, true))
-      .map(({ definition }) => {
-        const launcher = definition.launcher!;
-        const active = read(definition.id, launcher.activeWhen, false);
-        return {
-          id: definition.id,
-          icon: launcher.icon,
-          // The active label where there is one, so a tooltip cannot describe an act the button has
-          // stopped performing. Most launchers declare none and this is `label` in both states.
-          label: (active && launcher.activeLabel) || launcher.label,
-          active,
-        };
-      });
+    return (
+      moduleRegistry
+        .all()
+        .filter(({ definition }) => on.has(definition.id))
+        /*
+        A module may offer more than one way in, and transcription is why: recording and extraction
+        are two surfaces with different lifetimes — one follows this agent's microphone, the other
+        follows a pass that may be somebody else's — so one button cannot open both. The key is the
+        plain module id for a module with a single launcher, which is every other one, so nothing
+        about their rail entries changes.
+      */
+        .flatMap(({ definition }) => moduleRegistry.launchersOf(definition).map((entry) => ({ definition, ...entry })))
+        .filter(({ definition, launcher }) => read(definition.id, launcher.availableWhen, true))
+        .map(({ definition, key, launcher }) => {
+          const active = read(definition.id, launcher.activeWhen, false);
+          return {
+            id: key,
+            icon: launcher.icon,
+            // The active label where there is one, so a tooltip cannot describe an act the button has
+            // stopped performing. Most launchers declare none and this is `label` in both states.
+            label: (active && launcher.activeLabel) || launcher.label,
+            active,
+          };
+        })
+    );
   });
 
   /**
@@ -2885,13 +3089,21 @@ export function SpaceStoreProvider(props: ParentProps) {
    * this dereferences it.
    */
   function launchModule(moduleId: string) {
-    const definition = moduleRegistry.get(moduleId)?.definition;
-    const action = definition?.launcher?.action;
+    /*
+      The rail's key, which is the module id for a module with one launcher and `<id>:<key>` for one
+      with several. Split rather than looked up twice: the whole of the addressing is in the key, so
+      a rail iterating over entries needs nothing else, which is the constraint that put this here
+      rather than in a schema in the first place.
+    */
+    const [id] = moduleId.split(':');
+    const definition = moduleRegistry.get(id)?.definition;
+    if (!definition) return;
+    const action = moduleRegistry.launchersOf(definition).find((entry) => entry.key === moduleId)?.launcher.action;
     if (!action) return;
-    const store = moduleStores[moduleId] as Record<string, unknown> | undefined;
+    const store = moduleStores[id] as Record<string, unknown> | undefined;
     const fn = store?.[action];
     if (typeof fn === 'function') (fn as () => void)();
-    else console.warn(`module "${moduleId}" declares launcher action "${action}" but its store has no such method`);
+    else console.warn(`module "${id}" declares launcher action "${action}" but its store has no such method`);
   }
 
   /**
@@ -3455,6 +3667,14 @@ export function SpaceStoreProvider(props: ParentProps) {
     setSpaceDefaultTheme,
     setModuleEnabled,
     autoInterpret,
+    autoInterpretForCall,
+    setAutoInterpretForCall,
+    spaceModuleSettings,
+    myModuleSettings,
+    agentModuleSettings,
+    setSpaceModuleSetting,
+    setMyModuleSetting,
+    setAgentModuleSetting,
     setAutoInterpret,
     shareExtractionDetail,
     setShareExtractionDetail,

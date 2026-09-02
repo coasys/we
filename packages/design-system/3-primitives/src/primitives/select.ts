@@ -1,10 +1,11 @@
 import type { DesignSystemProps } from '@we/design-types';
-import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
-import { css, html, nothing, type PropertyValues } from 'lit';
+import { type DSLayer, familyVar, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
+import { css, html, nothing, type PropertyValues, unsafeCSS } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
+import { fieldSurface } from '../shared/field-surface';
 import { openFloatingPanel } from '../shared/floating-panel';
 import sharedStyles from '../shared/styles';
 import type { ComponentSize } from '../types';
@@ -84,28 +85,24 @@ const styles = css`
     position: relative;
     display: flex;
     align-items: center;
-    border: 1px solid var(--we-role-border);
-    border-radius: var(--we-theme-input-radius, var(--we-radius-400));
-    /* Recessed, not raised. This was neutral-0 — the *darkest* step in a dark theme, i.e. a well —
-       and reading it as "the lightest, therefore a card" inverted it. */
-    background: var(--we-role-surface-sunken);
   }
 
-  /* One perimeter, the same one we-input draws: the resting outline recoloured to the ring, plus a
-     single pixel of ring outside it. This was a 2px accent-muted outline inset by -1px — a third
-     spelling of the same idea, which read as a halo *inside* the edge rather than as the edge
-     thickening, and made this the one control in a row of them answering focus differently.
-     --we-ring-color rather than the accent directly, so a theme's ringColor reaches this too. */
-  [part='input-wrapper']:focus-within {
-    border-color: var(--we-ring-color);
-    box-shadow: 0 0 0 1px var(--we-ring-color);
-    /* On the arrival rule, not the resting one, so focus eases in and blur snaps — the split the DS
-       state rules make, for the reason argued at STATE_TRANSITION in shared/helpers.ts. Both
-       properties travel together or the ring pops in over an edge that is still moving. */
-    transition:
-      border-color var(--we-theme-state-duration, var(--we-transition-100, 50ms)) ease-out,
-      box-shadow var(--we-theme-state-duration, var(--we-transition-100, 50ms)) ease-out;
-  }
+  /*
+    The recessed well, the ring, and — new here — a hover that answers with the fill as well as the
+    edge. These three rules were written on this control first and copied outward from it, which is
+    how the family drifted; they now come from the one definition instead, and this is the last
+    control to stop restating them.
+
+    The hover is the half that had gone missing at the source rather than in a copy. we-input's own
+    note argues for lifting the fill by pointing at this control ("that variant is what a Select
+    trigger is, so an input sitting in a row of them was the one control whose edge did not answer
+    the pointer") — and the trigger had no hover rule at all, so after that change it was the only
+    field in the family that did not respond to the pointer.
+
+    Focus-within rather than focus-visible: the focusable thing is the native input inside this
+    wrapper, and the ring has to follow the caret whether it was reached by click or by Tab.
+  */
+  ${fieldSurface("[part='input-wrapper']", ':focus-within')}
 
   input[part='native'] {
     all: unset;
@@ -191,7 +188,9 @@ const styles = css`
     overflow-y: auto;
     background: var(--we-role-surface-raised);
     border: 1px solid var(--we-role-border);
-    border-radius: var(--we-theme-surface-radius, var(--we-radius-400));
+    /* A surface, though the control that opens it is an input — the panel is its own kind of thing.
+       Through the table rather than by hand, so it cannot drift from every other surface. */
+    border-radius: ${unsafeCSS(familyVar('surface', 'radius'))};
     box-shadow: 0 4px 12px color-mix(in srgb, var(--we-role-shadow-color) 10%, transparent);
     margin-top: var(--we-space-100);
     padding: var(--we-space-100) 0;

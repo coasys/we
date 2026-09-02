@@ -270,10 +270,14 @@ export const callsList: SchemaNode = {
                                 {
                                   type: '$if',
                                   props: {
-                                    condition: { $: 'call.id == modules.transcribe.liveCollectionId' },
+                                    condition: { $: 'call.id == modules.call.callRecordId' },
+                                    // `solid`: a call happening right now is the news on this card,
+                                    // not a note about it. The soft pair is a dark tint under pale
+                                    // text, which is the treatment "Retired" and "Not a WE space"
+                                    // want and this does not.
                                     then: {
                                       type: 'we-badge',
-                                      props: { variant: 'success', size: 'xs' },
+                                      props: { variant: 'success', appearance: 'solid', size: 'xs' },
                                       children: ['Live'],
                                     },
                                   },
@@ -431,7 +435,7 @@ export const callsList: SchemaNode = {
                               type: '$if',
                               props: {
                                 condition: {
-                                  $: 'modules.call.canCall && (!modules.call.active || call.id == modules.transcribe.liveCollectionId)',
+                                  $: 'modules.call.canCall && (!modules.call.active || call.id == modules.call.callRecordId)',
                                 },
                                 // A real tooltip rather than the button's `title`, which the browser draws
                                 // itself: unthemed, after its own delay, and never on a keyboard focus.
@@ -472,13 +476,20 @@ export const callsList: SchemaNode = {
                                           {
                                             $if: {
                                               condition: { $: '!modules.call.active' },
-                                              // Two actions rather than one with an `onSuccess`, because
-                                              // `goToCall` returns nothing for a lifecycle key to hang
-                                              // off. `resume` is built for that: it holds the record until
-                                              // there is a call to attach it to, so the order these resolve
-                                              // in does not matter.
+                                              /*
+                                                `continueCall`, which names this record, rather than
+                                                `goToCall`, which is a direction: with nothing running
+                                                the latter starts a *fresh* call, so continuing a past
+                                                one wrote a second record and joined that — an empty
+                                                call left in the space, and every surface reading
+                                                `callRecordId` about it instead of the meeting chosen.
+
+                                                `resume` stays: the transcriber learns the call's
+                                                record through presence, which is a round trip, and
+                                                this says the answer immediately.
+                                              */
                                               then: [
-                                                { $action: 'modules.call.goToCall' },
+                                                { $action: 'modules.call.continueCall', args: [{ $: 'call.id' }] },
                                                 { $action: 'modules.transcribe.resume', args: [{ $: 'call.id' }] },
                                               ],
                                             },

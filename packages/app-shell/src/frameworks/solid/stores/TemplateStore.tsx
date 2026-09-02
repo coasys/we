@@ -15,15 +15,15 @@ import {
   SpaceTemplatePreference,
   Template,
 } from '@we/entities';
-import type { SchemaNode, StoredTemplate, TemplateMeta, TemplateSchema } from '@we/schema-shared';
-import { createStoredTemplate, ensureNodeIds } from '@we/schema-shared';
+import type { RouteSchema, SchemaNode, StoredTemplate, TemplateMeta, TemplateSchema } from '@we/schema-shared';
+import { createStoredTemplate, ensureNodeIds, hasViewsMarker } from '@we/schema-shared';
 import { updateSchema } from '@we/schema-solid';
 import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 
 import { CHROME_TIER, SPACE_TIER } from '../../../shared/registries/templateSurface';
 import { acceptTemplate, describeAcceptance, describeCapabilities } from '../../../shared/templateAcceptance';
-import { type AppDataset, useDatasetStore } from './DatasetStore';
+import { type AppDataset, canonicalSpaceId, useDatasetStore } from './DatasetStore';
 import { useRouteStore } from './RouteStore';
 import { useSessionStore } from './SessionStore';
 
@@ -657,15 +657,28 @@ export function TemplateStoreProvider(props: ParentProps) {
       : allTemplates().find((t) => t.id === realId && !t._fromSpace) || shellTemplates.find((t) => t.id === realId);
     if (newTemplate) {
       commitTemplate(newTemplate);
-      const segs = routeStore.segments();
-      const currentView = segs[0] === 'space' && segs[2] ? segs[2] : 'globe';
-      const view = lastViewByTemplate.get(realId) ?? currentView;
+      /*
+        Every template lives under the space prefix now, so there is one shape here rather than two.
+
+        What still differs is what comes *after* it. A template hosting the space's sections lands
+        on one, and carrying the current section across is what `lastViewByTemplate` is for. A
+        self-routing template's screens are its own, so it lands on the space itself and its own
+        index decides — Workshop's is a `redirect`, precisely so nothing out here has to know its
+        first screen is the board.
+      */
       const p = datasetStore.currentDataset();
-      if (p) {
-        const spaceId = p.sharedId ?? p.id;
-        routeStore.navigate('/space/' + spaceId + '/' + view);
-      } else {
+      if (!p) {
         routeStore.navigate('/');
+        datasetStore.updateAgentSettings({ currentTemplateId: realId });
+        return;
+      }
+      const base = `/space/${canonicalSpaceId(p)}`;
+      if (!hasViewsMarker(newTemplate.routes as RouteSchema[] | undefined)) {
+        routeStore.navigate(base);
+      } else {
+        const segs = routeStore.segments();
+        const currentView = segs[0] === 'space' && segs[2] ? segs[2] : 'globe';
+        routeStore.navigate(`${base}/${lastViewByTemplate.get(realId) ?? currentView}`);
       }
       datasetStore.updateAgentSettings({ currentTemplateId: realId });
     } else {

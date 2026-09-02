@@ -23,6 +23,7 @@ import type {
   DatasetHandle,
   EphemeralPort,
   InterpretationPort,
+  InterpretationProposal,
   InterpretationResult,
   Peer,
   TranscriptionPort,
@@ -67,6 +68,15 @@ export interface ModuleHostServices {
    */
   interpretCollection?: (collectionId: string) => Promise<InterpretationResult>;
   /**
+   * The suggestions staged on one collection's contents, published by the same store as
+   * `interpretCollection` and for the same reason: narrowing to a collection needs the containment
+   * predicate, which only a store that can read the dataset's models can resolve.
+   *
+   * Absent means a host that cannot narrow, and the unscoped port call stands in — the behaviour
+   * every caller had before, and too much rather than too little.
+   */
+  proposalsForCollection?: (dataset: DatasetHandle, collectionId: string) => Promise<InterpretationProposal[]>;
+  /**
    * What one call extracts and what else it could, published by the store that can see all three
    * layers. Absent reads as an empty list — see `ModuleInterpretationAccess.targets`.
    */
@@ -100,7 +110,16 @@ export interface ModuleHostServices {
    * conflating them put the wrong sentence on screen: a space with the setting off reported that
    * this node could not auto-extract, which is neither true nor something anybody can act on.
    */
-  autoInterpretEnabled?: () => boolean;
+  /**
+   * Whether a call is extracted as it happens — its participants' answer, else the space's.
+   *
+   * Takes a collection because the answer is per call: a community's standing decision is the
+   * default, and the people in one conversation may turn it off for that conversation. Omit it to
+   * ask about the space itself.
+   */
+  autoInterpretEnabled?: (collectionId?: string) => boolean;
+  /** Turn it on or off for one call, for everyone in it. */
+  setAutoInterpret?: (collectionId: string, on: boolean) => Promise<void>;
   /**
    * Whether this space shares the model exchange between peers — the space setting, reactive.
    *
@@ -257,7 +276,12 @@ export function createModuleStoreDeps(framework: {
       // The community's decision, read through on every call so a module's standing watch follows a
       // mid-call toggle. Absent reads as off, matching the gate in DatasetStore — the right way
       // round for something that spends somebody's LLM budget.
-      autoEnabled: () => services.autoInterpretEnabled?.() ?? false,
+      autoEnabled: (collectionId?: string) => services.autoInterpretEnabled?.(collectionId) ?? false,
+      setAuto: async (collectionId: string, on: boolean) => {
+        const set = services.setAutoInterpret;
+        if (!set) throw new Error('interpretation: this host cannot record a call’s extraction settings');
+        await set(collectionId, on);
+      },
       // Read through on every call rather than captured, like every accessor here: a module store
       // outlives a space switch, and a captured list would offer the previous space's models.
       targets: (collectionId) => services.extractionTargets?.(collectionId) ?? [],
@@ -313,9 +337,15 @@ export function createModuleStoreDeps(framework: {
         one committed it there. `targeted` is the one place that decision is made; see it for why a
         named-and-missing dataset is not the same as an unnamed one.
       */
-      proposals: async (target) => {
+      proposals: async (target, collection) => {
         const dataset = targeted(target);
         if (!dataset || !services.interpretation) return [];
+        // Narrowed where the host can say what containment is here, and unscoped where it cannot —
+        // the same feature test every other optional service in this file makes, and the fallback is
+        // the answer this returned before there was a scope at all.
+        if (collection && services.proposalsForCollection) {
+          return services.proposalsForCollection(dataset, collection);
+        }
         return services.interpretation.proposals(dataset);
       },
       accept: async (id, property, target) => {

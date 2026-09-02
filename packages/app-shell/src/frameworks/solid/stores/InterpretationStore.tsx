@@ -22,6 +22,7 @@
  * formatting, so "0:42" and "Extracted 3 tasks" are unreachable from a template — the same reason
  * `runtimeStore.aiModels` carries `statusText` and `themeStore` builds its own view models.
  */
+import { detailWithheld } from '@shared/interpretation/activityView';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { useDatasetStore } from '@solid/stores/DatasetStore';
 import { useProfileStore } from '@solid/stores/ProfileStore';
@@ -98,6 +99,23 @@ export interface InterpretationStore {
   runningCount: Accessor<number>;
   /** Whether there is anything at all to show. The bar mounts on this. */
   hasActivity: Accessor<boolean>;
+  /**
+   * The feed split the two ways a readout draws it, and counted.
+   *
+   * Derivations of {@link activity} and nothing else, which is why they belong here rather than
+   * where they were: `@we/module-transcribe` published all five, filtering the feed the host had
+   * already assembled, so the same state had two names and nothing chose which was canonical. A
+   * module that re-exports a host capability is a dependency wearing a store member's clothes.
+   */
+  runningPasses: Accessor<InterpretationActivityView[]>;
+  settledPasses: Accessor<InterpretationActivityView[]>;
+  settledCount: Accessor<number>;
+  /**
+   * A peer's pass is on screen whose exchange this agent cannot open, because the space does not
+   * share it. What a footnote explaining the absence is gated on — the row's own `hasDetail` cannot
+   * answer it, since a pass has no exchange until it reaches the model whatever the setting says.
+   */
+  detailWithheld: Accessor<boolean>;
   /**
    * Whether this node can interpret at all — as distinct from being able to and having no model
    * configured. False means no rebuild-free fix exists, so a UI should say so rather than offering
@@ -415,15 +433,22 @@ export function InterpretationStoreProvider(props: ParentProps) {
       */
       interpretationDetailShared: () => shareDetail(),
       /*
-        The community's decision about automatic extraction, published for the same reason the sharing
-        one is: a module has to be able to *react* to it.
+        Whether automatic extraction is on, published for the same reason the sharing one is: a module
+        has to be able to *react* to it.
 
         Its only reader used to be a throw inside `datasetStore.watchCollection`, which meant switching
         it on mid-call changed nothing — nothing re-ran the registration, so a call kept reporting that
         auto-extraction was unavailable until everybody left and rejoined. Published here, a module's
         watch effect depends on it and follows the toggle.
+
+        Asked about a *call* now, with the space's answer underneath it. Participants can stop a
+        standing pass on this conversation without the community changing its mind about every future
+        one — and without needing whoever administers the space to be in the room, which was the only
+        way to stop one before. Called with no id, it answers for the space, which is what a surface
+        asking "does this space do this at all" wants.
       */
-      autoInterpretEnabled: () => spaceStore.autoInterpret(),
+      autoInterpretEnabled: (collectionId?: string) =>
+        collectionId ? spaceStore.autoInterpretForCall(collectionId) : spaceStore.autoInterpret(),
     }),
   );
 
@@ -432,6 +457,13 @@ export function InterpretationStoreProvider(props: ParentProps) {
     capable,
     runningCount: createMemo(() => activity().filter((row) => row.running).length),
     hasActivity: createMemo(() => activity().length > 0),
+    runningPasses: createMemo(() => activity().filter((row) => row.running)),
+    settledPasses: createMemo(() => activity().filter((row) => !row.running)),
+    settledCount: createMemo(() => activity().filter((row) => !row.running).length),
+    // The rule itself is in `shared/interpretation/activityView.ts`, where it can be tested without
+    // a store — it has been got wrong twice, and its failure is a footnote that outlives the thing
+    // it explains, which nobody reports.
+    detailWithheld: createMemo(() => detailWithheld(activity(), shareDetail())),
     // Only the settled ones, and only from this view: a running pass is not this agent's to
     // dismiss, and the rows themselves belong to whoever is running them.
     dismissSettled: () =>

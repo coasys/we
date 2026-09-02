@@ -262,3 +262,31 @@ describe('a slot contributed after the first render', () => {
     expect(listener).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Registering a host dock store announces to the dock registry.
+ *
+ * Which is correct — the geometry has to re-resolve when the keys behind it change — and it is a
+ * loaded gun for anything that *reads* the registry from inside the effect that registers. That is
+ * exactly what happened: a memo resolving "which dock does this declaration mean" started consulting
+ * the registry, the effect that registers an interface's own panels read that memo, and each run
+ * invalidated itself. It ran until the stack gave out, froze the app for five seconds on entering
+ * the interface, and left the docks half-built — no dragging, no geometry, nothing following the
+ * window.
+ *
+ * The rule this pins is the one that keeps it fixed: the announcement is real, so a reader inside a
+ * registering effect must resolve from somewhere that cannot move.
+ */
+describe('registering a host dock store', () => {
+  it('announces, so anything reading the registry inside a registering effect will re-run', () => {
+    const seen: number[] = [];
+    const off = onDockRegistryChanged(() => seen.push(1));
+
+    registerHostDockStore('test:panels', { 'edge:a': () => 'left' });
+    registerHostDockStore('test:panels', { 'edge:a': () => 'right' });
+
+    expect(seen.length).toBe(2);
+    off();
+    unregisterHostDockStore('test:panels');
+  });
+});

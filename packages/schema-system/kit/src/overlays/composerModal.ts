@@ -163,7 +163,7 @@ export function composerModal(opts: ComposerModalOptions): SchemaNode {
                 // Guarded like the backdrop, so the modal has one way out rather than two that
                 // disagree — the house precedent is the model wizard, whose Cancel routes through
                 // the same `requestCloseWizard` its backdrop does.
-                props: { variant: 'ghost', onClick: guard?.close ?? close },
+                props: { variant: 'secondary', onClick: guard?.close ?? close },
                 children: ['Cancel'],
               },
               {

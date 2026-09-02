@@ -43,8 +43,11 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
     variant does — and that variant is what a `Select` trigger is, so an input sitting in a row of
     them was the one control whose edge did not answer the pointer.
   */
-  hoverProps: { bg: 'surface-hover', border: '1px solid border-strong' },
-  activeProps: { bg: 'surface-hover', border: '1px solid border-strong' },
+  hoverProps: { bg: 'surface-sunken-hover', border: '1px solid border-hover' },
+  // Pressed resolves to the same fill as hover, deliberately — a field is clicked INTO, not
+  // pushed, so a distinct pressed step is a flash that snaps back on release. See the note on
+  // the `surfaceSunkenHover` role.
+  activeProps: { bg: 'surface-sunken-hover', border: '1px solid border-hover' },
   /*
     Focused, the outline *becomes* the ring's inner pixel rather than sitting inside it.
 
@@ -71,7 +74,7 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
     `ANIMATABLE_STATE_PROPS` list on one duration and easing.
   */
   focusProps: {
-    bg: 'surface-hover',
+    bg: 'surface-sunken-hover',
     border: '1px solid var(--we-ring-color)',
     ring: '0 0 0 1px var(--we-ring-color)',
   },

@@ -218,6 +218,10 @@
   border: var(--node-border-width) solid var(--node-border);
   overflow: hidden;
   transition: box-shadow 120ms ease-out;
+
+  // The node's fade, on what is *drawn* — see `--node-opacity`. Set on the wrapper it would take the
+  // resize handles and the action buttons with it, and a faded control reads as a disabled one.
+  opacity: var(--node-opacity, 1);
 }
 
 .we-graph__image {
@@ -248,6 +252,9 @@
   // translate resolves against the element's own box.
   transform-origin: 50% 0;
   transform: translateX(-50%) scale(var(--label-scale, 1));
+
+  // See `.we-graph__dot`: a node's fade is about what it draws, and a label is part of that.
+  opacity: var(--node-opacity, 1);
 
   // Sizes to its text up to the cap, so `text-overflow` has a width to work against.
   width: max-content;
@@ -280,6 +287,9 @@
   border: var(--node-border-width) solid var(--node-border);
   box-shadow: var(--we-shadow-sm);
   overflow: hidden;
+
+  // See `.we-graph__dot`: the fade belongs to the card, not to the chrome anchored beside it.
+  opacity: var(--node-opacity, 1);
 }
 
 /**
@@ -512,4 +522,232 @@
   left: calc(var(--half-w) * -1);
   top: 0;
   cursor: ew-resize;
+}
+
+/**
+ * The controls above a selected node — see `nodeActions`.
+ *
+ * Off the **card's** top-left corner, and scaled back by the camera so the buttons stay the size a
+ * finger expects at every zoom.
+ *
+ * `bottom: 100%` was the obvious spelling and it put the row in the middle of the card.
+ * `.we-graph__node` is a zero-size anchor point — every visible part of a node positions itself
+ * against it, and the card is centred there — so a percentage resolved against nothing and left the
+ * strip at the anchor. Its top-left is half the width left and half the height up, which is how the
+ * resize handles reach their edges too.
+ */
+.we-graph__actions {
+  position: absolute;
+  left: calc(var(--node-width) / -2);
+  top: calc(var(--node-height) / -2);
+  display: flex;
+  gap: 4px;
+
+  // The node layer is inert so the canvas can hit-test in world space; these take their own presses.
+  pointer-events: auto;
+
+  /*
+    Scaled last in the list, so the lift is measured before it is scaled.
+
+    A transform list applies right to left: the row is lifted by its own height plus a gap in its own
+    unscaled units, and the whole displacement is scaled with it — so the strip sits a constant six
+    screen pixels above the card's top edge at every zoom. Written the other way round the gap would
+    be in world units and drift as the camera moved.
+
+    Everything inside is therefore already in screen pixels: 24px buttons, a 4px gap, and no
+    `/ var(--graph-zoom)` on either. Dividing there as well was the double compensation that made the
+    row grow as the board was zoomed out.
+  */
+  transform: scale(calc(1 / var(--graph-zoom))) translateY(calc(-100% - 6px));
+  transform-origin: top left;
+}
+
+.we-graph__action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: var(--we-role-text-muted);
+  background: var(--we-role-surface-raised);
+  border: 1px solid var(--we-role-border);
+  border-radius: var(--we-radius-full);
+  box-shadow: var(--we-shadow-sm);
+  cursor: pointer;
+
+  &:hover {
+    color: var(--we-role-text);
+    background: var(--we-role-surface-hover);
+    border-color: var(--we-role-border-hover);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--we-ring-color);
+    outline-offset: 1px;
+  }
+}
+
+/*
+ * The two answers, coloured — a status foreground at rest, filling on hover.
+ *
+ * Said in colour rather than only in the icon: a bin and a tick the same shade is a pair of buttons
+ * you have to read before pressing, on a control small enough that reading it is most of the work.
+ *
+ * The foreground role rather than the fill for the resting state, because at 24px the icon *is* the
+ * button and it has to stay legible against the raised surface behind it; `dangerText` and
+ * `successText` are the two that are corrected for exactly that. The fill takes over on hover,
+ * where its own label role answers for the contrast.
+ *
+ * A pair, always. A red cross beside a grey tick is one decision that looks real and one that looks
+ * unavailable, which is the wrong hint on the half people are usually looking for.
+ */
+.we-graph__action--positive {
+  color: var(--we-role-success-text);
+
+  &:hover {
+    color: var(--we-role-on-success);
+    background: var(--we-role-success);
+    border-color: var(--we-role-success);
+  }
+}
+
+.we-graph__action--danger {
+  color: var(--we-role-danger-text);
+
+  &:hover {
+    color: var(--we-role-on-danger);
+    background: var(--we-role-danger);
+    border-color: var(--we-role-danger);
+  }
+}
+
+/**
+ * Connection handles — a dot off each edge of a selected card, and an arrow once you reach for it.
+ *
+ * The alternative was a mode: a button that arms `connect-nodes`, which claims a press anywhere on a
+ * node, so it has to be switched on to connect and off again to go back to moving cards. That is a
+ * thing to remember and a thing to forget, and forgetting it in either direction is a gesture doing
+ * something you did not ask for. A grab area that exists only on the edge of a selected card needs no
+ * mode, because the target is what makes the gesture unambiguous.
+ *
+ * ## The target is bigger than the dot
+ *
+ * The element is a 26px box and the dot inside it is 10px, because those answer different questions.
+ * The dot is a *hint* — four of them around a selected card, and four large discs would be furniture
+ * competing with the card's own contents. The box is what a mouse has to land on, and a 10px target
+ * beside a resize strip is a thing you miss and then miss again. Drawn as `::before` so the two sizes
+ * are independent; the hit area never changes, only what is painted in it.
+ *
+ * Sized in `px / var(--graph-zoom)`, like the resize grips: the layer is scaled by the camera, so
+ * dividing first is what keeps a dot the same size on screen at every zoom. No `scale()` here, which
+ * is what lets `translate(-50%, -50%)` centre them honestly — a percentage translate resolves against
+ * the unscaled box, so the two together mis-centre by however far the camera is from 1.
+ */
+.we-graph__connect {
+  --hit: calc(26px / var(--graph-zoom));
+  --dot: calc(10px / var(--graph-zoom));
+  --reach: calc(16px / var(--graph-zoom));
+  --half-w: calc(var(--node-width) / 2);
+  --half-h: calc(var(--node-height) / 2);
+
+  position: absolute;
+  width: var(--hit);
+  height: var(--hit);
+  transform: translate(-50%, -50%);
+
+  // The node layer is inert so the canvas can hit-test in world space; these take their own presses.
+  pointer-events: auto;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+// What is actually painted: small at rest, and the size of the target once reached for.
+.we-graph__connect::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: var(--dot);
+  height: var(--dot);
+  border-radius: 50%;
+  background: var(--we-role-accent);
+  border: calc(1.5px / var(--graph-zoom)) solid var(--we-color-neutral-0);
+  opacity: 0.6;
+  transition:
+    opacity 100ms ease-out,
+    width 100ms ease-out,
+    height 100ms ease-out;
+}
+
+.we-graph__connect:hover::before {
+  width: calc(22px / var(--graph-zoom));
+  height: calc(22px / var(--graph-zoom));
+  opacity: 1;
+}
+
+/**
+ * The arrow, out of the edge it belongs to.
+ *
+ * Two borders on a square, turned — a chevron rather than a filled triangle, because a triangle at
+ * this size reads as a blob and a chevron keeps a direction at every zoom. Hidden until the dot is
+ * reached for: four permanent arrows around a card would be four claims about where its connections
+ * go, and there is no such claim to make.
+ */
+.we-graph__connect::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: calc(7px / var(--graph-zoom));
+  height: calc(7px / var(--graph-zoom));
+  border-top: calc(2px / var(--graph-zoom)) solid var(--we-role-on-accent);
+  border-right: calc(2px / var(--graph-zoom)) solid var(--we-role-on-accent);
+  opacity: 0;
+  transition: opacity 100ms ease-out;
+}
+
+.we-graph__connect:hover::after {
+  opacity: 1;
+}
+
+// A square bearing its top and right borders points north-east; each edge is that, turned to face
+// away from the card. The nudge keeps the chevron optically centred, since its mass sits on two
+// sides rather than in the middle.
+.we-graph__connect--n::after {
+  transform: rotate(-45deg) translate(calc(1px / var(--graph-zoom)), calc(1px / var(--graph-zoom)));
+}
+
+.we-graph__connect--e::after {
+  transform: rotate(45deg) translate(calc(-1px / var(--graph-zoom)), calc(1px / var(--graph-zoom)));
+}
+
+.we-graph__connect--s::after {
+  transform: rotate(135deg) translate(calc(-1px / var(--graph-zoom)), calc(-1px / var(--graph-zoom)));
+}
+
+.we-graph__connect--w::after {
+  transform: rotate(-135deg) translate(calc(1px / var(--graph-zoom)), calc(-1px / var(--graph-zoom)));
+}
+
+// Off the edge rather than on it: the edges and corners of the box are already grab areas for
+// resizing, and two affordances sharing a pixel is a coin toss every time somebody reaches for one.
+.we-graph__connect--n {
+  left: 0;
+  top: calc((var(--half-h) + var(--reach)) * -1);
+}
+
+.we-graph__connect--s {
+  left: 0;
+  top: calc(var(--half-h) + var(--reach));
+}
+
+.we-graph__connect--w {
+  left: calc((var(--half-w) + var(--reach)) * -1);
+  top: 0;
+}
+
+.we-graph__connect--e {
+  left: calc(var(--half-w) + var(--reach));
+  top: 0;
 }

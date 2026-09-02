@@ -76,8 +76,8 @@ const VARIANT_DEFAULTS: Record<ButtonVariant, Partial<DesignSystemProps>> = {
     bg: 'transparent',
     color: 'text',
     border: '1px solid var(--we-role-border)',
-    hoverProps: { bg: 'surface-hover', color: 'text', border: '1px solid var(--we-role-border-strong)' },
-    activeProps: { bg: 'control-surface', color: 'text', border: '1px solid var(--we-role-border-strong)' },
+    hoverProps: { bg: 'surface-hover', color: 'text', border: '1px solid var(--we-role-border-hover)' },
+    activeProps: { bg: 'control-surface', color: 'text', border: '1px solid var(--we-role-border-hover)' },
     /*
       The only variant with an outline of its own, and so the only one whose focus ring would
       otherwise be a second line rather than the same one thickened. It takes `we-input`'s

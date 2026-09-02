@@ -15,6 +15,7 @@ import {
   columnSlots,
   type ContentInset,
   contentInset,
+  coveredInset,
   displaces,
   type DockGeometry,
   type DockRequest,
@@ -106,9 +107,13 @@ function describeDestructive(path: string, args: unknown[]): { title: string; bo
         body: 'It will be removed for everyone in this space. This cannot be undone.',
       };
     case 'spaceStore.deleteCollection':
+      // Deliberately not "the post". A collection is kind-agnostic — a post, a recorded call and a
+      // notes collection are the same shape and the same recursive delete — so naming one of them
+      // asks the wrong question about the other two, and the transcript a call is about to lose
+      // does not read as "a block".
       return {
         title: 'Delete this and everything in it?',
-        body: 'The post and every block inside it will be removed for everyone in this space. This cannot be undone.',
+        body: 'Everything inside it will be removed for everyone in this space. This cannot be undone.',
       };
     case 'shapeStore.deleteShape':
       return {
@@ -121,6 +126,40 @@ function describeDestructive(path: string, args: unknown[]): { title: string; bo
         body: 'This cannot be undone.',
       };
   }
+}
+
+/** Module ids already reported, so a memo re-running does not repeat itself every frame. */
+const ambiguousSupply = new Set<string>();
+
+/**
+ * A template asked to supply "that module's panel" for a module that contributes several.
+ *
+ * Reported rather than guessed at. The entry has no way to say *which* panel it means, so the
+ * honest answer is that the declaration is under-specified — and saying so names the fix (a panel
+ * entry that identifies the dock) where picking one silently would not.
+ */
+/** Panel entries already reported, so a memo re-running does not repeat itself every frame. */
+const unknownDock = new Set<string>();
+
+/** A panel entry named a dock that module does not contribute. */
+function warnUnknownDock(moduleId: string, dock: string): void {
+  const key = `${moduleId}:${dock}`;
+  if (unknownDock.has(key)) return;
+  unknownDock.add(key);
+  console.warn(
+    `[panels] an interface supplies contents for "${key}", which module "${moduleId}" does not contribute. ` +
+      'Nothing is supplied, so that module keeps its own contents — check the dock name against the module.',
+  );
+}
+
+function warnAmbiguousSupply(moduleId: string, count: number): void {
+  if (ambiguousSupply.has(moduleId)) return;
+  ambiguousSupply.add(moduleId);
+  console.warn(
+    `[panels] an interface supplies contents for module "${moduleId}", which contributes ${count} panels. ` +
+      'A panel entry names a module, so there is no way to tell which one is meant — none is supplied, ' +
+      "and each keeps the module's own contents.",
+  );
 }
 
 export interface ShellStore {
@@ -199,6 +238,18 @@ export interface ShellStore {
    */
   spaceSettingsOpen: Accessor<boolean>;
   /**
+   * The tab the space-settings panel should open on — `'about'` unless a caller asked for another.
+   *
+   * Read once, as the panel's own `$localState` initial, so it is a starting position rather than a
+   * controlled value: somebody who opens the panel at Features and then walks to Vocabulary must not
+   * be pulled back by the thing that sent them. The panel unmounts when closed, so the next open
+   * re-reads it.
+   *
+   * Handed over rather than navigated to, for the reason `takePendingPath` exists: what shows a tab
+   * is state inside a subtree that does not exist until the panel mounts.
+   */
+  spaceSettingsTab: Accessor<string>;
+  /**
    * Where that panel would like to open, or null while it is closed — the key its dock names.
    *
    * `right` because that is the edge the rail's gear is on and the edge every other panel opens at.
@@ -212,7 +263,13 @@ export interface ShellStore {
    */
   provideModuleGate: (gate: (moduleId: string) => boolean) => void;
   toggleSpaceSettings: () => void;
-  openSpaceSettings: () => void;
+  /**
+   * Open the panel, optionally on a named tab — `'about'`, `'features'`, `'vocabulary'`.
+   *
+   * The tab argument is what lets a control elsewhere point at the setting it is about instead of
+   * naming it in prose and leaving the reader to find it. See `spaceSettingsTab`.
+   */
+  openSpaceSettings: (tab?: string) => void;
   closeSpaceSettings: () => void;
   /** Smooth-scroll the element with the given DOM id into view. */
   scrollToId: (id: string) => void;
@@ -226,6 +283,15 @@ export interface ShellStore {
   dockGeometry: Accessor<Record<string, DockGeometry>>;
   /** What the content viewport gives up to docked panels, in pixels per edge. */
   contentInset: Accessor<ContentInset>;
+  /**
+   * What floating panels are *covering*, in pixels per edge — the counterpart to `contentInset`.
+   *
+   * A floating panel takes no room, so it contributes nothing to `contentInset` and the content
+   * region is the whole area. It still sits over part of it, and a surface drawing into its own box
+   * cannot see which part. Read this to keep something in the clear — a board putting a new card
+   * where the reader can actually see it, a toast, a first-run pointer.
+   */
+  coveredInset: Accessor<ContentInset>;
   /** True while a dock is being dragged, so transitions can be suspended and the edge track the cursor. */
   dockResizing: Accessor<boolean>;
   /**
@@ -245,6 +311,13 @@ export interface ShellStore {
    * not own — cheaper than two actions that would have to agree about one origin.
    */
   resizeDock: (id: string, side: ResizeSide, dx: number, dy: number) => void;
+  /**
+   * Move the boundary between this panel and the one under it in a floating column.
+   *
+   * What the upper panel's bottom grip calls when it has a neighbour. One number, because a
+   * boundary has one degree of freedom: what one panel gains the other gives up.
+   */
+  resizeColumn: (id: string, dy: number) => void;
   endDockResize: () => void;
   /**
    * Shrink the panel to the shape its contents actually want, when the module says what that is.
@@ -320,12 +393,58 @@ export interface ShellStore {
    */
   layoutPinned: Accessor<Record<string, boolean>>;
   /**
+   * Whether the interface on screen has been rearranged at all — any of its panels moved, or closed.
+   *
+   * The whole-arrangement counterpart of `layoutPinned`, and it is not derivable from that map: a
+   * closed panel has no placement, and a panel declared for a route somebody is not standing on is
+   * not among the docks at all. Both are things a reset has to undo, so both have to be visible to
+   * whatever offers one.
+   */
+  layoutDirty: Accessor<boolean>;
+  /**
+   * Docks whose contents this interface is supplying itself, **by dock id** (`transcribe:0`).
+   *
+   * What a module's own dock frame asks before drawing its default contents. A module's
+   * presentation is a default, not a monopoly: an interface that arranges the pieces differently
+   * says so by declaring a panel that names the module, and the module goes on owning whether the
+   * surface is up and how big it is.
+   *
+   * By dock rather than by module, though the declaration names a module: keyed by module, one
+   * supplied body would land in every panel that module contributes. See the memo for how a module
+   * name is resolved to a dock, and what it does when that is ambiguous.
+   */
+  panelSupplied: Accessor<Record<string, boolean>>;
+  /**
    * Put a panel back where the interface asked for it, forgetting where it was dragged.
    *
    * Deletes the stored placement rather than writing the declared one, so the panel keeps following
    * the layout afterwards — including when the template changes it.
    */
   resetDockToLayout: (id: string) => void;
+  /**
+   * Close a panel this interface supplied, and open it again.
+   *
+   * Real methods taking an id, rather than the per-panel keys the dock entries used to name. The
+   * keys still answer `edge`/`size`/`float`, which the shell reads in TypeScript — but a close
+   * button is a schema `$action`, and `shellStore.close:extraction` names nothing on this store, so
+   * the button rendered and did nothing but log. See `closeAction` in `dockRegistry.ts`.
+   *
+   * Reachable by a template as well, which is the other half: a panel with a close button and no
+   * opener is a panel you lose once.
+   */
+  closeTemplatePanel: (id: string) => void;
+  openTemplatePanel: (id: string) => void;
+  /**
+   * Put *every* panel of the interface on screen back the way it declared them.
+   *
+   * The one gesture for "this is not the arrangement the template designed" — three panels dragged
+   * out of place is one decision, not three, and a panel closed has no titlebar left to reset it
+   * from. Forgets rather than rewrites, exactly as `resetDockToLayout` does.
+   *
+   * Scoped to the template, not to the route: a declaration that varies by route is one arrangement
+   * seen from three places, so resetting it three times would be the same thing said three ways.
+   */
+  resetTemplateLayout: () => void;
   /** Park a panel at one of the eight, from the position menu — the keyboard's way to move it. */
   snapDock: (id: string, snap: SnapPoint) => void;
   /**
@@ -519,6 +638,9 @@ export function ShellStoreProvider(props: ParentProps) {
   const lastShellPath: Record<string, string> = {};
   const [createSpaceOpen, setCreateSpaceOpen] = createSignal(false);
   const [spaceSettingsOpen, setSpaceSettingsOpen] = createSignal(false);
+  // Where the panel starts, for a caller that knows which setting it is sending somebody to. Not a
+  // controlled value — see `spaceSettingsTab`.
+  const [spaceSettingsTab, setSpaceSettingsTab] = createSignal('about');
 
   const [pendingDestructive, setPendingDestructive] = createSignal<PendingDestructive | null>(null);
   /** Resolves the promise `requestDestructive` handed back. Null when no question is outstanding. */
@@ -576,6 +698,8 @@ export function ShellStoreProvider(props: ParentProps) {
   const [activeInsert, setActiveInsert] = createSignal<string | null>(null);
   /** The rect a drag started from, so every move is measured against one fixed origin. */
   let dragOrigin: FloatPlacement | null = null;
+  /** The two stored bases a divider drag moves the boundary between — see `resizeColumn`. */
+  let columnDrag: { top: number; bottom: number } | null = null;
   /** Where the pointer was when it started, for restoring a maximised panel beneath it. */
   let dragPointer: { x: number; y: number } | null = null;
 
@@ -684,16 +808,6 @@ export function ShellStoreProvider(props: ParentProps) {
     setClosedPanels({});
   });
 
-  /** A declaration by the dock id it resolves to, for the placement chain to consult. */
-  const declarationFor = createMemo(() => {
-    const byDock: Record<string, TemplatePanel> = {};
-    for (const panel of declaredPanels()) {
-      // A template either places somebody else's panel or supplies its own; the dock id differs.
-      byDock[panel.module ? `${panel.module}:0` : templatePanelDockId(panel.id)] = panel;
-    }
-    return byDock;
-  });
-
   /*
     A dependency on *registration itself*, so a store that arrives late is picked up.
 
@@ -703,6 +817,49 @@ export function ShellStoreProvider(props: ParentProps) {
   */
   const [dockRegistryVersion, setDockRegistryVersion] = createSignal(0);
   onCleanup(onDockRegistryChanged(() => setDockRegistryVersion((v) => v + 1)));
+
+  /**
+   * The dock a declaration is about, or null when it names one that is not there.
+   *
+   * One resolver, because there were two and they drifted the moment docks stopped being numbered:
+   * `panelSupplied` learned to read `dock` and this did not, so it went on looking for
+   * `<module>:0` — an id nothing has any more. The declarations still resolved to nothing, silently,
+   * and every panel a template had placed fell back to the module's own opening bid. The workshop's
+   * transcript and extraction moved from the left edge to the right and nothing said why.
+   */
+  const dockIdFor = (panel: TemplatePanel): string | null => {
+    if (!panel.module) return templatePanelDockId(panel.id);
+    if (panel.dock) return `${panel.module}:${panel.dock}`;
+    const docks = dockRegistry.ordered().filter((entry) => entry.moduleId === panel.module);
+    return docks.length === 1 ? docks[0].id : null;
+  };
+
+  /** A declaration by the dock id it resolves to, for the placement chain to consult. */
+  const declarationFor = createMemo(() => {
+    /*
+      **No `dockRegistryVersion()` here, and it must stay that way.**
+
+      `registerHostDockStore` announces to the dock registry, and the effect that registers an
+      interface's own panels calls it on every run — while reading this memo, through
+      `placementKey`, for each panel it registers. Taking the announcement as a dependency therefore
+      makes that effect invalidate itself: register, announce, re-run, register, until the stack
+      gives out.
+
+      Which is why it only ever happened on an interface that declares panels of its own. The read
+      is inside the loop over those panels, so an interface with none never depends on this and
+      never loops — the default template was fine and the workshop froze for five seconds and left
+      its docks half-built.
+
+      `dockIdFor` resolves from module definitions precisely so this memo needs nothing reactive: a
+      module's docks and their names are fixed when it registers.
+    */
+    const byDock: Record<string, TemplatePanel> = {};
+    for (const panel of declaredPanels()) {
+      const id = dockIdFor(panel);
+      if (id) byDock[id] = panel;
+    }
+    return byDock;
+  });
 
   /**
    * Whether a module's chrome renders here at all — injected, because only `SpaceStore` knows.
@@ -933,23 +1090,60 @@ export function ShellStoreProvider(props: ParentProps) {
     return seats;
   });
 
+  /**
+   * Who sits directly under whom in a floating column, and who above.
+   *
+   * A column's members share boundaries, and a boundary belongs to *both* panels — which is the
+   * thing the two edge grips could not express. Published so the frame can turn one panel's bottom
+   * grip into the divider for the pair and take the other's top grip away, leaving one line to pull
+   * rather than two stacked a few pixels apart.
+   */
+  const columnNeighbours = createMemo(() => {
+    const requests = dockRequests();
+    const panels = requests
+      .map((request, index) => ({ id: request.id, index, placement: placementOf(request) }))
+      .filter((panel) => requests[panel.index].edge);
+
+    const below: Record<string, string> = {};
+    const above: Record<string, string> = {};
+    for (const edge of ['left', 'right', 'top', 'bottom'] as const) {
+      const members = columnMembers(panels, edge, viewport());
+      if (members.length < 2) continue;
+      members.forEach((member, i) => {
+        const next = members[i + 1];
+        if (!next) return;
+        below[member.id] = next.id;
+        above[next.id] = member.id;
+      });
+    }
+    return { below, above };
+  });
+
   const dockGeometry = createMemo(() => {
     const requests = dockRequests();
     const seats = columnSeats();
+    const { below, above } = columnNeighbours();
     const resolved: Record<string, DockGeometry> = {};
     requests.forEach((request, index) => {
-      resolved[request.id] = resolveDock(
-        request,
-        viewport(),
-        occupiedOf(index, requests),
-        floatChrome(),
-        seats[request.id],
-      );
+      resolved[request.id] = {
+        ...resolveDock(request, viewport(), occupiedOf(index, requests), floatChrome(), seats[request.id]),
+        // Empty rather than absent, so a schema condition reads a string either way.
+        below: below[request.id] ?? '',
+        above: above[request.id] ?? '',
+      };
     });
     return resolved;
   });
 
   const inset = createMemo(() => contentInset(dockRequests(), viewport()));
+  /*
+    The same requests, asked the other question: not what the panels take, but what they hide.
+
+    Its own memo rather than a second return from `contentInset`, because the two walks disagree
+    about arithmetic — a strip of displacing panels sums and a column of floating ones takes the
+    maximum — and a function answering both would have to explain which number it was returning.
+  */
+  const covered = createMemo(() => coveredInset(dockRequests(), viewport()));
 
   /**
    * Publish where the content's edges are, as CSS custom properties, so chrome can sit against the
@@ -1092,20 +1286,20 @@ export function ShellStoreProvider(props: ParentProps) {
     const keys: Record<string, unknown> = {};
     for (const panel of authored) {
       const dockId = templatePanelDockId(panel.id);
-      // One key answering both "where" and "whether", exactly as a module's does: closed is null.
-      // Scoped by the same key positions use, so one template's "closed" is not another's.
-      keys[`edge:${panel.id}`] = () =>
-        closedPanels()[placementKey(panel.id)] ? null : (edgeOfSnap(panel.snap ?? null) ?? 'right');
+      /*
+        One key answering both "where" and "whether", exactly as a module's does: closed is null.
+
+        Scoped by the same key positions use — and asked with the **dock** id, which is what makes
+        that true. `placementKey` scopes a key only when a declaration exists for it, and
+        `declarationFor` is indexed by dock id, so asking with the bare panel id answered "no
+        declaration" every time and closed state fell back to the unscoped key it was meant to have
+        left behind. Inert until now, because the map is cleared on a template switch anyway; a
+        reset for the whole arrangement has to be able to find these.
+      */
+      const closedKey = placementKey(dockId);
+      keys[`edge:${panel.id}`] = () => (closedPanels()[closedKey] ? null : (edgeOfSnap(panel.snap ?? null) ?? 'right'));
       keys[`size:${panel.id}`] = () => panel.size ?? 'md';
       keys[`float:${panel.id}`] = () => !panel.displace;
-      keys[`close:${panel.id}`] = () => setClosedPanels((prev) => ({ ...prev, [placementKey(panel.id)]: true }));
-      // The way back. A panel with a close button and no opener is a panel you lose once.
-      keys[`open:${panel.id}`] = () =>
-        setClosedPanels((prev) => {
-          const next = { ...prev };
-          delete next[placementKey(panel.id)];
-          return next;
-        });
 
       if (!registeredPanels.includes(dockId)) {
         const entry = {
@@ -1114,7 +1308,16 @@ export function ShellStoreProvider(props: ParentProps) {
           edge: `edge:${panel.id}`,
           size: `size:${panel.id}`,
           float: `float:${panel.id}`,
-          close: `close:${panel.id}`,
+          /*
+            A written-out action rather than a `close:<id>` key beside the three above.
+
+            Those three are read in TypeScript, through `readDockKey`, which resolves against
+            `hostDockStores` — where these keys live. The close button is not: it is rendered into the
+            titlebar as a schema `$action` against `storeRef`, and the renderer resolves `shellStore`
+            to this store's real surface, where `close:extraction` is not a member. It rendered, took
+            the click, and logged. See `closeAction` in `dockRegistry.ts`.
+          */
+          closeAction: { $action: 'shellStore.closeTemplatePanel', args: [panel.id] },
           // Named outright rather than through `modules.<id>`, the way the editor's and the shell's
           // own docks are — this store is the host's, not an installable module's.
           storeRef: 'shellStore',
@@ -1126,7 +1329,17 @@ export function ShellStoreProvider(props: ParentProps) {
           anchor: 'dock-right',
           order: panel.order,
           id: `dock:${dockId}`,
-          node: dockFrame(entry, panel.node as SchemaNode),
+          /*
+            The frame wraps a *marker*, not the node.
+
+            Everything in the slot registry is drawn with the chrome bag, because everything in it is
+            chrome — including this frame, whose grip and menus name `host-layout` members no
+            template may have. The node inside is the template's, and rendered through the same bag
+            it could name `runtimeStore`, `editorStore` and the rest: an escalation reached by
+            declaring a panel rather than by being granted anything. `TemplatePanelBody` looks the
+            declaration up by id and renders it with the template's own bag.
+          */
+          node: dockFrame(entry, { type: 'TemplatePanelBody', props: { panelId: panel.id } }),
         });
       }
     }
@@ -1168,37 +1381,73 @@ export function ShellStoreProvider(props: ParentProps) {
     holding live state — leaving the graph view would stop a recording.
   */
   const layoutOpened = new Set<string>();
-  const toggleModulePanel = (moduleId: string, wantOpen: boolean): void => {
+  /**
+   * Put one of a module's panels into the state a declaration asks for.
+   *
+   * By **dock**, not by module, and that is what broke when transcription grew a second panel. This
+   * used to invoke the module's `launcher.action`, which answers "how is this module opened" — a
+   * question with no answer once a module has two panels, and one that stopped having an answer at
+   * all the moment transcription moved from `launcher` to `launchers`. Neither of the workshop's
+   * declared panels opened, silently, because a missing launcher is also what a module with no
+   * panels looks like.
+   *
+   * A dock knows how to open and close itself: `close` was already declared, and `open` is the half
+   * it was missing. The launcher stays as the fallback, so every module with one panel keeps working
+   * with nothing added — and where a dock names neither, `edge` still answers whether it is open,
+   * which is the one question that never needed a launcher.
+   */
+  const toggleModulePanel = (dockId: string, wantOpen: boolean): void => {
+    // From the definition rather than the registry, for `dockIdFor`'s reason: reading the dock
+    // registry inside an effect that registers into it is what closed the loop.
+    const moduleId = dockId.slice(0, dockId.lastIndexOf(':'));
+    const docks = moduleRegistry.get(moduleId)?.definition.docks ?? [];
+    const dock = docks.find((entry, index) => `${moduleId}:${entry.name ?? index}` === dockId);
+    if (!dock) return;
+    const store = moduleStores[moduleId] as Record<string, unknown> | undefined;
+    // The dock's own `edge` key: null is closed, which is the same one answer the host reads for
+    // geometry, so a layout cannot disagree with the panel about whether it is up.
+    const isOpen = readModuleKey(moduleId, dock.edge) !== null;
+    if (isOpen === wantOpen) return;
+
+    const named = wantOpen ? dock.open : dock.close;
+    if (named) {
+      const fn = store?.[named];
+      if (typeof fn === 'function') (fn as () => void)();
+      return;
+    }
+
+    // No key of its own — the module's single launcher, as before.
     const launcher = moduleRegistry.get(moduleId)?.definition.launcher;
     if (!launcher?.action) return;
-    const store = moduleStores[moduleId] as Record<string, unknown> | undefined;
-    const active = launcher.activeWhen ? readModuleKey(moduleId, launcher.activeWhen) : undefined;
-    // Nothing to do if it is already how the layout wants it. A module with no `activeWhen` cannot
-    // be asked, so it is opened once and never toggled back — an unanswerable question is better
-    // left alone than guessed at.
-    if (Boolean(active) === wantOpen) return;
     if (!wantOpen && launcher.activeWhen === undefined) return;
     const fn = store?.[launcher.action];
     if (typeof fn === 'function') (fn as () => void)();
   };
 
   createEffect(() => {
+    dockRegistryVersion();
     const wanted = declaredPanels()
-      // `open: false` places without opening. The module's launcher action is not always "open a
-      // panel" — the call module's is `goToCall`, which joins a call when there is not one — so a
-      // template that placed the call window would otherwise start a call on entering the space.
+      // `open: false` places without opening. Opening a panel is not always harmless — the call
+      // module's launcher is `goToCall`, which joins a call when there is not one — so a template
+      // that placed the call window would otherwise start a call on entering the space.
       .filter((panel) => panel.module && panel.open !== false)
-      .map((panel) => panel.module as string);
+      /*
+        By dock, not by module. A module with two declared panels used to collapse to one entry
+        here — the set is keyed by what it holds — so at most one of them was ever opened, and with
+        the launcher lookup broken neither was.
+      */
+      .map((panel) => dockIdFor(panel))
+      .filter((id): id is string => id !== null);
 
-    for (const moduleId of wanted) {
-      if (layoutOpened.has(moduleId)) continue;
-      layoutOpened.add(moduleId);
-      toggleModulePanel(moduleId, true);
+    for (const dockId of wanted) {
+      if (layoutOpened.has(dockId)) continue;
+      layoutOpened.add(dockId);
+      toggleModulePanel(dockId, true);
     }
-    for (const moduleId of [...layoutOpened]) {
-      if (wanted.includes(moduleId)) continue;
-      layoutOpened.delete(moduleId);
-      toggleModulePanel(moduleId, false);
+    for (const dockId of [...layoutOpened]) {
+      if (wanted.includes(dockId)) continue;
+      layoutOpened.delete(dockId);
+      toggleModulePanel(dockId, false);
     }
   });
 
@@ -1218,11 +1467,15 @@ export function ShellStoreProvider(props: ParentProps) {
     cancelDestructive: () => settleDestructive(false),
     requestDestructive,
     spaceSettingsOpen,
+    spaceSettingsTab,
     spaceSettingsEdge: () => (spaceSettingsOpen() ? 'right' : null),
     // Wrapped, because `setSignal` treats a function argument as an updater.
     provideModuleGate: (gate) => setModuleGate(() => gate),
     toggleSpaceSettings: () => setSpaceSettingsOpen((open) => !open),
-    openSpaceSettings: () => setSpaceSettingsOpen(true),
+    openSpaceSettings: (tab?: string) => {
+      setSpaceSettingsTab(tab ?? 'about');
+      setSpaceSettingsOpen(true);
+    },
     closeSpaceSettings: () => setSpaceSettingsOpen(false),
     takePendingPath: () => {
       const path = pendingPath();
@@ -1240,6 +1493,7 @@ export function ShellStoreProvider(props: ParentProps) {
     },
     dockGeometry,
     contentInset: inset,
+    coveredInset: covered,
     dockResizing,
     panelMaximised,
 
@@ -1261,6 +1515,16 @@ export function ShellStoreProvider(props: ParentProps) {
     beginDockResize: (id) => {
       const request = dockRequests().find((entry) => entry.id === id);
       if (!request?.edge) return;
+      /*
+        A divider drag is measured from the two *stored* bases, not from the boxes on screen.
+
+        The rendered heights include each panel's share of the column's spare room, and the bases are
+        what a placement holds — so measuring one and writing the other is the double count this
+        exists to avoid. Their sum is the room the boundary moves within, and it does not change.
+      */
+      const belowId = dockGeometry()[id]?.below;
+      const lower = belowId ? dockRequests().find((entry) => entry.id === belowId) : undefined;
+      columnDrag = lower ? { top: placementOf(request).h, bottom: placementOf(lower).h } : null;
       // The *resolved* rect, not the stored one: a snapped panel has no stored x/y, so a drag
       // measured from them would jump to the origin on the first frame. Same reason `beginDockMove`
       // reads the geometry.
@@ -1368,8 +1632,41 @@ export function ShellStoreProvider(props: ParentProps) {
       );
     },
 
+    /**
+     * Move the boundary between two stacked panels, giving one what the other loses.
+     *
+     * A column member's *rendered* height is its stored base plus a share of the column's spare
+     * room, and `resizeDock` writes what it measured — the rendered height — back into the base. In
+     * a column that is the same slack counted twice: the panel jumped taller by its own share the
+     * instant a drag began, before the pointer had moved. That is what made the pair unresizable
+     * rather than merely awkward.
+     *
+     * A divider has no such problem, because it does not change the total. Moving the boundary adds
+     * to one base exactly what it takes from the other, so the sum is unchanged, so the slack is
+     * unchanged, and each panel's rendered height moves by precisely the pixels the pointer did.
+     *
+     * Both floors apply at once. Pushing past either end stops the boundary rather than letting one
+     * panel eat the other and slide on — the same rule the edge grips keep, asked of a pair.
+     */
+    resizeColumn: (id, dy) => {
+      const belowId = dockGeometry()[id]?.below;
+      if (!belowId || !columnDrag) return;
+      const upper = dockRequests().find((entry) => entry.id === id);
+      const lower = dockRequests().find((entry) => entry.id === belowId);
+      if (!upper || !lower) return;
+
+      const room = columnDrag.top + columnDrag.bottom;
+      const ceiling = Math.max(MIN_FLOAT_PX, room - MIN_FLOAT_PX);
+      const top = Math.min(ceiling, Math.max(MIN_FLOAT_PX, columnDrag.top + dy));
+      const bottom = room - top;
+
+      writePlacement(id, { ...placementOf(upper), h: top });
+      writePlacement(belowId, { ...placementOf(lower), h: bottom });
+    },
+
     endDockResize: () => {
       dragOrigin = null;
+      columnDrag = null;
       setDockResizing(false);
     },
 
@@ -1683,6 +1980,94 @@ export function ShellStoreProvider(props: ParentProps) {
         savePlacements(next);
         return next;
       });
+    },
+
+    // Keyed exactly as the panel's own `edge:` accessor keys it — one spelling, so a close and the
+    // edge that answers it cannot disagree about which panel was meant.
+    closeTemplatePanel: (id) => {
+      const key = placementKey(templatePanelDockId(id));
+      setClosedPanels((prev) => ({ ...prev, [key]: true }));
+    },
+
+    openTemplatePanel: (id) => {
+      const key = placementKey(templatePanelDockId(id));
+      setClosedPanels((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+    },
+
+    /*
+      Which *docks* an interface has supplied the contents of, keyed by dock id.
+
+      A template's entry names a module, because "the transcribe panel, arranged my way" is the
+      question its author is asking. Resolving that name to a dock is this memo's job, and it is
+      done here rather than at the gate because only the shell can see the dock registry.
+
+      One dock is the whole of the current world and the easy case. None means the module is not
+      installed in this deployment, which is ordinary — an interface declaring a panel for a module
+      a deployment left out should render nothing, not complain.
+
+      Several is the case worth refusing. Supplying all of them would put one body inside every
+      panel that module contributes, so overriding its transcript would silently overwrite its
+      settings panel; picking the first would be a guess that reads as correct until it isn't.
+      So it supplies none and says why — a panel showing the module's own contents is a visible,
+      correctable outcome, where the wrong contents in the right frame is not.
+    */
+    panelSupplied: createMemo(() => {
+      dockRegistryVersion();
+      const supplied: Record<string, boolean> = {};
+      for (const panel of declaredPanels()) {
+        if (!panel.module || !panel.node) continue;
+        // The same resolver the placement chain uses — see `dockIdFor`. Two copies of this question
+        // is how the placements broke: one learned about named docks and the other did not.
+        const id = dockIdFor(panel);
+        if (id && dockRegistry.ordered().some((entry) => entry.id === id)) {
+          supplied[id] = true;
+          continue;
+        }
+        if (panel.dock) warnUnknownDock(panel.module, panel.dock);
+        else
+          warnAmbiguousSupply(panel.module, dockRegistry.ordered().filter((e) => e.moduleId === panel.module).length);
+      }
+      return supplied;
+    }),
+
+    layoutDirty: () => {
+      const scope = templatePanelScope();
+      if (!scope) return false;
+      const prefix = `${scope}::`;
+      return (
+        Object.keys(placements()).some((key) => key.startsWith(prefix)) ||
+        Object.entries(closedPanels()).some(([key, closed]) => closed && key.startsWith(prefix))
+      );
+    },
+
+    resetTemplateLayout: () => {
+      const scope = templatePanelScope();
+      if (!scope) return;
+      const prefix = `${scope}::`;
+      /*
+        Every key under this template, rather than the panels currently declared.
+
+        A `route`-scoped declaration only names the panels of the route on screen, so iterating those
+        would leave the board's transcript where it was dragged while claiming the layout had been
+        reset. The prefix is what the whole arrangement is stored under.
+
+        Panels nothing declares keep the unscoped key, so a notes panel somebody positioned in an
+        ordinary space is untouched: this says "put *this template's* panels back", not "forget
+        everywhere I have ever moved anything".
+      */
+      setPlacements((prev) => {
+        const next = Object.fromEntries(Object.entries(prev).filter(([key]) => !key.startsWith(prefix)));
+        if (Object.keys(next).length === Object.keys(prev).length) return prev;
+        savePlacements(next);
+        return next;
+      });
+      // And the panels closed under it, which is the half `resetDockToLayout` cannot reach — a closed
+      // panel has no titlebar, so its own menu is not on screen to be opened.
+      setClosedPanels((prev) => Object.fromEntries(Object.entries(prev).filter(([key]) => !key.startsWith(prefix))));
     },
 
     snapDock: (id, snap) => {

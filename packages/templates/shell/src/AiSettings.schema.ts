@@ -203,7 +203,7 @@ const modelForm: SchemaNode = {
             {
               type: 'we-button',
               // Guarded like the backdrop — one way out of the modal.
-              props: { text: 'Cancel', variant: 'ghost', onClick: guard.close },
+              props: { text: 'Cancel', variant: 'secondary', onClick: guard.close },
             },
             {
               type: 'we-button',

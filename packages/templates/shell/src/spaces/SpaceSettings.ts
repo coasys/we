@@ -733,6 +733,184 @@ const modulesSection: SchemaNode = {
 };
 
 /**
+ * One capability setting's control, for one level.
+ *
+ * Written once and used for both columns, because the two differ only in what they read and what
+ * they write — and because the personal column used to render a `we-switch` whatever the setting's
+ * type was, which would have bound a select's string to a checkbox the moment anything but a boolean
+ * was declared.
+ */
+function settingControl(options: {
+  value: SchemaProp;
+  disabled: SchemaProp;
+  action: string;
+  args: SchemaProp[];
+}): SchemaNode {
+  const { value, disabled, action, args } = options;
+  // A bare `event.detail`, never wrapped: an operator object around it would be evaluated at render
+  // time, before the event exists. The same rule as the module switches above.
+  const write = { $action: action, args: [...args, { $: 'event.detail' }] };
+  return {
+    type: '$if',
+    props: {
+      condition: { $: "setting.type == 'boolean'" },
+      then: { type: 'we-switch', props: { size: 'sm', checked: value, disabled, onChange: write } },
+      else: {
+        type: '$if',
+        props: {
+          condition: { $: "setting.type == 'enum'" },
+          then: {
+            type: 'we-select',
+            props: { size: 'sm', options: { $: 'setting.options' }, value, disabled, onChange: write },
+          },
+          else: { type: 'we-input', props: { size: 'sm', value, disabled, onInput: write } },
+        },
+      },
+    },
+  };
+}
+
+/** A control under the word saying who it answers for — the shape the module rows above use. */
+function settingColumn(label: string, control: SchemaNode): SchemaNode {
+  return {
+    type: 'Column',
+    props: { gap: '100', ax: 'center' },
+    children: [{ type: 'we-text', props: { variant: 'footnote', color: 'text-faint' }, children: [label] }, control],
+  };
+}
+
+/** This agent's own answer to the setting the row is about, or nothing where they have no say. */
+const MINE = 'find(spaceStore.myModuleSettings, { group: setting.group, key: setting.key })';
+
+/**
+ * What each capability lets this space decide — rendered from what the modules declare.
+ *
+ * Nothing here names a setting. The rows come from `spaceStore.spaceModuleSettings`, which is built
+ * from every installed module's `settings` declaration, so a module that adds one gets a control
+ * with nothing to register anywhere — the step whose omission is otherwise silent, and the same
+ * trick `recordStore.displays` plays for a record's own form.
+ *
+ * Two answers per row where both apply, under `For me` and `For everyone`, exactly as the module
+ * list above does — the labels are what make a pair of switches legible as a pair rather than as two
+ * unexplained controls.
+ *
+ * Two things a row has to say that a plain switch cannot. **Whether this level has an opinion at
+ * all**, since silence is not `false` and a reset has to be able to restore it — hence `Use default`
+ * beside a row that has been set. And **whether a level it answers to has already refused**: a
+ * community that has switched recording off cannot be overruled from the personal column, and a
+ * control that took the press and sprang back would read as broken rather than as a rule.
+ */
+const moduleSettingsSection: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'count(spaceStore.spaceModuleSettings)' },
+    then: {
+      type: 'Column',
+      props: { gap: '300', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+      children: [
+        {
+          type: '$each',
+          props: { items: { $: 'spaceStore.spaceModuleSettings' }, as: 'setting' },
+          children: [
+            {
+              type: 'Row',
+              props: { width: '100%', gap: '400', ay: 'center' },
+              children: [
+                {
+                  type: 'Column',
+                  props: { gap: '100', flex: '1', minWidth: '0' },
+                  children: [
+                    {
+                      type: 'Row',
+                      props: { gap: '200', ay: 'center', wrap: true },
+                      children: [
+                        { type: 'we-text', props: { variant: 'label' }, children: [{ $: 'setting.label' }] },
+                        { type: 'we-badge', props: { size: 'xs' }, children: [{ $: 'setting.groupLabel' }] },
+                      ],
+                    },
+                    {
+                      type: 'we-text',
+                      props: { variant: 'footnote', color: 'text-faint' },
+                      children: [
+                        {
+                          /*
+                            The reason, or — where a level this space answers to has taken the
+                            decision away — what took it. Saying nothing there leaves a disabled
+                            control with no account of itself, which is the failure the whole row
+                            shape exists to avoid.
+                          */
+                          $: `setting.locked ? 'Set by this deployment, so it cannot be changed here.' : (${MINE}.locked ? 'Switched off for everyone in this space, so you cannot turn it on for yourself.' : (setting.description ?? ''))`,
+                        },
+                      ],
+                    },
+                  ],
+                },
+                {
+                  type: '$if',
+                  props: {
+                    // Something to undo only where this level itself has spoken — a value inherited
+                    // from the deployment is not this screen's to reset.
+                    condition: { $: 'setting.set && space.canAdminister' },
+                    then: {
+                      type: 'we-button',
+                      props: {
+                        variant: 'ghost',
+                        size: 'xs',
+                        title: 'Stop deciding this here',
+                        onClick: {
+                          $action: 'spaceStore.setSpaceModuleSetting',
+                          args: [{ $: 'setting.group' }, { $: 'setting.key' }],
+                        },
+                      },
+                      children: ['Use default'],
+                    },
+                  },
+                },
+                {
+                  type: 'Row',
+                  props: { gap: '400', ay: 'center', flexShrink: '0' },
+                  children: [
+                    {
+                      /*
+                        Mine, and only where this setting is mine to answer. The two lists are
+                        filtered by level, so a setting the community owns alone has nothing here
+                        rather than a control that does nothing.
+                      */
+                      type: '$if',
+                      props: {
+                        condition: { $: MINE },
+                        then: settingColumn(
+                          'For me',
+                          settingControl({
+                            value: { $: `${MINE}.value` },
+                            disabled: { $: `${MINE}.locked` },
+                            action: 'spaceStore.setMyModuleSetting',
+                            args: [{ $: 'setting.group' }, { $: 'setting.key' }],
+                          }),
+                        ),
+                      },
+                    },
+                    settingColumn(
+                      'For everyone',
+                      settingControl({
+                        value: { $: 'setting.value' },
+                        disabled: { $: '!space.canAdminister || setting.locked' },
+                        action: 'spaceStore.setSpaceModuleSetting',
+                        args: [{ $: 'setting.group' }, { $: 'setting.key' }],
+                      }),
+                    ),
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
+/**
  * Automatic extraction — a community decision, and priced like one.
  *
  * Its own section rather than a row in Modules, because it is not a module: it is what one of them
@@ -1059,7 +1237,14 @@ export function spaceSettingsBody(uuid: SchemaProp, chrome: SchemaNode[], fill?:
     */
     type: 'Column',
     props: { width: '100%', ...fills },
-    $localState: { tab: { type: 'string', initial: 'about' } },
+    /*
+      Where this opens, from whoever opened it — see `shellStore.spaceSettingsTab`.
+
+      An `initial` rather than a bound value, and the difference is the whole point: a control
+      elsewhere can point at the tab holding the setting it is about, and the reader is then free to
+      walk away from it. Bound, they would be dragged back the moment anything re-evaluated.
+    */
+    $localState: { tab: { type: 'string', initial: { $: 'shellStore.spaceSettingsTab' } } },
     children: [
       {
         type: '$each',
@@ -1164,6 +1349,7 @@ export function spaceSettingsBody(uuid: SchemaProp, chrome: SchemaNode[], fill?:
                           groupHeading('Everyone in this space', 'What this space does on its own, for every member.', {
                             $: 'space.canAdminister',
                           }),
+                          moduleSettingsSection,
                           autoInterpretSection,
                           extractionTargetsSection,
                           shareExtractionDetailSection,

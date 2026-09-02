@@ -22,6 +22,7 @@ import type {
   Placement,
   Point,
   StyleRules,
+  WatchQuery,
 } from '@we/graph-protocol';
 import { addressKind } from '@we/graph-protocol';
 
@@ -137,15 +138,33 @@ const DEFAULT_EXPAND_LIMIT = 50;
  */
 const WATCH_DEBOUNCE_MS = 250;
 
-/** What the seeds read, and so what is worth watching. */
-interface WatchTarget {
-  entity: string;
-  dataset?: string;
-}
+/**
+ * What the seeds read, and so what is worth watching — the read itself, not merely its type.
+ *
+ * A host subscribes to what it is given, and a backend that reports "this query's answer changed"
+ * can only report about a query somebody asked. See `ExpanderContext.watch` for what the coarse
+ * form cost: a board whose records arrived behind an existing one was never told.
+ */
+type WatchTarget = WatchQuery;
 
-/** Identity of a watch. Only ever compared, never parsed back — the target is carried alongside it. */
+/**
+ * Identity of a watch. Only ever compared, never parsed back — the target is carried alongside it.
+ *
+ * Two spellings of one filter (the same keys in a different order) key as two watches. Harmless:
+ * duplicates cost a subscription and answer identically, where a key that tried to canonicalise
+ * would have to know what every field of a read means.
+ */
 function watchKey(target: WatchTarget): string {
-  return `${target.entity} ${target.dataset ?? ''}`;
+  return JSON.stringify([
+    target.entity,
+    target.dataset ?? '',
+    target.scope ?? null,
+    target.where ?? null,
+    target.order ?? null,
+    target.limit ?? null,
+    target.offset ?? null,
+    target.include ?? null,
+  ]);
 }
 
 export class GraphEngine {
@@ -462,7 +481,9 @@ export class GraphEngine {
     const recording: ExpanderContext = {
       ...this.context,
       query: (request) => {
-        const target: WatchTarget = { entity: request.entity, dataset: request.dataset };
+        // The whole read, less the signal — a standing watch must not hold the abort signal of the
+        // load that happened to make the read.
+        const { signal: _signal, ...target } = request;
         read.set(watchKey(target), target);
         return this.context.query(request);
       },
@@ -804,6 +825,21 @@ export class GraphEngine {
     // A fit that could not run yet (no surface measured) is remembered, not dropped.
     if (options?.fit && !this.positions.size) this.pendingFit = true;
     if (result.running) this.scheduleTick();
+
+    /*
+      The last line of the load, and the one that says which kind of empty this is.
+
+      A graph with no nodes, a graph whose nodes never got a position, and a graph laid out three
+      thousand world-units from the camera are the same blank rectangle on screen. These four numbers
+      separate them, and only here are all four in one place.
+    */
+    this.context.trace?.('layout', {
+      layout: spec.type,
+      nodes: this.store.nodeCount,
+      edges: [...this.store.edges()].length,
+      positioned: this.positions.size,
+      viewport: { width, height },
+    });
   }
 
   /**
@@ -815,11 +851,18 @@ export class GraphEngine {
    *
    * Only when there is a surface to measure: before the first resize the numbers are zero, and a
    * rectangle of nothing at the origin is worse than no answer at all.
+   *
+   * **What the reader can see, not what the canvas spans.** A host may float panels over the graph
+   * without shrinking its box — the covered pixels are still canvas — so the two differ, and this is
+   * the one that answers the question a layout asks. `manual` puts a node with no stored position in
+   * the top-left of this rectangle, which is right where a transcript panel sits: on the workshop's
+   * board every freshly extracted card appeared underneath one, present and unreachable. See
+   * `Viewport.setObscured`.
    */
   private visibleWorldRect(): { x: number; y: number; width: number; height: number } {
-    const { width, height } = this.viewport.get();
-    const topLeft = this.viewport.toWorld({ x: 0, y: 0 });
-    const bottomRight = this.viewport.toWorld({ x: width, y: height });
+    const rect = this.viewport.visibleRect();
+    const topLeft = this.viewport.toWorld({ x: rect.x, y: rect.y });
+    const bottomRight = this.viewport.toWorld({ x: rect.x + rect.width, y: rect.y + rect.height });
     return {
       x: topLeft.x,
       y: topLeft.y,

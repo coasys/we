@@ -245,10 +245,49 @@ function emitConformance(defs) {
   writeFileSync(resolve(here, '../src/entities/conformance.ts'), L.join('\n'));
 }
 
+/**
+ * The barrel, which was the one hand-maintained file in a generated set.
+ *
+ * `generate:classes` wrote the class and updated `conformance.ts`, and left this alone — so adding
+ * an entity produced a conformance assertion referencing an export that did not exist, and the only
+ * symptom was a DTS build failing several steps later on a name nobody had typed. The file's own
+ * docblock says it is generated from the manifest, which is exactly what makes the omission easy to
+ * make and hard to see.
+ *
+ * `WeNode` and the conformance re-export are fixed rather than derived: the first is the base every
+ * entity extends and is not itself a manifest entry, and the second is what places the type-level
+ * assertions in the build graph — an unimported assertion checks nothing.
+ */
+function emitIndex(defs) {
+  const L = [];
+  L.push('/**');
+  L.push(" * GENERATED — the AD4M lane's entity implementations, from `@we/entities`' manifest, living where");
+  L.push(' * they belong: in the adapter that registers them. Everything else in the application reaches');
+  L.push(' * these only through the entity proxies on `@we/entities`, which resolve to whatever this adapter');
+  L.push(" * registered at connect time; importing from here is asking for one specific backend's");
+  L.push(" * implementation by name, which only this package's own wiring and SDNA install have any");
+  L.push(' * business doing.');
+  L.push(' */');
+  for (const name of Object.keys(defs).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))) {
+    L.push(`export * from './${name}';`);
+  }
+  // The base class every entity extends, and not a manifest entry of its own.
+  L.push("export { WeNode } from './WeNode';");
+  L.push('');
+  L.push('// Type-only, and load-bearing: importing the conformance assertions is what places them in every');
+  L.push('// build graph that includes this barrel, so a class drifting from its neutral interface fails the');
+  L.push('// build rather than waiting to be noticed.');
+  L.push("export type { AssertClassesSatisfyContract } from './conformance';");
+  L.push('');
+  writeFileSync(resolve(ENTITY_DIR, 'index.ts'), L.join('\n'));
+}
+
 const written = Object.entries(CORE_DEFS).map(([name, def]) => emitEntity(name, def));
 emitConformance(CORE_DEFS);
+emitIndex(CORE_DEFS);
 written.push('entities/conformance.ts');
-console.log(`generated ${written.length - 2} classes + the neutral type surface`);
+written.push('entities/index.ts');
+console.log(`generated ${written.length - 3} classes + the neutral type surface`);
 try {
   execFileSync('pnpm', ['exec', 'prettier', '--write', ...written.map((f) => resolve(here, '../src', f))], {
     cwd: resolve(here, '..'),

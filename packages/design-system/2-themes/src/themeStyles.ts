@@ -182,7 +182,11 @@ const ANIMATION_SPEED_VARS: Record<NonNullable<ThemeOverrides['animationSpeed']>
 };
 
 /** Map parametric ThemeOverrides keys to their CSS custom property equivalents. */
-const THEME_CSS_MAP: Record<ParametricKey, string> = {
+/**
+ * Exported so `themeFamily.test.ts` can cross-check it: every shape and density group declared here
+ * has to be nameable from a call site, and the test fails when one is not.
+ */
+export const THEME_CSS_MAP: Record<ParametricKey, string> = {
   // Color
   primaryHue: '--we-color-primary-hue',
   successHue: '--we-color-success-hue',
@@ -197,6 +201,7 @@ const THEME_CSS_MAP: Record<ParametricKey, string> = {
   warningLightness: '--we-warning-lightness',
 
   borderWidth: '--we-theme-border-width',
+  stateDuration: '--we-theme-state-duration',
   focusRingWidth: '--we-theme-focus-ring-width',
   // Typography
   fontFamily: '--we-font-family',

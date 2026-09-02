@@ -1,5 +1,6 @@
 export type * from './AvatarStack.types';
 
+import { tokenVar } from '@we/design-utils';
 import { avatarToneRing } from '@we/tokens';
 import { createMemo, For, Show } from 'solid-js';
 
@@ -21,7 +22,8 @@ import type { AvatarInfo, AvatarStackProps } from './AvatarStack.types';
   same kind of face, and the two spellings had already diverged — scale positions here, role names
   there — so the same word meant two colours depending on which grammar you wrote it in.
 
-  Why the colours stay scale positions rather than becoming roles is argued at `avatarToneRing`.
+  They are fills now rather than the `-500` steps they started as — why, and why each tone carries
+  a label as well, is argued at `AvatarTone`.
 */
 function ringFor(avatar: AvatarInfo, fallback?: string): string | undefined {
   return avatar.tone ? avatarToneRing(avatar.tone) : fallback;
@@ -113,7 +115,7 @@ export function AvatarStack(props: AvatarStackProps) {
             // The avatar group, not a literal circle: this chip sits in the row *as* one of the
             // faces, so a theme that squares them off has to square this too or the row ends in an
             // odd one out. Safe as a percentage for the same reason the avatars are — it is square.
-            'border-radius': 'var(--we-theme-avatar-radius, 50%)',
+            'border-radius': tokenVar('radius', 'avatar'),
             background: 'var(--we-role-control-surface)',
             color: 'var(--we-role-text)',
             'font-size': 'var(--we-font-size-100)',

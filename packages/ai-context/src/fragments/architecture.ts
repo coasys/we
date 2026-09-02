@@ -166,6 +166,11 @@ that declares \`backends: ['ad4m']\` — nothing else. See \`docs/architecture/p
 - App chrome and module panels (the sidebar, the module rail, floating vs displacing, who moves for
   whom) → \`packages/app-shell/src/shared/dockGeometry.ts\` (see docs/architecture/chrome-and-panels.md).
 
+**Where a new thing goes** — module or host store, panel or fragment, who decides placement, and how
+two capabilities cooperate without depending on each other — is
+docs/architecture/capabilities-and-surfaces.md. Read it before adding a module, a panel or a store:
+it is four rules, and half of it is the shapes that are refused on purpose.
+
 For deeper detail (data sync/persistence, block & editor internals, the local dev/test loop),
 see docs/architecture/codebase-map.md.
 For how reusable template fragments work and where they are going, see

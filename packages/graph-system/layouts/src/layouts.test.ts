@@ -204,6 +204,37 @@ describe('manual layout', () => {
     expect(result.warnings ?? []).toEqual([]);
   });
 
+  it('says nothing on the second run over a board whose cards it parked itself', () => {
+    /*
+      The regression this actually shipped with. The first run parks a card that carries no
+      coordinate; on the second, that parked position arrives as `previous` and counts as reused —
+      nothing read from data, nothing newly parked, something reused, which is the exact shape of
+      "this layout did nothing". So a board of freshly extracted cards, laid out perfectly well,
+      raised a warning telling its reader to choose a different layout.
+
+      One layout instance across both runs, because that is what the engine keeps and what makes the
+      memory of its own work available at all.
+    */
+    const layout = manualLayout();
+    const first = layout.init(input([node('a'), node('b')]));
+
+    const result = layout.init(input([node('a'), node('b')], [], { previous: first.positions }));
+
+    expect(result.warnings ?? []).toEqual([]);
+  });
+
+  it('warns again once a parked node has been given a position of its own', () => {
+    // Forgetting is what keeps the memory from excusing a genuine no-op forever: a node somebody
+    // dragged is no longer where it is because this layout put it there.
+    const layout = manualLayout();
+    layout.init(input([node('a')]));
+    layout.init(input([node('a', { x: 10, y: 10 })]));
+
+    const result = layout.init(input([node('a')], [], { previous: new Map([['a', { x: 10, y: 10 }]]) }));
+
+    expect(result.warnings?.length).toBe(1);
+  });
+
   it('warns when it was chosen for a graph that stores nothing, and so did nothing at all', () => {
     // The failure actually worth reporting: switching a knowledge map to `manual` leaves every node
     // exactly where the previous layout left it, which on screen is indistinguishable from a layout

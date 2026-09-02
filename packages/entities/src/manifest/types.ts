@@ -33,6 +33,7 @@ export interface AgentSettingsRecord extends RecordInstance {
   useTemplateTheme: boolean;
   themeScope: string;
   installedModules: string;
+  moduleSettings: string;
   installedTemplates: TemplateRecord[];
   installedThemes: ThemeRecord[];
   spaceTemplatePreferences: SpaceTemplatePreferenceRecord[];
@@ -66,6 +67,7 @@ export interface CalloutBlockRecord extends WeNodeRecord {
 export interface CallExtractionRecord extends WeNodeRecord {
   callId: string;
   entities: string;
+  auto: string;
 }
 
 export interface ChatMessageRecord extends WeNodeRecord {
@@ -258,6 +260,7 @@ export interface SpaceRecord extends WeNodeRecord {
   enabledViews: string;
   extractionTargets: string;
   autoInterpret: boolean;
+  moduleSettings: string;
   shareExtractionDetail: boolean;
   location?: LocationBlockRecord;
   setLocation(value: LocationBlockRecord): Promise<unknown>;
@@ -266,6 +269,7 @@ export interface SpaceRecord extends WeNodeRecord {
 export interface SpacePreferenceRecord extends WeNodeRecord {
   spaceUuid: string;
   mutedModules: string;
+  moduleSettings: string;
   hiddenViews: string;
   templateId: string;
   themeId: string;
@@ -318,6 +322,13 @@ export interface TextBlockRecord extends WeNodeRecord {
   text: string;
   marks: string;
   version: number;
+}
+
+export interface TopicRecord extends WeNodeRecord {
+  name: string;
+  description: string;
+  icon: string;
+  color: string;
 }
 
 export interface ThemeRecord extends WeNodeRecord {

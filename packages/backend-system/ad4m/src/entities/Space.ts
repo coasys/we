@@ -115,6 +115,23 @@ export class Space extends WeNode {
   autoInterpret: boolean = true;
 
   /**
+   * What this community decides about each capability's settings, as JSON.
+   *
+   * `{ "<group>": { "<key>": value } }`, where a group is a module id or a capability the host
+   * declares. One field rather than one per setting: `autoInterpret`, `extractionTargets` and
+   * `shareExtractionDetail` are all here as bespoke columns already, and every capability that
+   * wanted an opinion added another — a core entity accreting a field on behalf of a module is
+   * the shape this replaces.
+   *
+   * **Absent means "no opinion"**, never "off" — the same rule as `enabledModules`. A level says
+   * nothing until somebody sets something, and the resolver takes the most specific level that
+   * has an opinion. See `moduleSettings.ts` in the app shell for the order and for how a
+   * `restrict` setting differs.
+   */
+  @Property({ through: 'we://module_settings' })
+  moduleSettings: string = '';
+
+  /**
    * Whether extraction passes broadcast their prompt and response to the rest of the space.
    *
    * A property of the space for the same reason `autoInterpret` is, though a different one than

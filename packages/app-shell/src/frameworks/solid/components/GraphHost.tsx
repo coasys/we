@@ -21,11 +21,11 @@
 import '@we/graph-solid/styles';
 
 import type { EntityClass, EntityManifestEntry, QueryOptions } from '@we/backend-shared';
-import { manifestEntries } from '@we/backend-shared';
+import { manifestEntries, trace } from '@we/backend-shared';
 import { BlockRenderer } from '@we/block-solid';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import { placementStyle } from '@we/graph-expanders';
-import type { EntityShape, GraphNode, GraphValue } from '@we/graph-protocol';
+import type { EntityShape, GraphNode, GraphValue, WatchQuery } from '@we/graph-protocol';
 import { GraphView, type GraphViewProps } from '@we/graph-solid';
 import { createMemo, Show } from 'solid-js';
 
@@ -33,6 +33,7 @@ import { useDatasetStore } from '../stores/DatasetStore';
 import { useProfileStore } from '../stores/ProfileStore';
 import { useRecordStore } from '../stores/RecordStore';
 import { useSessionStore } from '../stores/SessionStore';
+import { useShellStore } from '../stores/ShellStore';
 
 /**
  * How many rows a reverse lookup will read before giving up.
@@ -91,6 +92,18 @@ function toEntityShape(entry: EntityManifestEntry): EntityShape {
  * resolves to a `data:…;base64,…` blob rather than to JSON, and `BlockRenderer` already knows to
  * decode a string; parsing it here first threw on every card and rendered nothing, which is why they
  * all looked empty.
+ *
+ * ## Why it draws the label when there is no document
+ *
+ * A style rule names `content` for every card it matches, and a board holds more than one kind of
+ * record: the workshop board is `TaskBlock`s and `EventBlock`s beside composed cards, and only a
+ * `CollectionBlock` has an `editorState` at all. The renderer's own fallback does not cover this —
+ * it draws the label when the *component* is missing, which is not the same as a component that
+ * renders nothing — so a freshly extracted task arrived as a card with nothing in it, and a board of
+ * them read as an empty canvas. That is the worst possible rendering of "extraction worked".
+ *
+ * The same class the renderer's fallback uses, so a card that falls back here is indistinguishable
+ * from one whose rule never asked for content.
  */
 function BlockCard(props: { node: GraphNode }) {
   const datasetStore = useDatasetStore();
@@ -101,7 +114,7 @@ function BlockCard(props: { node: GraphNode }) {
   });
 
   return (
-    <Show when={editorState()}>
+    <Show when={editorState()} fallback={<span class="we-graph__card-text">{props.node.label}</span>}>
       {(state) => <BlockRenderer editorState={state() as never} perspective={datasetStore.currentDataset()?.handle} />}
     </Show>
   );
@@ -110,6 +123,7 @@ function BlockCard(props: { node: GraphNode }) {
 export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
   const datasetStore = useDatasetStore();
   const recordStore = useRecordStore();
+  const shellStore = useShellStore();
   const sessionStore = useSessionStore();
   const profileStore = useProfileStore();
 
@@ -164,6 +178,29 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
     return bound.$getEntitiesForPerspective?.(entity, handle) ?? bound.$getEntity?.(entity);
   }
 
+  /**
+   * A neutral read, as the ORM's options — the one translation, shared by the fetch and the watch.
+   *
+   * They must not drift: a watch subscribes in order to fingerprint the rows the fetch would
+   * return, so a difference between the two is a change the graph is never told about. `undefined`
+   * means the read resolves to nothing at all, which is a scope this dataset cannot name.
+   */
+  function queryOptions(request: WatchQuery): QueryOptions | undefined {
+    const { where, order, limit, offset, include, scope } = request;
+    const options: QueryOptions = {};
+    if (where) options.where = where;
+    if (order) options.order = order;
+    if (limit !== undefined) options.limit = limit;
+    if (offset !== undefined) options.offset = offset;
+    if (include) options.include = include;
+    if (scope) {
+      const parent = parentFor(scope);
+      if (!parent) return undefined;
+      (options as Record<string, unknown>).parent = parent;
+    }
+    return options;
+  }
+
   /** Resolve a neutral drill-down to the parent handle the ORM takes. Mirrors the query adapter. */
   function parentFor(scope: ScopeRequest): { id: string; predicate: string } | undefined {
     const entry = manifest().find((m) => m.name === scope.anchor);
@@ -210,6 +247,21 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
     nodeContent: { block: BlockCard },
 
     /**
+     * The parts of the graph's box the shell's floating panels are sitting over.
+     *
+     * A floating panel takes no room, so the graph is handed the whole content region and every
+     * pixel of it counts as on screen — including the ones behind a transcript panel. The board's
+     * `manual` layout parks an unplaced card in the top-left of what it believes is in view, which
+     * is exactly where a left-snapped panel is, so every freshly extracted record appeared
+     * underneath one: drawn, draggable, and invisible until somebody moved the panel.
+     *
+     * Supplied here rather than by the template because it is the *shell's* arrangement, which a
+     * template cannot see and should not have to restate. Every graph in the app is mounted through
+     * this component, so they all get it.
+     */
+    obscured: () => shellStore.coveredInset(),
+
+    /**
      * What the board has just written and not yet seen come back.
      *
      * Named through `placementStyle`, the board seed's own mapping, so an optimistic field and a
@@ -234,21 +286,49 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
     confirmPending: (recordIds) => recordStore.confirmPending(recordIds),
 
     /**
-     * Tell the graph when records of a type change here.
+     * Tell the graph when the answer to one of its reads changes here.
      *
      * The same live path `$query` uses — `EntityClass.query(...).subscribe(...)` — which is why a
      * post appears in the cards route the moment it is written. The graph took `findAll` instead,
      * so it read once and never again; that is the whole difference between a map of a space and a
      * picture of one.
      *
-     * `limit: 1` because the rows are thrown away. What is wanted is the *notification*, and the
-     * engine's response is to re-run its own seeds with their own filters and paging — asking for
-     * the full set here would fetch every row twice on every change.
+     * ## Why it subscribes to the seed's own query
+     *
+     * It used to subscribe to `{ limit: 1 }` over the type, on the reasoning that the rows are
+     * thrown away and only the notification matters. That is not what an AD4M model subscription
+     * is. It re-runs *its own* query on a change and fingerprints the rows, and calls back **only
+     * when that fingerprint differs** — so a one-row probe over a type is silent for every change
+     * that leaves its single row alone. A space with one task in it already: extract a second, and
+     * the probe's answer is the same first row, so nothing fires and the board stays as loaded.
+     * The extraction panel beside it updated, because its `$query` subscribes to its own narrower
+     * question and that question's answer really had changed — which is what made this look like a
+     * board bug rather than a notification one.
+     *
+     * So the engine hands over the read it made and this subscribes to exactly that. The rows are
+     * still thrown away; what they are for is the fingerprint, and it now covers the same records
+     * the seed drew. Cost is one subscription per distinct read — four for a board — each paging
+     * exactly what the seed would have fetched anyway.
      */
     watch(request, onChange) {
       const model = modelFor(request.entity, request.dataset);
       const handle = datasetStore.currentDataset()?.handle;
-      if (!model || !handle) return () => undefined;
+      if (!model || !handle) {
+        // A watch that never attached is the other silence: the graph then never hears about
+        // anything, and looks exactly like a graph whose data has not changed.
+        trace('graph', 'watch:not-attached', {
+          entity: request.entity,
+          model: Boolean(model),
+          handle: Boolean(handle),
+        });
+        return () => undefined;
+      }
+
+      const options = queryOptions(request);
+      // A read whose scope cannot be resolved reads as nothing; watching it would be a subscription
+      // to a question with no answer.
+      if (!options) return () => undefined;
+      trace('graph', 'watch', { entity: request.entity, parent: (options as { parent?: { id?: string } }).parent?.id });
 
       let live = true;
       /*
@@ -263,7 +343,7 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
       let primed = false;
       let pending = false;
 
-      const subscription = model.query(handle, { limit: 1 });
+      const subscription = model.query(handle, options);
       subscription
         .subscribe(() => {
           if (!live) return;
@@ -288,6 +368,14 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
         subscription.dispose();
       };
     },
+
+    /*
+      The same `graph` scope the reads above report into, so one `we:trace` switch covers the whole
+      path: what a seed asked the backend, and what it made of the answer. Rows arriving and nodes
+      appearing are two different claims, and until both are on one timeline the gap between them
+      is invisible.
+    */
+    trace: (event, detail) => trace('graph', event, detail),
 
     defaultDataset: () => {
       const current = datasetStore.currentDataset();
@@ -320,21 +408,34 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
       }
 
       const model = modelFor(entity, dataset);
-      if (!model) return [];
+      /*
+        Both of these return nothing and say nothing, which is how a board comes to draw an empty
+        canvas over a space full of records. The seed cannot report them — it never learns *why* a
+        read was empty — so they are traced here, where the reason is known.
 
-      const options: QueryOptions = {};
-      if (where) options.where = where;
-      if (order) options.order = order;
-      if (limit !== undefined) options.limit = limit;
-      if (offset !== undefined) options.offset = offset;
-      if (include) options.include = include;
-      if (scope) {
-        const parent = parentFor(scope);
-        if (!parent) return [];
-        (options as Record<string, unknown>).parent = parent;
+        Turned on with `localStorage.setItem('we:trace', 'graph')` and a reload; every read then
+        prints its entity, the parent it asked under and how many rows came back. See
+        `installConsoleTrace`.
+      */
+      if (!model) {
+        trace('graph', 'read:no-model', { entity, dataset });
+        return [];
+      }
+
+      const options = queryOptions({ entity, dataset, where, order, limit, offset, include, scope });
+      if (!options) {
+        trace('graph', 'read:unresolved-scope', { entity, scope });
+        return [];
       }
 
       const rows = await model.findAll(handle, options);
+      trace('graph', 'read', {
+        entity,
+        rows: (rows as unknown[]).length,
+        parent: (options as { parent?: { id?: string } }).parent?.id,
+        where,
+        limit,
+      });
       return rows as Record<string, unknown>[];
     },
   };

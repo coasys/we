@@ -148,6 +148,31 @@ export interface DockAspect {
  */
 export interface DockContribution {
   /**
+   * A key on this module's store that **opens** this panel — the half `close` was missing.
+   *
+   * A template declaring a panel is asking for it to be open, and the host used to arrange that by
+   * invoking the module's *launcher*. That worked while a module had one panel and one launcher; it
+   * is not answerable once it has two, because nothing says which launcher opens which panel. A
+   * dock already names how to close itself, so naming how to open itself is the missing half rather
+   * than a new idea.
+   *
+   * Optional, and the launcher is still the fallback — every module with one panel keeps working
+   * with nothing added.
+   */
+  open?: string;
+  /**
+   * Which panel this is, for a module that contributes more than one.
+   *
+   * The dock's id is `<moduleId>:<name>`, and a placement is remembered against it — so this is
+   * stable in the way a panel id is, and renaming one forgets wherever somebody had dragged it.
+   * Omitted, the index stands in, which is right for the single-dock case and wrong the moment a
+   * second is added *before* the first in the list.
+   *
+   * It is also what a template's `meta.panels` entry names to supply one panel's contents rather
+   * than another's — see `TemplatePanel.dock`.
+   */
+  name?: string;
+  /**
    * A key on this module's own store returning {@link DockEdge}: where the panel would *like* to
    * open, and `null` while it is closed.
    *
@@ -272,6 +297,21 @@ export function seedCapabilityToModule(capability: string): ModuleCapability {
   return `data:${capability}`;
 }
 
+/**
+ * A named fragment that is *about* something, and can be pointed at something else.
+ *
+ * The subject is named as the expression the module itself uses, so the part stays valid on its own
+ * — it is the module's own working node, not a template with a hole in it — and a placer that wants
+ * it over a different record says so, and the host substitutes. Without this, every part is welded
+ * to the state its module happens to hold, which is the coupling that made them uncomposable in the
+ * first place.
+ */
+export interface ModulePart {
+  node: SchemaNode;
+  /** The expression this part is about, e.g. `modules.transcribe.collectionId`. */
+  subject?: string;
+}
+
 export interface ModuleDefinition {
   /** Stable, unique. Namespaces this module's stores (`modules.<id>.*`) and its slot ordering ties. */
   id: string;
@@ -327,8 +367,26 @@ export interface ModuleDefinition {
    */
   components?: Record<string, unknown>;
 
-  /** Named schema fragments a template can place, and this module's own slot nodes can reference. */
-  schemas?: Record<string, SchemaNode>;
+  /**
+   * Named schema fragments a template can place, and this module's own nodes can reference.
+   *
+   * A module's presentation is a **default, not a monopoly**. Its panel is usually several surfaces
+   * in one — a feed, a control, a readout — and an interface that wants them arranged differently
+   * could only hand-write copies, which is how one template ended up with its own transcript beside
+   * the module's. Publishing the pieces lets it compose instead, and the module goes on composing
+   * its own panel out of the same ones.
+   *
+   * Keyed `<moduleId>.<name>` by the registry, and placed as
+   * `{ type: '$part', props: { id: 'transcribe.feed' } }`.
+   *
+   * **A part is public API.** It cannot be reshaped without breaking templates this module has never
+   * heard of, so keep the set small and name each for what it *is* rather than for how it looks.
+   *
+   * A part written as a bare node is used as it stands. One written as {@link ModulePart} names the
+   * expression that is its **subject** — the record it is about — and a placer may substitute a
+   * different one, which is what makes a feed reusable over a call it was not written for.
+   */
+  schemas?: Record<string, SchemaNode | ModulePart>;
 
   /** Persistent chrome. Rendered by the host outside the router, so it survives navigation. */
   slots?: SlotContribution[];
@@ -382,6 +440,19 @@ export interface ModuleDefinition {
    * host that has to keep them from colliding.
    */
   launcher?: ModuleLauncher;
+  /**
+   * More than one, for a module whose panels are separate things to open.
+   *
+   * `docks` has always been a list; `launcher` was not, on the reasonable reading that a module is
+   * one capability and so has one way in. Transcription broke it: recording and extraction are two
+   * surfaces with different lifetimes — one follows the microphone and the other follows a pass that
+   * may be somebody else's — and a single rail button cannot open both.
+   *
+   * Each needs a `key`, since that is what the rail addresses. Declaring both this and `launcher`
+   * is not an error; they are concatenated, which keeps a module that grows a second one from having
+   * to rewrite the first.
+   */
+  launchers?: ModuleLauncher[];
 
   /**
    * Durable entity types this module owns, installed by the host into the relevant dataset.
@@ -479,6 +550,87 @@ export interface ModuleDefinition {
    * right default for a module whose store only touches the space on screen.
    */
   chromeOnlyStoreMembers?: readonly string[];
+
+  /**
+   * What this module lets a space or an agent decide — see {@link ModuleSetting}.
+   *
+   * The values arrive back through `deps.settings`, already resolved for wherever the agent is. A
+   * module declares the question and reads the answer; who is allowed to answer it, and how the
+   * control looks, are the host's.
+   */
+  settings?: readonly ModuleSetting[];
+}
+
+/**
+ * Where a settings value may be decided.
+ *
+ * Ordered from the least specific to the most, which is also the order they resolve in: whichever
+ * level has an opinion last wins. Every one of them is optional and silent by default — a level that
+ * has never been touched says nothing, rather than saying "off".
+ */
+export type SettingLevel =
+  /** The seed. What this build of the app ships believing. */
+  | 'deployment'
+  /** This agent, everywhere. Private, held in their own root dataset. */
+  | 'agent'
+  /** The community. Shared, and the only level another member can see. */
+  | 'space'
+  /** This agent, in this one space. Private, and the most specific answer there is. */
+  | 'agent-in-space';
+
+/**
+ * How several levels combine when more than one has an opinion.
+ *
+ * `override` is the ordinary case and what a value setting means: the most specific level wins, and
+ * a community's choice is a choice, not a floor.
+ *
+ * `restrict` is for the ones where a lower level must not be able to undo a higher one — a space
+ * that has switched recording off is not overridable by a member who would rather it were on. Only
+ * meaningful for a boolean, where it is an AND across every level that has spoken.
+ */
+export type SettingResolution = 'override' | 'restrict';
+
+/**
+ * One thing a capability lets a space or an agent decide.
+ *
+ * ## Why this exists rather than a field on `Space`
+ *
+ * `autoInterpret`, `extractionTargets` and `shareExtractionDetail` are all settings of a capability,
+ * and all three are columns on the core `Space` entity — each with its own accessor, its own setter
+ * and its own hand-written row in the settings panel, because there was nowhere else to put them.
+ * The fourth would have been recording. A declaration is the alternative: the value has a home that
+ * is not the space's schema, and the control that edits it is rendered from this rather than written
+ * — the same move `recordStore.displays` makes for a record's own form, and for the same reason. A
+ * setting nobody wrote a screen for still has one.
+ *
+ * ## What it is not
+ *
+ * Not availability. Whether a module runs here at all is four booleans that intersect —
+ * registered ∩ installed ∩ enabled, less muted — and every layer can only subtract. A setting is a
+ * *value*, and values resolve by specificity. Conflating the two is how a settings system ends up
+ * unable to express "the community chose green".
+ */
+export interface ModuleSetting {
+  /** Stable, and namespaced by its group — `recordCalls`, not `transcribe.recordCalls`. */
+  key: string;
+  /** What a person reads beside the control. */
+  label: string;
+  /** A sentence under it, where the label cannot carry the reason on its own. */
+  description?: string;
+  type: 'boolean' | 'string' | 'number' | 'enum';
+  /** Required for `enum`, ignored otherwise. */
+  options?: readonly { label: string; value: string }[];
+  /** What it is when nothing has an opinion. */
+  default: boolean | string | number;
+  /**
+   * Which levels may decide it, and so which screens offer a control.
+   *
+   * Naming a level is what makes it appear, so a setting that is only ever a community decision
+   * lists `space` and gets exactly one control rather than three that mostly do nothing.
+   */
+  levels: readonly SettingLevel[];
+  /** Defaults to `override`. */
+  resolution?: SettingResolution;
 }
 
 /**
@@ -740,6 +892,19 @@ export interface ModuleStoreDeps {
    * concurrent writers, and this covers the add-only cases without pretending to have one.
    */
   linkEntity?: (entity: string, id: string, relation: string, value: string, options?: DatasetTarget) => Promise<void>;
+
+  /**
+   * This module's own settings, resolved for where the agent is right now.
+   *
+   * Keyed by the `key` of each {@link ModuleSetting} the module declared, already reduced across
+   * every level that had an opinion, and defaulted for the ones that did not — so a module reads a
+   * value and never a chain. Reactive: it follows the space, so walking into a community that has
+   * switched something off takes effect without a reload.
+   *
+   * Absent on a host that has no settings layer, which is why every read should carry the module's
+   * own default rather than assume the key is there.
+   */
+  settings?: () => Record<string, boolean | string | number>;
 }
 
 /**
@@ -852,6 +1017,14 @@ export interface ModuleEmbed {
 
 /** A module's entry point in the host's module rail. */
 export interface ModuleLauncher {
+  /**
+   * Which launcher this is, for a module that has more than one — omitted where there is one.
+   *
+   * The rail addresses an entry by it, so it has to be stable: it is half of the key
+   * `launchModule` dereferences. A module with a single launcher needs none and keeps the plain
+   * module id it always had.
+   */
+  key?: string;
   /** Icon name, resolved by the host's icon set. */
   icon: string;
   /** Shown on hover, and read by assistive tech — the rail itself is icon-only. */
@@ -937,8 +1110,31 @@ export interface ModuleInterpretationAccess {
    * standing watch has to follow the setting while a call is running. Toggling it used to change
    * nothing until everybody left the call and rejoined, because the only thing that read it was a
    * throw inside `watchCollection`, and nothing re-ran that.
+   *
+   * Takes a collection, because the answer is per call. The community's standing decision is the
+   * default and the people in one conversation may turn it off for that conversation — a design
+   * review that has wandered on to something nobody wants records of. Called with no id it answers
+   * for the space, which is what a surface asking "does this space do this at all" wants.
    */
-  autoEnabled: () => boolean;
+  autoEnabled: (collectionId?: string) => boolean;
+  /**
+   * Turn automatic extraction on or off for one call, for everyone in it.
+   *
+   * A **group** decision recorded beside the call, exactly as {@link setTarget} is and for the same
+   * reason: the standing watch is one registration the whole neighbourhood shares, so per-agent
+   * answers would have peers re-registering over each other in a loop.
+   *
+   * A participant's decision rather than an administrator's, which the space-wide setting is not.
+   * Stopping a standing pass mid-meeting is about this conversation, and needing whoever owns the
+   * space to be present for it makes the honest response "leave the call".
+   *
+   * Does not stop a pass already in flight — those tokens are spent, and killing the run loses what
+   * it found for no saving. It stops the next one.
+   *
+   * Rejects on a host that cannot record it, so a module can offer the affordance only where it
+   * means something rather than silently dropping a press.
+   */
+  setAuto: (collectionId: string, on: boolean) => Promise<void>;
   /**
    * What this call extracts, and what else it could — one row per model, ticked when it is on.
    *
@@ -1045,8 +1241,16 @@ export interface ModuleInterpretationAccess {
    * reason. Interpretation follows the call, and a call now outlives the space on screen, so
    * "proposals here" was answering about wherever the reader had wandered to. Absent still means the
    * space on screen.
+   *
+   * `collection` narrows it to what was staged on **that collection's contents**, and a review
+   * surface about one conversation should always pass it. A staged suggestion outlives the pass that
+   * made it: one nobody resolved an hour ago is still staged, so without this it arrives in the next
+   * call's list looking like something that call just found — and accepting it commits a record
+   * parented to the earlier call, where the reviewer is not looking. A module names the collection
+   * and nothing else; resolving what containment means here is the host's, exactly as it is for
+   * {@link runOnCollection}.
    */
-  proposals: (target?: DatasetTarget) => Promise<InterpretationProposal[]>;
+  proposals: (target?: DatasetTarget, collection?: string) => Promise<InterpretationProposal[]>;
   /** Commit a staged suggestion — the whole record, or one property by name. */
   accept: (id: string, property?: string, target?: DatasetTarget) => Promise<boolean>;
   /** Drop a staged suggestion. */

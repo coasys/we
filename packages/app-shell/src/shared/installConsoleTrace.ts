@@ -60,8 +60,15 @@ const STORAGE_KEY = 'we:trace';
  * sequence of hops that is worth watching when a join or a boot goes wrong, and worth nothing at
  * all when it does not. So they moved behind the same switch rather than being deleted, which
  * would have lost the diagnostic with the noise.
+ *
+ * `graph` is the newest and the same kind of thing again. A graph seed reads through the host and
+ * *catches* every failure into a warning, so a board that draws nothing is indistinguishable from a
+ * board whose records are not where it looked — and both are indistinguishable from a call that
+ * produced nothing. What separates them is the row count of each read and the parent it asked
+ * under, which is exactly one line per read and worth nothing until somebody is staring at an empty
+ * canvas.
  */
-export const TRACE_SCOPES = ['presence', 'ephemeral', 'dataset', 'space'] as const;
+export const TRACE_SCOPES = ['presence', 'ephemeral', 'dataset', 'space', 'graph'] as const;
 
 function enabledScopes(): Set<string> | null {
   if (typeof localStorage === 'undefined') return null;

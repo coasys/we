@@ -45,23 +45,24 @@ body,
   background-color: var(--we-role-surface);
 }
 
-// Global scrollbar styling — uses design-system tokens, themed via CSS variables
-// Webkit properties (Chrome, Edge, Safari, Electron)
+/*
+  Global scrollbar styling.
+
+  These declarations are `scrollbarRules()` from `@we/tokens`, which is where they are decided —
+  the same block the primitives' shared stylesheet adopts and `we-scroll-area` uses for its own
+  part. Restated here because Sass cannot import a TypeScript string, and pinned by
+  `scrollbarConsistency.test.ts`, which fails if the two fall out of step. They already had: this
+  copy hid the scrollbar buttons and the shared one did not.
+
+  Do NOT add `scrollbar-color` or `scrollbar-width` beside these. Chromium reads either as "use the
+  platform scrollbar" and ignores every rule below — see the note on `scrollbarRules`.
+*/
 ::-webkit-scrollbar {
   width: var(--we-scrollbar-width);
   height: var(--we-scrollbar-width);
 }
 
 ::-webkit-scrollbar-track {
-  /*
-    Shorthand first, then the image it sits behind.
-
-    The other way round — which is how this was written — the `background` shorthand resets every
-    longhand it covers, `background-image` included, so the image was set and then immediately
-    thrown away. Nothing showed it: the track still painted its colour, which is most of what a
-    scrollbar track is, and the missing texture read as a theme that had not set one. Found by
-    stylelint the first time it was pointed at a `.scss` file.
-  */
   background: var(--we-scrollbar-background);
   background-image: var(--we-scrollbar-background-image);
 }

@@ -5,14 +5,16 @@ import { createSignalTypeModal } from './vocabulary/CreateSignalTypeModal.ts';
 import { modelsSection } from './vocabulary/EntitiesSection.ts';
 import { relationshipTypesSection } from './vocabulary/RelationshipTypesSection.ts';
 import { signalTypeCard } from './vocabulary/SignalTypeCard.ts';
+import { topicsSection } from './vocabulary/TopicsSection.ts';
 
 /**
- * What this community has decided things mean — its reactions, its connections, and its models.
+ * What this community has decided things mean — its reactions, its connections, its subjects, and
+ * its models.
  *
- * The three are one act at different levels: naming what a reaction means, what a connection means,
- * and what a thing *is*. They sat together in the default template's settings route and they stay
- * together here, because a community reasoning about its own vocabulary is reasoning about all three
- * at once.
+ * The four are one act at different levels: naming what a reaction means, what a connection means,
+ * what the conversation is *about*, and what a thing *is*. They sat together in the default
+ * template's settings route and they stay together here, because a community reasoning about its own
+ * vocabulary is reasoning about all of them at once.
  *
  * ## Why this section, alone, needs the space open
  *
@@ -38,7 +40,7 @@ const openSpaceFirst: SchemaNode = {
           type: 'we-text',
           props: { variant: 'footnote', color: 'text-faint' },
           children: [
-            'Signals, relationships and models are read from the space itself, so this one has to be open to edit them.',
+            'Signals, relationships, topics and models are read from the space itself, so this one has to be open to edit them.',
           ],
         },
       ],
@@ -99,8 +101,9 @@ export const spaceVocabularySection: SchemaNode = {
       $localState: {
         createSignalTypeOpen: { type: 'boolean', initial: false },
         createRelationshipTypeOpen: { type: 'boolean', initial: false },
+        createTopicOpen: { type: 'boolean', initial: false },
       },
-      children: [signalTypesSection, relationshipTypesSection, modelsSection],
+      children: [signalTypesSection, relationshipTypesSection, topicsSection, modelsSection],
     },
     else: openSpaceFirst,
   },

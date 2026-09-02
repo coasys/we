@@ -16,7 +16,19 @@ const DEFAULTS: Partial<EditableImageProps> = {
   overflow: 'hidden',
   cursor: 'pointer',
   bg: 'neutral-200',
+  /*
+    The hover label's size, since the label inherits it (see the overlay below).
+
+    Unset, it inherited the page's 16px, which is body copy — too loud for a caption whose whole job
+    is to name what the icon above it already means. 14px is the label size, which is what this is.
+    Still only a default: a caller with a small tile passes its own, as the avatar in the
+    create-space modal does.
+  */
+  fontSize: '200',
 };
+
+/** The same, for a tile sizing itself by ratio — see `baseStyle`. */
+const { height: _defaultHeight, ...DEFAULTS_BY_RATIO } = DEFAULTS;
 
 const editableImageKeys = [...designSystemKeys, 'children'] as const;
 const editableImageStyleKeys = editableImageKeys.filter((key) => key !== 'children');
@@ -64,10 +76,26 @@ export function EditableImage(allProps: EditableImageProps) {
   let cropRef: ImageCropRef | undefined;
   let fileInput: HTMLInputElement | undefined;
 
+  /*
+    An `aspect` and no height of its own means the tile sizes itself by ratio.
+
+    `aspect` is the shape the crop step enforces, and until now it said nothing about the box the
+    result is shown in — so a caller had to pick a height that happened to match, against a width it
+    could not know. The create-space modal is where that came apart: a 4:1 crop displayed in a box
+    that worked out to 3.4:1, so `fit: cover` re-cropped the sides of what somebody had just framed,
+    and the preview quietly disagreed with the file being saved. Any fixed height is only right at
+    one modal width anyway, and a modal narrows on a phone.
+
+    Only when no height is given, so the full-bleed banners that pass both (the space header at
+    300px, the profile at 200px) are untouched.
+  */
+  const sizedByRatio = () => props.aspect !== undefined && dsProps.height === undefined;
+
   const baseStyle = createMemo(() => {
     const usedProps = filterProps(dsProps, editableImageStyleKeys);
-    const merged = mergeProps(usedProps, DEFAULTS) as EditableImageProps;
-    return { ...buildLayoutStyles(merged, 'column'), 'flex-shrink': '0' };
+    const merged = mergeProps(usedProps, sizedByRatio() ? DEFAULTS_BY_RATIO : DEFAULTS) as EditableImageProps;
+    const ratio = sizedByRatio() ? { 'aspect-ratio': String(props.aspect) } : {};
+    return { ...buildLayoutStyles(merged, 'column'), 'flex-shrink': '0', ...ratio };
   });
 
   // Tiers count as much as states: both route through the same var indirection, and gating on the
@@ -167,6 +195,13 @@ export function EditableImage(allProps: EditableImageProps) {
         ref={checkSurface}
         role="button"
         tabIndex={0}
+        /*
+          A tab stop, but not the one a dialog should open on. Pressing Enter here opens the OS file
+          picker, and the tile is often the first thing in a form (a cover image above the name
+          field), so an overlay taking the first focusable landed every keyboard user in a file
+          dialog over the form they came to fill in. See `skipsInitialFocus` in overlay-element.
+        */
+        data-we-skip-autofocus=""
         aria-label={label()}
         onClick={pickFile}
         onKeyDown={(e) => {
@@ -215,13 +250,25 @@ export function EditableImage(allProps: EditableImageProps) {
         </Show>
 
         {/* Hover overlay */}
-        <Column class="editable-image__overlay" ax="center" ay="center" p="300" gap="200" position="absolute">
-          {/* A pencil over an empty tile promises editing something that does not exist yet. */}
-          <we-icon name={props.src ? 'pencil' : 'upload-simple'} size="24px" color="#fff" />
+        {/*
+          `gap: 100`, not 200. The glyph and the label are one thing said twice, not two items in a
+          list — the wider gap read as a stack of two separate marks rather than as an icon with its
+          caption.
+        */}
+        <Column class="editable-image__overlay" ax="center" ay="center" p="300" gap="100" position="absolute">
+          {/*
+            A pencil over an empty tile promises editing something that does not exist yet.
+
+            28px, not 24px. The glyph is the thing being read here — the label only names what the
+            glyph already says — and at 24px it was *smaller* than the 32px placeholder icon it
+            covers, so hovering an empty tile shrank the symbol under the pointer.
+          */}
+          <we-icon name={props.src ? 'pencil' : 'upload-simple'} size="28px" color="#fff" />
           {/*
             No `fontSize` here on purpose. Unset, the custom property resolves to `inherit` for an
             inherited property, so the label takes its size from this component's own `fontSize` DS
             prop — a small tile can shrink the label without the component growing an API for it.
+            The component's own default sets the resting size; see DEFAULTS.
 
             `textAlign` because the label wraps on a narrow tile, and a wrapped line was left-
             aligned inside a centred box, which reads as a misalignment rather than as wrapping.

@@ -222,6 +222,7 @@ export const storeEntries: StoreEntry[] = [
     state: {
       currentPath: { type: 'string' },
       segments: { type: 'array' },
+      templateSegments: { type: 'array' },
       params: { type: 'object' },
     },
     actions: ['navigate', 'setParam', 'back'],
@@ -753,6 +754,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
       state: {
         currentPath: 'string (the current route path)',
         segments: 'string[] (currentPath split by "/", e.g. ["/foo/bar"] → ["foo", "bar"])',
+        templateSegments:
+          'string[] — the segments BELOW the space prefix, which is a template\'s own coordinate space. A template mounted at /space/<id> reading its own route params wants this: at /space/abc/photo/xyz it is ["photo", "xyz"], so a `/photo/:postId` route reads templateSegments[1] and keeps reading it wherever the host mounts the template. Reading `segments` by index pins a template to the host\'s prefix and breaks when it moves.',
         params:
           "Record<string, string> — the URL's query parameters, reactive; read one as { $: 'routeStore.params.<name>' }. Prefer $localState with syncParam for fields a view owns; read params directly only for parameters something else writes",
       },
@@ -930,6 +933,12 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '{ id, author, createdAt }[] — nodes in this space that mention this agent, newest first. createdAt is the backend’s comparable timestamp. Filtered client-side, so right for a space and wrong for an inbox across many',
         autoInterpret:
           'boolean — whether this space has calls interpreted (extracted into records) as they happen. A community decision, off by default. Readable by every member; writing it is space-settings',
+        spaceModuleSettings:
+          "SettingRow[] — what each capability that declares settings is set to FOR THIS COMMUNITY, as rows a screen renders directly: { group, groupLabel, key, label, description, type, options, value, source, set, locked, lockedBy }. `value` is already resolved across every level that had an opinion; `source` names the level that decided it ('default' when nobody did); `set` says whether THIS level holds an opinion, so a reset has something to undo; `locked` says a level that BINDS this one has forced it and the control must be disabled rather than springing back — a member's private refusal does not bind the community, so it never locks this list. Built from what modules declare, so a module that adds a setting gets a control with nothing to register",
+        myModuleSettings:
+          'SettingRow[] — the same rows, for what THIS AGENT has decided in THIS space. Private, held in the root dataset. The most specific of the four levels',
+        agentModuleSettings:
+          'SettingRow[] — the same rows, for what THIS AGENT has decided everywhere. Private. Render it in global settings, where the question is what you want in every space',
         extractionTargets:
           "string[] — the models a call in this space starts out extracting. The middle of three layers: shapeStore.extractionCandidates says what COULD be extracted, this says which of them a call begins with, and the call's own participants add or remove from there (modules.transcribe.extractionTargets). Unset falls back to the two classes that were hardcoded before the setting existed, so no space silently stops extracting. Writing it is space-settings",
         shareExtractionDetail:
@@ -994,6 +1003,16 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(nodeId: string, spaceUuid?): marks a node read as of now, so it leaves unreadNodeIds. Silent on failure — a lost marker is a stale dot, not an error',
         setAutoInterpret:
           '(enabled: boolean, spaceUuid?): turns automatic call interpretation on or off for a space. Omit spaceUuid for the space on screen',
+        autoInterpretForCall:
+          "(collectionId): whether ONE CALL is extracted as it happens — its participants' answer if they gave one, else the space's. A function rather than a value because the answer is per call, like canAdministerSpace",
+        setAutoInterpretForCall:
+          "(collectionId, on) => turns automatic extraction on or off for ONE CALL, for everyone in it. A participant's decision, unlike setAutoInterpret, which administers the space — and it leaves the space's default alone. Does not stop a pass already running: those tokens are spent",
+        setSpaceModuleSetting:
+          "(group: string, key: string, value?, spaceUuid?): sets one of a capability's settings for everyone in a space — `group` is the module id and `key` the setting's key, both off the row. **Omit `value` to clear it**, which returns the level to having no opinion: a stored value that happens to equal the default goes on overruling everything less specific while its control reads as untouched. Omit spaceUuid for the space on screen",
+        setMyModuleSetting:
+          '(group: string, key: string, value?, spaceUuid?): the same, for this agent in one space. Private — written to the root dataset, never to the space. Omitting `value` clears it',
+        setAgentModuleSetting:
+          '(group: string, key: string, value?): the same, for this agent in every space. Private, and global, so there is no space to name. Omitting `value` clears it',
         setShareExtractionDetail:
           '(enabled: boolean, spaceUuid?): turns broadcasting of extraction prompts and responses on or off for a space. Omit spaceUuid for the space on screen',
         setExtractionTarget:
@@ -1289,6 +1308,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           "string | null — id of the currently open shell overlay ('profile' | 'settings' | 'schema-tests' | 'landing-page'), or null",
         spaceSettingsOpen:
           'boolean — the space-settings panel is open. It configures whichever space is open, so it needs no id; bind a launcher\u2019s active state to this',
+        spaceSettingsTab:
+          "string — the tab the space-settings panel opens on ('about' | 'features' | 'vocabulary'). A starting position read once as the panel mounts, not a controlled value: somebody who then walks to another tab stays there. Set it by passing a tab to openSpaceSettings",
         pendingDestructive:
           "the destructive action a space template just asked for ({ path, title, body }), or null. The host raises its own confirmation in front of every one of them — a space template arrives from a stranger, so whether it asks before deleting is not the stranger's decision. Host chrome renders it; a template writing its own dialog for a destructive store action would be a second question about one click",
         layoutPinned:
@@ -1299,6 +1320,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           "Record<dockId, DockGeometry> — every registered panel's resolved box (top, left, width, height, edge, mode). Read a field as { $: \"shellStore.dockGeometry['<id>'].<field>\" } — by index, since a dock id holds a colon; the frame a panel is wrapped in binds its geometry this way so a move rewrites props rather than remounting",
         contentInset:
           '{ top, right, bottom, left } in pixels — what the content viewport gives up to panels that displace it. Read it to keep your own fixed chrome clear of docked panels',
+        coveredInset:
+          '{ top, right, bottom, left } in pixels — what FLOATING panels are covering. They take no room, so they leave contentInset at zero while still sitting over the content: this is the part of your own box the reader cannot see. Read it to keep something in the clear where contentInset would say there is nothing in the way',
         dockResizing:
           'boolean — a panel is being dragged or resized right now. Suspend transitions while it is true so the edge tracks the cursor',
         panelMaximised:
@@ -1313,6 +1336,10 @@ export function generateStoresText(entries: StoreEntry[]): string {
         insertSlots:
           "{ index, edge, mode: 'strip' | 'column', top, left, width, height }[] — the gaps in a strip of panels a dragged panel could join, while one is being dragged over it. Empty otherwise",
         activeInsert: 'string | null — the slot a drop would take right now, as <edge>:<index>, or null',
+        panelSupplied:
+          "Record<moduleId, boolean> — modules whose panel this interface supplies itself, by declaring a `meta.panels` entry that names the module and carries a `node`. What a module's dock frame asks before drawing its own contents; the module still owns whether the panel is open and how big it is",
+        layoutDirty:
+          'boolean — the interface on screen has been rearranged: one of its panels moved, resized or closed. What a whole-arrangement "reset layout" control is gated on, and not the same question as any layoutPinned entry — a closed panel has no placement, and a panel declared for another route is not among the docks at all. False for an interface declaring no panels',
       },
       actions: {
         beginDockResize:
@@ -1320,6 +1347,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
         resizeDock:
           "(id: string, side: 'left' | 'right' | 'top' | 'bottom' | 'top-left' | …, dx: number, dy: number): applies a resize drag from that side or corner, in screen pixels since it began. Wire it to resize with { $: 'arg.detail.delta' }",
         endDockResize: '(): ends the drag and persists the size',
+        resizeColumn:
+          "(id, dy): moves the boundary between this panel and the one under it in a floating column, giving one what the other loses. What the upper panel's bottom grip calls when it has a neighbour — a boundary belongs to both panels, so only one of them draws it",
         fitDock:
           '(id: string): shrinks a panel to the shape its content wants, keeping the width the user chose — only when the module declares an aspect for its panel',
         beginDockMove:
@@ -1347,6 +1376,12 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(): opens or closes the settings panel for the space on screen. What a gear in chrome should call \u2014 a control that is always present toggles, so a second press puts back what the first press changed',
         resetDockToLayout:
           '(panelId: string): puts a panel back where meta.panels asked for it, forgetting where it was dragged. Forgets rather than rewrites, so the panel keeps following the layout afterwards \u2014 including when the template changes it. Pair with layoutPinned',
+        closeTemplatePanel:
+          "(panelId: string): dismisses a panel the interface declared in meta.panels, by that panel's id. What its titlebar's close button calls",
+        openTemplatePanel:
+          '(panelId: string): puts a closed one back. The only way back to a panel that has been closed — it has no titlebar left to ask from — so a template offering a close should offer this too',
+        resetTemplateLayout:
+          '(): puts every panel of the interface on screen back the way meta.panels declared them, and reopens the ones that were closed. The whole-arrangement counterpart of resetDockToLayout, and the only way back for a closed panel, which has no titlebar to reset itself from. Scoped to the template rather than the route, so a declaration that varies by route is reset once. Pair with layoutDirty',
         openSpaceSettings:
           '(): opens that panel without closing it again. For a control that sits on the very fields it leads to (the About view\u2019s pencil), where a toggle would break the promise to show them',
         closeSpaceSettings: '(): closes the space-settings panel',
@@ -1405,6 +1440,11 @@ export function generateStoresText(entries: StoreEntry[]): string {
           'number — how many passes are still in flight. What a collapsed "N extractions running" summary counts',
         hasActivity:
           'boolean — whether there is anything to show at all. Counts settled rows too, so a bar gated on it does not vanish the instant a pass finishes and take its result with it',
+        runningPasses: 'InterpretationActivityView[] — the passes still in flight, for a readout that lists them',
+        settledPasses: 'InterpretationActivityView[] — the passes that have finished, newest first',
+        settledCount: 'number — how many have finished. What a collapsed "N extractions processed" line counts',
+        detailWithheld:
+          "boolean — a peer's settled pass is on screen whose exchange this agent cannot open, because the space does not share it. Gate a footnote explaining the absence on this rather than on a row's own hasDetail, which is false for a pass that simply has not reached the model yet",
         capable:
           'boolean — whether this node can interpret AT ALL, as distinct from being able to and having no model configured. Answered by asking the backend rather than by testing the client library, so it is false against a node whose executor predates the extraction stack. False means no fix exists from inside the app — say so rather than offering a control that cannot work',
       },

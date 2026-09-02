@@ -41,6 +41,22 @@ export interface AppDataset extends Omit<DatasetRef, 'handle'> {
 
 const toApp = (ref: DatasetRef): AppDataset => ref as AppDataset;
 
+/**
+ * The one segment a space is addressed by — its shared id when it has one, its local id otherwise.
+ *
+ * Both forms *resolve*: the route effect matches `d.id === seg || d.sharedId === seg`, so a shared
+ * space had two working URLs and which one you got depended on which code path built the link.
+ * `switchTemplate` wrote the shared id, `navigateToSpace` passed through whatever it was handed, and
+ * `spacePath` echoed whatever was already in the address — so one space accumulated two history
+ * entries, two share links, and two answers to "am I already here".
+ *
+ * The rule was never in doubt, only unenforced: a local id means nothing to anybody else, so a
+ * space that can be shared is addressed by the id that travels. Written once here and used wherever
+ * a space path is built; the other form keeps resolving, as an alias rather than an equal.
+ */
+export const canonicalSpaceId = (dataset: Pick<AppDataset, 'id' | 'sharedId'>): string =>
+  dataset.sharedId ?? dataset.id;
+
 export interface DatasetStore {
   // State
   datasets: Accessor<AppDataset[]>;
@@ -130,6 +146,9 @@ export interface DatasetStore {
   provideCallExtraction: (access: {
     forCall: (collectionId: string) => string[];
     setForCall: (collectionId: string, entity: string, on: boolean) => Promise<void>;
+    /** Whether *this call* is extracted as it happens — its own answer, else the space's. */
+    autoForCall: (collectionId: string) => boolean;
+    setAutoForCall: (collectionId: string, on: boolean) => Promise<void>;
   }) => () => void;
 }
 
@@ -202,6 +221,8 @@ export function DatasetStoreProvider(props: ParentProps) {
   const callExtraction = hostSlot<{
     forCall: (collectionId: string) => string[];
     setForCall: (collectionId: string, entity: string, on: boolean) => Promise<void>;
+    autoForCall: (collectionId: string) => boolean;
+    setAutoForCall: (collectionId: string, on: boolean) => Promise<void>;
   }>();
 
   /**
@@ -278,6 +299,11 @@ export function DatasetStoreProvider(props: ParentProps) {
           selected: active.includes(entity),
         }));
       },
+      setAutoInterpret: async (collectionId: string, on: boolean) => {
+        const extraction = callExtraction.get();
+        if (!extraction) throw new Error('interpretation: this host cannot record a call’s extraction settings');
+        await extraction.setAutoForCall(collectionId, on);
+      },
       setExtractionTarget: async (collectionId: string, entity: string, on: boolean) => {
         const extraction = callExtraction.get();
         if (!extraction) throw new Error('interpretation: this host cannot record a call’s extraction targets');
@@ -318,6 +344,34 @@ export function DatasetStoreProvider(props: ParentProps) {
       },
 
       /*
+        The staged suggestions belonging to one call, rather than to the whole space.
+
+        Here rather than on the port wrapper above for the same reason `interpretCollection` is: the
+        scope is a containment predicate, and resolving one needs the dataset's models — which the
+        port has not got and a module must never learn.
+
+        A proposal outlives the pass that made it, so an unresolved one from this morning's call is
+        still staged this afternoon. Unscoped, it arrived in the next call's review list looking like
+        something that call had just found — and accepting it committed a record parented to the
+        earlier call, which is real, correct, and invisible on the board of the call the reviewer is
+        actually sitting in.
+
+        The dataset is the *caller's*, not `currentDataset()`: a call outlives the space on screen,
+        and answering about wherever the reader wandered to is the bug `targeted` exists to prevent.
+        The predicate is resolved against that same dataset for the same reason.
+      */
+      proposalsForCollection: async (dataset, collectionId) => {
+        const port = session.backendPorts()?.interpretation;
+        if (!port) return [];
+        const modelFor = (entity: string) => getEntitiesForPerspective(entity, dataset);
+        const predicate = containmentPredicate(modelFor, currentDatasetEntities());
+        // Unscoped rather than empty when containment cannot be named here: too many suggestions is
+        // a nuisance, none is a review surface that looks broken.
+        if (!predicate) return port.proposals(dataset);
+        return port.proposals(dataset, { parent: { id: collectionId, predicate } });
+      },
+
+      /*
         The standing version of the same thing, and the reason it lives here rather than on the module
         surface.
 
@@ -337,7 +391,17 @@ export function DatasetStoreProvider(props: ParentProps) {
         // The community's decision, read through a gate SpaceStore supplies — this store sits below
         // it and cannot reach a Space. Absent (no gate provided yet, or no space) reads as off, which
         // is the right way round for something that spends somebody's LLM budget.
-        if (!autoInterpretGate.get()?.()) throw new Error('interpretation: automatic extraction is off for this space');
+        /*
+          Asked about *this call*, not about the space.
+
+          The space's switch is still the answer for a call whose participants have not decided —
+          `autoForCall` resolves that — but a call that has been turned off has to stay off, and a
+          gate that could only see the space would re-register the watch on the next tick. Falls back
+          to the space-wide gate where the call layer has not been wired, which keeps a host that
+          predates it behaving as it did.
+        */
+        const auto = callExtraction.get()?.autoForCall(collectionId) ?? autoInterpretGate.get()?.();
+        if (!auto) throw new Error('interpretation: automatic extraction is off for this call');
         const dataset = currentDataset();
         if (!dataset) throw new Error('interpretation: no dataset to interpret into');
 

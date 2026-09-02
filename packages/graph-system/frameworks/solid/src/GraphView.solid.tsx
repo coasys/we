@@ -23,6 +23,7 @@
  * node is drawn on. That is the property that keeps a dense canvas renderer additive later.
  */
 import { Column, Row } from '@we/components/solid';
+import { ROLE_NAMES } from '@we/design-utils';
 import {
   DEFAULT_CONTROLS,
   defaultBehaviours,
@@ -31,6 +32,7 @@ import {
   dispatchPointer,
   edgeVisual,
   GraphEngine,
+  matches,
   nodeVisual,
   PluginRegistry,
   resolveStyle,
@@ -50,6 +52,7 @@ import { parseAddress } from '@we/graph-protocol';
 import { batch, createEffect, createMemo, createSignal, For, onCleanup, onMount, Show, untrack } from 'solid-js';
 import { Dynamic } from 'solid-js/web';
 
+import { connectionTarget } from './connect';
 import type { GraphViewProps, NodeContent } from './GraphView.types';
 import { isSettled, patched } from './pending';
 import { type Grip, HANDLES, resizeBox } from './resize';
@@ -147,11 +150,26 @@ function readableFields(node: GraphNode): { name: string; value: string }[] {
   });
 }
 
-/** Design tokens resolve against the live theme; anything else is passed through as CSS. */
+/**
+ * A **role** first, then a scale position, then raw CSS.
+ *
+ * The same precedence the design system's own resolver uses, and it was missing here — every colour
+ * in a graph resolved to `--we-color-<token>`, so a style rule could only ever name a scale
+ * position. That is the one thing a scale position cannot do: it is a step on a ramp that flips with
+ * the theme's polarity, so cards picked to look like pale tints in a light theme came out as deep
+ * ones in a dark theme, and no choice of number fixes both. A role is what a theme *redefines*.
+ *
+ * Scale positions stay, and stay right for what they are for: a palette, where the colours mean
+ * "different from each other" rather than "this kind of thing".
+ *
+ * Unknown names fall through to `--we-color-<token>` exactly as before, so nothing that worked
+ * stops — including a name this build's role list has not heard of.
+ */
 function color(value: string | undefined, fallback: string): string {
   const token = value ?? fallback;
   if (!token) return fallback;
   if (/^(#|rgb|hsl|var\(|transparent$|currentcolor$)/i.test(token)) return token;
+  if (ROLE_NAMES.has(token)) return `var(--we-role-${token})`;
   return `var(--we-color-${token})`;
 }
 
@@ -192,6 +210,9 @@ export function GraphView(props: GraphViewProps) {
       defaultDataset: () => props.host?.defaultDataset() ?? null,
       models: (dataset) => props.host?.models(dataset) ?? [],
       warn: () => undefined,
+      // Spread like `watch`, so an expander asking whether it can trace gets the honest answer
+      // rather than a stub that swallows everything.
+      ...(props.host?.trace && { trace: (event, detail) => props.host!.trace!(event, detail) }),
     },
     onEvent: (event) => {
       switch (event.type) {
@@ -203,7 +224,12 @@ export function GraphView(props: GraphViewProps) {
           const at = parseAddress(node.id);
           props.onNodeClick?.({
             ...node,
-            ...(at?.kind === 'entity' && { recordId: at.id }),
+            // `recordType` beside `recordId`, as every other payload here carries them — a template
+            // that wants to *do* something with the record needs its class: `$query` cannot ask what
+            // type an id is, and neither can `recordStore.displays`. Double-click and the node
+            // actions both carried it already; this was the one that made a caller reach for the
+            // double-click handler to answer a single click's question.
+            ...(at?.kind === 'entity' && { recordId: at.id, recordType: at.type }),
             fields: readableFields(node),
           });
           break;
@@ -358,6 +384,37 @@ export function GraphView(props: GraphViewProps) {
   // Following the data is not part of what the graph *is*, so toggling it neither reloads nor
   // re-lays-out — it only starts or stops the listening.
   createEffect(() => engine.setLive(props.live !== false));
+  /*
+    What the host has floating over the canvas, so "in view" means what a reader can see.
+
+    An effect rather than a construction argument because panels move: dragging one across the
+    board changes which part of it is clear, and a card parked afterwards should land in the part
+    that is clear *now*.
+  */
+  createEffect(() => engine.viewport.setObscured(props.host?.obscured?.()));
+
+  /**
+   * The graph's own chrome, kept out from under whatever the host has floating over the canvas.
+   *
+   * The status strip sits at the bottom-left of the graph's box, which on the workshop's board is
+   * behind the transcript panel: a warning nobody could read, about a board that was working. Same
+   * inset the layout uses, for the same reason — the box and the visible part of it are different
+   * rectangles once a host floats panels over one.
+   *
+   * Offsets rather than a shrunken container, so the canvas keeps every pixel it had. Only the
+   * chrome moves; nothing about what is drawn or where it can be dragged changes.
+   */
+  const clear = createMemo(() => {
+    const inset = props.host?.obscured?.();
+    return {
+      left: inset?.left ?? 0,
+      right: inset?.right ?? 0,
+      top: inset?.top ?? 0,
+      bottom: inset?.bottom ?? 0,
+    };
+  });
+  /** A space token plus however many pixels are covered on that edge. */
+  const past = (edge: 'left' | 'right' | 'top' | 'bottom') => `calc(var(--we-space-300) + ${clear()[edge]}px)`;
 
   // An expansion asked for from outside a gesture. Compared by value for the same reason `seeds` is:
   // a host that rebuilds its prop object would otherwise re-expand on every unrelated change.
@@ -589,6 +646,15 @@ export function GraphView(props: GraphViewProps) {
     return props.host?.nodeContent?.[visual.content];
   };
 
+  /**
+   * Which of the offered controls this node gets.
+   *
+   * Not memoised per node: the list is a handful of entries and `matches` is a field comparison, so
+   * this costs less than the map that would key it — and it is only ever called for the selection,
+   * which is one node.
+   */
+  const actionsFor = (node: GraphNode) => (props.nodeActions ?? []).filter((action) => matches(node, action.when));
+
   const status = createMemo(() => {
     statusVersion();
     return engine.getStatus();
@@ -659,6 +725,90 @@ export function GraphView(props: GraphViewProps) {
    * `grip` is which way that handle pulls: `-1`, `0` or `1` per axis, so a corner moves both and an
    * edge moves one. Zero on an axis is what makes an edge handle leave the other dimension alone.
    */
+  /**
+   * The four edges a connection can be drawn from, as the DOM knows them.
+   *
+   * Midpoints rather than corners, because the corners are the resize grips — an affordance for
+   * "make this bigger" and one for "join this to something" sharing a pixel is a coin toss every
+   * time somebody reaches for either.
+   */
+  const CONNECT_EDGES = ['n', 'e', 's', 'w'] as const;
+
+  /**
+   * Drag a connection out of one edge of a card.
+   *
+   * A DOM handle rather than the `connect-nodes` behaviour, and the difference is the whole reason
+   * this exists. That behaviour claims a press *anywhere on a node*, so it has to be armed — a mode
+   * switch somebody turns on to connect and off to go back to moving cards, which is a thing to
+   * remember and a thing to forget. A grab area that only exists on the edge of a selected card
+   * needs no mode: the gesture is unambiguous because the target is.
+   *
+   * Everything after the press is the same machinery the behaviour uses, reached through
+   * `behaviourContext` exactly as the resize handles reach `pin`: the same preview line, the same
+   * world-space hit test, and the same `edgeCreate` event — so a connection drawn this way is
+   * indistinguishable downstream from one drawn any other, and a template needs no second handler.
+   */
+  function beginConnect(event: PointerEvent, entry: { node: GraphNode }) {
+    // Never reaches the canvas dispatcher: the node under the handle is the node being connected
+    // *from*, so a press that fell through would also start dragging it across the board.
+    event.stopPropagation();
+    event.preventDefault();
+    const handle = event.currentTarget as HTMLElement;
+    handle.setPointerCapture?.(event.pointerId);
+    const ctx = engine.behaviourContext();
+    const source = entry.node.id;
+
+    // Surface-relative, like `toInput` — the canvas sits inside a template with panels and headers,
+    // and page coordinates would put every hit test out by however much chrome precedes it.
+    const at = (moved: PointerEvent) => {
+      const box = surface?.getBoundingClientRect();
+      return { x: moved.clientX - (box?.left ?? 0), y: moved.clientY - (box?.top ?? 0) };
+    };
+
+    const move = (moved: PointerEvent) => {
+      // The same guard the behaviour keeps: a dropped pointer-up would otherwise leave a line
+      // following the cursor around the canvas with no way to put it down.
+      if (moved.buttons === 0) {
+        ctx.drawConnection(null);
+        return;
+      }
+      ctx.drawConnection(source, ctx.toWorld(at(moved)));
+    };
+
+    const end = (ended: PointerEvent) => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', end);
+      window.removeEventListener('pointercancel', end);
+      const [hit] = ctx.hitTest(ctx.toWorld(at(ended)));
+      ctx.drawConnection(null);
+      const target = connectionTarget(hit, source);
+      if (!target) return;
+      ctx.emit({
+        type: 'edgeCreate',
+        source: { id: source, kind: 'entity', type: '' },
+        target: { id: target, kind: 'entity', type: '' },
+      });
+    };
+
+    /*
+      On `window`, not on the handle — and this is what made the drop do nothing.
+
+      A press sets pointer capture, which *usually* routes the rest of the gesture back to the
+      element it started on. Usually is not good enough here: the handle is a node in a list the
+      renderer rebuilds, it is inside a subtree whose `:hover` sizing changes the moment the pointer
+      leaves it, and capture is released outright if the element goes away. Any of those and the
+      `pointerup` lands somewhere with no listener, so the line follows the cursor to another card
+      and releasing it does nothing at all — which is exactly the failure, and it is invisible,
+      because the half of the gesture that draws worked fine.
+
+      The window sees the release wherever it happens. Capture stays because it keeps the events
+      coming while the element does exist, and they bubble up to here either way.
+    */
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', end);
+    window.addEventListener('pointercancel', end);
+  }
+
   function beginResize(
     event: PointerEvent,
     entry: { node: GraphNode; at: { x: number; y: number }; visual: { width?: number; height?: number } },
@@ -951,7 +1101,17 @@ export function GraphView(props: GraphViewProps) {
                 '--node-label-color': color(entry.visual.labelColor, 'neutral-800'),
                 '--node-label-size': `${entry.visual.labelSize ?? 12}px`,
                 '--label-scale': entry.visual.scaleLabelWithZoom ? '1' : 'calc(1 / var(--graph-zoom))',
-                opacity: entry.visual.opacity ?? 1,
+                /*
+                  Published for the drawn parts to read rather than set here, because `opacity`
+                  composites the *whole* subtree and this element is not only the node — it also
+                  anchors the resize handles and the action buttons.
+
+                  A faded card is a statement about the record: unsettled, not yours yet. Faded
+                  controls on top of it say the controls are unavailable, which is the opposite of
+                  true — they are the way to settle it. So the fade goes on what is drawn and the
+                  chrome anchored beside it stays legible.
+                */
+                '--node-opacity': String(entry.visual.opacity ?? 1),
               }}
               title={entry.visual.label}
             >
@@ -1036,6 +1196,79 @@ export function GraphView(props: GraphViewProps) {
                   )}
                 </For>
               </Show>
+              {/*
+                The node's own controls, above it, while it is selected.
+
+                Above rather than over: a card's content is the reason it is on the board, and
+                furniture inside the box hides the thing being decided about. Above the top edge is
+                also where nothing else is — the resize handles ring the box, so a toolbar on any
+                other side would sit on one of them.
+
+                `matches` is the style rules' own clause, so which controls a node offers is written
+                in the vocabulary that already decides how it looks. Filtered per node rather than
+                once, because that is the point: a suggestion gets a tick and a cross, everything
+                else gets whatever the interface offers for an ordinary card.
+              */}
+              {/*
+                A dot off each edge of a selected card: press one and drag to connect.
+
+                Only where the template is listening, like the resize handles — a gesture that ends
+                in nothing is worse than an affordance that was never offered. Only on the selection,
+                for the same reason as those: dots on every card would ring the whole board with
+                furniture over the content it is there to show, and selecting first is how you say
+                which card you mean anyway.
+
+                Off the edge rather than on it, so they do not sit on the resize strips: the corners
+                and edges of the box are already a grab area for changing its size.
+              */}
+              <Show when={props.onEdgeCreate && entry.selected && entry.visual.shape === 'card'}>
+                <For each={CONNECT_EDGES}>
+                  {(edge) => (
+                    <div
+                      class={`we-graph__connect we-graph__connect--${edge}`}
+                      title="Drag to connect"
+                      onPointerDown={(event) => beginConnect(event, entry)}
+                    />
+                  )}
+                </For>
+              </Show>
+              <Show when={entry.selected && actionsFor(entry.node).length > 0}>
+                <div class="we-graph__actions">
+                  <For each={actionsFor(entry.node)}>
+                    {(action) => (
+                      <button
+                        type="button"
+                        class="we-graph__action"
+                        classList={{
+                          'we-graph__action--positive': action.tone === 'positive',
+                          'we-graph__action--danger': action.tone === 'danger',
+                        }}
+                        title={action.title ?? action.id}
+                        aria-label={action.title ?? action.id}
+                        /*
+                          `pointerdown`, stopped, as well as the click.
+
+                          The canvas hit-tests in world space from a pointer press on the layer
+                          beneath, so a press that reached it would start a drag of the very node
+                          this button sits above — the button would work and the card would move.
+                        */
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          const at = parseAddress(entry.node.id);
+                          props.onNodeAction?.({
+                            action: action.id,
+                            id: entry.node.id,
+                            ...(at?.kind === 'entity' && { recordId: at.id, recordType: at.type }),
+                          });
+                        }}
+                      >
+                        <we-icon name={action.icon} size="14px" />
+                      </button>
+                    )}
+                  </For>
+                </div>
+              </Show>
             </div>
           )}
         </For>
@@ -1054,7 +1287,7 @@ export function GraphView(props: GraphViewProps) {
         exactly that: the canvas, plus where these overlays sit.
       */}
       <Show when={controls().length > 0}>
-        <Column position="absolute" right="300" bottom="300" gap="100">
+        <Column position="absolute" right={past('right')} bottom={past('bottom')} gap="100">
           <For each={controls()}>
             {(control) => {
               /*
@@ -1098,8 +1331,8 @@ export function GraphView(props: GraphViewProps) {
           class="we-graph__status"
           pointerEvents="none"
           position="absolute"
-          left="300"
-          bottom="300"
+          left={past('left')}
+          bottom={past('bottom')}
           gap="100"
           maxWidth="60%"
         >
@@ -1157,10 +1390,10 @@ export function GraphView(props: GraphViewProps) {
           <Show
             when={loadingWholeGraph()}
             fallback={
-              <Column ax="center" ay="center" gap="200">
-                <we-icon name="graph" size="lg" color="text-faint" />
-                <we-text variant="footnote" color="text-faint">
-                  Nothing to show yet.
+              <Column ax="center" ay="center" gap="200" maxWidth="34ch" px="400">
+                <we-icon name={props.emptyIcon ?? 'graph'} size="lg" color="text-faint" />
+                <we-text variant="footnote" color="text-faint" textAlign="center">
+                  {props.empty ?? 'Nothing to show yet.'}
                 </we-text>
               </Column>
             }

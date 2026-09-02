@@ -68,7 +68,7 @@ const boardsRoute: RouteSchema = {
               props: {
                 variant: 'bare',
                 width: '100%',
-                onClick: { $action: 'routeStore.navigate', args: [{ $: '`/board/${board.id}`' }] },
+                onClick: { $action: 'routeStore.navigate', args: [{ $: '`./board/${board.id}`' }] },
               },
               children: [
                 {
@@ -111,7 +111,7 @@ const boardsRoute: RouteSchema = {
           title: 'New board',
           kind: KIND.board,
           placeholder: 'Roadmap',
-          navigateTo: '/board/',
+          navigateTo: './board/',
         }),
       ],
     },
@@ -143,7 +143,7 @@ const boardRoute: RouteSchema = {
           children: [
             {
               type: 'we-button',
-              props: { variant: 'ghost', size: 'sm', onClick: { $action: 'routeStore.navigate', args: ['/'] } },
+              props: { variant: 'ghost', size: 'sm', onClick: { $action: 'routeStore.navigate', args: ['.'] } },
               children: [{ type: 'we-icon', props: { name: 'arrow-left' } }],
             },
             {
@@ -152,7 +152,7 @@ const boardRoute: RouteSchema = {
                 item: {
                   $query: {
                     entity: 'CollectionBlock',
-                    where: { id: { $: 'routeStore.segments[1]' } },
+                    where: { id: { $: 'routeStore.templateSegments[1]' } },
                     limit: 1,
                   },
                 },
@@ -171,7 +171,7 @@ const boardRoute: RouteSchema = {
     },
 
     kanbanBoard({
-      boardId: { $: 'routeStore.segments[1]' },
+      boardId: { $: 'routeStore.templateSegments[1]' },
       /*
         What a move means here — supplied by the template, not by the kit.
 
@@ -252,7 +252,7 @@ const boardRoute: RouteSchema = {
       title: 'New column',
       kind: KIND.column,
       placeholder: 'In progress',
-      parentId: { $: 'routeStore.segments[1]' },
+      parentId: { $: 'routeStore.templateSegments[1]' },
     }),
   ],
 };

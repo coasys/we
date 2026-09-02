@@ -47,7 +47,7 @@ const videoCard: SchemaNode = {
       props: {
         variant: 'bare',
         width: '100%',
-        onClick: { $action: 'routeStore.navigate', args: [{ $: '`/watch/${video.id}`' }] },
+        onClick: { $action: 'routeStore.navigate', args: [{ $: '`./watch/${video.id}`' }] },
       },
       children: [
         {
@@ -134,7 +134,7 @@ const watchRoute: RouteSchema = {
             variant: 'ghost',
             size: 'sm',
             alignSelf: 'start',
-            onClick: { $action: 'routeStore.navigate', args: ['/'] },
+            onClick: { $action: 'routeStore.navigate', args: ['.'] },
           },
           children: [{ type: 'we-icon', props: { name: 'arrow-left' } }, 'Back'],
         },
@@ -144,7 +144,7 @@ const watchRoute: RouteSchema = {
             item: {
               $query: {
                 entity: 'CollectionBlock',
-                where: { id: { $: 'routeStore.segments[1]' } },
+                where: { id: { $: 'routeStore.templateSegments[1]' } },
                 include: { signals: true },
                 limit: 1,
               },
@@ -185,7 +185,7 @@ const watchRoute: RouteSchema = {
               saveLabel: 'Comment',
             }),
             commentThread({
-              anchorId: { $: 'routeStore.segments[1]' },
+              anchorId: { $: 'routeStore.templateSegments[1]' },
               empty: noReplies(),
               reply: (as) => [
                 {
@@ -313,8 +313,9 @@ export const youtubeTemplate: TemplateSchema = {
               type: '$each',
               props: {
                 items: [
-                  { label: 'Library', path: '/' },
-                  { label: 'Playlists', path: '/playlists' },
+                  // `segment` rather than a whole-path comparison — see the note on Twitter's nav.
+                  { label: 'Library', path: '.', segment: '' },
+                  { label: 'Playlists', path: './playlists', segment: 'playlists' },
                 ],
                 as: 'nav',
               },
@@ -323,7 +324,9 @@ export const youtubeTemplate: TemplateSchema = {
                   type: 'we-button',
                   props: {
                     size: 'sm',
-                    variant: { $: "routeStore.currentPath == nav.path ? 'secondary' : 'ghost'" },
+                    variant: {
+                      $: "(nav.segment ? nav.segment in routeStore.templateSegments : !count(routeStore.templateSegments)) ? 'secondary' : 'ghost'",
+                    },
                     onClick: { $action: 'routeStore.navigate', args: [{ $: 'nav.path' }] },
                   },
                   children: [{ $: 'nav.label' }],

@@ -511,6 +511,158 @@ function moduleRow(control: SchemaNode): SchemaNode {
 }
 
 /**
+ * What each capability lets *you* decide, everywhere.
+ *
+ * The personal half of the settings a module declares — the community's half is the same rows in
+ * space settings, and this one is written to the root dataset so no other member sees it. Rendered
+ * from the declarations rather than written out, so a module that adds a setting appears here with
+ * nothing to register; a deployment whose modules declare none renders no section at all.
+ *
+ * One control per row rather than the pair space settings shows, because there is no second audience
+ * here: this is what you want everywhere, and a community's answer about its own space does not
+ * overrule it — see `BINDING` in `moduleSettings.ts`. The only thing that can take the decision away
+ * is the deployment, which is what the disabled control says. Explaining that is the whole job of the
+ * sentence under the label: a switch that takes a press and springs back reads as broken.
+ */
+const agentModuleSettingsSection: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'count(spaceStore.agentModuleSettings)' },
+    then: {
+      type: 'Column',
+      props: { gap: '300', width: '100%' },
+      children: [
+        {
+          type: 'Column',
+          props: { gap: '100' },
+          children: [
+            { type: 'we-text', props: { variant: 'heading-sm' }, children: ['What these modules do'] },
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-faint' },
+              children: [
+                'Your own answers, in every space. A community can decide differently for its own space, and where the two disagree the more cautious one stands.',
+              ],
+            },
+          ],
+        },
+        {
+          type: '$each',
+          props: { items: { $: 'spaceStore.agentModuleSettings' }, as: 'setting' },
+          children: [
+            {
+              type: 'Row',
+              props: {
+                width: '100%',
+                gap: '400',
+                ay: 'center',
+                p: '400',
+                bg: 'surface-sunken',
+                r: '300',
+                border: '1px solid border',
+              },
+              children: [
+                {
+                  type: 'Column',
+                  props: { gap: '100', flex: '1', minWidth: '0' },
+                  children: [
+                    {
+                      type: 'Row',
+                      props: { gap: '200', ay: 'center', wrap: true },
+                      children: [
+                        { type: 'we-text', props: { variant: 'label' }, children: [{ $: 'setting.label' }] },
+                        { type: 'we-badge', props: { size: 'xs' }, children: [{ $: 'setting.groupLabel' }] },
+                      ],
+                    },
+                    {
+                      type: 'we-text',
+                      props: { variant: 'footnote', color: 'text-faint' },
+                      children: [
+                        {
+                          $: "setting.locked ? 'Set by this deployment, so it cannot be changed here.' : (setting.description ?? '')",
+                        },
+                      ],
+                    },
+                  ],
+                },
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: 'setting.set' },
+                    then: {
+                      type: 'we-button',
+                      props: {
+                        variant: 'ghost',
+                        size: 'xs',
+                        title: 'Stop deciding this',
+                        onClick: {
+                          $action: 'spaceStore.setAgentModuleSetting',
+                          args: [{ $: 'setting.group' }, { $: 'setting.key' }],
+                        },
+                      },
+                      children: ['Use default'],
+                    },
+                  },
+                },
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: "setting.type == 'boolean'" },
+                    then: {
+                      type: 'we-switch',
+                      props: {
+                        size: 'sm',
+                        checked: { $: 'setting.value' },
+                        disabled: { $: 'setting.locked' },
+                        onChange: {
+                          $action: 'spaceStore.setAgentModuleSetting',
+                          args: [{ $: 'setting.group' }, { $: 'setting.key' }, { $: 'event.detail' }],
+                        },
+                      },
+                    },
+                    else: {
+                      type: '$if',
+                      props: {
+                        condition: { $: "setting.type == 'enum'" },
+                        then: {
+                          type: 'we-select',
+                          props: {
+                            size: 'sm',
+                            options: { $: 'setting.options' },
+                            value: { $: 'setting.value' },
+                            disabled: { $: 'setting.locked' },
+                            onChange: {
+                              $action: 'spaceStore.setAgentModuleSetting',
+                              args: [{ $: 'setting.group' }, { $: 'setting.key' }, { $: 'event.detail' }],
+                            },
+                          },
+                        },
+                        else: {
+                          type: 'we-input',
+                          props: {
+                            size: 'sm',
+                            value: { $: 'setting.value' },
+                            disabled: { $: 'setting.locked' },
+                            onInput: {
+                              $action: 'spaceStore.setAgentModuleSetting',
+                              args: [{ $: 'setting.group' }, { $: 'setting.key' }, { $: 'event.detail' }],
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
+/**
  * The modules of one surface, under their own heading.
  *
  * Split by `surface` because the three kinds are decided about differently, and one list had to
@@ -604,6 +756,8 @@ const modulesSection: SchemaNode = {
       'capability',
       { type: 'we-tag', props: { variant: 'neutral' }, children: ['Always on'] },
     ),
+
+    agentModuleSettingsSection,
   ],
 };
 

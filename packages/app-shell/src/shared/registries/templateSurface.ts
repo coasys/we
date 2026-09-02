@@ -480,6 +480,25 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       indicator that silently never rendered.
     */
     autoInterpret: state('space-settings'),
+    /*
+      `content`, not `space-settings`, and the difference is who may press it.
+
+      The space-wide switch above administers the space. This is one conversation's own answer,
+      written beside that call by whoever is in it — the same layer `setExtractionTarget` writes at,
+      and the same reason: stopping a standing pass mid-meeting is about that meeting, and gating it
+      on administering the space makes the honest response "leave the call".
+    */
+    autoInterpretForCall: action('content'),
+    /*
+      A capability's settings, at each of the three levels a screen can edit.
+
+      `space-settings` for all three reads: the rows carry what the community decided, which every
+      member can already see on the space, and the two personal lists are this agent's own answers
+      about themselves. None of them is a grant to change anything — the setters below are.
+    */
+    spaceModuleSettings: state('space-settings'),
+    myModuleSettings: state('space-settings'),
+    agentModuleSettings: state('space-settings'),
     extractionTargets: state('space-settings'),
     setExtractionTarget: action('space-settings'),
     shareExtractionDetail: state('space-settings'),
@@ -503,6 +522,19 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     setSpaceDefaultTheme: hereOnly('space-settings', 1),
     setModuleEnabled: hereOnly('space-settings', 2),
     setAutoInterpret: hereOnly('space-settings', 1),
+    setAutoInterpretForCall: action('content'),
+    /*
+      Writing one. `hereOnly` on the community setter for the reason every other community write has
+      it: the space id is the last parameter, so a template that could pass one could reconfigure a
+      space it is not rendering — and this one can switch a capability off for every member.
+
+      Three arguments before the id, since a setting is named by its group and its key and the third
+      is the value; omitting the value clears the level rather than writing a falsy one.
+    */
+    setSpaceModuleSetting: hereOnly('space-settings', 3),
+    setMyModuleSetting: hereOnly('space-settings', 3),
+    // Personal and global, so there is no space id to withhold in the first place.
+    setAgentModuleSetting: action('space-settings'),
     /*
       Which sections the space has, and in what order — the community's decision, so the same tier
       and the same arity guard as `setModuleEnabled`.
@@ -788,6 +820,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
   routeStore: {
     currentPath: state('view-state'),
     segments: state('view-state'),
+    templateSegments: state('view-state'),
     params: state('view-state'),
     navigate: action('navigation'),
     setParam: action('view-state'),
@@ -855,6 +888,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       pointing at something it is not allowed to call.
     */
     spaceSettingsOpen: state('navigation'),
+    spaceSettingsTab: state('navigation'),
     openSpaceSettings: action('navigation'),
     closeSpaceSettings: action('navigation'),
     toggleSpaceSettings: action('navigation'),
@@ -882,12 +916,16 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     */
     dockGeometry: state('host-layout'),
     contentInset: state('host-layout'),
+    coveredInset: state('host-layout'),
     dockResizing: state('host-layout'),
     // Read by the sidebar and the module rail, which hide while a panel is maximised.
     panelMaximised: state('host-layout'),
     // Written by the host layout, which can see the editor's widths — never by a template.
     beginDockResize: action('host-layout'),
     resizeDock: action('host-layout'),
+    // The divider between two stacked panels — one number, because a boundary has one degree of
+    // freedom and what one panel gains the other gives up.
+    resizeColumn: action('host-layout'),
     endDockResize: action('host-layout'),
     /*
       Moving a panel, which is the same capability as resizing one and is listed for the same reason.
@@ -915,6 +953,17 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // Whether a panel has been dragged away from what the interface declared, and the way back.
     layoutPinned: state('host-layout'),
     resetDockToLayout: action('host-layout'),
+    // The same question and the same answer about the whole arrangement, for chrome that is not a
+    // panel's own titlebar — a panel somebody closed has no titlebar left to ask from.
+    layoutDirty: state('host-layout'),
+    // Read by a module's own dock frame, to know whether the interface is supplying its contents.
+    panelSupplied: state('host-layout'),
+    resetTemplateLayout: action('host-layout'),
+    // Dismissing and restoring a panel the interface itself supplied. What the titlebar's close
+    // button calls, and reachable by the template that declared the panel — which is the only way
+    // back to one that has been closed.
+    closeTemplatePanel: action('host-layout'),
+    openTemplatePanel: action('host-layout'),
   },
 
   presenceStore: {
@@ -949,6 +998,10 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     activity: state('presence'),
     runningCount: state('presence'),
     hasActivity: state('presence'),
+    runningPasses: state('presence'),
+    settledPasses: state('presence'),
+    settledCount: state('presence'),
+    detailWithheld: state('presence'),
     dismissSettled: action('view-state'),
   },
 

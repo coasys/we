@@ -117,7 +117,7 @@ export function Select(allProps: SelectProps) {
               bg="surface"
               border="1px solid var(--we-role-border)"
               borderRight="none"
-              rl="var(--we-theme-control-radius, var(--we-radius-400))"
+              rl="control"
               px={TRIGGER_PADDING_X[size()]}
               styles={{ display: 'flex', 'align-items': 'center', 'white-space': 'nowrap' }}
             >
@@ -130,16 +130,11 @@ export function Select(allProps: SelectProps) {
             size={size()}
             px={TRIGGER_PADDING_X[size()]}
             gap={TRIGGER_GAP[size()]}
+            // Square the side that meets the label; the right corners are left unsaid and keep
+            // reading the button's own cascade. That used to require restating button's four-deep
+            // chain here, because naming one corner sent the other three to a hardcoded 0 — fixed
+            // at the source in `getRadiusValues`, so the workaround is gone.
             rl={props.label ? '0' : undefined}
-            // Explicit rl forces the DS runtime to compute all 4 corners as one instance
-            // override — the other corners would otherwise silently drop to a hardcoded 0
-            // instead of the theme cascade. Re-declare rr with button's own default chain
-            // so the right corners stay theme-responsive.
-            rr={
-              props.label
-                ? 'var(--we-theme-button-radius, var(--we-theme-control-radius, var(--we-button-size-radius, var(--we-radius-400))))'
-                : undefined
-            }
             borderLeft={props.label ? 'none' : undefined}
           >
             <Show when={selectedOption()?.icon}>

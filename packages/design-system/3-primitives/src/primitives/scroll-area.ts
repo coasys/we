@@ -1,19 +1,19 @@
 import type { DesignSystemProps } from '@we/design-types';
-import { css, html } from 'lit';
+import { scrollbarRules } from '@we/tokens';
+import { css, html, unsafeCSS } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
 
-// overflow/scrollbarWidth/minWidth/minHeight go through DEFAULT_PROPS, not raw CSS —
+// overflow/minWidth/minHeight go through DEFAULT_PROPS, not raw CSS —
 // DesignSystemElement's generated stylesheet re-declares them on [part='base'] after
 // this component's own styles load, silently reverting any hardcoded value to
 // CSS-initial. See CONVENTIONS.md § "When to use CSS instead".
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   display: 'block',
   overflow: 'auto',
-  scrollbarWidth: 'thin',
   // Flex items default to min-size:auto (content-based) — without this, the host can
   // grow past its allotted flex space instead of clamping to it.
   minWidth: '0',
@@ -29,27 +29,23 @@ const styles = css`
     overflow: auto;
   }
 
-  [part='base'] {
-    scrollbar-color: var(--we-role-border-strong) transparent;
-  }
+  /*
+    The shared ruleset, rather than this component's own copy of it.
 
-  [part='base']::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-  }
+    The copy was three kinds of wrong at once, and the component named for scrolling was the only
+    place any of them showed. It hardcoded 6px instead of reading the scrollbar width token, so a
+    theme changing that width moved every scroll region except this one. It restated the thumb
+    colour and radius as literals rather than tokens. And — the reason none of that mattered — it
+    also set scrollbar-color here and scrollbarWidth thin in DEFAULT_PROPS, either of which makes
+    Chromium ignore every webkit scrollbar rule on the element and draw the platform's own bar
+    instead. So all twenty lines below were dead code, and this rendered the OS scrollbar: a
+    different colour from the rest of the app, a different shape, and on Linux the stepper arrows
+    the GTK theme draws. The pocket panel is where that was noticed.
 
-  [part='base']::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  [part='base']::-webkit-scrollbar-thumb {
-    background: var(--we-role-control-surface);
-    border-radius: var(--we-radius-pill);
-  }
-
-  [part='base']::-webkit-scrollbar-thumb:hover {
-    background: var(--we-role-border-strong);
-  }
+    scrollbarRules carries the button suppression too, which this copy also lacked — so fixing only
+    the opt-out would have swapped the platform's arrows for Chromium's own.
+  */
+  ${unsafeCSS(scrollbarRules("[part='base']"))}
 `;
 
 /**

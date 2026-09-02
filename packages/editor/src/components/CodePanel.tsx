@@ -14,7 +14,7 @@ export function CodePanel() {
       /*
         No background of its own: the dock frame paints the panel's surface.
 
-        Every dock is wrapped in a frame that sets `surface-sunken`, precisely so a docked panel does
+        Every dock is wrapped in a frame that sets `page`, precisely so a docked panel does
         not have to decide what it is made of — see the note in dockRegistry.ts. The editor's panels
         painted `surface-raised` over the top of it, ten lightness points above the page, so they read
         as a different material from every module panel docked at the same edge.

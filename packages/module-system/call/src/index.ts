@@ -1254,7 +1254,11 @@ const bar: SchemaNode = {
             it, a growing status panel would push the controls off the bottom of the window; above,
             it grows into empty space.
 
-            Renders nothing at all when nobody has contributed, so the bar keeps its own shape.
+            Renders nothing at all when nobody has contributed, so the bar keeps its own shape —
+            which is what it does today: transcription's extraction readout was the one contributor
+            and became a *control* in the bar itself once extraction had a panel of its own. Kept
+            rather than removed with it. It is a general affordance — anything that takes minutes and
+            wants a sentence above the controls belongs here — and an unfilled slot costs nothing.
           */
           type: '$slot',
           props: { anchor: CALL_STATUS_ANCHOR },

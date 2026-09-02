@@ -500,8 +500,14 @@ export function createCallStore(deps: CallStoreDeps) {
    *
    * Held beside `anchor` and for the same reason: it is republished on every activity, so reading it
    * from one place is what stops a later `publishActivity` dropping it.
+   *
+   * A **signal**, unlike `anchor`, because it is published on the store as `callRecordId` and a
+   * template binds to it. A plain `let` is invisible to the reactive graph, so every surface reading
+   * "which call is this" resolved once — against the frame before the call existed — and never
+   * heard about the record that arrived a moment later. It read as the board, the transcript and
+   * the extraction panel all ignoring a call that was plainly running.
    */
-  let callRecord: string | null = null;
+  const [callRecord, setCallRecord] = signal<string | null>(null);
 
   /** Republish the call activity so peers see mute/camera/screen changes. */
   function publishActivity() {
@@ -515,7 +521,7 @@ export function createCallStore(deps: CallStoreDeps) {
       // What lets transcribe write into the right record without electing a creator, and what a
       // joining peer adopts rather than deriving. Every participant republishes it, so the record
       // survives the starter leaving.
-      ...(callRecord ? { record: callRecord } : {}),
+      ...(callRecord() ? { record: callRecord() } : {}),
     });
   }
 
@@ -533,7 +539,7 @@ export function createCallStore(deps: CallStoreDeps) {
     if (id) presence?.clearActivity('call', id);
     setCallId(null);
     anchor = undefined;
-    callRecord = null;
+    setCallRecord(null);
     setVisible(false);
     setFocusedId(null);
     focusIsManual = false;
@@ -661,6 +667,45 @@ export function createCallStore(deps: CallStoreDeps) {
   }
 
   /**
+   * Start a call **on a record that already exists** — picking a past conversation back up.
+   *
+   * `startCall` writes a record and joins the call that record names. Continuing one is the same act
+   * with the first half already done, and doing it through `startCall` was the bug: pressing
+   * "continue this call" wrote a *second* `CollectionBlock` and joined that, so the space gained an
+   * empty call, every surface reading `callRecordId` pointed at it, and the transcript went to the
+   * record you had actually chosen. Two calls where you asked for one, disagreeing about which
+   * meeting you were in.
+   *
+   * A call *is* its record — `recordCallId` derives the id from it — so continuing needs no new
+   * identity and no write. Anyone else who picks the same record up lands in the same call, which is
+   * the property that makes this safe to press twice.
+   *
+   * Joining rather than checking for a live one first, as `goToCall` does: this names the call it
+   * wants, so "is something else running" is not the question. `join` tears down whatever is running
+   * before it starts, which is the same one-call-at-a-time rule every other entry point obeys.
+   */
+  async function continueCall(recordId: string) {
+    if (!recordId) return;
+    const uri = datasetUri?.() ?? null;
+    if (!uri) {
+      setProblem('A call needs a space.');
+      return;
+    }
+    setProblem(null);
+
+    // The same question `startCall` asks before it writes: can this transport carry a call at all?
+    // Asked here too, so continuing into a space that cannot host one says so rather than failing
+    // silently halfway through a join.
+    const opened = openCallScope();
+    if ('reason' in opened) {
+      setProblem(opened.reason);
+      return;
+    }
+
+    await join(recordCallId(recordId), { datasetUri: uri }, recordId, opened.scope);
+  }
+
+  /**
    * `preopened` is the scope `startCall` already opened to decide whether to write a record at all.
    * Passed through rather than opened again, so one join is one reference however it was reached.
    */
@@ -694,7 +739,7 @@ export function createCallStore(deps: CallStoreDeps) {
     // Given by `startCall`, otherwise read off whoever is already in this call. A call with neither
     // is one whose starter has left and whose record nobody republished, which the roster cannot
     // happen while anyone is in it.
-    callRecord = recordId ?? liveCalls().find((call) => call.id === id)?.recordId ?? null;
+    setCallRecord(recordId ?? liveCalls().find((call) => call.id === id)?.recordId ?? null);
 
     // Every refusal lives in `openCallScope`, so joining from the roster and starting a call check
     // exactly the same things and say exactly the same words.
@@ -1015,7 +1060,7 @@ export function createCallStore(deps: CallStoreDeps) {
     // ── State ────────────────────────────────────────────────────────────────
     callId,
     /** The call record this agent's call writes into — what transcribe and the panels read. */
-    callRecordId: () => callRecord ?? '',
+    callRecordId: () => callRecord() ?? '',
     liveCalls,
     tiles,
     tileStates,
@@ -1424,6 +1469,15 @@ export function createCallStore(deps: CallStoreDeps) {
 
     /** Start a new call here, whether or not one is already running. Resolves once it is joined. */
     startCall: (anchorNodeId?: string) => startCall(anchorNodeId),
+
+    /**
+     * Pick a past call back up: start one on the record it already has, writing nothing new.
+     *
+     * What "continue this call" needs and `goToCall` cannot give it — that verb is a *direction*, so
+     * with nothing running it starts a fresh call, which is right for a launcher and wrong for a row
+     * naming the meeting it means.
+     */
+    continueCall: (recordId: string) => continueCall(recordId),
 
     /** Join a call somebody else started, by the id the roster carries. */
     joinCall: (id: string) => {

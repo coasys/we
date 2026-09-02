@@ -12,6 +12,12 @@
           "default": "'primary'"
         },
         {
+          "name": "appearance",
+          "type": "'soft' | 'accent'",
+          "optional": false,
+          "default": "'soft'"
+        },
+        {
           "name": "dismissible",
           "type": "boolean",
           "optional": false,
@@ -119,6 +125,12 @@
           "type": "'neutral' | 'primary' | 'success' | 'warning' | 'danger'",
           "optional": false,
           "default": "'neutral'"
+        },
+        {
+          "name": "appearance",
+          "type": "'soft' | 'solid'",
+          "optional": false,
+          "default": "'soft'"
         },
         {
           "name": "size",
@@ -3740,6 +3752,16 @@
           "optional": true
         },
         {
+          "name": "empty",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "emptyIcon",
+          "type": "string",
+          "optional": true
+        },
+        {
           "name": "showControls",
           "type": "boolean",
           "optional": true
@@ -3751,7 +3773,7 @@
         },
         {
           "name": "onNodeClick",
-          "type": "((node: GraphNode & { recordId?: string; fields: { name: string; value: string; }[]; }) => void)",
+          "type": "((node: GraphNode & { recordId?: string; recordType?: string; fields: { name: string; value: string; }[]; }) => void)",
           "optional": true
         },
         {
@@ -3792,6 +3814,16 @@
         {
           "name": "onNodeResize",
           "type": "((payload: { id: string; x: number; y: number; width: number; height: number; recordId?: string; recordType?: string; }) => void)",
+          "optional": true
+        },
+        {
+          "name": "nodeActions",
+          "type": "NodeAction[]",
+          "optional": true
+        },
+        {
+          "name": "onNodeAction",
+          "type": "((payload: { action: string; id: string; recordId?: string; recordType?: string; }) => void)",
           "optional": true
         },
         {
@@ -3898,6 +3930,12 @@
           "name": "installedModules",
           "type": "string",
           "predicate": "we://installed_modules",
+          "required": false
+        },
+        {
+          "name": "moduleSettings",
+          "type": "string",
+          "predicate": "we://module_settings",
           "required": false
         }
       ],
@@ -4014,6 +4052,12 @@
           "name": "entities",
           "type": "string",
           "predicate": "we://extraction_targets",
+          "required": false
+        },
+        {
+          "name": "auto",
+          "type": "string",
+          "predicate": "we://auto_interpret",
           "required": false
         }
       ],
@@ -4952,6 +4996,12 @@
           "default": "true"
         },
         {
+          "name": "moduleSettings",
+          "type": "string",
+          "predicate": "we://module_settings",
+          "required": false
+        },
+        {
           "name": "shareExtractionDetail",
           "type": "boolean",
           "predicate": "we://share_extraction_detail",
@@ -4983,6 +5033,12 @@
           "name": "mutedModules",
           "type": "string",
           "predicate": "we://muted_modules",
+          "required": false
+        },
+        {
+          "name": "moduleSettings",
+          "type": "string",
+          "predicate": "we://module_settings",
           "required": false
         },
         {
@@ -5234,6 +5290,38 @@
           "name": "version",
           "type": "number",
           "predicate": "we://version",
+          "required": false
+        }
+      ],
+      "relations": []
+    },
+    {
+      "name": "Topic",
+      "className": "Topic",
+      "extends": "WeNode",
+      "fields": [
+        {
+          "name": "name",
+          "type": "string",
+          "predicate": "we://name",
+          "required": true
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "predicate": "we://description",
+          "required": false
+        },
+        {
+          "name": "icon",
+          "type": "string",
+          "predicate": "we://icon",
+          "required": false
+        },
+        {
+          "name": "color",
+          "type": "string",
+          "predicate": "we://color",
           "required": false
         }
       ],
@@ -5967,6 +6055,18 @@
         "hasActivity": {
           "type": "boolean"
         },
+        "runningPasses": {
+          "type": "array"
+        },
+        "settledPasses": {
+          "type": "array"
+        },
+        "settledCount": {
+          "type": "number"
+        },
+        "detailWithheld": {
+          "type": "boolean"
+        },
         "capable": {
           "type": "boolean"
         }
@@ -6086,6 +6186,9 @@
           "type": "string"
         },
         "segments": {
+          "type": "array"
+        },
+        "templateSegments": {
           "type": "array"
         },
         "params": {
@@ -6440,10 +6543,16 @@
         "spaceSettingsOpen": {
           "type": "boolean"
         },
+        "spaceSettingsTab": {
+          "type": "string"
+        },
         "dockGeometry": {
           "type": "object"
         },
         "contentInset": {
+          "type": "object"
+        },
+        "coveredInset": {
           "type": "object"
         },
         "dockResizing": {
@@ -6472,6 +6581,12 @@
         },
         "layoutPinned": {
           "type": "object"
+        },
+        "layoutDirty": {
+          "type": "boolean"
+        },
+        "panelSupplied": {
+          "type": "object"
         }
       },
       "actions": [
@@ -6486,12 +6601,16 @@
         "scrollToId",
         "beginDockResize",
         "resizeDock",
+        "resizeColumn",
         "endDockResize",
         "fitDock",
         "beginDockMove",
         "moveDock",
         "endDockMove",
         "resetDockToLayout",
+        "closeTemplatePanel",
+        "openTemplatePanel",
+        "resetTemplateLayout",
         "snapDock",
         "insertDock",
         "toggleMaximiseDock",
@@ -6639,6 +6758,15 @@
           "type": "array",
           "properties": ["id", "author", "createdAt"]
         },
+        "spaceModuleSettings": {
+          "type": "array"
+        },
+        "myModuleSettings": {
+          "type": "array"
+        },
+        "agentModuleSettings": {
+          "type": "array"
+        },
         "autoInterpret": {
           "type": "boolean"
         },
@@ -6670,6 +6798,11 @@
         "setSpaceDefaultTemplate",
         "setSpaceDefaultTheme",
         "setModuleEnabled",
+        "setSpaceModuleSetting",
+        "setMyModuleSetting",
+        "setAgentModuleSetting",
+        "autoInterpretForCall",
+        "setAutoInterpretForCall",
         "setAutoInterpret",
         "setShareExtractionDetail",
         "setExtractionTarget",
@@ -6884,6 +7017,7 @@
     "EditorInspectorPanel",
     "EditorThemePanel",
     "TemplateCard",
+    "TemplatePanelBody",
     "WeCube"
   ],
   "sources": [

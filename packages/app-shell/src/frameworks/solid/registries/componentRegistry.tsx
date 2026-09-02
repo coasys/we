@@ -61,6 +61,15 @@ const CesiumGlobeOnDemand = lazy(async () => {
 /** The graph engine, its expanders, layouts and d3-force — loaded when a template first draws one. */
 const GraphViewOnDemand = lazy(() => import('../components/GraphHost'));
 
+/*
+  The body of a panel an interface declared, rendered with the interface's own grants.
+
+  Registered as a component rather than inlined into the frame because that is what a bag switch
+  needs: `RenderSchema` takes a bag per call site, and a component is the only thing that can make a
+  second call from inside one tree. See `shared/registries/templateBag.ts`.
+*/
+const TemplatePanelBodyOnDemand = lazy(() => import('../components/TemplatePanelBody'));
+
 /** One decorative component, and `three` behind it. */
 const WeCubeOnDemand = lazy(() => import('../components/3d/WeCube'));
 
@@ -126,6 +135,9 @@ export const componentRegistry: ComponentRegistry = {
   // Contributed by @we/module-graph. Registered here for the same reason the globe is: this registry
   // is the single source for what a template may name.
   GraphView: GraphViewOnDemand,
+  // Host-only: a template names panels, never this. It is what a panel's *frame* wraps around the
+  // template's node so the two can be rendered with different grants.
+  TemplatePanelBody: TemplatePanelBodyOnDemand,
   SignalControl,
 
   // @we/block-solid

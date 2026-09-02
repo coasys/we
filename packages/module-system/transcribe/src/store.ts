@@ -252,6 +252,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     audioInput,
     transcription,
     interpretation,
+    settings,
     createEntity,
     linkEntity,
     dataset,
@@ -265,9 +266,31 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   const [enabled, setEnabled] = signal(false);
   /** Whether the transcript panel is showing. Independent of recording, so a finished session can be read. */
   const [open, setOpen] = signal(false);
+  /**
+   * Whether the extraction panel is showing — its own flag, because it is its own surface.
+   *
+   * Separate from `open` for the reason the two panels are separate: a transcript is read while
+   * somebody talks and extraction is read afterwards, so wanting one on screen says nothing about
+   * wanting the other. Sharing a flag would mean opening either opened both, which is the bundled
+   * panel again with two titlebars.
+   */
+  const [extractionOpen, setExtractionOpen] = signal(false);
   const [error, setError] = signal<string>('');
   /** What has been heard but not yet written — shown live, so the user can see it working. */
   const [pending, setPending] = signal<string>('');
+  /**
+   * Words that have left the buffer and are being written, held until the write lands.
+   *
+   * The preview used to clear the instant a flush began, and the row it becomes does not exist until
+   * a create has gone to the backend and come back through the feed's subscription. Between those
+   * two moments the transcript said nothing at all — a sentence vanishing and reappearing somewhere
+   * else, which reads as a glitch rather than as saving.
+   *
+   * Separate from the buffer rather than a delayed clear of it, because speech does not stop for a
+   * write: anything said during one accumulates in `buffer` as usual, and the two are shown in
+   * whichever order they will be written.
+   */
+  const [settling, setSettling] = signal<string>('');
   /**
    * Microphone loudness as the VAD measures it, 0–1, and whether it currently counts as speech.
    *
@@ -358,7 +381,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    */
   const [optedOut, setOptedOut] = signal(false);
   /**
-   * Recording is running because a peer was already transcribing, not because this agent said so.
+   * Recording is running because the call is, not because this agent said so.
    *
    * Kept because the two are the same state to everything downstream and different things to say:
    * one is a thing you did, the other is a thing that happened to you and has to be declared. It is
@@ -617,22 +640,54 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
 
   /** Write what has accumulated, if anything. Safe to call at any point, including teardown. */
   /**
-   * Re-read the staged suggestions.
+   * Show the extraction panel when a pass starts — anybody's, not only this agent's.
    *
-   * Reads the whole dataset's proposals rather than this call's. The port has no per-parent filter,
-   * and inventing one client-side would need each proposal's parent, which an overlay does not
-   * carry. In practice the two coincide — the only thing writing proposals here is this call's own
-   * extraction — and showing one more than expected is a much better failure than hiding one.
+   * The same rule recording follows, and the reason the one-line signal in the call bar can go:
+   * starting something invisible and saying nothing about it is how a feature comes to look broken.
+   * A pass takes minutes and spends somebody's tokens, and most of them are started by a standing
+   * watch rather than by a press — so the four people in five who did not start it are exactly the
+   * ones who need telling.
+   *
+   * Once, on the edge. Re-opening a panel somebody has deliberately closed, every time a pass
+   * settles and another begins, is chrome arguing with its reader.
+   */
+  let sawRunning = false;
+  effect?.(() => {
+    const running = (interpretation?.activity?.() ?? []).some((row) => row.running);
+    if (running && !sawRunning) setExtractionOpen(true);
+    sawRunning = running;
+  });
+
+  /**
+   * Re-read the staged suggestions — this call's, not the whole dataset's.
+   *
+   * It used to be the whole dataset's, on the reasoning that the two coincide in practice: the only
+   * thing staging proposals here is this call's own extraction. They do not coincide, because a
+   * proposal outlives the pass that made it. One nobody accepted or rejected an hour ago is still
+   * staged, so it arrived the moment the next call started — reading as something that call had
+   * just found, in a panel that had been on screen for ten seconds.
+   *
+   * Accepting one made it worse rather than harmless. The instance was parented to the *earlier*
+   * call when that pass ran, and accepting commits its values without moving it; so the record went
+   * on existing exactly where it always had, and never appeared on the board of the call the
+   * reviewer was sitting in. "Showing one more than expected" was not the cost — the cost was a
+   * suggestion nobody could act on from where they were.
+   *
+   * `collection` names which conversation to ask about. A caller that has just run a pass passes the
+   * one it ran, so extracting a *past* call from the calls list can still review what that found;
+   * the default is the call in progress, and outside a call there is none — which asks the whole
+   * space, the right answer for a surface that is about no one conversation.
    *
    * Never throws: this runs after a pass that already succeeded, and turning a successful extraction
    * into an error because the review list could not be fetched would be a lie about what happened.
    */
-  async function loadProposals(): Promise<void> {
+  async function loadProposals(collection?: string): Promise<void> {
     if (!interpretation) return;
     try {
       // The call's space, for the same reason the writes use it: a call outlives the space on
-      // screen, so "proposals here" was answering about wherever the reader had wandered to.
-      const staged = await interpretation.proposals(callTarget());
+      // screen, so "proposals here" was answering about wherever the reader had wandered to. The
+      // collection narrows it from that space to one conversation.
+      const staged = await interpretation.proposals(callTarget(), collection ?? collectionId() ?? undefined);
       setProposals(staged.map((p) => ({ id: p.id, kind: p.kind, summary: summarise(p.values) })));
     } catch {
       setProposals([]);
@@ -687,6 +742,23 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   const hasTargets = (collection: string): boolean => targetsFor(collection).some((t) => t.selected);
 
   /**
+   * The record a decision about what to extract is written against.
+   *
+   * `collectionId` is what this agent is *writing into*, and it is null until somebody speaks — the
+   * transcriber adopts the call's record on the first flush. So a call that had just started had no
+   * collection, which meant the chips saying what would be extracted rendered against `''`: every
+   * candidate came back unnarrowed and looking selected, and every press was refused by a guard that
+   * said nothing. Choosing what a meeting looks for, before the meeting, is exactly when somebody
+   * wants to.
+   *
+   * The call's own record is there from the first second — `startCall` writes it and publishes it on
+   * presence — which is the same correction `CALL` in the workshop template already makes for the
+   * same reason. Falling back to it rather than replacing `collectionId`, because once there *is* a
+   * transcript the two are the same record and the adopted one is the more direct answer.
+   */
+  const targetCollection = (): string => collectionId() ?? myCall()?.recordId ?? '';
+
+  /**
    * One extraction pass over a named collection.
    *
    * Flushes only when the named collection is the live one, which is exactly right: pressing
@@ -717,7 +789,11 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       setExtractStatus('done');
       // Only worth a round trip when the pass actually staged something. A backend with no
       // provenance gate reports nothing proposed and never had a list to fetch.
-      if (result.proposed.length) await loadProposals();
+      //
+      // Named rather than defaulted, because this pass is not always over the call in progress: the
+      // calls list extracts a finished one, and reviewing what that found is the whole point of
+      // being able to.
+      if (result.proposed.length) await loadProposals(collection);
     } catch (error) {
       setExtractError(error instanceof Error ? error.message : String(error));
       setExtractedId(collection);
@@ -742,6 +818,9 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     buffer = '';
     setPending('');
     if (!text) return;
+    // Out of the buffer, not yet a row. Cleared in `finally`, so every exit from here — written,
+    // refused, or thrown — puts the preview back in agreement with what the feed can show.
+    setSettling(text);
 
     try {
       const slot = await ensureCollection();
@@ -766,6 +845,9 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
         waitingFlushes += 1;
         buffer = buffer ? `${text} ${buffer}` : text;
         setPending(buffer);
+        // Back in the buffer, so they are pending again rather than in flight — without this the
+        // same words would be shown twice while the record was awaited.
+        setSettling('');
         clearTimer();
         flushTimer = setTimeout(() => void flush(), FLUSH_AFTER_MS);
         return;
@@ -790,6 +872,8 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       // Reported but not surfaced as a failed state: the transcript continues, and losing one block
       // is better than stopping a call's transcription over a single write.
       console.error('transcribe: could not write block', cause);
+    } finally {
+      setSettling('');
     }
   }
 
@@ -1083,8 +1167,8 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * predates this reads as *on*, which keeps its behaviour exactly as it was: the host's own gate
    * still refuses the registration, and the panel still reports it.
    */
-  const autoEnabled = (): boolean =>
-    typeof interpretation?.autoEnabled === 'function' ? interpretation.autoEnabled() : true;
+  const autoEnabled = (collection?: string): boolean =>
+    typeof interpretation?.autoEnabled === 'function' ? interpretation.autoEnabled(collection) : true;
 
   async function syncWatch(next: string | null): Promise<void> {
     // Keyed on what this call currently extracts, so a group changing it mid-call moves the watch.
@@ -1141,13 +1225,13 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       }
     }
 
-    if (next && !autoEnabled()) {
+    if (next && !autoEnabled(next)) {
       // Not a failure and not a capability — a decision, stated as one. The host would refuse the
       // registration anyway; saying it here is what makes the sentence on screen the true one, and
       // what stops a pointless call to a backend that is going to throw. The unwatch above has
       // already run, so switching the setting off mid-call stops the watch rather than leaving it
       // spending an LLM call per pass for a community that just said stop.
-      setWatchProblem('Automatic extraction is off for this space.');
+      setWatchProblem('Automatic extraction is off for this call.');
       return;
     }
 
@@ -1217,7 +1301,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       Read here, both directions land while the call is running, which is the only behaviour anybody
       would predict from a switch.
     */
-    void autoEnabled();
+    void autoEnabled(live);
     void syncWatch(live);
   });
 
@@ -1262,33 +1346,38 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   });
 
   /**
-   * Join a transcript somebody else has already started.
+   * Record the call you are in.
    *
-   * The module's one piece of policy, and the reasoning is narrower than "transcription should be
-   * on". Nothing here decides to record a call that nobody is recording — that is a decision about
-   * the conversation, it belongs to a space's settings rather than to this effect, and this does not
-   * make it. All this answers is what happens once a peer has *already* made it.
+   * The module's one piece of policy, and it is now the whole of it: being in a call is what starts
+   * recording, whether or not anybody else is already doing it.
    *
-   * Declining that used to be the default, by way of a prompt people did not answer. It reads like a
-   * privacy decision and is not one: the call is being transcribed either way, so the only thing a
-   * refusal changes is whether this agent's own words are in the record of a conversation they are
-   * part of. What that produced was a transcript of a five-person meeting containing one person,
-   * which is not a smaller record than the real one — it is a wrong one, and nothing about it says
-   * so to whoever reads it later.
+   * It used to stop short of that on purpose — joining a transcript somebody else had started was
+   * held to be a different question from starting one, and starting one was left to a space setting
+   * that did not exist. In practice the two are the same question asked at different
+   * moments, and splitting them made the ordinary case the unreliable one: whether a meeting was
+   * recorded depended on whether whoever happened to arrive first remembered to press a button. A
+   * transcript that exists for four meetings out of five is worse than either alternative, because
+   * nothing distinguishes "we chose not to record that one" from "nobody pressed it".
    *
-   * So the default flips, and the notice changes job with it: the prompt asked, and this tells. What
-   * survives is the way out — `optedOut` is checked first here, and pressing Leave or stopping
-   * recording by hand sets it for the rest of the call.
+   * The argument for joining carries over unchanged, and it is not a privacy argument: a refusal
+   * does not stop the conversation being recorded, it only removes this agent's own words from the
+   * record of a conversation they are part of, which produces a wrong transcript rather than a
+   * smaller one. What survives from the old shape is the way out — `optedOut` is checked first, and
+   * pressing Leave or stopping recording by hand sets it for the rest of the call.
    *
-   * Four guards before it fires, and each of them is a case where starting would be wrong rather
-   * than merely unhelpful:
+   * Three guards, and each is a case where starting would be wrong rather than merely unhelpful:
    * - no dataset: there is nowhere for the words to go. Also the one that must be tested rather than
    *   left to the teardown effect below, which switches recording off whenever the space is gone:
    *   that effect and this one would take turns for as long as no dataset was bound.
    * - no audio: there is nothing to record, and `enabled` would sit true against silence.
    * - a backend that cannot transcribe: caught here because `available` is answerable synchronously.
    *   Having no *model* is not, so that one is caught in `start` — see `giveUpAutoJoin`.
-   * - no peer recording: the whole condition. Being first to record is not this effect's decision.
+   *
+   * A fourth guard is the space's, and the agent's: `recordCalls`, declared on the module and
+   * resolved by the host across every level that had an opinion — so a community that does not want
+   * its calls recorded, or somebody who does not want their own recorded here, is answered without
+   * this effect knowing that either exists. Defaulted true where a host has no settings layer at
+   * all, which is the behaviour every deployment had before there was one.
    *
    * Deliberately not routed through `toggle`, which opens the panel: a person pressing record wants
    * to see what it produces, and a call that opens a panel on its own every time is chrome nobody
@@ -1301,7 +1390,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     if (!call) return;
     if ((audioInput?.() ?? null) === null) return;
     if (transcription?.available?.() === false) return;
-    if (peerRecordersOf(call.id).length === 0) return;
+    if (settings?.().recordCalls === false) return;
 
     setAutoJoined(true);
     setEnabled(true);
@@ -1397,7 +1486,17 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     // ── State ────────────────────────────────────────────────────────────────
     status,
     error,
-    pending,
+    /**
+     * What has been heard and is not yet a row in the transcript — buffering, or being written.
+     *
+     * The union of the two, because from the reader's side they are one state: these words are not
+     * in the record yet. Splitting them would put a seam in the middle of a sentence, and there is
+     * nothing a panel could usefully do differently either side of it.
+     *
+     * Newest last, matching the order they will be written in. Both are non-empty only while
+     * somebody carries on talking through a write, which is the case the join exists for.
+     */
+    pending: () => [settling(), pending()].filter(Boolean).join(' '),
     enabled,
     open,
     /**
@@ -1427,6 +1526,24 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     dockEdge: () => (open() ? 'right' : null),
     dockSize: () => 'md',
     dockFloat: () => false,
+    /**
+     * The extraction panel's own edge, size and openness — the same three keys, a second time.
+     *
+     * `right` as well, so the two arrive on the same edge and the host stacks them; an interface
+     * that wants them apart moves one, and the host remembers. Its own keys rather than shared ones
+     * because a dock's `edge` answers both "where" and "whether", and two panels answering that
+     * with one key could not be open independently.
+     */
+    extractionOpen,
+    extractionDockEdge: () => (extractionOpen() ? 'right' : null),
+    extractionDockSize: () => 'sm',
+    extractionDockFloat: () => false,
+    /** Open or close the extraction panel — what its rail button and its titlebar call. */
+    toggleExtractionPanel: () => setExtractionOpen(!extractionOpen()),
+    // Named on the dock as its `open`, so an interface declaring this panel gets *this* one opened
+    // rather than whichever the module's first launcher happens to point at.
+    openExtractionPanel: () => setExtractionOpen(true),
+    closeExtractionPanel: () => setExtractionOpen(false),
     level,
     speaking,
     /**
@@ -1527,6 +1644,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      */
     canExtract: () =>
       Boolean(collectionId()) && (interpretation?.available() ?? false) && hasTargets(collectionId() ?? ''),
+
     /**
      * What this call can have extracted, and whether each is on — `{ entity, label, selected }`.
      *
@@ -1535,7 +1653,16 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * which is a real state worth saying rather than an error.
      */
     extractionTargets: () =>
-      targetsFor(collectionId() ?? '').map((target) => ({ ...target, label: humanise(target.entity) })),
+      targetsFor(targetCollection()).map((target) => ({ ...target, label: humanise(target.entity) })),
+    /**
+     * Whether a press on one of those would actually record anything.
+     *
+     * Both halves fail silently and differently: no call means there is nothing to record a choice
+     * against, and a host with no `setTarget` cannot record one at all. Published so a surface can
+     * say which rather than offering chips that absorb the click — which is what they did, and what
+     * made this look broken rather than unavailable.
+     */
+    canChooseTargets: () => Boolean(targetCollection()) && typeof interpretation?.setTarget === 'function',
     /**
      * Include or exclude one model from what **this call** extracts, for everyone in it.
      *
@@ -1549,13 +1676,47 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * the new list.
      */
     toggleExtractionTarget: async (entity: string) => {
-      const live = collectionId();
+      const live = targetCollection();
       if (!live || typeof interpretation?.setTarget !== 'function') return;
       const current = targetsFor(live).find((target) => target.entity === entity);
       try {
         await interpretation.setTarget(live, entity, !current?.selected);
       } catch (error) {
         console.warn('[transcribe] could not change what this call extracts', error);
+      }
+    },
+    /**
+     * Whether this call is extracted as it happens — its participants' answer, else the space's.
+     *
+     * What a switch in the extraction panel binds to. Absent a call it answers for the space, which
+     * is the honest reading of "does this happen here" when there is no conversation to be about.
+     */
+    autoExtract: () => autoEnabled(collectionId() ?? myCall()?.recordId ?? undefined),
+    /**
+     * Turn it on or off for **this call**, for everyone in it.
+     *
+     * A group decision beside the call, like `toggleExtractionTarget` — the standing watch is one
+     * registration the whole neighbourhood shares. It leaves the space's own default alone, so a
+     * conversation that has wandered somewhere nobody wants records of can be stopped without the
+     * community changing its mind about every future call.
+     *
+     * Refused quietly where there is no call to record it against, in the same shape and for the
+     * same reason as `toggleExtractionTarget` — pair it with `canChooseTargets`, which answers the
+     * same question about the same record.
+     */
+    toggleAutoExtract: async () => {
+      const live = collectionId() ?? myCall()?.recordId ?? '';
+      if (!live || typeof interpretation?.setAuto !== 'function') return;
+      const next = !autoEnabled(live);
+      // Switching it on shows what it makes, once — the same rule `toggle` follows for recording,
+      // and for the same reason: starting something invisible and saying nothing about it is how a
+      // feature comes to look broken. Switching it off leaves the panel alone, since what it already
+      // found is still worth reading.
+      if (next) setExtractionOpen(true);
+      try {
+        await interpretation.setAuto(live, next);
+      } catch (error) {
+        console.warn('[transcribe] could not change whether this call extracts as it happens', error);
       }
     },
     /** True when the backend could interpret but there is no transcript yet — a waiting state. */
@@ -1585,57 +1746,18 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      */
     watchProblem,
 
-    // ── Live extraction ──────────────────────────────────────────────────────
     /*
-      Forwarded from the host rather than tracked here, and every field already a string.
+      ── Live extraction ──────────────────────────────────────────────────────
 
-      Three reasons this is a pass-through and not state. The feed covers passes this module did not
-      start — a standing watch runs whether or not anyone has this panel open, and a peer's pass is
-      not this module's to know about at all. It has to survive the panel closing, since the bar
-      that renders it lives under the call bar rather than in the transcript. And the strings it
-      carries ("0:42", "Extracted 3 records") need arithmetic and a clock, neither of which a schema
-      has.
+      The feed, its two halves, its counts and the sharing footnote used to be published here, as
+      pass-throughs to the host's own interpretation state. They are `interpretationStore`'s now,
+      and this module names none of them.
 
-      Empty means nothing is running. It is indistinguishable from a backend that cannot report
-      progress, and deliberately so — the bar's `hasActivity` guard is the same either way.
+      Not tidying: they were a *second* publisher of one capability's state, so the same rows had
+      two addresses and nothing chose which was canonical — and re-exporting another capability is
+      how a module comes to depend on one. What is left below is transcription: a microphone, a
+      buffer, the record this session writes into, and who else is recording.
     */
-    activity: () => interpretation?.activity() ?? [],
-    /**
-     * The passes still in flight, and the ones already finished.
-     *
-     * Split rather than filtered in the schema because the two are shown differently: running
-     * passes are always listed, finished ones fold behind a count. A long call runs a pass every
-     * few minutes and each completed one used to stay on screen, so the bar grew all conversation
-     * and pushed the call's own chrome down to make room for a history nobody asked to see.
-     */
-    runningPasses: () => (interpretation?.activity() ?? []).filter((pass) => pass.running),
-    settledPasses: () => (interpretation?.activity() ?? []).filter((pass) => !pass.running),
-    activityCount: () => (interpretation?.activity() ?? []).filter((pass) => pass.running).length,
-    settledCount: () => (interpretation?.activity() ?? []).filter((pass) => !pass.running).length,
-    /**
-     * Whether a peer's row is on show and the space has chosen not to share what is behind it.
-     *
-     * What the bar's one footnote is gated on. The explanation used to be a tooltip on every row,
-     * which put it where nobody reads and repeated it per pass; the fact it conveys — a peer's
-     * exchange never left their machine, and a space can choose otherwise — is worth saying exactly
-     * once, and only while that choice is the reason.
-     *
-     * The *setting*, deliberately, rather than "a peer row with nothing to open". The latter is
-     * what this used to test, and it is true for reasons the footnote does not explain: a peer's
-     * pass that has not reached the model yet, a skipped pass that never had an exchange, a row
-     * broadcast before the switch synced to its runner. Every one of those kept the note on screen
-     * after somebody had turned sharing on — which is the one moment it is plainly wrong.
-     */
-    detailWithheld: () =>
-      !(interpretation?.detailShared?.() ?? false) && (interpretation?.activity() ?? []).some((pass) => !pass.mine),
-    /**
-     * Whether the status bar should exist at all.
-     *
-     * Counts settled rows too, which the running count deliberately does not: a pass that just
-     * finished is the moment its result is worth reading, and a bar that vanished on completion
-     * would take "Extracted 3 records" with it before anyone saw it.
-     */
-    hasActivity: () => (interpretation?.activity() ?? []).length > 0,
 
     /**
      * The band this module's chrome adds to the top of the window, for panels to keep clear of.
@@ -1681,9 +1803,22 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      */
     toggle: () => {
       const next = !enabled();
-      setEnabled(next);
-      setAutoJoined(false);
+      /*
+        `optedOut` **before** `enabled`, and that ordering is the whole of a two-press bug.
+
+        The auto-join effect reads both, and a signal write runs it synchronously. Written the other
+        way round, `setEnabled(false)` ran the effect while `optedOut` still said false — so it saw
+        an agent in a call who was not recording and had not declined, which is exactly the state it
+        exists to answer, and turned recording straight back on. The press after it worked, because
+        by then the opt-out had landed.
+
+        Setting the refusal first means every run of that effect sees a decision that is already
+        whole: on the way out `enabled` is still true and it returns, and on the write after it
+        `optedOut` is true and it returns again.
+      */
       setOptedOut(!next);
+      setAutoJoined(false);
+      setEnabled(next);
       if (next) setOpen(true);
       /*
         Publish the decision immediately, before a word has been said.
@@ -1719,6 +1854,8 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       name, and a way to hide the notice while still being recorded.
     */
     togglePanel: () => setOpen(!open()),
+    // Named on the dock as its `open` — see `openExtractionPanel` for why a dock says this itself.
+    openPanel: () => setOpen(true),
     closePanel: () => setOpen(false),
     /**
      * Text heard, from wherever it came.

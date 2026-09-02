@@ -331,15 +331,18 @@ describe('continuing a call', () => {
 });
 
 /**
- * Being joined to a transcript somebody else started.
+ * Recording the call you are in.
  *
- * The thing this replaces was a prompt, and the prompt was ignored — reliably enough that the
- * ordinary outcome of a group call was a transcript containing one person, which is not a smaller
- * record than the real one but a wrong one. So the default flipped, and everything worth testing
- * here is about the ways it must *not* fire: over a decision somebody made, on a node that cannot
- * transcribe, into a call nobody else is recording, and against silence.
+ * Two things this replaces, both of which produced a transcript nobody could trust. A prompt, which
+ * was ignored reliably enough that the ordinary outcome of a group call was a record containing one
+ * person — not a smaller record than the real one but a wrong one. And, after that, a rule that
+ * joined a transcript somebody else had started but never started one: which left whether a meeting
+ * was recorded at all resting on whoever arrived first remembering to press a button.
+ *
+ * So being in a call is the whole condition, and everything worth testing is the ways it must *not*
+ * fire: over a decision somebody made, on a node that cannot transcribe, and against silence.
  */
-describe('joining a transcript somebody else started', () => {
+describe('recording the call you are in', () => {
   /**
    * The two deps auto-join checks that nothing else here does.
    *
@@ -377,6 +380,31 @@ describe('joining a transcript somebody else started', () => {
 
     expect(h.store.enabled()).toBe(true);
     expect(h.store.autoJoined()).toBe(true);
+  });
+
+  it('starts recording a call nobody else is recording', () => {
+    /*
+      The half this used to refuse, on the reasoning that being *first* is a decision about the
+      conversation rather than about a microphone. True, and it left the decision to whoever arrived
+      first noticing a button — so the common case was a meeting with no record and nothing to say
+      why. A space that wants its calls left alone says so in its own settings; it is not this
+      effect's job to guess that from the roster.
+    */
+    const h = harness([peer(ME, { type: 'call', id: CALL, record: RECORD }), peer(THEM, { type: 'call', id: CALL })], {
+      ...IN_A_SPACE,
+      transcription: CAN_TRANSCRIBE,
+    });
+
+    expect(h.store.enabled()).toBe(true);
+    expect(h.store.autoJoined()).toBe(true);
+  });
+
+  it('records nothing while there is no call to record', () => {
+    // The condition, stated the other way round. Being in a space is not being in a conversation,
+    // and a microphone that opens on entering a space is the thing nobody asked for.
+    const h = harness([peer(ME)], { ...IN_A_SPACE, transcription: CAN_TRANSCRIBE });
+
+    expect(h.store.enabled()).toBe(false);
   });
 
   it('announces it immediately, rather than waiting for the first word', () => {
@@ -434,18 +462,29 @@ describe('joining a transcript somebody else started', () => {
     expect(h.store.enabled()).toBe(true);
   });
 
-  it('does not start recording a call nobody else is recording', () => {
-    // The whole scope of this. Being *first* to transcribe is a decision about the conversation, and
-    // it is not this effect's to take — it belongs to a space's settings.
-    const h = harness(
-      [peer(ME, { type: 'call', id: CALL, record: RECORD }), peer(THEM, { type: 'call', id: CALL, record: RECORD })],
-      {
-        ...IN_A_SPACE,
-        transcription: CAN_TRANSCRIBE,
-      },
-    );
+  it('does not start where the space, or this agent, has said not to', () => {
+    /*
+      The fourth guard, and the only one that is a decision rather than an impossibility. It arrives
+      already resolved across every level that had an opinion — this effect does not know a space
+      exists, let alone which of four levels refused, which is what keeps the policy beside the state
+      that holds it rather than in the module.
+    */
+    const h = harness(THEIR_TRANSCRIPT, {
+      ...IN_A_SPACE,
+      transcription: CAN_TRANSCRIBE,
+      settings: () => ({ recordCalls: false }),
+    });
 
     expect(h.store.enabled()).toBe(false);
+  });
+
+  it('records where a host has no settings layer at all', () => {
+    // `settings` is optional on the contract, and absent must read as the declared default rather
+    // than as a refusal — otherwise adding the layer would have silently switched recording off for
+    // every deployment that had not adopted it.
+    const h = harness(THEIR_TRANSCRIPT, { ...IN_A_SPACE, transcription: CAN_TRANSCRIBE, settings: undefined });
+
+    expect(h.store.enabled()).toBe(true);
   });
 
   it('does not start when there is nothing to listen to', () => {
@@ -1093,6 +1132,39 @@ describe('staged suggestions', () => {
     expect(h.store.proposals()[0].summary).toBe('title: Ship the docs');
   });
 
+  it('asks about this call rather than about the whole space', async () => {
+    /*
+      A proposal outlives the pass that made it. One nobody resolved an hour ago is still staged, so
+      an unscoped read hands it to the next call's review list looking like something that call just
+      found — and accepting it commits a record parented to the *earlier* call, which then never
+      appears on the board of the call the reviewer is sitting in.
+
+      Asserted on the argument rather than on the result, because the narrowing happens in the
+      backend: what this store owes is naming the conversation it is asking about.
+    */
+    const scopes: (string | undefined)[] = [];
+    const h = harness(inCall, {
+      interpretation: {
+        available: () => true,
+        runOnCollection: async () => ({ turns: 5, ids: ['t1'], proposed: ['t1'] }),
+        proposals: async (_target: unknown, collection?: string) => {
+          scopes.push(collection);
+          return [];
+        },
+        accept: async () => true,
+        reject: async () => true,
+      },
+    });
+    await h.say('hello');
+
+    await h.store.extract();
+    // And a finished call extracted from the calls list asks about *that* one — reviewing what it
+    // found is the whole point of being able to extract it.
+    await h.store.extractCollection('older-call');
+
+    expect(scopes).toEqual([RECORD, 'older-call']);
+  });
+
   it('leads a summary with the field that identifies the record', async () => {
     // A person deciding whether to keep a suggestion reads it rather than inspecting it, and
     // whichever key happened to come first is not a useful thing to lead with.
@@ -1243,39 +1315,240 @@ describe('extracting by id', () => {
   });
 });
 
-describe('the footnote about unshared prompts', () => {
-  /*
-    Gated on the space's setting, not on a row lacking detail. The old gate — "a peer row with
-    nothing to open" — was true for a peer's pass that had not reached the model yet, for a skipped
-    pass that never had an exchange, and for a row broadcast before the switch synced, so it kept
-    explaining the setting after somebody had turned it on.
-  */
-  const peerRow = { passId: 'p', runner: 'did:bo', mine: false, hasDetail: false };
-  const ownRow = { passId: 'q', runner: 'did:me', mine: true, hasDetail: false };
-
-  function withActivity(rows: object[], shared: boolean) {
-    return harness([], {
-      interpretation: {
-        available: () => true,
-        activity: () => rows,
-        detailShared: () => shared,
+/**
+ * The gap between the preview clearing and the row appearing.
+ *
+ * `pending` used to be emptied at the top of a flush, and the row it becomes does not exist until a
+ * create has gone to the backend and come back through the feed's subscription. Between those two
+ * moments the transcript said nothing at all — a sentence vanishing and reappearing somewhere else,
+ * which reads as a glitch rather than as saving.
+ */
+describe('what is shown while an utterance is being written', () => {
+  /** A harness whose writes hang until the returned function is called. */
+  function slowWrites(peers: Peer[]) {
+    let release!: () => void;
+    const written = new Promise<void>((resolve) => (release = resolve));
+    let nextId = 1;
+    const h = harness(peers, {
+      createEntity: async () => {
+        await written;
+        return `id-${nextId++}`;
       },
-    }).store;
+    });
+    return { h, release: () => release() };
   }
 
-  it('explains a peer row while the space keeps prompts private', () => {
-    expect(withActivity([peerRow], false).detailWithheld()).toBe(true);
+  it('keeps the words visible until the write lands, then lets the row have them', async () => {
+    const { h, release } = slowWrites([peer(ME, { type: 'call', id: CALL, record: RECORD })]);
+
+    h.store.receiveText('the whole sentence');
+    const writing = h.store.flushNow();
+
+    // Out of the buffer, into the write — and still on screen, because it is still not a row.
+    expect(h.store.pending()).toBe('the whole sentence');
+
+    release();
+    await writing;
+
+    expect(h.store.pending()).toBe('');
   });
 
-  it('says nothing once the space shares detail, whatever the row carries', () => {
-    expect(withActivity([peerRow], true).detailWithheld()).toBe(false);
+  it('shows words said during a write after the ones being written', async () => {
+    // Speech does not stop for a round trip. Both are pending from the reader's side — neither is in
+    // the record — and they are shown in the order they will be written.
+    const { h, release } = slowWrites([peer(ME, { type: 'call', id: CALL, record: RECORD })]);
+
+    h.store.receiveText('first');
+    const writing = h.store.flushNow();
+    h.store.receiveText('second');
+
+    expect(h.store.pending()).toBe('first second');
+
+    release();
+    await writing;
+
+    expect(h.store.pending()).toBe('second');
+  });
+});
+
+/**
+ * Choosing what a call looks for, before it has said anything.
+ *
+ * `collectionId` is the record this agent is *writing into*, and it is null until somebody speaks —
+ * the transcriber adopts the call's record on the first flush. So a call that had just started had
+ * no collection: the chips rendered against `''`, every candidate came back unnarrowed and looking
+ * selected, and every press hit a guard that returned without a word. Which is exactly when somebody
+ * wants to choose — before the conversation, not after it.
+ */
+describe('what a call extracts, before anybody has spoken', () => {
+  const targets = [
+    { entity: 'TaskBlock', selected: true },
+    { entity: 'EventBlock', selected: false },
+  ];
+
+  function withInterpretation(peers: Peer[]) {
+    const set: { collection: string; entity: string; on: boolean }[] = [];
+    const h = harness(peers, {
+      interpretation: {
+        available: () => true,
+        targets: (collection: string) => (collection ? targets : []),
+        setTarget: async (collection: string, entity: string, on: boolean) => {
+          set.push({ collection, entity, on });
+        },
+      },
+    });
+    return { h, set };
+  }
+
+  it('records a choice against the call’s own record, with no transcript yet', async () => {
+    const { h, set } = withInterpretation([peer(ME, { type: 'call', id: CALL, record: RECORD })]);
+
+    expect(h.store.canChooseTargets()).toBe(true);
+    expect(h.store.extractionTargets()).toHaveLength(2);
+
+    await h.store.toggleExtractionTarget('EventBlock');
+
+    // The call's record, which presence has carried since the call started — not the collection the
+    // transcriber has not adopted yet.
+    expect(set).toEqual([{ collection: RECORD, entity: 'EventBlock', on: true }]);
   });
 
-  it('says nothing about one’s own rows — they never needed sharing', () => {
-    expect(withActivity([ownRow], false).detailWithheld()).toBe(false);
+  it('still lists the space’s own defaults outside a call, and says it cannot narrow them', () => {
+    /*
+      The state that looked broken. Outside a call there is no record to hang a per-call decision on,
+      so `canChooseTargets` is false — but the list is not empty and never was: `forCall` falls back
+      to the space's defaults, which is why the chips showed the right ticks while refusing every
+      press. The panel edits that list instead now, and this is the flag it branches on.
+    */
+    const { h } = withInterpretation([]);
+
+    expect(h.store.canChooseTargets()).toBe(false);
+    expect(h.store.extractionTargets()).toEqual([]);
   });
 
-  it('is silent with nothing on show', () => {
-    expect(withActivity([], false).detailWithheld()).toBe(false);
+  it('says it cannot on a host that has no way to store one', async () => {
+    const h = harness([peer(ME, { type: 'call', id: CALL, record: RECORD })], {
+      interpretation: { available: () => true, targets: () => targets },
+    });
+
+    expect(h.store.canChooseTargets()).toBe(false);
+    // And the action stays safe to call: a surface that offers it anyway does nothing, rather than
+    // throwing on a missing method.
+    await expect(h.store.toggleExtractionTarget('EventBlock')).resolves.toBeUndefined();
+  });
+});
+
+/**
+ * Turning recording off, and having it stay off.
+ *
+ * It took two presses. The auto-join effect reads `enabled` and `optedOut`, and under a real
+ * reactive runtime a signal write runs it synchronously — so with `setEnabled(false)` written first,
+ * the effect ran while `optedOut` still said false. That is an agent in a call, not recording, and
+ * not having declined: exactly the state it exists to answer, so it turned recording back on. The
+ * next press worked, because by then the opt-out had landed.
+ *
+ * The ordering itself is not reachable from here — these signals do not notify, so no write re-runs
+ * an effect and the re-entrancy cannot happen. What *is* reachable is the property the fix depends
+ * on, and the one that would take the bug back if it broke: a later run of that effect, after a
+ * refusal, leaves recording alone.
+ */
+describe('stopping a recording', () => {
+  it('is not undone by the next run of the auto-join effect', () => {
+    const h = harness([peer(ME, { type: 'call', id: CALL, record: RECORD })], {
+      // The effect needs a dataset before it will start anything.
+      dataset: () => ({ id: 'ds' }),
+    });
+
+    h.store.toggle();
+    expect(h.store.enabled()).toBe(true);
+
+    h.store.toggle();
+    expect(h.store.enabled()).toBe(false);
+
+    // A presence tick — a peer joining, somebody's availability changing — re-runs every effect.
+    // Without the refusal recorded, this is where recording would come back.
+    h.setPeers([peer(ME, { type: 'call', id: CALL, record: RECORD }), peer(THEM)]);
+
+    expect(h.store.enabled()).toBe(false);
+  });
+
+  it('starts again on the next press', () => {
+    // A refusal for this call, not for good: the way back is the same button, and pressing it has to
+    // clear the flag that keeps the effect out.
+    const h = harness([peer(ME, { type: 'call', id: CALL, record: RECORD })], { dataset: () => ({ id: 'ds' }) });
+
+    h.store.toggle();
+    h.store.toggle();
+    h.store.toggle();
+
+    expect(h.store.enabled()).toBe(true);
+  });
+});
+
+/**
+ * Whether a call is extracted as it happens, decided by the people in it.
+ *
+ * The space has a standing answer and an administrator sets it. That was the only control, so
+ * stopping a pass on a conversation that had wandered somewhere nobody wanted records of meant
+ * finding whoever owns the space — or leaving the call. This is the same layer the target chips
+ * write at: a group decision beside the call, leaving the community's default alone.
+ */
+describe('turning automatic extraction off for one call', () => {
+  function withAuto(peers: Peer[], auto: Record<string, boolean>) {
+    const set: { collection: string; on: boolean }[] = [];
+    const h = harness(peers, {
+      interpretation: {
+        available: () => true,
+        autoEnabled: (collection?: string) => (collection ? (auto[collection] ?? true) : true),
+        setAuto: async (collection: string, on: boolean) => {
+          set.push({ collection, on });
+          auto[collection] = on;
+        },
+      },
+    });
+    return { h, set };
+  }
+
+  it('asks about the call, not the space', () => {
+    // The record exists from the moment the call starts, so this is answerable before anybody has
+    // spoken — which is when somebody deciding not to record a conversation would say so.
+    const { h } = withAuto([peer(ME, { type: 'call', id: CALL, record: RECORD })], { [RECORD]: false });
+
+    expect(h.store.autoExtract()).toBe(false);
+  });
+
+  it('shows what it makes when switched on, and leaves the panel alone when switched off', async () => {
+    /*
+      The rule recording follows: starting something invisible and saying nothing about it is how a
+      feature comes to look broken. Off is not symmetrical — what a pass already found is still worth
+      reading, so closing the panel is the reader's decision rather than a consequence.
+    */
+    const { h } = withAuto([peer(ME, { type: 'call', id: CALL, record: RECORD })], { [RECORD]: false });
+    expect(h.store.extractionOpen()).toBe(false);
+
+    await h.store.toggleAutoExtract();
+    expect(h.store.extractionOpen()).toBe(true);
+
+    await h.store.toggleAutoExtract();
+    expect(h.store.extractionOpen()).toBe(true);
+  });
+
+  it('writes the decision against that call', async () => {
+    const { h, set } = withAuto([peer(ME, { type: 'call', id: CALL, record: RECORD })], { [RECORD]: true });
+
+    await h.store.toggleAutoExtract();
+
+    expect(set).toEqual([{ collection: RECORD, on: false }]);
+    expect(h.store.autoExtract()).toBe(false);
+  });
+
+  it('does nothing where there is no call to record it against', async () => {
+    // The same quiet refusal `toggleExtractionTarget` makes, and the same surface answers for both:
+    // `canChooseTargets` is about the same record.
+    const { h, set } = withAuto([], {});
+
+    await h.store.toggleAutoExtract();
+
+    expect(set).toEqual([]);
   });
 });

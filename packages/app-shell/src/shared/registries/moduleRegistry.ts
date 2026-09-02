@@ -28,6 +28,7 @@ import { type EntityClass, getEntityPredicates, registerEntity, unregisterEntity
 import {
   checkModuleCompatibility,
   type ModuleDefinition,
+  type ModuleLauncher,
   modulePredicatePrefix,
   modulePredicateViolations,
   type ModuleScope,
@@ -35,6 +36,7 @@ import {
 } from '@we/module-shared';
 import { collectComponentTypes, type SchemaNode } from '@we/schema-shared';
 
+import type { SettingGroup, SettingValue } from '../moduleSettings';
 import { dockFrame, dockRegistry } from './dockRegistry';
 import { slotRegistry } from './slotRegistry';
 
@@ -92,6 +94,19 @@ export interface RegisteredModule {
 }
 
 const modules = new Map<string, RegisteredModule>();
+
+/**
+ * What each module's settings currently resolve to, answered by whoever can see a space.
+ *
+ * Injected rather than computed here for the reason every `provide*` on `DatasetStore` is: the
+ * answer lives on a `Space`, on a `SpacePreference` and in the agent's own root dataset, and this
+ * registry mounts below all three and knows about none of them. Defaults to silence, so a host that
+ * has not wired it hands every module its declared defaults rather than nothing at all.
+ *
+ * Read at *call* time, not at registration: a module store is built once at boot and the space it is
+ * in changes underneath it all day.
+ */
+let readSettings: (group: string) => Record<string, SettingValue> = () => ({});
 
 /**
  * Wrap a module's chrome so it only renders where the community has the module turned on.
@@ -183,6 +198,46 @@ function declaredEntities(schemas: SchemaPort, scope: ModuleScope): unknown[] {
   });
 }
 
+/**
+ * The interface's own composition of this module's panel, or the module's default.
+ *
+ * The middle rung of the content chain — the same shape position and openness already have. A
+ * module's presentation is a *default*, not a monopoly: an interface that wants the pieces arranged
+ * differently used to have to hand-write copies and place them beside the module's panel, which is
+ * how the workshop template ended up with two transcripts on screen the moment somebody pressed
+ * record.
+ *
+ * Resolved at render rather than at registration, because a template is chosen and re-chosen while
+ * the module stays installed, and a `$if` is how a schema asks a question it cannot answer when it
+ * is written. The module's dock is untouched: its edge, size and open flag still decide *whether*
+ * the surface is up, which is the module's to say. Only what is inside it moves.
+ *
+ * ## Keyed by dock, not by module
+ *
+ * A template's entry names a *module* — `{ module: 'transcribe', node }` — because that is the
+ * question a template author is asking. The gate is keyed by **dock id** anyway, and the difference
+ * only shows up for a module contributing more than one panel: keyed by module, one supplied body
+ * would have replaced the contents of every one of them, so a template overriding a module's
+ * transcript panel would silently have overwritten its settings panel with the same node.
+ *
+ * No module contributes two docks today, which is exactly why it is worth keying correctly now —
+ * the day one does, the failure is a panel showing the wrong thing rather than an error. Resolving
+ * a module name to a dock id is `ShellStore.panelSupplied`'s job, and it refuses the ambiguous case
+ * out loud rather than picking.
+ */
+function suppliedOrOwn(moduleId: string, dockId: string, dock: string, own: SchemaNode): SchemaNode {
+  return {
+    type: '$if',
+    props: {
+      condition: { $: `shellStore.panelSupplied['${dockId}']` },
+      // The dock's own name travels with the request: a module with two panels has two frames
+      // asking, and a body found by module alone would land in whichever asked first.
+      then: { type: 'TemplatePanelBody', props: { moduleId, dock } },
+      else: own,
+    },
+  };
+}
+
 export const moduleRegistry = {
   /**
    * Register a module against this host.
@@ -232,6 +287,25 @@ export const moduleRegistry = {
       }
     }
 
+    /*
+      Two ways a settings declaration is inert, and both are silent without this.
+
+      A `restrict` setting that defaults to `false` can never be true: restriction is an AND, so no
+      level can grant what the default withholds. And an `enum` with no options offers nothing to
+      pick. Reported rather than refused — a module is still worth having with one dud setting, and
+      taking the whole thing out of the app over a declaration mistake is the larger failure.
+    */
+    for (const setting of definition.settings ?? []) {
+      if (setting.resolution === 'restrict' && setting.default === false) {
+        console.warn(
+          `module "${definition.id}" setting "${setting.key}" is restrict and defaults to false, so no level can ever turn it on`,
+        );
+      }
+      if (setting.type === 'enum' && !setting.options?.length) {
+        console.warn(`module "${definition.id}" setting "${setting.key}" is an enum with no options`);
+      }
+    }
+
     const compatibility = checkModuleCompatibility(definition, host);
     if (!compatibility.compatible) {
       console.warn(`module "${definition.id}" not registered: ${compatibility.problems.join('; ')}`);
@@ -250,7 +324,13 @@ export const moduleRegistry = {
     // than running none.
     const disposers: Array<() => void> = [];
     const store = storeDeps
-      ? definition.createStore?.({ ...storeDeps, onDispose: (fn) => disposers.push(fn) })
+      ? definition.createStore?.({
+          ...storeDeps,
+          onDispose: (fn) => disposers.push(fn),
+          // Its own group, never the whole map: a module reads what it declared and has no business
+          // knowing what another one was configured with.
+          settings: () => readSettings(definition.id),
+        })
       : undefined;
     modules.set(definition.id, { definition, store, disposers });
     if (store) moduleStores[definition.id] = store;
@@ -278,7 +358,9 @@ export const moduleRegistry = {
     // has wrapped it in a positioned box it is ordinary shell chrome and needs no second render
     // path. The `dock:` id prefix keeps the two namespaces from colliding.
     for (const [index, dock] of (definition.docks ?? []).entries()) {
-      const id = `${definition.id}:${index}`;
+      // The declared name where there is one, so a module that adds a second panel does not
+      // renumber the first and throw away wherever anybody had dragged it.
+      const id = `${definition.id}:${dock.name ?? index}`;
       dockRegistry.register({ ...dock, id, moduleId: definition.id });
       slotRegistry.register({
         anchor: 'dock-right',
@@ -286,7 +368,10 @@ export const moduleRegistry = {
         id: `dock:${id}`,
         node: gateOnSpace(
           definition.id,
-          dockFrame({ ...dock, id, moduleId: definition.id }, dock.node),
+          dockFrame(
+            { ...dock, id, moduleId: definition.id },
+            suppliedOrOwn(definition.id, id, dock.name ?? String(index), dock.node),
+          ),
           definition.holdsWhen,
         ),
       });
@@ -306,6 +391,37 @@ export const moduleRegistry = {
    * nowhere, which looks exactly like a module that is simply switched off. The same reason
    * `activateSeedModules` reports ids this build does not contain.
    */
+  /**
+   * Say what each module's settings resolve to. Returns a function that takes it back.
+   *
+   * The counterpart of `DatasetStore.provideAutoInterpretGate`, and injected for the same reason —
+   * see `readSettings`.
+   */
+  provideSettings(reader: (group: string) => Record<string, SettingValue>): () => void {
+    readSettings = reader;
+    return () => {
+      if (readSettings === reader) readSettings = () => ({});
+    };
+  },
+
+  /**
+   * Every registered module that declares settings, as a group a screen can render.
+   *
+   * A module's group id is its module id, and its label is the module's name — so a settings screen
+   * is built from what is installed rather than from a list somebody maintains, which is the
+   * registration step that otherwise fails silently.
+   */
+  settingGroups(): SettingGroup[] {
+    return [...modules.values()]
+      .filter((entry) => entry.definition.settings?.length)
+      .map((entry) => ({
+        id: entry.definition.id,
+        label: entry.definition.name,
+        ...(entry.definition.description ? { description: entry.definition.description } : {}),
+        settings: entry.definition.settings ?? [],
+      }));
+  },
+
   danglingAnchors(): string[] {
     const provided = new Set([...modules.values()].flatMap(({ definition }) => definition.anchors ?? []));
     return slotRegistry.contributedAnchors().filter((anchor) => !provided.has(anchor));
@@ -401,6 +517,24 @@ export const moduleRegistry = {
    * rather than memoised: modules register and unregister at runtime, and this is consulted once per
    * bag construction, not per read.
    */
+  /**
+   * A module's launchers, however it declared them.
+   *
+   * `launcher` and `launchers` concatenated rather than one superseding the other, so a module that
+   * grows a second entry point does not have to rewrite the first — and so every module that
+   * declares only the singular keeps behaving exactly as it did.
+   *
+   * The key is what the rail addresses: the plain module id for a launcher that names none, which
+   * is every module with one, and `<moduleId>:<key>` otherwise.
+   */
+  launchersOf(definition: ModuleDefinition): { key: string; launcher: ModuleLauncher }[] {
+    const all = [...(definition.launcher ? [definition.launcher] : []), ...(definition.launchers ?? [])];
+    return all.map((launcher) => ({
+      key: launcher.key ? `${definition.id}:${launcher.key}` : definition.id,
+      launcher,
+    }));
+  },
+
   chromeOnlyStoreMembers(): Record<string, readonly string[]> {
     const out: Record<string, readonly string[]> = {};
     for (const { definition } of moduleRegistry.all()) {
@@ -506,12 +640,19 @@ export const moduleRegistry = {
       }));
   },
 
-  /** Named schema fragments, keyed `<moduleId>.<fragment>` so two modules can't collide. */
-  schemas(): Record<string, unknown> {
-    const out: Record<string, unknown> = {};
+  /**
+   * Named schema fragments, keyed `<moduleId>.<fragment>` so two modules can't collide.
+   *
+   * Normalised: a part written as a bare node comes back as one with no subject, so a caller has one
+   * shape to handle rather than two. See `ModulePart` — the subject is what lets a placer point a
+   * part at a record the module never knew about.
+   */
+  schemas(): Record<string, { node: SchemaNode; subject?: string }> {
+    const out: Record<string, { node: SchemaNode; subject?: string }> = {};
     for (const { definition } of moduleRegistry.all()) {
-      for (const [name, node] of Object.entries(definition.schemas ?? {})) {
-        out[`${definition.id}.${name}`] = node;
+      for (const [name, part] of Object.entries(definition.schemas ?? {})) {
+        const normalised = 'node' in part ? (part as { node: SchemaNode; subject?: string }) : { node: part };
+        out[`${definition.id}.${name}`] = normalised;
       }
     }
     return out;

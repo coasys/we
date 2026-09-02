@@ -3,8 +3,10 @@ import type {
   FontFamilyValue,
   FontSizeValue,
   FontWeightToken,
+  GapValue,
   LetterSpacingValue,
   LineHeightValue,
+  PaddingValue,
   RadiusValue,
   ShadowValue,
   SpaceValue,
@@ -173,7 +175,7 @@ export interface DesignSystemProps {
   ax?: FlexMainAxis | FlexCrossAxis;
   ay?: FlexMainAxis | FlexCrossAxis;
   wrap?: boolean;
-  gap?: SpaceValue;
+  gap?: GapValue;
   flex?: string;
   /**
    * `flex-shrink`. The shorthand `flex` can express this, but only by also committing to a
@@ -204,13 +206,13 @@ export interface DesignSystemProps {
   my?: SpaceValue;
 
   // Padding
-  p?: SpaceValue;
-  pl?: SpaceValue;
-  pr?: SpaceValue;
-  pt?: SpaceValue;
-  pb?: SpaceValue;
-  px?: SpaceValue;
-  py?: SpaceValue;
+  p?: PaddingValue;
+  pl?: PaddingValue;
+  pr?: PaddingValue;
+  pt?: PaddingValue;
+  pb?: PaddingValue;
+  px?: PaddingValue;
+  py?: PaddingValue;
 
   // Radius
   r?: RadiusValue;

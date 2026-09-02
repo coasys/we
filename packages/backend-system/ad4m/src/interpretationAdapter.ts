@@ -28,6 +28,7 @@ import type {
   InterpretationProposal,
   InterpretationRequest,
   InterpretationResult,
+  InterpretationScope,
   TranscriptTurn,
   WatchRequest,
 } from '@we/backend-shared';
@@ -239,6 +240,40 @@ async function assertEndpointsAreLocal(perspective: PerspectiveProxy, overlayId:
       );
     }
   }
+}
+
+/**
+ * Which staged bases belong to one node — the test behind `proposals`' `scope`.
+ *
+ * ## Two ways to belong, and both are needed
+ *
+ * **The link**, which is what containment actually is: a pass parents what it minted onto the
+ * collection it read, and that link is what every route in WE reaches the record by.
+ *
+ * **The namespace**, for the window before that link exists. An instance is minted under a prefix
+ * derived from its parent, and the parenting is a separate write afterwards — on the watch path, a
+ * write on whichever peer ran the pass. So there is a real interval, and a real failure mode, where
+ * a record of *this* call is not yet linked to it. `reconcile` repairs exactly that case and keys on
+ * exactly this prefix; a scope that admitted only the link would hide a suggestion the reviewer is
+ * the right person to see, which is the failure this narrowing must not introduce.
+ *
+ * One read, not one per overlay: the parent's children are fetched once and the prefix is a string
+ * test. Falls open — everything passes — if the children cannot be read at all, because a review
+ * list that silently empties on a failed read is worse than one showing too much.
+ */
+async function scopeFilter(
+  perspective: PerspectiveProxy,
+  scope: InterpretationScope,
+): Promise<(base: string) => boolean> {
+  const prefix = `${DEFAULT_BASE_PREFIX}${encodeURIComponent(scope.parent.id)}/`;
+  let contained: Set<string>;
+  try {
+    const links = await perspective.get(new LinkQuery({ source: scope.parent.id, predicate: scope.parent.predicate }));
+    contained = new Set(links.map((link) => link.data.target));
+  } catch {
+    return () => true;
+  }
+  return (base: string) => contained.has(base) || base.startsWith(prefix);
 }
 
 /**
@@ -732,7 +767,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       return () => stream.observers.delete(entry);
     },
 
-    async proposals(dataset: DatasetHandle): Promise<InterpretationProposal[]> {
+    async proposals(dataset: DatasetHandle, scope?: InterpretationScope): Promise<InterpretationProposal[]> {
       // Empty rather than thrown: a review surface asking "anything pending?" on a runtime that
       // cannot propose anything has its answer, and it is "no" — not an error worth a toast on
       // every render.
@@ -741,15 +776,18 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       const overlays = await perspective.interpretationOverlays();
       if (!overlays.length) return [];
 
+      const wanted = scope ? await scopeFilter(perspective, scope) : () => true;
       const names = await predicateNames(perspective);
-      return overlays.map((o) => {
-        const values: Record<string, unknown> = {};
-        for (const [predicate, value] of o.inferred ?? []) {
-          const name = names.get(predicate);
-          if (name) values[name] = decode(value);
-        }
-        return { id: o.base, kind: o.kind, values };
-      });
+      return overlays
+        .filter((o) => wanted(o.base))
+        .map((o) => {
+          const values: Record<string, unknown> = {};
+          for (const [predicate, value] of o.inferred ?? []) {
+            const name = names.get(predicate);
+            if (name) values[name] = decode(value);
+          }
+          return { id: o.base, kind: o.kind, values };
+        });
     },
 
     async accept(dataset: DatasetHandle, id: string, property?: string): Promise<boolean> {

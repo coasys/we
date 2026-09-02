@@ -164,6 +164,11 @@ that declares `backends: ['ad4m']` — nothing else. See `docs/architecture/pack
 - App chrome and module panels (the sidebar, the module rail, floating vs displacing, who moves for
   whom) → `packages/app-shell/src/shared/dockGeometry.ts` (see docs/architecture/chrome-and-panels.md).
 
+**Where a new thing goes** — module or host store, panel or fragment, who decides placement, and how
+two capabilities cooperate without depending on each other — is
+docs/architecture/capabilities-and-surfaces.md. Read it before adding a module, a panel or a store:
+it is four rules, and half of it is the shapes that are refused on purpose.
+
 For deeper detail (data sync/persistence, block & editor internals, the local dev/test loop),
 see docs/architecture/codebase-map.md.
 For how reusable template fragments work and where they are going, see
@@ -1009,13 +1014,13 @@ Most @we/primitives also accept Design System Props (see next section for detail
 
 @we/primitives:
 - we-alert (DesignSystemElement)
-  Props: variant: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' = 'primary', dismissible: boolean = false
+  Props: variant: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' = 'primary', appearance: 'soft' | 'accent' = 'soft', dismissible: boolean = false
 - we-audio (LayoutVisualElement)
   Props: src: string = '', controls: boolean = false, preload: 'none' | 'metadata' | 'auto' = 'metadata', autoplay: boolean = false, loop: boolean = false, muted: boolean = false, stream?: MediaStream | null | undefined
 - we-avatar (LayoutVisualElement)
   Props: image: string = '', hash: string = '', initials: string = '', icon: string = '', size?: 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '{css-length}' | undefined, clickable: boolean = false
 - we-badge (DesignSystemElement)
-  Props: variant: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' = 'neutral', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
+  Props: variant: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' = 'neutral', appearance: 'soft' | 'solid' = 'soft', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-blockquote (DesignSystemElement)
 - we-button (DesignSystemElement)
   Props: variant: 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline' | 'bare' = 'primary', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', text?: string | undefined, label: string = '', href?: string | undefined, disabled: boolean = false, loading: boolean = false, gradient: boolean = false, square: boolean = false
@@ -1370,7 +1375,7 @@ Common recipes:
 the relations between them. Picks up model types added later with no template change.
 - **Hierarchy** — `layout: { type: 'tree' }` with a `collection` expansion for nested content.
 - **Static diagram** — `seeds: { literal: true, nodes: [...], edges: [...] }` and no expansion at all.
-  Props: seeds?: SeedSpec | SeedSpec[], expansion?: ExpansionSpec, revision?: string | number | boolean, live?: boolean, layout?: LayoutSpec, nodeStyle?: NodeStyleRules, edgeStyle?: EdgeStyleRules, behaviours?: BehaviourSpec[], reified?: Record<string, { source: string; target: string; type?: string; sourceType?: string; targetType?: string; }>, width?: string, height?: string, bg?: string, showStatus?: boolean, showControls?: boolean, controls?: string[], onNodeClick?: ((node: GraphNode & { recordId?: string; fields: { name: string; value: string; }[]; }) => void), expandRequest?: { id: string; expanders?: string[]; direction?: "in" | "out" | "both"; } | null, onNodeDoubleClick?: ((node: GraphNode & { recordId?: string; recordType?: string; }) => void), onEdgeClick?: ((edge: GraphEdge & { recordId?: string; recordType?: string; }) => void), onEdgeCreate?: ((payload: { source: GraphNode; target: GraphNode; sourceId: string; sourceType: string; targetId: string; targetType: string; sourceLabel: string; targetLabel: string; }) => void), onCanvasDoubleClick?: ((payload: { x: number; y: number; }) => void), onSelectionChange?: ((ids: string[]) => void), onNodeDragEnd?: ((payload: { id: string; x: number; y: number; recordId?: string; recordType?: string; }) => void), onNodeResize?: ((payload: { id: string; x: number; y: number; width: number; height: number; recordId?: string; recordType?: string; }) => void), host?: GraphHostBindings
+  Props: seeds?: SeedSpec | SeedSpec[], expansion?: ExpansionSpec, revision?: string | number | boolean, live?: boolean, layout?: LayoutSpec, nodeStyle?: NodeStyleRules, edgeStyle?: EdgeStyleRules, behaviours?: BehaviourSpec[], reified?: Record<string, { source: string; target: string; type?: string; sourceType?: string; targetType?: string; }>, width?: string, height?: string, bg?: string, showStatus?: boolean, empty?: string, emptyIcon?: string, showControls?: boolean, controls?: string[], onNodeClick?: ((node: GraphNode & { recordId?: string; recordType?: string; fields: { name: string; value: string; }[]; }) => void), expandRequest?: { id: string; expanders?: string[]; direction?: "in" | "out" | "both"; } | null, onNodeDoubleClick?: ((node: GraphNode & { recordId?: string; recordType?: string; }) => void), onEdgeClick?: ((edge: GraphEdge & { recordId?: string; recordType?: string; }) => void), onEdgeCreate?: ((payload: { source: GraphNode; target: GraphNode; sourceId: string; sourceType: string; targetId: string; targetType: string; sourceLabel: string; targetLabel: string; }) => void), onCanvasDoubleClick?: ((payload: { x: number; y: number; }) => void), onSelectionChange?: ((ids: string[]) => void), onNodeDragEnd?: ((payload: { id: string; x: number; y: number; recordId?: string; recordType?: string; }) => void), onNodeResize?: ((payload: { id: string; x: number; y: number; width: number; height: number; recordId?: string; recordType?: string; }) => void), nodeActions?: NodeAction[], onNodeAction?: ((payload: { action: string; id: string; recordId?: string; recordType?: string; }) => void), host?: GraphHostBindings
 
 ---
 
@@ -1401,6 +1406,7 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
   - via: string — Relation holding the contents. Defaults to "children".
   - connections: string — Reified relation entity to draw as lines between the cards — e.g. "Relationship". Only pairs whose two ends are both on the board are drawn, since a line to something elsewhere would leave the canvas. Each line carries the record it stands for, so clicking one can open it. Omit for a board with no connections.
   - typeStyles: string — Entity holding this board's colour per kind of thing — WE passes "TypeStyle". Read onto every node as `boardTypeColor`, for a style rule to pick up with `{ from: "data.boardTypeColor" }`. This is what a board's key writes.
+  - pending: string[] — Record ids whose card stands for a suggestion nobody has agreed to yet — an extraction pass can stage a whole record, so it is on the board and answers every query the accepted ones do. Read onto the matching node as `data.pending`, for a style rule or a node action to pick up with `{ when: { "data.pending": true } }` — the `data.` prefix is required, since a bare key reads a node field rather than seeded data, and matches nothing here. Ids rather than a query because only the capability that staged them knows which they are.
   - limit: number — Rows per type. Default 200.
   - Example: `{ "source": "board", "options": { "board": { "$": "local.boardId" } } }`
 - `dataset` — Seeds a single node for the current space — the starting point for exploring outward.
@@ -1523,13 +1529,45 @@ Most @we/primitives inherit **all** layers below. Props use design token values 
 |---|---|
 | SpaceValue | "0", "100", "200", "300", "400", "500", "600", "700", "800", "900", "1000" (or CSS length e.g. "16px") |
 | ColorValue | A **role** — see the table below — or a scale position "{hue}-{shade}" where hue = neutral, primary, success, warning, danger and shade = 0, 25, 50, 75, 100, 200–900, 1000. Also "white", "black". (or CSS color). **Prefer a role.** |
-| RadiusValue | "0", "100", "200", "300", "400", "500", "600", "700", "800", "900", "pill", "full" (or CSS length). Also two *semantic* values that follow the theme instead of naming a size: "avatar" (circular by default; use for anything square that reads as a profile picture) and "media" (square by default; images, video, embeds). Prefer these on an `EditableImage` or a raw element standing in for one — a pinned "full" or "pill" cannot follow a theme's shape settings. Note "full" is 50%, so it is an ellipse on any box that is not square; reach for "pill" on wide boxes. |
+| RadiusValue | "0", "100", "200", "300", "400", "500", "600", "700", "800", "900", "pill", "full" (or CSS length). Also five *theme-family* names that follow the theme instead of naming a size — see "Theme families" below. Prefer them on an `EditableImage`, a `Card`, or a raw element standing in for one: a pinned "full" or "pill" cannot follow a theme's shape settings. Note "full" is 50%, so it is an ellipse on any box that is not square; reach for "pill" on wide boxes. |
 | ShadowValue | "sm", "md", "lg", "xl" |
 | FontSizeValue | "base", "100", "200", "300", "400", "500", "600", "700", "800", "900", "1000" (or CSS length) |
 | FontFamilyValue | "base" (or CSS font-family) |
 | LineHeightValue | "none", "tight", "snug", "normal", "relaxed", "loose" (or CSS value) |
 | LetterSpacingValue | "tighter", "tight", "normal", "wide", "wider", "widest" (or CSS value) |
 | FontWeightValue | Named tokens: "regular" (400), "medium" (500), "semibold" (600), "bold" (700). Numeric: "100"–"900". CSS pass-through: "light", "normal", "bolder". |
+
+### Theme families — for `r`, `p` and `gap`, the counterpart of a colour role
+
+A colour role says what a colour is *for*. A **family** says what kind of thing a box *is*, so the
+theme can decide its shape and density: buttons are rounded like this, sheets like that. Naming one
+is how a box follows a theme's `surfaceRadius` or `surfacePadding` instead of pinning a number.
+
+| Name | `r` | `p` | `gap` | For |
+|---|---|---|---|---|
+| `control` | ✓ | | ✓ | Buttons, badges, tags — anything pressed. |
+| `surface` | ✓ | ✓ | ✓ | Cards, modals, sheets — **and anything inset inside one**. |
+| `input` | ✓ | | | Fields, selects, pickers. |
+| `avatar` | ✓ | | | Anything square that reads as a profile picture. |
+| `media` | ✓ | | | A **full-bleed** banner, video or embed spanning an edge. |
+
+`surface` and `media` read the same theme variable and differ only in what they fall back to when a
+theme sets nothing: `surface` is rounded like a card, `media` is **square**. Pick by whether the box
+is inset in something rounded or spans the edge — a cover image inside a modal is `surface`, the
+same image as a page-width header is `media`.
+
+```json
+{ "type": "Column", "props": { "bg": "surface", "r": "surface", "p": "surface", "gap": "surface" } }
+```
+
+**The blanks are constraints, not gaps.** A family only takes `p` when its theme value is a single
+length: `control`'s padding is horizontal-only (the vertical comes from the control's height, per
+size) and `input`'s is a full shorthand, and padding is assembled as four values in one declaration,
+so either would produce an invalid rule.
+
+**Only these props.** A family is meaningless on a margin or an offset — it says how much room a box
+puts *inside* itself, which answers nothing about the space between it and its neighbour. `m:
+"surface"` resolves to nothing and warns.
 
 ### Semantic Colour Roles — reach for these before a scale position
 
@@ -1555,7 +1593,8 @@ a user-chosen swatch.
 | `surface` | A card, panel or sheet sitting on the page. |
 | `surface-raised` | Something floating above the page — a popover, a floating bar, a docked rail with a shadow. |
 | `surface-sunken` | A well recessed into a surface — an inset box, a code block, an input trough. |
-| `surface-hover` / `surface-active` | Row and item feedback. Use inside `hoverProps` / `activeProps`. |
+| `surface-hover` / `surface-active` | Row and item feedback — something sitting **on** a surface. Use inside `hoverProps` / `activeProps`. |
+| `surface-sunken-hover` | A **well** lifted — an input, a textarea, a picker trigger. Hovering one with `surface-hover` lands it at about surface level and it stops looking recessed, so use this wherever the resting fill is `surface-sunken`. One state, not a hover/pressed pair: a field is clicked *into* rather than pushed, so hover, press and focus all resolve here and the ring is what says "focused". |
 | `control-surface` | The filled neutral of a *control* — a slider or switch track, a progress trough, a scrollbar thumb, a secondary button, a count chip. Not a surface and not a state. |
 | `text` | Primary body and heading text. |
 | `text-muted` | Secondary text — captions, labels, metadata. |
@@ -1563,7 +1602,8 @@ a user-chosen swatch.
 | `surface-inverse` | A surface deliberately opposite to the page — a tooltip. Holds a fixed lightness, so it does *not* flip with the theme. |
 | `on-inverse` | Text or an icon **on top of** `surface-inverse` — a tooltip's own text. **Not** for text on the accent, which is `on-accent`. |
 | `border` | Default borders and dividers. |
-| `border-strong` | Emphasised separation. |
+| `border-strong` | Emphasised separation — two regions that are genuinely apart. Not a hover state. |
+| `border-hover` | The edge of an interactive box under the pointer. Sits between `border` and `border-strong`, which are three ramp steps apart; borrowing the latter for hover makes an outline jump rather than acknowledge. |
 | `accent` | An accent *fill* — a primary button, a selected disc. |
 | `accent-hover` / `accent-active` | Hover and pressed states of an accent fill. |
 | `on-accent` | Text or an icon **on top of** an accent fill. |
@@ -1623,7 +1663,7 @@ we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
 | overflow | "hidden" \| "auto" \| "overlay" | Overflow behavior, both axes |
 | overflowX | "hidden" \| "auto" \| "overlay" | Horizontal overflow alone — a nav strip or tab bar that scrolls sideways instead of pushing the page wide |
 | overflowY | "hidden" \| "auto" \| "overlay" | Vertical overflow alone |
-| scrollbarWidth | "auto" \| "thin" \| "none" | How much room the scrollbar takes. `none` for a strip in fixed-height chrome, where a gutter would not fit |
+| scrollbarWidth | "auto" \| "thin" \| "none" | How much room the scrollbar takes. `none` for a strip in fixed-height chrome, where a gutter would not fit. **Use `none` or leave it unset — never `thin` or `auto`:** Chromium reads this property as "use the platform scrollbar" and drops the app's own styling for that element, so it becomes the one scroll region that does not match the rest (a different colour, square corners, and stepper arrows on Linux). `none` is safe because a hidden bar has nothing to style. |
 | scrollbarGutter | "auto" \| "stable" \| "stable both-edges" | Reserve the gutter whether or not it scrolls, so content does not shift when a scrollbar appears |
 | m | SpaceValue | Margin (all sides) |
 | mx | SpaceValue | Margin left + right |
@@ -1885,6 +1925,7 @@ AgentSettings extends Ad4mModel:
   - useTemplateTheme: boolean = true [we://use_template_theme]
   - themeScope: string [we://theme_scope]
   - installedModules: string [we://installed_modules]
+  - moduleSettings: string [we://module_settings]
   Relations:
   - installedTemplates: HasMany → Template [we://installed_template]
   - installedThemes: HasMany → Theme [we://installed_theme]
@@ -1910,6 +1951,7 @@ CallExtraction extends WeNode:
   Fields:
   - callId: string [we://call_id]
   - entities: string [we://extraction_targets]
+  - auto: string [we://auto_interpret]
 
 ChatMessage extends WeNode:
   Fields:
@@ -2100,6 +2142,7 @@ Space extends WeNode:
   - enabledViews: string [we://enabled_views]
   - extractionTargets: string [we://extraction_targets]
   - autoInterpret: boolean = true [we://auto_interpret]
+  - moduleSettings: string [we://module_settings]
   - shareExtractionDetail: boolean = false [we://share_extraction_detail]
   Relations:
   - location: HasOne → LocationBlock [we://location]
@@ -2108,6 +2151,7 @@ SpacePreference extends WeNode:
   Fields:
   - spaceUuid: string [we://space_uuid]
   - mutedModules: string [we://muted_modules]
+  - moduleSettings: string [we://module_settings]
   - hiddenViews: string [we://hidden_views]
   - templateId: string [we://template_id]
   - themeId: string [we://theme_id]
@@ -2158,6 +2202,13 @@ TextBlock extends WeNode:
   - text: string [we://text]
   - marks: json [we://marks]
   - version: number [we://version]
+
+Topic extends WeNode:
+  Fields:
+  - name: string (required) [we://name]
+  - description: string [we://description]
+  - icon: string [we://icon]
+  - color: string [we://color]
 
 Theme extends WeNode:
   Fields:
@@ -2328,6 +2379,10 @@ InterpretationStore:
   - activity: InterpretationActivityView[] — every extraction pass this agent knows about, its own and its peers’, running first then most recent. Each row carries display-ready strings: `label` is a whole clause ("Anna is waiting on the model", "Extracted 3 records"), `elapsed` is `m:ss` while running and empty once settled, `name`/`avatar`/`runner` identify who is running it, and `mine` says whether it is this agent’s. Only a row with `mine` can carry `prompt`/`response` — the exchange never left the runner’s machine — so gate a details affordance on `hasDetail` and explain the refusal rather than hiding it
   - runningCount: number — how many passes are still in flight. What a collapsed "N extractions running" summary counts
   - hasActivity: boolean — whether there is anything to show at all. Counts settled rows too, so a bar gated on it does not vanish the instant a pass finishes and take its result with it
+  - runningPasses: InterpretationActivityView[] — the passes still in flight, for a readout that lists them
+  - settledPasses: InterpretationActivityView[] — the passes that have finished, newest first
+  - settledCount: number — how many have finished. What a collapsed "N extractions processed" line counts
+  - detailWithheld: boolean — a peer's settled pass is on screen whose exchange this agent cannot open, because the space does not share it. Gate a footnote explaining the absence on this rather than on a row's own hasDetail, which is false for a pass that simply has not reached the model yet
   - capable: boolean — whether this node can interpret AT ALL, as distinct from being able to and having no model configured. Answered by asking the backend rather than by testing the client library, so it is false against a node whose executor predates the extraction stack. False means no fix exists from inside the app — say so rather than offering a control that cannot work
 - Actions:
   - dismissSettled(): forgets every finished row, leaving anything still running. A running pass is not this agent’s to dismiss
@@ -2396,6 +2451,7 @@ RouteStore:
 - State:
   - currentPath: string (the current route path)
   - segments: string[] (currentPath split by "/", e.g. ["/foo/bar"] → ["foo", "bar"])
+  - templateSegments: string[] — the segments BELOW the space prefix, which is a template's own coordinate space. A template mounted at /space/<id> reading its own route params wants this: at /space/abc/photo/xyz it is ["photo", "xyz"], so a `/photo/:postId` route reads templateSegments[1] and keeps reading it wherever the host mounts the template. Reading `segments` by index pins a template to the host's prefix and breaks when it moves.
   - params: Record<string, string> — the URL's query parameters, reactive; read one as { $: 'routeStore.params.<name>' }. Prefer $localState with syncParam for fields a view owns; read params directly only for parameters something else writes
 - Actions:
   - navigate(to: string, options?): navigates to a route (a bare path restores that route's remembered query string)
@@ -2548,8 +2604,10 @@ ShellStore:
   - createSpaceOpen: boolean — the create-space modal is open. Shell state because more than one place opens it; bind the modal’s open prop to this and close it with setCreateSpaceOpen
   - pendingDestructive: the destructive action a space template just asked for ({ path, title, body }), or null. The host raises its own confirmation in front of every one of them — a space template arrives from a stranger, so whether it asks before deleting is not the stranger's decision. Host chrome renders it; a template writing its own dialog for a destructive store action would be a second question about one click
   - spaceSettingsOpen: boolean — the space-settings panel is open. It configures whichever space is open, so it needs no id; bind a launcher’s active state to this
+  - spaceSettingsTab: string — the tab the space-settings panel opens on ('about' | 'features' | 'vocabulary'). A starting position read once as the panel mounts, not a controlled value: somebody who then walks to another tab stays there. Set it by passing a tab to openSpaceSettings
   - dockGeometry: Record<dockId, DockGeometry> — every registered panel's resolved box (top, left, width, height, edge, mode). Read a field as { $: "shellStore.dockGeometry['<id>'].<field>" } — by index, since a dock id holds a colon; the frame a panel is wrapped in binds its geometry this way so a move rewrites props rather than remounting
   - contentInset: { top, right, bottom, left } in pixels — what the content viewport gives up to panels that displace it. Read it to keep your own fixed chrome clear of docked panels
+  - coveredInset: { top, right, bottom, left } in pixels — what FLOATING panels are covering. They take no room, so they leave contentInset at zero while still sitting over the content: this is the part of your own box the reader cannot see. Read it to keep something in the clear where contentInset would say there is nothing in the way
   - dockResizing: boolean — a panel is being dragged or resized right now. Suspend transitions while it is true so the edge tracks the cursor
   - panelMaximised: boolean — some panel covers the whole window. The app's own chrome — sidebar, module rail — hides while it is true; a template's fixed chrome should too
   - dockPlacement: Record<dockId, { snap, displace, canDisplace, … }> — where each panel is parked, for its frame to read: which of the eight snaps it is at, whether it displaces content, and whether it may. The state a position menu ticks; dockGeometry is the resulting box
@@ -2559,6 +2617,8 @@ ShellStore:
   - insertSlots: { index, edge, mode: 'strip' | 'column', top, left, width, height }[] — the gaps in a strip of panels a dragged panel could join, while one is being dragged over it. Empty otherwise
   - activeInsert: string | null — the slot a drop would take right now, as <edge>:<index>, or null
   - layoutPinned: Record<string, boolean> keyed by panel id — whether that panel has been dragged away from where meta.panels declared it. False for a panel no layout mentions, since there is nothing to go back to. Gate a "reset to layout" affordance on it rather than on a placement merely existing
+  - layoutDirty: boolean — the interface on screen has been rearranged: one of its panels moved, resized or closed. What a whole-arrangement "reset layout" control is gated on, and not the same question as any layoutPinned entry — a closed panel has no placement, and a panel declared for another route is not among the docks at all. False for an interface declaring no panels
+  - panelSupplied: Record<moduleId, boolean> — modules whose panel this interface supplies itself, by declaring a `meta.panels` entry that names the module and carries a `node`. What a module's dock frame asks before drawing its own contents; the module still owns whether the panel is open and how big it is
 - Actions:
   - openShellView(id: string, path?: string): opens a shell overlay by id, optionally at a route inside it — the overlay keeps its own memory router, so this never touches the browser URL
   - closeShellView(): closes the currently open shell overlay
@@ -2571,12 +2631,16 @@ ShellStore:
   - scrollToId(id: string): smooth-scrolls the element with that DOM id into view
   - beginDockResize(id: string): remembers a panel's current size so the drag that follows is measured from it. Wire it to we-resize-handle's resizestart
   - resizeDock(id: string, side: 'left' | 'right' | 'top' | 'bottom' | 'top-left' | …, dx: number, dy: number): applies a resize drag from that side or corner, in screen pixels since it began. Wire it to resize with { $: 'arg.detail.delta' }
+  - resizeColumn(id, dy): moves the boundary between this panel and the one under it in a floating column, giving one what the other loses. What the upper panel's bottom grip calls when it has a neighbour — a boundary belongs to both panels, so only one of them draws it
   - endDockResize(): ends the drag and persists the size
   - fitDock(id: string): shrinks a panel to the shape its content wants, keeping the width the user chose — only when the module declares an aspect for its panel
   - beginDockMove(id: string, pointerX: number, pointerY: number): begins moving a panel, remembering where it and the pointer started. A maximised panel shrinks back under the cursor
   - moveDock(id: string, dx: number, dy: number): applies a move, in pixels from where beginDockMove was called
   - endDockMove(id: string): drops the panel — onto the snap or insert slot it is over, or where it is if that is nowhere
   - resetDockToLayout(panelId: string): puts a panel back where meta.panels asked for it, forgetting where it was dragged. Forgets rather than rewrites, so the panel keeps following the layout afterwards — including when the template changes it. Pair with layoutPinned
+  - closeTemplatePanel(panelId: string): dismisses a panel the interface declared in meta.panels, by that panel's id. What its titlebar's close button calls
+  - openTemplatePanel(panelId: string): puts a closed one back. The only way back to a panel that has been closed — it has no titlebar left to ask from — so a template offering a close should offer this too
+  - resetTemplateLayout(): puts every panel of the interface on screen back the way meta.panels declared them, and reopens the ones that were closed. The whole-arrangement counterpart of resetDockToLayout, and the only way back for a closed panel, which has no titlebar to reset itself from. Scoped to the template rather than the route, so a declaration that varies by route is reset once. Pair with layoutDirty
   - snapDock(id: string, snap: SnapPoint): parks a panel at one of the eight positions from a menu — the keyboard's way to move it
   - insertDock(id: string, edge: 'left' | 'right' | 'top' | 'bottom', position: number, mode?: 'strip' | 'column'): joins the strip of panels on that edge at that position, renumbering it — what a drop on a gap does
   - toggleMaximiseDock(id: string): covers the content region with the panel, or goes back to being a card. Nothing about where the panel was is overwritten while it is on
@@ -2620,6 +2684,9 @@ SpaceStore:
   - readMarkers: { nodeId, lastReadAt }[] — when this agent last read each node. No row means never read, so everything is unread. Read with find(spaceStore.readMarkers, { nodeId: item.id }); a keyed map would not be indexable by a row
   - unreadNodeIds: string[] — ids of the containers in this space holding something newer than this agent's marker for them, or never read. What an unread dot reads: { $: 'channel.id in spaceStore.unreadNodeIds' }. Ids rather than counts, since a count needs every child's timestamp
   - myMentions: { id, author, createdAt }[] — nodes in this space that mention this agent, newest first. createdAt is the backend’s comparable timestamp. Filtered client-side, so right for a space and wrong for an inbox across many
+  - spaceModuleSettings: SettingRow[] — what each capability that declares settings is set to FOR THIS COMMUNITY, as rows a screen renders directly: { group, groupLabel, key, label, description, type, options, value, source, set, locked, lockedBy }. `value` is already resolved across every level that had an opinion; `source` names the level that decided it ('default' when nobody did); `set` says whether THIS level holds an opinion, so a reset has something to undo; `locked` says a level that BINDS this one has forced it and the control must be disabled rather than springing back — a member's private refusal does not bind the community, so it never locks this list. Built from what modules declare, so a module that adds a setting gets a control with nothing to register
+  - myModuleSettings: SettingRow[] — the same rows, for what THIS AGENT has decided in THIS space. Private, held in the root dataset. The most specific of the four levels
+  - agentModuleSettings: SettingRow[] — the same rows, for what THIS AGENT has decided everywhere. Private. Render it in global settings, where the question is what you want in every space
   - autoInterpret: boolean — whether this space has calls interpreted (extracted into records) as they happen. A community decision, off by default. Readable by every member; writing it is space-settings
   - shareExtractionDetail: boolean — whether extraction passes in this space broadcast their prompt and response to every member, so interpretationStore.activity rows carry detail for everyone. A community decision, off by default
   - extractionTargets: string[] — the models a call in this space starts out extracting. The middle of three layers: shapeStore.extractionCandidates says what COULD be extracted, this says which of them a call begins with, and the call's own participants add or remove from there (modules.transcribe.extractionTargets). Unset falls back to the two classes that were hardcoded before the setting existed, so no space silently stops extracting. Writing it is space-settings
@@ -2642,6 +2709,11 @@ SpaceStore:
   - setSpaceDefaultTemplate(templateId: string, spaceUuid?): sets the template members see when they enter that space. Only repaints the app when the target is the space currently on screen
   - setSpaceDefaultTheme(themeId: string, spaceUuid?): sets the theme members see when they enter that space
   - setModuleEnabled(moduleId: string, enabled: boolean, spaceUuid?): turns a feature module on or off for a space; writes the resolved list, so the first toggle also pins whatever was on by fallback. Omit spaceUuid for the space on screen
+  - setSpaceModuleSetting(group: string, key: string, value?, spaceUuid?): sets one of a capability's settings for everyone in a space — `group` is the module id and `key` the setting's key, both off the row. **Omit `value` to clear it**, which returns the level to having no opinion: a stored value that happens to equal the default goes on overruling everything less specific while its control reads as untouched. Omit spaceUuid for the space on screen
+  - setMyModuleSetting(group: string, key: string, value?, spaceUuid?): the same, for this agent in one space. Private — written to the root dataset, never to the space. Omitting `value` clears it
+  - setAgentModuleSetting(group: string, key: string, value?): the same, for this agent in every space. Private, and global, so there is no space to name. Omitting `value` clears it
+  - autoInterpretForCall(collectionId): whether ONE CALL is extracted as it happens — its participants' answer if they gave one, else the space's. A function rather than a value because the answer is per call, like canAdministerSpace
+  - setAutoInterpretForCall(collectionId, on) => turns automatic extraction on or off for ONE CALL, for everyone in it. A participant's decision, unlike setAutoInterpret, which administers the space — and it leaves the space's default alone. Does not stop a pass already running: those tokens are spent
   - setAutoInterpret(enabled: boolean, spaceUuid?): turns automatic call interpretation on or off for a space. Omit spaceUuid for the space on screen
   - setShareExtractionDetail(enabled: boolean, spaceUuid?): turns broadcasting of extraction prompts and responses on or off for a space. Omit spaceUuid for the space on screen
   - setExtractionTarget(entity: string, on: boolean, spaceUuid?): adds or removes one model from what this space's calls start out extracting. Writes the resolved list, so the first toggle also pins whatever was on by fallback. The community's decision; a call's participants override it per call
@@ -3873,7 +3945,7 @@ Two kinds of entry, one list:
 | `size`     | `sm` `md` `lg` `full`. Named, never pixels: only the host can see the viewport.             |
 | `grow`     | Share of the *spare* room in a column, relative to neighbours. Absent means 1; 0 pins a height. |
 | `displace` | Push the content aside instead of covering it. Edge snaps only — ignored on a corner.          |
-| `route`    | Only while this segment is in the path. Absent means every route.                               |
+| `route`    | Only while one of these segments is in the path — a segment or a list. Absent means every route. |
 | `open`     | Whether to open it as well as place it. Absent means yes — see the warning below.               |
 
 **`open: false` when a module's launcher does more than open a panel.** Placing a `module` panel
@@ -3898,6 +3970,32 @@ one with `grow: 0`.
 Below 900px of window width a column collapses — every member takes the whole content region as a
 full-bleed sheet, since two narrow cards over content leave nothing of either.
 
+### Placing a module's own pieces
+
+A module publishes **named parts** and composes its own panel out of them, so an interface that
+wants them arranged differently places the pieces rather than copying them:
+
+```json
+{ "type": "$part", "props": { "id": "transcribe.transcriptFeed" } }
+```
+
+`subject` points a part at a different record from the one its module is about — a transcript feed
+over a call somebody opened from a link rather than the one being recorded:
+
+```json
+{ "type": "$part", "props": { "id": "transcribe.transcriptFeed", "subject": { "$": "routeStore.params.call" } } }
+```
+
+A part naming a module nobody has installed renders nothing and reports itself, the same way a
+contribution to an unprovided anchor does. Placing the module's *whole* panel is still
+`{ "module": "<id>" }` in `meta.panels`; parts are for building something else out of it.
+
+**Supplying a module's panel yourself.** A `meta.panels` entry carrying **both** `module` and
+`node` means "that module's panel, arranged here": the module goes on deciding whether the surface
+is up and how big it is, and the entry decides what is inside. Without it, an interface that wrote
+its own version got *two* panels — the module opens its own when its state says so, and it had no
+way to know somebody else was already showing it.
+
 ### It is a suggestion, not a setting
 
 `meta.panels` is the middle rung of three. Whatever the reader last dragged a panel to wins; then
@@ -3905,7 +4003,10 @@ the template's declaration; then the module's own opening bid. The declaration i
 never written, so switching template or section is non-destructive.
 
 A shell that routes itself — every showcase template does — scopes a declaration with `route`
-instead, since it has no sections to hang one on.
+instead, since it has no sections to hang one on. `route` says **whether**, never **where**: a
+panel that changed position from one page to the next would work until the reader dragged it once,
+since a stored placement is keyed by template and panel rather than by route and outranks every
+declaration. A page that genuinely needs its own arrangement wants to be a view.
 
 A **section** (`meta.role: 'view'`) may declare panels too, and should when the layout is about
 that section rather than the whole interface — a graph wants a transcript beside it and an inbox

@@ -1,7 +1,9 @@
 import { queryIRFlag } from '@shared/queryIRFlag';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
+import { resolveParts, resolvePartsInRoutes } from '@shared/registries/moduleParts';
 import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry';
 import { onSlotRegistryChanged, slotRegistry } from '@shared/registries/slotRegistry';
+import { provideTemplateBag } from '@shared/registries/templateBag';
 import { buildTemplateBag, CHROME_TIER, SPACE_TIER } from '@shared/registries/templateSurface';
 import { hostSourceBag } from '@shared/sources';
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
@@ -32,7 +34,7 @@ import type { DatasetProxy } from '@we/entities';
 import { getEntity } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import type { TemplateSchema } from '@we/schema-shared';
-import { expandViewRoutes, hasViewsMarker } from '@we/schema-shared';
+import { expandViewRoutes, hasViewsMarker, SPACE_ROUTE_PATH } from '@we/schema-shared';
 import type { VisualEditorContextValue } from '@we/schema-solid';
 import { RenderSchema, VisualEditorProvider } from '@we/schema-solid';
 import { CHROME_RAIL_WIDTH } from '@we/template-shell';
@@ -427,6 +429,10 @@ export default function TemplateProvider() {
     invented for: it arrives from a stranger, so whether it asks before deleting is the stranger's
     decision, and this takes that decision away from them.
   */
+  /*
+    Lent to `TemplatePanelBody`, which renders a template's panel contents inside a chrome-authored
+    frame. Grants follow authorship, not render site — see `shared/registries/templateBag.ts`.
+  */
   const templateBag = buildTemplateBag(stores, {
     grants: SPACE_TIER,
     onDestructive: (path, args) => shellStore.requestDestructive(path, args),
@@ -434,6 +440,8 @@ export default function TemplateProvider() {
     // members reach past the space on screen — see `ModuleStoreSurface`.
     moduleChromeOnly: moduleRegistry.chromeOnlyStoreMembers(),
   });
+
+  onCleanup(provideTemplateBag(templateBag));
 
   /*
     What a drag looks like. Registered from here because it is the same kind of knowledge as
@@ -487,7 +495,24 @@ export default function TemplateProvider() {
     props: { styles: { display: 'contents' } },
     get children() {
       slotVersion();
-      return slotRegistry.nodes();
+      /*
+        `$part` expanded here as well as `$slot`, which the registry does on its way out.
+
+        A module composing its own chrome out of its own published parts is an ordinary thing to
+        write — the transcript panel builds its feed from `transcriptLines`, and the extraction panel
+        its chips from `extractionTargets` — and until now the only thing that expanded a part was a
+        *template* placing one. So the workshop, which supplies both panel bodies and renders them
+        through `TemplatePanelBody`, worked; the default template rendered the module's own panels
+        through this path and drew "Unknown component $part" in a red box where each fragment should
+        have been.
+
+        Not in the slot registry itself, which `moduleParts` already imports for the parts map —
+        putting it there makes a cycle out of two modules that currently only point one way.
+      */
+      return slotRegistry.nodes().flatMap((node) => {
+        const expanded = resolveParts(node);
+        return Array.isArray(expanded) ? expanded : [expanded];
+      });
     },
   };
 
@@ -585,14 +610,60 @@ export default function TemplateProvider() {
   /** Their first path segment — what the redirect compares a URL against. */
   const HOST_ROUTE_SEGMENTS = new Set(HOST_ROUTES.map((route) => route.path.split('/')[1]));
 
+  /*
+    Every space template lives under `/space/:spaceId`, and the host is what puts it there.
+
+    A template that marks where the space's sections go declares this prefix itself, because its
+    route table is *about* that shape. A template that routes itself declared nothing, and so
+    mounted its own paths at the top level — `/board`, `/channel/:id` — which took it out of the one
+    mechanism that answers "which space am I in": the URL. The dataset effect in SpaceStore reads
+    `segments[0] === 'space'` and returns otherwise, so under a self-routing template the open space
+    was whatever happened to be in the store. Reload lost it, sidebar switching landed on the
+    template's catch-all, share links matched nothing, and the record page — injected at the views
+    marker — was never mounted at all.
+
+    None of that is a property of routing your own screens. It is a property of not being under the
+    space prefix, so the host supplies the prefix rather than each template remembering it. What a
+    template still owns is everything below: its own children here, the space's sections there.
+
+    A transparent layout route — `$routes` and nothing else — because the template's own chrome is
+    in its root node, which `TemplateLayout` renders outside the router. This adds an address, not a
+    wrapper anybody can see.
+  */
   const routesWithViews = createMemo(() => {
     const routes = templateSchema.routes ?? [];
-    if (!hasViewsMarker(routes)) return routes;
-    return expandViewRoutes(routes, spaceStore.routableViews(), {
-      activeIds: 'spaceStore.enabledViewIds',
-      notInSpace: noSectionsNode,
-      extraRoutes: HOST_ROUTES as unknown as (typeof routes)[number][],
-    });
+    const extras = HOST_ROUTES as unknown as (typeof routes)[number][];
+    /*
+      `$part` expanded over the whole route table, before the router sees it.
+
+      Parts used to be a panel-only mechanism — `TemplatePanelBody` was the single call site — so an
+      interface could compose a module's fragments in a panel and nowhere else. That was never a
+      decision, only where the need first appeared: a template wanting a transcript on one of its
+      own pages, or a *view* built out of a module's pieces, wrote a `$part` that survived the walk
+      and reached the renderer, which mounts nothing for a type it does not know.
+
+      Here, for the same reason `$views` is expanded here: it is a property of the schema rather
+      than of the walk, so everything downstream — the router, the keep-alive stubs, the `$nav`
+      depths — goes on seeing an ordinary route tree. Views come through this memo too, so a section
+      gets parts for nothing.
+    */
+    if (hasViewsMarker(routes)) {
+      return resolvePartsInRoutes(
+        expandViewRoutes(routes, spaceStore.routableViews(), {
+          activeIds: 'spaceStore.enabledViewIds',
+          notInSpace: noSectionsNode,
+          extraRoutes: extras,
+        }),
+      );
+    }
+    if (!routes.length) return routes;
+    return resolvePartsInRoutes([
+      {
+        path: SPACE_ROUTE_PATH,
+        children: [{ type: '$routes' }],
+        routes: [...routes, ...extras],
+      } as unknown as (typeof routes)[number],
+    ]);
   });
 
   /**
@@ -658,6 +729,20 @@ export default function TemplateProvider() {
     const segments = routeStore.segments();
     if (segments[0] !== 'space' || !segments[1]) return;
 
+    /*
+      Only for a template whose sections these are.
+
+      Now that the host mounts every template under the space prefix, a self-routing template's own
+      screens sit at exactly the depth this reads — `/space/<id>/board` — and `board` is not a view,
+      so this bounced straight off it to the first section in the nav. The guard's job is "keep the
+      URL on a section this space actually has", which is a question only about a template that has
+      sections; one that routes itself answers for its own paths.
+
+      The same marker as the wrap above, and it means the same thing in both places: this template
+      hosts the space's sections.
+    */
+    if (!hasViewsMarker(templateSchema.routes ?? [])) return;
+
     const nav = spaceStore.viewNav();
     if (!nav.length) return;
 
@@ -665,6 +750,24 @@ export default function TemplateProvider() {
     if (current && HOST_ROUTE_SEGMENTS.has(current)) return;
     if (current && spaceStore.enabledViewIds().some((id) => id === viewIdForSegment(current))) return;
     routeStore.navigate(`/space/${segments[1]}/${nav[0].segment}`, { replace: true });
+  });
+
+  /*
+    A self-routing template has no home screen, so `/` is not a place it can be.
+
+    The marker kind owns `/` deliberately — the default template's `homeRoute` is the spaces
+    overview — but a template that only describes screens *inside* a space has nothing to render
+    there, and after the wrap above it has no route matching it either. Send it to the space it is
+    already holding rather than to the host's not-found.
+
+    `replace`, because `/` was never somewhere anybody chose to be.
+  */
+  createEffect(() => {
+    if (routeStore.currentPath() !== '/') return;
+    if (hasViewsMarker(templateSchema.routes ?? [])) return;
+    const dataset = datasetStore.currentDataset();
+    if (!dataset) return;
+    routeStore.navigate(`/space/${dataset.sharedId ?? dataset.id}`, { replace: true });
   });
 
   // Any theme the template names by `theme: { themeName }` needs its stylesheet present before the

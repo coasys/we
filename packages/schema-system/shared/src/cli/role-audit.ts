@@ -13,7 +13,8 @@
  * toward legibility, and never appears in the theme editor's audit either. It is invisible to the
  * whole contrast layer.
  *
- * So this reports every `bg`, `color` and border colour that names a scale position, having imported
+ * So this reports every `bg`, `color` and border colour that names a scale position — including one
+ * written inside an expression, which is where a conditional colour hides — having imported
  * and walked the real composed tree — the same approach `surface-audit` takes, and for the same
  * reason: a `sectionCard()` from another package contributes nodes that no grep over source will
  * attribute to the route rendering it.
@@ -50,8 +51,14 @@ const SCALE = /^(neutral|primary|success|warning|danger)-(0|25|50|75|100|200|300
  * Named rather than inferred: a palette is a *decision*, and there is nothing in a node that
  * distinguishes "this category is blue" from "this card forgot to say surface". Listing them here
  * makes the exemption reviewable, which a heuristic would not be.
+ *
+ * These said `GraphRoute/` until the directory was renamed to `GraphView/`, so both matched nothing
+ * — an exemption that had quietly stopped exempting. Nobody noticed because the colours it was
+ * meant to cover are written as expressions, which this script did not read either, so the two
+ * faults cancelled into a clean run. A path in a regex is a reference nothing typechecks; if these
+ * files move again, that is the failure mode to expect.
  */
-const PALETTES = [/GraphRoute\/Palette\./, /GraphRoute\/Board\./, /\/fixtures\//];
+const PALETTES = [/GraphView\/Palette\./, /GraphView\/Board\./, /\/fixtures\//];
 
 /** Every child position a node can hold — children, routes, slots, and nodes hiding inside props. */
 function descend(node: Node): Node[] {
@@ -72,14 +79,36 @@ function descend(node: Node): Node[] {
   return out;
 }
 
-/** The colour a border shorthand names, if it names a token rather than a raw CSS colour. */
-function borderColorOf(props: Record<string, unknown>): string | undefined {
-  const explicit = props.borderColor;
-  if (typeof explicit === 'string' && explicit) return explicit;
-  const shorthand = props.border;
-  if (typeof shorthand !== 'string') return undefined;
-  const last = shorthand.trim().split(/\s+/).pop();
-  return last && /^[a-z][a-z0-9-]*$/.test(last) ? last : undefined;
+/** Every string literal inside an expression: `"a ? 'success-500' : 'surface'"` yields both. */
+const EXPRESSION_LITERAL = /'([^']*)'|"([^"]*)"/g;
+
+/**
+ * The colours one prop could paint — one for a plain string, one per literal for an expression.
+ *
+ * The expression half is the half that was missing, and it hid a real defect for as long as this
+ * script has existed: the transcribe panel's level meter wrote
+ * `bg: { $: "speaking ? 'success-500' : 'surface-active'" }`, which is a scale position beside a
+ * role in the same ternary. A conditional colour is the *commonest* place a scale position survives
+ * a review — the eye reads the branch, not the value — and testing `typeof value === 'string'`
+ * skipped every one of them while reporting a clean run.
+ *
+ * Literals that are not colours are harmless here: a finding must also match `SCALE`, which is five
+ * known hue names and a step, and nothing else in a `bg` or `color` looks like that.
+ */
+function colorValues(value: unknown): string[] {
+  if (typeof value === 'string') return [value];
+  if (isNode(value) && typeof (value as { $?: unknown }).$ === 'string')
+    return [...(value as { $: string }).$.matchAll(EXPRESSION_LITERAL)].map((m) => m[1] ?? m[2] ?? '');
+  return [];
+}
+
+/** The colours a border names, if it names tokens rather than raw CSS colours. */
+function borderColorsOf(props: Record<string, unknown>): string[] {
+  const explicit = colorValues(props.borderColor).filter(Boolean);
+  if (explicit.length) return explicit;
+  return colorValues(props.border)
+    .map((shorthand) => shorthand.trim().split(/\s+/).pop())
+    .filter((last): last is string => !!last && /^[a-z][a-z0-9-]*$/.test(last));
 }
 
 const findings: { file: string; path: string; prop: string; value: string; type: string }[] = [];
@@ -87,14 +116,16 @@ const findings: { file: string; path: string; prop: string; value: string; type:
 function walk(node: Node, file: string, path: string[]) {
   const here = [...path, node.type ?? '?'];
   const props = node.props ?? {};
-  const candidates: [string, unknown][] = [
-    ['bg', props.bg],
-    ['color', props.color],
-    ['border', borderColorOf(props)],
+  const candidates: [string, string[]][] = [
+    ['bg', colorValues(props.bg)],
+    ['color', colorValues(props.color)],
+    ['border', borderColorsOf(props)],
   ];
-  for (const [prop, value] of candidates) {
-    if (typeof value === 'string' && SCALE.test(value)) {
-      findings.push({ file, path: here.slice(-4).join(' > '), prop, value, type: node.type ?? '?' });
+  for (const [prop, values] of candidates) {
+    for (const value of values) {
+      if (SCALE.test(value)) {
+        findings.push({ file, path: here.slice(-4).join(' > '), prop, value, type: node.type ?? '?' });
+      }
     }
   }
   for (const child of descend(node)) walk(child, file, here);

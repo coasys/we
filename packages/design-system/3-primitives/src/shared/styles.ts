@@ -1,4 +1,5 @@
-import { css } from 'lit';
+import { scrollbarRules } from '@we/tokens';
+import { css, unsafeCSS } from 'lit';
 
 export default css`
   :host {
@@ -35,22 +36,17 @@ export default css`
     display: none !important;
   }
 
-  ::-webkit-scrollbar {
-    width: var(--we-scrollbar-width);
-  }
+  /*
+    The shared scrollbar ruleset, from the one place that owns it.
 
-  ::-webkit-scrollbar-track {
-    background-image: var(--we-scrollbar-background-image);
-    background: var(--we-scrollbar-background);
-  }
+    Written out here before, and not quite the same as the app's global copy: it never hid the
+    scrollbar button pseudo-element, so a scroll region inside a primitive's shadow root grew
+    stepper arrows while the identical region in light DOM did not. Styling the scrollbar at all is
+    what makes Chromium draw the custom bar INCLUDING its buttons, so a partial copy actively
+    produces the arrows the complete one suppresses.
 
-  ::-webkit-scrollbar-corner {
-    background: var(--we-scrollbar-corner-background);
-  }
-
-  ::-webkit-scrollbar-thumb {
-    box-shadow: var(--we-scrollbar-thumb-box-shadow);
-    border-radius: var(--we-scrollbar-thumb-border-radius);
-    background-color: var(--we-scrollbar-thumb-background);
-  }
+    It also set width and never height, leaving a horizontal bar at the browser's default thickness
+    inside a shadow root.
+  */
+  ${unsafeCSS(scrollbarRules())}
 `;

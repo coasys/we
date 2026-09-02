@@ -940,6 +940,9 @@ importers:
         specifier: ^6.0.2
         version: 6.0.2
     devDependencies:
+      '@types/node':
+        specifier: ^26.3.0
+        version: 26.3.0
       '@we/cli':
         specifier: workspace:*
         version: link:../../cli
