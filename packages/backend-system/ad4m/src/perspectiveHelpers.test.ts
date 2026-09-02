@@ -1,16 +1,16 @@
 import type { PerspectiveProxy, SHACLShape } from '@coasys/ad4m';
 import { describe, expect, it, vi } from 'vitest';
 
-// ── Mock the WE models registry ──────────────────────────────────────────────
-vi.mock('@we/models', () => ({
-  getRegisteredModelNames: () => ['Message', 'Channel'],
-  getModel: (name: string) => ({ name }),
-  getModelTargetClass: (model: { name: string }) => {
+// ── Mock the WE entity registry ──────────────────────────────────────────────
+vi.mock('@we/entities', () => ({
+  getRegisteredEntityNames: () => ['Message', 'Channel'],
+  getEntity: (name: string) => ({ name }),
+  getEntityTargetClass: (entity: { name: string }) => {
     const map: Record<string, string> = {
       Message: 'flux://Message',
       Channel: 'flux://Channel',
     };
-    return map[model.name] ?? '';
+    return map[entity.name] ?? '';
   },
 }));
 
@@ -75,18 +75,16 @@ describe('getForeignShacl', () => {
     expect(foreign[0].shape.targetClass).toBe('other-app://Message');
   });
 
-  it('keeps shapes with a native name collision when targetClass is missing', async () => {
+  it('drops shapes with a native name collision when targetClass is missing', async () => {
     const perspective = mockPerspective([
-      // Same name but no targetClass → can't confirm it's native, keep it
+      // Same name as a native entity, and no targetClass to tell them apart.
       { name: 'Channel', shape: makeShape(undefined) },
     ]);
 
     const foreign = await getForeignShacl(perspective);
 
-    // targetClass == null → filter returns false (null != null is false), so this should be filtered
-    // Actually: shape.targetClass != null → false, so the filter returns true only if !nativeNames.has(name)
-    // "Channel" IS in nativeNames, so we enter the disambiguation branch:
-    //   shape.targetClass != null (null != null → false), so the filter returns false
+    // Nothing distinguishes it from WE's own Channel, so it is treated as native and skipped —
+    // the same call the multi-round-trip version made when getShaclTargetClass came back empty.
     expect(foreign.length).toBe(0);
   });
 
