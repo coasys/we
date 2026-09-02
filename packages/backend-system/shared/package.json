@@ -18,10 +18,10 @@
     }
   },
   "dependencies": {
-    "zod": "^4.1.12"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
-    "@types/node": "^26.3.0",
+    "@types/node": "^26.4.0",
     "@vitest/coverage-v8": "^4.1.11",
     "@we/cli": "workspace:*",
     "tsup": "^8.5.1",
