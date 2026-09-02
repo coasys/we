@@ -99,9 +99,38 @@ function resolveAnchors(node: SchemaNode): SchemaNode | SchemaNode[] {
   const nextChildren = resolveList(node.children);
   const nextProps = resolveValue(node.props);
   const nextSlots = resolveValue(node.slots);
+  const nextRoutes = resolveRoutes(node.routes);
 
-  if (nextChildren === node.children && nextProps === node.props && nextSlots === node.slots) return node;
-  return { ...node, children: nextChildren, props: nextProps, slots: nextSlots } as SchemaNode;
+  if (
+    nextChildren === node.children &&
+    nextProps === node.props &&
+    nextSlots === node.slots &&
+    nextRoutes === node.routes
+  )
+    return node;
+  return { ...node, children: nextChildren, props: nextProps, slots: nextSlots, routes: nextRoutes } as SchemaNode;
+}
+
+/**
+ * Walk a `routes` array the same way `resolveList` walks `children`.
+ *
+ * Routes are schema nodes (with an extra `path`) — a `$slot` inside a route page content needs
+ * the same resolution. Returns the original reference when nothing changed.
+ */
+function resolveRoutes(routes: SchemaNode['routes']): SchemaNode['routes'] {
+  if (!routes?.length) return routes;
+  let changed = false;
+  const out = routes.map((route) => {
+    const resolved = resolveAnchors(route);
+    // A route entry itself should never be a `$slot`, but handle gracefully.
+    if (Array.isArray(resolved)) {
+      changed = true;
+      return (resolved[0] ?? route) as (typeof routes)[number];
+    }
+    if (resolved !== route) changed = true;
+    return resolved as (typeof routes)[number];
+  });
+  return changed ? out : routes;
 }
 
 /** Anything node-shaped. Token objects (`{ $: … }`) have no `type`, so they fall through here. */
@@ -237,6 +266,21 @@ export const slotRegistry = {
   /** Every anchor something has been contributed to, for reporting one nobody provides. */
   contributedAnchors(): string[] {
     return [...new Set(registry.all().map((entry) => entry.anchor))].filter((a) => !isCoreAnchor(a));
+  },
+
+  /**
+   * Resolve `$slot` markers in a complete schema tree, including its `routes`.
+   *
+   * The shell's own top-level chrome goes through {@link nodes}, which resolves each entry
+   * individually. Shell *views* — settings, profile, marketplace — are templates rendered by
+   * `RenderSchema` rather than entries in this registry, so their `$slot` markers need an
+   * explicit resolution pass before they reach the renderer.
+   *
+   * Call once per render, not per frame — the result is a new tree and should be stored.
+   */
+  resolveTemplate(schema: SchemaNode): SchemaNode {
+    const resolved = resolveAnchors(schema);
+    return Array.isArray(resolved) ? schema : resolved;
   },
 
   /** Just the nodes, ready to compose into the shell schema, with `$slot` markers filled in. */

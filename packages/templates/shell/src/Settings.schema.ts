@@ -66,6 +66,8 @@ const accountSection: SchemaNode = {
     },
     // Billing: credits, email, billing-portal link — shown only on metered hosted nodes.
     billingSection,
+    // Extension point for module-contributed account content (e.g. email, tier, billing link).
+    { type: '$slot', props: { anchor: 'account-content' } },
     accountSettings,
   ],
 };
@@ -824,6 +826,11 @@ export const settingsTemplate: TemplateSchema = {
     // the switch to false whatever it is set to, so the page is inert rather than dangerous if
     // somebody navigates to it directly.
     { path: '/developer', ...page([developerSection]) },
+    // Module-contributed pages. A module navigates here via a nav item contributed to
+    // `settings-nav` and renders its page content through the `settings-pages` anchor.
+    // Each contributed node should use `$if` on `routeStore.segments.1` to show only for
+    // its own page name — e.g. `/ext/billing` → segments.1 === 'billing'.
+    { path: '/ext/:page', ...page([{ type: '$slot', props: { anchor: 'settings-pages' } }]) },
     // Anything else lands on Account rather than an empty frame.
     { path: '*', ...page([accountSection]) },
   ],
@@ -890,8 +897,10 @@ export const settingsTemplate: TemplateSchema = {
                     then: navItem('Developer', 'flask', '/developer'),
                   },
                 },
-                // Future: module-contributed settings nav items will go here once
-                // the schema renderer supports $slot resolution in template content.
+                // Module-contributed nav items. A module contributes to `settings-nav` through its
+                // `slots` declaration — the slot registry resolves this marker before the renderer
+                // sees it, so an empty anchor produces no gap.
+                { type: '$slot', props: { anchor: 'settings-nav' } },
               ],
             },
             { type: 'Column', props: { flex: '1', gap: '600' }, children: [{ type: '$routes' }] },
