@@ -16,6 +16,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
+import type { TemplatePanel } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
 import * as showcase from './index.ts';
@@ -155,9 +156,10 @@ describe('the showcase templates', () => {
  * can percent-encode; `setParam` writes through `URLSearchParams`, so it does not have to.
  */
 describe('the workshop template’s call selection', () => {
-  const workshop = showcase.workshopTemplate as Schema & {
-    meta?: { panels?: { id: string; node?: unknown; module?: string; route?: string | string[] }[] };
-  };
+  // `TemplatePanel` rather than a shape written out here: the hand-written one had no `dock`, so
+  // adding that field to the real type left this file typechecking against a panel that no longer
+  // existed.
+  const workshop = showcase.workshopTemplate as Schema & { meta?: { panels?: TemplatePanel[] } };
 
   it('has one board route, whichever call it is about', () => {
     const paths = (workshop.routes ?? []).map((route) => route.path);
