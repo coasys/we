@@ -54,8 +54,21 @@ const MARK = join(HERE, 'we-mark.svg');
  */
 const ICON_THEME = 'dark' as const;
 
-/** Share of the tile left as margin on each side. The mark is wide, so this is what stops it touching the edges. */
+/**
+ * Margin around the mark, as a share of the tile — and there are two, because the icon is seen at
+ * two scales that want different things. Optical sizing, in the ordinary icon-design sense.
+ *
+ * A desktop icon is 48-256px among other app icons on a panel, where the margin is what makes it
+ * read as a designed tile rather than a crop, and what separates it from its neighbours.
+ *
+ * A favicon is 16-32px in browser chrome, where nothing needs separating and every pixel of margin
+ * is one the letterforms do not get. The mark is wide, so it is already short for its box; at tab
+ * sizes the difference between these two numbers is legibility.
+ *
+ * A single compromise value would be slightly wrong in both places rather than right in either.
+ */
 const PADDING = 0.12;
+const FAVICON_PADDING = 0.06;
 
 /**
  * Corner radius, as a share of the tile — and with it, transparency outside the corners.
@@ -147,7 +160,8 @@ function resolvePalette() {
 
 // ─── Composition ────────────────────────────────────────────────────────────────
 
-function composeIcon(size = 1024): string {
+/** @param padding - see PADDING vs FAVICON_PADDING; the only difference between the two renders. */
+function composeIcon(size = 1024, padding = PADDING): string {
   const svg = readFileSync(MARK, 'utf8');
   const viewBox = /viewBox="([\d.\s-]+)"/.exec(svg);
   if (!viewBox) throw new Error(`[brand] ${MARK} has no viewBox — cannot place the mark in a square.`);
@@ -157,7 +171,7 @@ function composeIcon(size = 1024): string {
   // edit to the mark needs no change here.
   const body = svg.slice(svg.indexOf('<g\n     id="layer1"'), svg.lastIndexOf('</svg>'));
   const { page, from, to } = resolvePalette();
-  const inset = Math.round(size * PADDING);
+  const inset = Math.round(size * padding);
   const box = size - inset * 2;
 
   /*
@@ -312,13 +326,23 @@ function main() {
   copyFileSync(join(master, '1024x1024.png'), ELECTRON_ICON);
   rmSync(master, { recursive: true, force: true });
 
-  // Both are files the set above already produced, so nothing is scaled twice. The favicon is the
-  // same composition as the desktop icon, tile and all — one mark, one look, everywhere it appears.
+  // The app switcher renders at desktop scale, so it takes the desktop composition unchanged.
   copyFileSync(join(TAURI_ICONS, '128x128.png'), APP_SWITCHER_ICON);
+
+  /*
+    The favicon is the tighter composition, so it needs its own render rather than the `.ico` from
+    the set above. Only `icon.ico` is kept — the rest of the pass is discarded, which is cheaper
+    than reimplementing an ICO writer over six PNG sizes.
+  */
+  const favDir = join(HERE, '..', '.favicon');
+  const favSvg = join(HERE, '..', 'favicon.generated.svg');
+  writeFileSync(favSvg, composeIcon(1024, FAVICON_PADDING));
+  execFileSync('pnpm', ['exec', 'tauri', 'icon', favSvg, '-o', favDir], { cwd: join(HERE, '..'), stdio: 'pipe' });
   for (const target of FAVICON_TARGETS) {
     mkdirSync(dirname(target), { recursive: true });
-    copyFileSync(join(TAURI_ICONS, 'icon.ico'), target);
+    copyFileSync(join(favDir, 'icon.ico'), target);
   }
+  rmSync(favDir, { recursive: true, force: true });
   console.log(`✅ Electron master (1024, alpha), ${FAVICON_TARGETS.length} favicons, app-switcher icon written`);
 }
 
