@@ -45,5 +45,6 @@
     "vite-plugin-static-copy": "^4.1.1",
     "wait-on": "^9.1.0",
     "vitest": "^4.1.11"
-  }
+  },
+  "desktopName": "io.weco.electron.desktop"
 }
