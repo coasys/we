@@ -569,7 +569,6 @@
   width: 24px;
   height: 24px;
   padding: 0;
-
   color: var(--we-role-text-muted);
   background: var(--we-role-surface-raised);
   border: 1px solid var(--we-role-border);
@@ -589,11 +588,11 @@
   }
 }
 
-// Destructive, and said in colour rather than only in the icon: a bin and a tick the same shade is
-// a pair of buttons you have to read before pressing, on a control small enough that reading it is
-// most of the work.
 /*
  * The two answers, coloured — a status foreground at rest, filling on hover.
+ *
+ * Said in colour rather than only in the icon: a bin and a tick the same shade is a pair of buttons
+ * you have to read before pressing, on a control small enough that reading it is most of the work.
  *
  * The foreground role rather than the fill for the resting state, because at 24px the icon *is* the
  * button and it has to stay legible against the raised surface behind it; `dangerText` and
