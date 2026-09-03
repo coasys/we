@@ -30,6 +30,7 @@ import {
   insertionSlots,
   laneable,
   layerOrder,
+  NARROW_VIEWPORT_PX,
   NO_INSET,
   occupiedFor,
   placementFromDeclaration,
@@ -53,6 +54,7 @@ import {
   DOCK_FRAME_ATTR,
   dockFrame,
   dockRegistry,
+  dockTitle,
   hostChromeReserves,
   hostDockStores,
   onDockRegistryChanged,
@@ -387,8 +389,9 @@ export interface ShellStore {
     {
       index: number;
       edge: string;
-      mode: 'band' | 'lane';
-      /** Which lane a `lane` slot is in — its position inward from the edge, or the floating one. */
+      /** `tab` is the seat itself: land here to stack behind whatever is showing in it. */
+      mode: 'band' | 'lane' | 'tab';
+      /** Which lane a `lane` or `tab` slot is in — its position inward from the edge, or the floating one. */
       lane: number | 'float' | '';
       key: string;
       top: string;
@@ -479,7 +482,7 @@ export interface ShellStore {
     id: string,
     edge: Exclude<DockEdge, null>,
     position: number,
-    mode?: 'band' | 'lane',
+    mode?: 'band' | 'lane' | 'tab',
     lane?: number | 'float',
   ) => void;
   /**
@@ -815,6 +818,20 @@ export function ShellStoreProvider(props: ParentProps) {
   let columnDrag: { along: 'w' | 'h'; top: number; bottom: number } | null = null;
   /** Where the pointer was when it started, for restoring a maximised panel beneath it. */
   let dragPointer: { x: number; y: number } | null = null;
+
+  /**
+   * The middle of a seated panel, as the target for stacking behind it.
+   *
+   * Inset by a quarter on every side: well clear of the seams either side of the seat, which are
+   * `columnSlots`' targets, so the two never fight over the same pixels. Big enough to land on
+   * without aiming; small enough that a drag across a lane does not light every seat it passes.
+   */
+  const tabTarget = (box: Rect): Rect => ({
+    x: box.x + box.w / 4,
+    y: box.y + box.h / 4,
+    w: box.w / 2,
+    h: box.h / 2,
+  });
 
   /**
    * The smallest box holding both — how a lane's members become the one box a new lane goes beside.
@@ -1214,6 +1231,9 @@ export function ShellStoreProvider(props: ParentProps) {
     const axis: Record<string, 'vertical' | 'horizontal'> = {};
     const lanes: Record<string, string[]> = {};
     const seams: Record<string, Rect> = {};
+    const hidden: Record<string, boolean> = {};
+    const tabs: Record<string, { id: string; title: string; active: boolean }[]> = {};
+    const touched = activation();
 
     for (const edge of EDGES) {
       const vertical = edge === 'left' || edge === 'right';
@@ -1223,11 +1243,57 @@ export function ShellStoreProvider(props: ParentProps) {
         // member's answer serves the whole lane, exactly as it already did for a column.
         const occupied = occupiedOf(group.members[0].index, requests);
         for (const id of ids) lanes[id] = ids;
-        if (group.members.length < 2) continue;
+
+        /*
+          Below `NARROW_VIEWPORT_PX` a floating lane is one seat.
+
+          Two cards over content on a phone leave nothing of either, so `columnLayout` used to give
+          every member the whole box and let the last one paint on top — a stack with no strip.
+          That *is* a seat, so it is said as one: the members become tabs, whichever was touched
+          last shows, and the titlebar names the rest. Same behaviour, now with a way to reach the
+          others.
+        */
+        const narrow = !group.displacing && viewport().width < NARROW_VIEWPORT_PX;
+        const seating = narrow ? [group.members] : group.seats;
+
+        /*
+          One panel shows per seat: the most recently touched, else the first — the same answer
+          `layerOrder` gives for which float is on top, since a seat is the same question asked of a
+          smaller set. The rest are hidden and take the showing one's box, so a tab brought forward
+          appears exactly where its seat is.
+        */
+        const showing = seating.map((seat) =>
+          seat.reduce((best, member) => {
+            const at = (id: string) => touched[placementKey(id)] ?? -1;
+            return at(requests[member.index].id) > at(requests[best.index].id) ? member : best;
+          }),
+        );
+        seating.forEach((seat, s) => {
+          if (seat.length < 2) return;
+          const front = requests[showing[s].index].id;
+          const strip = seat.map((member) => {
+            const entry = dockRegistry.get(requests[member.index].id);
+            const id = requests[member.index].id;
+            return { id, title: entry ? dockTitle(entry) : id, active: id === front };
+          });
+          for (const member of seat) {
+            const id = requests[member.index].id;
+            hidden[id] = id !== front;
+            if (id === front) tabs[id] = strip;
+          }
+        });
+
+        if (showing.length < 2) {
+          // A lane of one seat is not divided — but a seat of several still shares one box.
+          const front = requests[showing[0].index].id;
+          for (const member of seating[0])
+            if (requests[member.index].id !== front) seats[requests[member.index].id] = { x: 0, y: 0, w: 0, h: 0 };
+          continue;
+        }
 
         const boxes = columnLayout(
           // The floor rides on the request, not the placement — see `DockRequest.min`.
-          group.members.map((member) => ({ ...member.placement, min: requests[member.index].min })),
+          showing.map((member) => ({ ...member.placement, min: requests[member.index].min })),
           edge,
           viewport(),
           occupied,
@@ -1235,23 +1301,26 @@ export function ShellStoreProvider(props: ParentProps) {
           { displacing: group.displacing },
         );
 
-        ids.forEach((id, i) => {
-          seats[id] = boxes[i];
+        showing.forEach((member, i) => {
+          const id = requests[member.index].id;
+          for (const mate of seating[i]) seats[requests[mate.index].id] = boxes[i];
           axis[id] = vertical ? 'vertical' : 'horizontal';
-          if (ids[i + 1]) {
-            below[id] = ids[i + 1];
-            above[ids[i + 1]] = id;
+          const next = showing[i + 1];
+          if (next) {
+            const nextId = requests[next.index].id;
+            below[id] = nextId;
+            above[nextId] = id;
             seams[id] = seamBetween(boxes[i], boxes[i + 1], vertical ? 'vertical' : 'horizontal');
           }
         });
       }
     }
-    return { seats, below, above, axis, lanes, seams };
+    return { seats, below, above, axis, lanes, seams, hidden, tabs };
   });
 
   const dockGeometry = createMemo(() => {
     const requests = dockRequests();
-    const { seats, below, above, axis, seams, lanes } = laneSeating();
+    const { seats, below, above, axis, seams, lanes, hidden, tabs } = laneSeating();
     const px = (n: number) => `${Math.round(n)}px`;
     // Activation is keyed the way placements are — by scope — and the layer is asked for by dock id.
     const touched = activation();
@@ -1268,6 +1337,8 @@ export function ShellStoreProvider(props: ParentProps) {
         ...box,
         canCollapse,
         collapsed: canCollapse && Boolean(placementOf(request).collapsed),
+        hidden: hidden[request.id] ?? false,
+        tabs: tabs[request.id] ?? [],
         // Empty rather than absent, so a schema condition reads a string either way.
         below: below[request.id] ?? '',
         above: above[request.id] ?? '',
@@ -1473,6 +1544,8 @@ export function ShellStoreProvider(props: ParentProps) {
             the click, and logged. See `closeAction` in `dockRegistry.ts`.
           */
           closeAction: { $action: 'shellStore.closeTemplatePanel', args: [panel.id] },
+          // What a tab strip calls it, when it shares a seat.
+          title: panel.title,
           // Named outright rather than through `modules.<id>`, the way the editor's and the shell's
           // own docks are — this store is the host's, not an installable module's.
           storeRef: 'shellStore',
@@ -2028,7 +2101,7 @@ export function ShellStoreProvider(props: ParentProps) {
           id,
           edge as Exclude<DockEdge, null>,
           Number(position),
-          mode as 'band' | 'lane',
+          mode as 'band' | 'lane' | 'tab',
           lane === 'float' ? 'float' : lane === '' ? undefined : Number(lane),
         );
       } else if (dragOrigin && current && snap) {
@@ -2081,19 +2154,24 @@ export function ShellStoreProvider(props: ParentProps) {
       // that gets joined.
       const arranged = arrangeDrop(laneable(requests, viewport()), moving, { edge, mode, position, lane }, viewport());
 
-      for (const { index, band, order } of arranged) {
+      for (const { index, band, order, tab } of arranged) {
         const entry = requests[index];
         if (!entry) continue;
         // Dropped, not set to a number: absent is the floating lane's answer, and a stale band left
-        // on a panel that has stopped displacing would claim a lane the next time it does.
-        const { band: _previous, ...rest } = placementOf(entry);
+        // on a panel that has stopped displacing would claim a lane the next time it does. The same
+        // for a tab: a seat of one names none.
+        const { band: _previousBand, tab: _previousTab, ...rest } = placementOf(entry);
         writePlacement(entry.id, {
           ...rest,
           ...(band !== undefined ? { band } : {}),
           order,
+          ...(tab !== undefined ? { tab } : {}),
           ...(index === moving ? { snap: edge, displace: band !== undefined, maximised: false } : {}),
         });
       }
+      // Landing in a seat is touching it: the newcomer shows, which is what dropping something on
+      // top of something else looks like everywhere.
+      raise(id);
     },
 
     movingDock,
@@ -2172,7 +2250,7 @@ export function ShellStoreProvider(props: ParentProps) {
           two agree by construction.
         */
         const draw = (
-          mode: 'band' | 'lane',
+          mode: 'band' | 'lane' | 'tab',
           lane: number | 'float' | '',
           slot: { index: number; hit: Rect; line: Rect },
         ) => ({
@@ -2193,6 +2271,22 @@ export function ShellStoreProvider(props: ParentProps) {
           hit: slot.hit,
         });
 
+        /*
+          One box per seat, for the seams between seats and for the seat itself as a tab target.
+
+          A seat of several shares one box — the one showing — so a drop onto a stacked seat is a
+          drop onto whichever tab is in front, which is the only one there is to point at.
+        */
+        const seatRects = (group: (typeof groups)[number]) =>
+          group.seats.map((seat) => {
+            const front = seat.find((member) => !laneSeating().hidden[requests[member.index].id]) ?? seat[0];
+            return rectOf(
+              boxes[requests[front.index].id],
+              viewport(),
+              requests[front.index].placement ?? front.placement,
+            );
+          });
+
         let displacingLane = -1;
         return [
           // An empty edge still offers its one new-lane slot — that is how an arrangement gets
@@ -2206,7 +2300,16 @@ export function ShellStoreProvider(props: ParentProps) {
           */
           ...groups.flatMap((group) => {
             const lane = group.displacing ? ++displacingLane : ('float' as const);
-            return columnSlots(edge, rects(group)).map((slot) => draw('lane', lane, slot));
+            const seatBoxes = seatRects(group);
+            return [
+              ...columnSlots(edge, seatBoxes).map((slot) => draw('lane', lane, slot)),
+              /*
+                And the seat itself: the middle of each panel, to stack behind it as a tab. Inset
+                well clear of the seams either side, so the two kinds of target never fight over
+                the same pixels — a seam is a boundary, a tab target is the thing between two.
+              */
+              ...seatBoxes.map((box, index) => draw('tab', lane, { index, hit: tabTarget(box), line: tabTarget(box) })),
+            ];
           }),
         ];
       });

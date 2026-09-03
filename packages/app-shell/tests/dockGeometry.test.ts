@@ -1879,3 +1879,110 @@ describe('a panel folded to its titlebar', () => {
     expect(px(geometry.height)).toBe(COLLAPSED_PX);
   });
 });
+
+/**
+ * Seats — several panels in one place, one showing.
+ *
+ * The overflow valve. Lanes raised how many panels an edge can hold at once; a seat is how it holds
+ * more than it can show. Two panels sharing an explicit `order` in one lane are tabs.
+ */
+describe('a seat shared by several panels', () => {
+  const panel = (over: Partial<FloatPlacement> = {}) => ({
+    placement: placement({ snap: 'left', displace: true, band: 0, ...over }),
+  });
+
+  it('is made by naming the same order, and nothing else', () => {
+    const [lane] = edgeGroups([panel({ order: 0 }), panel({ order: 0 }), panel({ order: 1 })], 'left', desktop);
+
+    expect(lane.seats.map((seat) => seat.length)).toEqual([2, 1]);
+  });
+
+  it('never merges two panels that named no order, whatever sat them side by side', () => {
+    // The same rule as band: absent means "of my own". Two module panels that never said where they
+    // sit must not become tabs of each other the first time both are open.
+    const [lane] = edgeGroups([panel(), panel()], 'left', desktop);
+
+    expect(lane.seats.map((seat) => seat.length)).toEqual([1, 1]);
+  });
+
+  it('orders a seat by tab, and the lane by order', () => {
+    const [lane] = edgeGroups(
+      [panel({ order: 1 }), panel({ order: 0, tab: 1 }), panel({ order: 0, tab: 0 })],
+      'left',
+      desktop,
+    );
+
+    expect(lane.seats[0].map((member) => member.placement.tab)).toEqual([0, 1]);
+    expect(lane.seats[1][0].placement.order).toBe(1);
+    // `members` is the same panels flattened, seat by seat — what everything else still reads.
+    expect(lane.members).toHaveLength(3);
+  });
+});
+
+describe('a drop onto a seat', () => {
+  const panel = (over: Partial<FloatPlacement> = {}) => ({
+    placement: placement({ snap: 'left', displace: true, ...over }),
+  });
+  const drop = (panels: { placement: FloatPlacement }[], moving: number, target: Omit<DropTarget, 'edge'>) =>
+    arrangeDrop(panels, moving, { edge: 'left', ...target }, desktop);
+
+  it('stacks the panel behind whatever is in that seat, sharing its order', () => {
+    const arranged = drop(
+      [panel({ band: 0, order: 0 }), panel({ band: 0, order: 1 }), panel({ snap: null, displace: false })],
+      2,
+      {
+        mode: 'tab',
+        lane: 0,
+        position: 1,
+      },
+    );
+
+    expect(arranged).toEqual([
+      { index: 0, band: 0, order: 0 },
+      { index: 1, band: 0, order: 1, tab: 0 },
+      { index: 2, band: 0, order: 1, tab: 1 },
+    ]);
+  });
+
+  it('gives a seat of one no tab at all, so a panel alone never reads as stacked', () => {
+    const arranged = drop([panel({ band: 0, order: 0 }), panel({ snap: null, displace: false })], 1, {
+      mode: 'lane',
+      lane: 0,
+      position: 1,
+    });
+
+    expect(arranged.every((entry) => entry.tab === undefined)).toBe(true);
+  });
+
+  it('takes a panel out of a seat when it is dropped elsewhere, and the seat closes up', () => {
+    // A seat of two loses one and becomes a seat of one, which names no tab.
+    const arranged = drop([panel({ band: 0, order: 0, tab: 0 }), panel({ band: 0, order: 0, tab: 1 })], 1, {
+      mode: 'band',
+      position: 1,
+    });
+
+    expect(arranged).toEqual([
+      { index: 0, band: 0, order: 0 },
+      { index: 1, band: 1, order: 0 },
+    ]);
+  });
+
+  it('falls back to a seat of its own when the seat it named has gone', () => {
+    const arranged = drop([panel({ band: 0, order: 0 })], 0, { mode: 'tab', lane: 0, position: 0 });
+
+    expect(arranged).toEqual([{ index: 0, band: 0, order: 0 }]);
+  });
+
+  it('stacks into the floating lane too', () => {
+    const arranged = drop([panel({ displace: false, order: 0 }), panel({ snap: null, displace: false })], 1, {
+      mode: 'tab',
+      lane: 'float',
+      position: 0,
+    });
+
+    expect(arranged).toEqual([
+      { index: 0, order: 0, tab: 0 },
+      { index: 1, order: 0, tab: 1 },
+    ]);
+  });
+});

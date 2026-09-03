@@ -1334,7 +1334,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         snapTargets:
           '{ id, top, left, width, height }[] — every snap target’s box while a panel is being dragged, measured against the room left for it. Empty otherwise',
         insertSlots:
-          "{ key, index, edge, lane, mode: 'band' | 'lane', top, left, width, height }[] — every boundary a dragged panel could land on, while one is being dragged. 'band' offers a new lane at that distance inboard, 'lane' a seat beside the panels in the lane it names. Empty otherwise",
+          "{ key, index, edge, lane, mode: 'band' | 'lane' | 'tab', top, left, width, height }[] — every place a dragged panel could land, while one is being dragged. 'band' offers a new lane at that distance inboard, 'lane' a new seat beside the panels in the lane it names, 'tab' the seat itself, to stack behind whatever is showing there. Empty otherwise",
         activeInsert:
           "string | null — the slot a drop would take right now, as that slot's `key`. Compare it against slot.key rather than rebuilding the string, which names four things",
         panelSupplied:
@@ -1362,7 +1362,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         snapDock:
           "(id: string, snap: SnapPoint): parks a panel at one of the eight positions from a menu — the keyboard's way to move it",
         insertDock:
-          "(id: string, edge: 'left' | 'right' | 'top' | 'bottom', position: number, mode?: 'band' | 'lane', lane?: number | 'float'): puts a panel on that edge, renumbering what it lands among — what a drop on a boundary does. 'band' opens a lane of its own at that distance inboard; 'lane' takes a seat at that position along the lane named by `lane` (a distance inboard, or 'float' for the floating one)",
+          "(id: string, edge: 'left' | 'right' | 'top' | 'bottom', position: number, mode?: 'band' | 'lane' | 'tab', lane?: number | 'float'): puts a panel on that edge, renumbering what it lands among — what a drop does. 'band' opens a lane of its own at that distance inboard; 'lane' takes a new seat at that position along the lane named by `lane` (a distance inboard, or 'float' for the floating one); 'tab' joins the seat at that position, stacking behind whatever is showing there",
         toggleMaximiseDock:
           '(id: string): covers the content region with the panel, or goes back to being a card. Nothing about where the panel was is overwritten while it is on',
         toggleDockDisplace:

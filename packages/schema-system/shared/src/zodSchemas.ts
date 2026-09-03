@@ -273,6 +273,8 @@ export const zTemplateMeta: z.ZodType<TemplateMeta> = z
           order: z.number().optional(),
           // How far inboard, where `order` is how far along. See `band` on `TemplatePanel`.
           band: z.number().optional(),
+          // Position within a shared seat. See `tab` on `TemplatePanel`.
+          tab: z.number().optional(),
           size: z.enum(['sm', 'md', 'lg', 'full']).optional(),
           grow: z.number().optional(),
           displace: z.boolean().optional(),

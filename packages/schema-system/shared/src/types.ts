@@ -61,6 +61,14 @@ export type TemplatePanel = {
    * was decided by `displace`, which is a question about taking room and not about position.
    */
   band?: number;
+  /**
+   * Position within a seat shared with other panels — a tab.
+   *
+   * Two entries with the same lane and the same explicit `order` share a seat: one shows, the rest
+   * stack behind it, and the one showing carries a strip naming them all. `tab` orders the strip.
+   * Absent `order` is a seat of its own, so nothing that never said `order` starts sharing.
+   */
+  tab?: number;
   /** How much room it asks for. Resolved against the viewport by the host. */
   size?: 'sm' | 'md' | 'lg' | 'full';
   /**

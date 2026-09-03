@@ -326,6 +326,19 @@ export interface FloatPlacement {
    */
   band?: number;
   /**
+   * Position within a **seat** shared with other panels — a tab.
+   *
+   * Two panels with the same lane and the same explicit `order` share a seat: one shows, the others
+   * are stacked behind it, and the titlebar of the one showing carries a strip naming them all.
+   * `tab` orders that strip; which one is showing is whichever was most recently touched (see
+   * `layerOrder` — the same question as which float is on top, answered the same way).
+   *
+   * The overflow valve. Lanes raised how many panels an edge can hold at once; a seat is how it
+   * holds more than it can show. Absent `order` is a seat of the panel's own — the same rule as
+   * `band`, so nothing that never said `order` starts sharing.
+   */
+  tab?: number;
+  /**
    * This panel's share of the *spare* room in a floating column, relative to its neighbours.
    *
    * Flexbox's `flex-grow`, and the reason a column divides by base-plus-grow rather than by
@@ -513,6 +526,18 @@ export interface DockGeometry {
    * panels that were side by side, and dragging it wrote a height nothing in that arrangement reads.
    */
   laneAxis?: 'vertical' | 'horizontal' | '';
+  /**
+   * Stacked behind another panel in a shared seat — a tab that is not showing. The frame hides
+   * itself entirely while this is true; hides, never unmounts, so a call in a background tab keeps
+   * its streams. See {@link FloatPlacement.tab}.
+   */
+  hidden?: boolean;
+  /**
+   * The seat's members, for the panel that is showing to draw as a strip. Empty for a seat of one.
+   * `active` marks this panel's own entry; pressing another is `raiseDock`, which is what decides
+   * who shows.
+   */
+  tabs?: { id: string; title: string; active: boolean }[];
   /**
    * Folded to its titlebar. The frame hides the content while this is true — hides, never unmounts.
    * See {@link FloatPlacement.collapsed}.
@@ -711,6 +736,7 @@ export function placementFromDeclaration(
     snap?: SnapPoint;
     order?: number;
     band?: number;
+    tab?: number;
     grow?: number;
     displace?: boolean;
     size?: DockSize;
@@ -753,6 +779,7 @@ export function placementFromDeclaration(
       says nothing about lanes is asking for.
     */
     ...(declared.band !== undefined ? { band: declared.band } : {}),
+    ...(declared.tab !== undefined ? { tab: declared.tab } : {}),
     ...(declared.grow !== undefined ? { grow: declared.grow } : {}),
   };
 }
@@ -1035,8 +1062,43 @@ export interface EdgeGroup<T> {
   displacing: boolean;
   /** Which lane it is, counting inward from the edge — `null` for a lane nobody named. */
   band: number | null;
-  /** Its panels, in the order they sit *along* the edge. */
+  /** Its panels, in the order they sit *along* the edge — every seat's members, seat by seat. */
   members: T[];
+  /**
+   * The same panels grouped by seat, in lane order; within a seat, in `tab` order.
+   *
+   * A seat holds one panel unless several named the same explicit `order`, in which case they are
+   * tabs — one showing, the rest stacked behind it. Which shows is decided by whoever asks (it turns
+   * on how recently each was touched, which this file does not know); the layout is handed one
+   * member per seat.
+   */
+  seats: T[][];
+}
+
+/** Position within a seat. Absent goes last, ties keep the order they arrived in. */
+const withinSeat = <T extends { placement: FloatPlacement }>(a: T, b: T) =>
+  ascending(a.placement.tab ?? Number.POSITIVE_INFINITY, b.placement.tab ?? Number.POSITIVE_INFINITY);
+
+/**
+ * Group a lane's members into seats.
+ *
+ * Members are already sorted along the lane, so panels sharing an explicit `order` are adjacent;
+ * a run of them is one seat. A panel with no `order` is a seat of its own — two unnamed panels are
+ * never merged, whatever sorted them next to each other.
+ */
+function seatsOf<T extends { placement: FloatPlacement }>(members: T[]): T[][] {
+  const seats: T[][] = [];
+  let open: { order: number; seat: T[] } | null = null;
+  for (const member of members) {
+    const order = member.placement.order;
+    if (order !== undefined && open && open.order === order) {
+      open.seat.push(member);
+      continue;
+    }
+    open = order === undefined ? null : { order, seat: [member] };
+    seats.push(open ? open.seat : [member]);
+  }
+  return seats.map((seat) => [...seat].sort(withinSeat));
 }
 
 /**
@@ -1115,13 +1177,18 @@ export function edgeGroups<T extends { placement: FloatPlacement }>(
     }
   });
 
+  const group = (displacing: boolean, band: number | null, members: T[]): EdgeGroup<T> => {
+    const seats = seatsOf([...members].sort(alongLane));
+    return { displacing, band, seats, members: seats.flat() };
+  };
+
   const groups: EdgeGroup<T>[] = [...lanes.values()]
     .sort(
       (a, b) => ascending(a.rank[0], b.rank[0]) || ascending(a.rank[1], b.rank[1]) || ascending(a.rank[2], b.rank[2]),
     )
-    .map((lane) => ({ displacing: true, band: lane.band, members: [...lane.members].sort(alongLane) }));
+    .map((lane) => group(true, lane.band, lane.members));
 
-  if (floating.length > 0) groups.push({ displacing: false, band: null, members: [...floating].sort(alongLane) });
+  if (floating.length > 0) groups.push(group(false, null, floating));
   return groups;
 }
 
@@ -1129,12 +1196,13 @@ export function edgeGroups<T extends { placement: FloatPlacement }>(
 export interface DropTarget {
   edge: Exclude<DockEdge, null>;
   /**
-   * `band` opens a lane of its own at `position` counting inward from the edge; `lane` takes a seat
-   * at `position` along the lane named by `lane`.
+   * `band` opens a lane of its own at `position` counting inward from the edge; `lane` takes a new
+   * seat at `position` along the lane named by `lane`; `tab` joins the seat at `position` in that
+   * lane, stacking behind whatever is showing there.
    */
-  mode: 'band' | 'lane';
+  mode: 'band' | 'lane' | 'tab';
   position: number;
-  /** Which lane a `lane` drop joins — its position inward from the edge, or the floating one. */
+  /** Which lane a `lane` or `tab` drop joins — its position inward from the edge, or the floating one. */
   lane?: number | 'float';
 }
 
@@ -1144,6 +1212,8 @@ export interface LanePosition {
   /** Absent for the floating lane, which has no band — see {@link FloatPlacement.band}. */
   band?: number;
   order: number;
+  /** Position within a shared seat. Absent for a panel with a seat of its own. */
+  tab?: number;
 }
 
 /**
@@ -1185,37 +1255,62 @@ export function arrangeDrop<T extends { placement: FloatPlacement }>(
     target.edge,
     viewport,
   );
-  const indices = (group: (typeof groups)[number]) => group.members.map((member) => member.index);
+  /** A lane as seats of member indices. */
+  const seatsOf = (group: (typeof groups)[number]) => group.seats.map((seat) => seat.map((member) => member.index));
 
-  const seat = (list: number[], at: number) => {
+  const splice = <T>(list: T[], at: number, item: T) => {
     const next = [...list];
-    next.splice(Math.max(0, Math.min(at, next.length)), 0, moving);
+    next.splice(Math.max(0, Math.min(at, next.length)), 0, item);
     return next;
   };
 
+  /**
+   * Put the panel into a lane — a new seat at `position`, or stacked into the seat already there.
+   *
+   * Both are the same list edit one level apart: a seat is a list of panels, a lane is a list of
+   * seats. A tab drop onto a seat that no longer exists (the panel was its only member and has been
+   * left out) falls back to a seat of its own at the same position, which is the nearest thing to
+   * what was asked for.
+   */
+  const into = (seats: number[][]) => {
+    if (target.mode === 'tab' && seats[target.position]) {
+      return seats.map((seat, i) => (i === target.position ? [...seat, moving] : seat));
+    }
+    return splice(seats, target.position, [moving]);
+  };
+
+  /** Number one lane's seats and their members. */
+  const number = (seats: number[][], band?: number): LanePosition[] =>
+    seats.flatMap((seat, order) =>
+      seat.map((index, tab) => ({
+        index,
+        ...(band !== undefined ? { band } : {}),
+        order,
+        // A tab only where there is something to be a tab of: a seat of one names none.
+        ...(seat.length > 1 ? { tab } : {}),
+      })),
+    );
+
   // The floating lane: no band at all, since a float takes no room and has nothing to be inboard of.
-  if (target.mode === 'lane' && target.lane === 'float') {
+  if (target.lane === 'float') {
     const lane = groups.find((group) => !group.displacing);
-    return seat(lane ? indices(lane) : [], target.position).map((index, order) => ({ index, order }));
+    return number(into(lane ? seatsOf(lane) : []));
   }
 
   /*
-    Both remaining cases end in the same write, because both change the same two numbers. Joining a
-    lane adds the panel to an existing list; opening one splices a new single-panel list into the
-    sequence. Renumbering the whole edge afterwards is what turns an unnamed lane into a named one.
+    The displacing lanes. Joining one edits its seats; opening one splices a new single-seat lane
+    into the sequence. Renumbering the whole edge afterwards is what turns an unnamed lane into a
+    named one, and an unnamed seat into a shared one.
   */
-  const displacing = groups.filter((group) => group.displacing).map(indices);
-  const joining = target.mode === 'lane' && typeof target.lane === 'number' ? target.lane : -1;
+  const displacing = groups.filter((group) => group.displacing).map(seatsOf);
+  const joining = target.mode !== 'band' && typeof target.lane === 'number' ? target.lane : -1;
 
-  let lanes: number[][];
-  if (joining >= 0 && displacing[joining]) {
-    lanes = displacing.map((lane, i) => (i === joining ? seat(lane, target.position) : lane));
-  } else {
-    lanes = [...displacing];
-    lanes.splice(Math.max(0, Math.min(target.position, lanes.length)), 0, [moving]);
-  }
+  const lanes =
+    joining >= 0 && displacing[joining]
+      ? displacing.map((seats, i) => (i === joining ? into(seats) : seats))
+      : splice(displacing, target.position, [[moving]]);
 
-  return lanes.flatMap((lane, band) => lane.map((index, order) => ({ index, band, order })));
+  return lanes.flatMap((seats, band) => number(seats, band));
 }
 
 /**

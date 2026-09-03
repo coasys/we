@@ -62,6 +62,25 @@ export interface DockEntry extends DockContribution {
    * never classify.
    */
   closeAction?: SchemaProp;
+  /**
+   * What to call the panel where its name has to fit on a tab.
+   *
+   * A template panel carries its declared `title`; a module's dock has none, so `dockTitle` makes
+   * one from its `name`. Only read when the panel shares a seat — a panel alone names itself inside
+   * its own content, as every module's does.
+   */
+  title?: string;
+}
+
+/** A tab's label for a dock: its title, else its name made readable, else its module. */
+export function dockTitle(entry: DockEntry): string {
+  if (entry.title) return entry.title;
+  const raw = entry.name ?? entry.moduleId;
+  const words = raw
+    .replace(/[-_:]+/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
 /**
@@ -280,7 +299,15 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
               // Backdrop blur belongs with the transparency and goes when it does: it is expensive,
               // it makes the element a containing block for fixed descendants, and over an opaque
               // background it would cost both of those for nothing visible.
-              styles: { 'backdrop-filter': { $: `${glass} ? '${GLASS_BLUR}' : 'none'` } },
+              styles: {
+                'backdrop-filter': { $: `${glass} ? '${GLASS_BLUR}' : 'none'` },
+                /*
+                  Gone while another tab in its seat is showing — gone, not unmounted. A call in a
+                  background tab keeps its streams; a transcript keeps its scroll. `styles` so it
+                  overrides the Column's own `display: flex`.
+                */
+                display: { $: `${dockGeometryPath(entry.id, 'hidden')} ? 'none' : 'flex'` },
+              },
               border: '1px solid border',
               // Rounded and lifted only while floating. A card over the app should read as being on
               // top; a panel that has taken room *from* the app meets it edge to edge, where a radius
@@ -465,6 +492,7 @@ function titleBar(entry: DockEntry): SchemaNode {
       onDblclick: { $action: 'shellStore.toggleMaximiseDock', args: [entry.id] },
     },
     children: [
+      tabStrip(entry.id),
       {
         type: 'we-move-handle',
         props: {
@@ -526,6 +554,47 @@ function fitButton(id: string): SchemaNode {
  * a rectangular layout cannot flow around a box in a corner. The store refuses it there anyway —
  * this is the same answer, made visible before the click rather than after it.
  */
+/**
+ * The seat's members, as a strip on the titlebar of the one showing.
+ *
+ * Nothing for a seat of one, which is most panels. For a shared seat: one small button per member,
+ * the showing one marked, each a `raiseDock` — bringing a tab forward is the same act as bringing a
+ * float to the front, and it is decided the same way. Before the grip rather than after the
+ * controls, because that is where every tab strip anybody has used puts it.
+ */
+function tabStrip(id: string): SchemaNode {
+  const tabs = dockGeometryPath(id, 'tabs');
+  return {
+    type: '$if',
+    props: {
+      condition: { $: `count(${tabs}) > 1` },
+      then: {
+        type: 'Row',
+        props: { gap: '100', ay: 'center', flex: '0 0 auto', pr: '100' },
+        children: [
+          {
+            type: '$each',
+            props: { items: { $: tabs }, as: 'tab' },
+            children: [
+              {
+                type: 'we-button',
+                props: {
+                  size: 'xs',
+                  variant: { $: "tab.active ? 'secondary' : 'ghost'" },
+                  onClick: { $action: 'shellStore.raiseDock', args: [{ $: 'tab.id' }] },
+                },
+                children: [
+                  { type: 'we-text', props: { truncate: true, maxWidth: '120px' }, children: [{ $: 'tab.title' }] },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    },
+  };
+}
+
 /**
  * Fold the panel to its titlebar, or open it again.
  *
@@ -789,14 +858,18 @@ function insertLines(id: string): SchemaNode {
               left: { $: 'slot.left' },
               width: { $: 'slot.width' },
               height: { $: 'slot.height' },
-              r: 'pill',
+              // A seam is a line; a seat is a box. The box is a filled region rather than an outline
+              // because what it means is "into this", and a wash over a panel reads as that.
+              r: { $: "slot.mode == 'tab' ? '500' : 'pill'" },
               // The drag is a pointer capture on the grip; a target that could swallow a pointer event
               // would end the drag it exists to guide.
               pointerEvents: 'none',
               // Above every panel, for the reason the snap targets are — see there.
               zIndex: 'chrome',
               bg: { $: `${INSERT_IS_ACTIVE} ? 'accent' : 'surface-active'` },
-              opacity: { $: `${INSERT_IS_ACTIVE} ? 1 : 0.4` },
+              opacity: {
+                $: `${INSERT_IS_ACTIVE} ? (slot.mode == 'tab' ? 0.35 : 1) : (slot.mode == 'tab' ? 0.1 : 0.4)`,
+              },
             },
           },
         ],
