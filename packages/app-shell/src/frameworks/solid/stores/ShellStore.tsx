@@ -1882,6 +1882,33 @@ export function ShellStoreProvider(props: ParentProps) {
     }
   });
 
+  /**
+   * Show where a drag would land, and move nothing.
+   *
+   * **A gesture carrying more than it can draw shows guides instead of a card.** One panel is
+   * carried — it follows the cursor, which is what a window does. A *stack* cannot be: carrying it
+   * means writing a position to the panel in front, and a position is what takes it out of its seat,
+   * so the first frame of the drag tore the stack apart and left the others behind. A tab has the
+   * same problem one level down, and for a worse reason — leaving the seat takes the strip away, and
+   * the pointer capture with it.
+   *
+   * So both show the drop guides and settle nothing until the drop, which is what every application
+   * does with a group of tabs. `seated` also refuses the corners: they hold one card by design, so a
+   * stack landing there would come apart into panels stacked exactly on top of each other.
+   */
+  const previewDrop = (id: string, pointer: { x: number; y: number }, placement: FloatPlacement, seated: boolean) => {
+    const would = {
+      x: pointer.x - placement.w / 2,
+      y: pointer.y - TITLE_BAR_PX / 2,
+      w: placement.w,
+      h: placement.h,
+    };
+    const slot = chooseTarget(store.insertSlots(), pointer, would);
+    const snap = slot ? null : snapCandidate(would, viewport(), occupiedForId(id), floatChrome());
+    setActiveInsert(slot ? slot.key : null);
+    setActiveSnap(seated && edgeOfSnap(snap) === null ? null : snap);
+  };
+
   const store: ShellStore = {
     activeShellView,
     openShellView: (id: string, path?: string) => {
@@ -2281,25 +2308,9 @@ export function ShellStoreProvider(props: ParentProps) {
         setDockResizing(true);
       }
 
-      /*
-        The tab stays where it is; only the *indicators* follow the pointer.
-
-        `moveDock` writes a placement every frame, which is right for a panel being carried and wrong
-        for a tab: leaving its seat mid-gesture takes the strip — and the pointer capture on it — away
-        with it, and the drag dies where it stands. So a tab is carried the way every tab strip
-        carries one, by showing where it would land and settling nothing until it is let go.
-      */
-      const placement = placementOf(request);
-      const pointer = { x: tabGesture.x + dx, y: tabGesture.y + dy };
-      const would = {
-        x: pointer.x - placement.w / 2,
-        y: pointer.y - TITLE_BAR_PX / 2,
-        w: placement.w,
-        h: placement.h,
-      };
-      const slot = chooseTarget(store.insertSlots(), pointer, would);
-      setActiveInsert(slot ? slot.key : null);
-      setActiveSnap(slot ? null : snapCandidate(would, viewport(), occupiedForId(id), floatChrome()));
+      // The tab stays where it is; only the guides follow. A tab may land anywhere a single panel
+      // can, corners included, since one tearing out is one card. See `previewDrop`.
+      previewDrop(id, { x: tabGesture.x + dx, y: tabGesture.y + dy }, placementOf(request), false);
     },
 
     endTabDrag: (id, pointerX, pointerY) => {
@@ -2341,6 +2352,22 @@ export function ShellStoreProvider(props: ParentProps) {
 
     moveDock: (id, dx, dy) => {
       if (!dragOrigin || !dragPointer || movingDock() !== id) return;
+
+      /*
+        A stack is shown where it would land rather than carried — see `previewDrop`.
+
+        Carrying it means writing a position to the panel in front, and a position is exactly what
+        takes a panel out of its seat: the first frame of the drag pulled the front one out and left
+        its tabs standing where they were, which is the grip appearing to tear out the tab you were
+        looking at rather than move the surface holding it.
+      */
+      if (movingSeat.length > 0) {
+        const seated = dockRequests().find((entry) => entry.id === id);
+        if (seated) {
+          previewDrop(id, { x: dragPointer.x + dx, y: dragPointer.y + dy }, placementOf(seated), true);
+        }
+        return;
+      }
 
       /*
         Dragging the titlebar of an attached panel — maximised, or displacing — restores the card,
@@ -2435,7 +2462,15 @@ export function ShellStoreProvider(props: ParentProps) {
     endDockMove: (id) => {
       const insert = activeInsert();
       const snap = activeSnap();
-      const current = placements()[id] ?? dragOrigin;
+      /*
+        The panel's own placement, through the three-rung chain — not `placements()[id]`, which asked
+        the map with the *bare* id where a template panel's is scoped to the interface. It answered
+        undefined for every authored panel and fell through to `dragOrigin`, the resolved box: a
+        sidebar snapped to an edge kept the full height of the edge it left as its card size. A stack
+        made it visible, being the first drag that never writes a position on the way.
+      */
+      const moving = dockRequests().find((entry) => entry.id === id);
+      const current = moving ? placementOf(moving) : dragOrigin;
 
       if (dragOrigin && current && insert) {
         // The four fields `insertSlots` built it from — see `draw` there. A home slot carries the
