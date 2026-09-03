@@ -264,14 +264,20 @@ function layoutsSection(): SchemaNode {
             },
             children: [
               { type: 'we-icon', props: { name: 'bookmark-simple' } },
-              { type: 'we-text', children: ['Save this arrangement…'] },
+              { type: 'we-text', children: ['Remember this arrangement…'] },
             ],
           },
           /*
             The bridge from arranging to authoring — explicit, named, and here beside the other
             things one can do with an arrangement. Only while there is an arrangement to save: an
             untouched template forked this way would be the template again.
+
+            Divided from the layouts above it, and worded away from them. The two were both "Save
+            …" and adjacent, which said they were a pair — and they are opposites: a layout is a
+            private bookmark on this device that you switch between, and this makes a template other
+            people can be given. Read cold, nobody could tell which was which.
           */
+          { type: 'we-divider', props: { my: '100' } },
           {
             type: '$if',
             props: {
@@ -288,7 +294,7 @@ function layoutsSection(): SchemaNode {
                 },
                 children: [
                   { type: 'we-icon', props: { name: 'git-fork' } },
-                  { type: 'we-text', children: ['Save as a template of mine'] },
+                  { type: 'we-text', children: ['Fork as a new template'] },
                 ],
               },
             },

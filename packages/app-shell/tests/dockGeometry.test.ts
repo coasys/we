@@ -78,6 +78,7 @@ import {
   takenSnaps,
   targetRank,
   unlaned,
+  widestMin,
 } from '../src/shared/dockGeometry';
 
 const desktop = { width: 1600, height: 900 };
@@ -2636,5 +2637,24 @@ describe('normalising a lane to what is on screen', () => {
     const after = solve(before.map((h) => member(h, h)));
 
     before.forEach((h, i) => expect(after[i]).toBeCloseTo(h, 6));
+  });
+});
+
+describe('the floor a seat has to clear', () => {
+  it('takes the largest its members ask for, per axis', () => {
+    // A seat is one box with several panels in it. Sizing it for whoever is in front means the box
+    // changes size when another tab is brought forward — an arrangement answering a question about
+    // which content to read.
+    expect(widestMin([{ width: 260 }, { width: 400, height: 180 }])).toEqual({ width: 400, height: 180 });
+  });
+
+  it('ignores the members that ask for nothing', () => {
+    expect(widestMin([undefined, { height: 200 }, undefined])).toEqual({ height: 200 });
+  });
+
+  it('stays absent when nobody asks, rather than becoming a floor of zero', () => {
+    // The host's own default applies then, and `floorOf` is what knows it.
+    expect(widestMin([undefined, undefined])).toBeUndefined();
+    expect(widestMin([])).toBeUndefined();
   });
 });

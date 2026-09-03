@@ -62,6 +62,7 @@ import {
   TITLE_BAR_PX,
   type TopChrome,
   unlaned,
+  widestMin,
 } from '@shared/dockGeometry';
 import {
   DOCK_CONTENT_ATTR,
@@ -1686,8 +1687,12 @@ export function ShellStoreProvider(props: ParentProps) {
         }
 
         const boxes = columnLayout(
-          // The floor rides on the request, not the placement — see `DockRequest.min`.
-          showing.map((member) => ({ ...member.placement, min: requests[member.index].min })),
+          // The floor rides on the request, not the placement — see `DockRequest.min` — and a seat's
+          // is the largest its members ask for rather than the showing one's. See `widestMin`.
+          showing.map((member, s) => ({
+            ...member.placement,
+            min: widestMin(seating[s].map((held) => requests[held.index].min)),
+          })),
           edge,
           viewport(),
           occupied,

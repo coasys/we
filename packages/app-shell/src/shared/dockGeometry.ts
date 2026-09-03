@@ -368,6 +368,29 @@ export function followSeat(mate: FloatPlacement, landed: FloatPlacement): FloatP
 }
 
 /**
+ * The floor a **seat** has to clear: the largest its members ask for, per axis.
+ *
+ * A seat is one box with several panels in it, and only one of them is showing — so asking the lane
+ * for the showing member's floor sizes the box for whoever happens to be in front. Bring another tab
+ * forward and its own floor applies instead, and the box changes size in answer to a question about
+ * which content to read. The seat has to be big enough for everything in it, which is the largest
+ * floor among them; a panel that wants less is simply given more.
+ *
+ * Absent on every member stays absent, rather than becoming a floor of zero — the host's own default
+ * is what applies then, and it is `floorOf` that knows it.
+ */
+export function widestMin(mins: readonly (DockMin | undefined)[]): DockMin | undefined {
+  const largest = (axis: 'width' | 'height') => {
+    const given = mins.map((min) => min?.[axis]).filter((value): value is number => value !== undefined);
+    return given.length > 0 ? Math.max(...given) : undefined;
+  };
+  const width = largest('width');
+  const height = largest('height');
+  if (width === undefined && height === undefined) return undefined;
+  return { ...(width !== undefined ? { width } : {}), ...(height !== undefined ? { height } : {}) };
+}
+
+/**
  * Whether a snap target beats the insert slot a drag is also over.
  *
  * The two families are arbitrated separately — `chooseTarget` among the slots, `snapCandidate` among
