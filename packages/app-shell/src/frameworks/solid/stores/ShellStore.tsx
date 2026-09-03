@@ -1481,13 +1481,19 @@ export function ShellStoreProvider(props: ParentProps) {
       showing carries the strip. Every member holds the same box already — `followSeat` gives a loose
       landing its geometry for exactly this reason — so the panel does not move as tabs are switched.
 
-      Built from `requests` rather than `panels`, because `laneable` flattens a closed or maximised
-      panel to `snap: null` so no lane counts it. That is right for lanes and wrong here: it would
-      read a closed panel as loose and stack it with whatever is floating.
+      Read from `panels`, the same array the lanes are built from, and NOT by asking `placementOf`
+      again. A seat-mate leaving its lane is *derived* while the drag is live (see `dockRequests`),
+      so re-deriving from storage here answered with the docked placement it still has written down:
+      the mate was excluded from this walk for having an edge, excluded from its lane for not having
+      one, and so was drawn as a loose card of its own in the middle of the screen — a stack coming
+      apart on the way out of an edge and reassembling on the drop.
+
+      The `edge`/`size` filter is against `requests` on purpose: `laneable` flattens a closed or
+      maximised panel to `snap: null` so no lane counts it, which is right for lanes and would read a
+      closed panel as loose here.
     */
     for (const seat of looseSeats(
-      requests
-        .map((request, index) => ({ placement: placementOf(request), index }))
+      panels
         .filter(({ index }) => requests[index].edge && requests[index].size !== 'full')
         .filter(({ placement }) => edgeOfSnap(placement.snap) === null),
     )) {
