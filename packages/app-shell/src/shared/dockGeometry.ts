@@ -271,6 +271,19 @@ export const PANEL_LAYER_BASE = 200;
  *
  * Returns each id's layer, as a z-index on the `sticky` band.
  */
+/**
+ * How specific a drop target is: a boundary beats a region.
+ *
+ * The rule the file already stated for gaps over edge targets — "the more specific answer is the one
+ * the user is pointing at" — made total, because area alone cannot express it. A seat's target is
+ * half a panel and a seam is twenty pixels, so ranked by overlap the seat won every time the two met
+ * and the seams between two displacing lanes were unreachable except in the sliver of panel the
+ * seat's target does not cover. Lines first, then area within a kind.
+ */
+export function targetRank(mode: 'band' | 'lane' | 'home' | 'tab'): number {
+  return mode === 'tab' ? 1 : 0;
+}
+
 export function layerOrder(
   ids: readonly string[],
   activation: Record<string, number | undefined>,
@@ -594,6 +607,15 @@ export interface DockGeometry {
    * a property of the pair, drawn from outside both.
    */
   seam?: { top: string; left: string; width: string; height: string };
+  /**
+   * The layer the seam's divider paints at: above both panels it divides.
+   *
+   * It cannot take a layer *name*. A displacing lane has no gap, so the divider straddles the shared
+   * edge and overlaps both panels — and the two carry their own steps now, so a fixed `sticky` would
+   * fall under whichever had been raised. `chrome` would clear them and tie with the rail, which is
+   * the layer that has to stay reachable above everything a panel does.
+   */
+  seamLayer?: number;
   /**
    * The z-index this panel paints at — its step above `PANEL_LAYER_BASE`, by how recently it was
    * touched. See {@link layerOrder}. The frame binds its `zIndex` to this rather than to a layer
@@ -1695,7 +1717,22 @@ export function columnLayout(
  * already decided which lane it is asking about. An empty lane gets nothing — there is no seam to
  * draw until there is something to sit beside, and starting a lane is `insertionSlots`' job.
  */
-export function columnSlots(edge: Exclude<DockEdge, null>, boxes: Rect[]): { index: number; hit: Rect; line: Rect }[] {
+export function columnSlots(
+  edge: Exclude<DockEdge, null>,
+  boxes: Rect[],
+  /**
+   * The box the seams must stay inside — the content region for an edge lane, the outlet's own box
+   * for a home lane. Omitted, nothing is clamped.
+   *
+   * Needed by the *displacing* case alone, and only for the outer two seams. A seam before the first
+   * member sits half a gap above it, which is right for floating cards — they keep a margin at each
+   * end, so it lands in it. A displacing lane has no margin and spans its whole edge, so on a 900px
+   * screen those two landed at `-4` and `904`: both off-screen, and the only two that could divide a
+   * full-height sidebar. The lane could be stacked *against* but never *into*, which is the
+   * arrangement it exists for.
+   */
+  bounds?: Rect,
+): { index: number; hit: Rect; line: Rect }[] {
   if (boxes.length === 0) return [];
 
   const vertical = edge === 'left' || edge === 'right';
@@ -1708,11 +1745,15 @@ export function columnSlots(edge: Exclude<DockEdge, null>, boxes: Rect[]): { ind
 
   const GAP_TARGET = 20;
   const LINE = DROP_LINE_THICKNESS;
+  const low = bounds ? (vertical ? bounds.y : bounds.x) : Number.NEGATIVE_INFINITY;
+  const high = bounds ? (vertical ? bounds.y + bounds.h : bounds.x + bounds.w) : Number.POSITIVE_INFINITY;
 
-  const box = (position: number, thickness: number): Rect =>
-    vertical
-      ? { x: near, y: position - thickness / 2, w: far - near, h: thickness }
-      : { x: position - thickness / 2, y: near, w: thickness, h: far - near };
+  const box = (position: number, thickness: number): Rect => {
+    const start = clamp(position - thickness / 2, low, Math.max(low, high - thickness));
+    return vertical
+      ? { x: near, y: start, w: far - near, h: thickness }
+      : { x: start, y: near, w: thickness, h: far - near };
+  };
 
   const at = (position: number, index: number) => ({
     index,
@@ -1720,11 +1761,22 @@ export function columnSlots(edge: Exclude<DockEdge, null>, boxes: Rect[]): { ind
     line: box(position, LINE),
   });
 
-  const start = vertical ? sorted[0].y : sorted[0].x;
-  // One before the first member, then one after each — n + 1 seats for n members.
+  const startOf = (rect: Rect) => (vertical ? rect.y : rect.x);
+  const endOf = (rect: Rect) => (vertical ? rect.y + rect.h : rect.x + rect.w);
+
+  /*
+    An interior seam is the **midpoint** between the two members it divides, which answers the gap
+    question rather than assuming it: the middle of the gap for floating cards, and the shared edge
+    itself for a displacing lane, which has none. It was `end + DOCK_GAP_PX / 2` — right for cards,
+    and four pixels off the boundary for a sidebar, where the line then straddled the seam unevenly
+    and the divider it invited was not where the drag would put it.
+  */
   return [
-    at(start - DOCK_GAP_PX / 2, 0),
-    ...sorted.map((rect, index) => at((vertical ? rect.y + rect.h : rect.x + rect.w) + DOCK_GAP_PX / 2, index + 1)),
+    at(startOf(sorted[0]) - DOCK_GAP_PX / 2, 0),
+    ...sorted.map((rect, index) => {
+      const next = sorted[index + 1];
+      return at(next ? (endOf(rect) + startOf(next)) / 2 : endOf(rect) + DOCK_GAP_PX / 2, index + 1);
+    }),
   ];
 }
 

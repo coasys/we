@@ -14,7 +14,7 @@
  * Asserted against the tokens and the schema rather than a render, because both halves are static
  * decisions: a dock is placed on `sticky` by `dockFrame`, and chrome asks for the layer above it.
  */
-import { sidebar } from '@we/template-shell';
+import { chromeRail, sidebar } from '@we/template-shell';
 import { zIndex } from '@we/tokens';
 import { describe, expect, it } from 'vitest';
 
@@ -62,6 +62,19 @@ describe('the shell sidebar and a docked panel', () => {
     // next test for the band, and `layerOrder` for the step.
     expect(propsWithAll(dock, 'zIndex', 'shadow')?.zIndex).toEqual({ $: "shellStore.dockGeometry['call:0'].layer" });
     expect(propsWithAll(sidebar, 'zIndex')?.zIndex).toBe('chrome');
+  });
+
+  it('puts the module rail on that layer too, rather than trusting document order', () => {
+    /*
+      The regression this file exists for, arriving from the other side.
+
+      The rail said `sticky` and stayed above the panels because it registers after them at the same
+      anchor and they all shared one layer — so the last one painted won. The moment panels could be
+      *raised* they stopped sharing a layer, and a raised one covered the rail and the pickers that
+      open out of it over the content: the chrome you get out of a panel with, underneath the panel.
+      Document order is not a layering rule; the ladder has a rung for this.
+    */
+    expect(propsWithAll(chromeRail, 'zIndex')?.zIndex).toBe('chrome');
   });
 
   it('counts panels up from sticky and never reaches chrome', () => {

@@ -50,6 +50,7 @@ import {
   snapCandidate,
   type SnapPoint,
   snapTargetRects,
+  targetRank,
   TITLE_BAR_PX,
   type TopChrome,
 } from '@shared/dockGeometry';
@@ -896,6 +897,17 @@ export function ShellStoreProvider(props: ParentProps) {
   /** Bring a panel to the front. See `layerOrder`. */
   const raise = (id: string) => {
     const key = placementKey(id);
+    /*
+      Already on top is not a change, and saying so is what makes a tab clickable.
+
+      A pointer landing anywhere on a frame raises it, which is right — but it fired on every press,
+      including a press on the front panel's own tab strip. That rewrote the activation, which
+      rebuilt the geometry, which rebuilt the strip's rows, which destroyed the button under the
+      pointer *between its pointerdown and its pointerup* — so the browser had nothing to fire a
+      `click` on and the tab did nothing at all. Raising the panel that is already raised had no
+      other effect to lose.
+    */
+    if (activation()[key] === activationClock) return;
     setActivation((prev) => {
       const next = { ...prev, [key]: ++activationClock };
       saveActivation(next);
@@ -1341,6 +1353,26 @@ export function ShellStoreProvider(props: ParentProps) {
    * panel keeps the position it has always had: a card at its snap, or a displacing panel spanning
    * its whole edge. That is what makes lanes free for every arrangement that predates them.
    */
+  /**
+   * The last strip handed to each seat's front panel, so an unchanged one keeps its identity.
+   *
+   * `$each` renders with Solid's `<For>`, which is keyed by reference: a fresh array of fresh
+   * objects every time the geometry recomputes means every tab button is destroyed and rebuilt. The
+   * geometry recomputes on every frame of a drag and on every raise, so that is both a needless
+   * churn and — when it happens between a press and its release — a click that never fires.
+   */
+  let lastStrips: Record<string, { id: string; title: string; active: boolean }[]> = {};
+  const stableStrip = (id: string, strip: { id: string; title: string; active: boolean }[]) => {
+    const previous = lastStrips[id];
+    const same =
+      previous?.length === strip.length &&
+      previous.every(
+        (tab, i) => tab.id === strip[i].id && tab.title === strip[i].title && tab.active === strip[i].active,
+      );
+    if (!same) lastStrips[id] = strip;
+    return lastStrips[id];
+  };
+
   const laneSeating = createMemo(() => {
     const requests = dockRequests();
     const panels = laneable(requests, viewport());
@@ -1354,6 +1386,8 @@ export function ShellStoreProvider(props: ParentProps) {
     const hidden: Record<string, boolean> = {};
     const tabs: Record<string, { id: string; title: string; active: boolean }[]> = {};
     const touched = activation();
+    // A panel that stops fronting a seat should not hold its old strip alive.
+    lastStrips = { ...lastStrips };
 
     for (const edge of EDGES) {
       const vertical = edge === 'left' || edge === 'right';
@@ -1399,7 +1433,7 @@ export function ShellStoreProvider(props: ParentProps) {
           for (const member of seat) {
             const id = requests[member.index].id;
             hidden[id] = id !== front;
-            if (id === front) tabs[id] = strip;
+            if (id === front) tabs[id] = stableStrip(id, strip);
           }
         });
 
@@ -1472,6 +1506,8 @@ export function ShellStoreProvider(props: ParentProps) {
                 width: px(seams[request.id].w),
                 height: px(seams[request.id].h),
               },
+              // Above both panels it divides — see `seamLayer`.
+              seamLayer: Math.max(layers[request.id] ?? 0, layers[below[request.id]] ?? 0) + 1,
             }
           : {}),
       };
@@ -2236,11 +2272,20 @@ export function ShellStoreProvider(props: ParentProps) {
         the only reachable answer on a populated strip was "outside everything". Same rule as
         `snapCandidate`, and for the same reason.
       */
+      /*
+        Ranked by *kind* first, and only then by area — see `targetRank`.
+
+        A seat's target is half a panel and a seam is twenty pixels, so by area alone the seat won
+        wherever the two overlapped: dropping between two displacing lanes was impossible except in
+        the top and bottom quarters, where the seat's target does not reach. A boundary is the more
+        specific answer and outranks the region behind it, which is the rule this comment already
+        gave for gaps over edge targets.
+      */
       const slot = store
         .insertSlots()
         .map((candidate) => ({ candidate, area: overlapArea(next, candidate.hit) }))
         .filter((entry) => entry.area > 0)
-        .sort((a, b) => b.area - a.area)[0]?.candidate;
+        .sort((a, b) => targetRank(a.candidate.mode) - targetRank(b.candidate.mode) || b.area - a.area)[0]?.candidate;
       setActiveInsert(slot ? slot.key : null);
       setActiveSnap(slot ? null : snapCandidate(next, viewport(), occupiedForId(id), floatChrome()));
       writePlacement(id, next);
@@ -2405,7 +2450,12 @@ export function ShellStoreProvider(props: ParentProps) {
             });
           const slots =
             sections.length > 0
-              ? columnSlots(outlet.direction === 'row' ? 'top' : 'left', sections)
+              ? columnSlots(outlet.direction === 'row' ? 'top' : 'left', sections, {
+                  x: box.x,
+                  y: box.y,
+                  w: box.width,
+                  h: box.height,
+                })
               : (() => {
                   const box = outlet.el.getBoundingClientRect();
                   const whole = { x: box.x, y: box.y, w: Math.max(box.width, 24), h: Math.max(box.height, 24) };
@@ -2534,7 +2584,11 @@ export function ShellStoreProvider(props: ParentProps) {
             const lane = group.displacing ? ++displacingLane : ('float' as const);
             const seatBoxes = seatRects(group);
             return [
-              ...columnSlots(edge, seatBoxes).map((slot) => draw('lane', lane, slot)),
+              // Bounded by the screen: a displacing lane spans its whole edge, so its outer two
+              // seams would otherwise sit just off it — see `columnSlots`.
+              ...columnSlots(edge, seatBoxes, { x: 0, y: 0, w: viewport().width, h: viewport().height }).map((slot) =>
+                draw('lane', lane, slot),
+              ),
               /*
                 And the seat itself: the middle of each panel, to stack behind it as a tab. Inset
                 well clear of the seams either side, so the two kinds of target never fight over

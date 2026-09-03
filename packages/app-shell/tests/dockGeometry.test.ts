@@ -66,6 +66,7 @@ import {
   type SnapPoint,
   snapTargetRects,
   snapTargetSize,
+  targetRank,
 } from '../src/shared/dockGeometry';
 
 const desktop = { width: 1600, height: 900 };
@@ -2115,5 +2116,52 @@ describe('reaching an edge', () => {
 
   it('grows a box the same amount on every side', () => {
     expect(grown({ x: 100, y: 100, w: 50, h: 50 }, 10)).toEqual({ x: 90, y: 90, w: 70, h: 70 });
+  });
+});
+
+/**
+ * The two things that made a populated edge hard to drop into.
+ *
+ * A displacing lane spans its whole edge and has no gaps, so the seams that would divide it landed
+ * outside the screen; and a seat's target is half a panel, so ranked by area it beat every line it
+ * overlapped. Between them, a panel could be stacked *against* a sidebar but never *into* one, and
+ * the boundary between two sidebars was reachable only in the sliver a seat's target does not cover.
+ */
+describe('the seams of a full-height lane', () => {
+  const full = { x: SIDEBAR_PX, y: 0, w: 300, h: desktop.height };
+
+  const screen = { x: 0, y: 0, w: desktop.width, h: desktop.height };
+
+  it('are reachable, rather than half a gap off each end of the screen', () => {
+    const [first, last] = columnSlots('left', [full], screen);
+
+    expect(first.line.y).toBeGreaterThanOrEqual(0);
+    expect(last.line.y + last.line.h).toBeLessThanOrEqual(desktop.height);
+  });
+
+  it('still sit on the boundary between two members, where there is one', () => {
+    const top = { x: SIDEBAR_PX, y: 0, w: 300, h: 450 };
+    const bottom = { x: SIDEBAR_PX, y: 450, w: 300, h: 450 };
+    const middle = columnSlots('left', [top, bottom], screen)[1];
+
+    // The midpoint of the two, which for a flush lane *is* the shared edge.
+    expect(middle.line.y + middle.line.h / 2).toBeCloseTo(450, 0);
+  });
+
+  it('span the lane rather than the screen', () => {
+    expect(columnSlots('left', [full], screen)[0].line.w).toBe(300);
+  });
+});
+
+describe('which drop target wins', () => {
+  it('puts a boundary ahead of the seat behind it, whatever their sizes', () => {
+    // A seam is twenty pixels and a seat's target is half a panel; by area the seat won every time.
+    expect(targetRank('band')).toBeLessThan(targetRank('tab'));
+    expect(targetRank('lane')).toBeLessThan(targetRank('tab'));
+    expect(targetRank('home')).toBeLessThan(targetRank('tab'));
+  });
+
+  it('leaves the kinds of boundary to be settled by area, as they always were', () => {
+    expect(targetRank('band')).toBe(targetRank('lane'));
   });
 });

@@ -1092,7 +1092,8 @@ function laneDivider(id: string): SchemaNode {
           line: 'auto',
           styles: { '--we-resize-handle-thickness': '3px' },
           position: 'fixed',
-          zIndex: 'chrome',
+          // Above the two panels it divides, and still under the app's own chrome — see `seamLayer`.
+          zIndex: geo('seamLayer'),
           top: geo('seam.top'),
           left: geo('seam.left'),
           width: geo('seam.width'),
