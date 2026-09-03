@@ -36,6 +36,7 @@ import {
   insertionSlots,
   laneable,
   layerOrder,
+  looseSeats,
   NARROW_VIEWPORT_PX,
   nearEdge,
   NO_INSET,
@@ -56,6 +57,7 @@ import {
   snapTargetRects,
   TITLE_BAR_PX,
   type TopChrome,
+  unlaned,
 } from '@shared/dockGeometry';
 import {
   DOCK_CONTENT_ATTR,
@@ -978,7 +980,17 @@ export function ShellStoreProvider(props: ParentProps) {
    * from. `seatOrigins` is what they are put back to when a drag ends nowhere they can all land.
    */
   const [movingSeat, setMovingSeat] = createSignal<string[]>([]);
-  let seatOrigins = new Map<string, FloatPlacement>();
+  /**
+   * What the stack in the air is called, while it is in the air.
+   *
+   * A loose seat names itself (see `FloatPlacement.seat`), and the panel being dragged is the obvious
+   * name: unique, already to hand, and stable for as long as the stack holds together. Every member
+   * carries it from the first frame of the drag, which is what keeps the tab strip on screen while
+   * the stack crosses open space rather than emptying the titlebar the moment its lane is left.
+   */
+  const movingSeatKey = () => movingDock() ?? '';
+  /** The panel being resized, for the length of one resize drag — see `endDockResize`. */
+  let resizingDock: string | null = null;
   /**
    * A press on a tab, before it is known whether it is a click or a drag.
    *
@@ -1241,7 +1253,7 @@ export function ShellStoreProvider(props: ParentProps) {
           const travelling = movingSeat().includes(entry.id);
           return {
             ...request,
-            placement: travelling ? { ...placement, snap: null, displace: false } : placement,
+            placement: travelling ? { ...placement, snap: null, displace: false, seat: movingSeatKey() } : placement,
           };
         })
     );
@@ -1461,6 +1473,38 @@ export function ShellStoreProvider(props: ParentProps) {
     // A panel that stops fronting a seat should not hold its old strip alive.
     lastStrips = { ...lastStrips };
 
+    /*
+      The seats that are not in any lane — a floating stack, or one parked in a corner.
+
+      Same rule as a lane seat and a much shorter walk: there is no lane to divide, so there is no
+      box to solve. One member shows (whichever was touched last), the rest are hidden, and the one
+      showing carries the strip. Every member holds the same box already — `followSeat` gives a loose
+      landing its geometry for exactly this reason — so the panel does not move as tabs are switched.
+
+      Built from `requests` rather than `panels`, because `laneable` flattens a closed or maximised
+      panel to `snap: null` so no lane counts it. That is right for lanes and wrong here: it would
+      read a closed panel as loose and stack it with whatever is floating.
+    */
+    for (const seat of looseSeats(
+      requests
+        .map((request, index) => ({ placement: placementOf(request), index }))
+        .filter(({ index }) => requests[index].edge && requests[index].size !== 'full')
+        .filter(({ placement }) => edgeOfSnap(placement.snap) === null),
+    )) {
+      const at = (id: string) => touched[placementKey(id)] ?? -1;
+      const front = seat.reduce((best, index) => (at(requests[index].id) > at(requests[best].id) ? index : best));
+      const strip = seat.map((index) => {
+        const id = requests[index].id;
+        const entry = dockRegistry.get(id);
+        return { id, title: entry ? dockTitle(entry) : id, active: index === front };
+      });
+      for (const index of seat) {
+        const id = requests[index].id;
+        hidden[id] = index !== front;
+        if (index === front) tabs[id] = stableStrip(id, strip);
+      }
+    }
+
     for (const edge of EDGES) {
       const vertical = edge === 'left' || edge === 'right';
       for (const group of edgeGroups(panels, edge, viewport())) {
@@ -1577,9 +1621,7 @@ export function ShellStoreProvider(props: ParentProps) {
         ...box,
         canCollapse,
         collapsed: canCollapse && folded,
-        // A seat-mate riding along with a drag is drawn nowhere: the leader under the cursor is the
-        // whole stack, exactly as the seat drew one panel when it was sitting still.
-        hidden: (hidden[request.id] ?? false) || movingSeat().includes(request.id),
+        hidden: hidden[request.id] ?? false,
         tabs: tabs[request.id] ?? [],
         // Empty rather than absent, so a schema condition reads a string either way.
         below: below[request.id] ?? '',
@@ -2073,6 +2115,9 @@ export function ShellStoreProvider(props: ParentProps) {
       ),
 
     beginDockResize: (id) => {
+      // Remembered so `endDockResize` knows whose seat-mates to bring to the same size; a resize is
+      // not a move, so `movingDock` is null throughout one.
+      resizingDock = id;
       const request = dockRequests().find((entry) => entry.id === id);
       if (!request?.edge) return;
       raise(id);
@@ -2267,6 +2312,23 @@ export function ShellStoreProvider(props: ParentProps) {
     },
 
     endDockResize: () => {
+      /*
+        A loose seat is resized as one, because it has no lane to be resized by.
+
+        In a lane the members' box is the lane's business and it recomputes for all of them. Off every
+        lane each member resolves from its own placement, so resizing the one showing and leaving the
+        others would put the panel back to its old size the moment a tab was brought forward.
+      */
+      const id = movingDock() ?? resizingDock;
+      const box = id ? placements()[placementKey(id)] : undefined;
+      if (id && box && edgeOfSnap(box.snap) === null) {
+        for (const tab of dockGeometry()[id]?.tabs ?? []) {
+          if (tab.id === id) continue;
+          const mate = dockRequests().find((entry) => entry.id === tab.id);
+          if (mate) writePlacement(tab.id, { ...placementOf(mate), x: box.x, y: box.y, w: box.w, h: box.h });
+        }
+      }
+      resizingDock = null;
       dragOrigin = null;
       columnDrag = null;
       setDockResizing(false);
@@ -2323,22 +2385,7 @@ export function ShellStoreProvider(props: ParentProps) {
         does — see `endDockMove`. A drag that starts on a *tab* records none, which is the whole
         difference between the two gestures.
       */
-      const mates = (dockGeometry()[id]?.tabs ?? []).map((tab) => tab.id).filter((tab) => tab !== id);
-      /*
-        Where the whole stack goes back to if the drag ends nowhere it can land.
-
-        A seat is a place in a lane, so a stack has nowhere to be in open space — every member would
-        keep the leader's free position and sit exactly on top of the others, one surface with no
-        strip naming what is under it. A single panel dropped in the middle is a card, so it needs
-        none of this; a stack returns to the seat it came from instead. See `endDockMove`.
-      */
-      seatOrigins = new Map(
-        [id, ...mates].map((member) => {
-          const held = dockRequests().find((entry) => entry.id === member);
-          return [member, held ? placementOf(held) : dragOrigin!] as const;
-        }),
-      );
-      setMovingSeat(mates);
+      setMovingSeat((dockGeometry()[id]?.tabs ?? []).map((tab) => tab.id).filter((tab) => tab !== id));
       dragOrigin = resolvedPlacement(id, placementOf(request));
       dragPointer = { x: pointerX, y: pointerY };
       /*
@@ -2472,7 +2519,25 @@ export function ShellStoreProvider(props: ParentProps) {
         };
       }
 
-      const next = { ...dragOrigin, snap: null, displace: false, x: dragOrigin.x + dx, y: dragOrigin.y + dy };
+      /*
+        In the air, a stack is a **loose seat** — which is what keeps its tabs on screen.
+
+        The leader is written free like any dragged panel, and its mates are derived free alongside it
+        (see `dockRequests`), all three carrying the same `seat` key. So the strip goes on naming them
+        while the stack crosses the screen, instead of the titlebar emptying out the moment the lane
+        was left and leaving no sign of what was being carried.
+
+        A panel travelling alone drops its lane coordinates instead: `order` and `band` describe a
+        place it is no longer in, and a stale `order` is what would fuse two unrelated floats.
+      */
+      const carrying = movingSeat().length > 0;
+      const next = {
+        ...(carrying
+          ? { ...dragOrigin, snap: null, displace: false, seat: movingSeatKey() }
+          : unlaned(dragOrigin, null)),
+        x: dragOrigin.x + dx,
+        y: dragOrigin.y + dy,
+      };
 
       /*
         A strip's gaps win over the edge target behind them.
@@ -2496,10 +2561,7 @@ export function ShellStoreProvider(props: ParentProps) {
       */
       const slot = chooseTarget(store.insertSlots(), { x: dragPointer.x + dx, y: dragPointer.y + dy }, next);
       setActiveInsert(slot ? slot.key : null);
-      const candidate = slot ? null : snapCandidate(next, viewport(), occupiedForId(id), floatChrome());
-      // A corner holds one card by design — no lane, so no seat — and a stack landing there would
-      // come apart into panels sitting exactly on top of each other. Edges only, while carrying one.
-      setActiveSnap(movingSeat().length > 0 && edgeOfSnap(candidate) === null ? null : candidate);
+      setActiveSnap(slot ? null : snapCandidate(next, viewport(), occupiedForId(id), floatChrome()));
       writePlacement(id, next);
     },
 
@@ -2542,7 +2604,13 @@ export function ShellStoreProvider(props: ParentProps) {
             lane === 'float' ? 'float' : lane === '' ? undefined : Number(lane),
           );
       } else if (dragOrigin && current && snap) {
-        writePlacement(id, { ...current, snap, displace: false });
+        // Back on an edge, a seat is arithmetic again — the lane and the `order` in it say who is
+        // stacked with whom, so the loose key it was carrying through the air is dropped.
+        const { seat: _seat, ...bare } = current;
+        writePlacement(
+          id,
+          edgeOfSnap(snap) ? { ...bare, snap, displace: false } : { ...current, snap, displace: false },
+        );
       }
 
       /*
@@ -2554,18 +2622,13 @@ export function ShellStoreProvider(props: ParentProps) {
       */
       const mates = movingSeat();
       const landed = placements()[placementKey(id)];
-      if (mates.length > 0 && !insert && !snap) {
-        // Nowhere a seat can be — see `seatOrigins`. The stack goes back rather than coming apart
-        // into panels sitting exactly on top of each other.
-        for (const [member, origin] of seatOrigins) writePlacement(member, origin);
-      } else if (landed) {
+      if (landed) {
         for (const mate of mates) {
           const entry = dockRequests().find((request) => request.id === mate);
           if (entry) writePlacement(mate, followSeat(placementOf(entry), landed));
         }
       }
       setMovingSeat([]);
-      seatOrigins = new Map();
 
       dragOrigin = null;
       dragPointer = null;
@@ -3048,7 +3111,9 @@ export function ShellStoreProvider(props: ParentProps) {
       // A panel that was displacing keeps displacing when moved to another edge, and gives it up on
       // a corner, where the idea has no meaning. See the rule in dockGeometry.
       const stays = placement.displace && edgeOfSnap(snap) !== null;
-      writePlacement(id, { ...placement, snap, displace: stays });
+      // Parking one panel in a corner takes it off every lane, so its lane coordinates go with it —
+      // `seat` above all, which would otherwise fuse this card into a stack it is not part of.
+      writePlacement(id, edgeOfSnap(snap) ? { ...placement, snap, displace: stays } : unlaned(placement, snap));
     },
 
     breakOut: (panelId, x, y) => {

@@ -46,6 +46,7 @@ import {
   type LaneMember,
   laneThickness,
   layerOrder,
+  looseSeats,
   MIN_DOCK_PX,
   MIN_FLOAT_PX,
   NARROW_VIEWPORT_PX,
@@ -72,6 +73,7 @@ import {
   snapTargetRects,
   snapTargetSize,
   targetRank,
+  unlaned,
 } from '../src/shared/dockGeometry';
 
 const desktop = { width: 1600, height: 900 };
@@ -2373,5 +2375,69 @@ describe('a seat-mate following its titlebar', () => {
     const followed = followSeat(mate(), landed);
 
     expect(followed).toMatchObject({ snap: 'home', home: 'sidebar', order: 1 });
+  });
+});
+
+describe('a seat with no lane to be implied by', () => {
+  const mate = (over: Partial<FloatPlacement> = {}): FloatPlacement =>
+    placement({ snap: 'left', displace: true, band: 0, order: 0, tab: 1, w: 300, h: 200, ...over });
+  const loose = (index: number, seat?: string, snap: SnapPoint | null = null) => ({
+    index,
+    placement: { ...placement({ snap, displace: false, order: 0 }), ...(seat ? { seat } : {}) },
+  });
+
+  it('stacks the panels that name the same seat', () => {
+    expect(looseSeats([loose(0, 'a'), loose(1, 'b'), loose(2, 'a')])).toEqual([[0, 2]]);
+  });
+
+  it('leaves two floats that merely came from the same lane position alone', () => {
+    // The whole reason `seat` exists rather than reusing `order`. Both of these were dragged out of
+    // position 0 of some edge and still say so; fusing them would hide one inside the other.
+    expect(looseSeats([loose(0), loose(1)])).toEqual([]);
+  });
+
+  it('is a seat in a corner as much as in open space', () => {
+    expect(looseSeats([loose(0, 'a', 'top-left'), loose(1, 'a', 'top-left')])).toEqual([[0, 1]]);
+  });
+
+  it('does not count a panel that names a seat nobody else does', () => {
+    expect(looseSeats([loose(0, 'a'), loose(1, 'b')])).toEqual([]);
+  });
+
+  it('hands a loose landing its box, since nothing else will compute one', () => {
+    // Off every lane each member resolves from its own placement, so a tab brought forward would
+    // otherwise appear at whatever size and place it last had somewhere else.
+    const landed = {
+      ...placement({ snap: null, displace: false, order: 0 }),
+      x: 120,
+      y: 80,
+      w: 500,
+      h: 360,
+      seat: 'a',
+    };
+    const followed = followSeat(mate({ x: 0, y: 0, w: 300, h: 200 }), landed);
+
+    expect(followed).toMatchObject({ x: 120, y: 80, w: 500, h: 360, seat: 'a' });
+  });
+
+  it('leaves a lane landing to size its own members', () => {
+    const followed = followSeat(mate({ w: 440, h: 250 }), placement({ snap: 'right', order: 0 }));
+
+    expect(followed).toMatchObject({ w: 440, h: 250 });
+    expect(followed.seat).toBeUndefined();
+  });
+
+  it('drops every lane coordinate from a panel travelling alone', () => {
+    const parked = unlaned(
+      { ...placement({ snap: 'left', displace: true, order: 2 }), band: 1, seat: 'a', home: 'side' },
+      null,
+    );
+
+    expect(parked.snap).toBeNull();
+    expect(parked.displace).toBe(false);
+    expect(parked.order).toBeUndefined();
+    expect(parked.band).toBeUndefined();
+    expect(parked.seat).toBeUndefined();
+    expect(parked.home).toBeUndefined();
   });
 });

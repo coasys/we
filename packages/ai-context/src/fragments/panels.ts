@@ -110,6 +110,10 @@ one with \`grow: 0\`.
 stack behind it as tabs, and the one showing carries a strip naming them all. \`tab\` orders the
 strip. Absent \`order\` is a seat of its own, so nothing that never said \`order\` starts sharing.
 
+A stack the reader drags into open space, or into a corner, stays a stack — it just stops being a
+place and starts being a name, since there is no lane left to imply membership from. That is a
+reader's doing and not something a template can declare: **declare seats with \`order\`, in a lane.**
+
 Below 900px of window width nothing displaces and a floating lane becomes one seat — every member a
 full-bleed sheet, tabbed, since two narrow cards over content leave nothing of either.
 

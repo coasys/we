@@ -345,7 +345,8 @@ export function roomElsewhere(seatOpen: readonly boolean[], seat: number): boole
  * next time it displaced, which is the same silent inheritance `insertDock` clears for.
  */
 export function followSeat(mate: FloatPlacement, landed: FloatPlacement): FloatPlacement {
-  const { band: _band, home: _home, ...rest } = mate;
+  const { band: _band, home: _home, seat: _seat, ...rest } = mate;
+  const loose = edgeOfSnap(landed.snap) === null;
   return {
     ...rest,
     snap: landed.snap,
@@ -353,7 +354,62 @@ export function followSeat(mate: FloatPlacement, landed: FloatPlacement): FloatP
     order: landed.order,
     ...(landed.band !== undefined ? { band: landed.band } : {}),
     ...(landed.home !== undefined ? { home: landed.home } : {}),
+    ...(landed.seat !== undefined ? { seat: landed.seat } : {}),
+    /*
+      A loose seat carries its own box, because nothing else will compute one.
+
+      In a lane the members' sizes are the lane's business, so copying them would fight it. Off every
+      lane there is no such authority: each member resolves from its own placement, so a tab brought
+      forward would appear at whatever size and place it last had somewhere else. They share one box
+      by holding one box.
+    */
+    ...(loose ? { x: landed.x, y: landed.y, w: landed.w, h: landed.h } : {}),
   };
+}
+
+/**
+ * Every seat that exists **off** the lanes: the floating stacks, and the ones parked in a corner.
+ *
+ * ## Why these have to name themselves
+ *
+ * A seat in a lane needs no name. It IS a place — a `band` inboard and an `order` along — so two
+ * panels giving the same answer are in the same place by arithmetic, which is what lets a template
+ * declare a stack (`meta.panels`, two entries, one `order`) without inventing an identifier for it.
+ *
+ * A panel in open space has no lane and therefore no such place, and the tempting shortcut — keep
+ * using `order` and let two floats sharing a number be a stack — is wrong in a way that would take a
+ * while to see: `order` is *left over* on a panel dragged out of a lane, so two unrelated floats that
+ * happened to come from position 0 of two different edges would silently fuse into one surface, each
+ * hiding the other. So a loose seat carries a `seat` key instead, written only when a stack is
+ * actually put somewhere loose, and unique by construction.
+ *
+ * Membership is therefore implied where there is something to imply it from, and declared where
+ * there is not. Nothing else in the model changes: a lane seat never carries a key, `meta.panels`
+ * cannot spell one, and a stack dragged back onto an edge drops it and goes back to being arithmetic.
+ */
+export function looseSeats(panels: readonly { placement: FloatPlacement; index: number }[]): number[][] {
+  const groups = new Map<string, number[]>();
+  for (const panel of panels) {
+    if (panel.placement.seat === undefined) continue;
+    const at = groups.get(panel.placement.seat);
+    if (at) at.push(panel.index);
+    else groups.set(panel.placement.seat, [panel.index]);
+  }
+  return [...groups.values()].filter((members) => members.length > 1);
+}
+
+/**
+ * A placement leaving every lane, for a panel travelling alone.
+ *
+ * `band`, `order` and `home` are coordinates in something — a lane, a seat, an outlet in the page —
+ * and a card in open space is in none of them. Left behind they are merely stale, which is how a
+ * panel dragged out of position 0 of one edge and dropped in the middle keeps saying `order: 0`
+ * about a lane it is not in. `seat` goes for the same reason and one more: it is the one coordinate
+ * whose staleness would be *visible*, fusing this card into a stack it has just been pulled out of.
+ */
+export function unlaned(placement: FloatPlacement, snap: SnapPoint | null): FloatPlacement {
+  const { band: _band, order: _order, home: _home, seat: _seat, ...rest } = placement;
+  return { ...rest, snap, displace: false };
 }
 
 /** Anything a drop can land on: what kind of place it is, and the box you have to be over. */
@@ -493,6 +549,21 @@ export interface FloatPlacement {
    * `band`, so nothing that never said `order` starts sharing.
    */
   tab?: number;
+  /**
+   * Which **loose seat** this panel is in — a stack that is floating, or parked in a corner.
+   *
+   * The one place membership is declared rather than implied, and only because there is nothing left
+   * to imply it from. In a lane a seat IS a place (`band` inboard, `order` along), so two panels
+   * giving the same answer are in the same place by arithmetic — which is what lets `meta.panels`
+   * declare a stack without inventing a name for one. Off every lane there is no such place, so the
+   * seat carries a key instead.
+   *
+   * Written only when a stack is actually dropped somewhere loose, and dropped again the moment it
+   * lands back on an edge. A template cannot spell one: it declares seats the arithmetic way, in a
+   * lane, which is the only kind it can know about. See `looseSeats` for why reusing `order` here
+   * would fuse unrelated floats into each other.
+   */
+  seat?: string;
   /**
    * Which `$panels` outlet the panel sits in while its snap is `home` — a **home lane**.
    *
