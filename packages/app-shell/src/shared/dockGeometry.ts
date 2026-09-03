@@ -224,6 +224,45 @@ const EDGE_SNAPS = new Set<SnapPoint>(['top', 'right', 'bottom', 'left']);
 /** The four edges, for anything that has to ask the same question of each. */
 export const EDGES = ['left', 'right', 'top', 'bottom'] as const satisfies readonly Exclude<DockEdge, null>[];
 
+/**
+ * The z-index every panel counts up from. Mirrors `zIndex.sticky` in `@we/tokens`, as a number for
+ * arithmetic — the same arrangement `SIDEBAR_PX` has with `SHELL_SIDEBAR_WIDTH`, and pinned to it by
+ * `chromeLayering.test.ts`.
+ *
+ * Panels used to share the one `sticky` layer outright, so which of two overlapping ones was on top
+ * was settled by document order — the registry's, which no click could change. Maximise a panel and
+ * anything registered after it went on painting over it. `layerOrder` hands each panel its own step
+ * above this base, and the app's chrome (`zIndex.chrome`) stays above all of them: fifty steps of
+ * headroom, which is more panels than a screen can hold.
+ */
+export const PANEL_LAYER_BASE = 200;
+
+/**
+ * Which panel paints over which: the most recently touched on top.
+ *
+ * `activation` is a monotonic counter per panel, written by whatever counts as touching one — a
+ * pointer landing on it, a drag beginning, maximising. A panel nobody has touched sorts first, in
+ * the order given, which is the registry's — exactly the order everything used to be in, so a
+ * screen where nothing has been clicked yet stacks as it always did.
+ *
+ * One ordering for every panel rather than a band per kind. Maximising is an activation, so a
+ * maximised panel comes to the front; a float clicked afterwards comes forward over it, which is
+ * what clicking it asked for. Displacing panels never overlap a float — a float clears `occupied` —
+ * so they need no ordering among themselves and take part here only so a raised float sits above
+ * the sidebar it is beside.
+ *
+ * Returns each id's layer, as a z-index on the `sticky` band.
+ */
+export function layerOrder(
+  ids: readonly string[],
+  activation: Record<string, number | undefined>,
+): Record<string, number> {
+  const ranked = ids
+    .map((id, index) => ({ id, index, at: activation[id] ?? Number.NEGATIVE_INFINITY }))
+    .sort((a, b) => ascending(a.at, b.at) || a.index - b.index);
+  return Object.fromEntries(ranked.map((entry, layer) => [entry.id, PANEL_LAYER_BASE + layer]));
+}
+
 /** The edge a snap sits on, or `null` for a corner. */
 export function edgeOfSnap(snap: SnapPoint | null): DockEdge {
   return snap && EDGE_SNAPS.has(snap) ? (snap as DockEdge) : null;
@@ -429,6 +468,12 @@ export interface DockGeometry {
    * panels that were side by side, and dragging it wrote a height nothing in that arrangement reads.
    */
   laneAxis?: 'vertical' | 'horizontal' | '';
+  /**
+   * The z-index this panel paints at — its step above `PANEL_LAYER_BASE`, by how recently it was
+   * touched. See {@link layerOrder}. The frame binds its `zIndex` to this rather than to a layer
+   * name, which is what lets a click bring a panel forward.
+   */
+  layer?: number;
   /**
    * Which side of the panel carries the width handle, and which the height handle.
    *

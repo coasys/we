@@ -2635,6 +2635,7 @@ ShellStore:
   - endDockResize(): ends the drag and persists the size
   - fitDock(id: string): shrinks a panel to the shape its content wants, keeping the width the user chose — only when the module declares an aspect for its panel
   - beginDockMove(id: string, pointerX: number, pointerY: number): begins moving a panel, remembering where it and the pointer started. A maximised panel shrinks back under the cursor
+  - raiseDock(id: string): brings a panel in front of the others — what a pointer landing on its frame does, and what a drag or maximising does on its own. The most recently raised panel is the one on top; nothing else decides stacking
   - moveDock(id: string, dx: number, dy: number): applies a move, in pixels from where beginDockMove was called
   - endDockMove(id: string): drops the panel — onto the snap or insert slot it is over, or where it is if that is nowhere
   - resetDockToLayout(panelId: string): puts a panel back where meta.panels asked for it, forgetting where it was dragged. Forgets rather than rewrites, so the panel keeps following the layout afterwards — including when the template changes it. Pair with layoutPinned

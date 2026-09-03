@@ -27,6 +27,7 @@ import {
   type FloatPlacement,
   insertionSlots,
   laneable,
+  layerOrder,
   MIN_DOCK_PX,
   MIN_FLOAT_PX,
   NO_INSET,
@@ -348,6 +349,14 @@ export interface ShellStore {
    * rather than to wherever it was before. See `moveDock`.
    */
   beginDockMove: (id: string, pointerX: number, pointerY: number) => void;
+  /**
+   * Bring a panel in front of the others.
+   *
+   * What a pointer landing anywhere on a frame does, and what a drag or maximising does on its own.
+   * The most recently raised panel is the one on top, and nothing else decides stacking — see
+   * `layerOrder` for why one ordering serves every kind of panel.
+   */
+  raiseDock: (id: string) => void;
   /** Apply a move, in pixels from where `beginDockMove` was called. */
   moveDock: (id: string, dx: number, dy: number) => void;
   /** Drop it: takes the snap it is hovering, or leaves it where it is if that is nowhere. */
@@ -661,6 +670,37 @@ function flushPlacements(): void {
   }
 }
 
+/**
+ * How recently each panel was touched, by placement key — the whole of z-order.
+ *
+ * Beside the placements rather than inside them, because it is not a placement: a placement says
+ * *where*, and `layoutPinned` reads the existence of one as "somebody moved this away from what the
+ * template asked for". A click is not that. Held in a map of its own, raising a panel pins nothing.
+ *
+ * Persisted, so a reload keeps the stacking — and, once seats can hold several panels, which tab
+ * was showing. Written straight through rather than coalesced: a click is one write, not a drag.
+ */
+const ACTIVATION_KEY = 'we-local:shell.dockActivation';
+
+function loadActivation(): Record<string, number> {
+  if (typeof localStorage === 'undefined') return {};
+  try {
+    const parsed = JSON.parse(localStorage.getItem(ACTIVATION_KEY) ?? '{}') as unknown;
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, number>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveActivation(activation: Record<string, number>): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(ACTIVATION_KEY, JSON.stringify(activation));
+  } catch {
+    // Lost stacking order on next boot, and nothing else.
+  }
+}
+
 function savePlacements(placements: Record<string, FloatPlacement>): void {
   const first = pendingPlacements === null;
   pendingPlacements = placements;
@@ -732,6 +772,20 @@ export function ShellStoreProvider(props: ParentProps) {
    */
   const [placements, setPlacements] = createSignal<Record<string, FloatPlacement>>(loadPlacements());
   const [dockResizing, setDockResizing] = createSignal(false);
+
+  const [activation, setActivation] = createSignal<Record<string, number>>(loadActivation());
+  // Seeded from what was stored, so the first raise after a reload lands above everything that was
+  // raised before it rather than restarting the count underneath.
+  let activationClock = Math.max(0, ...Object.values(activation()));
+  /** Bring a panel to the front. See `layerOrder`. */
+  const raise = (id: string) => {
+    const key = placementKey(id);
+    setActivation((prev) => {
+      const next = { ...prev, [key]: ++activationClock };
+      saveActivation(next);
+      return next;
+    });
+  };
   /**
    * Room taken by host chrome that is not a dock — the editor's rails and panels, today.
    *
@@ -1184,6 +1238,12 @@ export function ShellStoreProvider(props: ParentProps) {
   const dockGeometry = createMemo(() => {
     const requests = dockRequests();
     const { seats, below, above, axis } = laneSeating();
+    // Activation is keyed the way placements are — by scope — and the layer is asked for by dock id.
+    const touched = activation();
+    const layers = layerOrder(
+      requests.map((request) => request.id),
+      Object.fromEntries(requests.map((request) => [request.id, touched[placementKey(request.id)]])),
+    );
     const resolved: Record<string, DockGeometry> = {};
     requests.forEach((request, index) => {
       resolved[request.id] = {
@@ -1192,6 +1252,7 @@ export function ShellStoreProvider(props: ParentProps) {
         below: below[request.id] ?? '',
         above: above[request.id] ?? '',
         laneAxis: axis[request.id] ?? '',
+        layer: layers[request.id],
       };
     });
     return resolved;
@@ -1577,6 +1638,7 @@ export function ShellStoreProvider(props: ParentProps) {
     beginDockResize: (id) => {
       const request = dockRequests().find((entry) => entry.id === id);
       if (!request?.edge) return;
+      raise(id);
       /*
         A divider drag is measured from the two *stored* bases, not from the boxes on screen.
 
@@ -1790,6 +1852,7 @@ export function ShellStoreProvider(props: ParentProps) {
     beginDockMove: (id, pointerX, pointerY) => {
       const request = dockRequests().find((entry) => entry.id === id);
       if (!request?.edge) return;
+      raise(id);
       dragOrigin = resolvedPlacement(id, placementOf(request));
       dragPointer = { x: pointerX, y: pointerY };
       setMovingDock(id);
@@ -2100,8 +2163,12 @@ export function ShellStoreProvider(props: ParentProps) {
       const request = dockRequests().find((entry) => entry.id === id);
       if (!request?.edge) return;
       const placement = placementOf(request);
+      // Maximising is an activation: a panel asked to cover everything comes to the front of it.
+      raise(id);
       writePlacement(id, { ...placement, maximised: !placement.maximised });
     },
+
+    raiseDock: raise,
 
     layoutPinned: () =>
       Object.fromEntries(

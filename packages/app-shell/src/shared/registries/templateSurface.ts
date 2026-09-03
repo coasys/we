@@ -944,6 +944,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     activeInsert: state('host-layout'),
     insertDock: action('host-layout'),
     beginDockMove: action('host-layout'),
+    raiseDock: action('host-layout'),
     moveDock: action('host-layout'),
     endDockMove: action('host-layout'),
     snapDock: action('host-layout'),

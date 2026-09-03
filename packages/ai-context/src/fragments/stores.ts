@@ -1355,6 +1355,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
         beginDockMove:
           '(id: string, pointerX: number, pointerY: number): begins moving a panel, remembering where it and the pointer started. A maximised panel shrinks back under the cursor',
         moveDock: '(id: string, dx: number, dy: number): applies a move, in pixels from where beginDockMove was called',
+        raiseDock:
+          '(id: string): brings a panel in front of the others — what a pointer landing on its frame does, and what a drag or maximising does on its own. The most recently raised panel is the one on top; nothing else decides stacking',
         endDockMove:
           '(id: string): drops the panel — onto the snap or insert slot it is over, or where it is if that is nowhere',
         snapDock:

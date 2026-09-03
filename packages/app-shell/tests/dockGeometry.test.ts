@@ -12,9 +12,9 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  arrangeDrop,
   BOTTOM_CHROME_PX,
   CHROME_RAIL_PX,
-  arrangeDrop,
   columnLayout,
   columnMembers,
   columnSlots,
@@ -24,14 +24,15 @@ import {
   displaces,
   DOCK_GAP_PX,
   type DockRequest,
-  type DropTarget,
   dockThickness,
+  type DropTarget,
   edgeGroups,
   edgeOfSnap,
   fitPlacement,
   type FloatPlacement,
   insertionSlots,
   laneThickness,
+  layerOrder,
   MIN_DOCK_PX,
   MIN_FLOAT_PX,
   NARROW_VIEWPORT_PX,
@@ -39,6 +40,7 @@ import {
   NO_TOP_CHROME,
   occupiedFor,
   PANEL_CHROME,
+  PANEL_LAYER_BASE,
   placementFromDeclaration,
   RAIL_TOP_PX,
   railBand,
@@ -1707,5 +1709,37 @@ describe('a drop on an edge', () => {
       { index: 1, band: 0, order: 0 },
       { index: 0, band: 1, order: 0 },
     ]);
+  });
+});
+
+/**
+ * Which panel paints over which.
+ *
+ * Every frame used to share the one `sticky` layer, so overlap was settled by document order — the
+ * registry's — and nothing a person did could change it. Maximise a panel and anything registered
+ * after it went on painting over the top.
+ */
+describe('stacking panels', () => {
+  it('puts the most recently touched panel on top', () => {
+    const layers = layerOrder(['a', 'b', 'c'], { a: 3, b: 1, c: 2 });
+
+    expect(layers.a).toBeGreaterThan(layers.c);
+    expect(layers.c).toBeGreaterThan(layers.b);
+  });
+
+  it('keeps untouched panels in the order they registered, underneath everything touched', () => {
+    // A screen where nothing has been clicked stacks exactly as it always did.
+    const layers = layerOrder(['a', 'b', 'c'], { c: 1 });
+
+    expect(layers.a).toBe(PANEL_LAYER_BASE);
+    expect(layers.b).toBe(PANEL_LAYER_BASE + 1);
+    expect(layers.c).toBe(PANEL_LAYER_BASE + 2);
+  });
+
+  it('counts up from the sticky band, one step per panel', () => {
+    const layers = layerOrder(['a', 'b'], {});
+
+    expect(Math.min(...Object.values(layers))).toBe(PANEL_LAYER_BASE);
+    expect(Math.max(...Object.values(layers))).toBe(PANEL_LAYER_BASE + 1);
   });
 });

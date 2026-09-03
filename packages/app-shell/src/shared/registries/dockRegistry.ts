@@ -288,7 +288,17 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
               r: { $: `${dockGeometryPath(entry.id, 'floating')} ? '500' : null` },
               shadow: { $: `${dockGeometryPath(entry.id, 'floating')} ? 'xl' : null` },
               overflow: 'hidden',
-              zIndex: 'sticky',
+              /*
+                A step on the `sticky` band, not the band itself.
+
+                Every frame was `zIndex: 'sticky'`, so two overlapping panels were ordered by document
+                order — the registry's — and nothing a person did could change it: maximise a panel
+                and anything registered after it went on painting over the top. The geometry hands
+                each panel its own step by how recently it was touched (`layerOrder`), and touching is
+                the pointer landing anywhere on the frame.
+              */
+              zIndex: geo('layer'),
+              onPointerdown: { $action: 'shellStore.raiseDock', args: [entry.id] },
               /*
                 Marked so "fit to content" can measure the chrome rather than assume it.
 

@@ -2616,6 +2616,7 @@ export const contextData: ContextData = {
         'endDockResize',
         'fitDock',
         'beginDockMove',
+        'raiseDock',
         'moveDock',
         'endDockMove',
         'resetDockToLayout',
