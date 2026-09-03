@@ -264,16 +264,19 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
           // `PanelLane`, and a frame for it here would be a second copy.
           condition: { $: `${dockGeometryPath(entry.id, 'edge')} && !${dockGeometryPath(entry.id, 'home')}` },
           /*
-            A panel opening has no size to grow from, so it arrives by fading.
+            **No `enterTransition` here, however much a panel opening wants one.**
 
-            The content region slides over to make room for a displacing panel, and the panel used to
-            appear at its full width in the first frame of that — the room opening slowly and the
-            thing filling it instantly. A geometry transition cannot help here: this element did not
-            exist a moment ago, so there is no previous value to interpolate. Timed with the inset, so
-            the two read as one movement.
+            `$if`'s transitions do not use `Show`: they render a wrapper element that carries the
+            opacity, and that wrapper copies the content's declared size onto itself — with
+            `String(declared)`, which for a `width` that is an expression token yields the literal
+            `[object Object]`. It also takes `position: fixed` from the frame, so a panel whose whole
+            job is to be positioned by the host ends up inside a box that is competing to position it.
+            The panel stopped being visible while dragged.
+
+            A panel opening is exactly the case a geometry transition cannot cover, since there is no
+            previous box to interpolate from — so if this is worth animating it wants a CSS animation
+            on the frame itself, and no wrapper.
           */
-          enterTransition: { type: 'fade', duration: 300 },
-          exitTransition: { type: 'fade', duration: 200 },
           then: {
             type: 'Column',
             props: {
