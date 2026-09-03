@@ -2543,3 +2543,34 @@ describe('which seat a snap to an edge takes', () => {
     expect(seatOrder(5, [0, 5])).toBe(6);
   });
 });
+
+describe('which of the eight a drag is aiming at', () => {
+  const vp = { width: 1600, height: 900 };
+  const corner = snapTargetRects(vp).find((target) => target.id === 'top-left')!;
+
+  it('gives a tall panel the corner its pointer is in, not the edge its body crosses', () => {
+    /*
+      The bug. A card's silhouette is not a statement of intent — it hangs from wherever the titlebar
+      was grabbed — so a tall panel carried to a corner lies across that corner's target and the edge
+      centre's at once. By area the centre won, and the corner could not be reached at all: how TALL
+      the panel was decided the answer to a question the panel is not being asked.
+    */
+    const tall = { x: 20, y: 40, w: 360, h: 760 };
+
+    expect(snapCandidate(tall, vp)).toBe('left');
+    expect(snapCandidate(tall, vp, undefined, undefined, { x: corner.x + 10, y: corner.y + 10 })).toBe('top-left');
+  });
+
+  it('still lets a panel be thrown roughly at an edge, with the pointer over no target', () => {
+    // Overlap is the fallback, and most of a drag is spent there.
+    const wide = { x: 10, y: 380, w: 360, h: 300 };
+
+    expect(snapCandidate(wide, vp, undefined, undefined, { x: 800, y: 450 })).toBe('left');
+  });
+
+  it('leaves the middle of the screen free, which is what makes a free drop reachable', () => {
+    const middle = { x: 700, y: 400, w: 200, h: 120 };
+
+    expect(snapCandidate(middle, vp, undefined, undefined, { x: 800, y: 450 })).toBeNull();
+  });
+});

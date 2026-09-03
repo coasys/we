@@ -1289,11 +1289,35 @@ export function snapCandidate(
   viewport: Viewport,
   occupied: ContentInset = NO_INSET,
   chrome: ContentInset = DEFAULT_FLOAT_CHROME,
+  pointer?: { x: number; y: number },
 ): SnapPoint | null {
+  /*
+    The pointer decides, and the panel's shape only breaks a tie it cannot answer.
+
+    A card's silhouette is not a statement of intent: it hangs from wherever the titlebar happened to
+    be grabbed, so a tall panel carried to a corner lies across that corner's target AND the edge
+    centre's at once, and by area the centre wins. The corner became unreachable — and *how* tall the
+    panel was decided the answer to a question the panel is not being asked. The pointer is the only
+    thing under the hand that says "here".
+
+    The targets are small and do not touch one another, so containment needs no tie-break: at most
+    one of them holds the pointer. Overlap stays as the fallback for a pointer over none of them,
+    which is most of a drag — it is what lets a panel be thrown roughly at an edge without aiming —
+    and the gaps between the targets are what keep "drop it in the middle" reachable at all.
+
+    This is `chooseTarget`'s rule, arrived at for the insert slots for the same reason. The whole drop
+    system now answers "which of these did you mean" the same way.
+  */
+  const targets = snapTargetRects(viewport, occupied, chrome);
+  if (pointer) {
+    const under = targets.find((target) => contains(pointer, target));
+    if (under) return under.id;
+  }
+
   let best: SnapPoint | null = null;
   let bestArea = 0;
 
-  for (const target of snapTargetRects(viewport, occupied, chrome)) {
+  for (const target of targets) {
     const area = overlap(rect, target);
     if (area > bestArea) {
       bestArea = area;

@@ -1059,8 +1059,8 @@ export function ShellStoreProvider(props: ParentProps) {
    * with it — a stack must not be refused the place it is leaving, or a drag that changes its mind
    * has nowhere to put it back.
    */
-  const snapFor = (rect: Rect, id: string | null): SnapPoint | null => {
-    const candidate = snapCandidate(rect, viewport(), occupiedForId(id), floatChrome());
+  const snapFor = (rect: Rect, id: string | null, pointer: { x: number; y: number }): SnapPoint | null => {
+    const candidate = snapCandidate(rect, viewport(), occupiedForId(id), floatChrome(), pointer);
     return candidate && takenSnapPoints(id).includes(candidate) ? null : candidate;
   };
 
@@ -2076,7 +2076,7 @@ export function ShellStoreProvider(props: ParentProps) {
     };
     const slot = chooseTarget(store.insertSlots(), pointer, would);
     setActiveInsert(slot ? slot.key : null);
-    setActiveSnap(slot ? null : snapFor(would, id));
+    setActiveSnap(slot ? null : snapFor(would, id, pointer));
     /*
       What is being carried, since the panel itself is not.
 
@@ -2657,7 +2657,7 @@ export function ShellStoreProvider(props: ParentProps) {
       */
       const slot = chooseTarget(store.insertSlots(), { x: dragPointer.x + dx, y: dragPointer.y + dy }, next);
       setActiveInsert(slot ? slot.key : null);
-      setActiveSnap(slot ? null : snapFor(next, id));
+      setActiveSnap(slot ? null : snapFor(next, id, { x: dragPointer.x + dx, y: dragPointer.y + dy }));
       writePlacement(id, next);
     },
 
