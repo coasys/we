@@ -439,12 +439,12 @@ export interface ShellStore {
   /** The slot a drop would take right now, as its `key` — compare, do not parse. Null for none. */
   activeInsert: Accessor<string | null>;
   /**
-   * The outline following the cursor, while a drag is carrying something it cannot move.
+   * The outline following the cursor while a **tab** is dragged out of a stack.
    *
-   * A single panel *is* moved — it follows the cursor, which is what a window does. A **stack** and a
-   * **tab** cannot be: moving a panel means writing it a position, and a position is what takes it
-   * out of its seat. So those two carry an outline instead, and this is its box and name. Null for
-   * every other drag, and between drags.
+   * A panel is moved — it follows the cursor, which is what a window does — and so is a whole stack,
+   * whose other tabs ride along hidden. One tab cannot be: it would have to leave the seat to be
+   * carried, and leaving takes the strip away along with the pointer capture on it. So it carries an
+   * outline, and this is its box and name. Null for every other drag, and between drags.
    */
   dragGhost: Accessor<{ top: string; left: string; width: string; height: string; title: string } | null>;
   /**
@@ -970,7 +970,15 @@ export function ShellStoreProvider(props: ParentProps) {
   /** Where the pointer was when it started, for restoring a maximised panel beneath it. */
   let dragPointer: { x: number; y: number } | null = null;
   /** The seat-mates of the panel being dragged, which land wherever it does. See `beginDockMove`. */
-  let movingSeat: string[] = [];
+  /**
+   * The panels sharing a seat with the one being dragged — reactive, because they travel with it.
+   *
+   * A stack IS carried, the same as a single panel: writing the leader a position is what moves it,
+   * and the mates ride along hidden rather than being left standing in a lane the leader has gone
+   * from. `seatOrigins` is what they are put back to when a drag ends nowhere they can all land.
+   */
+  const [movingSeat, setMovingSeat] = createSignal<string[]>([]);
+  let seatOrigins = new Map<string, FloatPlacement>();
   /**
    * A press on a tab, before it is known whether it is a click or a drag.
    *
@@ -1220,7 +1228,21 @@ export function ShellStoreProvider(props: ParentProps) {
             float: Boolean(readModuleKey(entry.moduleId, entry.float)),
             min: readModuleKey(entry.moduleId, entry.min) as DockMin | undefined,
           };
-          return { ...request, placement: placementOf(request) };
+          /*
+            A seat-mate of the panel being dragged has left its lane along with the leader.
+
+            Derived rather than written: while the drag is live the mate is drawn nowhere and its
+            real placement is untouched, so a drop that lands nowhere leaves nothing to undo. Saying
+            it here rather than in the geometry is what takes it out of `edgeGroups` — otherwise its
+            old lane keeps its width open around nothing, and offers its own band lines and seams as
+            somewhere to drop the very stack that just left it.
+          */
+          const placement = placementOf(request);
+          const travelling = movingSeat().includes(entry.id);
+          return {
+            ...request,
+            placement: travelling ? { ...placement, snap: null, displace: false } : placement,
+          };
         })
     );
   });
@@ -1555,7 +1577,9 @@ export function ShellStoreProvider(props: ParentProps) {
         ...box,
         canCollapse,
         collapsed: canCollapse && folded,
-        hidden: hidden[request.id] ?? false,
+        // A seat-mate riding along with a drag is drawn nowhere: the leader under the cursor is the
+        // whole stack, exactly as the seat drew one panel when it was sitting still.
+        hidden: (hidden[request.id] ?? false) || movingSeat().includes(request.id),
         tabs: tabs[request.id] ?? [],
         // Empty rather than absent, so a schema condition reads a string either way.
         below: below[request.id] ?? '',
@@ -1900,20 +1924,15 @@ export function ShellStoreProvider(props: ParentProps) {
   });
 
   /**
-   * Show where a drag would land, and move nothing.
+   * Show where a **tab** would land, and move nothing.
    *
-   * **A gesture carrying more than it can draw shows guides instead of a card.** One panel is
-   * carried — it follows the cursor, which is what a window does. A *stack* cannot be: carrying it
-   * means writing a position to the panel in front, and a position is what takes it out of its seat,
-   * so the first frame of the drag tore the stack apart and left the others behind. A tab has the
-   * same problem one level down, and for a worse reason — leaving the seat takes the strip away, and
-   * the pointer capture with it.
-   *
-   * So both show the drop guides and settle nothing until the drop, which is what every application
-   * does with a group of tabs. `seated` also refuses the corners: they hold one card by design, so a
-   * stack landing there would come apart into panels stacked exactly on top of each other.
+   * A panel is carried — it follows the cursor, which is what a window does — and so is a whole
+   * stack, whose mates ride along hidden. One tab of a stack cannot be: it would have to leave the
+   * seat to be carried, and leaving takes the strip away along with the pointer capture on it, so
+   * the drag dies where it stands. It shows the drop guides and an outline instead, and settles
+   * nothing until it is let go, which is what every tab strip does.
    */
-  const previewDrop = (id: string, pointer: { x: number; y: number }, placement: FloatPlacement, seated: boolean) => {
+  const previewDrop = (id: string, pointer: { x: number; y: number }, placement: FloatPlacement) => {
     const would = {
       x: pointer.x - placement.w / 2,
       y: pointer.y - TITLE_BAR_PX / 2,
@@ -1923,7 +1942,7 @@ export function ShellStoreProvider(props: ParentProps) {
     const slot = chooseTarget(store.insertSlots(), pointer, would);
     const snap = slot ? null : snapCandidate(would, viewport(), occupiedForId(id), floatChrome());
     setActiveInsert(slot ? slot.key : null);
-    setActiveSnap(seated && edgeOfSnap(snap) === null ? null : snap);
+    setActiveSnap(snap);
     /*
       What is being carried, since the panel itself is not.
 
@@ -2304,7 +2323,22 @@ export function ShellStoreProvider(props: ParentProps) {
         does — see `endDockMove`. A drag that starts on a *tab* records none, which is the whole
         difference between the two gestures.
       */
-      movingSeat = (dockGeometry()[id]?.tabs ?? []).map((tab) => tab.id).filter((tab) => tab !== id);
+      const mates = (dockGeometry()[id]?.tabs ?? []).map((tab) => tab.id).filter((tab) => tab !== id);
+      /*
+        Where the whole stack goes back to if the drag ends nowhere it can land.
+
+        A seat is a place in a lane, so a stack has nowhere to be in open space — every member would
+        keep the leader's free position and sit exactly on top of the others, one surface with no
+        strip naming what is under it. A single panel dropped in the middle is a card, so it needs
+        none of this; a stack returns to the seat it came from instead. See `endDockMove`.
+      */
+      seatOrigins = new Map(
+        [id, ...mates].map((member) => {
+          const held = dockRequests().find((entry) => entry.id === member);
+          return [member, held ? placementOf(held) : dragOrigin!] as const;
+        }),
+      );
+      setMovingSeat(mates);
       dragOrigin = resolvedPlacement(id, placementOf(request));
       dragPointer = { x: pointerX, y: pointerY };
       /*
@@ -2335,15 +2369,17 @@ export function ShellStoreProvider(props: ParentProps) {
         tabGesture.dragging = true;
         dragOrigin = resolvedPlacement(id, placementOf(request));
         dragPointer = { x: tabGesture.x, y: tabGesture.y };
-        movingSeat = [];
+        // A tab drag takes exactly one panel out of the seat, so nothing rides along with it — the
+        // whole difference between this gesture and the titlebar's.
+        setMovingSeat([]);
         if (typeof document !== 'undefined') document.documentElement.setAttribute(DRAGGING_ATTR, '');
         setMovingDock(id);
         setDockResizing(true);
       }
 
-      // The tab stays where it is; only the guides follow. A tab may land anywhere a single panel
-      // can, corners included, since one tearing out is one card. See `previewDrop`.
-      previewDrop(id, { x: tabGesture.x + dx, y: tabGesture.y + dy }, placementOf(request), false);
+      // The tab stays where it is; only the guides and the outline follow. A tab may land anywhere a
+      // single panel can, corners included, since one tearing out is one card. See `previewDrop`.
+      previewDrop(id, { x: tabGesture.x + dx, y: tabGesture.y + dy }, placementOf(request));
     },
 
     endTabDrag: (id, pointerX, pointerY) => {
@@ -2385,22 +2421,6 @@ export function ShellStoreProvider(props: ParentProps) {
 
     moveDock: (id, dx, dy) => {
       if (!dragOrigin || !dragPointer || movingDock() !== id) return;
-
-      /*
-        A stack is shown where it would land rather than carried — see `previewDrop`.
-
-        Carrying it means writing a position to the panel in front, and a position is exactly what
-        takes a panel out of its seat: the first frame of the drag pulled the front one out and left
-        its tabs standing where they were, which is the grip appearing to tear out the tab you were
-        looking at rather than move the surface holding it.
-      */
-      if (movingSeat.length > 0) {
-        const seated = dockRequests().find((entry) => entry.id === id);
-        if (seated) {
-          previewDrop(id, { x: dragPointer.x + dx, y: dragPointer.y + dy }, placementOf(seated), true);
-        }
-        return;
-      }
 
       /*
         Dragging the titlebar of an attached panel — maximised, or displacing — restores the card,
@@ -2476,7 +2496,10 @@ export function ShellStoreProvider(props: ParentProps) {
       */
       const slot = chooseTarget(store.insertSlots(), { x: dragPointer.x + dx, y: dragPointer.y + dy }, next);
       setActiveInsert(slot ? slot.key : null);
-      setActiveSnap(slot ? null : snapCandidate(next, viewport(), occupiedForId(id), floatChrome()));
+      const candidate = slot ? null : snapCandidate(next, viewport(), occupiedForId(id), floatChrome());
+      // A corner holds one card by design — no lane, so no seat — and a stack landing there would
+      // come apart into panels sitting exactly on top of each other. Edges only, while carrying one.
+      setActiveSnap(movingSeat().length > 0 && edgeOfSnap(candidate) === null ? null : candidate);
       writePlacement(id, next);
     },
 
@@ -2529,14 +2552,20 @@ export function ShellStoreProvider(props: ParentProps) {
         handing the mates the four coordinates the drop settled on re-forms them around the panel
         that led. Their own `tab` is untouched, so the strip keeps the order it had.
       */
+      const mates = movingSeat();
       const landed = placements()[placementKey(id)];
-      if (landed) {
-        for (const mate of movingSeat) {
+      if (mates.length > 0 && !insert && !snap) {
+        // Nowhere a seat can be — see `seatOrigins`. The stack goes back rather than coming apart
+        // into panels sitting exactly on top of each other.
+        for (const [member, origin] of seatOrigins) writePlacement(member, origin);
+      } else if (landed) {
+        for (const mate of mates) {
           const entry = dockRequests().find((request) => request.id === mate);
           if (entry) writePlacement(mate, followSeat(placementOf(entry), landed));
         }
       }
-      movingSeat = [];
+      setMovingSeat([]);
+      seatOrigins = new Map();
 
       dragOrigin = null;
       dragPointer = null;

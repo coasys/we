@@ -955,18 +955,17 @@ function insertLines(id: string): SchemaNode {
 }
 
 /**
- * The outline of what is being dragged, for the two gestures that cannot carry the panel itself.
+ * The outline of what is being dragged, for the one gesture that cannot carry the panel itself.
  *
- * A single panel follows the cursor, which is what a window does and what nothing here has to draw.
- * A **stack** cannot: moving a panel means writing it a position, and a position is exactly what
- * takes it out of its seat, so carrying one tore it apart on the first frame. A **tab** cannot
- * either, and for a worse reason — leaving the seat takes the strip away, and the pointer capture
- * with it.
+ * A panel follows the cursor, which is what a window does and what nothing here has to draw; a whole
+ * stack does too, its other tabs riding along hidden. One **tab** cannot: it would have to leave the
+ * seat to be carried, and leaving takes the strip away along with the pointer capture on it, so the
+ * drag would die where it stands.
  *
- * Both were left showing drop guides and nothing else, which reads as a drag that is not working:
- * the guides say where it would go and nothing says what is going there. So they carry an outline —
- * the box the panel would occupy, named, under the hand. `shellStore.dragGhost` is null for every
- * other drag, so this draws nothing for them.
+ * That left a tab drag showing drop guides and nothing else, which reads as a drag that is not
+ * working: the guides say where it would go and nothing says what is going there. So it carries an
+ * outline — the box the panel would occupy, named, under the hand. `shellStore.dragGhost` is null
+ * for every other drag, so this draws nothing for them.
  *
  * `pointerEvents: 'none'` for the reason the snap targets have it: the drag is a pointer capture on
  * the grip, and a target that could swallow a pointer event would end the drag it exists to show.

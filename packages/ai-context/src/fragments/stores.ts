@@ -1338,7 +1338,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         activeInsert:
           "string | null — the slot a drop would take right now, as that slot's `key`. Compare it against slot.key rather than rebuilding the string, which names four things",
         dragGhost:
-          '{ top, left, width, height, title } | null — the outline following the cursor while a drag carries something it cannot move: a stack of tabs, or one tab of a stack. A single panel is moved instead, so this is null for it and between drags',
+          '{ top, left, width, height, title } | null — the outline following the cursor while one TAB is dragged out of a stack. A panel is moved instead, and so is a whole stack — whose other tabs ride along hidden — so this is null for both of those and between drags',
         panelSupplied:
           "Record<moduleId, boolean> — modules whose panel this interface supplies itself, by declaring a `meta.panels` entry that names the module and carries a `node`. What a module's dock frame asks before drawing its own contents; the module still owns whether the panel is open and how big it is",
         layoutNames:
