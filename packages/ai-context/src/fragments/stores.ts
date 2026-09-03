@@ -1344,7 +1344,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
       },
       actions: {
         beginDockResize:
-          "(id: string): remembers a panel's current size so the drag that follows is measured from it. Wire it to we-resize-handle's resizestart",
+          "(id: string): remembers a panel's current size so the drag that follows is measured from it. Wire it to we-resize-handle's resizestart. For a divider between lane-mates it first makes every member's stored size what is on screen, so the boundary can then travel the whole lane",
         resizeDock:
           "(id: string, side: 'left' | 'right' | 'top' | 'bottom' | 'top-left' | …, dx: number, dy: number): applies a resize drag from that side or corner, in screen pixels since it began. Wire it to resize with { $: 'arg.detail.delta' }",
         endDockResize: '(): ends the drag and persists the size',

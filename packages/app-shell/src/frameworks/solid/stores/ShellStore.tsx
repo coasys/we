@@ -39,6 +39,7 @@ import {
   type ResizeSide,
   resolveDock,
   RESTORE_DRAG_PX,
+  seamBetween,
   seedPlacement,
   SIDEBAR_PX,
   snapCandidate,
@@ -1202,6 +1203,7 @@ export function ShellStoreProvider(props: ParentProps) {
     const above: Record<string, string> = {};
     const axis: Record<string, 'vertical' | 'horizontal'> = {};
     const lanes: Record<string, string[]> = {};
+    const seams: Record<string, Rect> = {};
 
     for (const edge of EDGES) {
       const vertical = edge === 'left' || edge === 'right';
@@ -1228,16 +1230,18 @@ export function ShellStoreProvider(props: ParentProps) {
           if (ids[i + 1]) {
             below[id] = ids[i + 1];
             above[ids[i + 1]] = id;
+            seams[id] = seamBetween(boxes[i], boxes[i + 1], vertical ? 'vertical' : 'horizontal');
           }
         });
       }
     }
-    return { seats, below, above, axis, lanes };
+    return { seats, below, above, axis, lanes, seams };
   });
 
   const dockGeometry = createMemo(() => {
     const requests = dockRequests();
-    const { seats, below, above, axis } = laneSeating();
+    const { seats, below, above, axis, seams } = laneSeating();
+    const px = (n: number) => `${Math.round(n)}px`;
     // Activation is keyed the way placements are — by scope — and the layer is asked for by dock id.
     const touched = activation();
     const layers = layerOrder(
@@ -1253,6 +1257,16 @@ export function ShellStoreProvider(props: ParentProps) {
         above: above[request.id] ?? '',
         laneAxis: axis[request.id] ?? '',
         layer: layers[request.id],
+        ...(seams[request.id]
+          ? {
+              seam: {
+                top: px(seams[request.id].y),
+                left: px(seams[request.id].x),
+                width: px(seams[request.id].w),
+                height: px(seams[request.id].h),
+              },
+            }
+          : {}),
       };
     });
     return resolved;
@@ -1639,20 +1653,38 @@ export function ShellStoreProvider(props: ParentProps) {
       const request = dockRequests().find((entry) => entry.id === id);
       if (!request?.edge) return;
       raise(id);
-      /*
-        A divider drag is measured from the two *stored* bases, not from the boxes on screen.
-
-        The rendered heights include each panel's share of the column's spare room, and the bases are
-        what a placement holds — so measuring one and writing the other is the double count this
-        exists to avoid. Their sum is the room the boundary moves within, and it does not change.
-      */
       const belowId = dockGeometry()[id]?.below;
       const lower = belowId ? dockRequests().find((entry) => entry.id === belowId) : undefined;
       // The base on the axis the lane divides — `h` down a side lane, `w` across a top or bottom one.
       // Reading `h` either way wrote a height nobody in a horizontal lane reads, so the boundary
       // between two panels along the top edge could be dragged and nothing moved.
       const along = dockGeometry()[id]?.laneAxis === 'horizontal' ? 'w' : 'h';
-      columnDrag = lower ? { along, top: placementOf(request)[along], bottom: placementOf(lower)[along] } : null;
+      if (lower) {
+        /*
+          A divider drag begins by making the lane's stored sizes what is on screen.
+
+          A member's rendered extent is its base plus a share of the lane's spare room, handed out by
+          grow. The drag used to move the boundary within the sum of the two *bases* — which, for a
+          panel declared at `size: 'sm'`, are 16:9 card heights of 180px — so the pair could trade
+          120px between them on a column 900px tall, and the rest was slack each panel held by its
+          grow ratio and could not give up. Dragging felt like it had a wall a hand's width away.
+
+          So every member's base becomes its rendered extent and its grow becomes the same number.
+          The slack is then zero, the clamp below is in real pixels, and — since the grows are now in
+          proportion to the sizes — a later window resize keeps the split where it was dragged
+          instead of pulling it back toward the declared ratio. The ratio was the author's guess;
+          the drag is the reader's decision.
+        */
+        for (const memberId of laneSeating().lanes[id] ?? []) {
+          const member = dockRequests().find((entry) => entry.id === memberId);
+          if (!member) continue;
+          const rendered = rectOf(dockGeometry()[memberId], viewport(), placementOf(member))[along];
+          writePlacement(memberId, { ...placementOf(member), [along]: rendered, grow: rendered });
+        }
+        columnDrag = { along, top: placementOf(request)[along], bottom: placementOf(lower)[along] };
+      } else {
+        columnDrag = null;
+      }
       // The *resolved* rect, not the stored one: a snapped panel has no stored x/y, so a drag
       // measured from them would jump to the origin on the first frame. Same reason `beginDockMove`
       // reads the geometry.

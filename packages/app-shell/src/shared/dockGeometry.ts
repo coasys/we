@@ -469,6 +469,16 @@ export interface DockGeometry {
    */
   laneAxis?: 'vertical' | 'horizontal' | '';
   /**
+   * The boundary between this panel and the next one in its lane, as a box to put a divider in.
+   * Absent when there is no next panel. See {@link seamBetween}.
+   *
+   * Published rather than left to the frame, because the frame cannot draw it: the divider used to
+   * be a grip inside the earlier panel's box, straddling its bottom edge by six pixels — and the box
+   * is `overflow: hidden`, so the outer half and the whole of the accent line were clipped. A seam is
+   * a property of the pair, drawn from outside both.
+   */
+  seam?: { top: string; left: string; width: string; height: string };
+  /**
    * The z-index this panel paints at — its step above `PANEL_LAYER_BASE`, by how recently it was
    * touched. See {@link layerOrder}. The frame binds its `zIndex` to this rather than to a layer
    * name, which is what lets a click bring a panel forward.
@@ -1163,6 +1173,28 @@ export function arrangeDrop<T extends { placement: FloatPlacement }>(
  */
 export function laneThickness(members: FloatPlacement[], edge: Exclude<DockEdge, null>): number {
   return members.reduce((widest, member) => Math.max(widest, thicknessOf(member, edge)), 0);
+}
+
+/** How thick the divider's target is, centred on the boundary. Wider than the line it draws. */
+export const SEAM_PX = 12;
+
+/**
+ * The box a divider sits in, between two consecutive members of one lane.
+ *
+ * Centred on the boundary — the middle of the gap for a floating lane, the shared edge for a
+ * displacing one — and spanning the pair across the lane, so it reads as the line *between* them
+ * rather than as the edge of either. `SEAM_PX` thick, because a target you can hit while dragging
+ * has to be far thicker than a seam anybody wants to look at; the handle draws its own 3px line.
+ */
+export function seamBetween(a: Rect, b: Rect, axis: 'vertical' | 'horizontal'): Rect {
+  if (axis === 'vertical') {
+    const x = Math.min(a.x, b.x);
+    const boundary = (a.y + a.h + b.y) / 2;
+    return { x, y: boundary - SEAM_PX / 2, w: Math.max(a.x + a.w, b.x + b.w) - x, h: SEAM_PX };
+  }
+  const y = Math.min(a.y, b.y);
+  const boundary = (a.x + a.w + b.x) / 2;
+  return { x: boundary - SEAM_PX / 2, y, w: SEAM_PX, h: Math.max(a.y + a.h, b.y + b.h) - y };
 }
 
 /**

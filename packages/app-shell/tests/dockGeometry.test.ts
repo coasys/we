@@ -47,6 +47,8 @@ import {
   type Rect,
   rectOf,
   resolveDock,
+  SEAM_PX,
+  seamBetween,
   seedPlacement,
   SIDEBAR_PX,
   snapCandidate,
@@ -1741,5 +1743,46 @@ describe('stacking panels', () => {
 
     expect(Math.min(...Object.values(layers))).toBe(PANEL_LAYER_BASE);
     expect(Math.max(...Object.values(layers))).toBe(PANEL_LAYER_BASE + 1);
+  });
+});
+
+/**
+ * The divider between two lane-mates.
+ *
+ * It used to be a grip inside the earlier panel's frame, straddling the frame's edge — and the frame
+ * clips, so the half outside it and the whole of its line were never drawn. The seam is a box the
+ * geometry publishes and the frame's wrapper draws from outside both panels.
+ */
+describe('the seam between two lane-mates', () => {
+  it('is centred on the boundary and spans the pair, for a vertical lane', () => {
+    const seam = seamBetween({ x: 88, y: 0, w: 320, h: 400 }, { x: 88, y: 408, w: 320, h: 400 }, 'vertical');
+
+    expect(seam.y + seam.h / 2).toBe(404);
+    expect(seam.h).toBe(SEAM_PX);
+    expect(seam.x).toBe(88);
+    expect(seam.w).toBe(320);
+  });
+
+  it('stands on the shared edge of two displacing panels, which have no gap', () => {
+    const seam = seamBetween({ x: 80, y: 0, w: 300, h: 450 }, { x: 80, y: 450, w: 300, h: 450 }, 'vertical');
+
+    expect(seam.y + seam.h / 2).toBe(450);
+  });
+
+  it('runs the other way for a horizontal lane', () => {
+    const seam = seamBetween({ x: 0, y: 0, w: 400, h: 200 }, { x: 408, y: 0, w: 400, h: 200 }, 'horizontal');
+
+    expect(seam.x + seam.w / 2).toBe(404);
+    expect(seam.w).toBe(SEAM_PX);
+    expect(seam.y).toBe(0);
+    expect(seam.h).toBe(200);
+  });
+
+  it('spans the wider of two members that do not share a width', () => {
+    // Floating lane-mates keep their own widths; the divider covers both so it is under the pointer
+    // wherever along the boundary somebody reaches for it.
+    const seam = seamBetween({ x: 88, y: 0, w: 320, h: 400 }, { x: 88, y: 408, w: 440, h: 400 }, 'vertical');
+
+    expect(seam.w).toBe(440);
   });
 });

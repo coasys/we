@@ -236,6 +236,7 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
     children: [
       snapTargets(entry.id),
       insertLines(entry.id),
+      laneDivider(entry.id),
       {
         type: '$if',
         props: {
@@ -845,12 +846,12 @@ function grips(id: string): SchemaNode[] {
   const grippable = `!${geo('maximised')} && ${geo('floating')}`;
 
   /*
-    A boundary in a lane belongs to both panels, so only one of them draws it.
+    A boundary in a lane belongs to both panels, so neither of them draws it.
 
     Stacked, the later panel's leading edge and the earlier one's trailing edge are the same line a
     few pixels apart — two grips for one boundary, each resizing only its own panel, which is why
-    pulling it felt like neither. The earlier one becomes the divider for the pair (see `below`) and
-    the later one's leading grip is not drawn at all.
+    pulling it felt like neither. Both are suppressed, and `laneDivider` draws the seam from outside
+    both frames (see there for why it cannot be drawn from inside either).
 
     Which sides those are comes from `laneAxis`, because it depends on the edge: a lane down the left
     divides the height, so the pair meet top-to-bottom; a lane across the top divides the width, so
@@ -859,34 +860,18 @@ function grips(id: string): SchemaNode[] {
   */
   const alongLane = (axis: 'vertical' | 'horizontal') => `${geo('laneAxis')} == '${axis}'`;
   // The side of a panel that faces the *next* panel in its lane: down a vertical lane, rightward
-  // along a horizontal one. The opposite side faces the previous one, and gives its grip up.
+  // along a horizontal one. The opposite side faces the previous one.
   const trailing = { vertical: 'bottom', horizontal: 'right' } as const;
 
   const edges: SchemaNode[] = (['left', 'right', 'top', 'bottom'] as const).map((side) => {
     const shown = `(${grippable}) || ${geo(side === 'left' || side === 'right' ? 'handleX' : 'handleY')} == '${side}'`;
     const axis = side === 'top' || side === 'bottom' ? 'vertical' : 'horizontal';
-
-    if (side !== trailing[axis]) {
-      // Suppressed only when this really is the seam — a panel with a lane-mate on the other axis
-      // keeps every grip it had.
-      return {
-        type: '$if',
-        props: {
-          condition: { $: `(${shown}) && !(${geo('above')} && ${alongLane(axis)})` },
-          then: resizeEdge(id, side),
-        },
-      };
-    }
+    // Suppressed only when this side really is a seam — a panel with a lane-mate on the other axis
+    // keeps every grip it had.
+    const seam = side === trailing[axis] ? geo('below') : geo('above');
     return {
       type: '$if',
-      props: {
-        // Independent of `shown`: a displacing panel's only ordinary grip is the one facing the
-        // content, and the divider is perpendicular to it. Gating the divider on the same condition
-        // left a lane of sidebars with no way to move the boundary between them.
-        condition: { $: `${geo('below')} && ${alongLane(axis)}` },
-        then: resizeEdge(id, side, true),
-        else: { type: '$if', props: { condition: { $: shown }, then: resizeEdge(id, side) } },
-      },
+      props: { condition: { $: `(${shown}) && !(${seam} && ${alongLane(axis)})` }, then: resizeEdge(id, side) },
     };
   });
 
@@ -899,7 +884,7 @@ function grips(id: string): SchemaNode[] {
 }
 
 /** One side, dragged along its own axis. */
-function resizeEdge(id: string, side: 'left' | 'right' | 'top' | 'bottom', divider = false): SchemaNode {
+function resizeEdge(id: string, side: 'left' | 'right' | 'top' | 'bottom'): SchemaNode {
   const vertical = side === 'left' || side === 'right';
 
   return {
@@ -919,35 +904,70 @@ function resizeEdge(id: string, side: 'left' | 'right' | 'top' | 'bottom', divid
         every window corner anybody has dragged. Keyboard focus still shows: see `line` on the
         primitive.
       */
-      /*
-        A divider draws its line; a floating card's own edge does not.
-
-        A seam between two panels is a real boundary and the 3px bar answering under the pointer is
-        what a splitter looks like everywhere else. A lone card has no seam, so the bar would be a
-        stripe stuck to its side.
-      */
-      line: divider ? 'auto' : { $: `${dockGeometryPath(id, 'floating')} ? 'none' : 'auto'` },
+      line: { $: `${dockGeometryPath(id, 'floating')} ? 'none' : 'auto'` },
       styles: { '--we-resize-handle-thickness': '3px' },
       position: 'absolute',
       zIndex: 'sticky',
-      /*
-        Pinned to its own side and stretched along the other axis, so one node serves all four — and
-        a divider straddles the gap between the two panels rather than hugging one of them, which is
-        what makes it feel like the line between them rather than the edge of the upper one.
-      */
+      // Pinned to its own side and stretched along the other axis, so one node serves all four.
       ...(vertical
-        ? { top: '0', bottom: '0', [side]: divider ? '-6px' : '0', width: divider ? '12px' : '8px' }
-        : { left: '0', right: '0', [side]: divider ? '-6px' : '0', height: divider ? '12px' : '8px' }),
+        ? { top: '0', bottom: '0', [side]: '0', width: '8px' }
+        : { left: '0', right: '0', [side]: '0', height: '8px' }),
       onResizestart: { $action: 'shellStore.beginDockResize', args: [id] },
-      onResize: divider
-        ? { $action: 'shellStore.resizeColumn', args: [id, { $: 'arg.detail.delta' }] }
-        : {
-            $action: 'shellStore.resizeDock',
-            // The axis this side does not own is passed as zero rather than omitted: one action
-            // signature serves edges and corners, and an edge contributes nothing on its own axis.
-            args: vertical ? [id, side, { $: 'arg.detail.delta' }, 0] : [id, side, 0, { $: 'arg.detail.delta' }],
-          },
+      onResize: {
+        $action: 'shellStore.resizeDock',
+        // The axis this side does not own is passed as zero rather than omitted: one action
+        // signature serves edges and corners, and an edge contributes nothing on its own axis.
+        args: vertical ? [id, side, { $: 'arg.detail.delta' }, 0] : [id, side, 0, { $: 'arg.detail.delta' }],
+      },
       onResizeend: { $action: 'shellStore.endDockResize' },
+    },
+  };
+}
+
+/**
+ * The divider between this panel and the next one in its lane — drawn over the seam, from outside
+ * both frames.
+ *
+ * It was a grip inside the earlier panel's frame, straddling its bottom edge by six pixels so that
+ * it would sit on the boundary. The frame is `overflow: hidden`, so the outer half was clipped: what
+ * was left was 6px of `row-resize` inside the panel, then the 8px gap belonging to nobody, then
+ * `grab` on the next panel's titlebar — and the accent line, aligned to the handle's outer end, was
+ * entirely in the clipped region and never drew. The affordance the whole thing was for did not
+ * render.
+ *
+ * A seam is a property of the pair, not of either panel, so it is drawn where the drag guides are:
+ * in the frame's wrapper, outside the clipped box, at the box the geometry publishes. Fixed rather
+ * than absolute, on the chrome layer, because it has to sit over both panels whatever their own
+ * layers are.
+ */
+function laneDivider(id: string): SchemaNode {
+  const geo = (field: string) => ({ $: dockGeometryPath(id, field) });
+  return {
+    type: '$if',
+    props: {
+      condition: { $: `${dockGeometryPath(id, 'below')} && ${dockGeometryPath(id, 'seam')}` },
+      then: {
+        type: 'we-resize-handle',
+        props: {
+          // A vertical lane's seam is a horizontal line, and a horizontal handle is one dragged up
+          // and down — the primitive names the bar, not the drag.
+          orientation: { $: `${dockGeometryPath(id, 'laneAxis')} == 'vertical' ? 'horizontal' : 'vertical'` },
+          align: 'center',
+          // Always drawn: a seam between two panels is a real boundary, and the 3px bar answering
+          // under the pointer is what a splitter looks like everywhere else.
+          line: 'auto',
+          styles: { '--we-resize-handle-thickness': '3px' },
+          position: 'fixed',
+          zIndex: 'chrome',
+          top: geo('seam.top'),
+          left: geo('seam.left'),
+          width: geo('seam.width'),
+          height: geo('seam.height'),
+          onResizestart: { $action: 'shellStore.beginDockResize', args: [id] },
+          onResize: { $action: 'shellStore.resizeColumn', args: [id, { $: 'arg.detail.delta' }] },
+          onResizeend: { $action: 'shellStore.endDockResize' },
+        },
+      },
     },
   };
 }
