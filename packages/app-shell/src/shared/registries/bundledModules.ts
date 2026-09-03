@@ -12,6 +12,7 @@
 import { callModule } from '@we/module-call';
 import { createGlobeModule } from '@we/module-globe';
 import { createGraphModule } from '@we/module-graph';
+import { identityModule } from '@we/module-identity';
 import { notesModule } from '@we/module-notes';
 import { pocketModule } from '@we/module-pocket';
 import type { ModuleDefinition, ModuleStoreDeps } from '@we/module-shared';
@@ -51,6 +52,9 @@ export const bundledModules: Record<string, BundledModuleFactory> = {
   // Hears the call without either module referencing the other — the host routes the stream from
   // whichever module declares `audioSource`. See `@we/module-transcribe`.
   transcribe: () => transcribeModule,
+  // Agent-scoped: your DID, enrolled devices, guardians, recovery, and KEL. No host components
+  // needed — the module uses schema fragments exclusively.
+  identity: () => identityModule,
 };
 
 export interface ModuleActivation {
