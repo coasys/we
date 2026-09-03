@@ -65,6 +65,7 @@ import {
   roomElsewhere,
   SEAM_PX,
   seamBetween,
+  seatOrder,
   seatSize,
   seedPlacement,
   SIDEBAR_PX,
@@ -2517,5 +2518,28 @@ describe('a place that is already taken is not offered', () => {
 
   it('does not count a free float, which is at no snap point at all', () => {
     expect(takenSnaps([at('a', null)], [])).toEqual([]);
+  });
+});
+
+describe('which seat a snap to an edge takes', () => {
+  it('gives a stack that has never been in a lane one seat, not one each', () => {
+    // The bug: a stack assembled in open space is named rather than numbered, so every member
+    // arrived asking for "a seat of my own" and the stack fanned out into a column on landing.
+    expect(seatOrder(undefined, [])).toBe(0);
+    expect(seatOrder(undefined, [0, 1])).toBe(2);
+  });
+
+  it('keeps the number it is carrying when nothing in the lane holds it', () => {
+    expect(seatOrder(1, [0, 2])).toBe(1);
+  });
+
+  it('takes a fresh seat rather than merging into whoever holds its old number', () => {
+    // A snap says *this edge* and nothing about where along it, so landing stacked into a panel
+    // that happens to share a stale `order` is never what was asked for. Seams say "between".
+    expect(seatOrder(0, [0, 1])).toBe(2);
+  });
+
+  it('counts from the end, so a gap in the middle is left alone', () => {
+    expect(seatOrder(5, [0, 5])).toBe(6);
   });
 });

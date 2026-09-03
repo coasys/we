@@ -368,6 +368,28 @@ export function followSeat(mate: FloatPlacement, landed: FloatPlacement): FloatP
 }
 
 /**
+ * Which seat of a lane a panel snapping to an edge should take.
+ *
+ * A snap says *this edge*, and says nothing about where along it — but membership of a seat is
+ * `order`, so the number the panel happens to be carrying decides whether it lands beside what is
+ * there or stacked into it. Both of the answers it can arrive with are wrong on their own:
+ *
+ * - **Undefined** means "a seat of my own", which is right for one panel and wrong for a stack: each
+ *   member asks for its own seat, and the stack fans out into a column of separate panels. A stack
+ *   assembled in open space has no `order` at all, since a loose seat is named rather than numbered
+ *   — which is why this only happened to *some* stacks.
+ * - **Stale** — a number left over from the lane it came from — silently merges it into whatever
+ *   seat of the target lane happens to hold that number.
+ *
+ * So: keep the number when the lane has no one at it, and take a fresh seat at the end otherwise.
+ * Landing *between* two panels is what the seams are for; a snap has no way to say it.
+ */
+export function seatOrder(mine: number | undefined, taken: readonly number[]): number {
+  if (mine !== undefined && !taken.includes(mine)) return mine;
+  return taken.length > 0 ? Math.max(...taken) + 1 : 0;
+}
+
+/**
  * The snap points a panel is already parked at.
  *
  * A snap target says **take this place**, which is a useful thing to offer while the place is empty

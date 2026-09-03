@@ -50,6 +50,7 @@ import {
   RESTORE_DRAG_PX,
   roomElsewhere,
   seamBetween,
+  seatOrder,
   seatSize,
   seedPlacement,
   SIDEBAR_PX,
@@ -1061,6 +1062,24 @@ export function ShellStoreProvider(props: ParentProps) {
   const snapFor = (rect: Rect, id: string | null): SnapPoint | null => {
     const candidate = snapCandidate(rect, viewport(), occupiedForId(id), floatChrome());
     return candidate && takenSnapPoints(id).includes(candidate) ? null : candidate;
+  };
+
+  /**
+   * The seat a panel snapping to an edge takes in that edge's floating lane — see `seatOrder`.
+   *
+   * The mover and the seat-mates coming with it are left out of what counts as taken: they are the
+   * ones being placed, and a stack must be allowed to land back on the number it already holds.
+   */
+  const laneSeatOrder = (id: string, snap: SnapPoint, mine: number | undefined) => {
+    const mates = movingSeat();
+    const taken = dockRequests()
+      .filter((request) => request.edge && request.size !== 'full' && request.id !== id)
+      .filter((request) => !mates.includes(request.id))
+      .map((request) => request.placement ?? placementOf(request))
+      .filter((placement) => placement.snap === snap && !placement.displace)
+      .map((placement) => placement.order)
+      .filter((order): order is number => order !== undefined);
+    return seatOrder(mine, taken);
   };
 
   const takenSnapPoints = (moving: string | null) => {
@@ -2694,7 +2713,8 @@ export function ShellStoreProvider(props: ParentProps) {
           stack must not, or parking a torn-out tab in a corner puts it straight back.
         */
         const { seat: _seat, ...bare } = current;
-        if (edgeOfSnap(snap)) writePlacement(id, { ...bare, snap, displace: false });
+        if (edgeOfSnap(snap))
+          writePlacement(id, { ...bare, snap, displace: false, order: laneSeatOrder(id, snap, current.order) });
         else
           writePlacement(id, movingSeat().length > 0 ? { ...current, snap, displace: false } : unlaned(current, snap));
       }
