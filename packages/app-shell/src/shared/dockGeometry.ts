@@ -368,6 +368,32 @@ export function followSeat(mate: FloatPlacement, landed: FloatPlacement): FloatP
 }
 
 /**
+ * One seat, one size.
+ *
+ * A seat is a single surface with several things in it, so the size belongs to the seat rather than
+ * to whichever of them happens to be showing. Left to themselves the members each keep the size they
+ * arrived with, and since a lane solves its length from the member currently showing, clicking along
+ * the strip made the panel jump to a different shape on every tab — the arrangement rearranging
+ * itself in response to a question about which content to read.
+ *
+ * So joining a seat means taking its size, and resizing one member means resizing all of them.
+ * Position is left alone here: a lane computes that, and a loose seat is handed it by `followSeat`.
+ *
+ * Both spellings of size travel, because a panel stores whichever its situation uses: a card carries
+ * `w`/`h`, and a displacing one carries the thickness it holds its edge to.
+ */
+export function seatSize(mate: FloatPlacement, seat: FloatPlacement): FloatPlacement {
+  const { thicknessX: _x, thicknessY: _y, ...rest } = mate;
+  return {
+    ...rest,
+    w: seat.w,
+    h: seat.h,
+    ...(seat.thicknessX !== undefined ? { thicknessX: seat.thicknessX } : {}),
+    ...(seat.thicknessY !== undefined ? { thicknessY: seat.thicknessY } : {}),
+  };
+}
+
+/**
  * Every seat that exists **off** the lanes: the floating stacks, and the ones parked in a corner.
  *
  * ## Why these have to name themselves

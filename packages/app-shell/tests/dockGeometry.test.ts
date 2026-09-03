@@ -47,6 +47,7 @@ import {
   laneThickness,
   layerOrder,
   looseSeats,
+  seatSize,
   MIN_DOCK_PX,
   MIN_FLOAT_PX,
   NARROW_VIEWPORT_PX,
@@ -2439,5 +2440,33 @@ describe('a seat with no lane to be implied by', () => {
     expect(parked.band).toBeUndefined();
     expect(parked.seat).toBeUndefined();
     expect(parked.home).toBeUndefined();
+  });
+});
+
+describe('one seat, one size', () => {
+  const card = (over: Partial<FloatPlacement> = {}): FloatPlacement =>
+    placement({ snap: null, displace: false, w: 300, h: 200, ...over });
+
+  it('gives a panel joining a seat the size the seat already had', () => {
+    expect(seatSize(card({ w: 300, h: 200 }), card({ w: 520, h: 380 }))).toMatchObject({ w: 520, h: 380 });
+  });
+
+  it('leaves everything else about the joiner alone', () => {
+    const joined = seatSize(card({ tab: 2, collapsed: true, x: 40, y: 60 }), card({ w: 520, h: 380, x: 0, y: 0 }));
+
+    // Position is not size: a lane computes it, and a loose seat is handed it by `followSeat`.
+    expect(joined).toMatchObject({ tab: 2, collapsed: true, x: 40, y: 60 });
+  });
+
+  it('carries the thickness a displacing panel holds its edge to', () => {
+    const joined = seatSize(card({ thicknessX: 240 }), card({ thicknessX: 420, thicknessY: 180 }));
+
+    expect(joined).toMatchObject({ thicknessX: 420, thicknessY: 180 });
+  });
+
+  it('drops a thickness the seat does not have, rather than keeping a stale one', () => {
+    // A width left over from an edge this panel no longer holds would size the seat the next time
+    // it displaced — the same silent inheritance `insertDock` clears `band` for.
+    expect(seatSize(card({ thicknessX: 240, thicknessY: 90 }), card({ w: 520, h: 380 })).thicknessX).toBeUndefined();
   });
 });

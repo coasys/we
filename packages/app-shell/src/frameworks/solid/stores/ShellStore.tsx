@@ -50,6 +50,7 @@ import {
   RESTORE_DRAG_PX,
   roomElsewhere,
   seamBetween,
+  seatSize,
   seedPlacement,
   SIDEBAR_PX,
   snapCandidate,
@@ -2319,19 +2320,22 @@ export function ShellStoreProvider(props: ParentProps) {
 
     endDockResize: () => {
       /*
-        A loose seat is resized as one, because it has no lane to be resized by.
+        A seat is resized as one — see `seatSize`. A lane solves its length from the member showing,
+        and off every lane each member resolves from its own placement, so either way resizing the
+        one in front and leaving the rest puts the panel back to its old shape on the next tab.
 
-        In a lane the members' box is the lane's business and it recomputes for all of them. Off every
-        lane each member resolves from its own placement, so resizing the one showing and leaving the
-        others would put the panel back to its old size the moment a tab was brought forward.
+        A loose seat takes the position too, having nothing else to compute one.
       */
       const id = movingDock() ?? resizingDock;
       const box = id ? placements()[placementKey(id)] : undefined;
-      if (id && box && edgeOfSnap(box.snap) === null) {
+      if (id && box) {
+        const loose = edgeOfSnap(box.snap) === null;
         for (const tab of dockGeometry()[id]?.tabs ?? []) {
           if (tab.id === id) continue;
           const mate = dockRequests().find((entry) => entry.id === tab.id);
-          if (mate) writePlacement(tab.id, { ...placementOf(mate), x: box.x, y: box.y, w: box.w, h: box.h });
+          if (!mate) continue;
+          const sized = seatSize(placementOf(mate), box);
+          writePlacement(tab.id, loose ? { ...sized, x: box.x, y: box.y } : sized);
         }
       }
       resizingDock = null;
@@ -2702,6 +2706,15 @@ export function ShellStoreProvider(props: ParentProps) {
       // Landing in a seat is touching it: the newcomer shows, which is what dropping something on
       // top of something else looks like everywhere.
       raise(id);
+
+      /*
+        And it takes the seat's size — see `seatSize`. Read back from the geometry rather than from
+        the drop that was asked for, so this is the seat the panel actually landed in.
+      */
+      const joined = (dockGeometry()[id]?.tabs ?? []).map((tab) => tab.id).find((other) => other !== id);
+      const held = joined ? dockRequests().find((entry) => entry.id === joined) : undefined;
+      const joiner = held ? dockRequests().find((entry) => entry.id === id) : undefined;
+      if (held && joiner) writePlacement(id, seatSize(placementOf(joiner), placementOf(held)));
     },
 
     movingDock,

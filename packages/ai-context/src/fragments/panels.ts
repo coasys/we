@@ -109,6 +109,8 @@ one with \`grow: 0\`.
 **Seats.** Two entries in one lane with the same explicit \`order\` share a seat: one shows, the rest
 stack behind it as tabs, and the one showing carries a strip naming them all. \`tab\` orders the
 strip. Absent \`order\` is a seat of its own, so nothing that never said \`order\` starts sharing.
+A seat has **one size**: joining one means taking it, and resizing one member resizes all of them, so
+reading along the strip never reshapes the panel.
 
 A stack the reader drags into open space, or into a corner, stays a stack — it just stops being a
 place and starts being a name, since there is no lane left to imply membership from. That is a
