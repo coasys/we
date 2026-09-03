@@ -26,11 +26,13 @@
     "format": "prettier --write .",
     "clean:deep": "pnpm clean && rm -rf apps/we-tauri/src-tauri/target apps/we-electron/dist-electron",
     "lint:css": "stylelint 'packages/**/src/**/*.css' 'apps/*/src/**/*.css' 'packages/**/src/**/*.scss'",
-    "test:coverage": "pnpm -r --no-bail run test -- --coverage"
+    "test:coverage": "pnpm -r --no-bail run test -- --coverage",
+    "test:e2e": "npx playwright test --config e2e/playwright.config.ts"
   },
   "packageManager": "pnpm@10.18.3",
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.62.1",
     "@typescript-eslint/eslint-plugin": "^8.68.0",
     "@typescript-eslint/parser": "^8.68.0",
     "eslint": "^10.9.1",

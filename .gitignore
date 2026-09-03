@@ -35,3 +35,11 @@ apps/we-electron/electron/seed-port-map.json
 apps/we-electron/electron/seed-extra-resources.json
 apps/we-electron/electron/seed-runtime.json
 apps/we-electron/electron/seed-servers.js
+
+# E2E test artifacts — screenshots, traces, reports. The directory structure
+# persists (.gitkeep), but generated images and HTML reports do not.
+e2e/screenshots/*.png
+e2e/test-results/
+e2e/playwright-report/
+
+test-results/

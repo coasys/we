@@ -9,6 +9,7 @@
  * Renders nothing.
  */
 import { consumeGuestBootTarget } from '@shared/guestLink';
+import { wireIdentityModule } from '@shared/identity';
 
 import { useDatasetStore } from '../stores/DatasetStore';
 import { useProfileStore } from '../stores/ProfileStore';
@@ -56,6 +57,16 @@ export function BootController() {
     // Seed own profile into the cache from the public dataset
     const ownDid = session.me()?.did;
     if (ownDid) profileStore.fetchProfile(ownDid);
+
+    // Wire the identity module — connect store signals to the executor's identity RPC handlers.
+    // Non-blocking: the identity section degrades to a loading spinner until data arrives.
+    if (ownDid && session.port()) {
+      const serverUrl = session.serverUrl() ?? `http://localhost:${session.port()}`;
+      const wsUrl = serverUrl.replace(/^http/, 'ws') + '/api/v1/ws';
+      wireIdentityModule({ wsUrl, token: session.token() ?? '' }, ownDid).catch((err) =>
+        console.warn('BootController: identity wiring failed', err),
+      );
+    }
 
     /*
       Somebody arrived on a guest invite link.

@@ -10,6 +10,7 @@ import { expr } from '@we/schema-shared';
 import { accountSettings } from './AccountSettings.schema.ts';
 import { aiSection } from './AiSettings.schema.ts';
 import { hostSection } from './HostSettings.schema.ts';
+import { identitySection } from './IdentitySettings.schema.ts';
 import { languagesLocalState, languagesSection } from './LanguageSettings.schema.ts';
 import {
   backup,
@@ -785,7 +786,7 @@ export const settingsTemplate: TemplateSchema = {
   // as its own `RenderSchema` call with a fresh context — so it is not a descendant of this node at
   // render time, whatever the schema tree looks like, and state declared here would never reach it.
   routes: [
-    { path: '/', ...page([accountSection]) },
+    { path: '/', ...page([accountSection, identitySection]) },
     { path: '/appearance', ...page([templatesSection, themeScopeSection, themesSection]) },
     {
       path: '/spaces',
@@ -822,7 +823,7 @@ export const settingsTemplate: TemplateSchema = {
     // somebody navigates to it directly.
     { path: '/developer', ...page([developerSection]) },
     // Anything else lands on Account rather than an empty frame.
-    { path: '*', ...page([accountSection]) },
+    { path: '*', ...page([accountSection, identitySection]) },
   ],
   children: [
     {
