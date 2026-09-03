@@ -47,8 +47,6 @@ import {
   laneThickness,
   layerOrder,
   looseSeats,
-  seatSize,
-  takenSnaps,
   MIN_DOCK_PX,
   MIN_FLOAT_PX,
   NARROW_VIEWPORT_PX,
@@ -67,6 +65,7 @@ import {
   roomElsewhere,
   SEAM_PX,
   seamBetween,
+  seatSize,
   seedPlacement,
   SIDEBAR_PX,
   snapCandidate,
@@ -74,6 +73,7 @@ import {
   type SnapPoint,
   snapTargetRects,
   snapTargetSize,
+  takenSnaps,
   targetRank,
   unlaned,
 } from '../src/shared/dockGeometry';
@@ -2257,6 +2257,20 @@ describe('choosing among overlapping drop targets', () => {
     const chosen = chooseTarget([...offers, seat], { x: 200, y: 450 }, { ...dragged, y: 350 });
 
     expect(chosen?.mode).toBe('tab');
+  });
+
+  it('lets a seat claim the whole card without swallowing the seams inside it', () => {
+    /*
+      What the widened aim area rests on. A seat's hit box is the panel itself — aiming at a quarter
+      of it to stack was the complaint — and the seams at its two ends lie *within* that box. The
+      smaller box wins a pointer inside both, so a press on the boundary still means the boundary.
+    */
+    const seat = { mode: 'tab' as const, index: 0, hit: { x: 60, y: 150, w: 300, h: 600 } };
+    const seam = { mode: 'lane' as const, index: 0, hit: { x: 60, y: 140, w: 300, h: 20 } };
+    const over = { x: 60, y: 100, w: 300, h: 400 };
+
+    expect(chooseTarget([seat, seam], { x: 200, y: 152 }, over)?.mode).toBe('lane');
+    expect(chooseTarget([seat, seam], { x: 200, y: 450 }, over)?.mode).toBe('tab');
   });
 
   it('falls back to what the panel covers where the pointer is over nothing', () => {

@@ -2878,9 +2878,16 @@ export function ShellStoreProvider(props: ParentProps) {
       };
 
       const edgeSlots = EDGES.flatMap((edge) => {
-        // One target family at a time: an edge's lines and seams only once the panel has reached
-        // that edge's band — the lanes already there, and a reach past them. See `edgeZone`.
-        if (!carried || !nearEdge(carried, edge, viewport(), inset()[edge])) return [];
+        /*
+          The **seams** wait for the edge; the **seats** do not.
+
+          A seam is a place in a lane's geometry, so it only means anything once the panel has reached
+          that edge's band — the lanes already there, and a reach past them (see `edgeZone`). A seat
+          is a card you point at, and a card is a card wherever it is: gating it as though it were
+          lane geometry meant the panel parked at an edge showed no target to stack onto until the
+          drag was already at the edge, while every free float showed one the whole time.
+        */
+        const reached = Boolean(carried && nearEdge(carried, edge, viewport(), inset()[edge]));
         /*
           Measured in a region that still contains the lanes being described.
 
@@ -2971,6 +2978,22 @@ export function ShellStoreProvider(props: ParentProps) {
           });
 
         let displacingLane = -1;
+        const lanesOf = groups.map((group) => (group.displacing ? ++displacingLane : ('float' as const)));
+
+        /*
+          The seat itself: **the whole panel** to aim at, and its middle drawn to say so.
+
+          `hit` and `line` differ on purpose. The line is inset well clear of the seams either side,
+          so the two kinds of target never fight over the same pixels — a seam is a boundary and a
+          seat is the thing between two. But the seam is the *smaller* box, and `chooseTarget` gives a
+          pointer inside both to the smaller one, so the seat can safely claim the whole card without
+          swallowing them. Claiming only the middle meant aiming at a quarter of the panel to stack.
+        */
+        const seatSlots = groups.flatMap((group, lane) =>
+          seatRects(group).map((box, index) => draw('tab', lanesOf[lane], { index, hit: box, line: tabTarget(box) })),
+        );
+        if (!reached) return seatSlots;
+
         return [
           // An empty edge still offers its one new-lane slot — that is how an arrangement gets
           // started. It used to return nothing here, so an edge with no panels on it could only ever
@@ -2980,24 +3003,16 @@ export function ShellStoreProvider(props: ParentProps) {
             And a seat in each lane already there, displacing or floating alike — which is the whole
             of what bands added. A displacing lane could previously only be *stacked against*; these
             are the seams that let a panel join one and share its width.
+
+            Bounded by the screen: a displacing lane spans its whole edge, so its outer two seams
+            would otherwise sit just off it — see `columnSlots`.
           */
-          ...groups.flatMap((group) => {
-            const lane = group.displacing ? ++displacingLane : ('float' as const);
-            const seatBoxes = seatRects(group);
-            return [
-              // Bounded by the screen: a displacing lane spans its whole edge, so its outer two
-              // seams would otherwise sit just off it — see `columnSlots`.
-              ...columnSlots(edge, seatBoxes, { x: 0, y: 0, w: viewport().width, h: viewport().height }).map((slot) =>
-                draw('lane', lane, slot),
-              ),
-              /*
-                And the seat itself: the middle of each panel, to stack behind it as a tab. Inset
-                well clear of the seams either side, so the two kinds of target never fight over
-                the same pixels — a seam is a boundary, a tab target is the thing between two.
-              */
-              ...seatBoxes.map((box, index) => draw('tab', lane, { index, hit: tabTarget(box), line: tabTarget(box) })),
-            ];
-          }),
+          ...groups.flatMap((group, lane) =>
+            columnSlots(edge, seatRects(group), { x: 0, y: 0, w: viewport().width, h: viewport().height }).map((slot) =>
+              draw('lane', lanesOf[lane], slot),
+            ),
+          ),
+          ...seatSlots,
         ];
       });
       /*
@@ -3010,18 +3025,20 @@ export function ShellStoreProvider(props: ParentProps) {
         where you aim to get *past* it, not at it.
       */
       const stackSlots = stackTargets(moving).map(({ request }, index) => {
-        const hit = tabTarget(rectOf(boxes[request.id], viewport(), request.placement ?? placementOf(request)));
+        const box = rectOf(boxes[request.id], viewport(), request.placement ?? placementOf(request));
+        // The whole card to aim at, its middle drawn — the same split as a lane's seat above.
+        const line = tabTarget(box);
         return {
           key: `tab:::${index}`,
           index,
           lane: '' as const,
           edge: '',
           mode: 'tab' as const,
-          top: `${hit.y}px`,
-          left: `${hit.x}px`,
-          width: `${hit.w}px`,
-          height: `${hit.h}px`,
-          hit,
+          top: `${line.y}px`,
+          left: `${line.x}px`,
+          width: `${line.w}px`,
+          height: `${line.h}px`,
+          hit: box,
         };
       });
 
