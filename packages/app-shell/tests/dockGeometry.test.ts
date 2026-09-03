@@ -16,6 +16,7 @@ import {
   arrangeDrop,
   arrangeHomeDrop,
   BOTTOM_CHROME_PX,
+  canFold,
   chooseTarget,
   CHROME_RAIL_PX,
   COLLAPSED_PX,
@@ -2258,5 +2259,49 @@ describe('choosing among overlapping drop targets', () => {
     const chosen = chooseTarget(offers, { x: 900, y: 450 }, { x: 60, y: 400, w: 340, h: 100 });
 
     expect(chosen?.mode).toBe('band');
+  });
+});
+
+/**
+ * When folding to the titlebar is worth offering.
+ *
+ * The question underneath is whether there is anywhere for the room to go. A float hands its room
+ * back to the screen; a displacing panel hands it to a lane-mate, and with nobody to take it the
+ * fold leaves the content still inset by the full width and a bar stranded at the top of an empty
+ * column — hiding the contents of a sidebar that is still there.
+ */
+describe('offering to fold a panel', () => {
+  const float = { floating: true };
+  const docked = { floating: false };
+
+  it('is always on for a floating card, which gives its room back to the screen', () => {
+    expect(canFold(float, false, false)).toBe(true);
+  });
+
+  it('is off for a sidebar alone on its edge, where the fold would empty the column', () => {
+    expect(canFold(docked, false, false)).toBe(false);
+  });
+
+  it('is on for a sidebar with an open lane-mate to take the room', () => {
+    expect(canFold(docked, false, true)).toBe(true);
+  });
+
+  it('is off for the last open member of a lane, which is the same emptiness one step later', () => {
+    // Fold one of a pair and the other may not follow: two bars over a column keeping its full
+    // width is what refusing the lone sidebar was avoiding in the first place.
+    expect(canFold(docked, false, false)).toBe(false);
+  });
+
+  it('is on for a panel that is already folded, whatever the lane looks like around it', () => {
+    // Or folding the second-to-last member would disable the control that undoes it.
+    expect(canFold(docked, true, false)).toBe(true);
+  });
+
+  it('is off for a maximised panel, which has nothing to fold into', () => {
+    expect(canFold({ floating: true, maximised: true }, false, true)).toBe(false);
+  });
+
+  it('is off for a section at home, which has no titlebar to fold to', () => {
+    expect(canFold({ floating: true, home: true }, false, true)).toBe(false);
   });
 });

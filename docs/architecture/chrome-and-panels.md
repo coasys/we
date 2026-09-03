@@ -95,9 +95,15 @@ maximising all touch. Chrome stays above every step — `chromeLayering.test.ts`
 A panel says where usable stops: `DockContribution.min` for a module, `min` on a `meta.panels`
 entry for a section — the one place a declaration writes pixels, because a floor is a fact about
 the content. `floorOf` resolves it per axis over the host's defaults, and every division, drag and
-divider honours it. A panel in a lane, or a float, can be **folded** to its titlebar: its extent
-becomes the bar, its grow zero, its content hidden rather than unmounted. A lone displacing panel
-is refused, since folding it would leave the inset and empty the edge.
+divider honours it. A panel can be **folded** to its titlebar: its extent becomes the bar, its grow
+zero, its content hidden rather than unmounted.
+
+Folding is offered wherever there is **somewhere for the room to go** (`canFold`). A float hands its
+room back to the screen, so it always may. A displacing panel hands it to a lane-mate, so it needs an
+*open* one — which refuses both a sidebar alone on its edge and the last open member of a lane, each
+of which would otherwise leave the edge at its full width holding nothing but titlebars. An
+already-folded panel may always unfold, or folding the second-to-last member would disable the
+control that undoes it.
 
 ### Home lanes
 

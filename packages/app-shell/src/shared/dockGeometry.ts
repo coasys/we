@@ -289,6 +289,36 @@ export function contains(point: { x: number; y: number }, rect: Rect): boolean {
   return point.x >= rect.x && point.x <= rect.x + rect.w && point.y >= rect.y && point.y <= rect.y + rect.h;
 }
 
+/**
+ * Whether folding to the titlebar is on offer for this panel.
+ *
+ * One question underneath: **is there anywhere for the room to go?** A float gives its room back to
+ * the screen, so it may always fold. A displacing panel gives its room to a lane-mate — it spans its
+ * lane and its lane spans the edge, so with nobody to take the space, folding leaves the content
+ * still inset by the full width and a titlebar stranded at the top of an empty column. That is not a
+ * fold, it is hiding the contents of a sidebar that is still there.
+ *
+ * So it turns on `laneCanTakeTheRoom`: some *other* member of this lane is open. That refuses the
+ * lone sidebar, and it refuses the last open member of a lane of two — fold both and the edge keeps
+ * its whole width for two bars, which is the same emptiness arrived at one step later.
+ *
+ * `folded` is what keeps the control from trapping somebody: a panel that is already folded may
+ * always unfold, whatever the lane looks like around it. Without it, folding the second-to-last
+ * member would disable the button that undoes it.
+ *
+ * A maximised panel has nothing to fold into and a section at home has no titlebar to fold to, so
+ * both are refused outright.
+ */
+export function canFold(
+  box: { floating: boolean; maximised?: boolean; home?: boolean },
+  folded: boolean,
+  laneCanTakeTheRoom: boolean,
+): boolean {
+  if (box.maximised || box.home) return false;
+  if (box.floating) return true;
+  return folded || laneCanTakeTheRoom;
+}
+
 /** Anything a drop can land on: what kind of place it is, and the box you have to be over. */
 export interface DropCandidate {
   mode: 'band' | 'lane' | 'home' | 'tab';
@@ -492,10 +522,9 @@ export interface FloatPlacement {
    *
    * Its extent along its lane becomes the titlebar's and its grow becomes zero, so the lane-mates
    * take the room; the content is hidden rather than unmounted, so a transcript keeps its scroll and
-   * a call keeps its streams. Offered to lane members and to floats. A lone displacing panel is
-   * refused: folding it would leave the inset and empty the edge, which is a hole rather than a
-   * fold. This is also what `MIN_FLOAT_PX` was silently preventing — a card could not be dragged down
-   * to its own bar.
+   * a call keeps its streams. Offered wherever there is somewhere for that room to go — see
+   * {@link canFold}. This is also what `MIN_FLOAT_PX` was silently preventing: a card could not be
+   * dragged down to its own bar.
    */
   collapsed?: boolean;
 }
@@ -649,10 +678,7 @@ export interface DockGeometry {
    * See {@link FloatPlacement.collapsed}.
    */
   collapsed?: boolean;
-  /**
-   * Whether folding is on offer: a lane member, or a float. A lone displacing panel is refused, since
-   * folding it would leave the inset and empty the edge. What greys the titlebar's fold control.
-   */
+  /** Whether folding is on offer — see {@link canFold}. What greys the titlebar's fold control. */
   canCollapse?: boolean;
   /**
    * The boundary between this panel and the next one in its lane, as a box to put a divider in.

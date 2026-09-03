@@ -602,8 +602,9 @@ function tabStrip(id: string): SchemaNode {
  *
  * The way a panel gets out of the way without going anywhere: it keeps its place in its lane and its
  * lane-mates take the room, and the content is hidden rather than unmounted. Greyed rather than
- * absent for a lone displacing panel, for the reason the displace toggle is greyed on a corner — the
- * control stays where people look for it, and says why it cannot be pressed.
+ * absent where there is nowhere for that room to go, for the reason the displace toggle is greyed on
+ * a corner — the control stays where people look for it, and says why it cannot be pressed. See
+ * `canFold` for when that is.
  */
 function collapseButton(id: string): SchemaNode {
   const place = (field: string) => `shellStore.dockPlacement['${id}'].${field}`;
@@ -611,8 +612,10 @@ function collapseButton(id: string): SchemaNode {
   return {
     type: 'we-tooltip',
     props: {
+      // The refusal names the condition rather than the state, as the displace toggle's does: there
+      // has to be somewhere for the room to go, and beside it is the only direction it can go.
       title: {
-        $: `${place('canCollapse')} ? (${place('collapsed')} ? 'Unfold' : 'Fold to titlebar') : 'Share an edge to fold'`,
+        $: `${place('canCollapse')} ? (${place('collapsed')} ? 'Unfold' : 'Fold to titlebar') : 'Open a panel beside this one to fold'`,
       },
       placement: 'bottom',
     },

@@ -11,6 +11,7 @@ import { dockIsOffered } from '@shared/dockGating';
 import {
   arrangeDrop,
   arrangeHomeDrop,
+  canFold,
   chooseTarget,
   CHROME_RAIL_PX,
   columnLayout,
@@ -540,8 +541,9 @@ export interface ShellStore {
    *
    * It stays where it is and keeps its place in its lane; its lane-mates take the room. The content
    * is hidden rather than unmounted, so a transcript keeps its scroll and a call keeps its streams.
-   * Refused for a lone displacing panel, where folding would leave the inset and empty the edge —
-   * `dockPlacement[id].canCollapse` says whether it is on offer.
+   * Refused where there is nowhere for that room to go — a sidebar alone on its edge, or the last
+   * open member of a lane, both of which would leave the edge at its full width holding nothing but
+   * titlebars. `dockPlacement[id].canCollapse` says whether it is on offer.
    */
   toggleCollapseDock: (id: string) => void;
   /**
@@ -1485,12 +1487,21 @@ export function ShellStoreProvider(props: ParentProps) {
     const resolved: Record<string, DockGeometry> = {};
     requests.forEach((request, index) => {
       const box = resolveDock(request, viewport(), occupiedOf(index, requests), floatChrome(), seats[request.id]);
-      // A lane member or a float may fold; a lone displacing panel may not — see `canCollapse`.
-      const canCollapse = (box.floating && !box.maximised) || (lanes[request.id]?.length ?? 0) > 1;
+      const folded = Boolean(placementOf(request).collapsed);
+      /*
+        Somewhere for the room to go — see `canFold`, which is where the rule is.
+
+        A lane-mate that is itself folded is not somewhere: it has no room to take. So this asks for
+        an *open* one, which refuses the lone sidebar and the last open member of a lane alike.
+      */
+      const laneCanTakeTheRoom = (lanes[request.id] ?? []).some(
+        (mate) => mate !== request.id && !placements()[placementKey(mate)]?.collapsed,
+      );
+      const canCollapse = canFold(box, folded, laneCanTakeTheRoom);
       resolved[request.id] = {
         ...box,
         canCollapse,
-        collapsed: canCollapse && Boolean(placementOf(request).collapsed),
+        collapsed: canCollapse && folded,
         hidden: hidden[request.id] ?? false,
         tabs: tabs[request.id] ?? [],
         // Empty rather than absent, so a schema condition reads a string either way.
