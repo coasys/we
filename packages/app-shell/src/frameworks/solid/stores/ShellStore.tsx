@@ -2503,9 +2503,10 @@ export function ShellStoreProvider(props: ParentProps) {
       if (request && !activeInsert() && !activeSnap()) {
         const placement = placementOf(request);
         writePlacement(id, {
-          ...placement,
-          snap: null,
-          displace: false,
+          // `unlaned`, so the tab actually LEAVES. Writing a free position while keeping the seat key
+          // only made it the member of that seat which is showing, so the whole stack appeared to
+          // move to where one tab had been dropped, the rest hidden behind it at the new spot.
+          ...unlaned(placement, null),
           maximised: false,
           // Where it was let go, so the card appears under the hand rather than where the drag began.
           x: pointerX - placement.w / 2,
@@ -2658,13 +2659,18 @@ export function ShellStoreProvider(props: ParentProps) {
             lane === 'float' ? 'float' : lane === '' ? undefined : Number(lane),
           );
       } else if (dragOrigin && current && snap) {
-        // Back on an edge, a seat is arithmetic again — the lane and the `order` in it say who is
-        // stacked with whom, so the loose key it was carrying through the air is dropped.
+        /*
+          Who keeps the seat: a drag carrying the whole stack, and nothing else.
+
+          Back on an edge a seat is arithmetic again — the lane and the `order` in it say who is
+          stacked with whom — so the loose key carried through the air is dropped either way. A corner
+          is off every lane, so a stack landing in one stays a stack, and a panel *taken out* of a
+          stack must not, or parking a torn-out tab in a corner puts it straight back.
+        */
         const { seat: _seat, ...bare } = current;
-        writePlacement(
-          id,
-          edgeOfSnap(snap) ? { ...bare, snap, displace: false } : { ...current, snap, displace: false },
-        );
+        if (edgeOfSnap(snap)) writePlacement(id, { ...bare, snap, displace: false });
+        else
+          writePlacement(id, movingSeat().length > 0 ? { ...current, snap, displace: false } : unlaned(current, snap));
       }
 
       /*
