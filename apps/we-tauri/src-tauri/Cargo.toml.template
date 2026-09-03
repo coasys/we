@@ -1,7 +1,12 @@
+# `name` is the executable, so it is the lowercase spelling — see `mainBinaryName` in
+# tauri.conf.json, which has to match it. The display name is `productName` there.
+#
+# `description` is not decoration either: the AppImage's .desktop entry takes its `Comment=` from
+# it, which is the tooltip a launcher shows.
 [package]
-name = "we-ad4m-launcher"
+name = "we"
 version = "0.1.0"
-description = "WE AD4M Launcher"
+description = "Social infrastructure for communities that own their data"
 authors = ["James Weir"]
 edition = "2021"
 

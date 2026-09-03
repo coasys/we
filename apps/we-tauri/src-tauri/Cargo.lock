@@ -109,6 +109,7 @@ dependencies = [
  "tokio",
  "tokio-rustls 0.26.4",
  "tokio-stream",
+ "tokio-util",
  "tower-http",
  "tower-service",
  "ts-rs",
@@ -21512,7 +21513,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "we-ad4m-launcher"
+name = "we"
 version = "0.1.0"
 dependencies = [
  "ad4m-client",
