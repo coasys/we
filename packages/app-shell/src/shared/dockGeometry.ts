@@ -368,6 +368,35 @@ export function followSeat(mate: FloatPlacement, landed: FloatPlacement): FloatP
 }
 
 /**
+ * The snap points a panel is already parked at.
+ *
+ * A snap target says **take this place**, which is a useful thing to offer while the place is empty
+ * and an ambiguous one afterwards: with a panel already there the question has stopped being whether
+ * and started being *where among what is there*, and the seams either side of it and the seat itself
+ * are the targets that answer that. Worse, the target is drawn over the very panel being aimed at, so
+ * it hides the finer answers behind the coarse one.
+ *
+ * So an occupied snap point stops being offered, and what you get instead is the arrangement — a
+ * seam to make a column, or the middle of the card to stack. Nothing is lost by it: the only thing
+ * the raw target could still do is park a second card exactly on top of the first, with no strip
+ * naming either.
+ *
+ * A **displacing** panel takes no snap point. It is a lane rather than a card, and snap targets are
+ * measured in the room left over once the lanes have taken theirs — so the target at that edge is
+ * inboard of the sidebar, and is genuinely still free.
+ */
+export function takenSnaps(
+  panels: readonly { id: string; placement: FloatPlacement; hidden?: boolean }[],
+  exclude: readonly string[],
+): SnapPoint[] {
+  return panels
+    .filter((panel) => !exclude.includes(panel.id) && !panel.hidden)
+    .filter((panel) => !panel.placement.displace && !panel.placement.maximised)
+    .map((panel) => panel.placement.snap)
+    .filter((snap): snap is SnapPoint => snap !== null && snap !== 'home');
+}
+
+/**
  * One seat, one size.
  *
  * A seat is a single surface with several things in it, so the size belongs to the seat rather than

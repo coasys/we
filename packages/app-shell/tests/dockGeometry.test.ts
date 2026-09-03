@@ -48,6 +48,7 @@ import {
   layerOrder,
   looseSeats,
   seatSize,
+  takenSnaps,
   MIN_DOCK_PX,
   MIN_FLOAT_PX,
   NARROW_VIEWPORT_PX,
@@ -2468,5 +2469,39 @@ describe('one seat, one size', () => {
     // A width left over from an edge this panel no longer holds would size the seat the next time
     // it displaced — the same silent inheritance `insertDock` clears `band` for.
     expect(seatSize(card({ thicknessX: 240, thicknessY: 90 }), card({ w: 520, h: 380 })).thicknessX).toBeUndefined();
+  });
+});
+
+describe('a place that is already taken is not offered', () => {
+  const at = (id: string, snap: SnapPoint | null, over: Partial<FloatPlacement> = {}) => ({
+    id,
+    placement: placement({ snap, displace: false, ...over }),
+  });
+
+  it('strikes out the snap a panel is parked at', () => {
+    expect(takenSnaps([at('a', 'left'), at('b', 'top-right')], [])).toEqual(['left', 'top-right']);
+  });
+
+  it('never strikes out the place the dragged panel is leaving', () => {
+    // Or a drag that changes its mind has nowhere to put the panel back.
+    expect(takenSnaps([at('a', 'left')], ['a'])).toEqual([]);
+  });
+
+  it('leaves the seat-mates riding along with it out too', () => {
+    expect(takenSnaps([at('a', 'left'), at('b', 'left')], ['a', 'b'])).toEqual([]);
+  });
+
+  it('does not count a displacing panel, which is a lane rather than a card', () => {
+    // Snap targets are measured in the room left once the lanes have taken theirs, so the target at
+    // that edge sits inboard of the sidebar and is genuinely still free.
+    expect(takenSnaps([at('a', 'left', { displace: true })], [])).toEqual([]);
+  });
+
+  it('does not count a panel stacked behind another, or one covering everything', () => {
+    expect(takenSnaps([{ ...at('a', 'left'), hidden: true }, at('b', 'right', { maximised: true })], [])).toEqual([]);
+  });
+
+  it('does not count a free float, which is at no snap point at all', () => {
+    expect(takenSnaps([at('a', null)], [])).toEqual([]);
   });
 });

@@ -56,6 +56,7 @@ import {
   snapCandidate,
   type SnapPoint,
   snapTargetRects,
+  takenSnaps,
   TITLE_BAR_PX,
   type TopChrome,
   unlaned,
@@ -1050,6 +1051,32 @@ export function ShellStoreProvider(props: ParentProps) {
       .filter(({ request }) => edgeOfSnap((request.placement ?? placementOf(request)).snap) === null);
   };
 
+  /**
+   * The snap a drop would take, once the places that are already occupied are struck out.
+   *
+   * See `takenSnaps` for why. The panel being dragged is excluded along with the seat-mates riding
+   * with it — a stack must not be refused the place it is leaving, or a drag that changes its mind
+   * has nowhere to put it back.
+   */
+  const snapFor = (rect: Rect, id: string | null): SnapPoint | null => {
+    const candidate = snapCandidate(rect, viewport(), occupiedForId(id), floatChrome());
+    return candidate && takenSnapPoints(id).includes(candidate) ? null : candidate;
+  };
+
+  const takenSnapPoints = (moving: string | null) => {
+    const seating = laneSeating();
+    return takenSnaps(
+      dockRequests()
+        .filter((request) => request.edge && request.size !== 'full')
+        .map((request) => ({
+          id: request.id,
+          placement: request.placement ?? placementOf(request),
+          hidden: seating.hidden[request.id],
+        })),
+      moving ? [moving, ...movingSeat()] : [],
+    );
+  };
+
   const tabTarget = (box: Rect): Rect => ({
     x: box.x + box.w / 4,
     y: box.y + box.h / 4,
@@ -2029,9 +2056,8 @@ export function ShellStoreProvider(props: ParentProps) {
       h: placement.h,
     };
     const slot = chooseTarget(store.insertSlots(), pointer, would);
-    const snap = slot ? null : snapCandidate(would, viewport(), occupiedForId(id), floatChrome());
     setActiveInsert(slot ? slot.key : null);
-    setActiveSnap(snap);
+    setActiveSnap(slot ? null : snapFor(would, id));
     /*
       What is being carried, since the panel itself is not.
 
@@ -2612,7 +2638,7 @@ export function ShellStoreProvider(props: ParentProps) {
       */
       const slot = chooseTarget(store.insertSlots(), { x: dragPointer.x + dx, y: dragPointer.y + dy }, next);
       setActiveInsert(slot ? slot.key : null);
-      setActiveSnap(slot ? null : snapCandidate(next, viewport(), occupiedForId(id), floatChrome()));
+      setActiveSnap(slot ? null : snapFor(next, id));
       writePlacement(id, next);
     },
 
@@ -3006,13 +3032,17 @@ export function ShellStoreProvider(props: ParentProps) {
     dragGhost,
 
     snapTargets: () =>
-      snapTargetRects(viewport(), occupiedForId(movingDock()), floatChrome()).map((target) => ({
-        id: target.id,
-        top: `${target.y}px`,
-        left: `${target.x}px`,
-        width: `${target.w}px`,
-        height: `${target.h}px`,
-      })),
+      snapTargetRects(viewport(), occupiedForId(movingDock()), floatChrome())
+        // Not drawn where a panel already is — see `takenSnaps`. Half the complaint was the target
+        // sitting on top of the card being aimed at, hiding the seams and the seat behind it.
+        .filter((target) => !takenSnapPoints(movingDock()).includes(target.id))
+        .map((target) => ({
+          id: target.id,
+          top: `${target.y}px`,
+          left: `${target.x}px`,
+          width: `${target.w}px`,
+          height: `${target.h}px`,
+        })),
 
     toggleMaximiseDock: (id) => {
       const request = dockRequests().find((entry) => entry.id === id);
