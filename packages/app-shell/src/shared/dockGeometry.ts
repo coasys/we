@@ -319,6 +319,19 @@ export function canFold(
   return folded || laneCanTakeTheRoom;
 }
 
+/**
+ * Whether a lane has an open **seat** other than this one — the room a fold would go to.
+ *
+ * Seats, not panels, and that distinction is the whole of it. A lane divides its length between
+ * seats; the panels sharing one seat are tabs and share its box, so folding one gives the other
+ * nothing — it is already showing in exactly that space, or hidden behind it. Asked about panels,
+ * two tabs of one seat each looked like somewhere for the other's room to go, and folding either
+ * left the edge at full width around an empty box.
+ */
+export function roomElsewhere(seatOpen: readonly boolean[], seat: number): boolean {
+  return seatOpen.some((open, index) => open && index !== seat);
+}
+
 /** Anything a drop can land on: what kind of place it is, and the box you have to be over. */
 export interface DropCandidate {
   mode: 'band' | 'lane' | 'home' | 'tab';

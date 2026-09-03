@@ -46,6 +46,7 @@ import {
   type ResizeSide,
   resolveDock,
   RESTORE_DRAG_PX,
+  roomElsewhere,
   seamBetween,
   seedPlacement,
   SIDEBAR_PX,
@@ -1387,6 +1388,8 @@ export function ShellStoreProvider(props: ParentProps) {
     const seams: Record<string, Rect> = {};
     const hidden: Record<string, boolean> = {};
     const tabs: Record<string, { id: string; title: string; active: boolean }[]> = {};
+    /** Whether this panel's lane has an open seat elsewhere to take a fold's room. */
+    const laneRoom: Record<string, boolean> = {};
     const touched = activation();
     // A panel that stops fronting a seat should not hold its old strip alive.
     lastStrips = { ...lastStrips };
@@ -1424,6 +1427,19 @@ export function ShellStoreProvider(props: ParentProps) {
             return at(requests[member.index].id) > at(requests[best.index].id) ? member : best;
           }),
         );
+        /*
+          Where a fold's room would go: another **seat** of this lane that is open.
+
+          Per seat rather than per panel, because a lane divides its length between seats and the
+          panels sharing one are tabs in the same box. Asked about panels, two tabs of a single seat
+          each counted as somewhere for the other's room to go — so folding either was offered, and
+          did nothing but empty the box while the edge kept its full width. See `roomElsewhere`.
+        */
+        const seatOpen = showing.map((member) => !placementOf(requests[member.index]).collapsed);
+        seating.forEach((seat, s) => {
+          for (const member of seat) laneRoom[requests[member.index].id] = roomElsewhere(seatOpen, s);
+        });
+
         seating.forEach((seat, s) => {
           if (seat.length < 2) return;
           const front = requests[showing[s].index].id;
@@ -1471,12 +1487,12 @@ export function ShellStoreProvider(props: ParentProps) {
         });
       }
     }
-    return { seats, below, above, axis, lanes, seams, hidden, tabs };
+    return { seats, below, above, axis, lanes, seams, hidden, tabs, laneRoom };
   });
 
   const dockGeometry = createMemo(() => {
     const requests = dockRequests();
-    const { seats, below, above, axis, seams, lanes, hidden, tabs } = laneSeating();
+    const { seats, below, above, axis, seams, hidden, tabs, laneRoom } = laneSeating();
     const px = (n: number) => `${Math.round(n)}px`;
     // Activation is keyed the way placements are — by scope — and the layer is asked for by dock id.
     const touched = activation();
@@ -1488,16 +1504,8 @@ export function ShellStoreProvider(props: ParentProps) {
     requests.forEach((request, index) => {
       const box = resolveDock(request, viewport(), occupiedOf(index, requests), floatChrome(), seats[request.id]);
       const folded = Boolean(placementOf(request).collapsed);
-      /*
-        Somewhere for the room to go — see `canFold`, which is where the rule is.
-
-        A lane-mate that is itself folded is not somewhere: it has no room to take. So this asks for
-        an *open* one, which refuses the lone sidebar and the last open member of a lane alike.
-      */
-      const laneCanTakeTheRoom = (lanes[request.id] ?? []).some(
-        (mate) => mate !== request.id && !placements()[placementKey(mate)]?.collapsed,
-      );
-      const canCollapse = canFold(box, folded, laneCanTakeTheRoom);
+      // Somewhere for the room to go — an open seat elsewhere in the lane. See `canFold`.
+      const canCollapse = canFold(box, folded, laneRoom[request.id] ?? false);
       resolved[request.id] = {
         ...box,
         canCollapse,

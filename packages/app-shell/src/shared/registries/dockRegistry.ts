@@ -559,13 +559,33 @@ function fitButton(id: string): SchemaNode {
 /**
  * The seat's members, as a strip on the titlebar of the one showing.
  *
- * Nothing for a seat of one, which is most panels. For a shared seat: one small button per member,
- * the showing one marked, each a `raiseDock` — bringing a tab forward is the same act as bringing a
- * float to the front, and it is decided the same way. Before the grip rather than after the
- * controls, because that is where every tab strip anybody has used puts it.
+ * Nothing for a seat of one, which is most panels. For a shared seat: one per member, the showing
+ * one marked. Before the grip rather than after the controls, because that is where every tab strip
+ * anybody has used puts it.
+ *
+ * ## A tab is a grip, so dragging one takes it out
+ *
+ * Each is a `we-move-handle` wired to the ordinary move path rather than a button wired to
+ * `raiseDock`, and that one substitution gives both halves of what a tab has to do. `beginDockMove`
+ * raises before it does anything else, so a press that goes nowhere is exactly the old click:
+ * bringing a tab forward is the same act as bringing a float to the front, and is decided the same
+ * way. A press that *travels* is a panel drag — `moveDock`'s restore-under-the-cursor path already
+ * knows how to pull an attached panel off what it is stuck to — so a tab tears out into a floating
+ * card, and can be dropped on any lane, seam or seat like anything else being dragged.
+ *
+ * `step: 0` is what keeps the keyboard sane. The handle emits a whole gesture per arrow key, and at
+ * the usual 24px that is past `RESTORE_DRAG_PX` — so every arrow press would tear the panel out of
+ * its seat. At zero the gesture still raises, so the arrow keys *switch tabs*, which is what a tab
+ * strip means by them; moving a panel from the keyboard stays with the titlebar's own grip, which is
+ * where it was.
+ *
+ * The visual is on a wrapper rather than on the handle: `we-move-handle` is a `LayoutElement`, so it
+ * takes no `bg` or `r`, and putting the roles on a `Row` keeps them as design-system props instead of
+ * raw custom properties in a `styles` bag.
  */
 function tabStrip(id: string): SchemaNode {
   const tabs = dockGeometryPath(id, 'tabs');
+
   return {
     type: '$if',
     props: {
@@ -579,14 +599,43 @@ function tabStrip(id: string): SchemaNode {
             props: { items: { $: tabs }, as: 'tab' },
             children: [
               {
-                type: 'we-button',
+                type: 'Row',
                 props: {
-                  size: 'xs',
-                  variant: { $: "tab.active ? 'secondary' : 'ghost'" },
-                  onClick: { $action: 'shellStore.raiseDock', args: [{ $: 'tab.id' }] },
+                  ay: 'center',
+                  flex: '0 0 auto',
+                  r: 'control',
+                  px: '200',
+                  height: '24px',
+                  bg: { $: "tab.active ? 'control-surface' : 'transparent'" },
+                  hoverProps: { bg: 'surface-hover' },
                 },
                 children: [
-                  { type: 'we-text', props: { truncate: true, maxWidth: '120px' }, children: [{ $: 'tab.title' }] },
+                  {
+                    type: 'we-move-handle',
+                    props: {
+                      // See the note above: a tab is selected by the keyboard, never moved by it.
+                      step: 0,
+                      height: '100%',
+                      ay: 'center',
+                      label: { $: '`${tab.title} — drag out of the stack`' },
+                      onMovestart: {
+                        $action: 'shellStore.beginDockMove',
+                        args: [{ $: 'tab.id' }, { $: 'arg.detail.x' }, { $: 'arg.detail.y' }],
+                      },
+                      onMove: {
+                        $action: 'shellStore.moveDock',
+                        args: [{ $: 'tab.id' }, { $: 'arg.detail.dx' }, { $: 'arg.detail.dy' }],
+                      },
+                      onMoveend: { $action: 'shellStore.endDockMove', args: [{ $: 'tab.id' }] },
+                    },
+                    children: [
+                      {
+                        type: 'we-text',
+                        props: { variant: 'footnote', truncate: true, maxWidth: '120px' },
+                        children: [{ $: 'tab.title' }],
+                      },
+                    ],
+                  },
                 ],
               },
             ],

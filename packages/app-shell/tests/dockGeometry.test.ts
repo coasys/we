@@ -60,6 +60,7 @@ import {
   type Rect,
   rectOf,
   resolveDock,
+  roomElsewhere,
   SEAM_PX,
   seamBetween,
   seedPlacement,
@@ -2303,5 +2304,32 @@ describe('offering to fold a panel', () => {
 
   it('is off for a section at home, which has no titlebar to fold to', () => {
     expect(canFold({ floating: true, home: true }, false, true)).toBe(false);
+  });
+});
+
+/**
+ * Where a fold's room goes: another *seat*, never another tab.
+ *
+ * A lane divides its length between seats, and the panels sharing one seat are tabs in the same box.
+ * Asked about panels rather than seats, two tabs of a single seat each counted as somewhere for the
+ * other's room to go — so folding either was offered, and emptied the box while the edge kept its
+ * full width.
+ */
+describe('room for a fold, in a lane of seats', () => {
+  it('is nowhere when the lane is one seat, however many tabs are stacked in it', () => {
+    expect(roomElsewhere([true], 0)).toBe(false);
+  });
+
+  it('is the other seat when a lane has two, both open', () => {
+    expect(roomElsewhere([true, true], 0)).toBe(true);
+    expect(roomElsewhere([true, true], 1)).toBe(true);
+  });
+
+  it('is nowhere for the last open seat, whose neighbour is already folded', () => {
+    expect(roomElsewhere([true, false], 0)).toBe(false);
+  });
+
+  it('is somewhere for a folded seat, which is what lets it unfold', () => {
+    expect(roomElsewhere([false, true], 0)).toBe(true);
   });
 });
