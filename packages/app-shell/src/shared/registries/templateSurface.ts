@@ -871,6 +871,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       and a template able to call it could make every module's panel claim room it is not using.
     */
     provideModuleGate: WIRING,
+    provideTemplateSaver: WIRING,
     pendingDestructive: state('host-layout'),
     confirmDestructive: action('host-layout'),
     cancelDestructive: action('host-layout'),
@@ -952,6 +953,10 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     fitDock: action('host-layout'),
     toggleDockDisplace: action('host-layout'),
     toggleCollapseDock: action('host-layout'),
+    breakOut: action('host-layout'),
+    returnHome: action('host-layout'),
+    insertHome: action('host-layout'),
+    saveArrangementAsTemplate: action('host-layout'),
     // Whether a panel has been dragged away from what the interface declared, and the way back.
     layoutPinned: state('host-layout'),
     resetDockToLayout: action('host-layout'),

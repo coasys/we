@@ -141,8 +141,10 @@ describe('the way back to the layout an interface declared', () => {
 
   it('comes before the eight positions, not among them', () => {
     // It undoes a position rather than choosing one; listed among the eight it would read as a ninth
-    // place to put the panel.
-    expect(items[0]?.label).toBe('Reset to layout');
+    // place to put the panel. "Return to page" sits ahead of it, being the more specific undo — a
+    // section's way back into the template — and greyed for a panel with no page to return to.
+    expect(items[0]?.label).toBe('Return to page');
+    expect(items[1]?.label).toBe('Reset to layout');
   });
 });
 

@@ -69,6 +69,26 @@ export type TemplatePanel = {
    * Absent `order` is a seat of its own, so nothing that never said `order` starts sharing.
    */
   tab?: number;
+  /**
+   * Start **in the template**, at the `$panels` outlet of this name, rather than on an edge.
+   *
+   * A section: it renders inline, in the template's flow, with no frame — and the reader can break
+   * it out into a panel, drag it to an edge, fold it, stack it, and put it back. Picture-in-picture
+   * for any region of a page. `order` is its position among the sections in that lane; `snap` is
+   * where it goes when broken out, if the reader does not drag it somewhere.
+   *
+   * `home` is a lane like the edges are, so nothing here touches the tree: the outlet stays where
+   * the author put it, and which sections start in it is data.
+   */
+  home?: string;
+  /**
+   * Not promotable: renders in its lane with no break-out grip, and no drop can move it.
+   *
+   * For a section with no standalone value — the compose box, a page's own header. The test is
+   * whether somebody would want it beside a *different* page; if not, it is arrangement, not a
+   * panel, and a corner button on it is noise.
+   */
+  fixed?: boolean;
   /** How much room it asks for. Resolved against the viewport by the host. */
   size?: 'sm' | 'md' | 'lg' | 'full';
   /**

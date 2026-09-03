@@ -259,7 +259,9 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
       {
         type: '$if',
         props: {
-          condition: geo('edge'),
+          // Open, and not at home in the template — a section at its outlet is rendered there by
+          // `PanelLane`, and a frame for it here would be a second copy.
+          condition: { $: `${dockGeometryPath(entry.id, 'edge')} && !${dockGeometryPath(entry.id, 'home')}` },
           then: {
             type: 'Column',
             props: {
@@ -796,6 +798,21 @@ function positionMenu(entry: DockEntry): SchemaNode {
           First in the list, and separated: it undoes a position rather than choosing one, so
           grouping it with the eight would read as a ninth place to put the panel.
         */
+        /*
+          The way back into the template, for a section that has a place there.
+
+          Before the reset, because it is the more specific answer: a section broken out of a
+          sidebar and dragged around is put back by this, and "Reset to layout" would do the same
+          and also forget its size. Only for a panel with a `home` — an ordinary panel has no page
+          to return to, and the item would be a control that does nothing.
+        */
+        {
+          id: 'home',
+          label: 'Return to page',
+          icon: 'arrow-square-in',
+          disabled: { $: `!${place('home')} || ${place('snap')} == 'home'` },
+          onAction: { $action: 'shellStore.returnHome', args: [entry.id.replace(/^template:/, '')] },
+        },
         {
           id: 'reset',
           label: 'Reset to layout',

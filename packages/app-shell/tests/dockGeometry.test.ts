@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   arrangeDrop,
+  arrangeHomeDrop,
   BOTTOM_CHROME_PX,
   CHROME_RAIL_PX,
   COLLAPSED_PX,
@@ -32,6 +33,7 @@ import {
   fitPlacement,
   type FloatPlacement,
   floorOf,
+  homeLaneMembers,
   insertionSlots,
   type LaneMember,
   laneThickness,
@@ -1984,5 +1986,86 @@ describe('a drop onto a seat', () => {
       { index: 0, order: 0, tab: 0 },
       { index: 1, order: 0, tab: 1 },
     ]);
+  });
+});
+
+/**
+ * Home lanes — a lane in the template's own flow.
+ *
+ * A section declared `home` starts in the template rather than on an edge; breaking it out is a
+ * change of snap, and putting it back is snapping to `home`. Same coordinates, in the template.
+ */
+describe('a section at home in the template', () => {
+  it('starts at home when the declaration names a lane, whatever snap it also names', () => {
+    const declared = placementFromDeclaration({ home: 'sidebar', snap: 'left', order: 1 }, desktop);
+
+    expect(declared.snap).toBe('home');
+    expect(declared.home).toBe('sidebar');
+    expect(declared.order).toBe(1);
+  });
+
+  it('is open but draws no box in the dock layer', () => {
+    const geometry = resolveDock(
+      dock({ placement: { ...placement({ snap: 'home', displace: false }), home: 'sidebar' } }),
+      desktop,
+    );
+
+    expect(geometry.edge).toBe('right');
+    expect(geometry.home).toBe(true);
+    expect(geometry.top).toBeUndefined();
+    expect(geometry.width).toBeUndefined();
+  });
+
+  it('takes no room and covers nothing, since it is content', () => {
+    const request = dock({ placement: { ...placement({ snap: 'home', displace: true }), home: 'sidebar' } });
+
+    expect(contentInset([request], desktop)).toEqual(NO_INSET);
+    expect(coveredInset([request], desktop)).toEqual(NO_INSET);
+  });
+
+  it('is not in any edge lane', () => {
+    const panels = [{ placement: { ...placement({ snap: 'home', displace: true }), home: 'sidebar' } }];
+
+    expect(edgeGroups(panels, 'left', desktop)).toEqual([]);
+    expect(edgeGroups(panels, 'right', desktop)).toEqual([]);
+  });
+});
+
+describe('the sections in a home lane', () => {
+  const section = (home: string, order?: number, snap: SnapPoint | null = 'home') => ({
+    placement: { ...placement({ snap, displace: false, order }), home },
+  });
+
+  it('are the panels whose snap is home and whose home names the lane, in order', () => {
+    const members = homeLaneMembers(
+      [section('right', 1), section('left', 0), section('right', 0), section('right', 0, 'left')],
+      'right',
+    );
+
+    expect(members.map((member) => member.placement.order)).toEqual([0, 1]);
+  });
+
+  it('close up around a drop, and the newcomer takes the position it was dropped at', () => {
+    const arranged = arrangeHomeDrop([section('right', 0), section('right', 1), section('left', 0)], 2, 'right', 1);
+
+    expect(arranged).toEqual([
+      { index: 0, order: 0 },
+      { index: 2, order: 1 },
+      { index: 1, order: 2 },
+    ]);
+  });
+
+  it('leaves the panel being moved out of the lane it is dropped into', () => {
+    // Moving the first section to the end: the lane is renumbered without a gap where it was.
+    const arranged = arrangeHomeDrop([section('right', 0), section('right', 1)], 0, 'right', 9);
+
+    expect(arranged).toEqual([
+      { index: 1, order: 0 },
+      { index: 0, order: 1 },
+    ]);
+  });
+
+  it('starts a lane that was empty', () => {
+    expect(arrangeHomeDrop([section('left', 0)], 0, 'right', 0)).toEqual([{ index: 0, order: 0 }]);
   });
 });

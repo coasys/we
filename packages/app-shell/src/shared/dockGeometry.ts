@@ -196,7 +196,24 @@ export interface Viewport {
  * The edge-centre four double as the displacing positions: they are the only snaps where "push the
  * content aside" has a coherent meaning. See the rule at the top of this file.
  */
-export type SnapPoint = 'top-left' | 'top' | 'top-right' | 'right' | 'bottom-right' | 'bottom' | 'bottom-left' | 'left';
+export type SnapPoint =
+  | 'top-left'
+  | 'top'
+  | 'top-right'
+  | 'right'
+  | 'bottom-right'
+  | 'bottom'
+  | 'bottom-left'
+  | 'left'
+  /**
+   * In the template, at a `$panels` outlet — see {@link FloatPlacement.home}.
+   *
+   * A ninth position rather than a mode: breaking a section out is changing its snap, and putting
+   * it back is snapping to `home`. Every rule the eight already obey — the placement chain, reset,
+   * named layouts, save-as-template — covers it for nothing. Not among {@link SNAP_POINTS}, since it
+   * is not a marker on the screen to drop onto; the outlets are, and offer themselves.
+   */
+  | 'home';
 
 export const SNAP_POINTS: readonly SnapPoint[] = [
   'top-left',
@@ -338,6 +355,19 @@ export interface FloatPlacement {
    * `band`, so nothing that never said `order` starts sharing.
    */
   tab?: number;
+  /**
+   * Which `$panels` outlet the panel sits in while its snap is `home` — a **home lane**.
+   *
+   * Picture-in-picture, generalised from `<video>` to any region of a template. A section declared
+   * `home: 'sidebar'` renders inline in the template's flow, with no frame, at the outlet of that
+   * name; breaking it out is `snap: 'left'` and putting it back is `snap: 'home'`, and `order` is
+   * its position among the sections in that lane. None of it touches the template's tree — a home
+   * lane is a lane, with the same two coordinates, in the template rather than on an edge.
+   *
+   * Kept while the panel is away, so "bring back" knows where. Cleared by a drop into a *different*
+   * home lane, which is the only way a panel changes lanes.
+   */
+  home?: string;
   /**
    * This panel's share of the *spare* room in a floating column, relative to its neighbours.
    *
@@ -526,6 +556,11 @@ export interface DockGeometry {
    * panels that were side by side, and dragging it wrote a height nothing in that arrangement reads.
    */
   laneAxis?: 'vertical' | 'horizontal' | '';
+  /**
+   * In the template at its `$panels` outlet rather than in the dock layer. The frame renders
+   * nothing for it; the outlet renders the body. See {@link FloatPlacement.home}.
+   */
+  home?: boolean;
   /**
    * Stacked behind another panel in a shared seat — a tab that is not showing. The frame hides
    * itself entirely while this is true; hides, never unmounts, so a call in a background tab keeps
@@ -737,6 +772,7 @@ export function placementFromDeclaration(
     order?: number;
     band?: number;
     tab?: number;
+    home?: string;
     grow?: number;
     displace?: boolean;
     size?: DockSize;
@@ -744,8 +780,13 @@ export function placementFromDeclaration(
   viewport: Viewport,
   occupied: ContentInset = NO_INSET,
 ): FloatPlacement {
-  const snap = declared.snap ?? 'bottom-right';
-  const edge = edgeOfSnap(snap);
+  /*
+    A declared `home` starts the panel in the template, whatever else it says. The `snap` it names
+    is then where it goes when broken out (see `breakOut`), read back from the declaration; the
+    placement itself only ever holds where the panel *is*.
+  */
+  const snap: SnapPoint = declared.home ? 'home' : (declared.snap ?? 'bottom-right');
+  const edge = edgeOfSnap(declared.snap ?? 'bottom-right');
   const region = contentRegion(viewport, occupied);
 
   /*
@@ -780,6 +821,7 @@ export function placementFromDeclaration(
     */
     ...(declared.band !== undefined ? { band: declared.band } : {}),
     ...(declared.tab !== undefined ? { tab: declared.tab } : {}),
+    ...(declared.home !== undefined ? { home: declared.home } : {}),
     ...(declared.grow !== undefined ? { grow: declared.grow } : {}),
   };
 }
@@ -843,6 +885,10 @@ export function snapOrigin(
       return { x: left, y: bottom };
     case 'left':
       return { x: left, y: middleY };
+    // Never asked: a panel at home has no snap origin, since it is not in the dock layer. Answered
+    // anyway so the switch stays total — the corner every float falls back to.
+    case 'home':
+      return { x: right, y: bottom };
   }
 }
 
@@ -1314,6 +1360,39 @@ export function arrangeDrop<T extends { placement: FloatPlacement }>(
 }
 
 /**
+ * The sections in one home lane, in the order they sit — every panel whose snap is `home` and whose
+ * `home` names that lane.
+ *
+ * The in-template counterpart of {@link edgeGroups}, and simpler by exactly the things an outlet
+ * has no need of: a home lane cannot displace, has no bands and no seats. One list, ordered by
+ * `order`, ties in the order given.
+ */
+export function homeLaneMembers<T extends { placement: FloatPlacement }>(panels: T[], lane: string): T[] {
+  return panels.filter((panel) => panel.placement.snap === 'home' && panel.placement.home === lane).sort(alongLane);
+}
+
+/**
+ * What every section in a home lane is numbered as, once one has been dropped into it.
+ *
+ * `arrangeDrop`'s sibling for the in-template case. The panel being moved is left out of the lane
+ * it is dropped into, so it cannot be offered a seat beside where it already is; the rest close up
+ * and take sequential orders around it.
+ */
+export function arrangeHomeDrop<T extends { placement: FloatPlacement }>(
+  panels: T[],
+  moving: number,
+  lane: string,
+  position: number,
+): { index: number; order: number }[] {
+  const members = homeLaneMembers(
+    panels.map((panel, index) => ({ placement: panel.placement, index })).filter((panel) => panel.index !== moving),
+    lane,
+  ).map((member) => member.index);
+  members.splice(Math.max(0, Math.min(position, members.length)), 0, moving);
+  return members.map((index, order) => ({ index, order }));
+}
+
+/**
  * How thick a lane is: the most any of its members asked for.
  *
  * One number for the lane, because its members are side by side across the edge and a lane with two
@@ -1637,6 +1716,15 @@ export function resolveDock(
   const px = (n: number) => `${Math.round(n)}px`;
 
   const placement = request.placement ?? seedPlacement(request, viewport, occupied);
+
+  /*
+    At home in the template: open, but not a box in the dock layer.
+
+    `edge` stays set, since the panel is open and everything that asks "is it closed" reads the
+    edge; `home` is what the frame reads to draw nothing. Floating, because it takes no room from the
+    content region — it *is* content — and so nothing else has to clear it.
+  */
+  if (placement.snap === 'home') return { edge, floating: true, home: true, snap: 'home' };
 
   if (request.size === 'full' || placement.maximised) {
     /*

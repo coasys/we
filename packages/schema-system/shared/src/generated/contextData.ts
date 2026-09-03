@@ -2633,6 +2633,10 @@ export const contextData: ContextData = {
         'toggleMaximiseDock',
         'toggleDockDisplace',
         'toggleCollapseDock',
+        'breakOut',
+        'returnHome',
+        'insertHome',
+        'saveArrangementAsTemplate',
       ],
     },
     {
@@ -2858,6 +2862,7 @@ export const contextData: ContextData = {
     'EditorCodePanel',
     'EditorInspectorPanel',
     'EditorThemePanel',
+    'PanelLane',
     'TemplateCard',
     'TemplatePanelBody',
     'WeCube',

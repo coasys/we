@@ -10,6 +10,7 @@
 import { dockIsOffered } from '@shared/dockGating';
 import {
   arrangeDrop,
+  arrangeHomeDrop,
   CHROME_RAIL_PX,
   columnLayout,
   columnSlots,
@@ -61,6 +62,7 @@ import {
   registerHostDockStore,
   unregisterHostDockStore,
 } from '@shared/registries/dockRegistry';
+import { HOME_SECTION_ATTR, homeLanes } from '@shared/registries/homeLanes';
 import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry';
 import { SHELL_DOCK_STORE_ID } from '@shared/registries/shellDocks';
 import { slotRegistry } from '@shared/registries/slotRegistry';
@@ -72,7 +74,7 @@ import {
   templatePanelScope,
 } from '@shared/registries/templatePanels';
 import type { ChromeReserve, DockAspect, DockEdge, DockSize } from '@we/module-shared';
-import type { SchemaNode, TemplatePanel } from '@we/schema-shared';
+import type { SchemaNode, TemplatePanel, TemplateSchema } from '@we/schema-shared';
 import {
   Accessor,
   createContext,
@@ -85,6 +87,15 @@ import {
 } from 'solid-js';
 
 /** A destructive action a template asked for, as the host's own dialog puts it. */
+/**
+ * What `saveArrangementAsTemplate` needs from outside this store: the schema on screen, and a
+ * library to put a copy in. See `provideTemplateSaver`.
+ */
+export interface TemplateSaver {
+  current: () => TemplateSchema | undefined;
+  save: (schema: TemplateSchema) => Promise<boolean>;
+}
+
 export interface PendingDestructive {
   /** The store path — `spaceStore.deleteCollection`. Shown as the small print, so it is always true. */
   path: string;
@@ -388,9 +399,10 @@ export interface ShellStore {
   insertSlots: Accessor<
     {
       index: number;
+      /** The edge — or, for a `home` slot, the name of the home lane. */
       edge: string;
-      /** `tab` is the seat itself: land here to stack behind whatever is showing in it. */
-      mode: 'band' | 'lane' | 'tab';
+      /** `tab` is the seat itself: land here to stack behind whatever is showing in it; `home` is a `$panels` outlet. */
+      mode: 'band' | 'lane' | 'tab' | 'home';
       /** Which lane a `lane` or `tab` slot is in — its position inward from the edge, or the floating one. */
       lane: number | 'float' | '';
       key: string;
@@ -527,6 +539,40 @@ export interface ShellStore {
    * `dockPlacement[id].canCollapse` says whether it is on offer.
    */
   toggleCollapseDock: (id: string) => void;
+  /**
+   * Take a section out of the template and make it a panel.
+   *
+   * With a pointer position, it appears floating under the pointer — the shape press-and-drag on
+   * the section's grip needs, since `beginDockMove` follows. Without one it goes to the snap its
+   * declaration named. Refused for a section declared `fixed`. Takes the *panel* id, as the outlet
+   * knows it.
+   */
+  breakOut: (panelId: string, x?: number, y?: number) => void;
+  /**
+   * Put a broken-out section back in the template, at the outlet it came from. What the placeholder
+   * and the position menu's "Return to page" call. Takes the panel id.
+   */
+  returnHome: (panelId: string) => void;
+  /**
+   * Drop a panel into a home lane at a position along it, renumbering the lane. What a drop on one
+   * of an outlet's seams does; only a template's own sections can land in one, and only where the
+   * lane's `accepts` allows.
+   */
+  insertHome: (id: string, lane: string, position: number) => void;
+  /**
+   * Save the arrangement on screen as a template of your own.
+   *
+   * A copy of the schema with the resolved placements written into its `meta.panels` — `home`,
+   * `order`, `snap`, `band`, `tab`, `grow` — and nothing else changed: the tree, and every outlet
+   * in it, is exactly the author's. The honest bridge from arranging to authoring: an explicit,
+   * named act, never a side effect of a drag. Resolves true on success.
+   */
+  saveArrangementAsTemplate: () => Promise<boolean>;
+  /**
+   * How the shell reaches the template on screen and the library to save into — injected by the
+   * layer that holds both stores, the way `provideModuleGate` is. Wiring, not for templates.
+   */
+  provideTemplateSaver: (saver: TemplateSaver) => void;
 }
 
 const ShellContext = createContext<ShellStore>();
@@ -1086,6 +1132,12 @@ export function ShellStoreProvider(props: ParentProps) {
    * Defaults to "everything is active", so a host that never injects behaves exactly as before.
    */
   const [moduleGate, setModuleGate] = createSignal<(moduleId: string) => boolean>(() => true);
+
+  /**
+   * What "save this arrangement as a template" needs and this store cannot see: the schema on
+   * screen, and a library to put a copy in. Injected, for the reason `moduleGate` is.
+   */
+  const [templateSaver, setTemplateSaver] = createSignal<TemplateSaver | null>(null);
 
   const dockRequests = createMemo<DockRequest[]>(() => {
     dockRegistryVersion();
@@ -1763,6 +1815,48 @@ export function ShellStoreProvider(props: ParentProps) {
     spaceSettingsEdge: () => (spaceSettingsOpen() ? 'right' : null),
     // Wrapped, because `setSignal` treats a function argument as an updater.
     provideModuleGate: (gate) => setModuleGate(() => gate),
+    provideTemplateSaver: (saver) => setTemplateSaver(() => saver),
+
+    saveArrangementAsTemplate: async () => {
+      const saver = templateSaver();
+      const schema = saver?.current();
+      const panels = schema?.meta?.panels;
+      if (!saver || !schema || !panels) return false;
+
+      /*
+        The declaration, with the reader's answers written over the author's.
+
+        Only the coordinates: where each section is (`home` or `snap`), where in its lane (`order`,
+        `band`, `tab`) and how it shares room (`grow`). The tree is untouched, and so is everything
+        in an entry that is not a position — its node, its title, its floor. A fork made this way is
+        the same template with a different opening arrangement, which is the whole of what was
+        asked for.
+      */
+      const arranged = panels.map((panel) => {
+        const id = dockIdFor(panel);
+        const request = id ? dockRequests().find((entry) => entry.id === id) : undefined;
+        if (!id || !request) return panel;
+        const placement = placementOf(request);
+        const { home: _home, snap: _snap, order: _order, band: _band, tab: _tab, grow: _grow, ...rest } = panel;
+        const position: Partial<TemplatePanel> =
+          placement.snap === 'home' && placement.home
+            ? { home: placement.home }
+            : placement.snap
+              ? { snap: placement.snap as Exclude<SnapPoint, 'home'> }
+              : {};
+        return {
+          ...rest,
+          ...position,
+          ...(placement.order !== undefined ? { order: placement.order } : {}),
+          ...(placement.band !== undefined ? { band: placement.band } : {}),
+          ...(placement.tab !== undefined ? { tab: placement.tab } : {}),
+          ...(placement.grow !== undefined ? { grow: placement.grow } : {}),
+          ...(placement.displace ? { displace: true } : {}),
+        };
+      });
+
+      return saver.save({ ...schema, meta: { ...schema.meta, panels: arranged } });
+    },
     toggleSpaceSettings: () => setSpaceSettingsOpen((open) => !open),
     openSpaceSettings: (tab?: string) => {
       setSpaceSettingsTab(tab ?? 'about');
@@ -2159,15 +2253,18 @@ export function ShellStoreProvider(props: ParentProps) {
       const current = placements()[id] ?? dragOrigin;
 
       if (dragOrigin && current && insert) {
-        // The four fields `insertSlots` built it from — see `draw` there.
+        // The four fields `insertSlots` built it from — see `draw` there. A home slot carries the
+        // lane's name where an edge slot carries the edge.
         const [mode, edge, lane, position] = insert.split(':');
-        store.insertDock(
-          id,
-          edge as Exclude<DockEdge, null>,
-          Number(position),
-          mode as 'band' | 'lane' | 'tab',
-          lane === 'float' ? 'float' : lane === '' ? undefined : Number(lane),
-        );
+        if (mode === 'home') store.insertHome(id, edge, Number(position));
+        else
+          store.insertDock(
+            id,
+            edge as Exclude<DockEdge, null>,
+            Number(position),
+            mode as 'band' | 'lane' | 'tab',
+            lane === 'float' ? 'float' : lane === '' ? undefined : Number(lane),
+          );
       } else if (dragOrigin && current && snap) {
         writePlacement(id, { ...current, snap, displace: false });
       }
@@ -2261,7 +2358,49 @@ export function ShellStoreProvider(props: ParentProps) {
       const boxes = dockGeometry();
       const requests = dockRequests();
 
-      return EDGES.flatMap((edge) => {
+      /*
+        The home lanes: every `$panels` outlet on screen that would take this panel.
+
+        Measured rather than computed, because an outlet is an element the template laid out and only
+        it knows where it is. Its sections' boxes are the seams between them, exactly as a lane's
+        seats are on an edge; an empty outlet offers its whole box, the way an empty edge offers one
+        slot — that is how a lane gets its first section by dragging.
+      */
+      const homeSlots = () => {
+        if (!declarationFor()[moving]) return [];
+        const panelId = moving.replace(/^template:/, '');
+        return homeLanes().flatMap((outlet) => {
+          if (outlet.accepts.length > 0 && !outlet.accepts.includes(panelId)) return [];
+          const sections = [...outlet.el.querySelectorAll<HTMLElement>(`[${HOME_SECTION_ATTR}]`)]
+            .filter((section) => section.getAttribute(HOME_SECTION_ATTR) !== panelId)
+            .map((section) => {
+              const box = section.getBoundingClientRect();
+              return { x: box.x, y: box.y, w: box.width, h: box.height };
+            });
+          const slots =
+            sections.length > 0
+              ? columnSlots(outlet.direction === 'row' ? 'top' : 'left', sections)
+              : (() => {
+                  const box = outlet.el.getBoundingClientRect();
+                  const whole = { x: box.x, y: box.y, w: Math.max(box.width, 24), h: Math.max(box.height, 24) };
+                  return [{ index: 0, hit: whole, line: whole }];
+                })();
+          return slots.map((slot) => ({
+            key: `home:${outlet.lane}::${slot.index}`,
+            index: slot.index,
+            lane: '' as const,
+            edge: outlet.lane,
+            mode: 'home' as const,
+            top: `${slot.line.y}px`,
+            left: `${slot.line.x}px`,
+            width: `${slot.line.w}px`,
+            height: `${slot.line.h}px`,
+            hit: slot.hit,
+          }));
+        });
+      };
+
+      const edgeSlots = EDGES.flatMap((edge) => {
         /*
           Measured in a region that still contains the lanes being described.
 
@@ -2377,6 +2516,7 @@ export function ShellStoreProvider(props: ParentProps) {
           }),
         ];
       });
+      return [...homeSlots(), ...edgeSlots];
     },
 
     activeInsert,
@@ -2582,6 +2722,62 @@ export function ShellStoreProvider(props: ParentProps) {
       // a corner, where the idea has no meaning. See the rule in dockGeometry.
       const stays = placement.displace && edgeOfSnap(snap) !== null;
       writePlacement(id, { ...placement, snap, displace: stays });
+    },
+
+    breakOut: (panelId, x, y) => {
+      const id = templatePanelDockId(panelId);
+      const request = dockRequests().find((entry) => entry.id === id);
+      const declared = declarationFor()[id];
+      if (!request?.edge || declared?.fixed) return;
+      const placement = placementOf(request);
+      /*
+        Under the pointer, or at the declared snap.
+
+        Press-and-drag hands the section over mid-gesture, so it appears where the hand is — the
+        titlebar under the pointer, which is where a drag holds a panel. A click has no pointer to
+        follow and goes to the snap the declaration named, or the corner every picture-in-picture has
+        trained people to look for.
+      */
+      const away =
+        x !== undefined && y !== undefined
+          ? { snap: null, x: x - placement.w / 2, y: y - TITLE_BAR_PX / 2 }
+          : { snap: declared?.snap ?? 'bottom-right' };
+      writePlacement(id, { ...placement, ...away, displace: false, maximised: false, collapsed: false });
+      raise(id);
+    },
+
+    returnHome: (panelId) => {
+      const id = templatePanelDockId(panelId);
+      const request = dockRequests().find((entry) => entry.id === id);
+      if (!request?.edge) return;
+      const placement = placementOf(request);
+      const home = placement.home ?? declarationFor()[id]?.home;
+      if (!home) return;
+      writePlacement(id, { ...placement, snap: 'home', home, displace: false, maximised: false, collapsed: false });
+    },
+
+    insertHome: (id, lane, position) => {
+      const requests = dockRequests();
+      const moving = requests.findIndex((entry) => entry.id === id);
+      if (moving === -1 || !requests[moving].edge) return;
+      const outlet = homeLanes().find((entry) => entry.lane === lane);
+      const panelId = id.replace(/^template:/, '');
+      // Only a template's own sections, and only into a lane that takes them — the same refusal a
+      // `we-drop-zone` makes, and for the same reason: a lane says what it holds.
+      if (!declarationFor()[id] || (outlet && outlet.accepts.length > 0 && !outlet.accepts.includes(panelId))) return;
+
+      for (const { index, order } of arrangeHomeDrop(laneable(requests, viewport()), moving, lane, position)) {
+        const entry = requests[index];
+        if (!entry) continue;
+        const placement = placementOf(entry);
+        writePlacement(entry.id, {
+          ...placement,
+          order,
+          ...(index === moving
+            ? { snap: 'home', home: lane, displace: false, maximised: false, collapsed: false }
+            : {}),
+        });
+      }
     },
 
     toggleCollapseDock: (id) => {

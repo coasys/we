@@ -267,6 +267,32 @@ function layoutsSection(): SchemaNode {
               { type: 'we-text', children: ['Save this arrangement…'] },
             ],
           },
+          /*
+            The bridge from arranging to authoring — explicit, named, and here beside the other
+            things one can do with an arrangement. Only while there is an arrangement to save: an
+            untouched template forked this way would be the template again.
+          */
+          {
+            type: '$if',
+            props: {
+              condition: { $: 'shellStore.layoutDirty' },
+              then: {
+                type: 'we-button',
+                props: {
+                  variant: 'ghost',
+                  size: 'sm',
+                  width: '100%',
+                  ax: 'start',
+                  gap: '200',
+                  onClick: [{ $action: 'shellStore.saveArrangementAsTemplate' }, closeTemplatePicker],
+                },
+                children: [
+                  { type: 'we-icon', props: { name: 'git-fork' } },
+                  { type: 'we-text', children: ['Save as a template of mine'] },
+                ],
+              },
+            },
+          },
         ],
       },
     },

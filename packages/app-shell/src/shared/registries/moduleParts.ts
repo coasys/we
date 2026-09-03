@@ -83,6 +83,16 @@ function subjectExpression(prop: unknown): string | undefined {
  * installed is the ordinary case, so the report is a console warning rather than a thrown error.
  */
 export function resolveParts(node: SchemaNode): SchemaNode | SchemaNode[] {
+  /*
+    A `$panels` outlet becomes the host component that renders a home lane.
+
+    Rewritten here rather than dispatched by the renderer, for the reason `$part` is: the outlet
+    reads the shell's placements and renders sections with the template's own bag, which only a
+    component in this package can do, and the renderer knows nothing about either. The props go
+    through untouched — `lane`, `direction`, `accepts` — and the node is otherwise a leaf.
+  */
+  if (node.type === '$panels') return { ...node, type: 'PanelLane' };
+
   if (node.type === '$part') {
     const props = (node.props ?? {}) as { id?: unknown; subject?: unknown };
     const id = typeof props.id === 'string' ? props.id : '';

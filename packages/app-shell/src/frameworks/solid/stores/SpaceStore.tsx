@@ -3052,6 +3052,15 @@ export function SpaceStoreProvider(props: ParentProps) {
     });
   });
 
+  /*
+    And the other thing the shell cannot see for itself: the template on screen and a library to
+    save into, for "save this arrangement as a template". Same shape as the gate, same reason.
+  */
+  shellStore.provideTemplateSaver({
+    current: () => templateStore.currentTemplate,
+    save: (schema) => templateStore.saveTemplateAs(schema, 'root'),
+  });
+
   const moduleLaunchers = createMemo(() => {
     const on = new Set(activeModules());
     return (

@@ -6625,7 +6625,11 @@
         "insertDock",
         "toggleMaximiseDock",
         "toggleDockDisplace",
-        "toggleCollapseDock"
+        "toggleCollapseDock",
+        "breakOut",
+        "returnHome",
+        "insertHome",
+        "saveArrangementAsTemplate"
       ]
     },
     {
@@ -7027,6 +7031,7 @@
     "EditorCodePanel",
     "EditorInspectorPanel",
     "EditorThemePanel",
+    "PanelLane",
     "TemplateCard",
     "TemplatePanelBody",
     "WeCube"

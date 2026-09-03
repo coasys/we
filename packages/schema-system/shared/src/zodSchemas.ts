@@ -275,6 +275,10 @@ export const zTemplateMeta: z.ZodType<TemplateMeta> = z
           band: z.number().optional(),
           // Position within a shared seat. See `tab` on `TemplatePanel`.
           tab: z.number().optional(),
+          // Start in the template, at the `$panels` outlet of this name. See `home` on `TemplatePanel`.
+          home: z.string().optional(),
+          // Not promotable. See `fixed` on `TemplatePanel`.
+          fixed: z.boolean().optional(),
           size: z.enum(['sm', 'md', 'lg', 'full']).optional(),
           grow: z.number().optional(),
           displace: z.boolean().optional(),

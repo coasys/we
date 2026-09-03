@@ -2652,6 +2652,10 @@ ShellStore:
   - toggleMaximiseDock(id: string): covers the content region with the panel, or goes back to being a card. Nothing about where the panel was is overwritten while it is on
   - toggleDockDisplace(id: string): makes the panel push the content aside, or stop. A toggle rather than a setter because a menu item reports only that it was clicked
   - toggleCollapseDock(id: string): folds a panel down to its titlebar, or opens it again. It keeps its place in its lane and its lane-mates take the room; the content is hidden, never unmounted. Refused for a lone displacing panel — read dockPlacement[id].canCollapse
+  - breakOut(panelId: string, x?: number, y?: number): takes a section out of the template and makes it a panel — floating under the pointer when given one, else at the snap its meta.panels entry named. Refused for a section declared `fixed`. Takes the panel's own id, not the dock id
+  - returnHome(panelId: string): puts a broken-out section back in the template at the outlet it came from. What the placeholder’s "Bring back" and the position menu’s "Return to page" call
+  - insertHome(id: string, lane: string, position: number): drops a panel into a home lane at that position along it, renumbering the lane. Only a template's own sections land in one, and only where the lane's `accepts` allows
+  - saveArrangementAsTemplate(): saves the arrangement on screen as a template of your own — a copy of the schema with the resolved placements written into its meta.panels and nothing else changed. The explicit bridge from arranging to authoring. Resolves true on success. Pair with layoutDirty
 
 SpaceStore:
 - State:
@@ -3953,6 +3957,10 @@ Two kinds of entry, one list:
 | `size`     | `sm` `md` `lg` `full`. Named, never pixels: only the host can see the viewport.             |
 | `grow`     | Share of the *spare* room in a lane, relative to lane-mates. Absent means 1; 0 pins a size.    |
 | `displace` | Push the content aside instead of covering it. Edge snaps only — ignored on a corner.          |
+| `tab`      | Position in a seat shared with others — entries with the same lane and `order` are tabs.      |
+| `home`     | Start **in the template**, at the `$panels` outlet of this name. See "Home lanes" below.        |
+| `fixed`    | Not promotable: no break-out grip, no drop can move it. For a section with no standalone value. |
+| `min`      | `{ width?, height? }` in pixels — the smallest box the content is usable in. A fact, not a size.  |
 | `route`    | Only while one of these segments is in the path — a segment or a list. Absent means every route. |
 | `open`     | Whether to open it as well as place it. Absent means yes — see the warning below.               |
 
@@ -3994,9 +4002,57 @@ A lane divides by base size and `grow`: spare room goes out by grow ratio. "The 
 most of the height and the panel under it keeps its own" is a large panel with `grow` and a small
 one with `grow: 0`.
 
-Below 900px of window width nothing displaces and a floating lane collapses — every member takes the
-whole content region as a full-bleed sheet, since two narrow cards over content leave nothing of
-either.
+**Seats.** Two entries in one lane with the same explicit `order` share a seat: one shows, the rest
+stack behind it as tabs, and the one showing carries a strip naming them all. `tab` orders the
+strip. Absent `order` is a seat of its own, so nothing that never said `order` starts sharing.
+
+Below 900px of window width nothing displaces and a floating lane becomes one seat — every member a
+full-bleed sheet, tabbed, since two narrow cards over content leave nothing of either.
+
+### Home lanes — sections that start in the template
+
+Picture-in-picture, for any region of a page. A **home lane** is a lane in the template's own flow:
+an outlet in the tree says where it is, and `meta.panels` entries say which sections start there.
+
+```json
+{
+  "meta": {
+    "panels": [
+      { "id": "feed",     "node": { "…": "…" }, "home": "main",  "order": 0, "fixed": true },
+      { "id": "trending", "node": { "…": "…" }, "home": "right", "order": 0, "title": "Trending" },
+      { "id": "people",   "node": { "…": "…" }, "home": "right", "order": 1, "title": "Who to follow" }
+    ]
+  },
+  "type": "Row",
+  "children": [
+    { "type": "$panels", "props": { "lane": "left", "width": "280px" } },
+    { "type": "$panels", "props": { "lane": "main", "flex": "1" } },
+    { "type": "$panels", "props": { "lane": "right", "width": "320px", "accepts": "trending,people" } }
+  ]
+}
+```
+
+A section renders inline, with no frame, indistinguishable from the layout around it — until the
+reader hovers it, when a grip appears in its corner. Dragging the grip breaks the section out into
+a panel under the pointer; clicking it breaks it out to its declared `snap`. It is then an
+ordinary panel: it can be docked, folded, stacked, saved in a layout — and its position menu offers
+"Return to page". While it is away the outlet shows a placeholder in its place with the same offer.
+
+- **`$panels` is a layout node.** It takes `lane` (required), `direction` (`column` by default, or
+  `row`), `accepts` (section ids it will take, comma-separated; empty means any), and the ordinary
+  layout props — `width`, `flex`, `minWidth` — which is how a template holds room for an empty lane.
+- **Reordering within a lane is arrangement, not editing.** Dragging one section above another
+  rewrites `order` on the reader's placement; nothing touches the tree, and "Reset layout" restores
+  the author's order. Dragging a section to another lane changes `home`; to an edge, `snap`.
+- **A lane holds sections; a section does not hold a lane.** A `$panels` inside a panel's node is
+  refused. Fixed depth is what keeps every position a few integers, which is what keeps a
+  template's declaration a suggestion a drag can overrule.
+- **Not every region should be a section.** The test is standalone value: would somebody want it
+  beside a *different* page? Trending, yes; the compose box, no — say `fixed: true`, or leave it as
+  ordinary layout. A template where every region grows a corner grip reads as a widget grid. And
+  `$each` over collections is content, never lanes: a kanban's columns are data.
+- **A lane is not a Column.** Reach for one when a region should be movable by the reader. Two
+  Columns side by side that nobody will ever rearrange are two Columns.
 
 ### Placing a module's own pieces
 

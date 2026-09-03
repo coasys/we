@@ -1373,6 +1373,14 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(id: string): makes the panel push the content aside, or stop. A toggle rather than a setter because a menu item reports only that it was clicked',
         toggleCollapseDock:
           '(id: string): folds a panel down to its titlebar, or opens it again. It keeps its place in its lane and its lane-mates take the room; the content is hidden, never unmounted. Refused for a lone displacing panel — read dockPlacement[id].canCollapse',
+        breakOut:
+          "(panelId: string, x?: number, y?: number): takes a section out of the template and makes it a panel — floating under the pointer when given one, else at the snap its meta.panels entry named. Refused for a section declared `fixed`. Takes the panel's own id, not the dock id",
+        returnHome:
+          '(panelId: string): puts a broken-out section back in the template at the outlet it came from. What the placeholder’s "Bring back" and the position menu’s "Return to page" call',
+        insertHome:
+          "(id: string, lane: string, position: number): drops a panel into a home lane at that position along it, renumbering the lane. Only a template's own sections land in one, and only where the lane's `accepts` allows",
+        saveArrangementAsTemplate:
+          '(): saves the arrangement on screen as a template of your own — a copy of the schema with the resolved placements written into its meta.panels and nothing else changed. The explicit bridge from arranging to authoring. Resolves true on success. Pair with layoutDirty',
         confirmDestructive:
           '(): runs the destructive action the host is asking about. Host chrome only, for the reason pendingDestructive is: an action able to answer its own confirmation is the confirmation being skipped',
         cancelDestructive: '(): refuses it. The waiting action resolves as though it had been blocked',

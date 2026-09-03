@@ -1187,7 +1187,10 @@ const callsPanel: SchemaNode = {
                             },
                             {
                               type: 'we-timestamp',
-                              props: { value: { $: 'call.createdAt' }, relative: true, flex: '1', truncate: true },
+                              // No `truncate`: a timestamp is one short token and the primitive has no such
+                              // prop. It went unnoticed because a panel's node was never walked by the
+                              // validator until sections were.
+                              props: { value: { $: 'call.createdAt' }, relative: true, flex: '1' },
                             },
                           ],
                         },
