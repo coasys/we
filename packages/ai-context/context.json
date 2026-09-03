@@ -6579,6 +6579,9 @@
         "activeInsert": {
           "type": "string"
         },
+        "dragGhost": {
+          "type": "object"
+        },
         "layoutPinned": {
           "type": "object"
         },

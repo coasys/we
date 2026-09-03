@@ -1337,6 +1337,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           "{ key, index, edge, lane, mode: 'band' | 'lane' | 'tab', top, left, width, height }[] — every place a dragged panel could land, while one is being dragged. 'band' offers a new lane at that distance inboard, 'lane' a new seat beside the panels in the lane it names, 'tab' the seat itself, to stack behind whatever is showing there. Empty otherwise",
         activeInsert:
           "string | null — the slot a drop would take right now, as that slot's `key`. Compare it against slot.key rather than rebuilding the string, which names four things",
+        dragGhost:
+          '{ top, left, width, height, title } | null — the outline following the cursor while a drag carries something it cannot move: a stack of tabs, or one tab of a stack. A single panel is moved instead, so this is null for it and between drags',
         panelSupplied:
           "Record<moduleId, boolean> — modules whose panel this interface supplies itself, by declaring a `meta.panels` entry that names the module and carries a `node`. What a module's dock frame asks before drawing its own contents; the module still owns whether the panel is open and how big it is",
         layoutNames:

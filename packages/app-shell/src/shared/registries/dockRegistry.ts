@@ -255,6 +255,7 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
     children: [
       snapTargets(entry.id),
       insertLines(entry.id),
+      dragGhost(entry.id),
       laneDivider(entry.id),
       {
         type: '$if',
@@ -946,6 +947,67 @@ function insertLines(id: string): SchemaNode {
                 $: `${INSERT_IS_ACTIVE} ? (slot.mode == 'tab' ? 0.35 : 1) : (slot.mode == 'tab' ? 0.1 : 0.4)`,
               },
             },
+          },
+        ],
+      },
+    },
+  };
+}
+
+/**
+ * The outline of what is being dragged, for the two gestures that cannot carry the panel itself.
+ *
+ * A single panel follows the cursor, which is what a window does and what nothing here has to draw.
+ * A **stack** cannot: moving a panel means writing it a position, and a position is exactly what
+ * takes it out of its seat, so carrying one tore it apart on the first frame. A **tab** cannot
+ * either, and for a worse reason — leaving the seat takes the strip away, and the pointer capture
+ * with it.
+ *
+ * Both were left showing drop guides and nothing else, which reads as a drag that is not working:
+ * the guides say where it would go and nothing says what is going there. So they carry an outline —
+ * the box the panel would occupy, named, under the hand. `shellStore.dragGhost` is null for every
+ * other drag, so this draws nothing for them.
+ *
+ * `pointerEvents: 'none'` for the reason the snap targets have it: the drag is a pointer capture on
+ * the grip, and a target that could swallow a pointer event would end the drag it exists to show.
+ */
+function dragGhost(id: string): SchemaNode {
+  return {
+    type: '$if',
+    props: {
+      condition: { $: `shellStore.movingDock == '${id}' && shellStore.dragGhost` },
+      then: {
+        type: 'Column',
+        props: {
+          position: 'fixed',
+          top: { $: 'shellStore.dragGhost.top' },
+          left: { $: 'shellStore.dragGhost.left' },
+          width: { $: 'shellStore.dragGhost.width' },
+          height: { $: 'shellStore.dragGhost.height' },
+          maxHeight: '60vh',
+          pointerEvents: 'none',
+          zIndex: 'chrome',
+          r: '500',
+          border: '2px solid accent',
+          bg: 'accent-muted',
+          opacity: 0.7,
+          // No shadow: this is an outline of where a panel would go, not a panel. A shadow would
+          // make it read as one — and `chromeLayering.test.ts` picks the frame's own box out of this
+          // tree *by* its shadow, on the stated grounds that nothing else in the frame has one.
+          overflow: 'hidden',
+        },
+        children: [
+          {
+            type: 'Row',
+            props: { width: '100%', ay: 'center', gap: '200', px: '300', py: '200' },
+            children: [
+              { type: 'we-icon', props: { name: 'dots-six', size: 'sm', color: 'accent-text' } },
+              {
+                type: 'we-text',
+                props: { variant: 'label', color: 'accent-text', truncate: true },
+                children: [{ $: 'shellStore.dragGhost.title' }],
+              },
+            ],
           },
         ],
       },

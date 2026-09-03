@@ -2596,6 +2596,7 @@ export const contextData: ContextData = {
         snapTargets: { type: 'array' },
         insertSlots: { type: 'array' },
         activeInsert: { type: 'string' },
+        dragGhost: { type: 'object' },
         layoutPinned: { type: 'object' },
         layoutDirty: { type: 'boolean' },
         panelSupplied: { type: 'object' },

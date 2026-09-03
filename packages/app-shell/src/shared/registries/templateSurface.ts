@@ -943,6 +943,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // The gaps in a strip, and which one a drop would take — what makes reordering a dock possible.
     insertSlots: state('host-layout'),
     activeInsert: state('host-layout'),
+    dragGhost: state('host-layout'),
     insertDock: action('host-layout'),
     beginDockMove: action('host-layout'),
     raiseDock: action('host-layout'),

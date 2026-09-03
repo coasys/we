@@ -439,6 +439,15 @@ export interface ShellStore {
   /** The slot a drop would take right now, as its `key` — compare, do not parse. Null for none. */
   activeInsert: Accessor<string | null>;
   /**
+   * The outline following the cursor, while a drag is carrying something it cannot move.
+   *
+   * A single panel *is* moved — it follows the cursor, which is what a window does. A **stack** and a
+   * **tab** cannot be: moving a panel means writing it a position, and a position is what takes it
+   * out of its seat. So those two carry an outline instead, and this is its box and name. Null for
+   * every other drag, and between drags.
+   */
+  dragGhost: Accessor<{ top: string; left: string; width: string; height: string; title: string } | null>;
+  /**
    * Whether a panel has been moved away from what the interface declared for it, by dock id.
    *
    * What a "reset to layout" control is gated on. The three-rung chain is otherwise one-way: a drag
@@ -941,6 +950,14 @@ export function ShellStoreProvider(props: ParentProps) {
    * every panel's geometry clears it.
    */
   const [movingDock, setMovingDock] = createSignal<string | null>(null);
+  /** The outline following the cursor, for a drag that cannot carry the panel. See `previewDrop`. */
+  const [dragGhost, setDragGhost] = createSignal<{
+    top: string;
+    left: string;
+    width: string;
+    height: string;
+    title: string;
+  } | null>(null);
   const [activeSnap, setActiveSnap] = createSignal<SnapPoint | null>(null);
   const [activeInsert, setActiveInsert] = createSignal<string | null>(null);
   /** The rect a drag started from, so every move is measured against one fixed origin. */
@@ -1907,6 +1924,22 @@ export function ShellStoreProvider(props: ParentProps) {
     const snap = slot ? null : snapCandidate(would, viewport(), occupiedForId(id), floatChrome());
     setActiveInsert(slot ? slot.key : null);
     setActiveSnap(seated && edgeOfSnap(snap) === null ? null : snap);
+    /*
+      What is being carried, since the panel itself is not.
+
+      A drag with nothing following the cursor reads as a drag that is not working — the guides say
+      where it *would* go and nothing says what is going there. Every application that cannot carry
+      the real thing carries an outline of it instead, and this is that outline: the box the panel
+      would occupy, at the pointer, named.
+    */
+    const entry = dockRegistry.get(id);
+    setDragGhost({
+      top: `${Math.round(would.y)}px`,
+      left: `${Math.round(would.x)}px`,
+      width: `${Math.round(would.w)}px`,
+      height: `${Math.round(would.h)}px`,
+      title: entry ? dockTitle(entry) : id,
+    });
   };
 
   const store: ShellStore = {
@@ -2507,6 +2540,7 @@ export function ShellStoreProvider(props: ParentProps) {
 
       dragOrigin = null;
       dragPointer = null;
+      setDragGhost(null);
       if (typeof document !== 'undefined') document.documentElement.removeAttribute(DRAGGING_ATTR);
       setMovingDock(null);
       setActiveSnap(null);
@@ -2783,6 +2817,7 @@ export function ShellStoreProvider(props: ParentProps) {
     },
 
     activeInsert,
+    dragGhost,
 
     snapTargets: () =>
       snapTargetRects(viewport(), occupiedForId(movingDock()), floatChrome()).map((target) => ({
