@@ -76,6 +76,52 @@ Two consequences worth knowing, both in `dockGeometry.ts`:
 A floating panel has no band. It takes no room, so there is nothing to be inboard of: every float on
 an edge shares one lane over the top of whatever is displacing there.
 
+### Seats, and which panel is on top
+
+Two panels in one lane that name the same explicit `order` share a **seat**: one shows, the rest
+stack behind it as tabs, and the titlebar of the one showing carries a strip naming them all. `tab`
+orders the strip. Absent `order` is a seat of its own — the same rule `band` follows — so nothing
+that never said `order` starts sharing. Below the narrow width a floating lane is one seat, which
+is what its full-bleed sheets always were.
+
+Which tab shows, and which floating panel paints over which, are the same question: **the most
+recently touched.** Every panel carries a monotonic `activatedAt` (beside the placements, not in
+them, so a click pins nothing); `layerOrder` sorts it into a step on the `sticky` band, and a seat
+shows its most recently touched member. A pointer landing on a frame, a drag, a resize and
+maximising all touch. Chrome stays above every step — `chromeLayering.test.ts` pins the headroom.
+
+### Floors, and folding
+
+A panel says where usable stops: `DockContribution.min` for a module, `min` on a `meta.panels`
+entry for a section — the one place a declaration writes pixels, because a floor is a fact about
+the content. `floorOf` resolves it per axis over the host's defaults, and every division, drag and
+divider honours it. A panel in a lane, or a float, can be **folded** to its titlebar: its extent
+becomes the bar, its grow zero, its content hidden rather than unmounted. A lone displacing panel
+is refused, since folding it would leave the inset and empty the edge.
+
+### Home lanes
+
+A `$panels` outlet is a lane in the template's own flow. A `meta.panels` entry with `home:
+'<lane>'` starts there, inline and unframed; `snap: 'home'` is the placement. Breaking a section
+out is a change of snap, putting it back is snapping to `home`, and reordering the sections in a
+lane is `order`. None of it touches the tree, so "Reset layout" restores the author's picture, and
+`saveArrangementAsTemplate` writes the reader's placements into a copy's `meta.panels` and nothing
+else. A section is rendered by the outlet when home and by the dock layer when not — two mount
+points, one remount at the gesture, never on a move. The grip is the host's, on a wrapper that
+outlives the section and becomes its placeholder.
+
+The one rule that keeps all of this a model: **a lane holds sections; a section does not hold a
+lane.** The validator refuses a `$panels` inside a panel's node. Fixed depth is what keeps a
+position a few integers, which is what keeps two arrangements mergeable per panel, which is what
+makes the declaration a suggestion a drag can overrule.
+
+### Named layouts
+
+The three-rung chain has one user slot. `saveLayout(name)` snapshots everything it holds for the
+interface on screen — placements, which tab of each seat is showing, which panels are closed —
+under a name, scoped to the template as placements are; `applyLayout` puts it back wholesale.
+Offered at the top of the template picker beside "Reset layout".
+
 ## Who moves for whom
 
 This is the part that is not guessable, and every layout bug in this area has come from getting one

@@ -2112,8 +2112,21 @@ export const workshopTemplate: TemplateSchema = {
         node: transcriptPanel,
         title: 'Transcript',
         snap: 'left',
+        /*
+          One sidebar cut in two, rather than two cards over the board.
+
+          `displace` with a shared `band`: the transcript and the extraction readout are one lane
+          down the left, meeting flush and costing the board their width once, with the boundary
+          between them draggable. Floating, they covered the board's own edge and each kept its own
+          width; the arrangement wanted here is a sidebar, and this is how a template says so.
+        */
+        displace: true,
+        band: 0,
         order: 0,
         size: 'sm',
+        // A transcript is readable narrower than a call stage; below this it wraps into a column
+        // of single words.
+        min: { width: 260 },
         /*
           Two shares against one, so the transcript takes about two thirds of the column.
 
@@ -2134,6 +2147,9 @@ export const workshopTemplate: TemplateSchema = {
         node: extractionPanel,
         title: 'Extraction',
         snap: 'left',
+        // The same lane as the transcript — see there.
+        displace: true,
+        band: 0,
         order: 1,
         size: 'sm',
         // One share to the transcript's two. Not `0`, which pins it to its base and gives the

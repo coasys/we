@@ -166,12 +166,15 @@ Picture-in-picture, generalised from `<video>` to any region of a template.
 
 ### 9. Prove it
 
-- **Twitter** gains `left` and `right` home lanes and three sections — the timeline as a `fixed`
-  section in `main`, a "Trending" and a "Who to follow" in `right`. The spacer column becomes a
-  lane. The test that pins "no fake suggestions rail" is respected: the sections show real data
-  (top signal types; members) or say why they are empty.
-- **Workshop**'s two left panels become a displacing lane (`band: 0`), and the board becomes a
-  `main` home lane so it can be maximised. The right-hand column is unchanged.
+- **Twitter** gains `left` and `right` home lanes and two sections in `right` — the space's
+  reactions and its members. The spacer column becomes a lane; the empty `left` lane sits under
+  the nav so a section can be carried across. The old "no fake suggestions rail" objection is
+  respected: both sections show real data or say why they are empty. The **feed is not a section**:
+  it holds the routes, and a section's node has no router to hand `$routes` its pages — so "the
+  feed full-screen" is a follow-up (a route outlet inside a section), not a declaration.
+- **Workshop**'s two left panels become a displacing lane (`band: 0`) with a floor on the
+  transcript. The board stays a route, for the same reason as the feed. The right-hand column is
+  unchanged.
 - The panels fragment gains the lane rule with the force the panel rule has: *a lane is for a
   region a reader might move, break out or swap; `$each` over collections is content, not lanes.*
   Kanban, Discord's channel list and every chrome template stay as they are, deliberately, as the
