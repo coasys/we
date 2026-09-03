@@ -849,19 +849,19 @@ export const identitySection: SchemaNode = {
                   children: [
                     {
                       type: '$if',
-                      props: { condition: { $: "local.tab === 'devices'" }, then: devicesTab },
+                      props: { condition: { $: "local.tab == 'devices'" }, then: devicesTab },
                     },
                     {
                       type: '$if',
-                      props: { condition: { $: "local.tab === 'guardians'" }, then: guardiansTab },
+                      props: { condition: { $: "local.tab == 'guardians'" }, then: guardiansTab },
                     },
                     {
                       type: '$if',
-                      props: { condition: { $: "local.tab === 'recovery'" }, then: recoveryTab },
+                      props: { condition: { $: "local.tab == 'recovery'" }, then: recoveryTab },
                     },
                     {
                       type: '$if',
-                      props: { condition: { $: "local.tab === 'log'" }, then: logTab },
+                      props: { condition: { $: "local.tab == 'log'" }, then: logTab },
                     },
                   ],
                 },

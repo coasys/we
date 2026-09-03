@@ -276,6 +276,14 @@ export async function wireIdentityModule(config: IdentityRpcConfig, agentDid: st
     console.warn('Adding guardians requires wallet signing — not yet available.');
   };
 
+  // Expose the store for e2e tests — lets Playwright inject data via page.evaluate.
+  // The setters are Solid signals closured inside createStore; without this, no external
+  // code can reach them. Guarded to window so SSR builds skip it.
+  if (typeof window !== 'undefined') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__identityStore = store;
+  }
+
   console.info('wireIdentityModule: identity module wired successfully');
   return () => {
     /* Future: tear down subscriptions */
