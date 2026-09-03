@@ -961,6 +961,11 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // Read by a module's own dock frame, to know whether the interface is supplying its contents.
     panelSupplied: state('host-layout'),
     resetTemplateLayout: action('host-layout'),
+    layoutNames: state('host-layout'),
+    activeLayout: state('host-layout'),
+    saveLayout: action('host-layout'),
+    applyLayout: action('host-layout'),
+    deleteLayout: action('host-layout'),
     // Dismissing and restoring a panel the interface itself supplied. What the titlebar's close
     // button calls, and reachable by the template that declared the panel — which is the only way
     // back to one that has been closed.

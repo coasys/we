@@ -467,6 +467,22 @@ export interface ShellStore {
    * seen from three places, so resetting it three times would be the same thing said three ways.
    */
   resetTemplateLayout: () => void;
+  /**
+   * The arrangements saved for the interface on screen, by name.
+   *
+   * The three-rung chain has one user slot; this is the way to keep more than one. A layout is a
+   * snapshot of the template's placements, which tab of each seat was showing, and which panels
+   * were closed — the Workshop's "recording" and "reviewing", say. Scoped to the template, as the
+   * placements are, so another interface's layouts are not offered here.
+   */
+  layoutNames: Accessor<string[]>;
+  /** The saved layout the arrangement on screen is, or `''` once anything has been moved since. */
+  activeLayout: Accessor<string>;
+  /** Save the arrangement on screen under a name, replacing a layout of that name. */
+  saveLayout: (name: string) => void;
+  /** Put the arrangement back to a saved layout. What the layout does not mention returns to the declaration. */
+  applyLayout: (name: string) => void;
+  deleteLayout: (name: string) => void;
   /** Park a panel at one of the eight, from the position menu — the keyboard's way to move it. */
   snapDock: (id: string, snap: SnapPoint) => void;
   /**
@@ -714,6 +730,43 @@ function saveActivation(activation: Record<string, number>): void {
   }
 }
 
+/**
+ * Named arrangements, by template scope and then by name — see `saveLayout`.
+ *
+ * A layout is a snapshot of everything the three-rung chain holds for one interface: its panels'
+ * placements, which tab of each seat was showing, and which panels were closed. Keyed under the
+ * scope the placements themselves are keyed under, so "Recording" for the Workshop is not offered
+ * while the Timeline is on screen.
+ */
+const LAYOUTS_KEY = 'we-local:shell.dockLayouts';
+
+interface SavedLayout {
+  placements: Record<string, FloatPlacement>;
+  activation: Record<string, number>;
+  closed: Record<string, boolean>;
+}
+
+type SavedLayouts = Record<string, Record<string, SavedLayout>>;
+
+function loadLayouts(): SavedLayouts {
+  if (typeof localStorage === 'undefined') return {};
+  try {
+    const parsed = JSON.parse(localStorage.getItem(LAYOUTS_KEY) ?? '{}') as unknown;
+    return parsed && typeof parsed === 'object' ? (parsed as SavedLayouts) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveLayouts(layouts: SavedLayouts): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(LAYOUTS_KEY, JSON.stringify(layouts));
+  } catch {
+    // Lost named layouts on next boot, and nothing else.
+  }
+}
+
 function savePlacements(placements: Record<string, FloatPlacement>): void {
   const first = pendingPlacements === null;
   pendingPlacements = placements;
@@ -854,7 +907,18 @@ export function ShellStoreProvider(props: ParentProps) {
     return x * y;
   };
 
+  const [layouts, setLayouts] = createSignal<SavedLayouts>(loadLayouts());
+  /**
+   * The named layout the arrangement on screen is, or `''` once it has been changed since.
+   *
+   * Cleared by any write to a placement rather than compared on every read: the question is "did
+   * somebody touch it", which is cheaper to remember than to re-derive, and a layout applied and
+   * then dragged is no longer that layout whatever the pixels happen to say.
+   */
+  const [activeLayout, setActiveLayout] = createSignal('');
+
   const writePlacement = (id: string, next: FloatPlacement) => {
+    setActiveLayout('');
     setPlacements((prev) => {
       const merged = { ...prev, [placementKey(id)]: next };
       savePlacements(merged);
@@ -2418,9 +2482,75 @@ export function ShellStoreProvider(props: ParentProps) {
       );
     },
 
+    layoutNames: () => Object.keys(layouts()[templatePanelScope()] ?? {}).sort(),
+    activeLayout,
+
+    saveLayout: (name) => {
+      const scope = templatePanelScope();
+      const label = name.trim();
+      if (!scope || !label) return;
+      const prefix = `${scope}::`;
+      const under = <T,>(record: Record<string, T>) =>
+        Object.fromEntries(Object.entries(record).filter(([key]) => key.startsWith(prefix)));
+      /*
+        Everything under this template's prefix, and nothing else — the same set `resetTemplateLayout`
+        clears. Panels nothing declares keep the unscoped key and are left out: a layout is "how this
+        interface is arranged", not "where I keep the notes panel everywhere".
+      */
+      const snapshot: SavedLayout = {
+        placements: under(placements()),
+        activation: under(activation()),
+        closed: under(closedPanels()),
+      };
+      setLayouts((prev) => {
+        const next = { ...prev, [scope]: { ...(prev[scope] ?? {}), [label]: snapshot } };
+        saveLayouts(next);
+        return next;
+      });
+      setActiveLayout(label);
+    },
+
+    applyLayout: (name) => {
+      const scope = templatePanelScope();
+      const saved = layouts()[scope]?.[name];
+      if (!scope || !saved) return;
+      const prefix = `${scope}::`;
+      const without = <T,>(record: Record<string, T>) =>
+        Object.fromEntries(Object.entries(record).filter(([key]) => !key.startsWith(prefix)));
+      // Replace this template's arrangement wholesale: what the layout does not mention returns to
+      // the declaration, exactly as a reset would leave it.
+      setPlacements((prev) => {
+        const next = { ...without(prev), ...saved.placements };
+        savePlacements(next);
+        return next;
+      });
+      setActivation((prev) => {
+        const next = { ...without(prev), ...saved.activation };
+        saveActivation(next);
+        // The clock has to stay ahead of anything just restored, or the next raise lands underneath.
+        activationClock = Math.max(activationClock, ...Object.values(next));
+        return next;
+      });
+      setClosedPanels((prev) => ({ ...without(prev), ...saved.closed }));
+      setActiveLayout(name);
+    },
+
+    deleteLayout: (name) => {
+      const scope = templatePanelScope();
+      if (!scope || !layouts()[scope]?.[name]) return;
+      setLayouts((prev) => {
+        const { [name]: _gone, ...rest } = prev[scope] ?? {};
+        const next = { ...prev, [scope]: rest };
+        saveLayouts(next);
+        return next;
+      });
+      if (activeLayout() === name) setActiveLayout('');
+    },
+
     resetTemplateLayout: () => {
       const scope = templatePanelScope();
       if (!scope) return;
+      setActiveLayout('');
       const prefix = `${scope}::`;
       /*
         Every key under this template, rather than the panels currently declared.

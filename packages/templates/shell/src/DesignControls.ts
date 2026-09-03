@@ -211,6 +211,105 @@ function nameDialog(opts: {
 const templateRows = matching({ $: 'group.items' });
 
 /**
+ * The arrangements saved for the template on screen, and the way to save another.
+ *
+ * At the top of the template picker rather than in a panel's own menu, for the reason "Reset
+ * layout" is on the template's row: an arrangement is a fact about the whole interface, and a panel
+ * somebody closed has no titlebar to reach a menu from. Absent entirely until there is a layout to
+ * show or something worth saving — an interface with no panels never sees it.
+ */
+function layoutsSection(): SchemaNode {
+  const rows = { $: 'shellStore.layoutNames' };
+  return {
+    type: '$if',
+    props: {
+      condition: { $: 'count(shellStore.layoutNames) || shellStore.layoutDirty' },
+      then: {
+        type: 'Column',
+        props: { gap: '100' },
+        children: [
+          {
+            type: 'we-text',
+            props: { variant: 'footnote', color: 'text-faint', px: '200', pt: '200' },
+            children: ['Layouts'],
+          },
+          {
+            type: '$each',
+            props: { items: rows, as: 'layout' },
+            children: [
+              pickerRow({
+                icon: 'bookmark-simple',
+                label: { $: 'layout' },
+                selected: { $: 'layout == shellStore.activeLayout' },
+                select: { $action: 'shellStore.applyLayout', args: [{ $: 'layout' }] },
+                actions: [
+                  {
+                    icon: 'trash',
+                    tooltip: 'Forget this layout',
+                    onClick: { $action: 'shellStore.deleteLayout', args: [{ $: 'layout' }] },
+                  },
+                ],
+              }),
+            ],
+          },
+          {
+            type: 'we-button',
+            props: {
+              variant: 'ghost',
+              size: 'sm',
+              width: '100%',
+              ax: 'start',
+              gap: '200',
+              onClick: { $setLocal: 'saveLayoutOpen', value: true },
+            },
+            children: [
+              { type: 'we-icon', props: { name: 'bookmark-simple' } },
+              { type: 'we-text', children: ['Save this arrangement…'] },
+            ],
+          },
+        ],
+      },
+    },
+  };
+}
+
+/** Name the arrangement on screen. Mounted only while open, so the field starts empty each time. */
+function saveLayoutDialog(): SchemaNode {
+  const close = { $setLocal: 'saveLayoutOpen', value: false };
+  return {
+    type: '$if',
+    props: {
+      condition: { $: 'local.saveLayoutOpen' },
+      then: {
+        type: 'we-modal',
+        props: { size: 'sm', close },
+        $localState: { layoutName: { type: 'string', initial: '' } },
+        children: [
+          { type: 'we-text', props: { variant: 'heading-sm' }, children: ['Save layout'] },
+          field({ name: 'layoutName', label: 'Name', placeholder: 'Recording, reviewing, …' }),
+          {
+            type: 'Row',
+            props: { ax: 'end', gap: '200' },
+            children: [
+              { type: 'we-button', props: { size: 'sm', variant: 'ghost', onClick: close }, children: ['Cancel'] },
+              {
+                type: 'we-button',
+                props: {
+                  size: 'sm',
+                  disabled: { $: '!local.layoutName' },
+                  onClick: [{ $action: 'shellStore.saveLayout', args: [{ $: 'local.layoutName' }] }, close],
+                },
+                children: ['Save'],
+              },
+            ],
+          },
+        ],
+      },
+    },
+  };
+}
+
+/**
  * The template picker.
  *
  * **Ambient contract:** must be placed inside a node declaring {@link TEMPLATE_PICKER_OPEN} and
@@ -225,6 +324,8 @@ const templateRows = matching({ $: 'group.items' });
 export function templatePicker(): SchemaNode {
   return {
     type: 'Column',
+    // The save-layout dialog's flag lives on the picker, which is the only thing that opens it.
+    $localState: { saveLayoutOpen: { type: 'boolean', initial: false } },
     children: [
       pickerPopover({
         openLocal: TEMPLATE_PICKER_OPEN,
@@ -233,24 +334,28 @@ export function templatePicker(): SchemaNode {
         tooltip: 'Template',
         searchPlaceholder: 'Search templates…',
         body: {
-          type: '$each',
-          props: { items: { $: 'templateStore.switcherGroups' }, as: 'group' },
+          type: 'Column',
           children: [
-            section({ $: 'group.label' }, templateRows, {
+            layoutsSection(),
+            {
               type: '$each',
-              props: { items: templateRows, as: 'template' },
+              props: { items: { $: 'templateStore.switcherGroups' }, as: 'group' },
               children: [
-                pickerRow({
-                  icon: { $: 'template.icon' },
-                  label: { $: 'template.name' },
-                  selected: { $: 'template.id == templateStore.currentSwitcherId' },
-                  isDefault: { $: 'template.id == spaceStore.spaceDefaultTemplateId' },
-                  select: [
-                    { $action: 'templateStore.switchTemplate', args: [{ $: 'template.id' }] },
-                    closeTemplatePicker,
-                  ],
-                  actions: [
-                    /*
+                section({ $: 'group.label' }, templateRows, {
+                  type: '$each',
+                  props: { items: templateRows, as: 'template' },
+                  children: [
+                    pickerRow({
+                      icon: { $: 'template.icon' },
+                      label: { $: 'template.name' },
+                      selected: { $: 'template.id == templateStore.currentSwitcherId' },
+                      isDefault: { $: 'template.id == spaceStore.spaceDefaultTemplateId' },
+                      select: [
+                        { $action: 'templateStore.switchTemplate', args: [{ $: 'template.id' }] },
+                        closeTemplatePicker,
+                      ],
+                      actions: [
+                        /*
                       The way back to the arrangement this template designed — its panels where it
                       put them, and the ones somebody closed open again.
 
@@ -264,19 +369,19 @@ export function templatePicker(): SchemaNode {
                       not three — and a panel somebody *closed* has no titlebar left to open a menu
                       from, so the per-panel control cannot be the only way back.
                     */
-                    {
-                      icon: 'arrow-counter-clockwise',
-                      tooltip: "Reset panels to this template's layout",
-                      when: { $: 'template.id == templateStore.currentSwitcherId && shellStore.layoutDirty' },
-                      // Deliberately does not close the picker: the panels move behind it, which is
-                      // the confirmation that the click landed, and the row's control disappearing
-                      // is the other half of that. Same argument as the theme rows below.
-                      onClick: { $action: 'shellStore.resetTemplateLayout' },
-                    },
-                    {
-                      icon: 'pencil-simple',
-                      tooltip: 'Edit this template',
-                      /*
+                        {
+                          icon: 'arrow-counter-clockwise',
+                          tooltip: "Reset panels to this template's layout",
+                          when: { $: 'template.id == templateStore.currentSwitcherId && shellStore.layoutDirty' },
+                          // Deliberately does not close the picker: the panels move behind it, which is
+                          // the confirmation that the click landed, and the row's control disappearing
+                          // is the other half of that. Same argument as the theme rows below.
+                          onClick: { $action: 'shellStore.resetTemplateLayout' },
+                        },
+                        {
+                          icon: 'pencil-simple',
+                          tooltip: 'Edit this template',
+                          /*
                         Any row that can be edited, not just the one already on screen.
 
                         This used to also require `$template.id` to be the current one, which made
@@ -291,31 +396,33 @@ export function templatePicker(): SchemaNode {
                         offering this on a built-in opens a session over something that cannot be
                         saved.
                       */
-                      when: { $: 'template.editable' },
-                      // Switch first, exactly as forking does below: an editing session is opened
-                      // over whatever is current, so editing a row you are not on has to make it
-                      // current before entering.
-                      onClick: [
-                        { $action: 'templateStore.switchTemplate', args: [{ $: 'template.id' }] },
-                        { $action: 'editorStore.enterTemplateEditing', args: ['edit'] },
-                        closeTemplatePicker,
+                          when: { $: 'template.editable' },
+                          // Switch first, exactly as forking does below: an editing session is opened
+                          // over whatever is current, so editing a row you are not on has to make it
+                          // current before entering.
+                          onClick: [
+                            { $action: 'templateStore.switchTemplate', args: [{ $: 'template.id' }] },
+                            { $action: 'editorStore.enterTemplateEditing', args: ['edit'] },
+                            closeTemplatePicker,
+                          ],
+                        },
+                        {
+                          icon: 'git-fork',
+                          tooltip: 'Fork this template',
+                          // Switch first: a fork is seeded from whatever is current, so forking a row you
+                          // are not on has to make it current before asking for a name.
+                          onClick: [
+                            { $action: 'templateStore.switchTemplate', args: [{ $: 'template.id' }] },
+                            { $action: 'editorStore.startFork' },
+                            closeTemplatePicker,
+                          ],
+                        },
                       ],
-                    },
-                    {
-                      icon: 'git-fork',
-                      tooltip: 'Fork this template',
-                      // Switch first: a fork is seeded from whatever is current, so forking a row you
-                      // are not on has to make it current before asking for a name.
-                      onClick: [
-                        { $action: 'templateStore.switchTemplate', args: [{ $: 'template.id' }] },
-                        { $action: 'editorStore.startFork' },
-                        closeTemplatePicker,
-                      ],
-                    },
+                    }),
                   ],
                 }),
               ],
-            }),
+            },
           ],
         },
         footer: {
@@ -333,6 +440,8 @@ export function templatePicker(): SchemaNode {
           ],
         },
       }),
+
+      saveLayoutDialog(),
 
       nameDialog({
         open: { $: 'editorStore.pickerOpen' },

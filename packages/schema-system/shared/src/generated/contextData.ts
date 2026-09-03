@@ -2599,6 +2599,8 @@ export const contextData: ContextData = {
         layoutPinned: { type: 'object' },
         layoutDirty: { type: 'boolean' },
         panelSupplied: { type: 'object' },
+        layoutNames: { type: 'array' },
+        activeLayout: { type: 'string' },
       },
       actions: [
         'openShellView',
@@ -2623,6 +2625,9 @@ export const contextData: ContextData = {
         'closeTemplatePanel',
         'openTemplatePanel',
         'resetTemplateLayout',
+        'saveLayout',
+        'applyLayout',
+        'deleteLayout',
         'snapDock',
         'insertDock',
         'toggleMaximiseDock',

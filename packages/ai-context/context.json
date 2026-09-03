@@ -6587,6 +6587,12 @@
         },
         "panelSupplied": {
           "type": "object"
+        },
+        "layoutNames": {
+          "type": "array"
+        },
+        "activeLayout": {
+          "type": "string"
         }
       },
       "actions": [
@@ -6612,6 +6618,9 @@
         "closeTemplatePanel",
         "openTemplatePanel",
         "resetTemplateLayout",
+        "saveLayout",
+        "applyLayout",
+        "deleteLayout",
         "snapDock",
         "insertDock",
         "toggleMaximiseDock",
