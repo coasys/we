@@ -11,10 +11,10 @@ import { dockIsOffered } from '@shared/dockGating';
 import {
   arrangeDrop,
   arrangeHomeDrop,
+  chooseTarget,
   CHROME_RAIL_PX,
   columnLayout,
   columnSlots,
-  contains,
   type ContentInset,
   contentInset,
   coveredInset,
@@ -51,7 +51,6 @@ import {
   snapCandidate,
   type SnapPoint,
   snapTargetRects,
-  targetRank,
   TITLE_BAR_PX,
   type TopChrome,
 } from '@shared/dockGeometry';
@@ -2274,36 +2273,10 @@ export function ShellStoreProvider(props: ParentProps) {
         `snapCandidate`, and for the same reason.
       */
       /*
-        **Where the pointer is**, then the kind, then the area.
-
-        Area alone was the rule, and a panel hangs *downward* from the pointer holding its titlebar —
-        so which targets it overlapped had almost nothing to do with where somebody was aiming. A
-        200px panel reached a lane's bottom seam with its top 680px away, while the seam at the top
-        of the same lane was reachable only with the pointer within twenty pixels of the screen's
-        edge: the two ends of one lane, one easy and one nearly impossible. And a seat's target could
-        never win at all, since a rect that large always overlapped some seam, and a seam outranks it
-        — so the region that says "drop here to make a tab" was drawn and was not reachable.
-
-        A pointer is a point, so it is symmetric by construction, and pointing at a thing is what
-        every application means by dropping on it. The area rule stays underneath for the case it was
-        written for — a panel over two lines at once, with the pointer over neither — where it picks
-        the one most covered rather than the first in the list.
+        Which of them is being offered is `chooseTarget`, pure and tested: the pointer first, then the
+        smallest box it is inside. Both halves are answers to things that went wrong here — see there.
       */
-      const pointer = { x: dragPointer.x + dx, y: dragPointer.y + dy };
-      const slot = store
-        .insertSlots()
-        .map((candidate) => ({
-          candidate,
-          under: contains(pointer, candidate.hit),
-          area: overlapArea(next, candidate.hit),
-        }))
-        .filter((entry) => entry.under || entry.area > 0)
-        .sort(
-          (a, b) =>
-            Number(b.under) - Number(a.under) ||
-            targetRank(a.candidate.mode) - targetRank(b.candidate.mode) ||
-            b.area - a.area,
-        )[0]?.candidate;
+      const slot = chooseTarget(store.insertSlots(), { x: dragPointer.x + dx, y: dragPointer.y + dy }, next);
       setActiveInsert(slot ? slot.key : null);
       setActiveSnap(slot ? null : snapCandidate(next, viewport(), occupiedForId(id), floatChrome()));
       writePlacement(id, next);

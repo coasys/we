@@ -16,6 +16,7 @@ import {
   arrangeDrop,
   arrangeHomeDrop,
   BOTTOM_CHROME_PX,
+  chooseTarget,
   CHROME_RAIL_PX,
   COLLAPSED_PX,
   columnLayout,
@@ -2195,5 +2196,67 @@ describe('pointing at a drop target', () => {
     expect(contains({ x: 80, y: 0 }, seam)).toBe(true);
     expect(contains({ x: 380, y: 20 }, seam)).toBe(true);
     expect(contains({ x: 381, y: 10 }, seam)).toBe(false);
+  });
+});
+
+/**
+ * Which of the overlapping offers a drop is actually being made.
+ *
+ * Targets overlap by design, and the two rules that came before this each made one of them
+ * unreachable. Ranked by how much of the dragged *panel* covered them: a panel hangs downward from
+ * the pointer, so a lane's bottom seam was reachable from six hundred pixels away and its top seam
+ * only from within twenty. Ranked by kind: a seam always beat the "make a tab of this" region, which
+ * was drawn and could never be taken.
+ */
+describe('choosing among overlapping drop targets', () => {
+  const screen = { x: 0, y: 0, w: desktop.width, h: desktop.height };
+  const lane = { x: SIDEBAR_PX, y: 0, w: 300, h: desktop.height };
+  const dragged = { x: 120, y: 0, w: 320, h: 200 };
+
+  /** The offers a left-hand sidebar and an empty top edge make between them. */
+  const offers = [
+    ...columnSlots('left', [lane], screen).map((slot) => ({ mode: 'lane' as const, index: slot.index, hit: slot.hit })),
+    ...insertionSlots('left', [lane], desktop).map((slot) => ({
+      mode: 'band' as const,
+      index: slot.index,
+      hit: slot.hit,
+    })),
+    ...insertionSlots('top', [], desktop).map((slot) => ({ mode: 'band' as const, index: 99, hit: slot.hit })),
+  ];
+
+  it('offers the seam above a docked sidebar, not the whole top edge behind it', () => {
+    /*
+      The bug this rule exists for. Both contain a pointer at the top-left: the lane's seam is 300×20
+      and the edge's "start a lane here" band runs 1520×24 across the screen. By covered area the
+      band won every time, so dropping above the top panel of a left-hand stack silently docked to
+      the top of the window instead — and the seam at the *bottom* of the same lane, with no band
+      over it, worked. One lane, two ends, two different answers.
+    */
+    const chosen = chooseTarget(offers, { x: 200, y: 5 }, dragged);
+
+    expect(chosen?.mode).toBe('lane');
+    expect(chosen?.index).toBe(0);
+  });
+
+  it('offers the same seam at the other end, which is what made the asymmetry visible', () => {
+    const chosen = chooseTarget(offers, { x: 200, y: 890 }, { ...dragged, y: 700 });
+
+    expect(chosen?.mode).toBe('lane');
+    expect(chosen?.index).toBe(1);
+  });
+
+  it('offers a seat when the pointer is in the middle of a panel, whatever the panel covers', () => {
+    const seat = { mode: 'tab' as const, index: 0, hit: { x: SIDEBAR_PX + 75, y: 225, w: 150, h: 450 } };
+    const chosen = chooseTarget([...offers, seat], { x: 200, y: 450 }, { ...dragged, y: 350 });
+
+    expect(chosen?.mode).toBe('tab');
+  });
+
+  it('falls back to what the panel covers where the pointer is over nothing', () => {
+    // The rule this replaced, kept for the case it was written for — and a boundary still beats a
+    // region there, since a panel large enough to lie over two things is not pointing at either.
+    const chosen = chooseTarget(offers, { x: 900, y: 450 }, { x: 60, y: 400, w: 340, h: 100 });
+
+    expect(chosen?.mode).toBe('band');
   });
 });

@@ -284,9 +284,61 @@ export function targetRank(mode: 'band' | 'lane' | 'home' | 'tab'): number {
   return mode === 'tab' ? 1 : 0;
 }
 
-/** Whether a point is inside a box. The pointer's half of {@link targetRank}'s question. */
+/** Whether a point is inside a box. The pointer's half of {@link chooseTarget}'s question. */
 export function contains(point: { x: number; y: number }, rect: Rect): boolean {
   return point.x >= rect.x && point.x <= rect.x + rect.w && point.y >= rect.y && point.y <= rect.y + rect.h;
+}
+
+/** Anything a drop can land on: what kind of place it is, and the box you have to be over. */
+export interface DropCandidate {
+  mode: 'band' | 'lane' | 'home' | 'tab';
+  hit: Rect;
+}
+
+/**
+ * Which of the places a dragged panel could land it is actually being offered.
+ *
+ * ## The pointer first, and then the *smallest* thing it is inside
+ *
+ * Targets overlap by design — an edge's "start a lane here" band runs the whole width of the screen
+ * across the top, and the seam above the first panel of a left-hand lane sits inside it. Both are
+ * real offers and both contain the pointer at the top-left corner, so something has to choose, and
+ * the honest rule is the one this file already stated for gaps over edge targets: **the more
+ * specific answer is the one the user is pointing at.**
+ *
+ * Specific is measurable — it is the smaller box. A lane's seam is 300×20 where the edge band behind
+ * it is 1520×24, and a seat's "make a tab of this" region is half a panel, so ranking by size gets
+ * every pair right without a table of kinds to keep in step as kinds are added. Ranked by *area
+ * covered* instead, the band won every time and the seam above a docked sidebar could not be reached
+ * at all: dropping above the top panel of a left-hand stack silently docked to the top of the screen.
+ *
+ * ## And the panel's own rectangle, when the pointer is over nothing
+ *
+ * The fallback is the rule this replaced, kept for the case it was written for: a panel wide enough
+ * to lie over two lines at once, with the pointer between them, takes the one it covers most rather
+ * than the first in the list. Lines are preferred to regions there, since a boundary is still the
+ * more specific of the two.
+ */
+export function chooseTarget<T extends DropCandidate>(
+  candidates: readonly T[],
+  pointer: { x: number; y: number },
+  rect: Rect,
+): T | undefined {
+  const area = (box: Rect) => box.w * box.h;
+  return candidates
+    .map((candidate) => ({
+      candidate,
+      under: contains(pointer, candidate.hit),
+      covered: overlap(rect, candidate.hit),
+    }))
+    .filter((entry) => entry.under || entry.covered > 0)
+    .sort(
+      (a, b) =>
+        Number(b.under) - Number(a.under) ||
+        (a.under
+          ? area(a.candidate.hit) - area(b.candidate.hit)
+          : targetRank(a.candidate.mode) - targetRank(b.candidate.mode) || b.covered - a.covered),
+    )[0]?.candidate;
 }
 
 export function layerOrder(
