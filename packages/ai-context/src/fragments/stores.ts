@@ -1334,8 +1334,9 @@ export function generateStoresText(entries: StoreEntry[]): string {
         snapTargets:
           '{ id, top, left, width, height }[] — every snap target’s box while a panel is being dragged, measured against the room left for it. Empty otherwise',
         insertSlots:
-          "{ index, edge, mode: 'strip' | 'column', top, left, width, height }[] — the gaps in a strip of panels a dragged panel could join, while one is being dragged over it. Empty otherwise",
-        activeInsert: 'string | null — the slot a drop would take right now, as <edge>:<index>, or null',
+          "{ key, index, edge, lane, mode: 'band' | 'lane', top, left, width, height }[] — every boundary a dragged panel could land on, while one is being dragged. 'band' offers a new lane at that distance inboard, 'lane' a seat beside the panels in the lane it names. Empty otherwise",
+        activeInsert:
+          "string | null — the slot a drop would take right now, as that slot's `key`. Compare it against slot.key rather than rebuilding the string, which names four things",
         panelSupplied:
           "Record<moduleId, boolean> — modules whose panel this interface supplies itself, by declaring a `meta.panels` entry that names the module and carries a `node`. What a module's dock frame asks before drawing its own contents; the module still owns whether the panel is open and how big it is",
         layoutDirty:
@@ -1348,7 +1349,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
           "(id: string, side: 'left' | 'right' | 'top' | 'bottom' | 'top-left' | …, dx: number, dy: number): applies a resize drag from that side or corner, in screen pixels since it began. Wire it to resize with { $: 'arg.detail.delta' }",
         endDockResize: '(): ends the drag and persists the size',
         resizeColumn:
-          "(id, dy): moves the boundary between this panel and the one under it in a floating column, giving one what the other loses. What the upper panel's bottom grip calls when it has a neighbour — a boundary belongs to both panels, so only one of them draws it",
+          "(id, delta): moves the boundary between this panel and the next one in its lane, giving one what the other loses. What the earlier panel's trailing grip calls when it has a lane-mate — its bottom in a side lane, its right-hand edge in a top or bottom one. A boundary belongs to both panels, so only one of them draws it",
         fitDock:
           '(id: string): shrinks a panel to the shape its content wants, keeping the width the user chose — only when the module declares an aspect for its panel',
         beginDockMove:
@@ -1359,7 +1360,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         snapDock:
           "(id: string, snap: SnapPoint): parks a panel at one of the eight positions from a menu — the keyboard's way to move it",
         insertDock:
-          "(id: string, edge: 'left' | 'right' | 'top' | 'bottom', position: number, mode?: 'strip' | 'column'): joins the strip of panels on that edge at that position, renumbering it — what a drop on a gap does",
+          "(id: string, edge: 'left' | 'right' | 'top' | 'bottom', position: number, mode?: 'band' | 'lane', lane?: number | 'float'): puts a panel on that edge, renumbering what it lands among — what a drop on a boundary does. 'band' opens a lane of its own at that distance inboard; 'lane' takes a seat at that position along the lane named by `lane` (a distance inboard, or 'float' for the floating one)",
         toggleMaximiseDock:
           '(id: string): covers the content region with the panel, or goes back to being a card. Nothing about where the panel was is overwritten while it is on',
         toggleDockDisplace:

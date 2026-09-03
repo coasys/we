@@ -14,6 +14,7 @@ import { describe, expect, it } from 'vitest';
 import {
   BOTTOM_CHROME_PX,
   CHROME_RAIL_PX,
+  arrangeDrop,
   columnLayout,
   columnMembers,
   columnSlots,
@@ -23,11 +24,14 @@ import {
   displaces,
   DOCK_GAP_PX,
   type DockRequest,
+  type DropTarget,
   dockThickness,
+  edgeGroups,
   edgeOfSnap,
   fitPlacement,
   type FloatPlacement,
   insertionSlots,
+  laneThickness,
   MIN_DOCK_PX,
   MIN_FLOAT_PX,
   NARROW_VIEWPORT_PX,
@@ -1348,5 +1352,360 @@ describe('a floating column', () => {
     expect(after[0].h - before[0].h).toBe(60);
     expect(after[1].h - before[1].h).toBe(-60);
     expect(after[0].h + after[1].h).toBe(before[0].h + before[1].h);
+  });
+});
+
+/**
+ * Lanes — the second coordinate an edge always needed.
+ *
+ * `band` is how far inboard, `order` is how far along, and neither depends on `displace` any more.
+ * Before this, one number answered both and the flag chose which, so the arrangement a panel got was
+ * decided by a question about whether it took room: a displacing panel could only ever stack inward
+ * and a floating one could only ever divide the edge. "Two sidebars, one above the other, both
+ * pushing the content aside" was unreachable from either side.
+ *
+ * Most of what follows is one sentence from two directions: **panels in the same lane divide it,
+ * panels in different lanes stack.**
+ */
+describe('grouping an edge into lanes', () => {
+  const panel = (over: Partial<FloatPlacement> = {}) => ({
+    placement: placement({ snap: 'left', displace: true, w: 300, h: 200, ...over }),
+  });
+
+  it('gives a panel that named no band a lane of its own, so nothing that predates lanes changes', () => {
+    // The compatibility rule, and the reason `band` is absent rather than defaulting to 0. Two module
+    // panels opening on one edge, neither ever arranged, stacked inward before lanes existed — and
+    // must go on doing so rather than silently halving each other the first time both are open.
+    const groups = edgeGroups([panel(), panel()], 'left', desktop);
+
+    expect(groups).toHaveLength(2);
+    expect(groups.every((group) => group.members.length === 1)).toBe(true);
+  });
+
+  it('makes one lane of the panels that named the same band', () => {
+    const groups = edgeGroups([panel({ band: 0, order: 0 }), panel({ band: 0, order: 1 })], 'left', desktop);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0].members).toHaveLength(2);
+  });
+
+  it('puts the lanes somebody named before the ones nobody did', () => {
+    // The rule `occupiedFor` used to carry as a pairwise comparison, said once and about lanes: an
+    // arrangement first, then everything else in the order it registered — which is also "a panel
+    // that arrives without being dropped anywhere lands at the end", for nothing.
+    const groups = edgeGroups([panel(), panel({ band: 1 }), panel({ band: 0 })], 'left', desktop);
+
+    expect(groups.map((group) => group.band)).toEqual([0, 1, null]);
+  });
+
+  it('orders a lane along the edge by order, and the lanes across it by band', () => {
+    const groups = edgeGroups(
+      [panel({ band: 1, order: 1 }), panel({ band: 0 }), panel({ band: 1, order: 0 })],
+      'left',
+      desktop,
+    );
+
+    expect(groups.map((group) => group.band)).toEqual([0, 1]);
+    expect(groups[1].members.map((member) => member.placement.order)).toEqual([0, 1]);
+  });
+
+  it('keeps every float in one lane, last, whatever band they claim', () => {
+    // A float takes no room, so there is nothing for it to be inboard of. Honouring a band here would
+    // invent lanes that cost the content nothing and place cards as though they had.
+    const groups = edgeGroups(
+      [panel({ displace: false, band: 3 }), panel({ displace: false }), panel({ band: 0 })],
+      'left',
+      desktop,
+    );
+
+    expect(groups.map((group) => group.displacing)).toEqual([true, false]);
+    expect(groups[1].members).toHaveLength(2);
+    expect(groups[1].band).toBeNull();
+  });
+
+  it('leaves corners out of it, as it always did', () => {
+    expect(edgeGroups([panel({ snap: 'top-left', band: 0 })], 'left', desktop)).toEqual([]);
+  });
+
+  it('counts a lane as thick as the widest panel in it, not as their sum', () => {
+    expect(laneThickness([placement({ w: 300 }), placement({ w: 440 })], 'right')).toBe(440);
+  });
+});
+
+describe('what a lane costs the content', () => {
+  const request = (id: string, over: Partial<FloatPlacement> = {}): DockRequest =>
+    dock({ id, placement: placement({ snap: 'right', displace: true, w: 300, ...over }) });
+
+  it('charges once for two panels sharing a lane, since they are one band across the edge', () => {
+    // Summing here would report an edge twice as deep as it is and push the whole layout into the
+    // middle of the screen — the mistake `coveredInset` already exists to avoid one axis over.
+    const panels = [request('a', { band: 0, order: 0 }), request('b', { band: 0, order: 1 })];
+
+    expect(contentInset(panels, desktop).right).toBe(300);
+  });
+
+  it('charges twice for two lanes, since the second sits inboard of the first', () => {
+    const panels = [request('a', { band: 0 }), request('b', { band: 1 })];
+
+    expect(contentInset(panels, desktop).right).toBe(600);
+  });
+
+  it('charges the widest of a lane, so a panel joining one cannot be left hanging over the content', () => {
+    const panels = [request('a', { band: 0, w: 300 }), request('b', { band: 0, w: 440 })];
+
+    expect(contentInset(panels, desktop).right).toBe(440);
+  });
+
+  it('goes on charging twice for two panels that named no lane, exactly as it did before lanes', () => {
+    expect(contentInset([request('a'), request('b')], desktop).right).toBe(600);
+  });
+});
+
+describe('what a panel in a lane has to keep clear of', () => {
+  const request = (id: string, over: Partial<FloatPlacement> = {}): DockRequest =>
+    dock({ id, placement: placement({ snap: 'right', displace: true, w: 300, ...over }) });
+
+  it('clears the lanes outboard of its own and none of the ones inboard', () => {
+    const panels = [request('outer', { band: 0 }), request('inner', { band: 1 })];
+
+    expect(occupiedFor(panels, 0, desktop).right).toBe(0);
+    expect(occupiedFor(panels, 1, desktop).right).toBe(300);
+  });
+
+  it('clears nothing on account of a lane-mate, who is beside it rather than in front of it', () => {
+    // The whole point of a lane: these two divide the edge, so neither steps past the other. Counting
+    // a lane-mate would push the second panel inboard by the first's width and leave the lane
+    // straddling the seam it was supposed to share.
+    const panels = [request('a', { band: 0, order: 0 }), request('b', { band: 0, order: 1 })];
+
+    expect(occupiedFor(panels, 0, desktop).right).toBe(0);
+    expect(occupiedFor(panels, 1, desktop).right).toBe(0);
+  });
+
+  it('makes a floating panel clear every lane, since it is keeping off the edge rather than holding it', () => {
+    const panels = [
+      request('outer', { band: 0 }),
+      request('inner', { band: 1 }),
+      dock({ id: 'card', placement: placement({ snap: 'right', displace: false }) }),
+    ];
+
+    expect(occupiedFor(panels, 2, desktop).right).toBe(600);
+  });
+});
+
+describe('a displacing lane', () => {
+  const member = (over: Partial<FloatPlacement> = {}): FloatPlacement =>
+    placement({ snap: 'left', displace: true, w: 300, h: 200, ...over });
+
+  const lane = (members: FloatPlacement[], edge: 'left' | 'right' | 'top' | 'bottom' = 'left') =>
+    columnLayout(members, edge, desktop, NO_INSET, NO_INSET, { displacing: true });
+
+  it('divides the height between its members and leaves no gap between them', () => {
+    // A gap between two panels that have taken room from the content is a strip of background where
+    // the content used to be — which is what `DOCK_GAP_PX` is for on a card and wrong here.
+    const [top, bottom] = lane([member(), member()]);
+
+    expect(top.y + top.h).toBe(bottom.y);
+    expect(top.h + bottom.h).toBe(desktop.height);
+  });
+
+  it('gives every member the same width, because a lane with two widths is two lanes', () => {
+    const [top, bottom] = lane([member({ w: 300 }), member({ w: 440 })]);
+
+    expect(top.w).toBe(440);
+    expect(bottom.w).toBe(440);
+    expect(top.x).toBe(bottom.x);
+  });
+
+  it('hands the spare height out by grow, the same division a floating one makes', () => {
+    const [top, bottom] = lane([member({ grow: 2 }), member({ grow: 1 })]);
+
+    expect(top.h - 200).toBeCloseTo((bottom.h - 200) * 2, 0);
+  });
+
+  it('divides the width rather than the height on a top or bottom edge', () => {
+    const [first, second] = lane([member({ snap: 'top' }), member({ snap: 'top' })], 'top');
+
+    expect(first.x + first.w).toBe(second.x);
+    expect(first.h).toBe(second.h);
+  });
+
+  it('hangs off the right edge when that is the edge it is on', () => {
+    const [top] = lane([member({ snap: 'right' }), member({ snap: 'right' })], 'right');
+
+    expect(top.x + top.w).toBe(desktop.width);
+  });
+
+  it('spans the full height, ignoring what the horizontal edges took — the sides own the corners', () => {
+    const [top, bottom] = columnLayout([member(), member()], 'left', desktop, { ...NO_INSET, bottom: 200 }, NO_INSET, {
+      displacing: true,
+    });
+
+    expect(top.y).toBe(0);
+    expect(top.h + bottom.h).toBe(desktop.height);
+  });
+});
+
+describe('a displacing panel given a seat', () => {
+  const seated = (seat: Rect) =>
+    resolveDock(
+      dock({ placement: placement({ snap: 'right', displace: true, w: 300 }) }),
+      desktop,
+      NO_INSET,
+      NO_INSET,
+      seat,
+    );
+
+  it('spans its seat rather than the whole edge', () => {
+    const geometry = seated({ x: 1300, y: 400, w: 300, h: 500 });
+
+    expect(px(geometry.top)).toBe(400);
+    expect(px(geometry.height)).toBe(500);
+    // Still pinned to its edge across the other axis: a lane is a band on the edge, not a card.
+    expect(px(geometry.right)).toBe(0);
+    expect(geometry.floating).toBe(false);
+  });
+
+  it('takes its thickness from the seat, so two panels in one lane cannot draw two widths', () => {
+    // The placement asks for 300 and the lane resolved to 440 — the widest of its members. Reading
+    // the panel's own number here is how one sidebar would have come out with a step down its side.
+    expect(px(seated({ x: 1160, y: 0, w: 440, h: 900 }).width)).toBe(440);
+  });
+
+  it('spans the whole edge with no seat, which is every arrangement that predates lanes', () => {
+    const geometry = resolveDock(dock({ placement: placement({ snap: 'right', displace: true }) }), desktop);
+
+    expect(px(geometry.top)).toBe(0);
+    expect(px(geometry.bottom)).toBe(0);
+    expect(geometry.height).toBeUndefined();
+  });
+});
+
+describe('a template declaring a lane', () => {
+  it('carries the band through untouched', () => {
+    expect(placementFromDeclaration({ snap: 'left', displace: true, band: 1, order: 2 }, desktop)).toMatchObject({
+      band: 1,
+      order: 2,
+    });
+  });
+
+  it('leaves it absent when the declaration says nothing, which means a lane of its own', () => {
+    // Defaulting to 0 would put every displacing panel an interface declares into one lane and halve
+    // them against each other — the opposite of what a declaration silent about lanes is asking for.
+    expect(placementFromDeclaration({ snap: 'left', displace: true }, desktop).band).toBeUndefined();
+  });
+});
+
+/**
+ * Dropping a panel on an edge, and the renumbering that follows.
+ *
+ * Pure and tested here rather than in the store, because it rewrites two coordinates for every panel
+ * on an edge and a mistake in it shows up as a panel appearing somewhere nobody dropped it — several
+ * frames later, with nothing to point at.
+ */
+describe('a drop on an edge', () => {
+  const panel = (over: Partial<FloatPlacement> = {}) => ({
+    placement: placement({ snap: 'left', displace: true, w: 300, h: 200, ...over }),
+  });
+  const drop = (panels: { placement: FloatPlacement }[], moving: number, target: Omit<DropTarget, 'edge'>) =>
+    arrangeDrop(panels, moving, { edge: 'left', ...target }, desktop);
+
+  it('opens a lane of its own at the position it was dropped, pushing the rest inboard', () => {
+    // The old strip drop, in the coordinate that owns it now.
+    const arranged = drop([panel({ band: 0 }), panel({ band: 1 }), panel({ snap: null, displace: false })], 2, {
+      mode: 'band',
+      position: 0,
+    });
+
+    expect(arranged).toEqual([
+      { index: 2, band: 0, order: 0 },
+      { index: 0, band: 1, order: 0 },
+      { index: 1, band: 2, order: 0 },
+    ]);
+  });
+
+  it('appends past the last lane when the position is past the end', () => {
+    const arranged = drop([panel({ band: 0 }), panel({ snap: null, displace: false })], 1, {
+      mode: 'band',
+      position: 9,
+    });
+
+    expect(arranged).toEqual([
+      { index: 0, band: 0, order: 0 },
+      { index: 1, band: 1, order: 0 },
+    ]);
+  });
+
+  it('takes a seat in the lane it was dropped into, sharing that lane band', () => {
+    const arranged = drop([panel({ band: 0 }), panel({ band: 1 }), panel({ snap: null, displace: false })], 2, {
+      mode: 'lane',
+      lane: 1,
+      position: 0,
+    });
+
+    expect(arranged).toEqual([
+      { index: 0, band: 0, order: 0 },
+      { index: 2, band: 1, order: 0 },
+      { index: 1, band: 1, order: 1 },
+    ]);
+  });
+
+  it('names an unnamed lane by joining it, since absent stops meaning "mine alone" the moment it is shared', () => {
+    // Two panels that never named a band are two lanes. Dropping a third into the second of them
+    // makes that lane real, so every panel on the edge comes out holding the band it now has —
+    // there being no other stable way to say "these two".
+    const arranged = drop([panel(), panel(), panel({ snap: null, displace: false })], 2, {
+      mode: 'lane',
+      lane: 1,
+      position: 1,
+    });
+
+    expect(arranged).toEqual([
+      { index: 0, band: 0, order: 0 },
+      { index: 1, band: 1, order: 0 },
+      { index: 2, band: 1, order: 1 },
+    ]);
+  });
+
+  it('leaves the panel being moved out of the arrangement it is joining', () => {
+    /*
+      Or a drop would offer a seat either side of where the panel already is, and a lane it was the
+      only member of would be held open by a panel that has left it. Moving the outer of two lanes
+      inboard has to leave one lane behind, not two.
+    */
+    const arranged = drop([panel({ band: 0 }), panel({ band: 1 })], 0, { mode: 'band', position: 1 });
+
+    expect(arranged).toEqual([
+      { index: 1, band: 0, order: 0 },
+      { index: 0, band: 1, order: 0 },
+    ]);
+  });
+
+  it('gives the floating lane no band at all, which is what makes a float take no room', () => {
+    const arranged = drop([panel({ displace: false }), panel({ band: 0 })], 0, {
+      mode: 'lane',
+      lane: 'float',
+      position: 0,
+    });
+
+    expect(arranged).toEqual([{ index: 0, order: 0 }]);
+    expect(arranged.every((entry) => entry.band === undefined)).toBe(true);
+  });
+
+  it('starts a lane on an empty edge, which is how an arrangement gets going', () => {
+    const arranged = drop([panel({ snap: null, displace: false })], 0, { mode: 'band', position: 0 });
+
+    expect(arranged).toEqual([{ index: 0, band: 0, order: 0 }]);
+  });
+
+  it('falls back to a lane of its own when the lane it named has gone', () => {
+    // The panel was the only member of that lane, so leaving it out took the lane with it. Landing
+    // beside nothing is better than landing nowhere.
+    const arranged = drop([panel({ band: 0 }), panel({ band: 1 })], 1, { mode: 'lane', lane: 1, position: 0 });
+
+    expect(arranged).toEqual([
+      { index: 1, band: 0, order: 0 },
+      { index: 0, band: 1, order: 0 },
+    ]);
   });
 });

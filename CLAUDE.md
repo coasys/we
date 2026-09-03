@@ -2614,8 +2614,8 @@ ShellStore:
   - movingDock: string | null — the id of the panel being dragged, or null. What mounts the snap-target overlay
   - activeSnap: SnapPoint | null — the snap the moving panel would take if dropped now ('top-left' | 'top' | … | 'left'), so that target can light up
   - snapTargets: { id, top, left, width, height }[] — every snap target’s box while a panel is being dragged, measured against the room left for it. Empty otherwise
-  - insertSlots: { index, edge, mode: 'strip' | 'column', top, left, width, height }[] — the gaps in a strip of panels a dragged panel could join, while one is being dragged over it. Empty otherwise
-  - activeInsert: string | null — the slot a drop would take right now, as <edge>:<index>, or null
+  - insertSlots: { key, index, edge, lane, mode: 'band' | 'lane', top, left, width, height }[] — every boundary a dragged panel could land on, while one is being dragged. 'band' offers a new lane at that distance inboard, 'lane' a seat beside the panels in the lane it names. Empty otherwise
+  - activeInsert: string | null — the slot a drop would take right now, as that slot's `key`. Compare it against slot.key rather than rebuilding the string, which names four things
   - layoutPinned: Record<string, boolean> keyed by panel id — whether that panel has been dragged away from where meta.panels declared it. False for a panel no layout mentions, since there is nothing to go back to. Gate a "reset to layout" affordance on it rather than on a placement merely existing
   - layoutDirty: boolean — the interface on screen has been rearranged: one of its panels moved, resized or closed. What a whole-arrangement "reset layout" control is gated on, and not the same question as any layoutPinned entry — a closed panel has no placement, and a panel declared for another route is not among the docks at all. False for an interface declaring no panels
   - panelSupplied: Record<moduleId, boolean> — modules whose panel this interface supplies itself, by declaring a `meta.panels` entry that names the module and carries a `node`. What a module's dock frame asks before drawing its own contents; the module still owns whether the panel is open and how big it is
@@ -2631,7 +2631,7 @@ ShellStore:
   - scrollToId(id: string): smooth-scrolls the element with that DOM id into view
   - beginDockResize(id: string): remembers a panel's current size so the drag that follows is measured from it. Wire it to we-resize-handle's resizestart
   - resizeDock(id: string, side: 'left' | 'right' | 'top' | 'bottom' | 'top-left' | …, dx: number, dy: number): applies a resize drag from that side or corner, in screen pixels since it began. Wire it to resize with { $: 'arg.detail.delta' }
-  - resizeColumn(id, dy): moves the boundary between this panel and the one under it in a floating column, giving one what the other loses. What the upper panel's bottom grip calls when it has a neighbour — a boundary belongs to both panels, so only one of them draws it
+  - resizeColumn(id, delta): moves the boundary between this panel and the next one in its lane, giving one what the other loses. What the earlier panel's trailing grip calls when it has a lane-mate — its bottom in a side lane, its right-hand edge in a top or bottom one. A boundary belongs to both panels, so only one of them draws it
   - endDockResize(): ends the drag and persists the size
   - fitDock(id: string): shrinks a panel to the shape its content wants, keeping the width the user chose — only when the module declares an aspect for its panel
   - beginDockMove(id: string, pointerX: number, pointerY: number): begins moving a panel, remembering where it and the pointer started. A maximised panel shrinks back under the cursor
@@ -2642,7 +2642,7 @@ ShellStore:
   - openTemplatePanel(panelId: string): puts a closed one back. The only way back to a panel that has been closed — it has no titlebar left to ask from — so a template offering a close should offer this too
   - resetTemplateLayout(): puts every panel of the interface on screen back the way meta.panels declared them, and reopens the ones that were closed. The whole-arrangement counterpart of resetDockToLayout, and the only way back for a closed panel, which has no titlebar to reset itself from. Scoped to the template rather than the route, so a declaration that varies by route is reset once. Pair with layoutDirty
   - snapDock(id: string, snap: SnapPoint): parks a panel at one of the eight positions from a menu — the keyboard's way to move it
-  - insertDock(id: string, edge: 'left' | 'right' | 'top' | 'bottom', position: number, mode?: 'strip' | 'column'): joins the strip of panels on that edge at that position, renumbering it — what a drop on a gap does
+  - insertDock(id: string, edge: 'left' | 'right' | 'top' | 'bottom', position: number, mode?: 'band' | 'lane', lane?: number | 'float'): puts a panel on that edge, renumbering what it lands among — what a drop on a boundary does. 'band' opens a lane of its own at that distance inboard; 'lane' takes a seat at that position along the lane named by `lane` (a distance inboard, or 'float' for the floating one)
   - toggleMaximiseDock(id: string): covers the content region with the panel, or goes back to being a card. Nothing about where the panel was is overwritten while it is on
   - toggleDockDisplace(id: string): makes the panel push the content aside, or stop. A toggle rather than a setter because a menu item reports only that it was clicked
 
@@ -3941,9 +3941,10 @@ Two kinds of entry, one list:
 | ---------- | ---------------------------------------------------------------------------------------------- |
 | `id`       | **Stable, and yours to choose.** Where the reader drags a panel is remembered per id.          |
 | `snap`     | One of `top-left` `top` `top-right` `left` `right` `bottom-left` `bottom` `bottom-right`. |
-| `order`    | Position among the panels sharing an edge — lower is nearer the edge.                          |
+| `order`    | Position *along* the edge among the panels sharing its lane — lower is nearer the start.       |
+| `band`     | Which lane, counting inward from the edge. `displace` only. Absent means a lane of its own.    |
 | `size`     | `sm` `md` `lg` `full`. Named, never pixels: only the host can see the viewport.             |
-| `grow`     | Share of the *spare* room in a column, relative to neighbours. Absent means 1; 0 pins a height. |
+| `grow`     | Share of the *spare* room in a lane, relative to lane-mates. Absent means 1; 0 pins a size.    |
 | `displace` | Push the content aside instead of covering it. Edge snaps only — ignored on a corner.          |
 | `route`    | Only while one of these segments is in the path — a segment or a list. Absent means every route. |
 | `open`     | Whether to open it as well as place it. Absent means yes — see the warning below.               |
@@ -3956,19 +3957,39 @@ is `goToCall`, which *joins a call* when there is not one. Declaring the call wi
 **Never write pixels.** A template cannot see the viewport, and a guessed pixel is wrong on a
 display it never ran on. That is what `size` and `grow` are for.
 
-### Two arrangements on an edge
+### An edge is two axes
 
-- A **strip** is panels that `displace` the same edge. They stack *inward*: each spans the edge and
-  the next sits further in, so the content is inset by all of them.
-- A **column** is panels that *float* on the same edge. They divide the edge *along* its length —
-  two panels snapped `left` share the height, one above the other.
+**`band` is how far inboard, `order` is how far along.** A **lane** is a band across the edge;
+the panels sharing one divide it along its length. Between them the two numbers say everything an
+edge can hold:
 
-A column divides by base size and `grow`: spare room goes out by grow ratio. "The transcript takes
+```
+ lanes of one panel each          one lane of two            a lane of one, then a lane of two
+ ┌────┬────┬──────────┐    ┌─────────┬──────────┐     ┌────┬─────┬──────────┐
+ │    │    │          │    │    A    │          │     │    │  B  │          │
+ │ A  │ B  │ content  │    ├─────────┤ content  │     │ A  ├─────┤ content  │
+ │    │    │          │    │    B    │          │     │    │  C  │          │
+ └────┴────┴──────────┘    └─────────┴──────────┘     └────┴─────┴──────────┘
+   band 0  band 1              band 0, order 0/1        band 0    band 1, order 0/1
+```
+
+- **`band` is for panels that `displace`.** Two that name the same band are one sidebar cut into
+  pieces: they share a width, meet flush, and cost the content that width **once**. Two that name
+  different bands stack inward and cost it both.
+- **Absent `band` means a lane of its own**, after every lane that named one. So a declaration that
+  says nothing about lanes gets the old behaviour — panels stacking inward — rather than silently
+  halving each other.
+- **A floating panel has no band.** It takes no room, so there is nothing to be inboard of: every
+  float on an edge already shares one lane, and `order` divides it. Two panels snapped `left`
+  share the height, one above the other.
+
+A lane divides by base size and `grow`: spare room goes out by grow ratio. "The transcript takes
 most of the height and the panel under it keeps its own" is a large panel with `grow` and a small
 one with `grow: 0`.
 
-Below 900px of window width a column collapses — every member takes the whole content region as a
-full-bleed sheet, since two narrow cards over content leave nothing of either.
+Below 900px of window width nothing displaces and a floating lane collapses — every member takes the
+whole content region as a full-bleed sheet, since two narrow cards over content leave nothing of
+either.
 
 ### Placing a module's own pieces
 

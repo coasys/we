@@ -56,9 +56,10 @@ Two kinds of entry, one list:
 | ---------- | ---------------------------------------------------------------------------------------------- |
 | \`id\`       | **Stable, and yours to choose.** Where the reader drags a panel is remembered per id.          |
 | \`snap\`     | One of \`top-left\` \`top\` \`top-right\` \`left\` \`right\` \`bottom-left\` \`bottom\` \`bottom-right\`. |
-| \`order\`    | Position among the panels sharing an edge — lower is nearer the edge.                          |
+| \`order\`    | Position *along* the edge among the panels sharing its lane — lower is nearer the start.       |
+| \`band\`     | Which lane, counting inward from the edge. \`displace\` only. Absent means a lane of its own.    |
 | \`size\`     | \`sm\` \`md\` \`lg\` \`full\`. Named, never pixels: only the host can see the viewport.             |
-| \`grow\`     | Share of the *spare* room in a column, relative to neighbours. Absent means 1; 0 pins a height. |
+| \`grow\`     | Share of the *spare* room in a lane, relative to lane-mates. Absent means 1; 0 pins a size.    |
 | \`displace\` | Push the content aside instead of covering it. Edge snaps only — ignored on a corner.          |
 | \`route\`    | Only while one of these segments is in the path — a segment or a list. Absent means every route. |
 | \`open\`     | Whether to open it as well as place it. Absent means yes — see the warning below.               |
@@ -71,19 +72,39 @@ is \`goToCall\`, which *joins a call* when there is not one. Declaring the call 
 **Never write pixels.** A template cannot see the viewport, and a guessed pixel is wrong on a
 display it never ran on. That is what \`size\` and \`grow\` are for.
 
-### Two arrangements on an edge
+### An edge is two axes
 
-- A **strip** is panels that \`displace\` the same edge. They stack *inward*: each spans the edge and
-  the next sits further in, so the content is inset by all of them.
-- A **column** is panels that *float* on the same edge. They divide the edge *along* its length —
-  two panels snapped \`left\` share the height, one above the other.
+**\`band\` is how far inboard, \`order\` is how far along.** A **lane** is a band across the edge;
+the panels sharing one divide it along its length. Between them the two numbers say everything an
+edge can hold:
 
-A column divides by base size and \`grow\`: spare room goes out by grow ratio. "The transcript takes
+\`\`\`
+ lanes of one panel each          one lane of two            a lane of one, then a lane of two
+ ┌────┬────┬──────────┐    ┌─────────┬──────────┐     ┌────┬─────┬──────────┐
+ │    │    │          │    │    A    │          │     │    │  B  │          │
+ │ A  │ B  │ content  │    ├─────────┤ content  │     │ A  ├─────┤ content  │
+ │    │    │          │    │    B    │          │     │    │  C  │          │
+ └────┴────┴──────────┘    └─────────┴──────────┘     └────┴─────┴──────────┘
+   band 0  band 1              band 0, order 0/1        band 0    band 1, order 0/1
+\`\`\`
+
+- **\`band\` is for panels that \`displace\`.** Two that name the same band are one sidebar cut into
+  pieces: they share a width, meet flush, and cost the content that width **once**. Two that name
+  different bands stack inward and cost it both.
+- **Absent \`band\` means a lane of its own**, after every lane that named one. So a declaration that
+  says nothing about lanes gets the old behaviour — panels stacking inward — rather than silently
+  halving each other.
+- **A floating panel has no band.** It takes no room, so there is nothing to be inboard of: every
+  float on an edge already shares one lane, and \`order\` divides it. Two panels snapped \`left\`
+  share the height, one above the other.
+
+A lane divides by base size and \`grow\`: spare room goes out by grow ratio. "The transcript takes
 most of the height and the panel under it keeps its own" is a large panel with \`grow\` and a small
 one with \`grow: 0\`.
 
-Below 900px of window width a column collapses — every member takes the whole content region as a
-full-bleed sheet, since two narrow cards over content leave nothing of either.
+Below 900px of window width nothing displaces and a floating lane collapses — every member takes the
+whole content region as a full-bleed sheet, since two narrow cards over content leave nothing of
+either.
 
 ### Placing a module's own pieces
 

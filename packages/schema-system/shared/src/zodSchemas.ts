@@ -263,12 +263,16 @@ export const zTemplateMeta: z.ZodType<TemplateMeta> = z
         z.object({
           id: z.string(),
           module: z.string().optional(),
+          /** Which of a module's panels this places, where it contributes several. */
+          dock: z.string().optional(),
           node: z.custom<SchemaNode>().optional(),
           title: z.string().optional(),
           snap: z
             .enum(['top-left', 'top', 'top-right', 'right', 'bottom-right', 'bottom', 'bottom-left', 'left'])
             .optional(),
           order: z.number().optional(),
+          // How far inboard, where `order` is how far along. See `band` on `TemplatePanel`.
+          band: z.number().optional(),
           size: z.enum(['sm', 'md', 'lg', 'full']).optional(),
           grow: z.number().optional(),
           displace: z.boolean().optional(),

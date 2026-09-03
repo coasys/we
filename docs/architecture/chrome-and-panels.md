@@ -14,6 +14,7 @@ the app — a panel that floats and a panel that displaces look identical until 
 | **Call bar**       | The bar centred at the **top**, contributed by `@we/module-call`, present only during a call or when one is running to join.                                                                 |
 | **Chrome**         | All of the above, plus the editor's editing bar: app furniture that persists across spaces and templates, positions itself, and is never part of a template.                                 |
 | **Panel**          | A surface a module opens — the call's video stage, notes, the transcript, the editor's four panels. Also called a **dock** in the code, which is the registry's word for the same thing.     |
+| **Lane**           | A band across one edge, at a given distance inboard. The panels sharing one divide it along the edge's length. `band` says which, `order` says where in it — see below. |
 | **Content region** | The window, minus the sidebar, minus every **displacing** panel. What a template is laid out inside.                                                                                         |
 | **Inset**          | How much one edge of the content region has given up, in pixels. Published as `--we-chrome-<edge>`.                                                                                          |
 | **Band**           | How far the module rail has dropped to clear something. Published as `--we-panel-chrome-top`.                                                                                                |
@@ -30,11 +31,50 @@ six placements, which meant a call among three people cost a full-height column 
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Floating**   | A card over the content. Takes no room; the content is whole underneath it.                                                                            |
 | **Snapped**    | Floating, parked at one of eight positions (four corners, four edge centres).                                                                          |
-| **Displacing** | Spans its edge and insets the content by its thickness. Offered on the four edge-centre snaps only — a rectangular layout cannot flow around a corner. |
+| **Displacing** | Spans its lane and insets the content by that lane's thickness. Offered on the four edge-centre snaps only — a rectangular layout cannot flow around a corner. |
 | **Maximised**  | Fills the content region. Floats, so it takes no room from anything.                                                                                   |
 
 Below `NARROW_VIEWPORT_PX` (900px of window width) displacing is switched off entirely and every
 panel floats. A 440px panel beside a 400px viewport is not two usable things.
+
+## An edge is two axes, not two arrangements
+
+Where a panel sits on an edge is two questions — **how far inboard** and **where along it** — and
+each has its own coordinate on the placement. A **lane** is a band across the edge; the panels
+sharing one divide it along its length.
+
+| Coordinate | What it means                                                                              |
+| ---------- | ------------------------------------------------------------------------------------------ |
+| `band`     | Which lane, counting inward from the edge. Displacing panels only. Absent means a lane of its own. |
+| `order`    | Where along the edge, among the panels sharing that lane.                                  |
+
+```
+ lanes of one panel each          one lane of two            a lane of one, then a lane of two
+ ┌────┬────┬──────────┐    ┌─────────┬──────────┐     ┌────┬─────┬──────────┐
+ │    │    │          │    │    A    │          │     │    │  B  │          │
+ │ A  │ B  │ content  │    ├─────────┤ content  │     │ A  ├─────┤ content  │
+ │    │    │          │    │    B    │          │     │    │  C  │          │
+ └────┴────┴──────────┘    └─────────┴──────────┘     └────┴─────┴──────────┘
+```
+
+Until `band` existed, `order` answered both questions and `displace` chose which — so a displacing
+panel could only ever stack inward, a floating one could only ever divide the edge, and the third
+picture was unreachable from either side. The arrangement a panel got was decided by a flag about
+whether it took room, which is a different question entirely. This is the same knot the six
+placements were, one level down: see the note at the top of `dockGeometry.ts`.
+
+Two consequences worth knowing, both in `dockGeometry.ts`:
+
+- **Lanes sum, lane-mates do not.** `contentInset` adds each lane's thickness and takes the *widest*
+  panel within one, because two panels sharing a lane are one sidebar cut into pieces. Adding there
+  would report an edge twice as deep as it is.
+- **Absent `band` means a lane of its own, not lane 0.** That is what keeps every arrangement that
+  predates lanes working: two module panels opening on one edge with nobody having arranged them
+  stack inward as they always did, rather than silently halving each other. Sharing a lane is
+  something a drop or a template asks for.
+
+A floating panel has no band. It takes no room, so there is nothing to be inboard of: every float on
+an edge shares one lane over the top of whatever is displacing there.
 
 ## Who moves for whom
 

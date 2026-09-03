@@ -44,8 +44,23 @@ export type TemplatePanel = {
   title?: string;
   /** Which of the eight positions it opens at. */
   snap?: 'top-left' | 'top' | 'top-right' | 'right' | 'bottom-right' | 'bottom' | 'bottom-left' | 'left';
-  /** Where it sits among the panels sharing its edge — lower is nearer the edge. */
+  /** Where it sits *along* the edge among the panels sharing its lane — lower is nearer the start. */
   order?: number;
+  /**
+   * Which lane it is in, counting inward from the edge — 0 is against the edge.
+   *
+   * The second of an edge's two coordinates: `band` is how far in, `order` is where along. Two panels
+   * that name the same band share one lane and divide the edge between them; a panel that names none
+   * gets a lane of its own.
+   *
+   * Only meaningful with `displace`. A floating panel takes no room, so there is nothing for it to be
+   * inboard of — every float on an edge already shares one lane, which is the column `order` divides.
+   *
+   * "Two sidebars down the left, one above the other, both pushing the content aside" is what this
+   * makes sayable, and it was unreachable before: whether panels stacked inward or divided the edge
+   * was decided by `displace`, which is a question about taking room and not about position.
+   */
+  band?: number;
   /** How much room it asks for. Resolved against the viewport by the host. */
   size?: 'sm' | 'md' | 'lg' | 'full';
   /**

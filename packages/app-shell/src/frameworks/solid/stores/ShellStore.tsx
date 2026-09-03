@@ -9,9 +9,9 @@
  */
 import { dockIsOffered } from '@shared/dockGating';
 import {
+  arrangeDrop,
   CHROME_RAIL_PX,
   columnLayout,
-  columnMembers,
   columnSlots,
   type ContentInset,
   contentInset,
@@ -20,10 +20,13 @@ import {
   type DockGeometry,
   type DockRequest,
   dockThickness,
+  edgeGroups,
   edgeOfSnap,
+  EDGES,
   fitPlacement,
   type FloatPlacement,
   insertionSlots,
+  laneable,
   MIN_DOCK_PX,
   MIN_FLOAT_PX,
   NO_INSET,
@@ -312,12 +315,14 @@ export interface ShellStore {
    */
   resizeDock: (id: string, side: ResizeSide, dx: number, dy: number) => void;
   /**
-   * Move the boundary between this panel and the one under it in a floating column.
+   * Move the boundary between this panel and the next one in its lane.
    *
-   * What the upper panel's bottom grip calls when it has a neighbour. One number, because a
-   * boundary has one degree of freedom: what one panel gains the other gives up.
+   * What the earlier panel's trailing grip calls when it has a lane-mate — its bottom in a side lane,
+   * its right-hand edge in a top or bottom one. One number, because a boundary has one degree of
+   * freedom: what one panel gains the other gives up. Which axis that number is on comes from the
+   * lane, not from the caller.
    */
-  resizeColumn: (id: string, dy: number) => void;
+  resizeColumn: (id: string, delta: number) => void;
   endDockResize: () => void;
   /**
    * Shrink the panel to the shape its contents actually want, when the module says what that is.
@@ -361,17 +366,21 @@ export interface ShellStore {
    */
   snapTargets: Accessor<{ id: SnapPoint; top: string; left: string; width: string; height: string }[]>;
   /**
-   * Where a dragged panel would slot into a strip that already has panels in it.
+   * Every boundary a dragged panel could land on, along both of an edge's axes.
    *
-   * The other half of dropping: a snap target answers *which edge*, and these answer *where in the
-   * queue already there* — the line every application draws between panels while one is over them.
-   * Empty unless a panel is being dragged and a strip exists to join.
+   * The other half of dropping: a snap target answers *which edge*, and these answer *where on it* —
+   * the line every application draws between panels while one is over them. Two kinds, because an
+   * edge has two axes: `band` offers a new lane at that distance inboard, `lane` offers a seat beside
+   * the panels in the lane it names. Empty unless a panel is being dragged.
    */
   insertSlots: Accessor<
     {
       index: number;
       edge: string;
-      mode: 'strip' | 'column';
+      mode: 'band' | 'lane';
+      /** Which lane a `lane` slot is in — its position inward from the edge, or the floating one. */
+      lane: number | 'float' | '';
+      key: string;
       top: string;
       left: string;
       width: string;
@@ -379,7 +388,7 @@ export interface ShellStore {
       hit: Rect;
     }[]
   >;
-  /** The slot a drop would take right now, as `<edge>:<index>`, or null. */
+  /** The slot a drop would take right now, as its `key` — compare, do not parse. Null for none. */
   activeInsert: Accessor<string | null>;
   /**
    * Whether a panel has been moved away from what the interface declared for it, by dock id.
@@ -448,12 +457,21 @@ export interface ShellStore {
   /** Park a panel at one of the eight, from the position menu — the keyboard's way to move it. */
   snapDock: (id: string, snap: SnapPoint) => void;
   /**
-   * Join a strip at a position, renumbering it — what a drop on a gap between panels does.
+   * Put a panel on an edge at a position, renumbering what it lands among — what a drop on a
+   * boundary does.
    *
-   * The stacking order used to be the registry's, so a panel dragged out of a strip returned to the
-   * slot it left however far along the edge it was dropped. This is the answer a drop can give.
+   * `mode: 'band'` opens a lane of its own, `position` counting inward from the edge. `mode: 'lane'`
+   * joins the lane named by `lane` — a number counting inward, or `'float'` for the floating one — at
+   * `position` along it. The arrangement used to be the registry's, so a panel dragged off an edge
+   * returned to the slot it left however far along it was dropped; this is the answer a drop can give.
    */
-  insertDock: (id: string, edge: Exclude<DockEdge, null>, position: number, mode?: 'strip' | 'column') => void;
+  insertDock: (
+    id: string,
+    edge: Exclude<DockEdge, null>,
+    position: number,
+    mode?: 'band' | 'lane',
+    lane?: number | 'float',
+  ) => void;
   /**
    * Cover the content region, or go back to being a card.
    *
@@ -576,12 +594,40 @@ function stripLegacyThickness(placements: Record<string, FloatPlacement>): Recor
   );
 }
 
+/**
+ * Move a displacing panel's stored `order` onto `band`, which is what it always meant there.
+ *
+ * Before lanes, one number answered both of an edge's questions and `displace` chose which: a
+ * displacing panel's `order` was *how far inboard*, a floating one's was *where along the edge*. Only
+ * the first of those moved — `order` still means the second, everywhere — so a stored arrangement has
+ * to be re-read in the coordinate that now owns it.
+ *
+ * Read as `order`, a strip somebody had arranged would come back as one lane of panels sharing the
+ * edge's height: two full-height sidebars becoming two half-height ones, on next launch, with nothing
+ * on screen explaining it. Migrated rather than dropped because unlike the legacy `thickness` this is
+ * unambiguous — the number is a position, the flag beside it says which axis it was a position on,
+ * and both are in the same record.
+ *
+ * Floating placements are untouched: their `order` already means what it still means.
+ */
+function bandLegacyOrder(placements: Record<string, FloatPlacement>): Record<string, FloatPlacement> {
+  return Object.fromEntries(
+    Object.entries(placements).map(([id, placement]) => {
+      if (!placement || typeof placement !== 'object') return [id, placement];
+      if (!placement.displace || placement.band !== undefined || placement.order === undefined) return [id, placement];
+      // `order: 0` afterwards, not absent: it is alone in the lane it just named, and leaving it
+      // absent would sort it after any lane-mate it later gains.
+      return [id, { ...placement, band: placement.order, order: 0 }];
+    }),
+  );
+}
+
 function loadPlacements(): Record<string, FloatPlacement> {
   if (typeof localStorage === 'undefined') return {};
   try {
     const raw = localStorage.getItem(PLACEMENTS_KEY);
     const parsed = raw ? (JSON.parse(raw) as Record<string, FloatPlacement>) : {};
-    return parsed && typeof parsed === 'object' ? stripLegacyThickness(parsed) : {};
+    return parsed && typeof parsed === 'object' ? bandLegacyOrder(stripLegacyThickness(parsed)) : {};
   } catch {
     return {};
   }
@@ -698,10 +744,27 @@ export function ShellStoreProvider(props: ParentProps) {
   const [activeInsert, setActiveInsert] = createSignal<string | null>(null);
   /** The rect a drag started from, so every move is measured against one fixed origin. */
   let dragOrigin: FloatPlacement | null = null;
-  /** The two stored bases a divider drag moves the boundary between — see `resizeColumn`. */
-  let columnDrag: { top: number; bottom: number } | null = null;
+  /**
+   * The two stored bases a divider drag moves the boundary between, and which axis they are on —
+   * see `resizeColumn`.
+   */
+  let columnDrag: { along: 'w' | 'h'; top: number; bottom: number } | null = null;
   /** Where the pointer was when it started, for restoring a maximised panel beneath it. */
   let dragPointer: { x: number; y: number } | null = null;
+
+  /**
+   * The smallest box holding both — how a lane's members become the one box a new lane goes beside.
+   *
+   * A lane is a band across the edge, and the boundary a drop would take is the band's, not each
+   * panel's. Two stacked sidebars offer one line above them and one below, and taking their boxes
+   * separately offered a third down the seam between them: a line whose meaning would have been "a
+   * new lane inside this lane", which is not a place a panel can go.
+   */
+  const unionRect = (a: Rect, b: Rect): Rect => {
+    const x = Math.min(a.x, b.x);
+    const y = Math.min(a.y, b.y);
+    return { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y };
+  };
 
   /** How much of a target a dragged panel covers — the same measure `snapCandidate` ranks snaps by. */
   const overlapArea = (rect: Rect, box: Rect) => {
@@ -1064,65 +1127,63 @@ export function ShellStoreProvider(props: ParentProps) {
    * Every floating panel clears the same things (`occupiedFor` only ever counts panels that
    * *displace*, and a float is not one), so one member's `occupied` serves the whole column.
    */
-  const columnSeats = createMemo(() => {
+  /**
+   * Every lane's division, in one walk: where each panel sits, who it shares a boundary with, and
+   * which way its lane runs.
+   *
+   * One memo rather than three because all of it comes from the same grouping, and three walks that
+   * could disagree about which lane a panel is in would disagree about where its divider goes — a
+   * grip drawn at a seam the layout does not have.
+   *
+   * A lane of one is skipped entirely. It has no boundaries to draw and no division to make, so its
+   * panel keeps the position it has always had: a card at its snap, or a displacing panel spanning
+   * its whole edge. That is what makes lanes free for every arrangement that predates them.
+   */
+  const laneSeating = createMemo(() => {
     const requests = dockRequests();
-    const panels = requests
-      .map((request, index) => ({ id: request.id, index, placement: placementOf(request) }))
-      .filter((panel) => requests[panel.index].edge);
+    const panels = laneable(requests, viewport());
 
     const seats: Record<string, Rect> = {};
-    for (const edge of ['left', 'right', 'top', 'bottom'] as const) {
-      const members = columnMembers(panels, edge, viewport());
-      // One panel on an edge is not a column — it keeps the snap position it has always had.
-      if (members.length < 2) continue;
-      const occupied = occupiedOf(members[0].index, requests);
-      const boxes = columnLayout(
-        members.map((member) => member.placement),
-        edge,
-        viewport(),
-        occupied,
-        floatChrome(),
-      );
-      members.forEach((member, i) => {
-        seats[member.id] = boxes[i];
-      });
-    }
-    return seats;
-  });
-
-  /**
-   * Who sits directly under whom in a floating column, and who above.
-   *
-   * A column's members share boundaries, and a boundary belongs to *both* panels — which is the
-   * thing the two edge grips could not express. Published so the frame can turn one panel's bottom
-   * grip into the divider for the pair and take the other's top grip away, leaving one line to pull
-   * rather than two stacked a few pixels apart.
-   */
-  const columnNeighbours = createMemo(() => {
-    const requests = dockRequests();
-    const panels = requests
-      .map((request, index) => ({ id: request.id, index, placement: placementOf(request) }))
-      .filter((panel) => requests[panel.index].edge);
-
     const below: Record<string, string> = {};
     const above: Record<string, string> = {};
-    for (const edge of ['left', 'right', 'top', 'bottom'] as const) {
-      const members = columnMembers(panels, edge, viewport());
-      if (members.length < 2) continue;
-      members.forEach((member, i) => {
-        const next = members[i + 1];
-        if (!next) return;
-        below[member.id] = next.id;
-        above[next.id] = member.id;
-      });
+    const axis: Record<string, 'vertical' | 'horizontal'> = {};
+    const lanes: Record<string, string[]> = {};
+
+    for (const edge of EDGES) {
+      const vertical = edge === 'left' || edge === 'right';
+      for (const group of edgeGroups(panels, edge, viewport())) {
+        const ids = group.members.map((member) => requests[member.index].id);
+        // A lane's members all clear the same things — the lanes outboard of theirs — so one
+        // member's answer serves the whole lane, exactly as it already did for a column.
+        const occupied = occupiedOf(group.members[0].index, requests);
+        for (const id of ids) lanes[id] = ids;
+        if (group.members.length < 2) continue;
+
+        const boxes = columnLayout(
+          group.members.map((member) => member.placement),
+          edge,
+          viewport(),
+          occupied,
+          floatChrome(),
+          { displacing: group.displacing },
+        );
+
+        ids.forEach((id, i) => {
+          seats[id] = boxes[i];
+          axis[id] = vertical ? 'vertical' : 'horizontal';
+          if (ids[i + 1]) {
+            below[id] = ids[i + 1];
+            above[ids[i + 1]] = id;
+          }
+        });
+      }
     }
-    return { below, above };
+    return { seats, below, above, axis, lanes };
   });
 
   const dockGeometry = createMemo(() => {
     const requests = dockRequests();
-    const seats = columnSeats();
-    const { below, above } = columnNeighbours();
+    const { seats, below, above, axis } = laneSeating();
     const resolved: Record<string, DockGeometry> = {};
     requests.forEach((request, index) => {
       resolved[request.id] = {
@@ -1130,6 +1191,7 @@ export function ShellStoreProvider(props: ParentProps) {
         // Empty rather than absent, so a schema condition reads a string either way.
         below: below[request.id] ?? '',
         above: above[request.id] ?? '',
+        laneAxis: axis[request.id] ?? '',
       };
     });
     return resolved;
@@ -1524,7 +1586,11 @@ export function ShellStoreProvider(props: ParentProps) {
       */
       const belowId = dockGeometry()[id]?.below;
       const lower = belowId ? dockRequests().find((entry) => entry.id === belowId) : undefined;
-      columnDrag = lower ? { top: placementOf(request).h, bottom: placementOf(lower).h } : null;
+      // The base on the axis the lane divides — `h` down a side lane, `w` across a top or bottom one.
+      // Reading `h` either way wrote a height nobody in a horizontal lane reads, so the boundary
+      // between two panels along the top edge could be dragged and nothing moved.
+      const along = dockGeometry()[id]?.laneAxis === 'horizontal' ? 'w' : 'h';
+      columnDrag = lower ? { along, top: placementOf(request)[along], bottom: placementOf(lower)[along] } : null;
       // The *resolved* rect, not the stored one: a snapped panel has no stored x/y, so a drag
       // measured from them would jump to the origin on the first frame. Same reason `beginDockMove`
       // reads the geometry.
@@ -1622,14 +1688,23 @@ export function ShellStoreProvider(props: ParentProps) {
         from the snap on every frame, which is why `x`/`y` are not written with them.
       */
       const keepsSnap = stored.snap !== null;
-      writePlacement(
-        id,
-        spanning
-          ? { ...stored, ...(vertical ? { thicknessX: w } : { thicknessY: h }) }
-          : keepsSnap
-            ? { ...stored, w, h }
-            : { ...stored, snap: null, x, y, w, h },
-      );
+      if (spanning) {
+        /*
+          A lane has one thickness, so widening any member widens the lane.
+
+          The alternative is writing it to the panel that was dragged and letting `laneThickness` take
+          the largest — which works while you pull outward and does nothing at all when you push back,
+          since the neighbour's untouched number goes on being the largest. The sidebar would widen
+          and refuse to narrow, and nothing on screen would say which panel was holding it open.
+        */
+        const thickness = vertical ? { thicknessX: w } : { thicknessY: h };
+        for (const memberId of laneSeating().lanes[id] ?? [id]) {
+          const member = dockRequests().find((entry) => entry.id === memberId);
+          if (member) writePlacement(memberId, { ...placementOf(member), ...thickness });
+        }
+        return;
+      }
+      writePlacement(id, keepsSnap ? { ...stored, w, h } : { ...stored, snap: null, x, y, w, h });
     },
 
     /**
@@ -1648,20 +1723,24 @@ export function ShellStoreProvider(props: ParentProps) {
      * Both floors apply at once. Pushing past either end stops the boundary rather than letting one
      * panel eat the other and slide on — the same rule the edge grips keep, asked of a pair.
      */
-    resizeColumn: (id, dy) => {
+    resizeColumn: (id, delta) => {
       const belowId = dockGeometry()[id]?.below;
       if (!belowId || !columnDrag) return;
       const upper = dockRequests().find((entry) => entry.id === id);
       const lower = dockRequests().find((entry) => entry.id === belowId);
       if (!upper || !lower) return;
 
+      const { along } = columnDrag;
+      // A displacing lane floors at the width worth having as a dock; a floating one at the size
+      // below which a card stops being one.
+      const floor = dockGeometry()[id]?.floating === false ? MIN_DOCK_PX : MIN_FLOAT_PX;
       const room = columnDrag.top + columnDrag.bottom;
-      const ceiling = Math.max(MIN_FLOAT_PX, room - MIN_FLOAT_PX);
-      const top = Math.min(ceiling, Math.max(MIN_FLOAT_PX, columnDrag.top + dy));
+      const ceiling = Math.max(floor, room - floor);
+      const top = Math.min(ceiling, Math.max(floor, columnDrag.top + delta));
       const bottom = room - top;
 
-      writePlacement(id, { ...placementOf(upper), h: top });
-      writePlacement(belowId, { ...placementOf(lower), h: bottom });
+      writePlacement(id, { ...placementOf(upper), [along]: top });
+      writePlacement(belowId, { ...placementOf(lower), [along]: bottom });
     },
 
     endDockResize: () => {
@@ -1793,7 +1872,7 @@ export function ShellStoreProvider(props: ParentProps) {
         .map((candidate) => ({ candidate, area: overlapArea(next, candidate.hit) }))
         .filter((entry) => entry.area > 0)
         .sort((a, b) => b.area - a.area)[0]?.candidate;
-      setActiveInsert(slot ? `${slot.mode}:${slot.edge}:${slot.index}` : null);
+      setActiveInsert(slot ? slot.key : null);
       setActiveSnap(slot ? null : snapCandidate(next, viewport(), occupiedForId(id), floatChrome()));
       writePlacement(id, next);
     },
@@ -1801,9 +1880,10 @@ export function ShellStoreProvider(props: ParentProps) {
     /**
      * Land it.
      *
-     * Three outcomes, in order of how specific the thing under the panel is. A gap in a strip joins
-     * that strip *at that position*. A snap zone takes that snap, so the panel aligns itself. Anything
-     * else keeps the free position it already has.
+     * Three outcomes, in order of how specific the thing under the panel is. A boundary on an edge
+     * puts the panel there — a new lane at that position, or a seat in the lane it was dropped into.
+     * A snap zone takes that snap, so the panel aligns itself. Anything else keeps the free position
+     * it already has.
      *
      * Displacing is deliberately not restored by the second or third of those, even if the panel was
      * displacing before the drag: pulling a panel off its edge is the gesture for "stop taking room",
@@ -1815,8 +1895,15 @@ export function ShellStoreProvider(props: ParentProps) {
       const current = placements()[id] ?? dragOrigin;
 
       if (dragOrigin && current && insert) {
-        const [mode, edge, position] = insert.split(':');
-        store.insertDock(id, edge as Exclude<DockEdge, null>, Number(position), mode as 'strip' | 'column');
+        // The four fields `insertSlots` built it from — see `draw` there.
+        const [mode, edge, lane, position] = insert.split(':');
+        store.insertDock(
+          id,
+          edge as Exclude<DockEdge, null>,
+          Number(position),
+          mode as 'band' | 'lane',
+          lane === 'float' ? 'float' : lane === '' ? undefined : Number(lane),
+        );
       } else if (dragOrigin && current && snap) {
         writePlacement(id, { ...current, snap, displace: false });
       }
@@ -1830,44 +1917,56 @@ export function ShellStoreProvider(props: ParentProps) {
     },
 
     /**
-     * Put a panel into a strip at a given position, and renumber the strip around it.
+     * Put a panel somewhere on an edge, and renumber whatever it landed among.
      *
-     * Sequential integers rather than fractions between neighbours: a strip is short, rewriting it is
+     * The two axes of an edge, as two modes:
+     *
+     * - **`band`** — a lane of its own, at `position` counting inward from the edge. Every displacing
+     *   lane on that edge is renumbered around it, so `band` afterwards means the same thing for all
+     *   of them. This is the old strip drop, said in the coordinate that now owns it.
+     * - **`lane`** — a seat in the lane named by `lane`, at `position` along it. `'float'` is the
+     *   floating lane, a number is that many lanes in from the edge. The lane's members are
+     *   renumbered by `order`, and the newcomer takes the lane's `band` so it shares the band's width
+     *   rather than opening one of its own.
+     *
+     * Sequential integers rather than fractions between neighbours: an edge is short, rewriting it is
      * cheap, and fractional indices eventually need a renumber anyway — at which point somebody has
      * to write this function regardless.
+     *
+     * ## Joining an unnamed lane names it
+     *
+     * A lane nobody has arranged has no `band`, because absent means "a lane of my own" and that is
+     * what keeps every arrangement predating lanes working. The moment a second panel joins it, that
+     * stops being true of either of them — so the whole edge is renumbered and both come out with the
+     * band they now share. Nothing else is a stable way to say "these two", since the alternative is
+     * an implied identity that changes the next time a module registers.
      *
      * The panel keeps whatever thickness it had. Its card size is untouched too, so pulling it back
      * out returns it to the shape it was before it ever joined.
      */
-    insertDock: (id, edge, position, mode = 'strip') => {
+    insertDock: (id, edge, position, mode = 'band', lane) => {
       const requests = dockRequests();
-      const request = requests.find((entry) => entry.id === id);
-      if (!request?.edge) return;
+      const moving = requests.findIndex((entry) => entry.id === id);
+      if (moving === -1 || !requests[moving].edge) return;
 
-      /*
-        A strip is the panels *displacing* this edge; a column is the ones *floating* on it. Same
-        renumbering either way — the difference is only which set the dropped panel joins, and
-        whether landing there means taking room.
-      */
-      const neighbours = requests
-        .filter((entry) => entry.id !== id && entry.edge && !placementOf(entry).maximised)
-        .filter((entry) => (dockGeometry()[entry.id]?.floating ?? true) === (mode === 'column'))
-        .filter((entry) => edgeOfSnap(placementOf(entry).snap) === edge)
-        .sort((a, b) => (placementOf(a).order ?? 0) - (placementOf(b).order ?? 0));
+      // The arrangement itself is `arrangeDrop`, pure and tested; this only writes what it decides.
+      // The same list `insertSlots` numbered its offers against, so the lane a slot named is the lane
+      // that gets joined.
+      const arranged = arrangeDrop(laneable(requests, viewport()), moving, { edge, mode, position, lane }, viewport());
 
-      const ids = neighbours.map((entry) => entry.id);
-      ids.splice(Math.max(0, Math.min(position, ids.length)), 0, id);
-
-      ids.forEach((entryId, order) => {
-        const entry = requests.find((candidate) => candidate.id === entryId);
-        if (!entry) return;
-        const placement = placementOf(entry);
-        writePlacement(entryId, {
-          ...placement,
+      for (const { index, band, order } of arranged) {
+        const entry = requests[index];
+        if (!entry) continue;
+        // Dropped, not set to a number: absent is the floating lane's answer, and a stale band left
+        // on a panel that has stopped displacing would claim a lane the next time it does.
+        const { band: _previous, ...rest } = placementOf(entry);
+        writePlacement(entry.id, {
+          ...rest,
+          ...(band !== undefined ? { band } : {}),
           order,
-          ...(entryId === id ? { snap: edge, displace: mode === 'strip', maximised: false } : {}),
+          ...(index === moving ? { snap: edge, displace: band !== undefined, maximised: false } : {}),
         });
-      });
+      }
     },
 
     movingDock,
@@ -1891,38 +1990,70 @@ export function ShellStoreProvider(props: ParentProps) {
       const moving = movingDock();
       if (!moving) return [];
       const boxes = dockGeometry();
+      const requests = dockRequests();
 
-      return (['left', 'right', 'top', 'bottom'] as const).flatMap((edge) => {
+      return EDGES.flatMap((edge) => {
         /*
-          Measured in a region that still contains the strip being described.
+          Measured in a region that still contains the lanes being described.
 
           `occupiedForId` answers "what must this panel keep clear of", which excludes every docked
-          panel — including the ones these lines are *about*. Computed in that region, all of a
-          strip's boundaries fall outside it and clamp to the same spot: three lines drawn on top of
-          one another at the strip's inner edge, which is precisely the one place you cannot drop.
+          panel — including the ones these lines are *about*. Computed in that region, all of an
+          edge's boundaries fall outside it and clamp to the same spot: three lines drawn on top of
+          one another at the innermost lane's edge, which is precisely the one place you cannot drop.
 
           So the panels on *this* edge are added back, and everything else — other edges, and chrome
           like the editor's rails — stays subtracted, because that space really is unavailable.
         */
         const occupied = { ...occupiedForId(moving) };
         occupied[edge] = 0;
-        const inStrip = dockRequests()
-          .filter((request) => request.id !== moving && request.edge && !dockGeometry()[request.id]?.floating)
-          .filter((request) => edgeOfSnap(placementOf(request).snap) === edge)
-          .map((request) => rectOf(boxes[request.id], viewport(), placementOf(request)));
 
         /*
-          The floats already sharing this edge — a *column*, whose seams run along the edge rather
-          than across it. Read from the resolved boxes, so the lines land on the seats the column
-          actually has rather than on the sizes the placements asked for.
-        */
-        const inColumn = dockRequests()
-          .filter((request) => request.id !== moving && request.edge && dockGeometry()[request.id]?.floating)
-          .filter((request) => edgeOfSnap(placementOf(request).snap) === edge && !placementOf(request).maximised)
-          .map((request) => rectOf(boxes[request.id], viewport(), placementOf(request)));
+          The lanes already on this edge, without the panel being dragged.
 
-        const draw = (mode: 'strip' | 'column', slot: { index: number; hit: Rect; line: Rect }) => ({
+          Leaving it in would offer a seat either side of where it already is, and — worse — would
+          have it hold open the lane it is about to leave, so the lines would describe an arrangement
+          that stops existing the moment it lands.
+        */
+        const groups = edgeGroups(
+          laneable(requests, viewport()).filter((panel) => requests[panel.index].id !== moving),
+          edge,
+          viewport(),
+        );
+
+        const rects = (group: (typeof groups)[number]) =>
+          group.members.map((member) =>
+            rectOf(boxes[requests[member.index].id], viewport(), requests[member.index].placement ?? member.placement),
+          );
+
+        /*
+          One box per lane, since a lane is what a new one would go beside. Two panels sharing a lane
+          are one band across the edge and offer one boundary either side of them, not two — passing
+          the panels instead put a line down the middle of a lane, where dropping would have meant
+          "a new lane inside this one", which is not a place.
+        */
+        const lanes = groups
+          .filter((group) => group.displacing)
+          .map((group) => rects(group).reduce((a, b) => unionRect(a, b)));
+
+        /*
+          A lane is named by its *position* among the displacing lanes on this edge, or by `float`.
+
+          Positional rather than by `band`, because a lane nobody has arranged has no band to quote —
+          and by position rather than by the id of a panel in it, because a dock id holds a colon and
+          this key does not survive being parsed back if its own fields can contain the delimiter.
+          `insertDock` recomputes the same sequence, from the same list minus the same panel, so the
+          two agree by construction.
+        */
+        const draw = (
+          mode: 'band' | 'lane',
+          lane: number | 'float' | '',
+          slot: { index: number; hit: Rect; line: Rect },
+        ) => ({
+          // Four fields, because a seat is only identified by all four: "second from the top, in the
+          // lane second from the edge, on the left".
+          key: `${mode}:${edge}:${lane}:${slot.index}`,
           index: slot.index,
+          lane,
           edge,
           mode,
           // The line, not the target: the frame draws what these describe, and the hit box it is
@@ -1935,12 +2066,21 @@ export function ShellStoreProvider(props: ParentProps) {
           hit: slot.hit,
         });
 
-        // An empty edge still offers its one strip slot — that is how a strip gets started. It used
-        // to return nothing here, so an edge with no panels on it could only ever be *floated*
-        // against. A column needs no such slot: snapping to the edge starts one.
+        let displacingLane = -1;
         return [
-          ...insertionSlots(edge, inStrip, viewport(), occupied).map((slot) => draw('strip', slot)),
-          ...columnSlots(edge, inColumn).map((slot) => draw('column', slot)),
+          // An empty edge still offers its one new-lane slot — that is how an arrangement gets
+          // started. It used to return nothing here, so an edge with no panels on it could only ever
+          // be *floated* against.
+          ...insertionSlots(edge, lanes, viewport(), occupied).map((slot) => draw('band', '', slot)),
+          /*
+            And a seat in each lane already there, displacing or floating alike — which is the whole
+            of what bands added. A displacing lane could previously only be *stacked against*; these
+            are the seams that let a panel join one and share its width.
+          */
+          ...groups.flatMap((group) => {
+            const lane = group.displacing ? ++displacingLane : ('float' as const);
+            return columnSlots(edge, rects(group)).map((slot) => draw('lane', lane, slot));
+          }),
         ];
       });
     },

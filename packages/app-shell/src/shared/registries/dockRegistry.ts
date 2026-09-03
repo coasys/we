@@ -707,7 +707,10 @@ function positionMenu(entry: DockEntry): SchemaNode {
  * Thin, and only lit when active: eight dashed boxes plus four dashed lines would be more decoration
  * than the screen can carry. The line says *between these two*, which a box cannot.
  */
-const INSERT_IS_ACTIVE = 'shellStore.activeInsert == `${slot.mode}:${slot.edge}:${slot.index}`';
+// The store builds the key, and the frame only ever compares it. It names four things now — the
+// axis, the edge, the lane and the position along it — and rebuilding that here would be a second
+// spelling of one identity, for the two to disagree about the day a fifth is added.
+const INSERT_IS_ACTIVE = 'shellStore.activeInsert == slot.key';
 
 function insertLines(id: string): SchemaNode {
   return {
@@ -831,33 +834,50 @@ function grips(id: string): SchemaNode[] {
   */
   const grippable = `!${geo('maximised')} && ${geo('floating')}`;
 
+  /*
+    A boundary in a lane belongs to both panels, so only one of them draws it.
+
+    Stacked, the later panel's leading edge and the earlier one's trailing edge are the same line a
+    few pixels apart — two grips for one boundary, each resizing only its own panel, which is why
+    pulling it felt like neither. The earlier one becomes the divider for the pair (see `below`) and
+    the later one's leading grip is not drawn at all.
+
+    Which sides those are comes from `laneAxis`, because it depends on the edge: a lane down the left
+    divides the height, so the pair meet top-to-bottom; a lane across the top divides the width, so
+    they meet left-to-right. It was the bottom either way, which drew a horizontal grip between two
+    panels sitting side by side and wrote a height that arrangement does not read.
+  */
+  const alongLane = (axis: 'vertical' | 'horizontal') => `${geo('laneAxis')} == '${axis}'`;
+  // The side of a panel that faces the *next* panel in its lane: down a vertical lane, rightward
+  // along a horizontal one. The opposite side faces the previous one, and gives its grip up.
+  const trailing = { vertical: 'bottom', horizontal: 'right' } as const;
+
   const edges: SchemaNode[] = (['left', 'right', 'top', 'bottom'] as const).map((side) => {
     const shown = `(${grippable}) || ${geo(side === 'left' || side === 'right' ? 'handleX' : 'handleY')} == '${side}'`;
-    /*
-      A boundary in a column belongs to both panels, so only one of them draws it.
+    const axis = side === 'top' || side === 'bottom' ? 'vertical' : 'horizontal';
 
-      Stacked, the lower panel's top edge and the upper panel's bottom edge are the same line a few
-      pixels apart — two grips for one boundary, each resizing only its own panel, which is why
-      pulling it felt like neither. The upper one becomes the divider for the pair (see `below`) and
-      the lower one's top grip is not drawn at all.
-    */
-    if (side === 'top') {
-      return {
-        type: '$if',
-        props: { condition: { $: `(${shown}) && !${geo('above')}` }, then: resizeEdge(id, side) },
-      };
-    }
-    if (side === 'bottom') {
+    if (side !== trailing[axis]) {
+      // Suppressed only when this really is the seam — a panel with a lane-mate on the other axis
+      // keeps every grip it had.
       return {
         type: '$if',
         props: {
-          condition: { $: `${geo('below')}` },
-          then: resizeEdge(id, side, true),
-          else: { type: '$if', props: { condition: { $: shown }, then: resizeEdge(id, side) } },
+          condition: { $: `(${shown}) && !(${geo('above')} && ${alongLane(axis)})` },
+          then: resizeEdge(id, side),
         },
       };
     }
-    return { type: '$if', props: { condition: { $: shown }, then: resizeEdge(id, side) } };
+    return {
+      type: '$if',
+      props: {
+        // Independent of `shown`: a displacing panel's only ordinary grip is the one facing the
+        // content, and the divider is perpendicular to it. Gating the divider on the same condition
+        // left a lane of sidebars with no way to move the boundary between them.
+        condition: { $: `${geo('below')} && ${alongLane(axis)}` },
+        then: resizeEdge(id, side, true),
+        else: { type: '$if', props: { condition: { $: shown }, then: resizeEdge(id, side) } },
+      },
+    };
   });
 
   const corners: SchemaNode[] = (['top-left', 'top-right', 'bottom-left', 'bottom-right'] as const).map((corner) => ({
@@ -906,7 +926,7 @@ function resizeEdge(id: string, side: 'left' | 'right' | 'top' | 'bottom', divid
         what makes it feel like the line between them rather than the edge of the upper one.
       */
       ...(vertical
-        ? { top: '0', bottom: '0', [side]: '0', width: '8px' }
+        ? { top: '0', bottom: '0', [side]: divider ? '-6px' : '0', width: divider ? '12px' : '8px' }
         : { left: '0', right: '0', [side]: divider ? '-6px' : '0', height: divider ? '12px' : '8px' }),
       onResizestart: { $action: 'shellStore.beginDockResize', args: [id] },
       onResize: divider
