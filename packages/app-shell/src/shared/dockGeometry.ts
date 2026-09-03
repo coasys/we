@@ -368,6 +368,27 @@ export function followSeat(mate: FloatPlacement, landed: FloatPlacement): FloatP
 }
 
 /**
+ * Whether a snap target beats the insert slot a drag is also over.
+ *
+ * The two families are arbitrated separately — `chooseTarget` among the slots, `snapCandidate` among
+ * the eight — and then the slot won outright, which is right almost everywhere: a slot describes a
+ * place *within* an arrangement and is the more specific answer. But "start a lane on this edge" is
+ * a line the whole width of the screen, so a tall panel reaching the bottom of it covered that line
+ * while its pointer sat squarely in the bottom-right corner target, and the corner could not be
+ * reached from below any more than it could from the side.
+ *
+ * So the rule that already decides *within* each family decides between them too: **the pointer wins
+ * over mere coverage, and the smaller box wins the pointer.** A band line is enormous and a corner
+ * target small, so pointing at the corner means the corner; pointing anywhere else along that edge
+ * still means the lane.
+ */
+export function snapBeatsSlot(snapHit: Rect | null, slotHit: Rect | null, pointer: { x: number; y: number }): boolean {
+  if (!snapHit || !contains(pointer, snapHit)) return false;
+  if (!slotHit || !contains(pointer, slotHit)) return true;
+  return snapHit.w * snapHit.h < slotHit.w * slotHit.h;
+}
+
+/**
  * Which seat of a lane a panel snapping to an edge should take.
  *
  * A snap says *this edge*, and says nothing about where along it — but membership of a seat is

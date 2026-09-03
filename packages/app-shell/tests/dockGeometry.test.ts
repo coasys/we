@@ -69,6 +69,7 @@ import {
   seatSize,
   seedPlacement,
   SIDEBAR_PX,
+  snapBeatsSlot,
   snapCandidate,
   snapOrigin,
   type SnapPoint,
@@ -2572,5 +2573,37 @@ describe('which of the eight a drag is aiming at', () => {
     const middle = { x: 700, y: 400, w: 200, h: 120 };
 
     expect(snapCandidate(middle, vp, undefined, undefined, { x: 800, y: 450 })).toBeNull();
+  });
+});
+
+describe('a snap target against the insert slot behind it', () => {
+  const corner = { x: 1440, y: 810, w: 160, h: 90 };
+  // Placed so it genuinely crosses into the corner target, which is the case worth arbitrating.
+  const band = { x: 0, y: 800, w: 1600, h: 24 };
+
+  it('gives the corner a pointer that is in it and only covered by the band', () => {
+    /*
+      The bug: "start a lane on this edge" is a line the whole width of the screen, so a tall panel
+      reaching the bottom of it covered that line while the pointer sat squarely in the bottom-right
+      corner target. The slot won outright, and the corner could not be reached from below.
+    */
+    expect(snapBeatsSlot(corner, band, { x: 1500, y: 850 })).toBe(true);
+  });
+
+  it('gives the smaller box the pointer when it is in both', () => {
+    // The same rule that decides within each family: a band line is enormous, a corner target small.
+    expect(snapBeatsSlot(corner, band, { x: 1500, y: 815 })).toBe(true);
+    expect(snapBeatsSlot({ x: 0, y: 0, w: 1600, h: 900 }, band, { x: 800, y: 810 })).toBe(false);
+  });
+
+  it('leaves the slot in charge everywhere the pointer is not in a snap target', () => {
+    // Which is most of a drag — a slot describes a place *within* an arrangement, the more specific
+    // answer, so mere coverage of a snap target must not take it.
+    expect(snapBeatsSlot(corner, band, { x: 400, y: 810 })).toBe(false);
+    expect(snapBeatsSlot(null, band, { x: 1500, y: 850 })).toBe(false);
+  });
+
+  it('takes the snap when there is no slot at all', () => {
+    expect(snapBeatsSlot(corner, null, { x: 1500, y: 850 })).toBe(true);
   });
 });

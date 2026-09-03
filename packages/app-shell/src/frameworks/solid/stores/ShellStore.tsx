@@ -54,6 +54,7 @@ import {
   seatSize,
   seedPlacement,
   SIDEBAR_PX,
+  snapBeatsSlot,
   snapCandidate,
   type SnapPoint,
   snapTargetRects,
@@ -1059,9 +1060,26 @@ export function ShellStoreProvider(props: ParentProps) {
    * with it — a stack must not be refused the place it is leaving, or a drag that changes its mind
    * has nowhere to put it back.
    */
-  const snapFor = (rect: Rect, id: string | null, pointer: { x: number; y: number }): SnapPoint | null => {
+  const snapFor = (rect: Rect, id: string | null, pointer: { x: number; y: number }) => {
     const candidate = snapCandidate(rect, viewport(), occupiedForId(id), floatChrome(), pointer);
-    return candidate && takenSnapPoints(id).includes(candidate) ? null : candidate;
+    if (!candidate || takenSnapPoints(id).includes(candidate)) return null;
+    const hit = snapTargetRects(viewport(), occupiedForId(id), floatChrome()).find((t) => t.id === candidate);
+    return hit ? { snap: candidate, hit } : null;
+  };
+
+  /**
+   * What a drag is pointing at right now, across both families of target.
+   *
+   * The slots describe places *within* an arrangement and the eight describe places to put a card,
+   * and they are arbitrated separately before being weighed against each other here — see
+   * `snapBeatsSlot`. One place rather than two so a titlebar drag and a tab drag cannot drift apart.
+   */
+  const settleTargets = (id: string, pointer: { x: number; y: number }, would: Rect) => {
+    const slot = chooseTarget(store.insertSlots(), pointer, would);
+    const snap = snapFor(would, id, pointer);
+    const snapWins = snapBeatsSlot(snap?.hit ?? null, slot?.hit ?? null, pointer);
+    setActiveInsert(snapWins ? null : (slot?.key ?? null));
+    setActiveSnap(snapWins || !slot ? (snap?.snap ?? null) : null);
   };
 
   /**
@@ -2074,9 +2092,7 @@ export function ShellStoreProvider(props: ParentProps) {
       w: placement.w,
       h: placement.h,
     };
-    const slot = chooseTarget(store.insertSlots(), pointer, would);
-    setActiveInsert(slot ? slot.key : null);
-    setActiveSnap(slot ? null : snapFor(would, id, pointer));
+    settleTargets(id, pointer, would);
     /*
       What is being carried, since the panel itself is not.
 
@@ -2655,9 +2671,7 @@ export function ShellStoreProvider(props: ParentProps) {
         Which of them is being offered is `chooseTarget`, pure and tested: the pointer first, then the
         smallest box it is inside. Both halves are answers to things that went wrong here — see there.
       */
-      const slot = chooseTarget(store.insertSlots(), { x: dragPointer.x + dx, y: dragPointer.y + dy }, next);
-      setActiveInsert(slot ? slot.key : null);
-      setActiveSnap(slot ? null : snapFor(next, id, { x: dragPointer.x + dx, y: dragPointer.y + dy }));
+      settleTargets(id, { x: dragPointer.x + dx, y: dragPointer.y + dy }, next);
       writePlacement(id, next);
     },
 
