@@ -5,7 +5,7 @@
   "homepage": "https://github.com/jhweir/we",
   "author": {
     "name": "James Weir",
-    "email": "your.email@example.com"
+    "email": "james@weco.io"
   },
   "license": "MIT",
   "type": "module",
@@ -47,5 +47,5 @@
     "vitest": "^4.1.11",
     "wait-on": "^9.1.0"
   },
-  "desktopName": "io.weco.electron.desktop"
+  "desktopName": "io.weco.we.electron.desktop"
 }

@@ -21512,7 +21512,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "we-ad4m-launcher"
+name = "we"
 version = "0.1.0"
 dependencies = [
  "ad4m-client",

@@ -18,7 +18,18 @@ const extraResourcesPath = join(__dirname, 'electron', 'seed-extra-resources.jso
 const extraResources = JSON.parse(readFileSync(extraResourcesPath, 'utf8'));
 
 export default {
-  appId: 'io.weco.electron',
+  /*
+    Product first, runtime second — `io.weco.we.tauri` is the counterpart in tauri.conf.json.
+
+    Both hosts are shipped, so they need identifiers that differ: an identifier is what macOS and
+    Windows install *by*, so two apps sharing one cannot be installed side by side. The runtime is
+    the qualifier rather than the product because the product is the same product either way — the
+    old `io.weco.electron` named only the runtime, and left no room to say which app it was.
+  */
+  appId: 'io.weco.we.electron',
+  // Capitalised, because this is the name a person reads — the window title, the .desktop `Name=`,
+  // the macOS bundle. The lowercase spelling is for what a machine reads: `executableName` below,
+  // the Rust crate, the `@we/*` scope. Nothing should carry both spellings for the same job.
   productName: 'WE',
   // The same 512x512 mark the Tauri build ships, so the two desktop apps are not
   // two different icons. electron-builder derives every other size from it.
@@ -49,8 +60,15 @@ export default {
     bundle — see `windowIcon()` in electron/main.js, which reads it from `process.resourcesPath`.
   */
   extraResources: [...extraResources, { from: 'build/icon.png', to: 'icon.png' }],
-  // Without this the artifact is `WE-0.1.0.AppImage`, naming neither platform nor architecture —
-  // which stops being merely untidy the moment a second target sits beside it in a release.
+  /*
+    Without this the artifact is `WE-0.1.0.AppImage`, naming neither platform nor architecture —
+    which stops being merely untidy the moment a second target sits beside it in a release.
+
+    The Tauri host emits the same shape with a `tauri` segment (`WE-0.1.0-tauri-linux-x86_64`),
+    written by `apps/we-tauri/scripts/rename-bundle.cjs` because Tauri has no equivalent of this
+    template. Electron's carries no qualifier: it is the primary download, and a reader should not
+    have to know what a runtime is to pick the right file.
+  */
   artifactName: '${productName}-${version}-${os}-${arch}.${ext}',
   mac: {
     category: 'public.app-category.social-networking',

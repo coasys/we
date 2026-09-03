@@ -1,7 +1,7 @@
 {
   "name": "@we/app-tauri",
   "version": "0.1.0",
-  "description": "",
+  "description": "WE - Decentralized social launcher (Tauri)",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -15,7 +15,7 @@
     "pretauri:dev": "node scripts/generate-seed-config.cjs",
     "tauri:dev": "concurrently \"pnpm dev\" \"wait-on http://localhost:1420 && tauri dev -- --release\"",
     "pretauri:build": "node scripts/generate-seed-config.cjs",
-    "tauri:build": "tauri build",
+    "tauri:build": "tauri build && node scripts/rename-bundle.cjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

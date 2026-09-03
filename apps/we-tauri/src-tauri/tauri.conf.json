@@ -1,8 +1,9 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "we-ad4m-launcher",
-  "version": "0.1.0",
-  "identifier": "com.james.tauri-app",
+  "productName": "WE",
+  "mainBinaryName": "we",
+  "version": "../package.json",
+  "identifier": "io.weco.we.tauri",
   "build": {
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "pnpm build",
@@ -11,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "we-ad4m-launcher",
+        "title": "WE",
         "width": 1200,
         "height": 800
       }
@@ -32,13 +33,6 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": {},
-    "linux": {
-      "appimage": {
-        "files": {
-          "usr/share/icons/hicolor/512x512/apps/we-ad4m-launcher.png": "icons/128x128@2x.png"
-        }
-      }
-    }
+    "resources": {}
   }
 }
