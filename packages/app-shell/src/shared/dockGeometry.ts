@@ -284,6 +284,11 @@ export function targetRank(mode: 'band' | 'lane' | 'home' | 'tab'): number {
   return mode === 'tab' ? 1 : 0;
 }
 
+/** Whether a point is inside a box. The pointer's half of {@link targetRank}'s question. */
+export function contains(point: { x: number; y: number }, rect: Rect): boolean {
+  return point.x >= rect.x && point.x <= rect.x + rect.w && point.y >= rect.y && point.y <= rect.y + rect.h;
+}
+
 export function layerOrder(
   ids: readonly string[],
   activation: Record<string, number | undefined>,

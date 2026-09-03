@@ -14,6 +14,7 @@ import {
   CHROME_RAIL_PX,
   columnLayout,
   columnSlots,
+  contains,
   type ContentInset,
   contentInset,
   coveredInset,
@@ -2273,19 +2274,36 @@ export function ShellStoreProvider(props: ParentProps) {
         `snapCandidate`, and for the same reason.
       */
       /*
-        Ranked by *kind* first, and only then by area — see `targetRank`.
+        **Where the pointer is**, then the kind, then the area.
 
-        A seat's target is half a panel and a seam is twenty pixels, so by area alone the seat won
-        wherever the two overlapped: dropping between two displacing lanes was impossible except in
-        the top and bottom quarters, where the seat's target does not reach. A boundary is the more
-        specific answer and outranks the region behind it, which is the rule this comment already
-        gave for gaps over edge targets.
+        Area alone was the rule, and a panel hangs *downward* from the pointer holding its titlebar —
+        so which targets it overlapped had almost nothing to do with where somebody was aiming. A
+        200px panel reached a lane's bottom seam with its top 680px away, while the seam at the top
+        of the same lane was reachable only with the pointer within twenty pixels of the screen's
+        edge: the two ends of one lane, one easy and one nearly impossible. And a seat's target could
+        never win at all, since a rect that large always overlapped some seam, and a seam outranks it
+        — so the region that says "drop here to make a tab" was drawn and was not reachable.
+
+        A pointer is a point, so it is symmetric by construction, and pointing at a thing is what
+        every application means by dropping on it. The area rule stays underneath for the case it was
+        written for — a panel over two lines at once, with the pointer over neither — where it picks
+        the one most covered rather than the first in the list.
       */
+      const pointer = { x: dragPointer.x + dx, y: dragPointer.y + dy };
       const slot = store
         .insertSlots()
-        .map((candidate) => ({ candidate, area: overlapArea(next, candidate.hit) }))
-        .filter((entry) => entry.area > 0)
-        .sort((a, b) => targetRank(a.candidate.mode) - targetRank(b.candidate.mode) || b.area - a.area)[0]?.candidate;
+        .map((candidate) => ({
+          candidate,
+          under: contains(pointer, candidate.hit),
+          area: overlapArea(next, candidate.hit),
+        }))
+        .filter((entry) => entry.under || entry.area > 0)
+        .sort(
+          (a, b) =>
+            Number(b.under) - Number(a.under) ||
+            targetRank(a.candidate.mode) - targetRank(b.candidate.mode) ||
+            b.area - a.area,
+        )[0]?.candidate;
       setActiveInsert(slot ? slot.key : null);
       setActiveSnap(slot ? null : snapCandidate(next, viewport(), occupiedForId(id), floatChrome()));
       writePlacement(id, next);

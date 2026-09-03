@@ -21,6 +21,7 @@ import {
   columnLayout,
   columnMembers,
   columnSlots,
+  contains,
   type ContentInset,
   contentInset,
   coveredInset,
@@ -2163,5 +2164,36 @@ describe('which drop target wins', () => {
 
   it('leaves the kinds of boundary to be settled by area, as they always were', () => {
     expect(targetRank('band')).toBe(targetRank('lane'));
+  });
+});
+
+/**
+ * Where the pointer is, before what the panel covers.
+ *
+ * A dragged panel hangs *downward* from the pointer holding its titlebar, so ranking targets by how
+ * much of the panel covers them asked a question nobody was answering with their hand: the seam at
+ * the bottom of a lane was reachable from six hundred pixels away and the one at its top only from
+ * within twenty, and a seat's target — always overlapped by some seam, and outranked by it — could
+ * not be reached at all.
+ */
+describe('pointing at a drop target', () => {
+  const seam = { x: 80, y: 0, w: 300, h: 20 };
+  const seat = { x: 80, y: 225, w: 150, h: 450 };
+
+  it('is symmetric, where covering it is not', () => {
+    // The same 200px panel, its top at the same distance from each end of a full-height lane. By
+    // area the bottom seam wins from far away and the top seam never does; by pointer, neither.
+    expect(contains({ x: 200, y: 10 }, seam)).toBe(true);
+    expect(contains({ x: 200, y: 300 }, seam)).toBe(false);
+  });
+
+  it('reaches a seat, which a rect-sized answer could not', () => {
+    expect(contains({ x: 150, y: 400 }, seat)).toBe(true);
+  });
+
+  it('takes the edges of a box, so a boundary is not a pixel wide', () => {
+    expect(contains({ x: 80, y: 0 }, seam)).toBe(true);
+    expect(contains({ x: 380, y: 20 }, seam)).toBe(true);
+    expect(contains({ x: 381, y: 10 }, seam)).toBe(false);
   });
 });
