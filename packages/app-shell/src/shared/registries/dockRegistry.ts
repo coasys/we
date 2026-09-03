@@ -263,6 +263,17 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
           // Open, and not at home in the template — a section at its outlet is rendered there by
           // `PanelLane`, and a frame for it here would be a second copy.
           condition: { $: `${dockGeometryPath(entry.id, 'edge')} && !${dockGeometryPath(entry.id, 'home')}` },
+          /*
+            A panel opening has no size to grow from, so it arrives by fading.
+
+            The content region slides over to make room for a displacing panel, and the panel used to
+            appear at its full width in the first frame of that — the room opening slowly and the
+            thing filling it instantly. A geometry transition cannot help here: this element did not
+            exist a moment ago, so there is no previous value to interpolate. Timed with the inset, so
+            the two read as one movement.
+          */
+          enterTransition: { type: 'fade', duration: 300 },
+          exitTransition: { type: 'fade', duration: 200 },
           then: {
             type: 'Column',
             props: {
@@ -273,6 +284,18 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
               left: geo('left'),
               width: geo('width'),
               height: geo('height'),
+              /*
+                And a panel that is already open moves to a new box rather than jumping to it — a
+                snap from card to sidebar, a lane-mate resizing, an edge gaining a lane.
+
+                Suspended while a drag is live, for the reason the content region suspends its own:
+                a third of a second of easing between the cursor and the panel makes a drag feel
+                broken. `300` rather than `300ms` so a theme's animation speed, and a reader's
+                reduced-motion setting, still decide — see `parseTransition`.
+              */
+              transition: {
+                $: "shellStore.dockResizing ? 'none' : 'top 300 ease, right 300 ease, bottom 300 ease, left 300 ease, width 300 ease, height 300 ease'",
+              },
               /*
                 The panel's own surface. A module's node fills it and need not paint a background, a
                 border or a radius of its own — which is what stops two docked modules from looking
