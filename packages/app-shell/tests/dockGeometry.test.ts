@@ -2607,3 +2607,34 @@ describe('a snap target against the insert slot behind it', () => {
     expect(snapBeatsSlot(corner, null, { x: 1500, y: 850 })).toBe(true);
   });
 });
+
+describe('normalising a lane to what is on screen', () => {
+  const vp = { width: 1600, height: 900 };
+  const member = (h: number, grow: number): LaneMember =>
+    ({ snap: 'left', displace: true, band: 0, x: 0, y: 0, w: 320, h, grow }) as LaneMember;
+  const solve = (members: LaneMember[]) =>
+    columnLayout(members, 'left', vp, undefined, undefined, { displacing: true }).map((box) => box.h);
+
+  it('leaves the split exactly where it was', () => {
+    /*
+      What a divider drag does before it moves anything: every member's base becomes its rendered
+      extent and its grow the same number, so the slack is zero and the boundary can then travel the
+      whole lane in real pixels. It is only sound because it is a fixed point — and the store broke
+      that by reading the rendered extents from a derived value it was writing to in the same pass,
+      so the second member was measured against a lane the first had already re-solved and the
+      boundary jumped a third of the way down on the click that was only meant to grab it.
+    */
+    const before = solve([member(180, 2), member(180, 1)]);
+    const after = solve([member(before[0], before[0]), member(before[1], before[1])]);
+
+    expect(after[0]).toBeCloseTo(before[0], 6);
+    expect(after[1]).toBeCloseTo(before[1], 6);
+  });
+
+  it('is a fixed point for a lane of three as well, which is where the drift compounded', () => {
+    const before = solve([member(180, 3), member(180, 2), member(180, 1)]);
+    const after = solve(before.map((h) => member(h, h)));
+
+    before.forEach((h, i) => expect(after[i]).toBeCloseTo(h, 6));
+  });
+});

@@ -2251,13 +2251,28 @@ export function ShellStoreProvider(props: ParentProps) {
           instead of pulling it back toward the declared ratio. The ratio was the author's guess;
           the drag is the reader's decision.
         */
-        for (const memberId of laneSeating().lanes[id] ?? []) {
-          const member = dockRequests().find((entry) => entry.id === memberId);
+        /*
+          Measured in full BEFORE any of it is written, because writing changes what is measured.
+
+          `dockGeometry` is derived from the placements, so normalising the first member re-solved the
+          lane around it — and the second was then measured against a lane where one panel had taken
+          its share of the spare room and the other had not. Its rendered extent read back as near its
+          base, that became its new base, and the boundary jumped a third of the way down the lane on
+          the click that was only meant to grab it. Reading and writing the same derived value in one
+          pass is the whole of the bug; the normalisation itself is exactly a fixed point.
+        */
+        const lane = (laneSeating().lanes[id] ?? [])
+          .map((memberId) => dockRequests().find((entry) => entry.id === memberId))
           // A folded member is its titlebar tall whatever it stores, and its stored size is what it
           // unfolds back to — writing the bar's height over it would lose that.
-          if (!member || placementOf(member).collapsed) continue;
-          const rendered = rectOf(dockGeometry()[memberId], viewport(), placementOf(member))[along];
-          writePlacement(memberId, { ...placementOf(member), [along]: rendered, grow: rendered });
+          .filter((member): member is DockRequest => member !== undefined && !placementOf(member).collapsed)
+          .map((member) => ({
+            member,
+            rendered: rectOf(dockGeometry()[member.id], viewport(), placementOf(member))[along],
+          }));
+
+        for (const { member, rendered } of lane) {
+          writePlacement(member.id, { ...placementOf(member), [along]: rendered, grow: rendered });
         }
         columnDrag = { along, top: placementOf(request)[along], bottom: placementOf(lower)[along] };
       } else {
