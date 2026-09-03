@@ -53,6 +53,7 @@
  *
  * See `registries/dockRegistry.ts` for why a module does not position itself.
  */
+import { DROP_LINE_THICKNESS } from '@we/drag';
 import type { DockEdge, DockSize } from '@we/module-shared';
 
 /** The collapsed shell sidebar. Mirrors `SHELL_SIDEBAR_WIDTH`, in pixels for arithmetic. */
@@ -925,6 +926,56 @@ export function snapTargetRects(
   return SNAP_POINTS.map((snap) => ({ id: snap, ...snapOrigin(snap, w, h, viewport, occupied, chrome), w, h }));
 }
 
+/**
+ * How far inboard of an edge a dragged panel still counts as being *at* that edge.
+ *
+ * The distance past the last lane, so an edge holding two 300px lanes reaches 760px in and an
+ * empty one 160px. Wide enough that the seams of the innermost lane are reachable without the
+ * targets going dark under the pointer; narrow enough that a panel carried across the middle of
+ * the screen is not offered every seam on every edge at once.
+ */
+export const EDGE_REACH_PX = 160;
+
+/**
+ * The band along an edge inside which that edge's targets are offered — the lanes already there,
+ * plus {@link EDGE_REACH_PX} past them.
+ *
+ * ## One target family at a time
+ *
+ * A drag used to show everything at once: eight snap markers, a line for every lane boundary on
+ * every edge, a seam for every seat, and now a wash over every seat and every outlet. The
+ * arbitration picked correctly, but nobody could read it. Every application that solves this
+ * offers targets *where the pointer is* — VS Code lights one region, Photoshop draws one line — so
+ * an edge's targets appear while the dragged panel overlaps this band and not otherwise. The snap
+ * markers stay, being small and the map of where the bands are.
+ *
+ * `depth` is what the edge's lanes already take (`contentInset` for that edge).
+ */
+export function edgeZone(edge: Exclude<DockEdge, null>, viewport: Viewport, depth: number): Rect {
+  const region = contentRegion(viewport);
+  const reach = depth + EDGE_REACH_PX;
+  switch (edge) {
+    case 'left':
+      return { x: region.left, y: 0, w: reach, h: viewport.height };
+    case 'right':
+      return { x: viewport.width - reach, y: 0, w: reach, h: viewport.height };
+    case 'top':
+      return { x: 0, y: 0, w: viewport.width, h: reach };
+    case 'bottom':
+      return { x: 0, y: viewport.height - reach, w: viewport.width, h: reach };
+  }
+}
+
+/** Whether a dragged box has reached an edge's band. See {@link edgeZone}. */
+export function nearEdge(rect: Rect, edge: Exclude<DockEdge, null>, viewport: Viewport, depth: number): boolean {
+  return overlap(rect, edgeZone(edge, viewport, depth)) > 0;
+}
+
+/** A box grown by the same margin on every side — how an outlet reaches for a panel carried near it. */
+export function grown(rect: Rect, by: number): Rect {
+  return { x: rect.x - by, y: rect.y - by, w: rect.w + by * 2, h: rect.h + by * 2 };
+}
+
 /** Area of the intersection of two boxes; zero when they do not touch. */
 function overlap(a: Rect, b: Rect): number {
   const x = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x));
@@ -1655,8 +1706,8 @@ export function columnSlots(edge: Exclude<DockEdge, null>, boxes: Rect[]): { ind
   const near = Math.min(...sorted.map((box) => (vertical ? box.x : box.y)));
   const far = Math.max(...sorted.map((box) => (vertical ? box.x + box.w : box.y + box.h)));
 
-  const GAP_TARGET = 16;
-  const LINE = 3;
+  const GAP_TARGET = 20;
+  const LINE = DROP_LINE_THICKNESS;
 
   const box = (position: number, thickness: number): Rect =>
     vertical
@@ -1923,9 +1974,9 @@ export function insertionSlots(
     inside it.
   */
   const EDGE_BAND = 24;
-  const GAP_TARGET = 16;
+  const GAP_TARGET = 20;
   const hitThickness = boxes.length === 0 ? EDGE_BAND : GAP_TARGET;
-  const LINE = 3;
+  const LINE = DROP_LINE_THICKNESS;
 
   // Sorted by distance from the edge, which is the order the strip grows in.
   const sorted = [...boxes].sort((a, b) =>

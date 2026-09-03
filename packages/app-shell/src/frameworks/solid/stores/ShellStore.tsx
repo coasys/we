@@ -22,16 +22,19 @@ import {
   type DockMin,
   type DockRequest,
   dockThickness,
+  EDGE_REACH_PX,
   edgeGroups,
   edgeOfSnap,
   EDGES,
   fitPlacement,
   type FloatPlacement,
   floorOf,
+  grown,
   insertionSlots,
   laneable,
   layerOrder,
   NARROW_VIEWPORT_PX,
+  nearEdge,
   NO_INSET,
   occupiedFor,
   placementFromDeclaration,
@@ -73,6 +76,7 @@ import {
   templatePanels,
   templatePanelScope,
 } from '@shared/registries/templatePanels';
+import { DRAGGING_ATTR } from '@we/drag';
 import type { ChromeReserve, DockAspect, DockEdge, DockSize } from '@we/module-shared';
 import type { SchemaNode, TemplatePanel, TemplateSchema } from '@we/schema-shared';
 import {
@@ -2150,6 +2154,13 @@ export function ShellStoreProvider(props: ParentProps) {
       raise(id);
       dragOrigin = resolvedPlacement(id, placementOf(request));
       dragPointer = { x: pointerX, y: pointerY };
+      /*
+        The drag package's global: `html[data-we-dragging]`, which every surface's hover chrome
+        stands down for. A panel drag is not a session — it carries a dock id and lands on computed
+        rects, not a record reference on a registered zone — but it is a drag, and the corner grips
+        on home sections are hover chrome that must not flicker under a passing panel.
+      */
+      if (typeof document !== 'undefined') document.documentElement.setAttribute(DRAGGING_ATTR, '');
       setMovingDock(id);
       setDockResizing(true);
     },
@@ -2271,6 +2282,7 @@ export function ShellStoreProvider(props: ParentProps) {
 
       dragOrigin = null;
       dragPointer = null;
+      if (typeof document !== 'undefined') document.documentElement.removeAttribute(DRAGGING_ATTR);
       setMovingDock(null);
       setActiveSnap(null);
       setActiveInsert(null);
@@ -2366,11 +2378,25 @@ export function ShellStoreProvider(props: ParentProps) {
         seats are on an edge; an empty outlet offers its whole box, the way an empty edge offers one
         slot — that is how a lane gets its first section by dragging.
       */
+      /*
+        Where the dragged panel is right now — the box the targets are offered against.
+
+        Its own placement is written every frame of the drag, so the resolved geometry is the box on
+        screen. `edgeZone` and the outlets both ask "has it reached me", and this is what reaches.
+      */
+      const dragged = requests.find((entry) => entry.id === moving);
+      const carried = dragged ? rectOf(boxes[moving], viewport(), placementOf(dragged)) : null;
+
       const homeSlots = () => {
-        if (!declarationFor()[moving]) return [];
+        if (!declarationFor()[moving] || !carried) return [];
         const panelId = moving.replace(/^template:/, '');
         return homeLanes().flatMap((outlet) => {
           if (outlet.accepts.length > 0 && !outlet.accepts.includes(panelId)) return [];
+          // Only an outlet the panel has been carried to. Its seams are the one target family with
+          // no band of their own, so the outlet's own box, grown a little, stands in for one.
+          const box = outlet.el.getBoundingClientRect();
+          const reach = grown({ x: box.x, y: box.y, w: box.width, h: box.height }, EDGE_REACH_PX / 2);
+          if (overlapArea(carried, reach) <= 0) return [];
           const sections = [...outlet.el.querySelectorAll<HTMLElement>(`[${HOME_SECTION_ATTR}]`)]
             .filter((section) => section.getAttribute(HOME_SECTION_ATTR) !== panelId)
             .map((section) => {
@@ -2401,6 +2427,9 @@ export function ShellStoreProvider(props: ParentProps) {
       };
 
       const edgeSlots = EDGES.flatMap((edge) => {
+        // One target family at a time: an edge's lines and seams only once the panel has reached
+        // that edge's band — the lanes already there, and a reach past them. See `edgeZone`.
+        if (!carried || !nearEdge(carried, edge, viewport(), inset()[edge])) return [];
         /*
           Measured in a region that still contains the lanes being described.
 

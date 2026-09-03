@@ -9,6 +9,7 @@
  * The rule the whole file turns on: **a panel that displaces spans its edge; a panel that floats
  * does not.** Most of what follows is that sentence, from one side or the other.
  */
+import { DROP_LINE_THICKNESS } from '@we/drag';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -28,11 +29,14 @@ import {
   type DockRequest,
   dockThickness,
   type DropTarget,
+  EDGE_REACH_PX,
   edgeGroups,
   edgeOfSnap,
+  edgeZone,
   fitPlacement,
   type FloatPlacement,
   floorOf,
+  grown,
   homeLaneMembers,
   insertionSlots,
   type LaneMember,
@@ -41,6 +45,7 @@ import {
   MIN_DOCK_PX,
   MIN_FLOAT_PX,
   NARROW_VIEWPORT_PX,
+  nearEdge,
   NO_INSET,
   NO_TOP_CHROME,
   occupiedFor,
@@ -447,7 +452,7 @@ describe('reordering a strip', () => {
     // A wider *target* than a gap between panels: with nothing either side of it to imply the result,
     // this one is claiming a whole side. The line drawn in it is the same 3px either way.
     expect(slot.hit.w).toBeGreaterThan(insertionSlots('right', boxes, desktop)[0].hit.w);
-    expect(slot.line.w).toBe(3);
+    expect(slot.line.w).toBe(DROP_LINE_THICKNESS);
   });
 
   it('keeps the outermost slot on screen', () => {
@@ -474,7 +479,11 @@ describe('reordering a strip', () => {
     expect(new Set(collapsed).size).toBe(1);
     expect(new Set(correct).size).toBe(3);
     // One per boundary: the screen edge, and the inner side of each panel.
-    expect(correct).toEqual([desktop.width - 3, 1199, 799]);
+    expect(correct).toEqual([
+      desktop.width - DROP_LINE_THICKNESS,
+      1200 - DROP_LINE_THICKNESS / 2,
+      800 - DROP_LINE_THICKNESS / 2,
+    ]);
   });
 
   it('offers one gap per panel, plus one against the edge itself', () => {
@@ -498,7 +507,7 @@ describe('reordering a strip', () => {
     const [slot] = insertionSlots('right', boxes, desktop);
 
     expect(slot.hit.w).toBeLessThan(32);
-    expect(slot.line.w).toBe(3);
+    expect(slot.line.w).toBe(DROP_LINE_THICKNESS);
     expect(slot.hit.h).toBe(desktop.height);
   });
 
@@ -2067,5 +2076,44 @@ describe('the sections in a home lane', () => {
 
   it('starts a lane that was empty', () => {
     expect(arrangeHomeDrop([section('left', 0)], 0, 'right', 0)).toEqual([{ index: 0, order: 0 }]);
+  });
+});
+
+/**
+ * One target family at a time.
+ *
+ * A drag used to offer every seam on every edge at once. An edge's targets now appear only while the
+ * dragged panel has reached that edge's band — its lanes, plus a reach past them.
+ */
+describe('reaching an edge', () => {
+  it('counts a panel carried to within reach of an empty edge', () => {
+    const box = { x: desktop.width - EDGE_REACH_PX - 100, y: 300, w: 200, h: 150 };
+
+    expect(nearEdge(box, 'right', desktop, 0)).toBe(true);
+    expect(nearEdge(box, 'left', desktop, 0)).toBe(false);
+  });
+
+  it('does not count a panel in the middle of the screen', () => {
+    const box = { x: desktop.width / 2 - 100, y: desktop.height / 2 - 75, w: 200, h: 150 };
+
+    expect(nearEdge(box, 'right', desktop, 0)).toBe(false);
+    expect(nearEdge(box, 'top', desktop, 0)).toBe(false);
+  });
+
+  it('reaches further in past the lanes an edge already holds', () => {
+    // Two 300px lanes on the right: their innermost seams are 600px in, and a panel over them is
+    // at that edge, whatever the screen's middle is.
+    const overInnerLane = { x: desktop.width - 650, y: 300, w: 100, h: 100 };
+
+    expect(nearEdge(overInnerLane, 'right', desktop, 0)).toBe(false);
+    expect(nearEdge(overInnerLane, 'right', desktop, 600)).toBe(true);
+  });
+
+  it('starts the left band at the content, not the sidebar', () => {
+    expect(edgeZone('left', desktop, 0).x).toBe(SIDEBAR_PX);
+  });
+
+  it('grows a box the same amount on every side', () => {
+    expect(grown({ x: 100, y: 100, w: 50, h: 50 }, 10)).toEqual({ x: 90, y: 90, w: 70, h: 70 });
   });
 });
