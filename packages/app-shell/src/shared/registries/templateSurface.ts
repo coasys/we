@@ -871,6 +871,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       and a template able to call it could make every module's panel claim room it is not using.
     */
     provideModuleGate: WIRING,
+    provideTemplateSaver: WIRING,
     pendingDestructive: state('host-layout'),
     confirmDestructive: action('host-layout'),
     cancelDestructive: action('host-layout'),
@@ -942,14 +943,25 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // The gaps in a strip, and which one a drop would take — what makes reordering a dock possible.
     insertSlots: state('host-layout'),
     activeInsert: state('host-layout'),
+    dragGhost: state('host-layout'),
     insertDock: action('host-layout'),
     beginDockMove: action('host-layout'),
+    raiseDock: action('host-layout'),
     moveDock: action('host-layout'),
+    beginTabDrag: action('host-layout'),
+    moveTab: action('host-layout'),
+    endTabDrag: action('host-layout'),
     endDockMove: action('host-layout'),
     snapDock: action('host-layout'),
     toggleMaximiseDock: action('host-layout'),
     fitDock: action('host-layout'),
     toggleDockDisplace: action('host-layout'),
+    toggleCollapseDock: action('host-layout'),
+    breakOut: action('host-layout'),
+    returnHome: action('host-layout'),
+    stackDock: action('host-layout'),
+    insertHome: action('host-layout'),
+    saveArrangementAsTemplate: action('host-layout'),
     // Whether a panel has been dragged away from what the interface declared, and the way back.
     layoutPinned: state('host-layout'),
     resetDockToLayout: action('host-layout'),
@@ -959,6 +971,11 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // Read by a module's own dock frame, to know whether the interface is supplying its contents.
     panelSupplied: state('host-layout'),
     resetTemplateLayout: action('host-layout'),
+    layoutNames: state('host-layout'),
+    activeLayout: state('host-layout'),
+    saveLayout: action('host-layout'),
+    applyLayout: action('host-layout'),
+    deleteLayout: action('host-layout'),
     // Dismissing and restoring a panel the interface itself supplied. What the titlebar's close
     // button calls, and reachable by the template that declared the panel — which is the only way
     // back to one that has been closed.

@@ -62,6 +62,25 @@ export interface DockEntry extends DockContribution {
    * never classify.
    */
   closeAction?: SchemaProp;
+  /**
+   * What to call the panel where its name has to fit on a tab.
+   *
+   * A template panel carries its declared `title`; a module's dock has none, so `dockTitle` makes
+   * one from its `name`. Only read when the panel shares a seat — a panel alone names itself inside
+   * its own content, as every module's does.
+   */
+  title?: string;
+}
+
+/** A tab's label for a dock: its title, else its name made readable, else its module. */
+export function dockTitle(entry: DockEntry): string {
+  if (entry.title) return entry.title;
+  const raw = entry.name ?? entry.moduleId;
+  const words = raw
+    .replace(/[-_:]+/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
 /**
@@ -236,10 +255,28 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
     children: [
       snapTargets(entry.id),
       insertLines(entry.id),
+      dragGhost(entry.id),
+      laneDivider(entry.id),
       {
         type: '$if',
         props: {
-          condition: geo('edge'),
+          // Open, and not at home in the template — a section at its outlet is rendered there by
+          // `PanelLane`, and a frame for it here would be a second copy.
+          condition: { $: `${dockGeometryPath(entry.id, 'edge')} && !${dockGeometryPath(entry.id, 'home')}` },
+          /*
+            **No `enterTransition` here, however much a panel opening wants one.**
+
+            `$if`'s transitions do not use `Show`: they render a wrapper element that carries the
+            opacity, and that wrapper copies the content's declared size onto itself — with
+            `String(declared)`, which for a `width` that is an expression token yields the literal
+            `[object Object]`. It also takes `position: fixed` from the frame, so a panel whose whole
+            job is to be positioned by the host ends up inside a box that is competing to position it.
+            The panel stopped being visible while dragged.
+
+            A panel opening is exactly the case a geometry transition cannot cover, since there is no
+            previous box to interpolate from — so if this is worth animating it wants a CSS animation
+            on the frame itself, and no wrapper.
+          */
           then: {
             type: 'Column',
             props: {
@@ -250,6 +287,18 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
               left: geo('left'),
               width: geo('width'),
               height: geo('height'),
+              /*
+                And a panel that is already open moves to a new box rather than jumping to it — a
+                snap from card to sidebar, a lane-mate resizing, an edge gaining a lane.
+
+                Suspended while a drag is live, for the reason the content region suspends its own:
+                a third of a second of easing between the cursor and the panel makes a drag feel
+                broken. `300` rather than `300ms` so a theme's animation speed, and a reader's
+                reduced-motion setting, still decide — see `parseTransition`.
+              */
+              transition: {
+                $: "shellStore.dockResizing ? 'none' : 'top 300 ease, right 300 ease, bottom 300 ease, left 300 ease, width 300 ease, height 300 ease'",
+              },
               /*
                 The panel's own surface. A module's node fills it and need not paint a background, a
                 border or a radius of its own — which is what stops two docked modules from looking
@@ -279,7 +328,15 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
               // Backdrop blur belongs with the transparency and goes when it does: it is expensive,
               // it makes the element a containing block for fixed descendants, and over an opaque
               // background it would cost both of those for nothing visible.
-              styles: { 'backdrop-filter': { $: `${glass} ? '${GLASS_BLUR}' : 'none'` } },
+              styles: {
+                'backdrop-filter': { $: `${glass} ? '${GLASS_BLUR}' : 'none'` },
+                /*
+                  Gone while another tab in its seat is showing — gone, not unmounted. A call in a
+                  background tab keeps its streams; a transcript keeps its scroll. `styles` so it
+                  overrides the Column's own `display: flex`.
+                */
+                display: { $: `${dockGeometryPath(entry.id, 'hidden')} ? 'none' : 'flex'` },
+              },
               border: '1px solid border',
               // Rounded and lifted only while floating. A card over the app should read as being on
               // top; a panel that has taken room *from* the app meets it edge to edge, where a radius
@@ -288,7 +345,17 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
               r: { $: `${dockGeometryPath(entry.id, 'floating')} ? '500' : null` },
               shadow: { $: `${dockGeometryPath(entry.id, 'floating')} ? 'xl' : null` },
               overflow: 'hidden',
-              zIndex: 'sticky',
+              /*
+                A step on the `sticky` band, not the band itself.
+
+                Every frame was `zIndex: 'sticky'`, so two overlapping panels were ordered by document
+                order — the registry's — and nothing a person did could change it: maximise a panel
+                and anything registered after it went on painting over the top. The geometry hands
+                each panel its own step by how recently it was touched (`layerOrder`), and touching is
+                the pointer landing anywhere on the frame.
+              */
+              zIndex: geo('layer'),
+              onPointerdown: { $action: 'shellStore.raiseDock', args: [entry.id] },
               /*
                 Marked so "fit to content" can measure the chrome rather than assume it.
 
@@ -350,6 +417,14 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
                     '--we-drop-zone-radius': {
                       $: `${dockGeometryPath(entry.id, 'floating')} ? 'var(--we-radius-500)' : '0px'`,
                     },
+                    /*
+                      Hidden while folded — hidden, never unmounted. A collapsed transcript keeps its
+                      scroll and a collapsed call keeps its streams, which is the whole difference
+                      between folding a panel and closing it. Here rather than as a DS prop because
+                      it has to override the Column's own `display: flex`, and `styles` is applied
+                      last.
+                    */
+                    display: { $: `${dockGeometryPath(entry.id, 'collapsed')} ? 'none' : 'flex'` },
                   },
                 },
                 /*
@@ -446,6 +521,7 @@ function titleBar(entry: DockEntry): SchemaNode {
       onDblclick: { $action: 'shellStore.toggleMaximiseDock', args: [entry.id] },
     },
     children: [
+      tabStrip(entry.id),
       {
         type: 'we-move-handle',
         props: {
@@ -463,6 +539,7 @@ function titleBar(entry: DockEntry): SchemaNode {
         },
       },
       ...(entry.aspect ? [whileRestored(entry.id, fitButton(entry.id))] : []),
+      whileRestored(entry.id, collapseButton(entry.id)),
       whileRestored(entry.id, displaceButton(entry.id)),
       maximiseButton(entry.id),
       whileRestored(entry.id, positionMenu(entry)),
@@ -506,6 +583,140 @@ function fitButton(id: string): SchemaNode {
  * a rectangular layout cannot flow around a box in a corner. The store refuses it there anyway —
  * this is the same answer, made visible before the click rather than after it.
  */
+/**
+ * The seat's members, as a strip on the titlebar of the one showing.
+ *
+ * Nothing for a seat of one, which is most panels. For a shared seat: one per member, the showing
+ * one marked. Before the grip rather than after the controls, because that is where every tab strip
+ * anybody has used puts it.
+ *
+ * ## A tab is a click until it is a drag
+ *
+ * Each is a `we-move-handle` on `beginTabDrag`/`moveTab`/`endTabDrag` rather than on the ordinary
+ * move path, and the difference is that those three do nothing on the press. They have to: acting on
+ * a press destroys the element holding the pointer capture, because raising a tab hides the frame
+ * this strip lives in and tearing one out of a seat of two takes the strip away with it. Wired
+ * straight to `beginDockMove`, a click on a background tab put the drag guides up and left them
+ * there, and the tab never changed.
+ *
+ * So the press records, the pointer has to travel before anything happens, and the panel stays in
+ * its seat until the drop — which is how every tab strip behaves, and what keeps this element alive
+ * for the whole gesture. A press that goes nowhere brings the tab forward; one that travels shows
+ * where it would land, and over nothing leaves it as a card under the pointer.
+ *
+ * `step: 0` is what keeps the keyboard sane. The handle emits a whole gesture per arrow key, and at
+ * the usual 24px that is past the threshold — so every arrow press would tear the panel out of its
+ * seat. At zero the gesture goes nowhere, which `endTabDrag` reads as the click it is, so the arrow
+ * keys *switch tabs*; moving a panel from the keyboard stays with the titlebar's own grip.
+ *
+ * The visual is on a wrapper rather than on the handle: `we-move-handle` is a `LayoutElement`, so it
+ * takes no `bg` or `r`, and putting the roles on a `Row` keeps them as design-system props instead of
+ * raw custom properties in a `styles` bag.
+ */
+function tabStrip(id: string): SchemaNode {
+  const tabs = dockGeometryPath(id, 'tabs');
+
+  return {
+    type: '$if',
+    props: {
+      condition: { $: `count(${tabs}) > 1` },
+      then: {
+        type: 'Row',
+        props: { gap: '100', ay: 'center', flex: '0 0 auto', pr: '100' },
+        children: [
+          {
+            type: '$each',
+            props: { items: { $: tabs }, as: 'tab' },
+            children: [
+              {
+                type: 'Row',
+                props: {
+                  ay: 'center',
+                  flex: '0 0 auto',
+                  r: 'control',
+                  px: '200',
+                  height: '24px',
+                  bg: { $: "tab.active ? 'control-surface' : 'transparent'" },
+                  hoverProps: { bg: 'surface-hover' },
+                },
+                children: [
+                  {
+                    type: 'we-move-handle',
+                    props: {
+                      // See the note above: a tab is selected by the keyboard, never moved by it.
+                      step: 0,
+                      height: '100%',
+                      ay: 'center',
+                      label: { $: '`${tab.title} — drag out of the stack`' },
+                      onMovestart: {
+                        $action: 'shellStore.beginTabDrag',
+                        args: [{ $: 'tab.id' }, { $: 'arg.detail.x' }, { $: 'arg.detail.y' }],
+                      },
+                      onMove: {
+                        $action: 'shellStore.moveTab',
+                        args: [{ $: 'tab.id' }, { $: 'arg.detail.dx' }, { $: 'arg.detail.dy' }],
+                      },
+                      onMoveend: {
+                        $action: 'shellStore.endTabDrag',
+                        args: [{ $: 'tab.id' }, { $: 'arg.detail.x' }, { $: 'arg.detail.y' }],
+                      },
+                    },
+                    children: [
+                      {
+                        type: 'we-text',
+                        props: { variant: 'footnote', truncate: true, maxWidth: '120px' },
+                        children: [{ $: 'tab.title' }],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    },
+  };
+}
+
+/**
+ * Fold the panel to its titlebar, or open it again.
+ *
+ * The way a panel gets out of the way without going anywhere: it keeps its place in its lane and its
+ * lane-mates take the room, and the content is hidden rather than unmounted. Greyed rather than
+ * absent where there is nowhere for that room to go, for the reason the displace toggle is greyed on
+ * a corner — the control stays where people look for it, and says why it cannot be pressed. See
+ * `canFold` for when that is.
+ */
+function collapseButton(id: string): SchemaNode {
+  const place = (field: string) => `shellStore.dockPlacement['${id}'].${field}`;
+
+  return {
+    type: 'we-tooltip',
+    props: {
+      // The refusal names the condition rather than the state, as the displace toggle's does: there
+      // has to be somewhere for the room to go, and beside it is the only direction it can go.
+      title: {
+        $: `${place('canCollapse')} ? (${place('collapsed')} ? 'Unfold' : 'Fold to titlebar') : 'Open a panel beside this one to fold'`,
+      },
+      placement: 'bottom',
+    },
+    children: [
+      {
+        type: 'we-button',
+        props: {
+          size: 'xs',
+          square: true,
+          variant: { $: `${place('collapsed')} ? 'secondary' : 'ghost'` },
+          disabled: { $: `!${place('canCollapse')}` },
+          onClick: { $action: 'shellStore.toggleCollapseDock', args: [id] },
+        },
+        children: [{ type: 'we-icon', props: { name: { $: `${place('collapsed')} ? 'caret-down' : 'caret-up'` } } }],
+      },
+    ],
+  };
+}
+
 function displaceButton(id: string): SchemaNode {
   const place = (field: string) => `shellStore.dockPlacement['${id}'].${field}`;
 
@@ -672,6 +883,21 @@ function positionMenu(entry: DockEntry): SchemaNode {
           First in the list, and separated: it undoes a position rather than choosing one, so
           grouping it with the eight would read as a ninth place to put the panel.
         */
+        /*
+          The way back into the template, for a section that has a place there.
+
+          Before the reset, because it is the more specific answer: a section broken out of a
+          sidebar and dragged around is put back by this, and "Reset to layout" would do the same
+          and also forget its size. Only for a panel with a `home` — an ordinary panel has no page
+          to return to, and the item would be a control that does nothing.
+        */
+        {
+          id: 'home',
+          label: 'Return to page',
+          icon: 'arrow-square-in',
+          disabled: { $: `!${place('home')} || ${place('snap')} == 'home'` },
+          onAction: { $action: 'shellStore.returnHome', args: [entry.id.replace(/^template:/, '')] },
+        },
         {
           id: 'reset',
           label: 'Reset to layout',
@@ -707,7 +933,10 @@ function positionMenu(entry: DockEntry): SchemaNode {
  * Thin, and only lit when active: eight dashed boxes plus four dashed lines would be more decoration
  * than the screen can carry. The line says *between these two*, which a box cannot.
  */
-const INSERT_IS_ACTIVE = 'shellStore.activeInsert == `${slot.mode}:${slot.edge}:${slot.index}`';
+// The store builds the key, and the frame only ever compares it. It names four things now — the
+// axis, the edge, the lane and the position along it — and rebuilding that here would be a second
+// spelling of one identity, for the two to disagree about the day a fifth is added.
+const INSERT_IS_ACTIVE = 'shellStore.activeInsert == slot.key';
 
 function insertLines(id: string): SchemaNode {
   return {
@@ -731,15 +960,79 @@ function insertLines(id: string): SchemaNode {
               left: { $: 'slot.left' },
               width: { $: 'slot.width' },
               height: { $: 'slot.height' },
-              r: 'pill',
+              // A seam is a line; a seat is a box. The box is a filled region rather than an outline
+              // because what it means is "into this", and a wash over a panel reads as that.
+              r: { $: "slot.mode == 'tab' ? '500' : 'pill'" },
               // The drag is a pointer capture on the grip; a target that could swallow a pointer event
               // would end the drag it exists to guide.
               pointerEvents: 'none',
               // Above every panel, for the reason the snap targets are — see there.
               zIndex: 'chrome',
               bg: { $: `${INSERT_IS_ACTIVE} ? 'accent' : 'surface-active'` },
-              opacity: { $: `${INSERT_IS_ACTIVE} ? 1 : 0.4` },
+              opacity: {
+                $: `${INSERT_IS_ACTIVE} ? (slot.mode == 'tab' ? 0.35 : 1) : (slot.mode == 'tab' ? 0.1 : 0.4)`,
+              },
             },
+          },
+        ],
+      },
+    },
+  };
+}
+
+/**
+ * The outline of what is being dragged, for the one gesture that cannot carry the panel itself.
+ *
+ * A panel follows the cursor, which is what a window does and what nothing here has to draw; a whole
+ * stack does too, its other tabs riding along hidden. One **tab** cannot: it would have to leave the
+ * seat to be carried, and leaving takes the strip away along with the pointer capture on it, so the
+ * drag would die where it stands.
+ *
+ * That left a tab drag showing drop guides and nothing else, which reads as a drag that is not
+ * working: the guides say where it would go and nothing says what is going there. So it carries an
+ * outline — the box the panel would occupy, named, under the hand. `shellStore.dragGhost` is null
+ * for every other drag, so this draws nothing for them.
+ *
+ * `pointerEvents: 'none'` for the reason the snap targets have it: the drag is a pointer capture on
+ * the grip, and a target that could swallow a pointer event would end the drag it exists to show.
+ */
+function dragGhost(id: string): SchemaNode {
+  return {
+    type: '$if',
+    props: {
+      condition: { $: `shellStore.movingDock == '${id}' && shellStore.dragGhost` },
+      then: {
+        type: 'Column',
+        props: {
+          position: 'fixed',
+          top: { $: 'shellStore.dragGhost.top' },
+          left: { $: 'shellStore.dragGhost.left' },
+          width: { $: 'shellStore.dragGhost.width' },
+          height: { $: 'shellStore.dragGhost.height' },
+          maxHeight: '60vh',
+          pointerEvents: 'none',
+          zIndex: 'chrome',
+          r: '500',
+          border: '2px solid accent',
+          bg: 'accent-muted',
+          opacity: 0.7,
+          // No shadow: this is an outline of where a panel would go, not a panel. A shadow would
+          // make it read as one — and `chromeLayering.test.ts` picks the frame's own box out of this
+          // tree *by* its shadow, on the stated grounds that nothing else in the frame has one.
+          overflow: 'hidden',
+        },
+        children: [
+          {
+            type: 'Row',
+            props: { width: '100%', ay: 'center', gap: '200', px: '300', py: '200' },
+            children: [
+              { type: 'we-icon', props: { name: 'dots-six', size: 'sm', color: 'accent-text' } },
+              {
+                type: 'we-text',
+                props: { variant: 'label', color: 'accent-text', truncate: true },
+                children: [{ $: 'shellStore.dragGhost.title' }],
+              },
+            ],
           },
         ],
       },
@@ -831,33 +1124,34 @@ function grips(id: string): SchemaNode[] {
   */
   const grippable = `!${geo('maximised')} && ${geo('floating')}`;
 
+  /*
+    A boundary in a lane belongs to both panels, so neither of them draws it.
+
+    Stacked, the later panel's leading edge and the earlier one's trailing edge are the same line a
+    few pixels apart — two grips for one boundary, each resizing only its own panel, which is why
+    pulling it felt like neither. Both are suppressed, and `laneDivider` draws the seam from outside
+    both frames (see there for why it cannot be drawn from inside either).
+
+    Which sides those are comes from `laneAxis`, because it depends on the edge: a lane down the left
+    divides the height, so the pair meet top-to-bottom; a lane across the top divides the width, so
+    they meet left-to-right. It was the bottom either way, which drew a horizontal grip between two
+    panels sitting side by side and wrote a height that arrangement does not read.
+  */
+  const alongLane = (axis: 'vertical' | 'horizontal') => `${geo('laneAxis')} == '${axis}'`;
+  // The side of a panel that faces the *next* panel in its lane: down a vertical lane, rightward
+  // along a horizontal one. The opposite side faces the previous one.
+  const trailing = { vertical: 'bottom', horizontal: 'right' } as const;
+
   const edges: SchemaNode[] = (['left', 'right', 'top', 'bottom'] as const).map((side) => {
     const shown = `(${grippable}) || ${geo(side === 'left' || side === 'right' ? 'handleX' : 'handleY')} == '${side}'`;
-    /*
-      A boundary in a column belongs to both panels, so only one of them draws it.
-
-      Stacked, the lower panel's top edge and the upper panel's bottom edge are the same line a few
-      pixels apart — two grips for one boundary, each resizing only its own panel, which is why
-      pulling it felt like neither. The upper one becomes the divider for the pair (see `below`) and
-      the lower one's top grip is not drawn at all.
-    */
-    if (side === 'top') {
-      return {
-        type: '$if',
-        props: { condition: { $: `(${shown}) && !${geo('above')}` }, then: resizeEdge(id, side) },
-      };
-    }
-    if (side === 'bottom') {
-      return {
-        type: '$if',
-        props: {
-          condition: { $: `${geo('below')}` },
-          then: resizeEdge(id, side, true),
-          else: { type: '$if', props: { condition: { $: shown }, then: resizeEdge(id, side) } },
-        },
-      };
-    }
-    return { type: '$if', props: { condition: { $: shown }, then: resizeEdge(id, side) } };
+    const axis = side === 'top' || side === 'bottom' ? 'vertical' : 'horizontal';
+    // Suppressed only when this side really is a seam — a panel with a lane-mate on the other axis
+    // keeps every grip it had.
+    const seam = side === trailing[axis] ? geo('below') : geo('above');
+    return {
+      type: '$if',
+      props: { condition: { $: `(${shown}) && !(${seam} && ${alongLane(axis)})` }, then: resizeEdge(id, side) },
+    };
   });
 
   const corners: SchemaNode[] = (['top-left', 'top-right', 'bottom-left', 'bottom-right'] as const).map((corner) => ({
@@ -869,7 +1163,7 @@ function grips(id: string): SchemaNode[] {
 }
 
 /** One side, dragged along its own axis. */
-function resizeEdge(id: string, side: 'left' | 'right' | 'top' | 'bottom', divider = false): SchemaNode {
+function resizeEdge(id: string, side: 'left' | 'right' | 'top' | 'bottom'): SchemaNode {
   const vertical = side === 'left' || side === 'right';
 
   return {
@@ -889,35 +1183,71 @@ function resizeEdge(id: string, side: 'left' | 'right' | 'top' | 'bottom', divid
         every window corner anybody has dragged. Keyboard focus still shows: see `line` on the
         primitive.
       */
-      /*
-        A divider draws its line; a floating card's own edge does not.
-
-        A seam between two panels is a real boundary and the 3px bar answering under the pointer is
-        what a splitter looks like everywhere else. A lone card has no seam, so the bar would be a
-        stripe stuck to its side.
-      */
-      line: divider ? 'auto' : { $: `${dockGeometryPath(id, 'floating')} ? 'none' : 'auto'` },
+      line: { $: `${dockGeometryPath(id, 'floating')} ? 'none' : 'auto'` },
       styles: { '--we-resize-handle-thickness': '3px' },
       position: 'absolute',
       zIndex: 'sticky',
-      /*
-        Pinned to its own side and stretched along the other axis, so one node serves all four — and
-        a divider straddles the gap between the two panels rather than hugging one of them, which is
-        what makes it feel like the line between them rather than the edge of the upper one.
-      */
+      // Pinned to its own side and stretched along the other axis, so one node serves all four.
       ...(vertical
         ? { top: '0', bottom: '0', [side]: '0', width: '8px' }
-        : { left: '0', right: '0', [side]: divider ? '-6px' : '0', height: divider ? '12px' : '8px' }),
+        : { left: '0', right: '0', [side]: '0', height: '8px' }),
       onResizestart: { $action: 'shellStore.beginDockResize', args: [id] },
-      onResize: divider
-        ? { $action: 'shellStore.resizeColumn', args: [id, { $: 'arg.detail.delta' }] }
-        : {
-            $action: 'shellStore.resizeDock',
-            // The axis this side does not own is passed as zero rather than omitted: one action
-            // signature serves edges and corners, and an edge contributes nothing on its own axis.
-            args: vertical ? [id, side, { $: 'arg.detail.delta' }, 0] : [id, side, 0, { $: 'arg.detail.delta' }],
-          },
+      onResize: {
+        $action: 'shellStore.resizeDock',
+        // The axis this side does not own is passed as zero rather than omitted: one action
+        // signature serves edges and corners, and an edge contributes nothing on its own axis.
+        args: vertical ? [id, side, { $: 'arg.detail.delta' }, 0] : [id, side, 0, { $: 'arg.detail.delta' }],
+      },
       onResizeend: { $action: 'shellStore.endDockResize' },
+    },
+  };
+}
+
+/**
+ * The divider between this panel and the next one in its lane — drawn over the seam, from outside
+ * both frames.
+ *
+ * It was a grip inside the earlier panel's frame, straddling its bottom edge by six pixels so that
+ * it would sit on the boundary. The frame is `overflow: hidden`, so the outer half was clipped: what
+ * was left was 6px of `row-resize` inside the panel, then the 8px gap belonging to nobody, then
+ * `grab` on the next panel's titlebar — and the accent line, aligned to the handle's outer end, was
+ * entirely in the clipped region and never drew. The affordance the whole thing was for did not
+ * render.
+ *
+ * A seam is a property of the pair, not of either panel, so it is drawn where the drag guides are:
+ * in the frame's wrapper, outside the clipped box, at the box the geometry publishes. Fixed rather
+ * than absolute, on the chrome layer, because it has to sit over both panels whatever their own
+ * layers are.
+ */
+function laneDivider(id: string): SchemaNode {
+  const geo = (field: string) => ({ $: dockGeometryPath(id, field) });
+  return {
+    type: '$if',
+    props: {
+      condition: { $: `${dockGeometryPath(id, 'below')} && ${dockGeometryPath(id, 'seam')}` },
+      then: {
+        type: 'we-resize-handle',
+        props: {
+          // A vertical lane's seam is a horizontal line, and a horizontal handle is one dragged up
+          // and down — the primitive names the bar, not the drag.
+          orientation: { $: `${dockGeometryPath(id, 'laneAxis')} == 'vertical' ? 'horizontal' : 'vertical'` },
+          align: 'center',
+          // Always drawn: a seam between two panels is a real boundary, and the 3px bar answering
+          // under the pointer is what a splitter looks like everywhere else.
+          line: 'auto',
+          styles: { '--we-resize-handle-thickness': '3px' },
+          position: 'fixed',
+          // Above the two panels it divides, and still under the app's own chrome — see `seamLayer`.
+          zIndex: geo('seamLayer'),
+          top: geo('seam.top'),
+          left: geo('seam.left'),
+          width: geo('seam.width'),
+          height: geo('seam.height'),
+          onResizestart: { $action: 'shellStore.beginDockResize', args: [id] },
+          onResize: { $action: 'shellStore.resizeColumn', args: [id, { $: 'arg.detail.delta' }] },
+          onResizeend: { $action: 'shellStore.endDockResize' },
+        },
+      },
     },
   };
 }

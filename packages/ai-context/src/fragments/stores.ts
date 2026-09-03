@@ -1332,38 +1332,65 @@ export function generateStoresText(entries: StoreEntry[]): string {
         activeSnap:
           "SnapPoint | null — the snap the moving panel would take if dropped now ('top-left' | 'top' | … | 'left'), so that target can light up",
         snapTargets:
-          '{ id, top, left, width, height }[] — every snap target’s box while a panel is being dragged, measured against the room left for it. Empty otherwise',
+          '{ id, top, left, width, height }[] — every snap target’s box while a panel is being dragged, measured against the room left for it. A place a card is already parked at is left out: the question there has stopped being whether and started being where among what is there, which the insert slots answer. Empty otherwise',
         insertSlots:
-          "{ index, edge, mode: 'strip' | 'column', top, left, width, height }[] — the gaps in a strip of panels a dragged panel could join, while one is being dragged over it. Empty otherwise",
-        activeInsert: 'string | null — the slot a drop would take right now, as <edge>:<index>, or null',
+          "{ key, index, edge, lane, mode: 'band' | 'lane' | 'tab', top, left, width, height }[] — every place a dragged panel could land, while one is being dragged. 'band' offers a new lane at that distance inboard, 'lane' a new seat beside the panels in the lane it names, 'tab' the seat itself, to stack behind whatever is showing there. A 'tab' slot naming no edge is a floating panel offered as somewhere to stack. Empty otherwise",
+        activeInsert:
+          "string | null — the slot a drop would take right now, as that slot's `key`. Compare it against slot.key rather than rebuilding the string, which names four things",
+        dragGhost:
+          '{ top, left, width, height, title } | null — the outline following the cursor while one TAB is dragged out of a stack. A panel is moved instead, and so is a whole stack — whose other tabs ride along hidden — so this is null for both of those and between drags',
         panelSupplied:
           "Record<moduleId, boolean> — modules whose panel this interface supplies itself, by declaring a `meta.panels` entry that names the module and carries a `node`. What a module's dock frame asks before drawing its own contents; the module still owns whether the panel is open and how big it is",
+        layoutNames:
+          'string[] — the arrangements saved for the interface on screen, by name, sorted. The three-rung chain has one user slot; these are how to keep more than one — a “recording” and a “reviewing” for the same template. Empty for an interface with none',
+        activeLayout:
+          "string — the saved layout the arrangement on screen is, or '' once anything has been moved since. Mark the matching row as selected",
         layoutDirty:
           'boolean — the interface on screen has been rearranged: one of its panels moved, resized or closed. What a whole-arrangement "reset layout" control is gated on, and not the same question as any layoutPinned entry — a closed panel has no placement, and a panel declared for another route is not among the docks at all. False for an interface declaring no panels',
       },
       actions: {
         beginDockResize:
-          "(id: string): remembers a panel's current size so the drag that follows is measured from it. Wire it to we-resize-handle's resizestart",
+          "(id: string): remembers a panel's current size so the drag that follows is measured from it. Wire it to we-resize-handle's resizestart. For a divider between lane-mates it first makes every member's stored size what is on screen, so the boundary can then travel the whole lane",
         resizeDock:
           "(id: string, side: 'left' | 'right' | 'top' | 'bottom' | 'top-left' | …, dx: number, dy: number): applies a resize drag from that side or corner, in screen pixels since it began. Wire it to resize with { $: 'arg.detail.delta' }",
         endDockResize: '(): ends the drag and persists the size',
         resizeColumn:
-          "(id, dy): moves the boundary between this panel and the one under it in a floating column, giving one what the other loses. What the upper panel's bottom grip calls when it has a neighbour — a boundary belongs to both panels, so only one of them draws it",
+          "(id, delta): moves the boundary between this panel and the next one in its lane, giving one what the other loses. What the earlier panel's trailing grip calls when it has a lane-mate — its bottom in a side lane, its right-hand edge in a top or bottom one. A boundary belongs to both panels, so only one of them draws it",
         fitDock:
           '(id: string): shrinks a panel to the shape its content wants, keeping the width the user chose — only when the module declares an aspect for its panel',
         beginDockMove:
           '(id: string, pointerX: number, pointerY: number): begins moving a panel, remembering where it and the pointer started. A maximised panel shrinks back under the cursor',
         moveDock: '(id: string, dx: number, dy: number): applies a move, in pixels from where beginDockMove was called',
+        beginTabDrag:
+          '(id: string, pointerX: number, pointerY: number): a press on one tab of a stack. Records only — a tab is a click until the pointer travels, and the panel does not leave its seat until the drop',
+        moveTab:
+          '(id: string, dx: number, dy: number): past the drag threshold, shows where the tab would land. The tab itself stays put; only the guides follow',
+        endTabDrag:
+          '(id: string, pointerX: number, pointerY: number): a press that went nowhere brings the tab forward; one that travelled lands it, or leaves it as a card under the pointer',
+        raiseDock:
+          '(id: string): brings a panel in front of the others — what a pointer landing on its frame does, and what a drag or maximising does on its own. The most recently raised panel is the one on top; nothing else decides stacking',
         endDockMove:
           '(id: string): drops the panel — onto the snap or insert slot it is over, or where it is if that is nowhere',
         snapDock:
           "(id: string, snap: SnapPoint): parks a panel at one of the eight positions from a menu — the keyboard's way to move it",
         insertDock:
-          "(id: string, edge: 'left' | 'right' | 'top' | 'bottom', position: number, mode?: 'strip' | 'column'): joins the strip of panels on that edge at that position, renumbering it — what a drop on a gap does",
+          "(id: string, edge: 'left' | 'right' | 'top' | 'bottom', position: number, mode?: 'band' | 'lane' | 'tab', lane?: number | 'float'): puts a panel on that edge, renumbering what it lands among — what a drop does. 'band' opens a lane of its own at that distance inboard; 'lane' takes a new seat at that position along the lane named by `lane` (a distance inboard, or 'float' for the floating one); 'tab' joins the seat at that position, stacking behind whatever is showing there",
         toggleMaximiseDock:
           '(id: string): covers the content region with the panel, or goes back to being a card. Nothing about where the panel was is overwritten while it is on',
         toggleDockDisplace:
           '(id: string): makes the panel push the content aside, or stop. A toggle rather than a setter because a menu item reports only that it was clicked',
+        toggleCollapseDock:
+          '(id: string): folds a panel down to its titlebar, or opens it again. It keeps its place in its lane and its lane-mates take the room; the content is hidden, never unmounted. Refused where there is nowhere for that room to go — a sidebar alone on its edge, or the last open member of a lane. Read dockPlacement[id].canCollapse',
+        breakOut:
+          "(panelId: string, x?: number, y?: number): takes a section out of the template and makes it a panel — floating under the pointer when given one, else at the snap its meta.panels entry named. Refused for a section declared `fixed`. Takes the panel's own id, not the dock id",
+        returnHome:
+          '(panelId: string): puts a broken-out section back in the template at the outlet it came from. What the placeholder’s "Bring back" and the position menu’s "Return to page" call',
+        stackDock:
+          'stackDock(id: string, position: number): stacks a panel onto a floating one so the two share a seat and a tab strip — what a drop into the middle of a float does. Two panels in open space are in no lane, so `position` indexes the floating panels a drop could land on rather than naming one',
+        insertHome:
+          "(id: string, lane: string, position: number): drops a panel into a home lane at that position along it, renumbering the lane. Only a template's own sections land in one, and only where the lane's `accepts` allows",
+        saveArrangementAsTemplate:
+          '(): saves the arrangement on screen as a template of your own — a copy of the schema with the resolved placements written into its meta.panels and nothing else changed. The explicit bridge from arranging to authoring. Resolves true on success. Pair with layoutDirty',
         confirmDestructive:
           '(): runs the destructive action the host is asking about. Host chrome only, for the reason pendingDestructive is: an action able to answer its own confirmation is the confirmation being skipped',
         cancelDestructive: '(): refuses it. The waiting action resolves as though it had been blocked',
@@ -1382,6 +1409,11 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(panelId: string): puts a closed one back. The only way back to a panel that has been closed — it has no titlebar left to ask from — so a template offering a close should offer this too',
         resetTemplateLayout:
           '(): puts every panel of the interface on screen back the way meta.panels declared them, and reopens the ones that were closed. The whole-arrangement counterpart of resetDockToLayout, and the only way back for a closed panel, which has no titlebar to reset itself from. Scoped to the template rather than the route, so a declaration that varies by route is reset once. Pair with layoutDirty',
+        saveLayout:
+          '(name: string): saves the arrangement on screen under a name — its panels’ placements, which tab of each seat is showing, and which panels are closed. Scoped to the template, as placements are. Replaces a layout of that name',
+        applyLayout:
+          '(name: string): puts the arrangement back to a saved layout. What the layout does not mention returns to what meta.panels declared, exactly as a reset would leave it',
+        deleteLayout: '(name: string): forgets a saved layout',
         openSpaceSettings:
           '(): opens that panel without closing it again. For a control that sits on the very fields it leads to (the About view\u2019s pencil), where a toggle would break the promise to show them',
         closeSpaceSettings: '(): closes the space-settings panel',

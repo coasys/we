@@ -263,15 +263,27 @@ export const zTemplateMeta: z.ZodType<TemplateMeta> = z
         z.object({
           id: z.string(),
           module: z.string().optional(),
+          /** Which of a module's panels this places, where it contributes several. */
+          dock: z.string().optional(),
           node: z.custom<SchemaNode>().optional(),
           title: z.string().optional(),
           snap: z
             .enum(['top-left', 'top', 'top-right', 'right', 'bottom-right', 'bottom', 'bottom-left', 'left'])
             .optional(),
           order: z.number().optional(),
+          // How far inboard, where `order` is how far along. See `band` on `TemplatePanel`.
+          band: z.number().optional(),
+          // Position within a shared seat. See `tab` on `TemplatePanel`.
+          tab: z.number().optional(),
+          // Start in the template, at the `$panels` outlet of this name. See `home` on `TemplatePanel`.
+          home: z.string().optional(),
+          // Not promotable. See `fixed` on `TemplatePanel`.
+          fixed: z.boolean().optional(),
           size: z.enum(['sm', 'md', 'lg', 'full']).optional(),
           grow: z.number().optional(),
           displace: z.boolean().optional(),
+          // The smallest usable box, in pixels — a fact about the content. See `min` on `TemplatePanel`.
+          min: z.object({ width: z.number().optional(), height: z.number().optional() }).optional(),
           // One segment or several — see `route` on `TemplatePanel` for why it is a list and why
           // it says *whether* rather than *where*.
           route: z.union([z.string(), z.array(z.string())]).optional(),

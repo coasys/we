@@ -70,6 +70,13 @@ const GraphViewOnDemand = lazy(() => import('../components/GraphHost'));
 */
 const TemplatePanelBodyOnDemand = lazy(() => import('../components/TemplatePanelBody'));
 
+/*
+  A `$panels` outlet — a lane in the template's own flow. The marker is rewritten to this name by
+  `resolveParts` before the renderer sees it, the way `$part` is expanded, because it has to read the
+  shell's placements and render sections with the template's bag, which only a host component can.
+*/
+const PanelLaneOnDemand = lazy(() => import('../components/PanelLane'));
+
 /** One decorative component, and `three` behind it. */
 const WeCubeOnDemand = lazy(() => import('../components/3d/WeCube'));
 
@@ -138,6 +145,8 @@ export const componentRegistry: ComponentRegistry = {
   // Host-only: a template names panels, never this. It is what a panel's *frame* wraps around the
   // template's node so the two can be rendered with different grants.
   TemplatePanelBody: TemplatePanelBodyOnDemand,
+  // Host-only for the same reason: a template writes `$panels`, never this.
+  PanelLane: PanelLaneOnDemand,
   SignalControl,
 
   // @we/block-solid

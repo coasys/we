@@ -416,6 +416,11 @@ interface WalkState {
    */
   contextScope: Set<string>;
   hasRoutesAncestor: boolean;
+  /**
+   * Inside a `meta.panels` entry's node — a section's own tree. What refuses a `$panels` outlet
+   * there: lanes hold sections, sections do not hold lanes.
+   */
+  insidePanel?: boolean;
   /** True only for the root template node and for route entry nodes — the positions the router
    *  actually reads routes arrays from. Child nodes that are not route entries must never own
    *  a routes array; if they do, nothing will render (the router never sees it). */
@@ -478,6 +483,36 @@ function walkNode(
       errors.push({
         path: `${path}.props.anchor`,
         message: '{ type: "$slot" } needs a non-empty "anchor" string naming the anchor it renders',
+        severity: 'error',
+      });
+    }
+    return;
+  }
+
+  /**
+   * `$panels` outlet — a home lane, where a template lets sections live in its own flow.
+   *
+   * Checked for the reason `$slot` is: the host rewrites the marker before the renderer sees it, so
+   * a missing `lane` renders an empty outlet that is indistinguishable from a lane nobody has put a
+   * section in. And refused inside a panel's own node: lanes hold sections, sections do not hold
+   * lanes. That is what keeps a position a few integers, which is what keeps two arrangements
+   * mergeable per panel — make it recursive and the template's declaration stops being a suggestion
+   * a drag can overrule.
+   */
+  if (type === '$panels') {
+    const lane = (n.props as { lane?: unknown } | undefined)?.lane;
+    if (typeof lane !== 'string' || !lane) {
+      errors.push({
+        path: `${path}.props.lane`,
+        message: '{ type: "$panels" } needs a non-empty "lane" string naming the home lane it renders',
+        severity: 'error',
+      });
+    }
+    if (state.insidePanel) {
+      errors.push({
+        path: `${path}.type`,
+        message:
+          '{ type: "$panels" } cannot be inside a panel\'s node: lanes hold sections, sections do not hold lanes',
         severity: 'error',
       });
     }
@@ -1656,6 +1691,21 @@ export function validateSemantic(schema: unknown, context: ValidationContext): V
   };
 
   walkNode(schema, '', context, state, errors);
+
+  /*
+    A template's sections are trees of their own, declared beside the tree rather than in it.
+
+    Walked with the same scope as the root — a section reads the template's stores and its own
+    `$localState`, nothing of the route it happens to render in — and marked so that a `$panels`
+    outlet inside one is refused. That is the one rule that keeps the arrangement model flat.
+  */
+  const panels = (schema as { meta?: { panels?: { id?: unknown; node?: unknown }[] } })?.meta?.panels;
+  if (Array.isArray(panels)) {
+    panels.forEach((panel, index) => {
+      if (!panel || typeof panel !== 'object' || !panel.node || typeof panel.node !== 'object') return;
+      walkNode(panel.node, `meta.panels[${index}].node`, context, { ...state, insidePanel: true }, errors);
+    });
+  }
 
   return {
     valid: errors.filter((e) => e.severity === 'error').length === 0,

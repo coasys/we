@@ -525,3 +525,53 @@ describe('the workshop template’s call selection', () => {
     expect(board?.props?.height).toBeUndefined();
   });
 });
+
+/**
+ * Lanes, proved on the two templates that wanted them.
+ *
+ * A model the showcase does not exercise is a model that drifts. Twitter's sections are the home
+ * lane case; Workshop's left pair are the displacing lane case. Kanban's columns are deliberately
+ * neither — `$each` over collections is content, not lanes — and that absence is the counter-example
+ * that keeps the rule honest.
+ */
+describe('the timeline’s sections', () => {
+  const twitter = showcase.twitterTemplate as Schema & { meta?: { panels?: TemplatePanel[] } };
+  const panels = twitter.meta?.panels ?? [];
+
+  it('start in the right-hand lane, and are real', () => {
+    // Both declare a home; neither is a spacer. The column this replaced was empty on the grounds
+    // that a rail wired to nothing is a lie, so each section here reads a store or a query.
+    expect(panels.map((panel) => panel.home)).toEqual(['right', 'right']);
+    const json = JSON.stringify(panels);
+    expect(json).toContain('spaceStore.members');
+    expect(json).toContain('SignalType');
+  });
+
+  it('name where a click breaks them out to, and a lane on each side to be carried between', () => {
+    expect(panels.every((panel) => panel.snap)).toBe(true);
+    const outlets = JSON.stringify(twitter).match(/"type":"\$panels","props":\{"lane":"(\w+)"/g) ?? [];
+    expect(outlets.map((match) => match.replace(/.*"lane":"(\w+)".*/, '$1')).sort()).toEqual(['left', 'right']);
+  });
+
+  it('keeps the feed as a route, not a section', () => {
+    // A section's node has no router to hand `$routes` its pages. Pinned so nobody moves the routes
+    // into a section for "feed full screen" and gets an empty column.
+    expect(panels.some((panel) => JSON.stringify(panel.node).includes('$routes'))).toBe(false);
+    expect(JSON.stringify((twitter as { children?: unknown }).children)).toContain('$routes');
+  });
+});
+
+describe('the workshop’s left-hand lane', () => {
+  const workshop = showcase.workshopTemplate as Schema & { meta?: { panels?: TemplatePanel[] } };
+  const left = (workshop.meta?.panels ?? []).filter((panel) => panel.snap === 'left');
+
+  it('is one sidebar cut in two — both displacing, sharing a band', () => {
+    expect(left.map((panel) => panel.id)).toEqual(['transcript', 'extraction']);
+    expect(left.every((panel) => panel.displace && panel.band === 0)).toBe(true);
+    expect(left.map((panel) => panel.order)).toEqual([0, 1]);
+  });
+
+  it('gives the transcript a floor, since below it the text is a column of single words', () => {
+    expect(left.find((panel) => panel.id === 'transcript')?.min?.width).toBeGreaterThan(0);
+  });
+});

@@ -17,5 +17,19 @@ export default defineConfig({
   test: {
     environment: 'happy-dom',
     include: ['tests/**/*.test.{ts,tsx}'],
+    /*
+      The hole in the rule above: these are correctness tests whose *duration* was still deciding
+      whether a merge was allowed.
+
+      Every test here mounts a hundred real cards several times over — the equivalence test does it
+      five times, once per rung, because comparing the rungs against each other rather than against a
+      hand-written string is the whole point of the file. That is ~2.2s on a developer's machine and
+      more than twice that on a shared runner, so it sat at half of vitest's 5s default and tipped
+      over it in CI. Nothing was wrong: the assertions are about what rendered, never about how fast.
+
+      So the timeout is set where it only catches a genuine hang. It costs nothing while the tests
+      pass, and a slow runner stops being able to fail a branch that did not touch this package.
+    */
+    testTimeout: 30000,
   },
 });

@@ -29,6 +29,35 @@ const KEYFRAMES_CSS = `
 // opaque ancestor background several levels up, making it invisible. isolation:isolate
 // creates a local stacking context with no other visual side effects (unlike z-index,
 // which needs a position value; unlike opacity<1, which visually changes rendering).
+/**
+ * A panel arriving.
+ *
+ * The content region eases aside to make room for a displacing panel, and the panel appeared at its
+ * full width in the first frame of that — the room opening slowly and the thing filling it instantly.
+ * It cannot be fixed with a transition: the element did not exist a moment ago, so there is no
+ * previous value to interpolate from.
+ *
+ * And it cannot be fixed by wrapping the frame, which is what `$if`'s own transitions do — a panel
+ * whose whole job is to be positioned by the host must not sit inside a box that also positions
+ * itself. So the animation is on the frame directly, keyed off the attribute it already carries, and
+ * runs once when the element is created. Timed with the inset it is arriving into.
+ *
+ * `prefers-reduced-motion` turns it off rather than shortening it: this animation exists to soften a
+ * change of layout, and to a reader who has asked for less movement it *is* the movement.
+ */
+const DOCK_CSS = `
+@keyframes we-dock-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+[data-we-dock-frame] {
+  animation: we-dock-in var(--we-transition-300, 300ms) ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-we-dock-frame] { animation: none; }
+}
+`;
+
 const BG_IMAGE_CSS = `
 [data-we-bg-image] {
   position: relative;
@@ -131,7 +160,7 @@ export const buildInteractiveStateCSSForTest = buildInteractiveStateCSS;
  * regardless of which theme is active.
  */
 export function injectDSInteropStyles() {
-  const css = [BG_IMAGE_CSS, buildInteractiveStateCSS(), buildResponsiveCSS(), KEYFRAMES_CSS].join('\n');
+  const css = [BG_IMAGE_CSS, buildInteractiveStateCSS(), buildResponsiveCSS(), KEYFRAMES_CSS, DOCK_CSS].join('\n');
   let styleEl = document.getElementById(STYLE_EL_ID) as HTMLStyleElement | null;
   if (!styleEl) {
     styleEl = document.createElement('style');

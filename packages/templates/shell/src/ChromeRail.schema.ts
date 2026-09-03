@@ -286,15 +286,27 @@ export const chromeRail: SchemaNode = {
         rtl: '400',
         rbl: '400',
         shadow: 'md',
-        zIndex: 'sticky',
+        /*
+          The layer above the panels, which is what `chrome` is for — and what the sidebar opposite
+          already asks for.
+
+          This said `sticky` and stayed on top by *document order*: it registers after the panels at
+          the same anchor, and they all sat on one layer, so the last one painted won. Panels stopped
+          sharing a layer the moment they could be raised — each takes its own step above `sticky`
+          now — and a raised panel therefore covered this rail and, worse, the pickers that open out
+          of it over the content. Chrome is how you get out of whatever a panel is showing you, so it
+          cannot depend on being registered last: the ladder has a rung for it and this now asks for
+          it. See `z-index.ts`, where that rung was added for exactly this.
+        */
+        zIndex: 'chrome',
         /*
           Out of the way entirely while a panel is maximised.
 
-          It shares the panels' layer and wins on document order — it is registered after them at the
-          same anchor — so a full-screen panel would otherwise have this printed down its right edge,
-          over the position menu and the un-maximise button that recover it. Hidden rather than
-          dropped below the titlebar, which was the first answer: full screen means the app's own
-          furniture is gone, and the way back is the panel's titlebar and the Escape key.
+          It outranks the panels now rather than tying with them, so a full-screen panel would
+          otherwise have this printed down its right edge, over the position menu and the
+          un-maximise button that recover it. Hidden rather than dropped below the titlebar, which
+          was the first answer: full screen means the app's own furniture is gone, and the way back
+          is the panel's titlebar and the Escape key.
         */
         styles: { $: "shellStore.panelMaximised ? { display: 'none' } : null" },
         transition: 'right var(--we-chrome-transition, 300ms) ease, top var(--we-chrome-transition, 300ms) ease',

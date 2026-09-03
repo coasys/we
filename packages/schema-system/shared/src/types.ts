@@ -44,8 +44,51 @@ export type TemplatePanel = {
   title?: string;
   /** Which of the eight positions it opens at. */
   snap?: 'top-left' | 'top' | 'top-right' | 'right' | 'bottom-right' | 'bottom' | 'bottom-left' | 'left';
-  /** Where it sits among the panels sharing its edge — lower is nearer the edge. */
+  /** Where it sits *along* the edge among the panels sharing its lane — lower is nearer the start. */
   order?: number;
+  /**
+   * Which lane it is in, counting inward from the edge — 0 is against the edge.
+   *
+   * The second of an edge's two coordinates: `band` is how far in, `order` is where along. Two panels
+   * that name the same band share one lane and divide the edge between them; a panel that names none
+   * gets a lane of its own.
+   *
+   * Only meaningful with `displace`. A floating panel takes no room, so there is nothing for it to be
+   * inboard of — every float on an edge already shares one lane, which is the column `order` divides.
+   *
+   * "Two sidebars down the left, one above the other, both pushing the content aside" is what this
+   * makes sayable, and it was unreachable before: whether panels stacked inward or divided the edge
+   * was decided by `displace`, which is a question about taking room and not about position.
+   */
+  band?: number;
+  /**
+   * Position within a seat shared with other panels — a tab.
+   *
+   * Two entries with the same lane and the same explicit `order` share a seat: one shows, the rest
+   * stack behind it, and the one showing carries a strip naming them all. `tab` orders the strip.
+   * Absent `order` is a seat of its own, so nothing that never said `order` starts sharing.
+   */
+  tab?: number;
+  /**
+   * Start **in the template**, at the `$panels` outlet of this name, rather than on an edge.
+   *
+   * A section: it renders inline, in the template's flow, with no frame — and the reader can break
+   * it out into a panel, drag it to an edge, fold it, stack it, and put it back. Picture-in-picture
+   * for any region of a page. `order` is its position among the sections in that lane; `snap` is
+   * where it goes when broken out, if the reader does not drag it somewhere.
+   *
+   * `home` is a lane like the edges are, so nothing here touches the tree: the outlet stays where
+   * the author put it, and which sections start in it is data.
+   */
+  home?: string;
+  /**
+   * Not promotable: renders in its lane with no break-out grip, and no drop can move it.
+   *
+   * For a section with no standalone value — the compose box, a page's own header. The test is
+   * whether somebody would want it beside a *different* page; if not, it is arrangement, not a
+   * panel, and a corner button on it is noise.
+   */
+  fixed?: boolean;
   /** How much room it asks for. Resolved against the viewport by the host. */
   size?: 'sm' | 'md' | 'lg' | 'full';
   /**
@@ -57,6 +100,15 @@ export type TemplatePanel = {
   grow?: number;
   /** Push the content aside rather than covering it. Honoured on an edge snap only. */
   displace?: boolean;
+  /**
+   * The smallest box the panel's content is usable in, in pixels. Either side may be omitted.
+   *
+   * The one place a declaration writes pixels, and deliberately: a floor is a fact about the
+   * *content* — below this many pixels the thing inside stops working — not a guess about the
+   * viewport. The host has a default for panels that say nothing, and it is wrong in both directions
+   * often enough that a panel sharing a lane with two others should say where usable stops.
+   */
+  min?: { width?: number; height?: number };
   /**
    * Only while one of these segments is in the path. Absent means every route.
    *

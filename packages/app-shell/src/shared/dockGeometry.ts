@@ -17,15 +17,43 @@
  * They are separate questions now. **Where** is a position the user drags, optionally snapping to one
  * of eight targets. **Whether it displaces** is a toggle. The two meet in one rule:
  *
- * > **A panel that displaces spans its edge; a panel that floats does not.**
+ * > **A panel that displaces spans its lane; a panel that floats does not.**
  *
  * Which is not a restriction but an honesty: a rectangular layout cannot flow around a floating box,
  * so insetting the content for a panel snapped to a *corner* would carve out a full column and leave
  * most of it empty. So displacing is offered on the four edge-centre snaps only, and turning it on
- * makes the panel span that edge — becoming exactly the dock this file used to describe.
+ * makes the panel span its lane across that edge — becoming exactly the dock this file used to
+ * describe, whenever it is the only panel in that lane.
+ *
+ * ## An edge is two axes, not two arrangements
+ *
+ * Which lane, and where along it. A **lane** is a band across the edge, counting inward from it; the
+ * panels sharing one divide it along its length. Two coordinates, `band` and `order`, each meaning
+ * one thing (see {@link FloatPlacement}), and between them they say everything an edge can hold:
+ *
+ * ```
+ *  lanes of one panel each          one lane of two            a lane of one, then a lane of two
+ *  ┌────┬────┬──────────┐    ┌─────────┬──────────┐     ┌────┬─────┬──────────┐
+ *  │    │    │          │    │    A    │          │     │    │  B  │          │
+ *  │ A  │ B  │ content  │    ├─────────┤ content  │     │ A  ├─────┤ content  │
+ *  │    │    │          │    │    B    │          │     │    │  C  │          │
+ *  └────┴────┴──────────┘    └─────────┴──────────┘     └────┴─────┴──────────┘
+ * ```
+ *
+ * The first two are what this file used to be able to draw, and it drew each of them from a different
+ * field: a displacing panel read `order` as *how far inboard* and stacked; a floating one read the
+ * same number as *where along the edge* and divided. So which arrangement you got was decided by the
+ * `displace` flag — a question about whether a panel takes room, answering a question about where it
+ * sits — and the third picture was unreachable from either side. `band` is the coordinate that was
+ * missing; `order` now means one thing wherever it appears.
+ *
+ * Floating panels have one lane per edge and no `band` at all: nothing takes room from them, so there
+ * is nothing to be inboard of. {@link edgeGroups} is where the whole rule lives, and every function
+ * here that used to ask "does this panel displace" to decide an arrangement asks that instead.
  *
  * See `registries/dockRegistry.ts` for why a module does not position itself.
  */
+import { DROP_LINE_THICKNESS } from '@we/drag';
 import type { DockEdge, DockSize } from '@we/module-shared';
 
 /** The collapsed shell sidebar. Mirrors `SHELL_SIDEBAR_WIDTH`, in pixels for arithmetic. */
@@ -169,7 +197,24 @@ export interface Viewport {
  * The edge-centre four double as the displacing positions: they are the only snaps where "push the
  * content aside" has a coherent meaning. See the rule at the top of this file.
  */
-export type SnapPoint = 'top-left' | 'top' | 'top-right' | 'right' | 'bottom-right' | 'bottom' | 'bottom-left' | 'left';
+export type SnapPoint =
+  | 'top-left'
+  | 'top'
+  | 'top-right'
+  | 'right'
+  | 'bottom-right'
+  | 'bottom'
+  | 'bottom-left'
+  | 'left'
+  /**
+   * In the template, at a `$panels` outlet — see {@link FloatPlacement.home}.
+   *
+   * A ninth position rather than a mode: breaking a section out is changing its snap, and putting
+   * it back is snapping to `home`. Every rule the eight already obey — the placement chain, reset,
+   * named layouts, save-as-template — covers it for nothing. Not among {@link SNAP_POINTS}, since it
+   * is not a marker on the screen to drop onto; the outlets are, and offer themselves.
+   */
+  | 'home';
 
 export const SNAP_POINTS: readonly SnapPoint[] = [
   'top-left',
@@ -194,6 +239,362 @@ export type ResizeSide = SnapPoint | 'top' | 'right' | 'bottom' | 'left';
 /** The four that name an edge outright — the ones a panel may displace from. */
 const EDGE_SNAPS = new Set<SnapPoint>(['top', 'right', 'bottom', 'left']);
 
+/** The four edges, for anything that has to ask the same question of each. */
+export const EDGES = ['left', 'right', 'top', 'bottom'] as const satisfies readonly Exclude<DockEdge, null>[];
+
+/**
+ * The z-index every panel counts up from. Mirrors `zIndex.sticky` in `@we/tokens`, as a number for
+ * arithmetic — the same arrangement `SIDEBAR_PX` has with `SHELL_SIDEBAR_WIDTH`, and pinned to it by
+ * `chromeLayering.test.ts`.
+ *
+ * Panels used to share the one `sticky` layer outright, so which of two overlapping ones was on top
+ * was settled by document order — the registry's, which no click could change. Maximise a panel and
+ * anything registered after it went on painting over it. `layerOrder` hands each panel its own step
+ * above this base, and the app's chrome (`zIndex.chrome`) stays above all of them: fifty steps of
+ * headroom, which is more panels than a screen can hold.
+ */
+export const PANEL_LAYER_BASE = 200;
+
+/**
+ * Which panel paints over which: the most recently touched on top.
+ *
+ * `activation` is a monotonic counter per panel, written by whatever counts as touching one — a
+ * pointer landing on it, a drag beginning, maximising. A panel nobody has touched sorts first, in
+ * the order given, which is the registry's — exactly the order everything used to be in, so a
+ * screen where nothing has been clicked yet stacks as it always did.
+ *
+ * One ordering for every panel rather than a band per kind. Maximising is an activation, so a
+ * maximised panel comes to the front; a float clicked afterwards comes forward over it, which is
+ * what clicking it asked for. Displacing panels never overlap a float — a float clears `occupied` —
+ * so they need no ordering among themselves and take part here only so a raised float sits above
+ * the sidebar it is beside.
+ *
+ * Returns each id's layer, as a z-index on the `sticky` band.
+ */
+/**
+ * How specific a drop target is: a boundary beats a region.
+ *
+ * The rule the file already stated for gaps over edge targets — "the more specific answer is the one
+ * the user is pointing at" — made total, because area alone cannot express it. A seat's target is
+ * half a panel and a seam is twenty pixels, so ranked by overlap the seat won every time the two met
+ * and the seams between two displacing lanes were unreachable except in the sliver of panel the
+ * seat's target does not cover. Lines first, then area within a kind.
+ */
+export function targetRank(mode: 'band' | 'lane' | 'home' | 'tab'): number {
+  return mode === 'tab' ? 1 : 0;
+}
+
+/** Whether a point is inside a box. The pointer's half of {@link chooseTarget}'s question. */
+export function contains(point: { x: number; y: number }, rect: Rect): boolean {
+  return point.x >= rect.x && point.x <= rect.x + rect.w && point.y >= rect.y && point.y <= rect.y + rect.h;
+}
+
+/**
+ * Whether folding to the titlebar is on offer for this panel.
+ *
+ * One question underneath: **is there anywhere for the room to go?** A float gives its room back to
+ * the screen, so it may always fold. A displacing panel gives its room to a lane-mate — it spans its
+ * lane and its lane spans the edge, so with nobody to take the space, folding leaves the content
+ * still inset by the full width and a titlebar stranded at the top of an empty column. That is not a
+ * fold, it is hiding the contents of a sidebar that is still there.
+ *
+ * So it turns on `laneCanTakeTheRoom`: some *other* member of this lane is open. That refuses the
+ * lone sidebar, and it refuses the last open member of a lane of two — fold both and the edge keeps
+ * its whole width for two bars, which is the same emptiness arrived at one step later.
+ *
+ * `folded` is what keeps the control from trapping somebody: a panel that is already folded may
+ * always unfold, whatever the lane looks like around it. Without it, folding the second-to-last
+ * member would disable the button that undoes it.
+ *
+ * A maximised panel has nothing to fold into and a section at home has no titlebar to fold to, so
+ * both are refused outright.
+ */
+export function canFold(
+  box: { floating: boolean; maximised?: boolean; home?: boolean },
+  folded: boolean,
+  laneCanTakeTheRoom: boolean,
+): boolean {
+  if (box.maximised || box.home) return false;
+  if (box.floating) return true;
+  return folded || laneCanTakeTheRoom;
+}
+
+/**
+ * Whether a lane has an open **seat** other than this one — the room a fold would go to.
+ *
+ * Seats, not panels, and that distinction is the whole of it. A lane divides its length between
+ * seats; the panels sharing one seat are tabs and share its box, so folding one gives the other
+ * nothing — it is already showing in exactly that space, or hidden behind it. Asked about panels,
+ * two tabs of one seat each looked like somewhere for the other's room to go, and folding either
+ * left the edge at full width around an empty box.
+ */
+export function roomElsewhere(seatOpen: readonly boolean[], seat: number): boolean {
+  return seatOpen.some((open, index) => open && index !== seat);
+}
+
+/**
+ * What a seat-mate becomes when the panel it shares a titlebar with is dragged somewhere.
+ *
+ * A titlebar belongs to the seat, not to the one panel showing in it, so dragging it takes the stack.
+ * Copied rather than re-arranged: a seat *is* "the same lane, and the same `order` in it", so handing
+ * the mates the coordinates the drop settled on re-forms the stack around the panel that led.
+ *
+ * Everything else is the mate's own and is kept — its size, its floor, and its `tab`, so the strip
+ * comes out in the order it went in. `band` and `home` are **dropped** rather than copied when the
+ * leader has none: a stale band on a panel that has just landed as a float would claim a lane the
+ * next time it displaced, which is the same silent inheritance `insertDock` clears for.
+ */
+export function followSeat(mate: FloatPlacement, landed: FloatPlacement): FloatPlacement {
+  const { band: _band, home: _home, seat: _seat, ...rest } = mate;
+  const loose = edgeOfSnap(landed.snap) === null;
+  return {
+    ...rest,
+    snap: landed.snap,
+    displace: landed.displace,
+    order: landed.order,
+    ...(landed.band !== undefined ? { band: landed.band } : {}),
+    ...(landed.home !== undefined ? { home: landed.home } : {}),
+    ...(landed.seat !== undefined ? { seat: landed.seat } : {}),
+    /*
+      A loose seat carries its own box, because nothing else will compute one.
+
+      In a lane the members' sizes are the lane's business, so copying them would fight it. Off every
+      lane there is no such authority: each member resolves from its own placement, so a tab brought
+      forward would appear at whatever size and place it last had somewhere else. They share one box
+      by holding one box.
+    */
+    ...(loose ? { x: landed.x, y: landed.y, w: landed.w, h: landed.h } : {}),
+  };
+}
+
+/**
+ * The floor a **seat** has to clear: the largest its members ask for, per axis.
+ *
+ * A seat is one box with several panels in it, and only one of them is showing — so asking the lane
+ * for the showing member's floor sizes the box for whoever happens to be in front. Bring another tab
+ * forward and its own floor applies instead, and the box changes size in answer to a question about
+ * which content to read. The seat has to be big enough for everything in it, which is the largest
+ * floor among them; a panel that wants less is simply given more.
+ *
+ * Absent on every member stays absent, rather than becoming a floor of zero — the host's own default
+ * is what applies then, and it is `floorOf` that knows it.
+ */
+export function widestMin(mins: readonly (DockMin | undefined)[]): DockMin | undefined {
+  const largest = (axis: 'width' | 'height') => {
+    const given = mins.map((min) => min?.[axis]).filter((value): value is number => value !== undefined);
+    return given.length > 0 ? Math.max(...given) : undefined;
+  };
+  const width = largest('width');
+  const height = largest('height');
+  if (width === undefined && height === undefined) return undefined;
+  return { ...(width !== undefined ? { width } : {}), ...(height !== undefined ? { height } : {}) };
+}
+
+/**
+ * Whether a snap target beats the insert slot a drag is also over.
+ *
+ * The two families are arbitrated separately — `chooseTarget` among the slots, `snapCandidate` among
+ * the eight — and then the slot won outright, which is right almost everywhere: a slot describes a
+ * place *within* an arrangement and is the more specific answer. But "start a lane on this edge" is
+ * a line the whole width of the screen, so a tall panel reaching the bottom of it covered that line
+ * while its pointer sat squarely in the bottom-right corner target, and the corner could not be
+ * reached from below any more than it could from the side.
+ *
+ * So the rule that already decides *within* each family decides between them too: **the pointer wins
+ * over mere coverage, and the smaller box wins the pointer.** A band line is enormous and a corner
+ * target small, so pointing at the corner means the corner; pointing anywhere else along that edge
+ * still means the lane.
+ */
+export function snapBeatsSlot(snapHit: Rect | null, slotHit: Rect | null, pointer: { x: number; y: number }): boolean {
+  if (!snapHit || !contains(pointer, snapHit)) return false;
+  if (!slotHit || !contains(pointer, slotHit)) return true;
+  return snapHit.w * snapHit.h < slotHit.w * slotHit.h;
+}
+
+/**
+ * Which seat of a lane a panel snapping to an edge should take.
+ *
+ * A snap says *this edge*, and says nothing about where along it — but membership of a seat is
+ * `order`, so the number the panel happens to be carrying decides whether it lands beside what is
+ * there or stacked into it. Both of the answers it can arrive with are wrong on their own:
+ *
+ * - **Undefined** means "a seat of my own", which is right for one panel and wrong for a stack: each
+ *   member asks for its own seat, and the stack fans out into a column of separate panels. A stack
+ *   assembled in open space has no `order` at all, since a loose seat is named rather than numbered
+ *   — which is why this only happened to *some* stacks.
+ * - **Stale** — a number left over from the lane it came from — silently merges it into whatever
+ *   seat of the target lane happens to hold that number.
+ *
+ * So: keep the number when the lane has no one at it, and take a fresh seat at the end otherwise.
+ * Landing *between* two panels is what the seams are for; a snap has no way to say it.
+ */
+export function seatOrder(mine: number | undefined, taken: readonly number[]): number {
+  if (mine !== undefined && !taken.includes(mine)) return mine;
+  return taken.length > 0 ? Math.max(...taken) + 1 : 0;
+}
+
+/**
+ * The snap points a panel is already parked at.
+ *
+ * A snap target says **take this place**, which is a useful thing to offer while the place is empty
+ * and an ambiguous one afterwards: with a panel already there the question has stopped being whether
+ * and started being *where among what is there*, and the seams either side of it and the seat itself
+ * are the targets that answer that. Worse, the target is drawn over the very panel being aimed at, so
+ * it hides the finer answers behind the coarse one.
+ *
+ * So an occupied snap point stops being offered, and what you get instead is the arrangement — a
+ * seam to make a column, or the middle of the card to stack. Nothing is lost by it: the only thing
+ * the raw target could still do is park a second card exactly on top of the first, with no strip
+ * naming either.
+ *
+ * A **displacing** panel takes no snap point. It is a lane rather than a card, and snap targets are
+ * measured in the room left over once the lanes have taken theirs — so the target at that edge is
+ * inboard of the sidebar, and is genuinely still free.
+ */
+export function takenSnaps(
+  panels: readonly { id: string; placement: FloatPlacement; hidden?: boolean }[],
+  exclude: readonly string[],
+): SnapPoint[] {
+  return panels
+    .filter((panel) => !exclude.includes(panel.id) && !panel.hidden)
+    .filter((panel) => !panel.placement.displace && !panel.placement.maximised)
+    .map((panel) => panel.placement.snap)
+    .filter((snap): snap is SnapPoint => snap !== null && snap !== 'home');
+}
+
+/**
+ * One seat, one size.
+ *
+ * A seat is a single surface with several things in it, so the size belongs to the seat rather than
+ * to whichever of them happens to be showing. Left to themselves the members each keep the size they
+ * arrived with, and since a lane solves its length from the member currently showing, clicking along
+ * the strip made the panel jump to a different shape on every tab — the arrangement rearranging
+ * itself in response to a question about which content to read.
+ *
+ * So joining a seat means taking its size, and resizing one member means resizing all of them.
+ * Position is left alone here: a lane computes that, and a loose seat is handed it by `followSeat`.
+ *
+ * Both spellings of size travel, because a panel stores whichever its situation uses: a card carries
+ * `w`/`h`, and a displacing one carries the thickness it holds its edge to.
+ */
+export function seatSize(mate: FloatPlacement, seat: FloatPlacement): FloatPlacement {
+  const { thicknessX: _x, thicknessY: _y, ...rest } = mate;
+  return {
+    ...rest,
+    w: seat.w,
+    h: seat.h,
+    ...(seat.thicknessX !== undefined ? { thicknessX: seat.thicknessX } : {}),
+    ...(seat.thicknessY !== undefined ? { thicknessY: seat.thicknessY } : {}),
+  };
+}
+
+/**
+ * Every seat that exists **off** the lanes: the floating stacks, and the ones parked in a corner.
+ *
+ * ## Why these have to name themselves
+ *
+ * A seat in a lane needs no name. It IS a place — a `band` inboard and an `order` along — so two
+ * panels giving the same answer are in the same place by arithmetic, which is what lets a template
+ * declare a stack (`meta.panels`, two entries, one `order`) without inventing an identifier for it.
+ *
+ * A panel in open space has no lane and therefore no such place, and the tempting shortcut — keep
+ * using `order` and let two floats sharing a number be a stack — is wrong in a way that would take a
+ * while to see: `order` is *left over* on a panel dragged out of a lane, so two unrelated floats that
+ * happened to come from position 0 of two different edges would silently fuse into one surface, each
+ * hiding the other. So a loose seat carries a `seat` key instead, written only when a stack is
+ * actually put somewhere loose, and unique by construction.
+ *
+ * Membership is therefore implied where there is something to imply it from, and declared where
+ * there is not. Nothing else in the model changes: a lane seat never carries a key, `meta.panels`
+ * cannot spell one, and a stack dragged back onto an edge drops it and goes back to being arithmetic.
+ */
+export function looseSeats(panels: readonly { placement: FloatPlacement; index: number }[]): number[][] {
+  const groups = new Map<string, number[]>();
+  for (const panel of panels) {
+    if (panel.placement.seat === undefined) continue;
+    const at = groups.get(panel.placement.seat);
+    if (at) at.push(panel.index);
+    else groups.set(panel.placement.seat, [panel.index]);
+  }
+  return [...groups.values()].filter((members) => members.length > 1);
+}
+
+/**
+ * A placement leaving every lane, for a panel travelling alone.
+ *
+ * `band`, `order` and `home` are coordinates in something — a lane, a seat, an outlet in the page —
+ * and a card in open space is in none of them. Left behind they are merely stale, which is how a
+ * panel dragged out of position 0 of one edge and dropped in the middle keeps saying `order: 0`
+ * about a lane it is not in. `seat` goes for the same reason and one more: it is the one coordinate
+ * whose staleness would be *visible*, fusing this card into a stack it has just been pulled out of.
+ */
+export function unlaned(placement: FloatPlacement, snap: SnapPoint | null): FloatPlacement {
+  const { band: _band, order: _order, home: _home, seat: _seat, ...rest } = placement;
+  return { ...rest, snap, displace: false };
+}
+
+/** Anything a drop can land on: what kind of place it is, and the box you have to be over. */
+export interface DropCandidate {
+  mode: 'band' | 'lane' | 'home' | 'tab';
+  hit: Rect;
+}
+
+/**
+ * Which of the places a dragged panel could land it is actually being offered.
+ *
+ * ## The pointer first, and then the *smallest* thing it is inside
+ *
+ * Targets overlap by design — an edge's "start a lane here" band runs the whole width of the screen
+ * across the top, and the seam above the first panel of a left-hand lane sits inside it. Both are
+ * real offers and both contain the pointer at the top-left corner, so something has to choose, and
+ * the honest rule is the one this file already stated for gaps over edge targets: **the more
+ * specific answer is the one the user is pointing at.**
+ *
+ * Specific is measurable — it is the smaller box. A lane's seam is 300×20 where the edge band behind
+ * it is 1520×24, and a seat's "make a tab of this" region is half a panel, so ranking by size gets
+ * every pair right without a table of kinds to keep in step as kinds are added. Ranked by *area
+ * covered* instead, the band won every time and the seam above a docked sidebar could not be reached
+ * at all: dropping above the top panel of a left-hand stack silently docked to the top of the screen.
+ *
+ * ## And the panel's own rectangle, when the pointer is over nothing
+ *
+ * The fallback is the rule this replaced, kept for the case it was written for: a panel wide enough
+ * to lie over two lines at once, with the pointer between them, takes the one it covers most rather
+ * than the first in the list. Lines are preferred to regions there, since a boundary is still the
+ * more specific of the two.
+ */
+export function chooseTarget<T extends DropCandidate>(
+  candidates: readonly T[],
+  pointer: { x: number; y: number },
+  rect: Rect,
+): T | undefined {
+  const area = (box: Rect) => box.w * box.h;
+  return candidates
+    .map((candidate) => ({
+      candidate,
+      under: contains(pointer, candidate.hit),
+      covered: overlap(rect, candidate.hit),
+    }))
+    .filter((entry) => entry.under || entry.covered > 0)
+    .sort(
+      (a, b) =>
+        Number(b.under) - Number(a.under) ||
+        (a.under
+          ? area(a.candidate.hit) - area(b.candidate.hit)
+          : targetRank(a.candidate.mode) - targetRank(b.candidate.mode) || b.covered - a.covered),
+    )[0]?.candidate;
+}
+
+export function layerOrder(
+  ids: readonly string[],
+  activation: Record<string, number | undefined>,
+): Record<string, number> {
+  const ranked = ids
+    .map((id, index) => ({ id, index, at: activation[id] ?? Number.NEGATIVE_INFINITY }))
+    .sort((a, b) => ascending(a.at, b.at) || a.index - b.index);
+  return Object.fromEntries(ranked.map((entry, layer) => [entry.id, PANEL_LAYER_BASE + layer]));
+}
+
 /** The edge a snap sits on, or `null` for a corner. */
 export function edgeOfSnap(snap: SnapPoint | null): DockEdge {
   return snap && EDGE_SNAPS.has(snap) ? (snap as DockEdge) : null;
@@ -216,16 +617,87 @@ export interface FloatPlacement {
   /** Push the content aside rather than covering it. Honoured on an edge-centre snap only. */
   displace: boolean;
   /**
-   * Where this panel sits among the others sharing its edge — lower is nearer that edge.
+   * Where this panel sits among the ones it shares a **lane** with — its position *along* the edge.
    *
-   * A dock strip is an ordered list, and without a number for that the order was the registry's:
+   * An arrangement is an ordered list, and without a number for that the order was the registry's:
    * whichever module registered first sat outermost, for ever. Dragging a panel out and back put it
-   * exactly where it had been, because nothing about the drop said *where in the strip*.
+   * exactly where it had been, because nothing about the drop said *where* it was going.
    *
-   * Absent until somebody reorders that edge, when every panel on it is numbered at once — sequential
+   * Absent until somebody reorders that lane, when every panel in it is numbered at once — sequential
    * integers rather than fractions, so the list cannot drift into needing a renumber later.
+   *
+   * A displacing panel with no {@link band} is alone in its lane, so there are no lane-mates for this
+   * to rank and it ranks the *lanes* instead. That is what the number meant before lanes existed, so
+   * nothing written against the old model changes meaning.
    */
   order?: number;
+  /**
+   * Which **lane** this panel is in, counting inward from its edge — 0 is against the edge.
+   *
+   * The second of the two coordinates an edge needs, and the one that was missing. Where a panel sits
+   * on an edge is two questions — *how far inboard* and *where along it* — and until this existed
+   * `order` answered whichever of them the `displace` flag selected. So a displacing panel could only
+   * ever stack inward and a floating one could only ever divide the edge: the arrangement was decided
+   * by a flag about something else entirely, and "two panels one above the other, both pushing the
+   * content aside" was unreachable however either was written.
+   *
+   * They are separate now, and both mean one thing wherever they appear: `band` is which lane,
+   * `order` is where in it. The old two arrangements fall out as the two degenerate cases — a strip is
+   * lanes of one panel each, a column is one lane of many — and the case between them is the one this
+   * makes expressible.
+   *
+   * **Absent means a lane of this panel's own**, placed after every explicit lane. That is what
+   * preserves the behaviour of everything that predates lanes: two module panels opening on one edge
+   * with nobody having arranged them still stack inward, rather than silently halving each other's
+   * height the first time both are open. Joining a lane is something somebody does — a drop on a seam,
+   * or a template saying so — never something that happens by default.
+   *
+   * Meaningless while the panel floats. A float takes no room, so there is nothing for it to be
+   * inboard *of*; every floating panel on an edge shares the one lane over the top of whatever is
+   * displacing there. See {@link edgeGroups}, which is where that rule lives.
+   */
+  band?: number;
+  /**
+   * Position within a **seat** shared with other panels — a tab.
+   *
+   * Two panels with the same lane and the same explicit `order` share a seat: one shows, the others
+   * are stacked behind it, and the titlebar of the one showing carries a strip naming them all.
+   * `tab` orders that strip; which one is showing is whichever was most recently touched (see
+   * `layerOrder` — the same question as which float is on top, answered the same way).
+   *
+   * The overflow valve. Lanes raised how many panels an edge can hold at once; a seat is how it
+   * holds more than it can show. Absent `order` is a seat of the panel's own — the same rule as
+   * `band`, so nothing that never said `order` starts sharing.
+   */
+  tab?: number;
+  /**
+   * Which **loose seat** this panel is in — a stack that is floating, or parked in a corner.
+   *
+   * The one place membership is declared rather than implied, and only because there is nothing left
+   * to imply it from. In a lane a seat IS a place (`band` inboard, `order` along), so two panels
+   * giving the same answer are in the same place by arithmetic — which is what lets `meta.panels`
+   * declare a stack without inventing a name for one. Off every lane there is no such place, so the
+   * seat carries a key instead.
+   *
+   * Written only when a stack is actually dropped somewhere loose, and dropped again the moment it
+   * lands back on an edge. A template cannot spell one: it declares seats the arithmetic way, in a
+   * lane, which is the only kind it can know about. See `looseSeats` for why reusing `order` here
+   * would fuse unrelated floats into each other.
+   */
+  seat?: string;
+  /**
+   * Which `$panels` outlet the panel sits in while its snap is `home` — a **home lane**.
+   *
+   * Picture-in-picture, generalised from `<video>` to any region of a template. A section declared
+   * `home: 'sidebar'` renders inline in the template's flow, with no frame, at the outlet of that
+   * name; breaking it out is `snap: 'left'` and putting it back is `snap: 'home'`, and `order` is
+   * its position among the sections in that lane. None of it touches the template's tree — a home
+   * lane is a lane, with the same two coordinates, in the template rather than on an edge.
+   *
+   * Kept while the panel is away, so "bring back" knows where. Cleared by a drop into a *different*
+   * home lane, which is the only way a panel changes lanes.
+   */
+  home?: string;
   /**
    * This panel's share of the *spare* room in a floating column, relative to its neighbours.
    *
@@ -273,6 +745,27 @@ export interface FloatPlacement {
    * exactly the corner and size it was at.
    */
   maximised?: boolean;
+  /**
+   * Folded down to its titlebar, content hidden — the way a panel stays where it is while getting
+   * out of the way.
+   *
+   * Its extent along its lane becomes the titlebar's and its grow becomes zero, so the lane-mates
+   * take the room; the content is hidden rather than unmounted, so a transcript keeps its scroll and
+   * a call keeps its streams. Offered wherever there is somewhere for that room to go — see
+   * {@link canFold}. This is also what `MIN_FLOAT_PX` was silently preventing: a card could not be
+   * dragged down to its own bar.
+   */
+  collapsed?: boolean;
+}
+
+/**
+ * The smallest box a panel's content is usable in. Mirrors `DockMin` in the module contract,
+ * restated here because this file does the arithmetic and should not depend on the contract to
+ * describe two numbers.
+ */
+export interface DockMin {
+  width?: number;
+  height?: number;
 }
 
 export interface DockRequest {
@@ -281,6 +774,13 @@ export interface DockRequest {
   size: DockSize;
   /** The module asked to overlay rather than inset. The host may force this on; never off. */
   float: boolean;
+  /**
+   * Where usable stops, per axis — the panel's own floor, over the host's default.
+   *
+   * On the request rather than the placement because it is a fact about the content, not about
+   * where somebody put it: it does not move with the panel and is not the reader's to change.
+   */
+  min?: DockMin;
   /**
    * Where the user has put this panel, if they ever have.
    *
@@ -332,6 +832,22 @@ export const FRAME_BORDER_PX = 2;
 /** Everything between a panel's declared box and the box its content gets. */
 export const PANEL_CHROME = { x: FRAME_BORDER_PX, y: TITLE_BAR_PX + FRAME_BORDER_PX };
 
+/** How tall a collapsed panel is: its titlebar and the frame's border, and nothing else. */
+export const COLLAPSED_PX = TITLE_BAR_PX + FRAME_BORDER_PX;
+
+/**
+ * The least a panel may be along one axis: its own floor if it declared one, else the host's.
+ *
+ * A collapsed panel floors at its titlebar on the axis its lane divides, whatever it declared —
+ * folding is the one time a panel is deliberately smaller than usable, since the point is that its
+ * content is not showing.
+ */
+export function floorOf(min: DockMin | undefined, axis: 'w' | 'h', spanning: boolean, collapsed = false): number {
+  if (collapsed) return COLLAPSED_PX;
+  const declared = axis === 'w' ? min?.width : min?.height;
+  return declared ?? (spanning ? MIN_DOCK_PX : MIN_FLOAT_PX);
+}
+
 /**
  * A resolved dock box.
  *
@@ -342,16 +858,82 @@ export const PANEL_CHROME = { x: FRAME_BORDER_PX, y: TITLE_BAR_PX + FRAME_BORDER
 export interface DockGeometry {
   edge: DockEdge;
   /**
-   * The panel directly under this one in a floating column, or `''`.
+   * The panel directly after this one in its lane, or `''` — under it in a side lane, to its right in
+   * a top or bottom one.
    *
-   * A boundary between two stacked panels belongs to both of them, which two independent edge grips
+   * A boundary between two lane-mates belongs to both of them, which two independent edge grips
    * cannot say: they sit a few pixels apart, each resizing only its own panel, so the pair reads as
-   * two lines and behaves as neither. The upper panel's bottom grip becomes the divider for the pair
-   * and the lower one's top grip goes — see `above`.
+   * two lines and behaves as neither. The earlier panel's trailing grip becomes the divider for the
+   * pair and the later one's leading grip goes — see `above`.
+   *
+   * Named for the vertical case because that is the one people picture, and every left or right edge
+   * is one. {@link laneAxis} is what says which it actually is.
    */
   below?: string;
-  /** The panel directly above this one in a floating column, or `''`. See {@link below}. */
+  /** The panel directly before this one in its lane, or `''`. See {@link below}. */
   above?: string;
+  /**
+   * Which way this panel's lane runs, or `''` when it has no lane-mates.
+   *
+   * `'vertical'` on a left or right edge, where a lane divides the height and the divider lies along
+   * the bottom of each panel; `'horizontal'` on a top or bottom one, where it divides the width and
+   * the divider stands down the right-hand side.
+   *
+   * Published rather than derived by the frame, because the frame is *schema*: it can read a field
+   * and cannot ask which edge a snap belongs to. Without it the divider was drawn on the bottom
+   * whichever way the lane ran, so a column along the top edge offered a horizontal grip between two
+   * panels that were side by side, and dragging it wrote a height nothing in that arrangement reads.
+   */
+  laneAxis?: 'vertical' | 'horizontal' | '';
+  /**
+   * In the template at its `$panels` outlet rather than in the dock layer. The frame renders
+   * nothing for it; the outlet renders the body. See {@link FloatPlacement.home}.
+   */
+  home?: boolean;
+  /**
+   * Stacked behind another panel in a shared seat — a tab that is not showing. The frame hides
+   * itself entirely while this is true; hides, never unmounts, so a call in a background tab keeps
+   * its streams. See {@link FloatPlacement.tab}.
+   */
+  hidden?: boolean;
+  /**
+   * The seat's members, for the panel that is showing to draw as a strip. Empty for a seat of one.
+   * `active` marks this panel's own entry; pressing another is `raiseDock`, which is what decides
+   * who shows.
+   */
+  tabs?: { id: string; title: string; active: boolean }[];
+  /**
+   * Folded to its titlebar. The frame hides the content while this is true — hides, never unmounts.
+   * See {@link FloatPlacement.collapsed}.
+   */
+  collapsed?: boolean;
+  /** Whether folding is on offer — see {@link canFold}. What greys the titlebar's fold control. */
+  canCollapse?: boolean;
+  /**
+   * The boundary between this panel and the next one in its lane, as a box to put a divider in.
+   * Absent when there is no next panel. See {@link seamBetween}.
+   *
+   * Published rather than left to the frame, because the frame cannot draw it: the divider used to
+   * be a grip inside the earlier panel's box, straddling its bottom edge by six pixels — and the box
+   * is `overflow: hidden`, so the outer half and the whole of the accent line were clipped. A seam is
+   * a property of the pair, drawn from outside both.
+   */
+  seam?: { top: string; left: string; width: string; height: string };
+  /**
+   * The layer the seam's divider paints at: above both panels it divides.
+   *
+   * It cannot take a layer *name*. A displacing lane has no gap, so the divider straddles the shared
+   * edge and overlaps both panels — and the two carry their own steps now, so a fixed `sticky` would
+   * fall under whichever had been raised. `chrome` would clear them and tie with the rail, which is
+   * the layer that has to stay reachable above everything a panel does.
+   */
+  seamLayer?: number;
+  /**
+   * The z-index this panel paints at — its step above `PANEL_LAYER_BASE`, by how recently it was
+   * touched. See {@link layerOrder}. The frame binds its `zIndex` to this rather than to a layer
+   * name, which is what lets a click bring a panel forward.
+   */
+  layer?: number;
   /**
    * Which side of the panel carries the width handle, and which the height handle.
    *
@@ -523,6 +1105,9 @@ export function placementFromDeclaration(
   declared: {
     snap?: SnapPoint;
     order?: number;
+    band?: number;
+    tab?: number;
+    home?: string;
     grow?: number;
     displace?: boolean;
     size?: DockSize;
@@ -530,8 +1115,13 @@ export function placementFromDeclaration(
   viewport: Viewport,
   occupied: ContentInset = NO_INSET,
 ): FloatPlacement {
-  const snap = declared.snap ?? 'bottom-right';
-  const edge = edgeOfSnap(snap);
+  /*
+    A declared `home` starts the panel in the template, whatever else it says. The `snap` it names
+    is then where it goes when broken out (see `breakOut`), read back from the declaration; the
+    placement itself only ever holds where the panel *is*.
+  */
+  const snap: SnapPoint = declared.home ? 'home' : (declared.snap ?? 'bottom-right');
+  const edge = edgeOfSnap(declared.snap ?? 'bottom-right');
   const region = contentRegion(viewport, occupied);
 
   /*
@@ -558,6 +1148,15 @@ export function placementFromDeclaration(
     // arrangement the layout cannot honour.
     displace: Boolean(declared.displace) && edge !== null,
     ...(declared.order !== undefined ? { order: declared.order } : {}),
+    /*
+      Carried only when the template said so, because absent is a meaning of its own: a lane of this
+      panel's own. Defaulting it to 0 here would put every displacing panel an interface declares into
+      one lane and halve them against each other, which is the opposite of what a declaration that
+      says nothing about lanes is asking for.
+    */
+    ...(declared.band !== undefined ? { band: declared.band } : {}),
+    ...(declared.tab !== undefined ? { tab: declared.tab } : {}),
+    ...(declared.home !== undefined ? { home: declared.home } : {}),
     ...(declared.grow !== undefined ? { grow: declared.grow } : {}),
   };
 }
@@ -621,6 +1220,10 @@ export function snapOrigin(
       return { x: left, y: bottom };
     case 'left':
       return { x: left, y: middleY };
+    // Never asked: a panel at home has no snap origin, since it is not in the dock layer. Answered
+    // anyway so the switch stays total — the corner every float falls back to.
+    case 'home':
+      return { x: right, y: bottom };
   }
 }
 
@@ -657,6 +1260,56 @@ export function snapTargetRects(
   return SNAP_POINTS.map((snap) => ({ id: snap, ...snapOrigin(snap, w, h, viewport, occupied, chrome), w, h }));
 }
 
+/**
+ * How far inboard of an edge a dragged panel still counts as being *at* that edge.
+ *
+ * The distance past the last lane, so an edge holding two 300px lanes reaches 760px in and an
+ * empty one 160px. Wide enough that the seams of the innermost lane are reachable without the
+ * targets going dark under the pointer; narrow enough that a panel carried across the middle of
+ * the screen is not offered every seam on every edge at once.
+ */
+export const EDGE_REACH_PX = 160;
+
+/**
+ * The band along an edge inside which that edge's targets are offered — the lanes already there,
+ * plus {@link EDGE_REACH_PX} past them.
+ *
+ * ## One target family at a time
+ *
+ * A drag used to show everything at once: eight snap markers, a line for every lane boundary on
+ * every edge, a seam for every seat, and now a wash over every seat and every outlet. The
+ * arbitration picked correctly, but nobody could read it. Every application that solves this
+ * offers targets *where the pointer is* — VS Code lights one region, Photoshop draws one line — so
+ * an edge's targets appear while the dragged panel overlaps this band and not otherwise. The snap
+ * markers stay, being small and the map of where the bands are.
+ *
+ * `depth` is what the edge's lanes already take (`contentInset` for that edge).
+ */
+export function edgeZone(edge: Exclude<DockEdge, null>, viewport: Viewport, depth: number): Rect {
+  const region = contentRegion(viewport);
+  const reach = depth + EDGE_REACH_PX;
+  switch (edge) {
+    case 'left':
+      return { x: region.left, y: 0, w: reach, h: viewport.height };
+    case 'right':
+      return { x: viewport.width - reach, y: 0, w: reach, h: viewport.height };
+    case 'top':
+      return { x: 0, y: 0, w: viewport.width, h: reach };
+    case 'bottom':
+      return { x: 0, y: viewport.height - reach, w: viewport.width, h: reach };
+  }
+}
+
+/** Whether a dragged box has reached an edge's band. See {@link edgeZone}. */
+export function nearEdge(rect: Rect, edge: Exclude<DockEdge, null>, viewport: Viewport, depth: number): boolean {
+  return overlap(rect, edgeZone(edge, viewport, depth)) > 0;
+}
+
+/** A box grown by the same margin on every side — how an outlet reaches for a panel carried near it. */
+export function grown(rect: Rect, by: number): Rect {
+  return { x: rect.x - by, y: rect.y - by, w: rect.w + by * 2, h: rect.h + by * 2 };
+}
+
 /** Area of the intersection of two boxes; zero when they do not touch. */
 function overlap(a: Rect, b: Rect): number {
   const x = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x));
@@ -680,11 +1333,35 @@ export function snapCandidate(
   viewport: Viewport,
   occupied: ContentInset = NO_INSET,
   chrome: ContentInset = DEFAULT_FLOAT_CHROME,
+  pointer?: { x: number; y: number },
 ): SnapPoint | null {
+  /*
+    The pointer decides, and the panel's shape only breaks a tie it cannot answer.
+
+    A card's silhouette is not a statement of intent: it hangs from wherever the titlebar happened to
+    be grabbed, so a tall panel carried to a corner lies across that corner's target AND the edge
+    centre's at once, and by area the centre wins. The corner became unreachable — and *how* tall the
+    panel was decided the answer to a question the panel is not being asked. The pointer is the only
+    thing under the hand that says "here".
+
+    The targets are small and do not touch one another, so containment needs no tie-break: at most
+    one of them holds the pointer. Overlap stays as the fallback for a pointer over none of them,
+    which is most of a drag — it is what lets a panel be thrown roughly at an edge without aiming —
+    and the gaps between the targets are what keep "drop it in the middle" reachable at all.
+
+    This is `chooseTarget`'s rule, arrived at for the insert slots for the same reason. The whole drop
+    system now answers "which of these did you mean" the same way.
+  */
+  const targets = snapTargetRects(viewport, occupied, chrome);
+  if (pointer) {
+    const under = targets.find((target) => contains(pointer, target));
+    if (under) return under.id;
+  }
+
   let best: SnapPoint | null = null;
   let bestArea = 0;
 
-  for (const target of snapTargetRects(viewport, occupied, chrome)) {
+  for (const target of targets) {
     const area = overlap(rect, target);
     if (area > bestArea) {
       bestArea = area;
@@ -827,76 +1504,482 @@ export function rectOf(box: DockGeometry | undefined, viewport: Viewport, fallba
   };
 }
 
+/** Ascending, and safe over two infinities — which `a - b` is not, and this is full of them. */
+const ascending = (a: number, b: number) => (a === b ? 0 : a < b ? -1 : 1);
+
+/** Where a panel sits along its lane. Absent goes last, ties keep the order they arrived in. */
+const alongLane = <T extends { placement: FloatPlacement }>(a: T, b: T) =>
+  ascending(a.placement.order ?? Number.POSITIVE_INFINITY, b.placement.order ?? Number.POSITIVE_INFINITY);
+
+/** One lane's worth of panels, and whether that lane takes room. */
+export interface EdgeGroup<T> {
+  /** Whether this lane insets the content. False for the floating lane, which covers it instead. */
+  displacing: boolean;
+  /** Which lane it is, counting inward from the edge — `null` for a lane nobody named. */
+  band: number | null;
+  /** Its panels, in the order they sit *along* the edge — every seat's members, seat by seat. */
+  members: T[];
+  /**
+   * The same panels grouped by seat, in lane order; within a seat, in `tab` order.
+   *
+   * A seat holds one panel unless several named the same explicit `order`, in which case they are
+   * tabs — one showing, the rest stacked behind it. Which shows is decided by whoever asks (it turns
+   * on how recently each was touched, which this file does not know); the layout is handed one
+   * member per seat.
+   */
+  seats: T[][];
+}
+
+/** Position within a seat. Absent goes last, ties keep the order they arrived in. */
+const withinSeat = <T extends { placement: FloatPlacement }>(a: T, b: T) =>
+  ascending(a.placement.tab ?? Number.POSITIVE_INFINITY, b.placement.tab ?? Number.POSITIVE_INFINITY);
+
 /**
- * The floating panels sharing one edge, in the order they sit along it.
+ * Group a lane's members into seats.
  *
- * Membership is implied by the snap rather than declared, exactly as a displacing strip's is: two
- * panels snapped `left` are a column, and nothing else has to say so. Corners are deliberately not
- * columns — `top-left` is a place for one card, and a corner that divided itself would have no edge
- * to divide along.
+ * Members are already sorted along the lane, so panels sharing an explicit `order` are adjacent;
+ * a run of them is one seat. A panel with no `order` is a seat of its own — two unnamed panels are
+ * never merged, whatever sorted them next to each other.
+ */
+function seatsOf<T extends { placement: FloatPlacement }>(members: T[]): T[][] {
+  const seats: T[][] = [];
+  let open: { order: number; seat: T[] } | null = null;
+  for (const member of members) {
+    const order = member.placement.order;
+    if (order !== undefined && open && open.order === order) {
+      open.seat.push(member);
+      continue;
+    }
+    open = order === undefined ? null : { order, seat: [member] };
+    seats.push(open ? open.seat : [member]);
+  }
+  return seats.map((seat) => [...seat].sort(withinSeat));
+}
+
+/**
+ * Everything on one edge, grouped into lanes, outboard first — the whole arrangement rule, in one
+ * place.
+ *
+ * ## What a lane is
+ *
+ * A band across the edge, counting inward from it, whose panels divide it along its length. Every
+ * function here that places a panel against its neighbours asks this and nothing else: `occupiedFor`
+ * and `contentInset` walk the lanes to add up what the content gave away, `columnLayout` divides one
+ * lane between its members, and the shell hands each panel its seat.
+ *
+ * ## Membership is implied, and lane-mateship is not
+ *
+ * Which edge a panel is on comes from its snap — two panels snapped `left` are on the left edge and
+ * nothing else has to say so. Which *lane* it is in does not: `band` is absent until somebody puts it
+ * somewhere, and **a displacing panel with no band is alone in a lane of its own**.
+ *
+ * That asymmetry is the whole of the backwards compatibility. Two module panels opening on one edge,
+ * neither of them ever arranged, are two lanes and stack inward exactly as they always did — rather
+ * than becoming lane-mates and halving each other the first time both are open. Sharing a lane is
+ * something a drop or a template asks for.
+ *
+ * Unnamed lanes sort after named ones, by `order` and then by the position they were handed in — the
+ * registry's. Which is the rule this replaced, said about lanes instead of about panels: somebody's
+ * arrangement first, then everything else in the order it registered, and a panel that arrives
+ * without being dropped anywhere lands at the end.
+ *
+ * ## The floating lane
+ *
+ * One per edge, last, and it has no `band`. A float takes no room, so there is nothing for it to sit
+ * inboard of — every floating panel on an edge shares the one lane, over the top of whatever is
+ * displacing there. This is the column the file could already draw.
+ *
+ * Corners are deliberately absent from all of it: `top-left` is a place for one card, and a corner
+ * that divided itself would have no edge to divide along.
+ */
+export function edgeGroups<T extends { placement: FloatPlacement }>(
+  panels: T[],
+  edge: Exclude<DockEdge, null>,
+  viewport: Viewport,
+): EdgeGroup<T>[] {
+  const lanes = new Map<string, { band: number | null; rank: [number, number, number]; members: T[] }>();
+  const floating: T[] = [];
+
+  panels.forEach((panel, index) => {
+    const placement = panel.placement;
+    if (edgeOfSnap(placement.snap) !== edge || placement.maximised) return;
+    /*
+      Whether it *actually* displaces, not whether it asked to.
+
+      The two differ below `NARROW_VIEWPORT_PX`, where `displaces()` refuses the trade and the panel
+      covers instead. Testing the flag left such a panel in neither arrangement: not in a displacing
+      lane, because `occupiedFor` counts only what really takes room, and not in the floating one,
+      because the flag said displace. Two of them on one edge landed on the same snap and overlapped
+      exactly, each hiding the other's titlebar.
+    */
+    if (!displaces(placement, viewport)) {
+      floating.push(panel);
+      return;
+    }
+
+    const band = placement.band;
+    const key = band === undefined ? `unnamed:${index}` : `band:${band}`;
+    const existing = lanes.get(key);
+    if (existing) existing.members.push(panel);
+    else {
+      lanes.set(key, {
+        band: band ?? null,
+        // Named lanes first, by the number they were given; then the rest, by the same two-part rule
+        // the panels themselves used before lanes existed.
+        rank: band === undefined ? [1, placement.order ?? Number.POSITIVE_INFINITY, index] : [0, band, 0],
+        members: [panel],
+      });
+    }
+  });
+
+  const group = (displacing: boolean, band: number | null, members: T[]): EdgeGroup<T> => {
+    const seats = seatsOf([...members].sort(alongLane));
+    return { displacing, band, seats, members: seats.flat() };
+  };
+
+  const groups: EdgeGroup<T>[] = [...lanes.values()]
+    .sort(
+      (a, b) => ascending(a.rank[0], b.rank[0]) || ascending(a.rank[1], b.rank[1]) || ascending(a.rank[2], b.rank[2]),
+    )
+    .map((lane) => group(true, lane.band, lane.members));
+
+  if (floating.length > 0) groups.push(group(false, null, floating));
+  return groups;
+}
+
+/** Where a drop would put a panel: which edge, which axis of it, and how far along that axis. */
+export interface DropTarget {
+  edge: Exclude<DockEdge, null>;
+  /**
+   * `band` opens a lane of its own at `position` counting inward from the edge; `lane` takes a new
+   * seat at `position` along the lane named by `lane`; `tab` joins the seat at `position` in that
+   * lane, stacking behind whatever is showing there.
+   */
+  mode: 'band' | 'lane' | 'tab';
+  position: number;
+  /** Which lane a `lane` or `tab` drop joins — its position inward from the edge, or the floating one. */
+  lane?: number | 'float';
+}
+
+/** Where one panel ends up after a drop: its lane, and its seat in it. */
+export interface LanePosition {
+  index: number;
+  /** Absent for the floating lane, which has no band — see {@link FloatPlacement.band}. */
+  band?: number;
+  order: number;
+  /** Position within a shared seat. Absent for a panel with a seat of its own. */
+  tab?: number;
+}
+
+/**
+ * What every panel on an edge is numbered as, once one has been dropped on it.
+ *
+ * Pure, and here rather than in the store, because it is the same kind of decision as everything
+ * else in this file — an arrangement over a list of panels — and it is the one most easily got
+ * wrong: it rewrites two coordinates for every panel on an edge, and a mistake shows up as a panel
+ * appearing somewhere nobody dropped it, several frames later, with nothing to point at.
+ *
+ * Sequential integers rather than fractions between neighbours: an edge is short, rewriting it is
+ * cheap, and fractional indices eventually need a renumber anyway — at which point somebody has to
+ * write this function regardless.
+ *
+ * ## Joining an unnamed lane names it
+ *
+ * A lane nobody has arranged has no `band`, because absent means "a lane of my own" and that is what
+ * keeps every arrangement predating lanes working. The moment a second panel joins one, that stops
+ * being true of either of them — so the whole edge is renumbered and both come out holding the band
+ * they now share. Nothing else is a stable way to say "these two": the alternative is an implied
+ * identity that changes the next time a module registers.
+ *
+ * The panel being moved is left out of the arrangement it is dropped into, so a drop can never offer
+ * a seat beside where the panel already is, and a lane it was the only member of goes away rather
+ * than being held open by a panel that has left it.
+ *
+ * Returns one entry per panel whose numbering changed or was confirmed — the whole of that edge —
+ * and nothing for the panels elsewhere. Sizes are untouched, so pulling a panel back out returns it
+ * to the shape it was before it ever joined.
+ */
+export function arrangeDrop<T extends { placement: FloatPlacement }>(
+  panels: T[],
+  moving: number,
+  target: DropTarget,
+  viewport: Viewport,
+): LanePosition[] {
+  const groups = edgeGroups(
+    panels.map((panel, index) => ({ placement: panel.placement, index })).filter((panel) => panel.index !== moving),
+    target.edge,
+    viewport,
+  );
+  /** A lane as seats of member indices. */
+  const seatsOf = (group: (typeof groups)[number]) => group.seats.map((seat) => seat.map((member) => member.index));
+
+  const splice = <T>(list: T[], at: number, item: T) => {
+    const next = [...list];
+    next.splice(Math.max(0, Math.min(at, next.length)), 0, item);
+    return next;
+  };
+
+  /**
+   * Put the panel into a lane — a new seat at `position`, or stacked into the seat already there.
+   *
+   * Both are the same list edit one level apart: a seat is a list of panels, a lane is a list of
+   * seats. A tab drop onto a seat that no longer exists (the panel was its only member and has been
+   * left out) falls back to a seat of its own at the same position, which is the nearest thing to
+   * what was asked for.
+   */
+  const into = (seats: number[][]) => {
+    if (target.mode === 'tab' && seats[target.position]) {
+      return seats.map((seat, i) => (i === target.position ? [...seat, moving] : seat));
+    }
+    return splice(seats, target.position, [moving]);
+  };
+
+  /** Number one lane's seats and their members. */
+  const number = (seats: number[][], band?: number): LanePosition[] =>
+    seats.flatMap((seat, order) =>
+      seat.map((index, tab) => ({
+        index,
+        ...(band !== undefined ? { band } : {}),
+        order,
+        // A tab only where there is something to be a tab of: a seat of one names none.
+        ...(seat.length > 1 ? { tab } : {}),
+      })),
+    );
+
+  // The floating lane: no band at all, since a float takes no room and has nothing to be inboard of.
+  if (target.lane === 'float') {
+    const lane = groups.find((group) => !group.displacing);
+    return number(into(lane ? seatsOf(lane) : []));
+  }
+
+  /*
+    The displacing lanes. Joining one edits its seats; opening one splices a new single-seat lane
+    into the sequence. Renumbering the whole edge afterwards is what turns an unnamed lane into a
+    named one, and an unnamed seat into a shared one.
+  */
+  const displacing = groups.filter((group) => group.displacing).map(seatsOf);
+  const joining = target.mode !== 'band' && typeof target.lane === 'number' ? target.lane : -1;
+
+  const lanes =
+    joining >= 0 && displacing[joining]
+      ? displacing.map((seats, i) => (i === joining ? into(seats) : seats))
+      : splice(displacing, target.position, [[moving]]);
+
+  return lanes.flatMap((seats, band) => number(seats, band));
+}
+
+/**
+ * The sections in one home lane, in the order they sit — every panel whose snap is `home` and whose
+ * `home` names that lane.
+ *
+ * The in-template counterpart of {@link edgeGroups}, and simpler by exactly the things an outlet
+ * has no need of: a home lane cannot displace, has no bands and no seats. One list, ordered by
+ * `order`, ties in the order given.
+ */
+export function homeLaneMembers<T extends { placement: FloatPlacement }>(panels: T[], lane: string): T[] {
+  return panels.filter((panel) => panel.placement.snap === 'home' && panel.placement.home === lane).sort(alongLane);
+}
+
+/**
+ * What every section in a home lane is numbered as, once one has been dropped into it.
+ *
+ * `arrangeDrop`'s sibling for the in-template case. The panel being moved is left out of the lane
+ * it is dropped into, so it cannot be offered a seat beside where it already is; the rest close up
+ * and take sequential orders around it.
+ */
+export function arrangeHomeDrop<T extends { placement: FloatPlacement }>(
+  panels: T[],
+  moving: number,
+  lane: string,
+  position: number,
+): { index: number; order: number }[] {
+  const members = homeLaneMembers(
+    panels.map((panel, index) => ({ placement: panel.placement, index })).filter((panel) => panel.index !== moving),
+    lane,
+  ).map((member) => member.index);
+  members.splice(Math.max(0, Math.min(position, members.length)), 0, moving);
+  return members.map((index, order) => ({ index, order }));
+}
+
+/**
+ * How thick a lane is: the most any of its members asked for.
+ *
+ * One number for the lane, because its members are side by side across the edge and a lane with two
+ * widths is two lanes. The largest rather than the first, so a panel joining a lane is never silently
+ * narrowed by whoever happened to be there — and so the answer does not depend on which member is
+ * asked, which matters because `occupiedFor`, `contentInset` and the layout each ask separately.
+ */
+export function laneThickness(members: FloatPlacement[], edge: Exclude<DockEdge, null>): number {
+  return members.reduce((widest, member) => Math.max(widest, thicknessOf(member, edge)), 0);
+}
+
+/** How thick the divider's target is, centred on the boundary. Wider than the line it draws. */
+export const SEAM_PX = 12;
+
+/**
+ * The box a divider sits in, between two consecutive members of one lane.
+ *
+ * Centred on the boundary — the middle of the gap for a floating lane, the shared edge for a
+ * displacing one — and spanning the pair across the lane, so it reads as the line *between* them
+ * rather than as the edge of either. `SEAM_PX` thick, because a target you can hit while dragging
+ * has to be far thicker than a seam anybody wants to look at; the handle draws its own 3px line.
+ */
+export function seamBetween(a: Rect, b: Rect, axis: 'vertical' | 'horizontal'): Rect {
+  if (axis === 'vertical') {
+    const x = Math.min(a.x, b.x);
+    const boundary = (a.y + a.h + b.y) / 2;
+    return { x, y: boundary - SEAM_PX / 2, w: Math.max(a.x + a.w, b.x + b.w) - x, h: SEAM_PX };
+  }
+  const y = Math.min(a.y, b.y);
+  const boundary = (a.x + a.w + b.x) / 2;
+  return { x: boundary - SEAM_PX / 2, y, w: SEAM_PX, h: Math.max(a.y + a.h, b.y + b.h) - y };
+}
+
+/**
+ * The floating panels sharing one edge, in the order they sit along it — one lane, the one that
+ * covers rather than displaces.
+ *
+ * Kept as its own name because most callers want exactly this and should not have to filter for it.
+ * See {@link edgeGroups} for the arrangement rule itself.
  */
 export function columnMembers<T extends { placement: FloatPlacement }>(
   panels: T[],
   edge: Exclude<DockEdge, null>,
   viewport: Viewport,
 ): T[] {
-  return panels
-    .filter(
-      (panel) =>
-        edgeOfSnap(panel.placement.snap) === edge &&
-        /*
-          Whether it *actually* displaces, not whether it asked to.
-
-          The two differ below `NARROW_VIEWPORT_PX`, where `displaces()` refuses the trade and the
-          panel covers instead. Testing the flag left such a panel in neither arrangement: not in the
-          strip, because `occupiedFor` counts only what really displaces, and not in the column,
-          because the flag said displace. Two of them on one edge landed on the same snap and
-          overlapped exactly, each hiding the other's titlebar.
-        */
-        !displaces(panel.placement, viewport) &&
-        !panel.placement.maximised,
-    )
-    .sort((a, b) => (a.placement.order ?? Number.POSITIVE_INFINITY) - (b.placement.order ?? Number.POSITIVE_INFINITY));
+  return edgeGroups(panels, edge, viewport).find((group) => !group.displacing)?.members ?? [];
 }
 
 /**
- * Divide an edge between the floating panels sharing it.
+ * Hand a span out between members that each want a base and a share of what is left.
  *
- * ## Why this is not the strip the displacing panels already have
+ * Flexbox, computed rather than delegated. Spare room after the bases goes out by grow ratio; a
+ * shortfall shrinks the bases proportionally and floors each at `floor`.
  *
- * A **strip** stacks *perpendicular* to its edge: two panels displacing the left both span the full
- * height and the second sits inboard of the first, which is what `occupiedFor` and `insertionSlots`
- * already do and is right for panels that take room. A **column** divides *along* the edge —
- * horizontal boundaries down the left-hand side, panels sharing the height. They are different
- * arrangements on different axes and both are wanted; this is the second.
+ * Delegating to real CSS flex was the tempting alternative and is not available: making a lane a flex
+ * container means reparenting panels out of fixed positioning, which remounts their subtrees — the
+ * hazard `dockFrame` exists to avoid, and it would drop a call's live video streams.
+ */
+function divide(bases: number[], grows: number[], available: number, floors: number[]): number[] {
+  const sumBase = bases.reduce((total, base) => total + base, 0);
+  const sumGrow = grows.reduce((total, grow) => total + grow, 0);
+  const slack = available - sumBase;
+
+  return slack >= 0
+    ? // Spare room goes out by grow ratio. With every grow at zero nobody wants it, and the lane
+      // simply sits shorter than the edge rather than stretching somebody who asked not to be.
+      bases.map((base, i) => (sumGrow > 0 ? base + (slack * grows[i]) / sumGrow : base))
+    : // Over-subscribed: shrink proportionally, but never past the point where a panel stops being
+      // one — its own floor, which differs per panel. A lane of many can still overflow the region,
+      // and the clamp in `resolveDock` catches what is left.
+      bases.map((base, i) => Math.max(floors[i], (base * available) / sumBase));
+}
+
+/** A lane member as the layout sees it: a placement, plus the floor and fold the request carries. */
+export type LaneMember = FloatPlacement & { min?: DockMin };
+
+/** A member's base along the lane, and its grow — a collapsed one is its titlebar and wants nothing. */
+function laneBase(
+  member: LaneMember,
+  axis: 'w' | 'h',
+  spanning: boolean,
+): { base: number; grow: number; floor: number } {
+  const floor = floorOf(member.min, axis, spanning, member.collapsed);
+  if (member.collapsed) return { base: COLLAPSED_PX, grow: 0, floor };
+  return { base: Math.max(floor, member[axis]), grow: Math.max(0, member.grow ?? 1), floor };
+}
+
+/**
+ * Divide one lane between the panels sharing it.
  *
- * ## The division
+ * The along-edge axis, which is the one a lane divides: heights down a left-hand lane, widths across
+ * a top one. Each member has a base — its own `h` on a side edge, its own `w` on a top or bottom one
+ * — and a `grow` saying what share of the spare room it wants. See {@link divide}.
  *
- * Flexbox, computed rather than delegated. Each member has a base — its own `h` on a side edge, its
- * own `w` on a top or bottom one — and a `grow`. Spare room after the bases is handed out by grow
- * ratio; a shortfall shrinks the bases proportionally and floors each at `MIN_FLOAT_PX`.
+ * ## The two kinds of lane differ on the *cross* axis, and only there
  *
- * Delegating to real CSS flex was the tempting alternative and is not available: making a column a
- * flex container means reparenting panels out of fixed positioning, which remounts their subtrees —
- * the hazard `dockFrame` exists to avoid, and it would drop a call's live video streams.
+ * A **floating** lane is a stack of cards: each keeps the width it was given, sits inside a gap at
+ * every boundary, and clears the chrome a float has to clear. A shared width would make resizing one
+ * resize all of them, which is not what a card does.
  *
- * ## On a narrow window, every member takes the whole region
+ * A **displacing** lane is one sidebar cut into pieces: its members share `laneThickness` and meet
+ * flush, because a gap between two panels that have taken room from the content is a strip of
+ * background where the content used to be. It takes its span from the region the content gave up
+ * rather than from the floating one — which is why the corner rule below has to be repeated here.
+ *
+ * ## On a narrow window, every floating member takes the whole region
  *
  * Two 350px cards floating over content on a 400px viewport leave nothing of any of the three. Below
  * `NARROW_VIEWPORT_PX` each member gets the full free box instead, so they stack as full-bleed
  * sheets and the last one is the one you see — closing it reveals the one beneath, which is what the
  * module rail's launchers already drive. The same threshold that switches displacing off, and for
  * the same reason: under it the app changes its mind about the arrangement rather than shrinking it.
+ * A displacing lane never reaches it, because under that width nothing displaces.
  *
  * Returns one box per member, in the order given.
  */
 export function columnLayout(
-  members: FloatPlacement[],
+  members: LaneMember[],
   edge: Exclude<DockEdge, null>,
   viewport: Viewport,
   occupied: ContentInset = NO_INSET,
   chrome: ContentInset = DEFAULT_FLOAT_CHROME,
+  options: { displacing?: boolean } = {},
 ): Rect[] {
+  if (members.length === 0) return [];
+  const vertical = edge === 'left' || edge === 'right';
+  const along = vertical ? 'h' : 'w';
+  const sized = members.map((member) => laneBase(member, along, Boolean(options.displacing)));
+  const floors = sized.map((entry) => entry.floor);
+  const least = floors.reduce((total, floor) => total + floor, 0);
+
+  if (options.displacing) {
+    /*
+      The sides own the corners, exactly as they do in `resolveDock`.
+
+      A left or right lane spans the whole height and ignores what the horizontal edges have taken; a
+      top or bottom one keeps clearing the sides. Repeated rather than shared because the two are
+      answering it about different things — a panel's box there, a lane's span here — and a lane that
+      disagreed with the box drawn from it would put every seam a few pixels out.
+    */
+    const region = vertical
+      ? contentRegion(viewport, { ...occupied, top: 0, bottom: 0 })
+      : contentRegion(viewport, occupied);
+    const thickness = clamp(laneThickness(members, edge), MIN_DOCK_PX, vertical ? region.width : region.height);
+    const span = vertical ? region.height : region.width;
+
+    // No gaps and no chrome: a lane that has taken room from the content meets it edge to edge.
+    const extents = divide(
+      sized.map((entry) => entry.base),
+      sized.map((entry) => entry.grow),
+      Math.max(least, span),
+      floors,
+    );
+
+    const boxes: Rect[] = [];
+    let cursor = vertical ? region.top : region.left;
+    members.forEach((_member, i) => {
+      const extent = extents[i];
+      boxes.push(
+        vertical
+          ? {
+              x: edge === 'left' ? region.left : viewport.width - region.right - thickness,
+              y: cursor,
+              w: thickness,
+              h: extent,
+            }
+          : {
+              x: cursor,
+              y: edge === 'top' ? region.top : viewport.height - region.bottom - thickness,
+              w: extent,
+              h: thickness,
+            },
+      );
+      cursor += extent;
+    });
+    return boxes;
+  }
+
   const region = contentRegion(viewport, occupied);
   const free = {
     left: region.left + chrome.left,
@@ -904,8 +1987,6 @@ export function columnLayout(
     width: Math.max(0, region.width - chrome.left - chrome.right),
     height: Math.max(0, region.height - chrome.top - chrome.bottom),
   };
-
-  if (members.length === 0) return [];
 
   // Full-bleed sheets rather than a column nobody can read. See the note above.
   if (viewport.width < NARROW_VIEWPORT_PX) {
@@ -918,27 +1999,15 @@ export function columnLayout(
     return members.map(() => ({ ...box }));
   }
 
-  const vertical = edge === 'left' || edge === 'right';
   // One gap at each end and one between every pair, so the members sit inside the same margin a
   // single snapped card keeps from the edge.
   const span = (vertical ? free.height : free.width) - DOCK_GAP_PX * (members.length + 1);
-  const available = Math.max(MIN_FLOAT_PX * members.length, span);
-
-  const bases = members.map((m) => Math.max(MIN_FLOAT_PX, vertical ? m.h : m.w));
-  const grows = members.map((m) => Math.max(0, m.grow ?? 1));
-  const sumBase = bases.reduce((total, base) => total + base, 0);
-  const sumGrow = grows.reduce((total, grow) => total + grow, 0);
-  const slack = available - sumBase;
-
-  const extents =
-    slack >= 0
-      ? // Spare room goes out by grow ratio. With every grow at zero nobody wants it, and the column
-        // simply sits shorter than the edge rather than stretching somebody who asked not to be.
-        bases.map((base, i) => (sumGrow > 0 ? base + (slack * grows[i]) / sumGrow : base))
-      : // Over-subscribed: shrink proportionally, but never past the point where a panel stops being
-        // one. A column of many can still overflow the region, and the clamp in `resolveDock`
-        // catches what is left.
-        bases.map((base) => Math.max(MIN_FLOAT_PX, (base * available) / sumBase));
+  const extents = divide(
+    sized.map((entry) => entry.base),
+    sized.map((entry) => entry.grow),
+    Math.max(least, span),
+    floors,
+  );
 
   const boxes: Rect[] = [];
   let cursor = (vertical ? free.top : free.left) + DOCK_GAP_PX;
@@ -970,17 +2039,36 @@ export function columnLayout(
 }
 
 /**
- * The seams in a floating column, drawn as lines while a panel is over them.
+ * The seams *within* one lane — where a panel would land among the ones already sharing it. Drawn as
+ * lines while a panel is over them.
  *
- * `insertionSlots`' sibling, and the axis is the whole difference between them: a strip's lines run
- * *across* the region because its members stack inward from the edge, and a column's run *along* it
- * because its members share the edge. Same convention, same reason — a drop that could only report
- * an edge can only ever append, so the gaps become targets and the drop reports an index.
+ * `insertionSlots`' sibling, and the axis is the whole difference between them: that one's lines run
+ * *across* the region, because it is offering a new lane inboard of the existing ones; these run
+ * *along* the edge, because they are offering a seat beside the panels in one lane. Same convention,
+ * same reason — a drop that could only report an edge can only ever append, so the gaps become
+ * targets and the drop reports an index.
  *
- * An empty edge gets nothing. A column is started by snapping to the edge, which the eight targets
- * already offer; there is no seam to draw until there is something to sit beside.
+ * Takes the boxes of one lane's members, whether that lane displaces or floats: a seam between two
+ * stacked sidebars and a seam between two stacked cards are the same offer, and the caller has
+ * already decided which lane it is asking about. An empty lane gets nothing — there is no seam to
+ * draw until there is something to sit beside, and starting a lane is `insertionSlots`' job.
  */
-export function columnSlots(edge: Exclude<DockEdge, null>, boxes: Rect[]): { index: number; hit: Rect; line: Rect }[] {
+export function columnSlots(
+  edge: Exclude<DockEdge, null>,
+  boxes: Rect[],
+  /**
+   * The box the seams must stay inside — the content region for an edge lane, the outlet's own box
+   * for a home lane. Omitted, nothing is clamped.
+   *
+   * Needed by the *displacing* case alone, and only for the outer two seams. A seam before the first
+   * member sits half a gap above it, which is right for floating cards — they keep a margin at each
+   * end, so it lands in it. A displacing lane has no margin and spans its whole edge, so on a 900px
+   * screen those two landed at `-4` and `904`: both off-screen, and the only two that could divide a
+   * full-height sidebar. The lane could be stacked *against* but never *into*, which is the
+   * arrangement it exists for.
+   */
+  bounds?: Rect,
+): { index: number; hit: Rect; line: Rect }[] {
   if (boxes.length === 0) return [];
 
   const vertical = edge === 'left' || edge === 'right';
@@ -991,13 +2079,17 @@ export function columnSlots(edge: Exclude<DockEdge, null>, boxes: Rect[]): { ind
   const near = Math.min(...sorted.map((box) => (vertical ? box.x : box.y)));
   const far = Math.max(...sorted.map((box) => (vertical ? box.x + box.w : box.y + box.h)));
 
-  const GAP_TARGET = 16;
-  const LINE = 3;
+  const GAP_TARGET = 20;
+  const LINE = DROP_LINE_THICKNESS;
+  const low = bounds ? (vertical ? bounds.y : bounds.x) : Number.NEGATIVE_INFINITY;
+  const high = bounds ? (vertical ? bounds.y + bounds.h : bounds.x + bounds.w) : Number.POSITIVE_INFINITY;
 
-  const box = (position: number, thickness: number): Rect =>
-    vertical
-      ? { x: near, y: position - thickness / 2, w: far - near, h: thickness }
-      : { x: position - thickness / 2, y: near, w: thickness, h: far - near };
+  const box = (position: number, thickness: number): Rect => {
+    const start = clamp(position - thickness / 2, low, Math.max(low, high - thickness));
+    return vertical
+      ? { x: near, y: start, w: far - near, h: thickness }
+      : { x: start, y: near, w: thickness, h: far - near };
+  };
 
   const at = (position: number, index: number) => ({
     index,
@@ -1005,11 +2097,22 @@ export function columnSlots(edge: Exclude<DockEdge, null>, boxes: Rect[]): { ind
     line: box(position, LINE),
   });
 
-  const start = vertical ? sorted[0].y : sorted[0].x;
-  // One before the first member, then one after each — n + 1 seats for n members.
+  const startOf = (rect: Rect) => (vertical ? rect.y : rect.x);
+  const endOf = (rect: Rect) => (vertical ? rect.y + rect.h : rect.x + rect.w);
+
+  /*
+    An interior seam is the **midpoint** between the two members it divides, which answers the gap
+    question rather than assuming it: the middle of the gap for floating cards, and the shared edge
+    itself for a displacing lane, which has none. It was `end + DOCK_GAP_PX / 2` — right for cards,
+    and four pixels off the boundary for a sidebar, where the line then straddled the seam unevenly
+    and the divider it invited was not where the drag would put it.
+  */
   return [
-    at(start - DOCK_GAP_PX / 2, 0),
-    ...sorted.map((rect, index) => at((vertical ? rect.y + rect.h : rect.x + rect.w) + DOCK_GAP_PX / 2, index + 1)),
+    at(startOf(sorted[0]) - DOCK_GAP_PX / 2, 0),
+    ...sorted.map((rect, index) => {
+      const next = sorted[index + 1];
+      return at(next ? (endOf(rect) + startOf(next)) / 2 : endOf(rect) + DOCK_GAP_PX / 2, index + 1);
+    }),
   ];
 }
 
@@ -1022,7 +2125,8 @@ export function columnSlots(edge: Exclude<DockEdge, null>, boxes: Rect[]): { ind
  * - **Maximised** (`size: 'full'`) — covering the content region entirely, and ignoring the
  *   placement: there is no position left to have. Insetting it would leave a content viewport of
  *   zero width.
- * - **Displacing** — flush against its edge, spanning it, insetting the content by its thickness.
+ * - **Displacing** — flush against its edge, spanning its lane, insetting the content by the lane's
+ *   thickness. A lane of one spans the whole edge, which is every arrangement that predates lanes.
  * - **Floating** — a card at its snap or at the position it was dropped, clamped into view.
  *
  * `occupied` is what other panels — and the editor's rails — have already taken, per edge. It is how
@@ -1035,12 +2139,12 @@ export function resolveDock(
   occupied: ContentInset = NO_INSET,
   chrome: ContentInset = DEFAULT_FLOAT_CHROME,
   /**
-   * This panel's seat in a floating column, when it shares its edge with others.
+   * This panel's seat in its lane, when it shares that lane with others — floating or displacing.
    *
-   * Passed in rather than computed here because a seat depends on the *siblings* — their heights,
+   * Passed in rather than computed here because a seat depends on the *lane-mates* — their heights,
    * their grows, how many there are — and this function is deliberately about one panel. The same
    * reason `occupied` is a parameter: only the caller can see the whole set. Absent for a panel that
-   * has its edge to itself, which then places exactly as it always did.
+   * has its lane to itself, which then places exactly as it always did.
    */
   seat?: Rect,
 ): DockGeometry {
@@ -1051,6 +2155,15 @@ export function resolveDock(
   const px = (n: number) => `${Math.round(n)}px`;
 
   const placement = request.placement ?? seedPlacement(request, viewport, occupied);
+
+  /*
+    At home in the template: open, but not a box in the dock layer.
+
+    `edge` stays set, since the panel is open and everything that asks "is it closed" reads the
+    edge; `home` is what the frame reads to draw nothing. Floating, because it takes no room from the
+    content region — it *is* content — and so nothing else has to clear it.
+  */
+  if (placement.snap === 'home') return { edge, floating: true, home: true, snap: 'home' };
 
   if (request.size === 'full' || placement.maximised) {
     /*
@@ -1113,18 +2226,29 @@ export function resolveDock(
     const region = vertical
       ? contentRegion(viewport, { ...occupied, top: 0, bottom: 0 })
       : contentRegion(viewport, occupied);
-    const thickness = clamp(thicknessOf(placement, snapEdge), MIN_DOCK_PX, vertical ? region.width : region.height);
+    /*
+      A seat wins over the panel's own thickness, for the reason it wins over a float's snap: it is
+      the answer worked out against the lane-mates, and this function can only see one panel. The
+      lane's members share one thickness (`laneThickness`), so taking it from the seat is also what
+      stops two panels in one lane drawing two different widths of the same sidebar.
+    */
+    const thickness = clamp(
+      seat ? (vertical ? seat.w : seat.h) : thicknessOf(placement, snapEdge),
+      floorOf(request.min, vertical ? 'w' : 'h', true),
+      vertical ? region.width : region.height,
+    );
 
     // Flush: the panel's inner edge is exactly where the content now starts, because the content was
-    // inset by precisely this thickness.
+    // inset by precisely this thickness. Along the edge it spans its **lane** — the whole edge when
+    // it has that lane to itself, which is every arrangement that predates lanes.
     if (vertical) {
       return {
         edge: snapEdge,
         floating: false,
         snap: placement.snap,
         handleX: snapEdge === 'right' ? 'left' : 'right',
-        top: px(region.top),
-        bottom: px(region.bottom),
+        top: px(seat ? seat.y : region.top),
+        ...(seat ? { height: px(seat.h) } : { bottom: px(region.bottom) }),
         width: px(thickness),
         ...(snapEdge === 'right' ? { right: px(region.right) } : { left: px(region.left) }),
       };
@@ -1134,8 +2258,8 @@ export function resolveDock(
       floating: false,
       snap: placement.snap,
       handleY: snapEdge === 'top' ? 'bottom' : 'top',
-      left: px(region.left),
-      right: px(region.right),
+      left: px(seat ? seat.x : region.left),
+      ...(seat ? { width: px(seat.w) } : { right: px(region.right) }),
       height: px(thickness),
       ...(snapEdge === 'top' ? { top: px(region.top) } : { bottom: px(region.bottom) }),
     };
@@ -1150,10 +2274,15 @@ export function resolveDock(
 
   // A seat wins over the snap: it *is* the snap, worked out against the neighbours sharing the edge
   // rather than against an empty one. Without siblings there is no seat and nothing changes.
-  const w = seat ? seat.w : clamp(placement.w, MIN_FLOAT_PX, Math.max(MIN_FLOAT_PX, free.width - DOCK_GAP_PX * 2));
+  const minW = floorOf(request.min, 'w', false);
+  const minH = floorOf(request.min, 'h', false, placement.collapsed);
+  const w = seat ? seat.w : clamp(placement.w, minW, Math.max(minW, free.width - DOCK_GAP_PX * 2));
   const h = seat
     ? seat.h
-    : clamp(placement.h, MIN_FLOAT_PX, Math.max(MIN_FLOAT_PX, region.height - chrome.top - DOCK_GAP_PX * 2));
+    : // A collapsed card alone is its titlebar tall — the same fold a lane gives it, with no lane.
+      placement.collapsed
+      ? COLLAPSED_PX
+      : clamp(placement.h, minH, Math.max(minH, region.height - chrome.top - DOCK_GAP_PX * 2));
   const origin = seat
     ? { x: seat.x, y: seat.y }
     : placement.snap
@@ -1189,25 +2318,26 @@ export function resolveDock(
 }
 
 /**
- * The insertion points along a dock strip: one before each panel, and one past the last.
+ * Where a **new lane** could go on an edge: one outboard of the first, and one inboard of each.
  *
- * This is the half of "drag to reorder" that has to be *seen*. A drop that reports only an edge can
+ * This is the half of "drag to arrange" that has to be *seen*. A drop that reports only an edge can
  * only ever put a panel back where the registry had it, and every application that solves this — VS
- * Code, Photoshop, IntelliJ — solves it the same way: while a panel is over a strip, the gaps between
- * the panels already in it become targets, drawn as a line, and the drop reports an index.
+ * Code, Photoshop, IntelliJ — solves it the same way: while a panel is over an edge, the gaps between
+ * what is already there become targets, drawn as a line, and the drop reports an index.
  *
- * Measured from the resolved boxes rather than from the placements, because the boxes are where the
- * panels actually are: a strip narrowed by the editor's rails or by a maximised neighbour has
- * different gaps from the one the placements describe.
+ * Takes one box per **lane**, not per panel: two panels sharing a lane are one band across the edge
+ * and offer one boundary either side of them, not two. Measured from the resolved boxes rather than
+ * from the placements, because the boxes are where the panels actually are — an edge narrowed by the
+ * editor's rails or by a maximised neighbour has different gaps from the one the placements describe.
  *
- * Index 0 is nearest the edge. For a right-hand strip that is the rightmost panel, which is the
- * opposite of reading order — the number counts *distance from the edge*, because that is what a
- * strip is: a queue growing inwards.
+ * Index 0 is nearest the edge. For a right-hand edge that is the rightmost lane, which is the
+ * opposite of reading order — the number counts *distance from the edge*, because that is what these
+ * lanes are: a queue growing inwards.
  *
  * An edge with nothing on it still gets one slot, and that is the point of it: without it there was
- * no way to *start* a strip by dragging. The eight snap targets could only ever produce a floating
- * panel, so an empty edge offered nothing that took room — you had to drop the panel somewhere else
- * and then find the displace toggle.
+ * no way to *start* one by dragging. The eight snap targets could only ever produce a floating panel,
+ * so an empty edge offered nothing that took room — you had to drop the panel somewhere else and then
+ * find the displace toggle.
  */
 export function insertionSlots(
   edge: Exclude<DockEdge, null>,
@@ -1232,9 +2362,9 @@ export function insertionSlots(
     inside it.
   */
   const EDGE_BAND = 24;
-  const GAP_TARGET = 16;
+  const GAP_TARGET = 20;
   const hitThickness = boxes.length === 0 ? EDGE_BAND : GAP_TARGET;
-  const LINE = 3;
+  const LINE = DROP_LINE_THICKNESS;
 
   // Sorted by distance from the edge, which is the order the strip grows in.
   const sorted = [...boxes].sort((a, b) =>
@@ -1275,21 +2405,52 @@ export function insertionSlots(
 }
 
 /**
- * What one panel has to keep clear of: every *other* displacing panel, plus chrome that is not a dock.
+ * Every request as something {@link edgeGroups} can group, carrying its position in the list.
  *
- * Never itself, or a displacing panel would shrink away from the edge it is holding, one width per
- * frame.
+ * The position has to be the position in *this* list and not in a filtered one, because it is the
+ * last tiebreak when two lanes have nothing else to sort by — the registry's order. Filtering the
+ * ones that are on no edge would renumber the rest and quietly change which of two never-arranged
+ * panels sits outermost, so they are kept and taken off the edges instead.
+ */
+export function laneable(requests: DockRequest[], viewport: Viewport): { placement: FloatPlacement; index: number }[] {
+  return requests.map((request, index) => ({
+    placement:
+      request.edge && request.size !== 'full'
+        ? (request.placement ?? seedPlacement(request, viewport))
+        : // Off the edges entirely, so no lane can hold it. A closed panel and a full-screen one both
+          // take nothing and must not be counted; a snap of null keeps them out of every group.
+          { ...(request.placement ?? seedPlacement(request, viewport)), snap: null },
+    index,
+  }));
+}
+
+/**
+ * What one panel has to keep clear of: every displacing lane outboard of it, plus chrome that is not
+ * a dock.
+ *
+ * Never its own lane, or a displacing panel would shrink away from the edge it is holding, one width
+ * per frame — and never a lane-mate, who is beside it along the edge rather than in front of it.
  *
  * ## The stacking exemption, and who it is for
  *
- * Two displacing panels sharing an edge take turns: the later steps past the earlier, and the earlier
- * ignores the later — otherwise each dodges the other and they leave a gap between them.
+ * Displacing lanes on one edge take turns: a lane steps past the ones outboard of it and ignores the
+ * ones inboard — otherwise each dodges the other and they leave a gap between them.
  *
  * That exemption belongs to panels *in* that queue. A floating panel is not holding the edge, it is
- * keeping off it, so it clears every displacing panel there whatever order they registered in. Asking
+ * keeping off it, so it clears every displacing lane there whatever order they registered in. Asking
  * the wrong question had an oddly specific symptom: a video snapped to the right stayed behind a
  * notes panel that opened on the same edge, while its landing markers moved correctly — because a
  * panel mid-drag has no snap, so the exemption could not fire until the moment it was dropped.
+ *
+ * ## Why the whole ordering question moved to `edgeGroups`
+ *
+ * This used to carry its own comparison — `order`, then registry position — and a long note about
+ * why it had to be a *total* order: two panels that each believe the other is behind them both shift
+ * by the other's thickness, which overlaps them in the middle and leaves a gap at the edge. Lanes
+ * make that structural rather than arithmetical. `edgeGroups` returns them in one fixed sequence, and
+ * "outboard of me" is a position in a list, which cannot be ambiguous the way a pairwise comparison
+ * could. The rule it encodes is the same one, said once: somebody's arrangement first, then
+ * everything else in the order it registered.
  *
  * `chrome` is room taken by something that is not a panel at all — the editor's rails, which displace
  * content exactly as a dock does and are not docks.
@@ -1302,49 +2463,23 @@ export function occupiedFor(requests: DockRequest[], index: number, viewport: Vi
     See `DEFAULT_FLOAT_CHROME`.
   */
   const occupied: ContentInset = { ...NO_INSET };
-  const placementOf = (request: DockRequest) => request.placement ?? seedPlacement(request, viewport);
+  const panels = laneable(requests, viewport);
 
-  const own = requests[index] ? placementOf(requests[index]) : null;
+  const own = panels[index]?.placement ?? null;
   const stacking = own ? displaces(own, viewport) && !own.maximised : false;
   const mine = stacking ? edgeOfSnap(own?.snap ?? null) : null;
 
-  /*
-    Position in the strip, when the user has set one; registration order otherwise.
-
-    The comparison below used to be `otherIndex > index` outright — the registry's order, which no
-    drop could change, so a panel dragged out of a strip came back to the slot it left. `order` is the
-    user's answer to the same question and takes precedence; panels that have never been reordered
-    still fall back to the registry and stack exactly as they always did.
-  */
-  /*
-    A *total* order, and it has to be total or panels dodge each other.
-
-    The comparison decides which of two panels on an edge steps past the other, and it is only safe
-    while it can never call them equal: two panels that each believe the other is behind them both
-    shift by the other's thickness, which overlaps them in the middle and leaves a gap at the edge —
-    the exact shape of the bug this was written to fix, reintroduced by mixing user order with
-    registry position in one number. A panel given `order: 0` by a drop tied with whichever panel
-    happened to be first in the registry.
-
-    So: panels the user has placed come first, in that order; everything else follows in registration
-    order, which also gives "a panel that joins a strip without being dropped into it lands at the
-    end" for nothing.
-  */
-  const isBefore = (a: FloatPlacement, aIndex: number, b: FloatPlacement, bIndex: number) => {
-    const [rankA, rankB] = [a.order ?? Number.POSITIVE_INFINITY, b.order ?? Number.POSITIVE_INFINITY];
-    return rankA === rankB ? aIndex < bIndex : rankA < rankB;
-  };
-
-  requests.forEach((other, otherIndex) => {
-    if (otherIndex === index) return;
-    const placement = placementOf(other);
-    if (!other.edge || other.size === 'full' || placement.maximised) return;
-    if (!displaces(placement, viewport)) return;
-
-    const edge = edgeOfSnap(placement.snap) as Exclude<DockEdge, null>;
-    if (stacking && edge === mine && own && !isBefore(placement, otherIndex, own, index)) return;
-    occupied[edge] += thicknessOf(placement, edge);
-  });
+  for (const edge of EDGES) {
+    for (const group of edgeGroups(panels, edge, viewport)) {
+      if (!group.displacing) continue;
+      // Outboard-first, so reaching my own lane means everything left is beside or behind me.
+      if (stacking && edge === mine && group.members.some((member) => member.index === index)) break;
+      occupied[edge] += laneThickness(
+        group.members.map((member) => member.placement),
+        edge,
+      );
+    }
+  }
 
   return occupied;
 }
@@ -1390,12 +2525,20 @@ export function coveredInset(requests: DockRequest[], viewport: Viewport): Conte
 }
 
 /**
- * What the content viewport gives up, summed across every panel.
+ * What the content viewport gives up: every displacing **lane**, summed across the edge.
  *
  * Floating panels contribute nothing by definition — see {@link coveredInset} for what they do
- * instead. Two displacing panels on the same edge stack their thicknesses, which is the honest
- * answer even though nothing places them side by side yet: an inset that under-reported would put
- * the second panel over content the app believes is visible.
+ * instead.
+ *
+ * ## Sum across lanes, max within one
+ *
+ * The two arrangements add up differently, and this is the one place both have to be right at once.
+ * Lanes stack inward, so their thicknesses **add**: an inset that under-reported would put the
+ * second lane over content the app believes is visible. The panels *inside* a lane are one above the
+ * other in the same band, so the lane costs the content `laneThickness` — the widest of them — and
+ * not their sum. Adding there would report an edge twice as deep as it is and push the whole layout
+ * into the middle of the screen, which is precisely what `coveredInset` already exists to avoid one
+ * axis over.
  */
 export function contentInset(requests: DockRequest[], viewport: Viewport): ContentInset {
   const inset: ContentInset = { left: 0, right: 0, top: 0, bottom: 0 };
@@ -1416,23 +2559,27 @@ export function contentInset(requests: DockRequest[], viewport: Viewport): Conte
     Clamping against what is left cannot overshoot, because the total saturates at the region.
   */
   const room = { horizontal: region.width, vertical: region.height };
+  const panels = laneable(requests, viewport);
 
-  for (const request of requests) {
-    if (!request.edge || request.size === 'full') continue;
-    const placement = request.placement ?? seedPlacement(request, viewport);
-    if (placement.maximised || !displaces(placement, viewport)) continue;
-    const snapEdge = edgeOfSnap(placement.snap) as Exclude<DockEdge, null>;
-    const axis = snapEdge === 'left' || snapEdge === 'right' ? 'horizontal' : 'vertical';
-    /*
-      `Math.min` outside the clamp rather than as its upper bound, because the two limits mean
-      opposite things and the floor must not win. `MIN_DOCK_PX` is "a panel this thin is not worth
-      having"; the remaining room is "there is no more screen". Passed as the clamp's maximum, a
-      strip with 40px left would be handed 200 and overshoot by 160 — which is the bug above, one
-      panel later.
-    */
-    const thickness = Math.min(clamp(thicknessOf(placement, snapEdge), MIN_DOCK_PX, room[axis]), room[axis]);
-    inset[snapEdge] += thickness;
-    room[axis] -= thickness;
+  for (const edge of EDGES) {
+    const axis = edge === 'left' || edge === 'right' ? 'horizontal' : 'vertical';
+    for (const group of edgeGroups(panels, edge, viewport)) {
+      if (!group.displacing) continue;
+      /*
+        `Math.min` outside the clamp rather than as its upper bound, because the two limits mean
+        opposite things and the floor must not win. `MIN_DOCK_PX` is "a panel this thin is not worth
+        having"; the remaining room is "there is no more screen". Passed as the clamp's maximum, a
+        lane with 40px left would be handed 200 and overshoot by 160 — which is the bug above, one
+        lane later.
+      */
+      const wanted = laneThickness(
+        group.members.map((member) => member.placement),
+        edge,
+      );
+      const thickness = Math.min(clamp(wanted, MIN_DOCK_PX, room[axis]), room[axis]);
+      inset[edge] += thickness;
+      room[axis] -= thickness;
+    }
   }
   return inset;
 }

@@ -6579,6 +6579,9 @@
         "activeInsert": {
           "type": "string"
         },
+        "dragGhost": {
+          "type": "object"
+        },
         "layoutPinned": {
           "type": "object"
         },
@@ -6587,6 +6590,12 @@
         },
         "panelSupplied": {
           "type": "object"
+        },
+        "layoutNames": {
+          "type": "array"
+        },
+        "activeLayout": {
+          "type": "string"
         }
       },
       "actions": [
@@ -6605,16 +6614,29 @@
         "endDockResize",
         "fitDock",
         "beginDockMove",
+        "raiseDock",
         "moveDock",
+        "beginTabDrag",
+        "moveTab",
+        "endTabDrag",
         "endDockMove",
         "resetDockToLayout",
         "closeTemplatePanel",
         "openTemplatePanel",
         "resetTemplateLayout",
+        "saveLayout",
+        "applyLayout",
+        "deleteLayout",
         "snapDock",
         "insertDock",
         "toggleMaximiseDock",
-        "toggleDockDisplace"
+        "toggleDockDisplace",
+        "toggleCollapseDock",
+        "breakOut",
+        "returnHome",
+        "stackDock",
+        "insertHome",
+        "saveArrangementAsTemplate"
       ]
     },
     {
@@ -7016,6 +7038,7 @@
     "EditorCodePanel",
     "EditorInspectorPanel",
     "EditorThemePanel",
+    "PanelLane",
     "TemplateCard",
     "TemplatePanelBody",
     "WeCube"
