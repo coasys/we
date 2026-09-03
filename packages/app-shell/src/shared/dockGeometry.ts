@@ -332,6 +332,30 @@ export function roomElsewhere(seatOpen: readonly boolean[], seat: number): boole
   return seatOpen.some((open, index) => open && index !== seat);
 }
 
+/**
+ * What a seat-mate becomes when the panel it shares a titlebar with is dragged somewhere.
+ *
+ * A titlebar belongs to the seat, not to the one panel showing in it, so dragging it takes the stack.
+ * Copied rather than re-arranged: a seat *is* "the same lane, and the same `order` in it", so handing
+ * the mates the coordinates the drop settled on re-forms the stack around the panel that led.
+ *
+ * Everything else is the mate's own and is kept — its size, its floor, and its `tab`, so the strip
+ * comes out in the order it went in. `band` and `home` are **dropped** rather than copied when the
+ * leader has none: a stale band on a panel that has just landed as a float would claim a lane the
+ * next time it displaced, which is the same silent inheritance `insertDock` clears for.
+ */
+export function followSeat(mate: FloatPlacement, landed: FloatPlacement): FloatPlacement {
+  const { band: _band, home: _home, ...rest } = mate;
+  return {
+    ...rest,
+    snap: landed.snap,
+    displace: landed.displace,
+    order: landed.order,
+    ...(landed.band !== undefined ? { band: landed.band } : {}),
+    ...(landed.home !== undefined ? { home: landed.home } : {}),
+  };
+}
+
 /** Anything a drop can land on: what kind of place it is, and the box you have to be over. */
 export interface DropCandidate {
   mode: 'band' | 'lane' | 'home' | 'tab';

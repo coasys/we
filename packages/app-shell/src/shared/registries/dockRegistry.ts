@@ -563,21 +563,24 @@ function fitButton(id: string): SchemaNode {
  * one marked. Before the grip rather than after the controls, because that is where every tab strip
  * anybody has used puts it.
  *
- * ## A tab is a grip, so dragging one takes it out
+ * ## A tab is a click until it is a drag
  *
- * Each is a `we-move-handle` wired to the ordinary move path rather than a button wired to
- * `raiseDock`, and that one substitution gives both halves of what a tab has to do. `beginDockMove`
- * raises before it does anything else, so a press that goes nowhere is exactly the old click:
- * bringing a tab forward is the same act as bringing a float to the front, and is decided the same
- * way. A press that *travels* is a panel drag — `moveDock`'s restore-under-the-cursor path already
- * knows how to pull an attached panel off what it is stuck to — so a tab tears out into a floating
- * card, and can be dropped on any lane, seam or seat like anything else being dragged.
+ * Each is a `we-move-handle` on `beginTabDrag`/`moveTab`/`endTabDrag` rather than on the ordinary
+ * move path, and the difference is that those three do nothing on the press. They have to: acting on
+ * a press destroys the element holding the pointer capture, because raising a tab hides the frame
+ * this strip lives in and tearing one out of a seat of two takes the strip away with it. Wired
+ * straight to `beginDockMove`, a click on a background tab put the drag guides up and left them
+ * there, and the tab never changed.
+ *
+ * So the press records, the pointer has to travel before anything happens, and the panel stays in
+ * its seat until the drop — which is how every tab strip behaves, and what keeps this element alive
+ * for the whole gesture. A press that goes nowhere brings the tab forward; one that travels shows
+ * where it would land, and over nothing leaves it as a card under the pointer.
  *
  * `step: 0` is what keeps the keyboard sane. The handle emits a whole gesture per arrow key, and at
- * the usual 24px that is past `RESTORE_DRAG_PX` — so every arrow press would tear the panel out of
- * its seat. At zero the gesture still raises, so the arrow keys *switch tabs*, which is what a tab
- * strip means by them; moving a panel from the keyboard stays with the titlebar's own grip, which is
- * where it was.
+ * the usual 24px that is past the threshold — so every arrow press would tear the panel out of its
+ * seat. At zero the gesture goes nowhere, which `endTabDrag` reads as the click it is, so the arrow
+ * keys *switch tabs*; moving a panel from the keyboard stays with the titlebar's own grip.
  *
  * The visual is on a wrapper rather than on the handle: `we-move-handle` is a `LayoutElement`, so it
  * takes no `bg` or `r`, and putting the roles on a `Row` keeps them as design-system props instead of
@@ -619,14 +622,17 @@ function tabStrip(id: string): SchemaNode {
                       ay: 'center',
                       label: { $: '`${tab.title} — drag out of the stack`' },
                       onMovestart: {
-                        $action: 'shellStore.beginDockMove',
+                        $action: 'shellStore.beginTabDrag',
                         args: [{ $: 'tab.id' }, { $: 'arg.detail.x' }, { $: 'arg.detail.y' }],
                       },
                       onMove: {
-                        $action: 'shellStore.moveDock',
+                        $action: 'shellStore.moveTab',
                         args: [{ $: 'tab.id' }, { $: 'arg.detail.dx' }, { $: 'arg.detail.dy' }],
                       },
-                      onMoveend: { $action: 'shellStore.endDockMove', args: [{ $: 'tab.id' }] },
+                      onMoveend: {
+                        $action: 'shellStore.endTabDrag',
+                        args: [{ $: 'tab.id' }, { $: 'arg.detail.x' }, { $: 'arg.detail.y' }],
+                      },
                     },
                     children: [
                       {

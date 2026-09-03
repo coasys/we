@@ -2639,6 +2639,9 @@ ShellStore:
   - beginDockMove(id: string, pointerX: number, pointerY: number): begins moving a panel, remembering where it and the pointer started. A maximised panel shrinks back under the cursor
   - raiseDock(id: string): brings a panel in front of the others — what a pointer landing on its frame does, and what a drag or maximising does on its own. The most recently raised panel is the one on top; nothing else decides stacking
   - moveDock(id: string, dx: number, dy: number): applies a move, in pixels from where beginDockMove was called
+  - beginTabDrag(id: string, pointerX: number, pointerY: number): a press on one tab of a stack. Records only — a tab is a click until the pointer travels, and the panel does not leave its seat until the drop
+  - moveTab(id: string, dx: number, dy: number): past the drag threshold, shows where the tab would land. The tab itself stays put; only the guides follow
+  - endTabDrag(id: string, pointerX: number, pointerY: number): a press that went nowhere brings the tab forward; one that travelled lands it, or leaves it as a card under the pointer
   - endDockMove(id: string): drops the panel — onto the snap or insert slot it is over, or where it is if that is nowhere
   - resetDockToLayout(panelId: string): puts a panel back where meta.panels asked for it, forgetting where it was dragged. Forgets rather than rewrites, so the panel keeps following the layout afterwards — including when the template changes it. Pair with layoutPinned
   - closeTemplatePanel(panelId: string): dismisses a panel the interface declared in meta.panels, by that panel's id. What its titlebar's close button calls

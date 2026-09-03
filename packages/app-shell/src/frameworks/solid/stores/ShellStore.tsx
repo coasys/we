@@ -31,6 +31,7 @@ import {
   fitPlacement,
   type FloatPlacement,
   floorOf,
+  followSeat,
   grown,
   insertionSlots,
   laneable,
@@ -380,6 +381,21 @@ export interface ShellStore {
   raiseDock: (id: string) => void;
   /** Apply a move, in pixels from where `beginDockMove` was called. */
   moveDock: (id: string, dx: number, dy: number) => void;
+  /**
+   * A press on one tab of a stack, which is a click until it is a drag.
+   *
+   * Three actions rather than the ordinary move path, because a tab cannot own its gesture the way a
+   * titlebar grip can: acting on the press destroys the element holding the pointer capture, since
+   * raising a tab hides the frame its strip lives in and tearing one out of a seat of two takes the
+   * strip with it. So the press only records; the pointer has to travel before anything happens; and
+   * the panel does not leave its seat until the drop, which is how every tab strip behaves.
+   *
+   * A press that goes nowhere brings the tab forward — the click. One that travels shows where it
+   * would land and, let go over nothing, leaves it as a card under the pointer.
+   */
+  beginTabDrag: (id: string, pointerX: number, pointerY: number) => void;
+  moveTab: (id: string, dx: number, dy: number) => void;
+  endTabDrag: (id: string, pointerX: number, pointerY: number) => void;
   /** Drop it: takes the snap it is hovering, or leaves it where it is if that is nowhere. */
   endDockMove: (id: string) => void;
   /** The panel being moved right now, or null — what mounts the snap targets. */
@@ -936,6 +952,18 @@ export function ShellStoreProvider(props: ParentProps) {
   let columnDrag: { along: 'w' | 'h'; top: number; bottom: number } | null = null;
   /** Where the pointer was when it started, for restoring a maximised panel beneath it. */
   let dragPointer: { x: number; y: number } | null = null;
+  /** The seat-mates of the panel being dragged, which land wherever it does. See `beginDockMove`. */
+  let movingSeat: string[] = [];
+  /**
+   * A press on a tab, before it is known whether it is a click or a drag.
+   *
+   * A tab cannot own its gesture the way a titlebar grip can, because acting on the press destroys
+   * the element holding the pointer capture: raising a tab hides the frame its strip lives in, and
+   * tearing one out of a seat of two takes the strip away with it. So the press records, and nothing
+   * else happens until the pointer has travelled — by which point the answer is "a drag", and the
+   * panel is *not* moved out of the seat until the drop, exactly as every tab strip behaves.
+   */
+  let tabGesture: { id: string; x: number; y: number; dragging: boolean } | null = null;
 
   /**
    * The middle of a seated panel, as the target for stacking behind it.
@@ -2207,6 +2235,16 @@ export function ShellStoreProvider(props: ParentProps) {
       const request = dockRequests().find((entry) => entry.id === id);
       if (!request?.edge) return;
       raise(id);
+      /*
+        The titlebar moves the **seat**, not the one panel showing in it.
+
+        A stack of tabs is one surface with several things in it, and its titlebar is the surface's:
+        dragging it took the panel in front and left its tabs behind, which reads as the grip tearing
+        out the very tab you were looking at. The mates are recorded here and land wherever this one
+        does — see `endDockMove`. A drag that starts on a *tab* records none, which is the whole
+        difference between the two gestures.
+      */
+      movingSeat = (dockGeometry()[id]?.tabs ?? []).map((tab) => tab.id).filter((tab) => tab !== id);
       dragOrigin = resolvedPlacement(id, placementOf(request));
       dragPointer = { x: pointerX, y: pointerY };
       /*
@@ -2218,6 +2256,87 @@ export function ShellStoreProvider(props: ParentProps) {
       if (typeof document !== 'undefined') document.documentElement.setAttribute(DRAGGING_ATTR, '');
       setMovingDock(id);
       setDockResizing(true);
+    },
+
+    beginTabDrag: (id, pointerX, pointerY) => {
+      // Records only. Acting on the press is what broke both halves of a tab: see `tabGesture`.
+      tabGesture = { id, x: pointerX, y: pointerY, dragging: false };
+    },
+
+    moveTab: (id, dx, dy) => {
+      if (!tabGesture || tabGesture.id !== id) return;
+      const request = dockRequests().find((entry) => entry.id === id);
+      if (!request?.edge) return;
+
+      if (!tabGesture.dragging) {
+        // Still a click until the pointer has actually travelled. The same threshold that tells a
+        // click on a maximised panel's titlebar from a drag off it.
+        if (Math.abs(dx) + Math.abs(dy) < RESTORE_DRAG_PX) return;
+        tabGesture.dragging = true;
+        dragOrigin = resolvedPlacement(id, placementOf(request));
+        dragPointer = { x: tabGesture.x, y: tabGesture.y };
+        movingSeat = [];
+        if (typeof document !== 'undefined') document.documentElement.setAttribute(DRAGGING_ATTR, '');
+        setMovingDock(id);
+        setDockResizing(true);
+      }
+
+      /*
+        The tab stays where it is; only the *indicators* follow the pointer.
+
+        `moveDock` writes a placement every frame, which is right for a panel being carried and wrong
+        for a tab: leaving its seat mid-gesture takes the strip — and the pointer capture on it — away
+        with it, and the drag dies where it stands. So a tab is carried the way every tab strip
+        carries one, by showing where it would land and settling nothing until it is let go.
+      */
+      const placement = placementOf(request);
+      const pointer = { x: tabGesture.x + dx, y: tabGesture.y + dy };
+      const would = {
+        x: pointer.x - placement.w / 2,
+        y: pointer.y - TITLE_BAR_PX / 2,
+        w: placement.w,
+        h: placement.h,
+      };
+      const slot = chooseTarget(store.insertSlots(), pointer, would);
+      setActiveInsert(slot ? slot.key : null);
+      setActiveSnap(slot ? null : snapCandidate(would, viewport(), occupiedForId(id), floatChrome()));
+    },
+
+    endTabDrag: (id, pointerX, pointerY) => {
+      const gesture = tabGesture;
+      tabGesture = null;
+      if (!gesture || gesture.id !== id) return;
+
+      // A press that went nowhere is a click, and a click on a tab brings it forward. Safe to
+      // re-render the strip now: the gesture is over.
+      if (!gesture.dragging) {
+        raise(id);
+        return;
+      }
+
+      /*
+        Let go over nothing, and the tab leaves its seat as a card under the pointer.
+
+        `endDockMove` settles a target and otherwise leaves the panel where it is — which for a tab
+        is where it started, since nothing has been written. Tearing one out to no particular place
+        is the gesture's whole point, so the float is written here first and `endDockMove` then finds
+        nothing to override it with.
+      */
+      const request = dockRequests().find((entry) => entry.id === id);
+      if (request && !activeInsert() && !activeSnap()) {
+        const placement = placementOf(request);
+        writePlacement(id, {
+          ...placement,
+          snap: null,
+          displace: false,
+          maximised: false,
+          // Where it was let go, so the card appears under the hand rather than where the drag began.
+          x: pointerX - placement.w / 2,
+          y: pointerY - TITLE_BAR_PX / 2,
+        });
+      }
+      store.endDockMove(id);
+      raise(id);
     },
 
     moveDock: (id, dx, dy) => {
@@ -2334,6 +2453,22 @@ export function ShellStoreProvider(props: ParentProps) {
       } else if (dragOrigin && current && snap) {
         writePlacement(id, { ...current, snap, displace: false });
       }
+
+      /*
+        The seat follows where its titlebar went.
+
+        Copied rather than re-arranged: a seat is "the same lane, and the same `order` in it", so
+        handing the mates the four coordinates the drop settled on re-forms them around the panel
+        that led. Their own `tab` is untouched, so the strip keeps the order it had.
+      */
+      const landed = placements()[placementKey(id)];
+      if (landed) {
+        for (const mate of movingSeat) {
+          const entry = dockRequests().find((request) => request.id === mate);
+          if (entry) writePlacement(mate, followSeat(placementOf(entry), landed));
+        }
+      }
+      movingSeat = [];
 
       dragOrigin = null;
       dragPointer = null;

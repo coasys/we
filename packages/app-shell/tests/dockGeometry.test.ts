@@ -39,6 +39,7 @@ import {
   fitPlacement,
   type FloatPlacement,
   floorOf,
+  followSeat,
   grown,
   homeLaneMembers,
   insertionSlots,
@@ -2331,5 +2332,46 @@ describe('room for a fold, in a lane of seats', () => {
 
   it('is somewhere for a folded seat, which is what lets it unfold', () => {
     expect(roomElsewhere([false, true], 0)).toBe(true);
+  });
+});
+
+/**
+ * A titlebar belongs to the seat, not to the panel showing in it.
+ *
+ * Dragging it took the one panel in front and left its tabs behind, which reads as the grip tearing
+ * out the very tab you were looking at. The mates follow, by taking the coordinates the drop settled
+ * on — a seat being "the same lane, and the same order in it".
+ */
+describe('a seat-mate following its titlebar', () => {
+  const mate = (over: Partial<FloatPlacement> = {}): FloatPlacement =>
+    placement({ snap: 'left', displace: true, band: 0, order: 0, tab: 1, w: 300, h: 200, ...over });
+
+  it('takes the lane and seat the leader landed in', () => {
+    const landed = placement({ snap: 'right', displace: true, band: 1, order: 2 });
+    const followed = followSeat(mate(), landed);
+
+    expect(followed).toMatchObject({ snap: 'right', displace: true, band: 1, order: 2 });
+  });
+
+  it('keeps its own size and its place in the strip', () => {
+    const followed = followSeat(mate({ w: 440, h: 250, tab: 3 }), placement({ snap: 'right', order: 0 }));
+
+    expect(followed).toMatchObject({ w: 440, h: 250, tab: 3 });
+  });
+
+  it('drops the band when the leader landed as a float, rather than inheriting a stale lane', () => {
+    // A band left on a panel that is floating would claim that lane the next time it displaced —
+    // the same silent inheritance `insertDock` clears for.
+    const followed = followSeat(mate(), placement({ snap: 'bottom-right', displace: false, order: 0 }));
+
+    expect(followed.band).toBeUndefined();
+    expect(followed.displace).toBe(false);
+  });
+
+  it('takes the home lane when the leader landed in the template', () => {
+    const landed = { ...placement({ snap: 'home', displace: false, order: 1 }), home: 'sidebar' };
+    const followed = followSeat(mate(), landed);
+
+    expect(followed).toMatchObject({ snap: 'home', home: 'sidebar', order: 1 });
   });
 });
