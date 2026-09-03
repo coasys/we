@@ -1367,6 +1367,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(id: string): covers the content region with the panel, or goes back to being a card. Nothing about where the panel was is overwritten while it is on',
         toggleDockDisplace:
           '(id: string): makes the panel push the content aside, or stop. A toggle rather than a setter because a menu item reports only that it was clicked',
+        toggleCollapseDock:
+          '(id: string): folds a panel down to its titlebar, or opens it again. It keeps its place in its lane and its lane-mates take the room; the content is hidden, never unmounted. Refused for a lone displacing panel — read dockPlacement[id].canCollapse',
         confirmDestructive:
           '(): runs the destructive action the host is asking about. Host chrome only, for the reason pendingDestructive is: an action able to answer its own confirmation is the confirmation being skipped',
         cancelDestructive: '(): refuses it. The waiting action resolves as though it had been blocked',

@@ -276,6 +276,8 @@ export const zTemplateMeta: z.ZodType<TemplateMeta> = z
           size: z.enum(['sm', 'md', 'lg', 'full']).optional(),
           grow: z.number().optional(),
           displace: z.boolean().optional(),
+          // The smallest usable box, in pixels — a fact about the content. See `min` on `TemplatePanel`.
+          min: z.object({ width: z.number().optional(), height: z.number().optional() }).optional(),
           // One segment or several — see `route` on `TemplatePanel` for why it is a list and why
           // it says *whether* rather than *where*.
           route: z.union([z.string(), z.array(z.string())]).optional(),

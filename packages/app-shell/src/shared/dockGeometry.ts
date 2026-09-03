@@ -372,6 +372,28 @@ export interface FloatPlacement {
    * exactly the corner and size it was at.
    */
   maximised?: boolean;
+  /**
+   * Folded down to its titlebar, content hidden — the way a panel stays where it is while getting
+   * out of the way.
+   *
+   * Its extent along its lane becomes the titlebar's and its grow becomes zero, so the lane-mates
+   * take the room; the content is hidden rather than unmounted, so a transcript keeps its scroll and
+   * a call keeps its streams. Offered to lane members and to floats. A lone displacing panel is
+   * refused: folding it would leave the inset and empty the edge, which is a hole rather than a
+   * fold. This is also what `MIN_FLOAT_PX` was silently preventing — a card could not be dragged down
+   * to its own bar.
+   */
+  collapsed?: boolean;
+}
+
+/**
+ * The smallest box a panel's content is usable in. Mirrors `DockMin` in the module contract,
+ * restated here because this file does the arithmetic and should not depend on the contract to
+ * describe two numbers.
+ */
+export interface DockMin {
+  width?: number;
+  height?: number;
 }
 
 export interface DockRequest {
@@ -380,6 +402,13 @@ export interface DockRequest {
   size: DockSize;
   /** The module asked to overlay rather than inset. The host may force this on; never off. */
   float: boolean;
+  /**
+   * Where usable stops, per axis — the panel's own floor, over the host's default.
+   *
+   * On the request rather than the placement because it is a fact about the content, not about
+   * where somebody put it: it does not move with the panel and is not the reader's to change.
+   */
+  min?: DockMin;
   /**
    * Where the user has put this panel, if they ever have.
    *
@@ -431,6 +460,22 @@ export const FRAME_BORDER_PX = 2;
 /** Everything between a panel's declared box and the box its content gets. */
 export const PANEL_CHROME = { x: FRAME_BORDER_PX, y: TITLE_BAR_PX + FRAME_BORDER_PX };
 
+/** How tall a collapsed panel is: its titlebar and the frame's border, and nothing else. */
+export const COLLAPSED_PX = TITLE_BAR_PX + FRAME_BORDER_PX;
+
+/**
+ * The least a panel may be along one axis: its own floor if it declared one, else the host's.
+ *
+ * A collapsed panel floors at its titlebar on the axis its lane divides, whatever it declared —
+ * folding is the one time a panel is deliberately smaller than usable, since the point is that its
+ * content is not showing.
+ */
+export function floorOf(min: DockMin | undefined, axis: 'w' | 'h', spanning: boolean, collapsed = false): number {
+  if (collapsed) return COLLAPSED_PX;
+  const declared = axis === 'w' ? min?.width : min?.height;
+  return declared ?? (spanning ? MIN_DOCK_PX : MIN_FLOAT_PX);
+}
+
 /**
  * A resolved dock box.
  *
@@ -468,6 +513,16 @@ export interface DockGeometry {
    * panels that were side by side, and dragging it wrote a height nothing in that arrangement reads.
    */
   laneAxis?: 'vertical' | 'horizontal' | '';
+  /**
+   * Folded to its titlebar. The frame hides the content while this is true — hides, never unmounts.
+   * See {@link FloatPlacement.collapsed}.
+   */
+  collapsed?: boolean;
+  /**
+   * Whether folding is on offer: a lane member, or a float. A lone displacing panel is refused, since
+   * folding it would leave the inset and empty the edge. What greys the titlebar's fold control.
+   */
+  canCollapse?: boolean;
   /**
    * The boundary between this panel and the next one in its lane, as a box to put a divider in.
    * Absent when there is no next panel. See {@link seamBetween}.
@@ -1222,7 +1277,7 @@ export function columnMembers<T extends { placement: FloatPlacement }>(
  * container means reparenting panels out of fixed positioning, which remounts their subtrees — the
  * hazard `dockFrame` exists to avoid, and it would drop a call's live video streams.
  */
-function divide(bases: number[], grows: number[], available: number, floor: number): number[] {
+function divide(bases: number[], grows: number[], available: number, floors: number[]): number[] {
   const sumBase = bases.reduce((total, base) => total + base, 0);
   const sumGrow = grows.reduce((total, grow) => total + grow, 0);
   const slack = available - sumBase;
@@ -1232,9 +1287,23 @@ function divide(bases: number[], grows: number[], available: number, floor: numb
       // simply sits shorter than the edge rather than stretching somebody who asked not to be.
       bases.map((base, i) => (sumGrow > 0 ? base + (slack * grows[i]) / sumGrow : base))
     : // Over-subscribed: shrink proportionally, but never past the point where a panel stops being
-      // one. A lane of many can still overflow the region, and the clamp in `resolveDock` catches
-      // what is left.
-      bases.map((base) => Math.max(floor, (base * available) / sumBase));
+      // one — its own floor, which differs per panel. A lane of many can still overflow the region,
+      // and the clamp in `resolveDock` catches what is left.
+      bases.map((base, i) => Math.max(floors[i], (base * available) / sumBase));
+}
+
+/** A lane member as the layout sees it: a placement, plus the floor and fold the request carries. */
+export type LaneMember = FloatPlacement & { min?: DockMin };
+
+/** A member's base along the lane, and its grow — a collapsed one is its titlebar and wants nothing. */
+function laneBase(
+  member: LaneMember,
+  axis: 'w' | 'h',
+  spanning: boolean,
+): { base: number; grow: number; floor: number } {
+  const floor = floorOf(member.min, axis, spanning, member.collapsed);
+  if (member.collapsed) return { base: COLLAPSED_PX, grow: 0, floor };
+  return { base: Math.max(floor, member[axis]), grow: Math.max(0, member.grow ?? 1), floor };
 }
 
 /**
@@ -1267,7 +1336,7 @@ function divide(bases: number[], grows: number[], available: number, floor: numb
  * Returns one box per member, in the order given.
  */
 export function columnLayout(
-  members: FloatPlacement[],
+  members: LaneMember[],
   edge: Exclude<DockEdge, null>,
   viewport: Viewport,
   occupied: ContentInset = NO_INSET,
@@ -1276,6 +1345,10 @@ export function columnLayout(
 ): Rect[] {
   if (members.length === 0) return [];
   const vertical = edge === 'left' || edge === 'right';
+  const along = vertical ? 'h' : 'w';
+  const sized = members.map((member) => laneBase(member, along, Boolean(options.displacing)));
+  const floors = sized.map((entry) => entry.floor);
+  const least = floors.reduce((total, floor) => total + floor, 0);
 
   if (options.displacing) {
     /*
@@ -1294,10 +1367,10 @@ export function columnLayout(
 
     // No gaps and no chrome: a lane that has taken room from the content meets it edge to edge.
     const extents = divide(
-      members.map((m) => Math.max(MIN_DOCK_PX, vertical ? m.h : m.w)),
-      members.map((m) => Math.max(0, m.grow ?? 1)),
-      Math.max(MIN_DOCK_PX * members.length, span),
-      MIN_DOCK_PX,
+      sized.map((entry) => entry.base),
+      sized.map((entry) => entry.grow),
+      Math.max(least, span),
+      floors,
     );
 
     const boxes: Rect[] = [];
@@ -1347,10 +1420,10 @@ export function columnLayout(
   // single snapped card keeps from the edge.
   const span = (vertical ? free.height : free.width) - DOCK_GAP_PX * (members.length + 1);
   const extents = divide(
-    members.map((m) => Math.max(MIN_FLOAT_PX, vertical ? m.h : m.w)),
-    members.map((m) => Math.max(0, m.grow ?? 1)),
-    Math.max(MIN_FLOAT_PX * members.length, span),
-    MIN_FLOAT_PX,
+    sized.map((entry) => entry.base),
+    sized.map((entry) => entry.grow),
+    Math.max(least, span),
+    floors,
   );
 
   const boxes: Rect[] = [];
@@ -1539,7 +1612,7 @@ export function resolveDock(
     */
     const thickness = clamp(
       seat ? (vertical ? seat.w : seat.h) : thicknessOf(placement, snapEdge),
-      MIN_DOCK_PX,
+      floorOf(request.min, vertical ? 'w' : 'h', true),
       vertical ? region.width : region.height,
     );
 
@@ -1579,10 +1652,15 @@ export function resolveDock(
 
   // A seat wins over the snap: it *is* the snap, worked out against the neighbours sharing the edge
   // rather than against an empty one. Without siblings there is no seat and nothing changes.
-  const w = seat ? seat.w : clamp(placement.w, MIN_FLOAT_PX, Math.max(MIN_FLOAT_PX, free.width - DOCK_GAP_PX * 2));
+  const minW = floorOf(request.min, 'w', false);
+  const minH = floorOf(request.min, 'h', false, placement.collapsed);
+  const w = seat ? seat.w : clamp(placement.w, minW, Math.max(minW, free.width - DOCK_GAP_PX * 2));
   const h = seat
     ? seat.h
-    : clamp(placement.h, MIN_FLOAT_PX, Math.max(MIN_FLOAT_PX, region.height - chrome.top - DOCK_GAP_PX * 2));
+    : // A collapsed card alone is its titlebar tall — the same fold a lane gives it, with no lane.
+      placement.collapsed
+      ? COLLAPSED_PX
+      : clamp(placement.h, minH, Math.max(minH, region.height - chrome.top - DOCK_GAP_PX * 2));
   const origin = seat
     ? { x: seat.x, y: seat.y }
     : placement.snap

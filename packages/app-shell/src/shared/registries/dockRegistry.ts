@@ -361,6 +361,14 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
                     '--we-drop-zone-radius': {
                       $: `${dockGeometryPath(entry.id, 'floating')} ? 'var(--we-radius-500)' : '0px'`,
                     },
+                    /*
+                      Hidden while folded — hidden, never unmounted. A collapsed transcript keeps its
+                      scroll and a collapsed call keeps its streams, which is the whole difference
+                      between folding a panel and closing it. Here rather than as a DS prop because
+                      it has to override the Column's own `display: flex`, and `styles` is applied
+                      last.
+                    */
+                    display: { $: `${dockGeometryPath(entry.id, 'collapsed')} ? 'none' : 'flex'` },
                   },
                 },
                 /*
@@ -474,6 +482,7 @@ function titleBar(entry: DockEntry): SchemaNode {
         },
       },
       ...(entry.aspect ? [whileRestored(entry.id, fitButton(entry.id))] : []),
+      whileRestored(entry.id, collapseButton(entry.id)),
       whileRestored(entry.id, displaceButton(entry.id)),
       maximiseButton(entry.id),
       whileRestored(entry.id, positionMenu(entry)),
@@ -517,6 +526,41 @@ function fitButton(id: string): SchemaNode {
  * a rectangular layout cannot flow around a box in a corner. The store refuses it there anyway —
  * this is the same answer, made visible before the click rather than after it.
  */
+/**
+ * Fold the panel to its titlebar, or open it again.
+ *
+ * The way a panel gets out of the way without going anywhere: it keeps its place in its lane and its
+ * lane-mates take the room, and the content is hidden rather than unmounted. Greyed rather than
+ * absent for a lone displacing panel, for the reason the displace toggle is greyed on a corner — the
+ * control stays where people look for it, and says why it cannot be pressed.
+ */
+function collapseButton(id: string): SchemaNode {
+  const place = (field: string) => `shellStore.dockPlacement['${id}'].${field}`;
+
+  return {
+    type: 'we-tooltip',
+    props: {
+      title: {
+        $: `${place('canCollapse')} ? (${place('collapsed')} ? 'Unfold' : 'Fold to titlebar') : 'Share an edge to fold'`,
+      },
+      placement: 'bottom',
+    },
+    children: [
+      {
+        type: 'we-button',
+        props: {
+          size: 'xs',
+          square: true,
+          variant: { $: `${place('collapsed')} ? 'secondary' : 'ghost'` },
+          disabled: { $: `!${place('canCollapse')}` },
+          onClick: { $action: 'shellStore.toggleCollapseDock', args: [id] },
+        },
+        children: [{ type: 'we-icon', props: { name: { $: `${place('collapsed')} ? 'caret-down' : 'caret-up'` } } }],
+      },
+    ],
+  };
+}
+
 function displaceButton(id: string): SchemaNode {
   const place = (field: string) => `shellStore.dockPlacement['${id}'].${field}`;
 

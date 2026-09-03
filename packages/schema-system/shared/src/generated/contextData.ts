@@ -2627,6 +2627,7 @@ export const contextData: ContextData = {
         'insertDock',
         'toggleMaximiseDock',
         'toggleDockDisplace',
+        'toggleCollapseDock',
       ],
     },
     {

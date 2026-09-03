@@ -70,14 +70,15 @@ function hiddenInFullScreen(node: unknown, text: string, inside = false): boolea
 describe('a panel’s titlebar in full screen', () => {
   const frame = dockFrame(entry as unknown as DockEntry, { type: 'Column' } as never);
 
-  it('hides the three controls that would do nothing', () => {
-    // One gate per inert control, each on that panel's own maximised flag. Hidden rather than
-    // disabled, which is the choice `fitButton` already makes for a module publishing no aspect:
-    // a control that does nothing is worse than one that is not there.
+  it('hides the four controls that would do nothing', () => {
+    // One gate per inert control — fit, fold, displace and the position menu — each on that panel's
+    // own maximised flag. Hidden rather than disabled, which is the choice `fitButton` already makes
+    // for a module publishing no aspect: a control that does nothing is worse than one that is not
+    // there.
     const maximised = gates(frame).filter((path) => path === `shellStore.dockPlacement['${entry.id}'].maximised`);
-    expect(maximised).toHaveLength(3);
+    expect(maximised).toHaveLength(4);
 
-    // Named, for the one whose tooltip is a plain string — the other two write theirs conditionally,
+    // Named, for the one whose tooltip is a plain string — the others write theirs conditionally,
     // so the count above is what covers them.
     expect(hiddenInFullScreen(frame, 'Fit to content')).toBe(true);
   });

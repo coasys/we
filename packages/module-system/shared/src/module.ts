@@ -146,6 +146,15 @@ export interface DockAspect {
  * piece of geometry a module had written for itself, and the first that other modules would have had
  * to copy.
  */
+/**
+ * The smallest box a panel's content is usable in, in pixels. Either side may be left to the host's
+ * default. See {@link DockContribution.min}.
+ */
+export interface DockMin {
+  width?: number;
+  height?: number;
+}
+
 export interface DockContribution {
   /**
    * A key on this module's store that **opens** this panel — the half `close` was missing.
@@ -224,6 +233,20 @@ export interface DockContribution {
    * without this there is no way to feel your way back to exactly right.
    */
   aspect?: string;
+  /**
+   * A key on this module's store returning the smallest box its content is usable in: see
+   * {@link DockMin}.
+   *
+   * Optional. The host has one floor for every panel otherwise, and it is wrong in both directions:
+   * a call stage below 300px wide shows tiles nobody can see, and a transcript is perfectly readable
+   * at half that. Lanes make it matter more — a panel sharing an edge with two others is squeezed
+   * in ways a panel alone never was — so the panel says where usable stops, and the host refuses to
+   * go past it whether the pressure comes from a drag, a divider or a window.
+   *
+   * A floor, never a size: it says nothing about how big the panel *should* be, only how small it
+   * may go. Sizes stay the reader's.
+   */
+  min?: string;
   /**
    * A key on this module's store naming the action that closes the panel — the host puts a close
    * button on its titlebar, at the end, after the position menu.

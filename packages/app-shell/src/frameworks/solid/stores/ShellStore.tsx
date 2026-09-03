@@ -18,6 +18,7 @@ import {
   coveredInset,
   displaces,
   type DockGeometry,
+  type DockMin,
   type DockRequest,
   dockThickness,
   edgeGroups,
@@ -25,11 +26,10 @@ import {
   EDGES,
   fitPlacement,
   type FloatPlacement,
+  floorOf,
   insertionSlots,
   laneable,
   layerOrder,
-  MIN_DOCK_PX,
-  MIN_FLOAT_PX,
   NO_INSET,
   occupiedFor,
   placementFromDeclaration,
@@ -499,6 +499,15 @@ export interface ShellStore {
    * anyway, and a schema cannot read it at click time to invert it.
    */
   toggleDockDisplace: (id: string) => void;
+  /**
+   * Fold a panel down to its titlebar, or open it again.
+   *
+   * It stays where it is and keeps its place in its lane; its lane-mates take the room. The content
+   * is hidden rather than unmounted, so a transcript keeps its scroll and a call keeps its streams.
+   * Refused for a lone displacing panel, where folding would leave the inset and empty the edge —
+   * `dockPlacement[id].canCollapse` says whether it is on offer.
+   */
+  toggleCollapseDock: (id: string) => void;
 }
 
 const ShellContext = createContext<ShellStore>();
@@ -1012,6 +1021,7 @@ export function ShellStoreProvider(props: ParentProps) {
             edge: (readModuleKey(entry.moduleId, entry.edge) as DockEdge) ?? null,
             size: (readModuleKey(entry.moduleId, entry.size) as DockSize) ?? 'md',
             float: Boolean(readModuleKey(entry.moduleId, entry.float)),
+            min: readModuleKey(entry.moduleId, entry.min) as DockMin | undefined,
           };
           return { ...request, placement: placementOf(request) };
         })
@@ -1216,7 +1226,8 @@ export function ShellStoreProvider(props: ParentProps) {
         if (group.members.length < 2) continue;
 
         const boxes = columnLayout(
-          group.members.map((member) => member.placement),
+          // The floor rides on the request, not the placement — see `DockRequest.min`.
+          group.members.map((member) => ({ ...member.placement, min: requests[member.index].min })),
           edge,
           viewport(),
           occupied,
@@ -1240,7 +1251,7 @@ export function ShellStoreProvider(props: ParentProps) {
 
   const dockGeometry = createMemo(() => {
     const requests = dockRequests();
-    const { seats, below, above, axis, seams } = laneSeating();
+    const { seats, below, above, axis, seams, lanes } = laneSeating();
     const px = (n: number) => `${Math.round(n)}px`;
     // Activation is keyed the way placements are — by scope — and the layer is asked for by dock id.
     const touched = activation();
@@ -1250,8 +1261,13 @@ export function ShellStoreProvider(props: ParentProps) {
     );
     const resolved: Record<string, DockGeometry> = {};
     requests.forEach((request, index) => {
+      const box = resolveDock(request, viewport(), occupiedOf(index, requests), floatChrome(), seats[request.id]);
+      // A lane member or a float may fold; a lone displacing panel may not — see `canCollapse`.
+      const canCollapse = (box.floating && !box.maximised) || (lanes[request.id]?.length ?? 0) > 1;
       resolved[request.id] = {
-        ...resolveDock(request, viewport(), occupiedOf(index, requests), floatChrome(), seats[request.id]),
+        ...box,
+        canCollapse,
+        collapsed: canCollapse && Boolean(placementOf(request).collapsed),
         // Empty rather than absent, so a schema condition reads a string either way.
         below: below[request.id] ?? '',
         above: above[request.id] ?? '',
@@ -1437,6 +1453,7 @@ export function ShellStoreProvider(props: ParentProps) {
       keys[`edge:${panel.id}`] = () => (closedPanels()[closedKey] ? null : (edgeOfSnap(panel.snap ?? null) ?? 'right'));
       keys[`size:${panel.id}`] = () => panel.size ?? 'md';
       keys[`float:${panel.id}`] = () => !panel.displace;
+      keys[`min:${panel.id}`] = () => panel.min;
 
       if (!registeredPanels.includes(dockId)) {
         const entry = {
@@ -1445,6 +1462,7 @@ export function ShellStoreProvider(props: ParentProps) {
           edge: `edge:${panel.id}`,
           size: `size:${panel.id}`,
           float: `float:${panel.id}`,
+          min: `min:${panel.id}`,
           /*
             A written-out action rather than a `close:<id>` key beside the three above.
 
@@ -1645,7 +1663,15 @@ export function ShellStoreProvider(props: ParentProps) {
             added. It is what greys the "push content aside" control out on a corner, where turning
             it on does nothing.
           */
-          return [request.id, { ...placement, canDisplace: edgeOfSnap(placement.snap) !== null }];
+          return [
+            request.id,
+            {
+              ...placement,
+              canDisplace: edgeOfSnap(placement.snap) !== null,
+              // Answered by the geometry, which knows whether the panel has lane-mates.
+              canCollapse: dockGeometry()[request.id]?.canCollapse ?? false,
+            },
+          ];
         }),
       ),
 
@@ -1677,7 +1703,9 @@ export function ShellStoreProvider(props: ParentProps) {
         */
         for (const memberId of laneSeating().lanes[id] ?? []) {
           const member = dockRequests().find((entry) => entry.id === memberId);
-          if (!member) continue;
+          // A folded member is its titlebar tall whatever it stores, and its stored size is what it
+          // unfolds back to — writing the bar's height over it would lose that.
+          if (!member || placementOf(member).collapsed) continue;
           const rendered = rectOf(dockGeometry()[memberId], viewport(), placementOf(member))[along];
           writePlacement(memberId, { ...placementOf(member), [along]: rendered, grow: rendered });
         }
@@ -1725,7 +1753,9 @@ export function ShellStoreProvider(props: ParentProps) {
 
       const start = dragOrigin;
       const spanning = !dockGeometry()[id]?.floating;
-      const min = spanning ? MIN_DOCK_PX : MIN_FLOAT_PX;
+      // The panel's own floor per axis, over the host's default — see `DockRequest.min`.
+      const minW = floorOf(request.min, 'w', spanning);
+      const minH = floorOf(request.min, 'h', spanning);
       const pulls = (edge: string) => side.includes(edge);
 
       let { x, y, w, h } = start;
@@ -1740,13 +1770,13 @@ export function ShellStoreProvider(props: ParentProps) {
       }
       if (pulls('bottom')) h = start.h + dy;
 
-      if (w < min) {
-        if (pulls('left')) x = start.x + (start.w - min);
-        w = min;
+      if (w < minW) {
+        if (pulls('left')) x = start.x + (start.w - minW);
+        w = minW;
       }
-      if (h < min) {
-        if (pulls('top')) y = start.y + (start.h - min);
-        h = min;
+      if (h < minH) {
+        if (pulls('top')) y = start.y + (start.h - minH);
+        h = minH;
       }
 
       /*
@@ -1825,12 +1855,14 @@ export function ShellStoreProvider(props: ParentProps) {
       if (!upper || !lower) return;
 
       const { along } = columnDrag;
-      // A displacing lane floors at the width worth having as a dock; a floating one at the size
-      // below which a card stops being one.
-      const floor = dockGeometry()[id]?.floating === false ? MIN_DOCK_PX : MIN_FLOAT_PX;
+      // Each panel's own floor: its declared minimum, the host's default, or its titlebar if it is
+      // folded. Both apply at once — the boundary stops at whichever it reaches first.
+      const spanning = dockGeometry()[id]?.floating === false;
+      const floorTop = floorOf(upper.min, along, spanning, placementOf(upper).collapsed);
+      const floorBottom = floorOf(lower.min, along, spanning, placementOf(lower).collapsed);
       const room = columnDrag.top + columnDrag.bottom;
-      const ceiling = Math.max(floor, room - floor);
-      const top = Math.min(ceiling, Math.max(floor, columnDrag.top + delta));
+      const ceiling = Math.max(floorTop, room - floorBottom);
+      const top = Math.min(ceiling, Math.max(floorTop, columnDrag.top + delta));
       const bottom = room - top;
 
       writePlacement(id, { ...placementOf(upper), [along]: top });
@@ -2317,6 +2349,13 @@ export function ShellStoreProvider(props: ParentProps) {
       // a corner, where the idea has no meaning. See the rule in dockGeometry.
       const stays = placement.displace && edgeOfSnap(snap) !== null;
       writePlacement(id, { ...placement, snap, displace: stays });
+    },
+
+    toggleCollapseDock: (id) => {
+      const request = dockRequests().find((entry) => entry.id === id);
+      if (!request?.edge || !dockGeometry()[id]?.canCollapse) return;
+      const placement = placementOf(request);
+      writePlacement(id, { ...placement, collapsed: !placement.collapsed });
     },
 
     toggleDockDisplace: (id) => {

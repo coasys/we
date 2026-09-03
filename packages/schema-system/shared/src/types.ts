@@ -73,6 +73,15 @@ export type TemplatePanel = {
   /** Push the content aside rather than covering it. Honoured on an edge snap only. */
   displace?: boolean;
   /**
+   * The smallest box the panel's content is usable in, in pixels. Either side may be omitted.
+   *
+   * The one place a declaration writes pixels, and deliberately: a floor is a fact about the
+   * *content* — below this many pixels the thing inside stops working — not a guess about the
+   * viewport. The host has a default for panels that say nothing, and it is wrong in both directions
+   * often enough that a panel sharing a lane with two others should say where usable stops.
+   */
+  min?: { width?: number; height?: number };
+  /**
    * Only while one of these segments is in the path. Absent means every route.
    *
    * What makes a layout change as somebody moves between sections — a graph wants a transcript

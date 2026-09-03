@@ -15,6 +15,7 @@ import {
   arrangeDrop,
   BOTTOM_CHROME_PX,
   CHROME_RAIL_PX,
+  COLLAPSED_PX,
   columnLayout,
   columnMembers,
   columnSlots,
@@ -30,7 +31,9 @@ import {
   edgeOfSnap,
   fitPlacement,
   type FloatPlacement,
+  floorOf,
   insertionSlots,
+  type LaneMember,
   laneThickness,
   layerOrder,
   MIN_DOCK_PX,
@@ -1784,5 +1787,95 @@ describe('the seam between two lane-mates', () => {
     const seam = seamBetween({ x: 88, y: 0, w: 320, h: 400 }, { x: 88, y: 408, w: 440, h: 400 }, 'vertical');
 
     expect(seam.w).toBe(440);
+  });
+});
+
+/**
+ * A panel's own floor, and folding it to its titlebar.
+ *
+ * `MIN_DOCK_PX` and `MIN_FLOAT_PX` were one floor for every panel, wrong in both directions: a call
+ * stage below 300px shows tiles nobody can see, and a transcript is readable at half that. A panel
+ * says where usable stops; folding is the one time it goes deliberately below it.
+ */
+describe('where usable stops', () => {
+  it('is the host default for a panel that says nothing', () => {
+    expect(floorOf(undefined, 'w', true)).toBe(MIN_DOCK_PX);
+    expect(floorOf(undefined, 'h', false)).toBe(MIN_FLOAT_PX);
+  });
+
+  it('is what the panel declared, per axis, when it did', () => {
+    expect(floorOf({ width: 320 }, 'w', true)).toBe(320);
+    expect(floorOf({ width: 320 }, 'h', true)).toBe(MIN_DOCK_PX);
+  });
+
+  it('is the titlebar for a folded panel, whatever it declared', () => {
+    expect(floorOf({ height: 400 }, 'h', false, true)).toBe(COLLAPSED_PX);
+  });
+
+  it('holds a lane member at its declared floor when the lane is over-subscribed', () => {
+    // 900px of height, three panels each asking 600, one of which refuses to go below 400. The
+    // other two share what is left rather than all three shrinking alike.
+    const member = (min?: { height: number }): LaneMember => ({
+      ...placement({ snap: 'left', displace: false, h: 600 }),
+      min,
+    });
+    const [held, a, b] = columnLayout([member({ height: 400 }), member(), member()], 'left', desktop);
+
+    expect(held.h).toBe(400);
+    expect(a.h).toBeLessThan(400);
+    expect(a.h).toBe(b.h);
+  });
+
+  it('refuses to resolve a lone displacing panel narrower than it declared', () => {
+    const geometry = resolveDock(
+      dock({ min: { width: 360 }, placement: placement({ snap: 'right', displace: true, w: 200 }) }),
+      desktop,
+    );
+
+    expect(px(geometry.width)).toBe(360);
+  });
+
+  it('refuses to resolve a floating card smaller than it declared', () => {
+    const geometry = resolveDock(
+      dock({
+        min: { width: 300, height: 240 },
+        placement: placement({ snap: 'bottom-right', displace: false, w: 150, h: 150 }),
+      }),
+      desktop,
+    );
+
+    expect(px(geometry.width)).toBe(300);
+    expect(px(geometry.height)).toBe(240);
+  });
+});
+
+describe('a panel folded to its titlebar', () => {
+  const member = (over: Partial<FloatPlacement> = {}) => placement({ snap: 'left', displace: false, h: 300, ...over });
+
+  it('takes only its bar in a lane, and its lane-mate takes the rest', () => {
+    const [folded, open] = columnLayout([member({ collapsed: true }), member()], 'left', desktop);
+
+    expect(folded.h).toBe(COLLAPSED_PX);
+    expect(open.h).toBeGreaterThan(300);
+  });
+
+  it('wants none of the spare room, so unfolding gives back exactly what it had', () => {
+    // Its grow reads as zero while folded: the room it would have taken goes to the others and comes
+    // back when it opens, rather than being split with it while it has nothing to show.
+    const before = columnLayout([member({ grow: 1 }), member({ grow: 1 })], 'left', desktop);
+    const during = columnLayout([member({ grow: 1, collapsed: true }), member({ grow: 1 })], 'left', desktop);
+    const after = columnLayout([member({ grow: 1 }), member({ grow: 1 })], 'left', desktop);
+
+    expect(during[1].h).toBeGreaterThan(before[1].h);
+    expect(after[0].h).toBe(before[0].h);
+  });
+
+  it('is its bar tall as a lone card too', () => {
+    const geometry = resolveDock(
+      dock({ placement: placement({ snap: 'bottom-right', displace: false, h: 300, collapsed: true }) }),
+      desktop,
+    );
+
+    expect(px(geometry.height)).toBe(COLLAPSED_PX);
   });
 });

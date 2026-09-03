@@ -2646,6 +2646,7 @@ ShellStore:
   - insertDock(id: string, edge: 'left' | 'right' | 'top' | 'bottom', position: number, mode?: 'band' | 'lane', lane?: number | 'float'): puts a panel on that edge, renumbering what it lands among — what a drop on a boundary does. 'band' opens a lane of its own at that distance inboard; 'lane' takes a seat at that position along the lane named by `lane` (a distance inboard, or 'float' for the floating one)
   - toggleMaximiseDock(id: string): covers the content region with the panel, or goes back to being a card. Nothing about where the panel was is overwritten while it is on
   - toggleDockDisplace(id: string): makes the panel push the content aside, or stop. A toggle rather than a setter because a menu item reports only that it was clicked
+  - toggleCollapseDock(id: string): folds a panel down to its titlebar, or opens it again. It keeps its place in its lane and its lane-mates take the room; the content is hidden, never unmounted. Refused for a lone displacing panel — read dockPlacement[id].canCollapse
 
 SpaceStore:
 - State:

@@ -6615,7 +6615,8 @@
         "snapDock",
         "insertDock",
         "toggleMaximiseDock",
-        "toggleDockDisplace"
+        "toggleDockDisplace",
+        "toggleCollapseDock"
       ]
     },
     {
