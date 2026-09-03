@@ -334,62 +334,134 @@ const deviceDetail: SchemaNode = {
   ],
 };
 
+// ─── QR enrollment view ─────────────────────────────────────────────────────
+
+/** Shown when an enrollment offer exists — QR code for the new device to scan. */
+const enrolmentQrView: SchemaNode = {
+  type: 'Column',
+  props: { gap: '400', ay: 'center', py: '300' },
+  children: [
+    { type: 'we-text', props: { variant: 'body-sm', fontWeight: '600' }, children: ['Scan to enroll'] },
+    {
+      type: 'we-text',
+      props: { variant: 'caption', color: 'text-muted', textAlign: 'center' },
+      children: ['Open your identity app on the new device and scan this code.'],
+    },
+    // QR code image — data URL from the qrcode library
+    {
+      type: 'Column',
+      props: {
+        ay: 'center',
+        ax: 'center',
+        bg: 'white',
+        r: '400',
+        p: '300',
+      },
+      children: [
+        {
+          type: 'img',
+          props: {
+            src: { $: 'modules.identity.enrolmentOffer.qrDataUrl' },
+            alt: 'Enrollment QR code',
+            width: '280',
+            height: '280',
+          },
+        },
+      ],
+    },
+    // Offer details
+    {
+      type: 'Column',
+      props: { gap: '100', ay: 'center' },
+      children: [
+        {
+          type: 'we-text',
+          props: { variant: 'caption', color: 'text-muted' },
+          children: [{ $: 'modules.identity.enrolmentOffer.label' }],
+        },
+        {
+          type: 'we-text',
+          props: { variant: 'caption', color: 'text-dim', fontFamily: 'mono', fontSize: '10px' },
+          children: [{ $: 'modules.identity.enrolmentOffer.publicKey' }],
+        },
+      ],
+    },
+    // Cancel button
+    {
+      type: 'we-button',
+      props: {
+        variant: 'ghost',
+        size: 'sm',
+        onClick: { $action: 'modules.identity.dismissEnrolment' },
+      },
+      children: ['Cancel'],
+    },
+  ],
+};
+
 // ─── Tab content ────────────────────────────────────────────────────────────
 
-/** Devices tab — roster overview or device detail. */
+/** Devices tab — QR enrollment view, device detail, or roster overview. */
 const devicesTab: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $: 'modules.identity.selectedDeviceId' },
-    then: deviceDetail,
+    condition: { $: 'modules.identity.enrolmentOffer' },
+    then: enrolmentQrView,
     else: {
-      type: 'Column',
-      props: { gap: '300' },
-      children: [
-        // Devices
-        sectionHeader('Devices', 'modules.identity.deviceCount'),
-        {
+      type: '$if',
+      props: {
+        condition: { $: 'modules.identity.selectedDeviceId' },
+        then: deviceDetail,
+        else: {
           type: 'Column',
-          props: { gap: '200' },
+          props: { gap: '300' },
           children: [
+            // Devices
+            sectionHeader('Devices', 'modules.identity.deviceCount'),
             {
-              type: '$each',
-              props: { items: { $: 'modules.identity.devices' }, as: 'entry' },
-              children: [rosterEntry],
-            },
-          ],
-        },
-        // Assistants
-        {
-          type: '$if',
-          props: {
-            condition: { $: 'modules.identity.assistants.length' },
-            then: {
               type: 'Column',
               props: { gap: '200' },
               children: [
-                sectionHeader('Assistants', 'modules.identity.assistantCount'),
                 {
                   type: '$each',
-                  props: { items: { $: 'modules.identity.assistants' }, as: 'entry' },
+                  props: { items: { $: 'modules.identity.devices' }, as: 'entry' },
                   children: [rosterEntry],
                 },
               ],
             },
-          },
+            // Assistants
+            {
+              type: '$if',
+              props: {
+                condition: { $: 'modules.identity.assistants.length' },
+                then: {
+                  type: 'Column',
+                  props: { gap: '200' },
+                  children: [
+                    sectionHeader('Assistants', 'modules.identity.assistantCount'),
+                    {
+                      type: '$each',
+                      props: { items: { $: 'modules.identity.assistants' }, as: 'entry' },
+                      children: [rosterEntry],
+                    },
+                  ],
+                },
+              },
+            },
+            // Add button
+            {
+              type: 'we-button',
+              props: {
+                variant: 'ghost',
+                size: 'sm',
+                width: '100%',
+                onClick: { $action: 'modules.identity.startEnrolment' },
+              },
+              children: [{ type: 'we-icon', props: { name: 'plus' } }, ' Add device or assistant'],
+            },
+          ],
         },
-        // Add button
-        {
-          type: 'we-button',
-          props: {
-            variant: 'ghost',
-            size: 'sm',
-            width: '100%',
-            onClick: { $action: 'modules.identity.startEnrolment' },
-          },
-          children: [{ type: 'we-icon', props: { name: 'plus' } }, ' Add device or assistant'],
-        },
-      ],
+      },
     },
   },
 };

@@ -453,6 +453,7 @@ async function injectIdentityData(
     recoveryState?: Record<string, unknown> | null;
     backupConfirmed?: boolean;
     incomingRecoveryRequests?: Record<string, unknown>[];
+    enrolmentOffer?: Record<string, unknown> | null;
   },
 ) {
   await page.evaluate((d) => {
@@ -467,6 +468,7 @@ async function injectIdentityData(
     if (d.recoveryState !== undefined) store.setRecoveryState(d.recoveryState);
     if (d.backupConfirmed !== undefined) store.setBackupConfirmed(d.backupConfirmed);
     if (d.incomingRecoveryRequests !== undefined) store.setIncomingRecoveryRequests(d.incomingRecoveryRequests);
+    if (d.enrolmentOffer !== undefined) store.setEnrolmentOffer(d.enrolmentOffer);
   }, data);
 
   // Let Solid's reactivity flush DOM updates
@@ -640,6 +642,86 @@ test.describe('Identity Module', () => {
     await page.waitForTimeout(800);
 
     await screenshot(page, '14-device-detail-revoked');
+  });
+
+  test('devices tab — QR enrollment view', async ({ page }) => {
+    test.setTimeout(90_000);
+    await authenticateAndBoot(page, jwt);
+    await openSettings(page);
+
+    const storeReady = await waitForIdentityStore(page);
+    expect(storeReady).toBe(true);
+
+    await injectIdentityData(page, {
+      identity: FIXTURES.identity,
+      roster: FIXTURES.multiDevice,
+      backupConfirmed: true,
+    });
+
+    await clickIdentityTab(page, 'Devices');
+
+    // Generate a real QR code data URL via the qrcode library loaded in the page
+    // Since the app bundles qrcode, we simulate what startEnrolment does by setting
+    // the enrollment offer directly — including a synthetic QR data URL.
+    const qrDataUrl = await page.evaluate(async () => {
+      // Build a minimal 1×1 white PNG data URL as a stand-in — the real app uses the
+      // qrcode library, but for test purposes we generate one inline via canvas.
+      const canvas = document.createElement('canvas');
+      canvas.width = 280;
+      canvas.height = 280;
+      const ctx = canvas.getContext('2d')!;
+      // Draw a simple pattern that looks like a QR code (checkerboard)
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, 280, 280);
+      ctx.fillStyle = '#000000';
+      const cellSize = 10;
+      for (let y = 0; y < 28; y++) {
+        for (let x = 0; x < 28; x++) {
+          // Finder patterns at corners + random-ish data pattern
+          const isFinder = (x < 7 && y < 7) || (x >= 21 && y < 7) || (x < 7 && y >= 21);
+          const isData = (x + y) % 3 === 0 || (x * y) % 5 < 2;
+          if (isFinder || isData) {
+            ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+          }
+        }
+      }
+      return canvas.toDataURL('image/png');
+    });
+
+    await injectIdentityData(page, {
+      enrolmentOffer: {
+        qrDataUrl,
+        label: 'Device 1725350000000',
+        publicKey: 'z6MknewDevicePublicKey1234567890abcdefghijklmnop',
+        challenge: 'a1b2c3d4e5f6',
+      },
+    });
+
+    // Verify the QR view replaced the device list
+    const qrVisible = await page.evaluate(() => {
+      const body = document.body.textContent || '';
+      return body.includes('Scan to enroll') && body.includes('Cancel');
+    });
+    expect(qrVisible).toBe(true);
+
+    // Verify the img element rendered with the data URL
+    const imgSrc = await page.locator('img[alt="Enrollment QR code"]').getAttribute('src');
+    expect(imgSrc).toBeTruthy();
+    expect(imgSrc!.startsWith('data:image/png')).toBe(true);
+
+    await screenshot(page, '15-devices-qr-enrollment');
+
+    // Dismiss the enrollment and verify the device list returns
+    await injectIdentityData(page, { enrolmentOffer: null });
+    await page.waitForTimeout(500);
+
+    const listVisible = await page.evaluate(() => {
+      const body = document.body.textContent || '';
+      return body.includes('Arcadia Desktop') && !body.includes('Scan to enroll');
+    });
+    expect(listVisible).toBe(true);
+
+    await screenshot(page, '16-devices-after-qr-dismiss');
   });
 
   test('guardians tab — all consented with threshold', async ({ page }) => {

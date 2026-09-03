@@ -61,6 +61,8 @@ export const identityModule = defineModule({
     const [backupConfirmed, setBackupConfirmed] = signal(false);
     /** Incoming recovery requests from people this agent guards. */
     const [incomingRecoveryRequests, setIncomingRecoveryRequests] = signal<R[]>([]);
+    /** Active enrollment offer — holds { qrDataUrl, label, publicKey, challenge } or null. */
+    const [enrolmentOffer, setEnrolmentOffer] = signal<R | null>(null);
 
     /** The currently selected device for the detail view, or null. */
     const [selectedDeviceId, setSelectedDeviceId] = signal<string | null>(null);
@@ -74,6 +76,7 @@ export const identityModule = defineModule({
       recoveryState,
       backupConfirmed,
       incomingRecoveryRequests,
+      enrolmentOffer,
 
       // ── Derived values ──
       /** Roster entries of type 'device' or 'executor'. */
@@ -157,7 +160,10 @@ export const identityModule = defineModule({
         /* Wired by the host — begins the mnemonic backup ceremony. */
       },
       startEnrolment: () => {
-        /* Wired by the host — creates an enrolment offer for a new device or assistant. */
+        /* Wired by the host — creates an enrolment offer and generates a QR code. */
+      },
+      dismissEnrolment: () => {
+        setEnrolmentOffer(null);
       },
       addGuardian: () => {
         /* Wired by the host — begins the guardian addition flow. */
@@ -171,6 +177,7 @@ export const identityModule = defineModule({
       setRecoveryState,
       setBackupConfirmed,
       setIncomingRecoveryRequests,
+      setEnrolmentOffer,
     };
   },
 });

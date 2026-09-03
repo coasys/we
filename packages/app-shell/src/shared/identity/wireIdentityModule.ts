@@ -9,6 +9,8 @@
  * The identity module's store already exists at that point — it was created synchronously during
  * module registration in PlatformProvider.
  */
+import QRCode from 'qrcode';
+
 import { moduleStores } from '../registries/moduleRegistry';
 import { identityRpc, type IdentityRpcConfig } from './identityRpc';
 
@@ -250,10 +252,27 @@ export async function wireIdentityModule(config: IdentityRpcConfig, agentDid: st
         'identity.createEnrolOffer',
         { label: `Device ${Date.now()}` },
       );
-      // Show the enrolment offer. A proper QR code / share UI comes later.
 
-      window.alert(`Enrolment offer created:\n\nPublic key: ${offer.publicKey}\nChallenge: ${offer.challenge}`);
-      await refreshRoster();
+      // Encode the offer as a QR code data URL. The payload contains everything the
+      // scanning device needs to complete enrollment: executor URL and offer credentials.
+      const payload = JSON.stringify({
+        type: 'adam-enrol',
+        executor: config.wsUrl.replace(/\?.*$/, ''),
+        offer: { publicKey: offer.publicKey, challenge: offer.challenge, label: offer.label },
+      });
+      const qrDataUrl = await QRCode.toDataURL(payload, {
+        width: 280,
+        margin: 2,
+        errorCorrectionLevel: 'M',
+        color: { dark: '#000000', light: '#ffffff' },
+      });
+
+      store.setEnrolmentOffer({
+        qrDataUrl,
+        label: offer.label,
+        publicKey: offer.publicKey,
+        challenge: offer.challenge,
+      });
     } catch (err) {
       console.error('wireIdentityModule: startEnrolment failed', err);
     }
