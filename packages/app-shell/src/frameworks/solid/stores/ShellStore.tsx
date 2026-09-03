@@ -425,9 +425,16 @@ export interface ShellStore {
   insertSlots: Accessor<
     {
       index: number;
-      /** The edge — or, for a `home` slot, the name of the home lane. */
+      /** The edge — or, for a `home` slot, the name of the home lane. Empty for a stack slot, which is on neither. */
       edge: string;
-      /** `tab` is the seat itself: land here to stack behind whatever is showing in it; `home` is a `$panels` outlet. */
+      /**
+       * `tab` is the seat itself: land here to stack behind whatever is showing in it; `home` is a
+       * `$panels` outlet.
+       *
+       * A `tab` slot with no `edge` is a **floating** panel offered as somewhere to stack — two
+       * panels in open space are in no lane, so that drop is named by position among the floats
+       * rather than by a place on an edge.
+       */
       mode: 'band' | 'lane' | 'tab' | 'home';
       /** Which lane a `lane` or `tab` slot is in — its position inward from the edge, or the floating one. */
       lane: number | 'float' | '';
@@ -594,6 +601,16 @@ export interface ShellStore {
    * of an outlet's seams does; only a template's own sections can land in one, and only where the
    * lane's `accepts` allows.
    */
+  /**
+   * Stacks a panel onto a floating one, making the two a seat — what a drop into the middle of a
+   * float does. `position` is an index into the floating panels a drop could land on, which is how
+   * every slot names its target: a dock id holds a colon and so cannot go in a key.
+   *
+   * The one being landed on names the seat, so the newcomer can be dragged out again without
+   * renaming what it leaves behind. Dropping onto a stack joins it rather than pairing off with the
+   * tab that happens to be showing.
+   */
+  stackDock: (id: string, position: number) => void;
   insertHome: (id: string, lane: string, position: number) => void;
   /**
    * Save the arrangement on screen as a template of your own.
@@ -1010,6 +1027,29 @@ export function ShellStoreProvider(props: ParentProps) {
    * `columnSlots`' targets, so the two never fight over the same pixels. Big enough to land on
    * without aiming; small enough that a drag across a lane does not light every seat it passes.
    */
+  /**
+   * The floating panels a dragged one could stack onto, in a fixed order.
+   *
+   * Two panels in open space had no way to become a stack: every drop target is built per edge, out
+   * of the lanes on it, and a float is in no lane. Now that a seat can exist off the lanes there is
+   * somewhere for such a drop to land, so this is the list of places — one per panel you can point
+   * at, which is why the ones stacked *behind* another are left out. There is only ever one card on
+   * top to aim for, and it is the one that answers for its seat.
+   *
+   * Ordered by the registry, and derived here rather than at either call site, because the slot and
+   * the drop have to agree on what "the third one" means — the same reason the edge slots are keyed
+   * by position rather than by a panel's id, which cannot go in a key that splits on colons.
+   */
+  const stackTargets = (moving: string | null) => {
+    const requests = dockRequests();
+    const seating = laneSeating();
+    return requests
+      .map((request, index) => ({ request, index }))
+      .filter(({ request }) => request.edge && request.size !== 'full' && request.id !== moving)
+      .filter(({ request }) => !seating.hidden[request.id] && !placementOf(request).maximised)
+      .filter(({ request }) => edgeOfSnap((request.placement ?? placementOf(request)).snap) === null);
+  };
+
   const tabTarget = (box: Rect): Rect => ({
     x: box.x + box.w / 4,
     y: box.y + box.h / 4,
@@ -2604,7 +2644,11 @@ export function ShellStoreProvider(props: ParentProps) {
         // The four fields `insertSlots` built it from — see `draw` there. A home slot carries the
         // lane's name where an edge slot carries the edge.
         const [mode, edge, lane, position] = insert.split(':');
-        if (mode === 'home') store.insertHome(id, edge, Number(position));
+        // A tab slot naming no edge is a floating panel offered as somewhere to stack: no edge means
+        // no lane, and a seat with no lane is the loose kind. Checked before `insertDock`, which has
+        // no answer for an empty edge.
+        if (mode === 'tab' && !edge) store.stackDock(id, Number(position));
+        else if (mode === 'home') store.insertHome(id, edge, Number(position));
         else
           store.insertDock(
             id,
@@ -2924,7 +2968,32 @@ export function ShellStoreProvider(props: ParentProps) {
           }),
         ];
       });
-      return [...homeSlots(), ...edgeSlots];
+      /*
+        And every floating panel, as somewhere to stack.
+
+        A tab slot with no edge, which is the same rule the rest of the model runs on: no edge means
+        no lane, and no lane is what makes a seat loose. Keyed by position in `stackTargets`, in the
+        four-field shape the other slots use so one `split(':')` still reads them all. Inset to the
+        middle of the card like a lane's tab target, for the same reason — the edges of a float are
+        where you aim to get *past* it, not at it.
+      */
+      const stackSlots = stackTargets(moving).map(({ request }, index) => {
+        const hit = tabTarget(rectOf(boxes[request.id], viewport(), request.placement ?? placementOf(request)));
+        return {
+          key: `tab:::${index}`,
+          index,
+          lane: '' as const,
+          edge: '',
+          mode: 'tab' as const,
+          top: `${hit.y}px`,
+          left: `${hit.x}px`,
+          width: `${hit.w}px`,
+          height: `${hit.h}px`,
+          hit,
+        };
+      });
+
+      return [...homeSlots(), ...edgeSlots, ...stackSlots];
     },
 
     activeInsert,
@@ -3165,6 +3234,27 @@ export function ShellStoreProvider(props: ParentProps) {
       const home = placement.home ?? declarationFor()[id]?.home;
       if (!home) return;
       writePlacement(id, { ...placement, snap: 'home', home, displace: false, maximised: false, collapsed: false });
+    },
+
+    stackDock: (id, position) => {
+      const target = stackTargets(id)[position];
+      const joiner = dockRequests().find((entry) => entry.id === id);
+      if (!target || !joiner) return;
+
+      /*
+        Two floats become a stack, which needs a name for the seat they are now both in — see
+        `FloatPlacement.seat`. Whichever was already there supplies it: it is the one the other was
+        dropped onto, so naming the seat after it survives the newcomer being dragged out again.
+
+        A seat it is already in keeps its key, so a third panel joins the stack rather than pairing
+        off with whichever tab happened to be showing.
+      */
+      const held = placementOf(target.request);
+      const seat = held.seat ?? target.request.id;
+      if (held.seat === undefined) writePlacement(target.request.id, { ...held, seat });
+      writePlacement(id, followSeat(placementOf(joiner), { ...held, seat }));
+      // The newcomer shows, which is what dropping something on top of something else looks like.
+      raise(id);
     },
 
     insertHome: (id, lane, position) => {

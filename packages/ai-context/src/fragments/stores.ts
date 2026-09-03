@@ -1385,6 +1385,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           "(panelId: string, x?: number, y?: number): takes a section out of the template and makes it a panel — floating under the pointer when given one, else at the snap its meta.panels entry named. Refused for a section declared `fixed`. Takes the panel's own id, not the dock id",
         returnHome:
           '(panelId: string): puts a broken-out section back in the template at the outlet it came from. What the placeholder’s "Bring back" and the position menu’s "Return to page" call',
+        stackDock:
+          'stackDock(id: string, position: number): stacks a panel onto a floating one so the two share a seat and a tab strip — what a drop into the middle of a float does. Two panels in open space are in no lane, so `position` indexes the floating panels a drop could land on rather than naming one',
         insertHome:
           "(id: string, lane: string, position: number): drops a panel into a home lane at that position along it, renumbering the lane. Only a template's own sections land in one, and only where the lane's `accepts` allows",
         saveArrangementAsTemplate:

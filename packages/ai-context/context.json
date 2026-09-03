@@ -6634,6 +6634,7 @@
         "toggleCollapseDock",
         "breakOut",
         "returnHome",
+        "stackDock",
         "insertHome",
         "saveArrangementAsTemplate"
       ]

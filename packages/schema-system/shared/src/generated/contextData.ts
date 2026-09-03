@@ -2639,6 +2639,7 @@ export const contextData: ContextData = {
         'toggleCollapseDock',
         'breakOut',
         'returnHome',
+        'stackDock',
         'insertHome',
         'saveArrangementAsTemplate',
       ],

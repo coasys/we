@@ -959,6 +959,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     toggleCollapseDock: action('host-layout'),
     breakOut: action('host-layout'),
     returnHome: action('host-layout'),
+    stackDock: action('host-layout'),
     insertHome: action('host-layout'),
     saveArrangementAsTemplate: action('host-layout'),
     // Whether a panel has been dragged away from what the interface declared, and the way back.
