@@ -20,7 +20,9 @@
  *
  * - **No TURN server.** Peers behind symmetric NAT will not connect. TURN is infrastructure someone
  *   has to run, so it is a deployment decision rather than a module one.
- * - **No SFU.** Mesh only, so roughly four to six participants — see `mesh.ts`.
+ * - **Session backend.** When the host provides a {@link CallBackend} (satisfied by `Session` from
+ *   `@coasys/ad4m`), the call delegates topology, signalling, and roster management to the SDK.
+ *   The store exposes `topology` and `qualityPreference` for the template to surface the mode.
  * - **No camera *and* screen at once.** Sharing replaces the camera track — see `media.ts`.
  */
 import { defineModule, type ModuleStoreDeps } from '@we/module-shared';
@@ -49,7 +51,17 @@ export {
   parseCallMessage,
   recordCallId,
 } from './protocol';
-export { type CallDockEdge, type CallTile, type CallTileState, createCallStore } from './store';
+export {
+  type BackendDataMessage,
+  type BackendQuality,
+  type BackendParticipant,
+  type CallBackend,
+  type CallDockEdge,
+  type CallTile,
+  type CallTileState,
+  type CallTopology,
+  createCallStore,
+} from './store';
 
 /**
  * How far the call's chrome sits off the bottom edge.
