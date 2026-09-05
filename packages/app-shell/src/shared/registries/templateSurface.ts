@@ -1114,6 +1114,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     removeProvider: WIRING,
     healthStatus: WIRING,
     healthError: WIRING,
+    availableModels: WIRING,
     checkHealth: WIRING,
 
     onSchemaEdit: WIRING,

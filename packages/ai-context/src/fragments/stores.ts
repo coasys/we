@@ -1243,8 +1243,9 @@ export function generateStoresText(entries: StoreEntry[]): string {
         activeProvider:
           'AiProvider | undefined — the currently selected provider, derived from providers + activeProviderId',
         activeProviderId: "string — id of the selected provider ('anthropic' by default)",
-        healthStatus: "'unknown' | 'checking' | 'ok' | 'error' — reachability of the active provider",
+        healthStatus: 'string (‘unknown’ | ‘checking’ | ‘ok’ | ‘error’) — reachability of the active provider',
         healthError: 'string — human-readable error when healthStatus = error, empty otherwise',
+        availableModels: 'string[] — model IDs returned by the active provider during health check',
         templateName: 'string — the name of the template being edited, for the editor’s own header',
         templateIcon: 'string — its icon',
         isReadOnly:
