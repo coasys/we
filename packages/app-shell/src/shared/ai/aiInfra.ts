@@ -896,6 +896,27 @@ async function sendOllamaRequest(
   try {
     const systemPrompt = await chatSystemPrompt();
     const openaiMessages = convertMessagesToOpenAI(anthropicMessages, systemPrompt);
+
+    // Ollama's native /api/chat expects tool_calls[].function.arguments as a
+    // parsed object, not a JSON string. convertMessagesToOpenAI produces the
+    // OpenAI wire format (JSON string) — parse them back for the native endpoint.
+    // Without this, the second turn fails with:
+    //   "Value looks like object, but can't find closing '}' symbol"
+    for (const msg of openaiMessages) {
+      if (Array.isArray(msg.tool_calls)) {
+        for (const tc of msg.tool_calls as Array<Record<string, unknown>>) {
+          const fn = tc.function as Record<string, unknown> | undefined;
+          if (fn && typeof fn.arguments === 'string') {
+            try {
+              fn.arguments = JSON.parse(fn.arguments as string);
+            } catch {
+              /* leave as string if not valid JSON */
+            }
+          }
+        }
+      }
+    }
+
     const base = provider.baseUrl.replace(/\/v1\/?$/, '').replace(/\/+$/, '');
     const url = `${base}/api/chat`;
 
