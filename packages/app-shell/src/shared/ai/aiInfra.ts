@@ -2,12 +2,19 @@
  * aiInfra — the browser-side AI infrastructure: multi-provider API access, SSE stream parsing,
  * the schema-mutation tool definition, and prompt assembly.
  *
- * Supports two wire protocols:
+ * Supports three wire protocols:
  * - **Anthropic** — native /v1/messages endpoint with content-block SSE events
  * - **OpenAI** — /v1/chat/completions endpoint (used by OpenAI, Google, Groq, OpenRouter, AD4M, etc.)
+ * - **Ollama** — native /api/chat endpoint (non-streaming, with `options.num_ctx` for context control)
+ *
+ * Why a separate Ollama protocol? Ollama's OpenAI-compatible `/v1/chat/completions` endpoint
+ * silently ignores the `options.num_ctx` parameter, hard-capping context at ~16 K tokens.
+ * The WE schema context alone runs ~75 K tokens — the prompt gets truncated and the model
+ * never sees the tool definitions, so it dumps JSON as text instead of calling `update_schema`.
+ * The native `/api/chat` endpoint honours `options.num_ctx` correctly.
  *
  * The caller (EditorStore) builds conversation history in Anthropic's message format.
- * When the active provider uses the OpenAI protocol, this module converts messages,
+ * When the active provider uses a non-Anthropic protocol, this module converts messages,
  * tool definitions, and responses at the boundary — the store never sees wire details.
  *
  * Isolated from the edit-session store on purpose: this file is the complete surface of "the
@@ -742,9 +749,11 @@ export async function sendOpenAIRequest(
     // OpenAI deprecated `max_tokens` in favour of `max_completion_tokens`.
     // Most OpenAI-compat providers (Groq, OpenRouter, Ollama) still accept
     // `max_tokens`, so we send both — endpoints ignore the one they don't use.
-    // Local models (Ollama/Qwen3) need tool_choice "required" — with the full
-    // 117KB system prompt, "auto" lets the model skip the tool and dump the schema
-    // as text instead. Cloud models handle "auto" correctly at that prompt length.
+    // Local models (AD4M executor) need tool_choice "required" — with the full
+    // system prompt, "auto" lets the model skip the tool and dump the schema as
+    // text instead. Cloud models handle "auto" correctly at that prompt length.
+    // (Ollama uses the native /api/chat endpoint via protocol: 'ollama' and does
+    // not pass through this function.)
     const body: Record<string, unknown> = {
       model: provider.model,
       max_tokens: 16384,
@@ -757,11 +766,10 @@ export async function sendOpenAIRequest(
     if (!local) {
       body.max_completion_tokens = 16384;
     }
-    // Ollama defaults to 2048 token context — far too small for the ~30K-token
-    // system prompt. Expand to 65536 so the prompt + tool definitions fit.
-    // The `options` key is Ollama-specific; other providers ignore it.
+    // AD4M executor may proxy to Ollama — pass num_ctx to expand context.
+    // (Direct Ollama uses protocol: 'ollama' and the native endpoint instead.)
     if (local) {
-      body.options = { num_ctx: 65536 };
+      body.options = { num_ctx: 131072 };
     }
 
     const response = await fetch(url, {
@@ -856,6 +864,132 @@ export async function parseOpenAIComplete(
 }
 
 // ---------------------------------------------------------------------------
+// Ollama native request sender
+// ---------------------------------------------------------------------------
+
+/**
+ * Send a request to Ollama's native /api/chat endpoint.
+ *
+ * Ollama's OpenAI-compatible `/v1/chat/completions` ignores `options.num_ctx`,
+ * silently truncating prompts to ~16 K tokens regardless of the value set.
+ * The WE schema context runs ~75 K tokens — at 16 K the model never sees tool
+ * definitions and dumps JSON as text instead of calling `update_schema`.
+ *
+ * The native endpoint honours `options.num_ctx` and produces proper structured
+ * tool calls when the full prompt loads.
+ *
+ * Non-streaming only — Ollama streaming often emits tool calls as text rather
+ * than structured output. Non-streaming avoids that entirely.
+ */
+async function sendOllamaRequest(
+  provider: AiProvider,
+  anthropicMessages: Array<{ role: string; content: unknown }>,
+  onTextDelta: (text: string) => void,
+  onToolUseStart?: (textSoFar: string) => void,
+): Promise<StreamResult> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => {
+    console.error(`[aiInfra] ${provider.name} Ollama request timed out after 10min — aborting`);
+    controller.abort();
+  }, 600_000);
+
+  try {
+    const systemPrompt = await chatSystemPrompt();
+    const openaiMessages = convertMessagesToOpenAI(anthropicMessages, systemPrompt);
+    const base = provider.baseUrl.replace(/\/v1\/?$/, '').replace(/\/+$/, '');
+    const url = `${base}/api/chat`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: provider.model,
+        stream: false,
+        tools: [toolToOpenAI(updateSchemaTool)],
+        messages: openaiMessages,
+        options: {
+          num_ctx: 131072,
+          num_predict: 16384,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => '');
+      throw new Error(`${provider.name} API error ${response.status}: ${errorBody}`);
+    }
+
+    return await parseOllamaComplete(response, onTextDelta, onToolUseStart);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
+ * Parse a non-streaming Ollama native /api/chat response.
+ *
+ * Native format differs from OpenAI:
+ * - `message` at top level (not `choices[0].message`)
+ * - `done_reason` instead of `choices[0].finish_reason`
+ * - `tool_calls[].function.arguments` arrives as a parsed object, not a JSON string
+ */
+export async function parseOllamaComplete(
+  response: Response,
+  onTextDelta: (text: string) => void,
+  onToolUseStart?: (textSoFar: string) => void,
+): Promise<StreamResult> {
+  const json = await response.json();
+  const message = json.message;
+  if (!message) throw new Error('Empty response from Ollama — no message returned');
+
+  let textContent: string = message.content ?? '';
+  const doneReason: string = json.done_reason ?? '';
+
+  // Build structured tool calls from the response
+  const toolCalls: StreamResult['toolCalls'] = [];
+  if (Array.isArray(message.tool_calls)) {
+    for (const tc of message.tool_calls) {
+      const fn = tc.function ?? {};
+      // Native API returns arguments as a parsed object, not a JSON string
+      const args = typeof fn.arguments === 'string' ? JSON.parse(fn.arguments) : (fn.arguments ?? {});
+      toolCalls.push({
+        id: `ollama-tc-${toolCalls.length}`,
+        name: fn.name,
+        input: args,
+      });
+    }
+  }
+
+  // Strip thinking tags (Qwen3 reasoning output)
+  textContent = stripThinkingTags(textContent);
+
+  // Fallback: extract tool calls from text when the model emitted them inline
+  if (toolCalls.length === 0 && textContent) {
+    const extracted = extractToolCallsFromText(textContent);
+    if (extracted.toolCalls.length > 0) {
+      toolCalls.push(...extracted.toolCalls);
+      textContent = extracted.cleanedText;
+    }
+  }
+
+  // Fire streaming callbacks so the UI updates
+  if (textContent) onTextDelta(textContent);
+  if (toolCalls.length > 0) onToolUseStart?.(textContent);
+
+  const stopReason: StreamResult['stopReason'] =
+    toolCalls.length > 0
+      ? 'tool_use'
+      : doneReason === 'stop' || doneReason === ''
+        ? 'end_turn'
+        : doneReason === 'length'
+          ? 'max_tokens'
+          : 'end_turn';
+
+  return { textContent, toolCalls, stopReason };
+}
+
+// ---------------------------------------------------------------------------
 // Provider dispatcher
 // ---------------------------------------------------------------------------
 
@@ -875,6 +1009,9 @@ export async function sendProviderRequest(
 ): Promise<StreamResult> {
   if (provider.protocol === 'anthropic') {
     return sendAnthropicRequest(provider, anthropicMessages, onTextDelta, onToolUseStart);
+  }
+  if (provider.protocol === 'ollama') {
+    return sendOllamaRequest(provider, anthropicMessages, onTextDelta, onToolUseStart);
   }
   return sendOpenAIRequest(provider, anthropicMessages, onTextDelta, onToolUseStart);
 }

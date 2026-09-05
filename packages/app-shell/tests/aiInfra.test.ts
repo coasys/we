@@ -7,6 +7,7 @@
 import {
   extractToolCallsFromText,
   parseAnthropicSSE,
+  parseOllamaComplete,
   parseOpenAIComplete,
   parseOpenAISSE,
   stripThinkingTags,
@@ -761,5 +762,196 @@ describe('parseOpenAIComplete', () => {
     });
     const result = await parseOpenAIComplete(resp, vi.fn());
     expect(result.stopReason).toBe('max_tokens');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseOllamaComplete — native Ollama /api/chat response parser
+// ---------------------------------------------------------------------------
+
+describe('parseOllamaComplete', () => {
+  it('parses a text-only response', async () => {
+    const resp = jsonResponse({
+      model: 'qwen3.6:latest',
+      message: { role: 'assistant', content: 'Hello from Ollama!' },
+      done: true,
+      done_reason: 'stop',
+    });
+    const onText = vi.fn();
+    const result = await parseOllamaComplete(resp, onText);
+    expect(result.textContent).toBe('Hello from Ollama!');
+    expect(result.toolCalls).toHaveLength(0);
+    expect(result.stopReason).toBe('end_turn');
+    expect(onText).toHaveBeenCalledWith('Hello from Ollama!');
+  });
+
+  it('parses structured tool_calls with arguments as objects (native format)', async () => {
+    // Ollama native returns arguments as parsed objects, not JSON strings
+    const resp = jsonResponse({
+      model: 'qwen3.6:latest',
+      message: {
+        role: 'assistant',
+        content: '',
+        tool_calls: [
+          {
+            function: {
+              name: 'update_schema',
+              arguments: { patches: [{ targetId: 'n1', node: { props: { bg: 'red' } } }] },
+            },
+          },
+        ],
+      },
+      done: true,
+      done_reason: 'stop',
+    });
+    const onToolStart = vi.fn();
+    const result = await parseOllamaComplete(resp, vi.fn(), onToolStart);
+    expect(result.toolCalls).toHaveLength(1);
+    expect(result.toolCalls[0].name).toBe('update_schema');
+    expect(result.toolCalls[0].input).toEqual({
+      patches: [{ targetId: 'n1', node: { props: { bg: 'red' } } }],
+    });
+    expect(result.toolCalls[0].id).toBe('ollama-tc-0');
+    expect(result.stopReason).toBe('tool_use');
+    expect(onToolStart).toHaveBeenCalledOnce();
+  });
+
+  it('handles arguments as JSON string (fallback)', async () => {
+    const resp = jsonResponse({
+      model: 'qwen3.6:latest',
+      message: {
+        role: 'assistant',
+        content: '',
+        tool_calls: [
+          {
+            function: {
+              name: 'update_schema',
+              arguments: '{"patches": [{"targetId": "root"}]}',
+            },
+          },
+        ],
+      },
+      done: true,
+      done_reason: 'stop',
+    });
+    const result = await parseOllamaComplete(resp, vi.fn());
+    expect(result.toolCalls).toHaveLength(1);
+    expect(result.toolCalls[0].input).toEqual({ patches: [{ targetId: 'root' }] });
+  });
+
+  it('handles multiple tool calls', async () => {
+    const resp = jsonResponse({
+      model: 'qwen3.6:latest',
+      message: {
+        role: 'assistant',
+        content: '',
+        tool_calls: [
+          { function: { name: 'update_schema', arguments: { patches: [{ targetId: 'a' }] } } },
+          { function: { name: 'update_schema', arguments: { patches: [{ targetId: 'b' }] } } },
+        ],
+      },
+      done: true,
+      done_reason: 'stop',
+    });
+    const result = await parseOllamaComplete(resp, vi.fn());
+    expect(result.toolCalls).toHaveLength(2);
+    expect(result.toolCalls[0].id).toBe('ollama-tc-0');
+    expect(result.toolCalls[1].id).toBe('ollama-tc-1');
+    expect(result.toolCalls[0].input.patches[0].targetId).toBe('a');
+    expect(result.toolCalls[1].input.patches[0].targetId).toBe('b');
+  });
+
+  it('strips <think> blocks from text content', async () => {
+    const resp = jsonResponse({
+      model: 'qwen3.6:latest',
+      message: { role: 'assistant', content: '<think>reasoning here</think>The result.' },
+      done: true,
+      done_reason: 'stop',
+    });
+    const result = await parseOllamaComplete(resp, vi.fn());
+    expect(result.textContent).toBe('The result.');
+  });
+
+  it('extracts tool calls from text fallback (inline JSON)', async () => {
+    const resp = jsonResponse({
+      model: 'qwen3.6:latest',
+      message: {
+        role: 'assistant',
+        content:
+          '<think>Let me update</think>\n{"name": "update_schema", "arguments": {"patches": [{"targetId": "root"}]}}',
+      },
+      done: true,
+      done_reason: 'stop',
+    });
+    const onToolStart = vi.fn();
+    const result = await parseOllamaComplete(resp, vi.fn(), onToolStart);
+    expect(result.toolCalls).toHaveLength(1);
+    expect(result.toolCalls[0].name).toBe('update_schema');
+    expect(result.stopReason).toBe('tool_use');
+    expect(onToolStart).toHaveBeenCalledOnce();
+  });
+
+  it('prefers structured tool_calls over text-embedded ones', async () => {
+    const resp = jsonResponse({
+      model: 'qwen3.6:latest',
+      message: {
+        role: 'assistant',
+        content: '{"patches": [{"targetId": "wrong"}]}',
+        tool_calls: [{ function: { name: 'update_schema', arguments: { patches: [{ targetId: 'right' }] } } }],
+      },
+      done: true,
+      done_reason: 'stop',
+    });
+    const result = await parseOllamaComplete(resp, vi.fn());
+    expect(result.toolCalls).toHaveLength(1);
+    expect(result.toolCalls[0].input.patches[0].targetId).toBe('right');
+  });
+
+  it('throws on missing message field', async () => {
+    const resp = jsonResponse({ done: true });
+    await expect(parseOllamaComplete(resp, vi.fn())).rejects.toThrow('Empty response from Ollama');
+  });
+
+  it('maps done_reason "length" to stopReason "max_tokens"', async () => {
+    const resp = jsonResponse({
+      model: 'qwen3.6:latest',
+      message: { role: 'assistant', content: 'Truncated...' },
+      done: true,
+      done_reason: 'length',
+    });
+    const result = await parseOllamaComplete(resp, vi.fn());
+    expect(result.stopReason).toBe('max_tokens');
+  });
+
+  it('maps empty done_reason to "end_turn"', async () => {
+    const resp = jsonResponse({
+      model: 'qwen3.6:latest',
+      message: { role: 'assistant', content: 'Done.' },
+      done: true,
+      done_reason: '',
+    });
+    const result = await parseOllamaComplete(resp, vi.fn());
+    expect(result.stopReason).toBe('end_turn');
+  });
+
+  it('handles text + structured tool calls together', async () => {
+    const resp = jsonResponse({
+      model: 'qwen3.6:latest',
+      message: {
+        role: 'assistant',
+        content: 'I changed the background for you.',
+        tool_calls: [{ function: { name: 'update_schema', arguments: { patches: [{ targetId: 'n1' }] } } }],
+      },
+      done: true,
+      done_reason: 'stop',
+    });
+    const onText = vi.fn();
+    const onToolStart = vi.fn();
+    const result = await parseOllamaComplete(resp, onText, onToolStart);
+    expect(result.textContent).toBe('I changed the background for you.');
+    expect(result.toolCalls).toHaveLength(1);
+    expect(result.stopReason).toBe('tool_use');
+    expect(onText).toHaveBeenCalledWith('I changed the background for you.');
+    expect(onToolStart).toHaveBeenCalledOnce();
   });
 });

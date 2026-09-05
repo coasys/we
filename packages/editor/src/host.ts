@@ -289,6 +289,6 @@ export interface EditorAiProvider {
   baseUrl: string;
   apiKey: string;
   model: string;
-  protocol: 'anthropic' | 'openai';
+  protocol: 'anthropic' | 'openai' | 'ollama';
   isBuiltIn: boolean;
 }

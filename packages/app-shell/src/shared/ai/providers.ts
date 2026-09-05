@@ -22,7 +22,9 @@
 function resolveProviderUrl(p: { id: string; baseUrl: string }): string {
   let url = p.baseUrl;
   if (p.id === 'ad4m') url = storedAd4mBaseUrl(url);
-  if (p.id === 'ollama' && !url.endsWith('/v1')) url = `${url.replace(/\/+$/, '')}/v1`;
+  // Ollama uses the native /api/chat endpoint — strip /v1 from saved URLs that
+  // carried the OpenAI-compat suffix (pre-migration localStorage values).
+  if (p.id === 'ollama') url = url.replace(/\/v1\/?$/, '').replace(/\/+$/, '');
   return url;
 }
 
@@ -42,12 +44,17 @@ function storedAd4mBaseUrl(fallback: string): string {
   return fallback;
 }
 
-export type AiProtocol = 'anthropic' | 'openai';
+export type AiProtocol = 'anthropic' | 'openai' | 'ollama';
 
 export interface AiProvider {
   id: string;
   name: string;
-  /** Base URL without trailing slash. Anthropic: ends at /v1. OpenAI-compat: ends at /v1. */
+  /**
+   * Base URL without trailing slash.
+   * - Anthropic: ends at /v1
+   * - OpenAI-compat: ends at /v1
+   * - Ollama: bare origin (e.g. http://localhost:11434) — the handler appends /api/chat
+   */
   baseUrl: string;
   apiKey: string;
   model: string;
@@ -109,10 +116,10 @@ export const DEFAULT_PROVIDERS: readonly AiProvider[] = [
   {
     id: 'ollama',
     name: 'Ollama',
-    baseUrl: 'http://localhost:11434/v1',
+    baseUrl: 'http://localhost:11434',
     apiKey: '',
     model: 'llama3.1',
-    protocol: 'openai',
+    protocol: 'ollama',
     isBuiltIn: true,
   },
   {
@@ -281,10 +288,11 @@ export async function checkProviderHealth(provider: AiProvider, timeoutMs = 8_00
       return { status: 'error', error: `HTTP ${res.status}: ${body.slice(0, 200)}` };
     }
 
-    // OpenAI-compatible: hit GET /models (or /v1/models depending on baseUrl shape)
-    const modelsUrl = provider.baseUrl.endsWith('/v1')
-      ? `${provider.baseUrl}/models`
-      : `${provider.baseUrl.replace(/\/+$/, '')}/models`;
+    // OpenAI-compatible: hit GET /models.
+    // Ollama stores the bare origin (no /v1); its compat layer still serves /v1/models.
+    const base = provider.baseUrl.replace(/\/+$/, '');
+    const modelsUrl =
+      provider.protocol === 'ollama' ? `${base}/v1/models` : base.endsWith('/v1') ? `${base}/models` : `${base}/models`;
 
     const headers: Record<string, string> = {};
     if (provider.apiKey) headers['Authorization'] = `Bearer ${provider.apiKey}`;

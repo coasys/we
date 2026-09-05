@@ -128,7 +128,18 @@ describe('loadProviders', () => {
     expect(loaded!.isBuiltIn).toBe(false);
   });
 
-  it('appends /v1 to stale Ollama URLs', () => {
+  it('strips /v1 from stale Ollama URLs (migrated to native /api/chat)', () => {
+    const saved = DEFAULT_PROVIDERS.map((p) => ({ ...p }));
+    const ollama = saved.find((p) => p.id === 'ollama')!;
+    ollama.baseUrl = 'http://localhost:11434/v1';
+    savedProviders(saved);
+
+    const result = loadProviders();
+    const loaded = result.find((p) => p.id === 'ollama')!;
+    expect(loaded.baseUrl).toBe('http://localhost:11434');
+  });
+
+  it('leaves Ollama URL alone when it already lacks /v1', () => {
     const saved = DEFAULT_PROVIDERS.map((p) => ({ ...p }));
     const ollama = saved.find((p) => p.id === 'ollama')!;
     ollama.baseUrl = 'http://localhost:11434';
@@ -136,16 +147,7 @@ describe('loadProviders', () => {
 
     const result = loadProviders();
     const loaded = result.find((p) => p.id === 'ollama')!;
-    expect(loaded.baseUrl).toBe('http://localhost:11434/v1');
-  });
-
-  it('leaves Ollama URL alone when it already has /v1', () => {
-    const saved = DEFAULT_PROVIDERS.map((p) => ({ ...p }));
-    savedProviders(saved);
-
-    const result = loadProviders();
-    const loaded = result.find((p) => p.id === 'ollama')!;
-    expect(loaded.baseUrl).toBe('http://localhost:11434/v1');
+    expect(loaded.baseUrl).toBe('http://localhost:11434');
   });
 
   it('resolves AD4M baseUrl from stored ad4m-url', () => {
@@ -436,9 +438,10 @@ describe('DEFAULT_PROVIDERS', () => {
     }
   });
 
-  it('Ollama defaults to localhost:11434/v1', () => {
+  it('Ollama defaults to localhost:11434 (native API, no /v1)', () => {
     const ollama = DEFAULT_PROVIDERS.find((p) => p.id === 'ollama')!;
-    expect(ollama.baseUrl).toBe('http://localhost:11434/v1');
+    expect(ollama.baseUrl).toBe('http://localhost:11434');
+    expect(ollama.protocol).toBe('ollama');
   });
 
   it('local providers have empty apiKey', () => {
