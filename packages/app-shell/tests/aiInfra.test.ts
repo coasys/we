@@ -16,6 +16,9 @@ import {
 } from '@shared/ai/aiInfra';
 import { describe, expect, it, vi } from 'vitest';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- test helper for deep assertions on tool call input
+const inputOf = (tc: { input: Record<string, unknown> }) => tc.input as any;
+
 // ---------------------------------------------------------------------------
 // Helpers — simulate a ReadableStream from SSE text
 // ---------------------------------------------------------------------------
@@ -459,7 +462,7 @@ describe('parseOpenAISSE', () => {
 
     const result = await parseOpenAISSE(reader, vi.fn());
     expect(result.toolCalls).toHaveLength(1);
-    expect(result.toolCalls[0].input.patches[0].node.props.bg).toBe('primary');
+    expect(inputOf(result.toolCalls[0]).patches[0].node.props.bg).toBe('primary');
   });
 
   it('fires onTextDelta with accumulated text (not including final stripped tags)', async () => {
@@ -698,7 +701,7 @@ describe('parseOpenAIComplete', () => {
     const result = await parseOpenAIComplete(resp, vi.fn());
     expect(result.toolCalls).toHaveLength(1);
     expect(result.toolCalls[0].id).toBe('real');
-    expect(result.toolCalls[0].input.patches[0].targetId).toBe('right');
+    expect(inputOf(result.toolCalls[0]).patches[0].targetId).toBe('right');
   });
 
   it('handles text + structured tool calls together', async () => {
@@ -857,8 +860,8 @@ describe('parseOllamaComplete', () => {
     expect(result.toolCalls).toHaveLength(2);
     expect(result.toolCalls[0].id).toBe('ollama-tc-0');
     expect(result.toolCalls[1].id).toBe('ollama-tc-1');
-    expect(result.toolCalls[0].input.patches[0].targetId).toBe('a');
-    expect(result.toolCalls[1].input.patches[0].targetId).toBe('b');
+    expect(inputOf(result.toolCalls[0]).patches[0].targetId).toBe('a');
+    expect(inputOf(result.toolCalls[1]).patches[0].targetId).toBe('b');
   });
 
   it('strips <think> blocks from text content', async () => {
@@ -904,7 +907,7 @@ describe('parseOllamaComplete', () => {
     });
     const result = await parseOllamaComplete(resp, vi.fn());
     expect(result.toolCalls).toHaveLength(1);
-    expect(result.toolCalls[0].input.patches[0].targetId).toBe('right');
+    expect(inputOf(result.toolCalls[0]).patches[0].targetId).toBe('right');
   });
 
   it('throws on missing message field', async () => {
