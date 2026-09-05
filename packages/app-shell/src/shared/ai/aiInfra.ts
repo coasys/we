@@ -1,27 +1,14 @@
 /**
- * aiInfra — the browser-side AI infrastructure: multi-provider API access, SSE stream parsing,
- * the schema-mutation tool definition, and prompt assembly.
+ * aiInfra — multi-provider AI infrastructure: SSE stream parsing, non-streaming
+ * request/response, tool definitions, and prompt assembly.
  *
- * Supports three wire protocols:
- * - **Anthropic** — native /v1/messages endpoint with content-block SSE events
- * - **OpenAI** — /v1/chat/completions endpoint (used by OpenAI, Google, Groq, OpenRouter, AD4M, etc.)
- * - **Ollama** — native /api/chat endpoint (non-streaming, with `options.num_ctx` for context control)
+ * Three wire protocols:
+ * - **Anthropic** — /v1/messages with content-block SSE events
+ * - **OpenAI** — /v1/chat/completions (OpenAI, Google, Groq, OpenRouter, AD4M, etc.)
+ * - **Ollama** — native /api/chat (non-streaming; see `sendOllamaRequest` for why)
  *
- * Why a separate Ollama protocol? Ollama's OpenAI-compatible `/v1/chat/completions` endpoint
- * silently ignores the `options.num_ctx` parameter, hard-capping context at ~16 K tokens.
- * The WE schema context alone runs ~75 K tokens — the prompt gets truncated and the model
- * never sees the tool definitions, so it dumps JSON as text instead of calling `update_schema`.
- * The native `/api/chat` endpoint honours `options.num_ctx` correctly.
- *
- * The caller (EditorStore) builds conversation history in Anthropic's message format.
- * When the active provider uses a non-Anthropic protocol, this module converts messages,
- * tool definitions, and responses at the boundary — the store never sees wire details.
- *
- * Isolated from the edit-session store on purpose: this file is the complete surface of "the
- * browser calls a model with the user's API key". A backend-executed assistant (the pattern the
- * assistant module introduces, where the executor runs models and writes replies into the
- * dataset) would replace exactly this file — the sessions, panels, and undo history it serves
- * are unaffected. Keep it free of Solid and store imports so that boundary stays real.
+ * Messages stay in Anthropic format internally; conversion happens at the boundary.
+ * Keep this file free of Solid/store imports — a backend assistant replaces exactly this.
  */
 import { chatSystemPreamble } from '@shared/prompts/chatSystemPrompt';
 import type { EntityManifestEntry } from '@we/backend-shared';
@@ -704,14 +691,7 @@ export async function sendAnthropicRequest(
 // OpenAI-compatible request sender
 // ---------------------------------------------------------------------------
 
-/**
- * Whether a provider runs locally (Ollama, AD4M executor).
- *
- * Local providers use non-streaming mode for tool calls because Ollama's
- * streaming often fails to emit structured `delta.tool_calls` — the model
- * dumps the tool call as text instead. Non-streaming produces a complete
- * response with proper `message.tool_calls` and avoids the issue entirely.
- */
+/** Whether a provider runs locally (AD4M executor). Gates non-streaming + tool_choice. */
 function isLocalProvider(provider: AiProvider): boolean {
   return /localhost|127\.0\.0\.1/i.test(provider.baseUrl);
 }
@@ -804,39 +784,22 @@ export async function sendOpenAIRequest(
  * optional `tool_calls`. This avoids streaming bugs in Ollama where tool calls
  * appear as text instead of structured output.
  */
-export async function parseOpenAIComplete(
-  response: Response,
+/**
+ * Shared post-processing for non-streaming responses (OpenAI and Ollama).
+ *
+ * Strips thinking tags, falls back to text-embedded tool calls when structured
+ * ones are absent, fires UI callbacks, and maps the provider's stop reason to
+ * the internal `StreamResult['stopReason']`.
+ */
+function postProcessComplete(
+  rawText: string,
+  rawToolCalls: StreamResult['toolCalls'],
+  finishReason: string,
   onTextDelta: (text: string) => void,
   onToolUseStart?: (textSoFar: string) => void,
-): Promise<StreamResult> {
-  const json = await response.json();
-  const choice = json.choices?.[0];
-  if (!choice) throw new Error('Empty response from provider — no choices returned');
-
-  const message = choice.message ?? {};
-  let textContent: string = message.content ?? '';
-  const finishReason: string = choice.finish_reason ?? '';
-
-  // Build structured tool calls from the response
-  const toolCalls: StreamResult['toolCalls'] = [];
-  if (Array.isArray(message.tool_calls)) {
-    for (const tc of message.tool_calls) {
-      try {
-        const fn = tc.function ?? {};
-        const args = typeof fn.arguments === 'string' ? JSON.parse(fn.arguments) : (fn.arguments ?? {});
-        toolCalls.push({
-          id: tc.id || `tc-${toolCalls.length}`,
-          name: fn.name,
-          input: args,
-        });
-      } catch {
-        console.error('[aiInfra] Failed to parse tool call arguments:', tc);
-      }
-    }
-  }
-
-  // Strip thinking tags (Qwen3 reasoning output)
-  textContent = stripThinkingTags(textContent);
+): StreamResult {
+  const toolCalls = [...rawToolCalls];
+  let textContent = stripThinkingTags(rawText);
 
   // Fallback: extract tool calls from text when the model emitted them inline
   if (toolCalls.length === 0 && textContent) {
@@ -847,20 +810,45 @@ export async function parseOpenAIComplete(
     }
   }
 
-  // Fire streaming callbacks so the UI updates
   if (textContent) onTextDelta(textContent);
   if (toolCalls.length > 0) onToolUseStart?.(textContent);
 
   const stopReason: StreamResult['stopReason'] =
     toolCalls.length > 0
       ? 'tool_use'
-      : finishReason === 'stop' || finishReason === 'end_turn'
+      : finishReason === 'stop' || finishReason === 'end_turn' || finishReason === ''
         ? 'end_turn'
         : finishReason === 'length'
           ? 'max_tokens'
           : 'end_turn';
 
   return { textContent, toolCalls, stopReason };
+}
+
+export async function parseOpenAIComplete(
+  response: Response,
+  onTextDelta: (text: string) => void,
+  onToolUseStart?: (textSoFar: string) => void,
+): Promise<StreamResult> {
+  const json = await response.json();
+  const choice = json.choices?.[0];
+  if (!choice) throw new Error('Empty response from provider — no choices returned');
+
+  const message = choice.message ?? {};
+  const toolCalls: StreamResult['toolCalls'] = [];
+  if (Array.isArray(message.tool_calls)) {
+    for (const tc of message.tool_calls) {
+      try {
+        const fn = tc.function ?? {};
+        const args = typeof fn.arguments === 'string' ? JSON.parse(fn.arguments) : (fn.arguments ?? {});
+        toolCalls.push({ id: tc.id || `tc-${toolCalls.length}`, name: fn.name, input: args });
+      } catch {
+        console.error('[aiInfra] Failed to parse tool call arguments:', tc);
+      }
+    }
+  }
+
+  return postProcessComplete(message.content ?? '', toolCalls, choice.finish_reason ?? '', onTextDelta, onToolUseStart);
 }
 
 // ---------------------------------------------------------------------------
@@ -950,10 +938,8 @@ async function sendOllamaRequest(
 /**
  * Parse a non-streaming Ollama native /api/chat response.
  *
- * Native format differs from OpenAI:
- * - `message` at top level (not `choices[0].message`)
- * - `done_reason` instead of `choices[0].finish_reason`
- * - `tool_calls[].function.arguments` arrives as a parsed object, not a JSON string
+ * Differs from OpenAI: `message` at top level, `done_reason` instead of
+ * `finish_reason`, and `tool_calls[].function.arguments` as a parsed object.
  */
 export async function parseOllamaComplete(
   response: Response,
@@ -964,50 +950,16 @@ export async function parseOllamaComplete(
   const message = json.message;
   if (!message) throw new Error('Empty response from Ollama — no message returned');
 
-  let textContent: string = message.content ?? '';
-  const doneReason: string = json.done_reason ?? '';
-
-  // Build structured tool calls from the response
   const toolCalls: StreamResult['toolCalls'] = [];
   if (Array.isArray(message.tool_calls)) {
     for (const tc of message.tool_calls) {
       const fn = tc.function ?? {};
-      // Native API returns arguments as a parsed object, not a JSON string
       const args = typeof fn.arguments === 'string' ? JSON.parse(fn.arguments) : (fn.arguments ?? {});
-      toolCalls.push({
-        id: `ollama-tc-${toolCalls.length}`,
-        name: fn.name,
-        input: args,
-      });
+      toolCalls.push({ id: `ollama-tc-${toolCalls.length}`, name: fn.name, input: args });
     }
   }
 
-  // Strip thinking tags (Qwen3 reasoning output)
-  textContent = stripThinkingTags(textContent);
-
-  // Fallback: extract tool calls from text when the model emitted them inline
-  if (toolCalls.length === 0 && textContent) {
-    const extracted = extractToolCallsFromText(textContent);
-    if (extracted.toolCalls.length > 0) {
-      toolCalls.push(...extracted.toolCalls);
-      textContent = extracted.cleanedText;
-    }
-  }
-
-  // Fire streaming callbacks so the UI updates
-  if (textContent) onTextDelta(textContent);
-  if (toolCalls.length > 0) onToolUseStart?.(textContent);
-
-  const stopReason: StreamResult['stopReason'] =
-    toolCalls.length > 0
-      ? 'tool_use'
-      : doneReason === 'stop' || doneReason === ''
-        ? 'end_turn'
-        : doneReason === 'length'
-          ? 'max_tokens'
-          : 'end_turn';
-
-  return { textContent, toolCalls, stopReason };
+  return postProcessComplete(message.content ?? '', toolCalls, json.done_reason ?? '', onTextDelta, onToolUseStart);
 }
 
 // ---------------------------------------------------------------------------

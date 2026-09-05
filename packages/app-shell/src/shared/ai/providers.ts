@@ -10,14 +10,6 @@
  * the AD4M data layer — this is session-scoped configuration, not user data.
  */
 
-/**
- * Read the connected AD4M executor URL from localStorage (written by ad4m-connect)
- * and return `${origin}/api/v1`. Falls back to the given default when no stored
- * session exists (e.g. first launch, or connecting to a local executor).
- *
- * ad4m-connect namespaces every key with its package version (`0.13.0/ad4m-url`),
- * so we match on the suffix to stay version-agnostic.
- */
 /** Apply provider-specific URL resolution for a built-in provider. */
 function resolveProviderUrl(p: { id: string; baseUrl: string }): string {
   let url = p.baseUrl;
