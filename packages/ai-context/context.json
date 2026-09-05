@@ -385,7 +385,7 @@
     {
       "tagName": "we-draggable",
       "className": "Draggable",
-      "description": "Makes whatever is inside it something that can be picked up and carried somewhere else.\n\n## Why this exists as a primitive\n\nA post card, a member row and a space in the sidebar are rendered by **templates**, which are\ndata. If making one draggable were a code change, every future draggable surface would be a code\nchange too, and the contribution ladder says arrangement stays data. This is the same rung\n`we-sortable` occupies: two custom elements and an existing `$action`, with no new prop resolver,\nno new operator, and nothing added to the expression grammar.\n\n```json\n{ \"type\": \"we-draggable\",\n  \"props\": { \"entity\": \"CollectionBlock\", \"recordId\": { \"$\": \"post.id\" }, \"label\": { \"$\": \"post.title\" } },\n  \"children\": [ \"…the card…\" ] }\n```\n\n## What it carries\n\nA **reference** — `{ dataset?, entity, id }` — never DOM, and never the row object. `dataset` is\ndeliberately left empty here: a card fragment cannot name its own dataset without reading a\nstore, and portable fragments name no store by construction. The receiver stamps it, from\nwhichever dataset was current when the drop happened.\n\n## `display: contents`\n\nThe wrapper must not exist as a box. A card inside a grid track, a row inside a flex column: a\nreal element in between would take the track and leave the card laid out against the wrapper\ninstead of the grid. What is dragged is therefore the *child*, which is also what the ghost and\nthe geometry are measured from.",
+      "description": "Makes whatever is inside it something that can be picked up and carried somewhere else.\n\n## Why this exists as a primitive\n\nA post card, a member row and a space in the sidebar are rendered by **templates**, which are\ndata. If making one draggable were a code change, every future draggable surface would be a code\nchange too, and the contribution ladder says arrangement stays data. This is the same rung\n`we-sortable` occupies: two custom elements and an existing `$action`, with no new prop resolver,\nno new operator, and nothing added to the expression grammar.\n\n```json\n{ \"type\": \"we-draggable\",\n  \"props\": { \"entity\": \"CollectionBlock\", \"recordId\": { \"$\": \"post.id\" }, \"label\": { \"$\": \"post.title\" } },\n  \"children\": [ \"\u2026the card\u2026\" ] }\n```\n\n## What it carries\n\nA **reference** \u2014 `{ dataset?, entity, id }` \u2014 never DOM, and never the row object. `dataset` is\ndeliberately left empty here: a card fragment cannot name its own dataset without reading a\nstore, and portable fragments name no store by construction. The receiver stamps it, from\nwhichever dataset was current when the drop happened.\n\n## `display: contents`\n\nThe wrapper must not exist as a box. A card inside a grid track, a row inside a flex column: a\nreal element in between would take the track and leave the card laid out against the wrapper\ninstead of the grid. What is dragged is therefore the *child*, which is also what the ghost and\nthe geometry are measured from.",
       "superclass": "LayoutElement",
       "ownProps": [
         {
@@ -469,7 +469,7 @@
     {
       "tagName": "we-drop-zone",
       "className": "DropZone",
-      "description": "Anything a `we-draggable` can be dropped into.\n\nThe receiving half of the pair, and the same rung: two custom elements and an existing `$action`,\nso a template can make a region a drop target without a code change.\n\n```json\n{ \"type\": \"we-drop-zone\",\n  \"props\": { \"accepts\": \"CollectionBlock,Space,Agent\",\n             \"onDropped\": { \"$action\": \"modules.pocket.gather\", \"args\": [{ \"$\": \"event.detail\" }] } },\n  \"children\": [ \"…the panel…\" ] }\n```\n\n## It emits intent, it never mutates\n\nExactly `we-sortable`'s rule, and for the same reason: what a drop *means* differs. A panel writes\na record, a composer inserts a block, a board records a position. A primitive that assumed one of\nthose would be useless to the others.\n\n## `accepts` is a list of entity names, as a string\n\nA comma-separated string rather than an array because that is what an HTML attribute is, and\nbecause a schema writing `\"accepts\": \"CollectionBlock,Space\"` needs no expression. Empty means\n\"anything\", which is right for a general-purpose tray and wrong for a composer — say what you\ntake.\n\n## Zones nest, and the innermost one wins\n\nA folder inside a panel, a card inside a board. Hit-testing picks the innermost accepting zone\nand fires exactly one drop — and these events **do not bubble**, so that decision survives the\nDOM. See `_zone` for what happened when they did.\n\nGive every nested zone `noArm`, so picking something up speaks once about the container rather\nthan once about every row inside it.",
+      "description": "Anything a `we-draggable` can be dropped into.\n\nThe receiving half of the pair, and the same rung: two custom elements and an existing `$action`,\nso a template can make a region a drop target without a code change.\n\n```json\n{ \"type\": \"we-drop-zone\",\n  \"props\": { \"accepts\": \"CollectionBlock,Space,Agent\",\n             \"onDropped\": { \"$action\": \"modules.pocket.gather\", \"args\": [{ \"$\": \"event.detail\" }] } },\n  \"children\": [ \"\u2026the panel\u2026\" ] }\n```\n\n## It emits intent, it never mutates\n\nExactly `we-sortable`'s rule, and for the same reason: what a drop *means* differs. A panel writes\na record, a composer inserts a block, a board records a position. A primitive that assumed one of\nthose would be useless to the others.\n\n## `accepts` is a list of entity names, as a string\n\nA comma-separated string rather than an array because that is what an HTML attribute is, and\nbecause a schema writing `\"accepts\": \"CollectionBlock,Space\"` needs no expression. Empty means\n\"anything\", which is right for a general-purpose tray and wrong for a composer \u2014 say what you\ntake.\n\n## Zones nest, and the innermost one wins\n\nA folder inside a panel, a card inside a board. Hit-testing picks the innermost accepting zone\nand fires exactly one drop \u2014 and these events **do not bubble**, so that decision survives the\nDOM. See `_zone` for what happened when they did.\n\nGive every nested zone `noArm`, so picking something up speaks once about the container rather\nthan once about every row inside it.",
       "superclass": "LayoutElement",
       "ownProps": [
         {
@@ -904,7 +904,7 @@
           "name": "placeholder",
           "type": "string",
           "optional": false,
-          "default": "'Set location…'"
+          "default": "'Set location\u2026'"
         },
         {
           "name": "disabled",
@@ -942,7 +942,7 @@
     {
       "tagName": "we-menu",
       "className": "Menu",
-      "description": "Vertical list container for menu items inside a popover.\nNot a standalone selector — wrap in we-popover for dropdown behavior.",
+      "description": "Vertical list container for menu items inside a popover.\nNot a standalone selector \u2014 wrap in we-popover for dropdown behavior.",
       "superclass": "DesignSystemElement",
       "ownProps": []
     },
@@ -1059,7 +1059,7 @@
     {
       "tagName": "we-number",
       "className": "WeNumber",
-      "description": "Displays a number, optionally abbreviated (1 200 → 1.2K, 1 500 000 → 1.5M).",
+      "description": "Displays a number, optionally abbreviated (1 200 \u2192 1.2K, 1 500 000 \u2192 1.5M).",
       "superclass": "DesignSystemElement",
       "ownProps": [
         {
@@ -1292,7 +1292,7 @@
     {
       "tagName": "we-resize-handle",
       "className": "ResizeHandle",
-      "description": "A drag target that reports how far it has moved, and nothing else.\n\n## Why it reports a delta rather than owning a size\n\nThe obvious design is a handle that resizes its neighbour. It is the wrong one, because \"what does\nthis drag mean\" is never the handle's business: the editor's panel rails grow *leftwards* from a\nwidth that starts at zero when the panel is closed, clamp at a minimum, and close the panel again\nbelow a threshold — while a docked call panel grows from whichever edge it is attached to. A\nhandle that owned the size could serve one of those and not the other.\n\nSo it emits `resizestart`, `resize` and `resizeend`, each carrying `delta`: pixels moved along its\naxis **since the drag began**, signed in screen direction (right and down positive). The consumer\ncaptures its own starting size and applies whatever sign and limits it has. Delta-from-start\nrather than incremental, because every consumer would otherwise have to accumulate, and one of\nthem would get it wrong after a dropped event.\n\n## Why a primitive rather than a hook\n\nThere were two implementations of this before it existed and they diverged in ways nobody chose:\nthe editor's is mouse-only, so it does not work on a touchscreen at all, and its rail is a plain\ndiv — not focusable, so there is no way to resize a panel from the keyboard. Pointer events and a\n`separator` role fix both once, for every consumer, in the layer where imperative DOM work belongs.",
+      "description": "A drag target that reports how far it has moved, and nothing else.\n\n## Why it reports a delta rather than owning a size\n\nThe obvious design is a handle that resizes its neighbour. It is the wrong one, because \"what does\nthis drag mean\" is never the handle's business: the editor's panel rails grow *leftwards* from a\nwidth that starts at zero when the panel is closed, clamp at a minimum, and close the panel again\nbelow a threshold \u2014 while a docked call panel grows from whichever edge it is attached to. A\nhandle that owned the size could serve one of those and not the other.\n\nSo it emits `resizestart`, `resize` and `resizeend`, each carrying `delta`: pixels moved along its\naxis **since the drag began**, signed in screen direction (right and down positive). The consumer\ncaptures its own starting size and applies whatever sign and limits it has. Delta-from-start\nrather than incremental, because every consumer would otherwise have to accumulate, and one of\nthem would get it wrong after a dropped event.\n\n## Why a primitive rather than a hook\n\nThere were two implementations of this before it existed and they diverged in ways nobody chose:\nthe editor's is mouse-only, so it does not work on a touchscreen at all, and its rail is a plain\ndiv \u2014 not focusable, so there is no way to resize a panel from the keyboard. Pointer events and a\n`separator` role fix both once, for every consumer, in the layer where imperative DOM work belongs.",
       "superclass": "LayoutElement",
       "ownProps": [
         {
@@ -1503,7 +1503,7 @@
     {
       "tagName": "we-sortable",
       "className": "Sortable",
-      "description": "A drop zone whose items can be picked up, reordered, and moved to other zones.\n\n## One element, not two\n\nA zone *is* the container and its children *are* the items, which is what makes nesting free: a\nsortable inside an item of another sortable is simply a zone inside a zone, with no special case\nanywhere. A separate `we-drag-item` would buy nothing and cost boilerplate at every call site.\n\n## It emits intent, it never mutates\n\nA drop fires SortableMoveDetail — \"this item moved from there to here, at this index\" —\nand nothing else. What that *means* is the consumer's business, and it differs: a kanban route\nkeyed on `status` writes a scalar, a board built from containment relinks two `children` edges, an\noutline reparents a node. A primitive that assumed one of those would be useless to the others.\n\nThis is also why the element does not reorder its own DOM. The list is rendered from data; the\ndata changes; the list re-renders. A primitive that moved nodes itself would fight whatever\nrenders them.\n\n## Nesting, and why cycles are not a problem\n\nThe hard part of nested drag-and-drop is refusing to drop a container into its own descendant.\nBecause nesting here is expressed *in the DOM*, that check is `dragged.contains(zone)` — correct\nby construction, needing no knowledge of the consumer's data shape. The innermost matching zone\nunder the pointer wins, so dropping into a nested list does not also count as dropping into its\nparent.\n\n## Keyboard\n\nSpace or Enter picks up the focused item; the arrow keys move it, along the list and across\nzones; Space drops and Escape cancels. Built in rather than added later, because a board that can\nonly be operated by dragging is a board some people cannot operate at all — and because the\nevents are identical, a consumer gets it for nothing.\n\n## Items that contain form controls: `[data-we-handle]`\n\nBy default the whole item is the grab area, which is right for a card or a nav row. It is wrong\nthe moment an item contains a text field: dragging to select text would start a drag, and — worse\n— the keyboard pickup would read a **space typed into an input** as \"pick this up\", so the field\ncould not accept spaces at all.\n\nSo two rules, both no-ops for an item without form controls:\n\n- Mark one or more descendants `data-we-handle`, and only a press that begins inside a handle\n  starts a drag. An item with no handle keeps dragging from anywhere, so existing consumers are\n  unaffected.\n- A Space or Enter that originates in a text-entry element (`input`, `textarea`, `select`,\n  `contenteditable`, including inside a component's shadow root) is typing, never a pickup. This\n  applies whether or not the item declares handles, because an unfocusable-by-design input that\n  swallows spaces is a bug in every consumer that could hit it.\n\nMake the handle itself focusable (a `we-button` will do) so the keyboard path stays open: Space\non a focused handle picks the row up exactly as it does on a plain item.",
+      "description": "A drop zone whose items can be picked up, reordered, and moved to other zones.\n\n## One element, not two\n\nA zone *is* the container and its children *are* the items, which is what makes nesting free: a\nsortable inside an item of another sortable is simply a zone inside a zone, with no special case\nanywhere. A separate `we-drag-item` would buy nothing and cost boilerplate at every call site.\n\n## It emits intent, it never mutates\n\nA drop fires SortableMoveDetail \u2014 \"this item moved from there to here, at this index\" \u2014\nand nothing else. What that *means* is the consumer's business, and it differs: a kanban route\nkeyed on `status` writes a scalar, a board built from containment relinks two `children` edges, an\noutline reparents a node. A primitive that assumed one of those would be useless to the others.\n\nThis is also why the element does not reorder its own DOM. The list is rendered from data; the\ndata changes; the list re-renders. A primitive that moved nodes itself would fight whatever\nrenders them.\n\n## Nesting, and why cycles are not a problem\n\nThe hard part of nested drag-and-drop is refusing to drop a container into its own descendant.\nBecause nesting here is expressed *in the DOM*, that check is `dragged.contains(zone)` \u2014 correct\nby construction, needing no knowledge of the consumer's data shape. The innermost matching zone\nunder the pointer wins, so dropping into a nested list does not also count as dropping into its\nparent.\n\n## Keyboard\n\nSpace or Enter picks up the focused item; the arrow keys move it, along the list and across\nzones; Space drops and Escape cancels. Built in rather than added later, because a board that can\nonly be operated by dragging is a board some people cannot operate at all \u2014 and because the\nevents are identical, a consumer gets it for nothing.\n\n## Items that contain form controls: `[data-we-handle]`\n\nBy default the whole item is the grab area, which is right for a card or a nav row. It is wrong\nthe moment an item contains a text field: dragging to select text would start a drag, and \u2014 worse\n\u2014 the keyboard pickup would read a **space typed into an input** as \"pick this up\", so the field\ncould not accept spaces at all.\n\nSo two rules, both no-ops for an item without form controls:\n\n- Mark one or more descendants `data-we-handle`, and only a press that begins inside a handle\n  starts a drag. An item with no handle keeps dragging from anywhere, so existing consumers are\n  unaffected.\n- A Space or Enter that originates in a text-entry element (`input`, `textarea`, `select`,\n  `contenteditable`, including inside a component's shadow root) is typing, never a pickup. This\n  applies whether or not the item declares handles, because an unfocusable-by-design input that\n  swallows spaces is a bug in every consumer that could hit it.\n\nMake the handle itself focusable (a `we-button` will do) so the keyboard path stays open: Space\non a focused handle picks the row up exactly as it does on a plain item.",
       "superclass": "DesignSystemElement",
       "ownProps": [
         {
@@ -3684,7 +3684,7 @@
     },
     {
       "name": "GraphView",
-      "description": "A general-purpose graph view: knowledge maps, schema maps, hierarchies, cluster maps and\nfree-positioned boards, all from the same engine.\n\nThe shape of a graph is set by four independent choices: where it starts (`seeds`), how much of it\nopens (`expansion`), how it is arranged (`layout`), and how it looks (`nodeStyle` / `edgeStyle`).\n\nCommon recipes:\n- **Knowledge map** — `seeds: { source: 'query', options: { entity: 'Belief' } }` with\n`expansion: { defaultDepth: 1 }` and `layout: { type: 'force' }`.\n- **Schema map** — `seeds: { source: 'schema' }`, which draws the dataset's own entity types and\nthe relations between them. Picks up model types added later with no template change.\n- **Hierarchy** — `layout: { type: 'tree' }` with a `collection` expansion for nested content.\n- **Static diagram** — `seeds: { literal: true, nodes: [...], edges: [...] }` and no expansion at all.",
+      "description": "A general-purpose graph view: knowledge maps, schema maps, hierarchies, cluster maps and\nfree-positioned boards, all from the same engine.\n\nThe shape of a graph is set by four independent choices: where it starts (`seeds`), how much of it\nopens (`expansion`), how it is arranged (`layout`), and how it looks (`nodeStyle` / `edgeStyle`).\n\nCommon recipes:\n- **Knowledge map** \u2014 `seeds: { source: 'query', options: { entity: 'Belief' } }` with\n`expansion: { defaultDepth: 1 }` and `layout: { type: 'force' }`.\n- **Schema map** \u2014 `seeds: { source: 'schema' }`, which draws the dataset's own entity types and\nthe relations between them. Picks up model types added later with no template change.\n- **Hierarchy** \u2014 `layout: { type: 'tree' }` with a `collection` expansion for nested content.\n- **Static diagram** \u2014 `seeds: { literal: true, nodes: [...], edges: [...] }` and no expansion at all.",
       "props": [
         {
           "name": "seeds",
@@ -5931,6 +5931,15 @@
         "apiKeyConfigured": {
           "type": "boolean"
         },
+        "providers": {
+          "type": "array"
+        },
+        "activeProvider": {
+          "type": "object"
+        },
+        "activeProviderId": {
+          "type": "string"
+        },
         "templateName": {
           "type": "string"
         },
@@ -6014,6 +6023,10 @@
         }
       },
       "actions": [
+        "setActiveProvider",
+        "updateProvider",
+        "addProvider",
+        "removeProvider",
         "newChat",
         "switchSession",
         "deleteSession",
@@ -7047,19 +7060,19 @@
     {
       "name": "calendarMonth",
       "params": ["options?"],
-      "doc": "The days of a month as rows — { date, day, inMonth, isToday, weekday } — padded to whole weeks. Options: month (YYYY-MM-DD, default today), offset (months from it), weekStartsOn (0 Sunday … 6), fixedWeeks (six rows, default on).",
+      "doc": "The days of a month as rows \u2014 { date, day, inMonth, isToday, weekday } \u2014 padded to whole weeks. Options: month (YYYY-MM-DD, default today), offset (months from it), weekStartsOn (0 Sunday \u2026 6), fixedWeeks (six rows, default on).",
       "example": "calendarMonth({ offset: local.monthOffset, weekStartsOn: 1 })"
     },
     {
       "name": "calendarMonths",
       "params": ["options?"],
-      "doc": "The twelve months of the year an offset lands in — { label, month, year, offset, isThisMonth, isShown } — each carrying its own offset from today, for a jump-to-month picker.",
+      "doc": "The twelve months of the year an offset lands in \u2014 { label, month, year, offset, isThisMonth, isShown } \u2014 each carrying its own offset from today, for a jump-to-month picker.",
       "example": "calendarMonths({ offset: local.monthOffset })"
     },
     {
       "name": "monthLabel",
       "params": ["options?"],
-      "doc": "The month a calendar is showing, as \"August 2026\" in the viewer’s language. Same options as calendarMonth.",
+      "doc": "The month a calendar is showing, as \"August 2026\" in the viewer\u2019s language. Same options as calendarMonth.",
       "example": "monthLabel({ offset: local.monthOffset })"
     },
     {

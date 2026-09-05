@@ -1103,6 +1103,19 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // The Claude API key. Written through a settings form in chrome, read by this store to make a
     // request — never a value any template needs to see.
     setApiKey: WIRING,
+
+    // Multi-provider management — credential-bearing, so wiring, not template vocabulary.
+    providers: WIRING,
+    activeProvider: WIRING,
+    activeProviderId: WIRING,
+    setActiveProvider: WIRING,
+    updateProvider: WIRING,
+    addProvider: WIRING,
+    removeProvider: WIRING,
+    healthStatus: WIRING,
+    healthError: WIRING,
+    checkHealth: WIRING,
+
     onSchemaEdit: WIRING,
     pushSnapshot: WIRING,
   },
