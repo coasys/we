@@ -2317,7 +2317,7 @@ EditorStore:
   - isOpen: boolean — the AI chat panel is open
   - isStreaming: boolean — an assistant reply is arriving; streamingContent holds what has arrived so far
   - streamingContent: string — the partial assistant reply while isStreaming, empty otherwise
-  - apiKeyConfigured: boolean — the agent has an API key set, so sendMessage can work. Gate the composer on it and say what is missing rather than hiding it
+  - apiKeyConfigured: boolean — the active provider has enough configuration to send requests. Gate the composer on it
   - templateName: string — the name of the template being edited, for the editor’s own header
   - templateIcon: string — its icon
   - isReadOnly: boolean — the template on screen cannot be saved in place (a built-in, or somebody else's). Edits buffer as pending changes; offer Fork rather than Save. Answers for the template rendered, so do not use it to gate per-row controls in a list — switcherGroups carries `editable` per row

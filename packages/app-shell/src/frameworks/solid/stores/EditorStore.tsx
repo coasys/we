@@ -3,13 +3,25 @@
  * panel visibility and widths, preview/visual mode, unified template+theme undo/redo, pending
  * (buffered) changes for read-only templates, and the fork/fresh picker.
  *
- * The AI half of a session is deliberately elsewhere: the Anthropic client, streaming, prompt
- * assembly and tool definition live in `shared/ai/aiInfra`, and patch application in
- * `shared/ai/schemaPatches` — this store orchestrates them against its own signals. That split is
- * what keeps a future backend-executed assistant a drop-in: it would replace the infra modules
- * and the `sendViaClaude` orchestration, not the session state.
+ * The AI half of a session is deliberately elsewhere: the multi-provider client, streaming, prompt
+ * assembly and tool definition live in `shared/ai/aiInfra`, provider persistence in
+ * `shared/ai/providers`, and patch application in `shared/ai/schemaPatches` — this store
+ * orchestrates them against its own signals. That split is what keeps a future backend-executed
+ * assistant a drop-in: it would replace the infra modules and the `sendViaProvider` orchestration,
+ * not the session state.
  */
-import { formatExternalManifestForPrompt, sendClaudeRequest } from '@shared/ai/aiInfra';
+import { formatExternalManifestForPrompt, sendProviderRequest } from '@shared/ai/aiInfra';
+import {
+  type AiProvider,
+  checkProviderHealth,
+  getActiveProviderId,
+  type HealthStatus,
+  isProviderReady,
+  loadProviders,
+  migrateFromClaudeApiKey,
+  saveProviders,
+  setActiveProviderId,
+} from '@shared/ai/providers';
 import { applySchemaPatches, type SchemaPatch } from '@shared/ai/schemaPatches';
 import { registerHostDockStore, unregisterHostDockStore } from '@shared/registries/dockRegistry';
 import { EDITOR_STORE_ID } from '@shared/registries/editorDocks';
@@ -60,6 +72,19 @@ export interface EditorStore {
   isStreaming: Accessor<boolean>;
   streamingContent: Accessor<string>;
   apiKeyConfigured: Accessor<boolean>;
+
+  // --- Provider management ---
+  providers: Accessor<AiProvider[]>;
+  activeProvider: Accessor<AiProvider | undefined>;
+  activeProviderId: Accessor<string>;
+  setActiveProvider: (id: string) => void;
+  updateProvider: (id: string, changes: Partial<AiProvider>) => void;
+  addProvider: (provider: Omit<AiProvider, 'isBuiltIn'>) => void;
+  removeProvider: (id: string) => void;
+  healthStatus: Accessor<HealthStatus>;
+  healthError: Accessor<string>;
+  availableModels: Accessor<string[]>;
+  checkHealth: () => void;
 
   // --- Template context ---
   templateName: Accessor<string>;
@@ -156,7 +181,7 @@ export interface EditorStore {
   clearHistory: () => void;
 
   // --- Settings ---
-  setApiKey: (key: string) => Promise<boolean>;
+  setApiKey: (key: string) => void;
 }
 
 /**
@@ -235,9 +260,42 @@ export function EditorStoreProvider(props: ParentProps) {
   const [isOpen, setIsOpen] = createSignal(false);
   const [isStreaming, setIsStreaming] = createSignal(false);
   const [streamingContent, setStreamingContent] = createSignal('');
-  const [apiKey, setApiKeySignal] = createSignal('');
 
-  const apiKeyConfigured = () => apiKey().length > 0;
+  // --- Provider state (replaces single apiKey) ---
+  const [providersSignal, setProvidersSignal] = createSignal<AiProvider[]>(loadProviders());
+  const [activeProviderIdSignal, setActiveProviderIdSignal] = createSignal(getActiveProviderId());
+
+  const activeProvider = createMemo(() => providersSignal().find((p) => p.id === activeProviderIdSignal()));
+  const apiKeyConfigured = () => isProviderReady(activeProvider());
+
+  // --- Health check state ---
+  const [healthStatus, setHealthStatus] = createSignal<HealthStatus>('unknown');
+  const [healthError, setHealthError] = createSignal('');
+  const [availableModels, setAvailableModels] = createSignal<string[]>([]);
+
+  function checkHealth() {
+    const provider = activeProvider();
+    if (!provider) return;
+    setHealthStatus('checking');
+    setHealthError('');
+    checkProviderHealth(provider).then((result) => {
+      setHealthStatus(result.status);
+      setHealthError(result.error ?? '');
+      setAvailableModels(result.models ?? []);
+    });
+  }
+
+  // Re-check health when the active provider changes
+  createEffect(() => {
+    const p = activeProvider();
+    if (p && isProviderReady(p)) {
+      checkHealth();
+    } else {
+      setHealthStatus('unknown');
+      setHealthError('');
+      setAvailableModels([]);
+    }
+  });
 
   // --- Session management ---
   const [sessions, setSessions] = createSignal<ChatSessionRecord[]>([]);
@@ -741,20 +799,60 @@ export function EditorStoreProvider(props: ParentProps) {
   );
 
   // ----------------------------------------------------------------
-  // API key management (persisted to AgentSettings)
+  // Provider management (persisted to localStorage)
   // ----------------------------------------------------------------
-  // Returns the write rather than dropping it, so a schema's `onError`/`onFinally` can fire and a
-  // caller can await. `updateAgentSettings` toasts a failure of its own; this is the other channel.
-  function setApiKey(key: string): Promise<boolean> {
-    setApiKeySignal(key);
-    return datasetStore.updateAgentSettings({ claudeApiKey: key });
+
+  function setActiveProviderAction(id: string) {
+    setActiveProviderIdSignal(id);
+    setActiveProviderId(id);
   }
 
-  // Load persisted API key when agentSettings become available
+  function updateProvider(id: string, changes: Partial<AiProvider>) {
+    setProvidersSignal((prev) => {
+      const next = prev.map((p) => (p.id === id ? { ...p, ...changes } : p));
+      saveProviders(next);
+      return next;
+    });
+  }
+
+  function addProvider(provider: Omit<AiProvider, 'isBuiltIn'>) {
+    const newProvider: AiProvider = { ...provider, isBuiltIn: false };
+    setProvidersSignal((prev) => {
+      const next = [...prev, newProvider];
+      saveProviders(next);
+      return next;
+    });
+  }
+
+  function removeProvider(id: string) {
+    setProvidersSignal((prev) => {
+      const next = prev.filter((p) => p.id !== id || p.isBuiltIn);
+      saveProviders(next);
+      return next;
+    });
+    // If the removed provider was active, fall back to anthropic
+    if (activeProviderIdSignal() === id) {
+      setActiveProviderAction('anthropic');
+    }
+  }
+
+  /** Legacy: set the active provider's API key. Kept for backward compat with SessionPort. */
+  function setApiKey(key: string) {
+    const current = activeProvider();
+    if (current) {
+      updateProvider(current.id, { apiKey: key });
+    }
+    // Also persist to AgentSettings for legacy migration
+    datasetStore.updateAgentSettings({ claudeApiKey: key });
+  }
+
+  // Migrate from legacy claudeApiKey on first load
   createEffect(() => {
     const settings = datasetStore.agentSettings();
     if (settings?.claudeApiKey) {
-      setApiKeySignal(settings.claudeApiKey);
+      const migrated = migrateFromClaudeApiKey(settings.claudeApiKey);
+      setProvidersSignal(migrated);
+      setActiveProviderIdSignal(getActiveProviderId());
     }
   });
 
@@ -849,7 +947,7 @@ export function EditorStoreProvider(props: ParentProps) {
     setStreamingContent('<span class="shimmer">*Thinking...*</span>');
 
     try {
-      await sendViaClaude(text);
+      await sendViaProvider(text);
     } catch (err) {
       console.error('[EditorStore] sendMessage caught error:', err);
       const errorText = err instanceof Error ? err.message : 'Unknown error';
@@ -878,10 +976,10 @@ export function EditorStoreProvider(props: ParentProps) {
   }
 
   // ----------------------------------------------------------------
-  // Claude API path (client + streaming live in shared/ai/aiInfra)
+  // Provider API path (client + streaming live in shared/ai/aiInfra)
   // ----------------------------------------------------------------
 
-  async function sendViaClaude(text: string) {
+  async function sendViaProvider(text: string) {
     const claudeMessages: Array<{ role: string; content: unknown }> = buildClaudeMessages(text);
 
     // Create a placeholder assistant message — shows streaming content as tokens arrive
@@ -917,10 +1015,13 @@ export function EditorStoreProvider(props: ParentProps) {
     };
 
     for (let turn = 0; turn <= maxContinuations; turn++) {
+      const provider = activeProvider();
+      if (!provider) throw new Error('No AI provider selected');
+
       let streamResult;
       try {
-        streamResult = await sendClaudeRequest(
-          apiKey(),
+        streamResult = await sendProviderRequest(
+          provider,
           claudeMessages,
           (accumulated) => {
             const sep = allTextContent && accumulated ? '\n\n' : '';
@@ -933,7 +1034,7 @@ export function EditorStoreProvider(props: ParentProps) {
           },
         );
       } catch (err) {
-        console.error(`[EditorStore] Turn ${turn}: sendClaudeRequest threw`, err);
+        console.error(`[EditorStore] Turn ${turn}: sendProviderRequest threw`, err);
         throw err;
       }
       const { textContent, toolCalls, stopReason } = streamResult;
@@ -1166,9 +1267,10 @@ export function EditorStoreProvider(props: ParentProps) {
   }
 
   /**
-   * Build Claude messages array from chat history.
+   * Build conversation messages array from chat history (Anthropic format).
    * The currentSchema is included in the latest user message so the AI
-   * always sees the current template state.
+   * always sees the current template state. The provider dispatcher
+   * converts to OpenAI format when needed.
    */
   function buildClaudeMessages(latestText: string): Array<{ role: string; content: unknown }> {
     const history: Array<{ role: string; content: unknown }> = [];
@@ -1315,6 +1417,19 @@ export function EditorStoreProvider(props: ParentProps) {
     isStreaming,
     streamingContent,
     apiKeyConfigured,
+
+    // Provider management
+    providers: providersSignal,
+    activeProvider,
+    activeProviderId: activeProviderIdSignal,
+    setActiveProvider: setActiveProviderAction,
+    updateProvider,
+    addProvider,
+    removeProvider,
+    healthStatus,
+    healthError,
+    availableModels,
+    checkHealth,
 
     // Template context
     templateName,

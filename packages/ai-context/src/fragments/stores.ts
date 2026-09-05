@@ -1237,7 +1237,15 @@ export function generateStoresText(entries: StoreEntry[]): string {
         isStreaming: 'boolean — an assistant reply is arriving; streamingContent holds what has arrived so far',
         streamingContent: 'string — the partial assistant reply while isStreaming, empty otherwise',
         apiKeyConfigured:
-          'boolean — the agent has an API key set, so sendMessage can work. Gate the composer on it and say what is missing rather than hiding it',
+          'boolean — the active provider has enough configuration to send requests. Gate the composer on it',
+        providers:
+          'AiProvider[] — all configured AI providers (id, name, baseUrl, apiKey, model, protocol, isBuiltIn). Persisted to localStorage',
+        activeProvider:
+          'AiProvider | undefined — the currently selected provider, derived from providers + activeProviderId',
+        activeProviderId: "string — id of the selected provider ('anthropic' by default)",
+        healthStatus: 'string (‘unknown’ | ‘checking’ | ‘ok’ | ‘error’) — reachability of the active provider',
+        healthError: 'string — human-readable error when healthStatus = error, empty otherwise',
+        availableModels: 'string[] — model IDs returned by the active provider during health check',
         templateName: 'string — the name of the template being edited, for the editor’s own header',
         templateIcon: 'string — its icon',
         isReadOnly:
@@ -1274,6 +1282,14 @@ export function generateStoresText(entries: StoreEntry[]): string {
         redo: '(): redoes the last undone schema edit',
         open: '(): opens the AI chat panel',
         close: '(): closes it',
+        setActiveProvider: '(id: string): switches the active AI provider by id',
+        updateProvider:
+          '(id: string, changes: Partial<AiProvider>): updates fields on an existing provider (e.g. apiKey, model, baseUrl)',
+        addProvider: '(provider: Omit<AiProvider, "isBuiltIn">): adds a custom (non-built-in) provider',
+        removeProvider:
+          '(id: string): removes a custom provider; built-in providers cannot be removed. Falls back to anthropic if the removed provider was active',
+        checkHealth:
+          '(): probes the active provider to verify reachability, auth, and model availability without spending tokens',
         newChat: '(): starts a new AI session for this template and switches to it',
         switchSession: '(sessionId: string): shows another saved session',
         deleteSession: '(sessionId: string): deletes a saved session and its messages',

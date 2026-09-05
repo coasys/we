@@ -178,6 +178,20 @@ export interface SessionPort {
   newChat: () => void;
   switchSession: (sessionId: string) => void;
   deleteSession: (sessionId: string) => Promise<void>;
+
+  // Multi-provider support — optional so existing single-provider hosts still satisfy the port.
+  providers?: () => EditorAiProvider[];
+  activeProvider?: () => EditorAiProvider | undefined;
+  activeProviderId?: () => string;
+  setActiveProvider?: (id: string) => void;
+  updateProvider?: (id: string, changes: Partial<EditorAiProvider>) => void;
+  addProvider?: (provider: EditorAiProvider) => void;
+  removeProvider?: (id: string) => void;
+
+  // Health check — verify a provider responds without spending tokens.
+  healthStatus?: () => EditorHealthStatus;
+  checkHealth?: () => void;
+  availableModels?: () => string[];
 }
 
 /** Who the user is, and which dataset the editor is working against. */
@@ -257,4 +271,24 @@ export interface EditorChatMessage {
   role: string;
   content: string;
   [key: string]: unknown;
+}
+
+/** Health status reported by the provider check. */
+export type EditorHealthStatus = 'unknown' | 'checking' | 'ok' | 'error';
+/** Detailed health result — when the check produced model lists or error messages. */
+export interface EditorHealthDetail {
+  status: 'ok' | 'error';
+  models?: string[];
+  error?: string;
+}
+
+/** An AI provider as the editor renders it. Structural — avoids coupling to app-shell's AiProvider. */
+export interface EditorAiProvider {
+  id: string;
+  name: string;
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  protocol: 'anthropic' | 'openai' | 'ollama';
+  isBuiltIn: boolean;
 }
