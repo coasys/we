@@ -1,4 +1,6 @@
 import type { SchemaNode } from '@we/schema-shared';
+import { expr } from '@we/schema-shared';
+import { confirmModal } from '@we/template-kit';
 
 /**
  * Every dataset this agent holds, as datasets rather than as spaces — ids, share URIs, and the two
@@ -15,15 +17,19 @@ import type { SchemaNode } from '@we/schema-shared';
  */
 
 /** True when this dataset is one the app made for itself rather than one the agent joined. */
-const isSystem = { $in: ['$dataset.id', { $store: 'datasetStore.systemDatasetUuids' }] };
+const isSystem = { $: 'dataset.id in datasetStore.systemDatasetUuids' };
 
 /** `we-root` specifically — deleting it takes settings, preferences and installed templates/themes. */
-const isRoot = { $eq: ['$dataset.id', { $store: 'datasetStore.rootDataset.id' }] };
+const isRoot = { $: 'dataset.id == datasetStore.rootDataset.id' };
 
 const datasetCard: SchemaNode = {
   type: 'Column',
   props: { gap: '200', p: '300', bg: 'surface-sunken', r: '300', border: '1px solid border' },
-  $localState: { sdnaCleanupResult: { type: 'string', initial: '' } },
+  $localState: {
+    sdnaCleanupResult: { type: 'string', initial: '' },
+    confirmDeleteOpen: { type: 'boolean', initial: false },
+    deleting: { type: 'boolean', initial: false },
+  },
   children: [
     {
       type: 'Row',
@@ -32,17 +38,11 @@ const datasetCard: SchemaNode = {
         {
           type: 'we-icon',
           props: {
-            name: {
-              $if: {
-                condition: isSystem,
-                then: 'hard-drives',
-                else: { $if: { condition: '$dataset.sharedUri', then: 'globe', else: 'folder' } },
-              },
-            },
+            name: expr`${isSystem} ? 'hard-drives' : (dataset.sharedUri ? 'globe' : 'folder')`,
             size: '16px',
           },
         },
-        { type: 'we-text', props: { variant: 'label' }, children: ['$dataset.name'] },
+        { type: 'we-text', props: { variant: 'label' }, children: [{ $: 'dataset.name' }] },
         {
           type: '$if',
           props: {
@@ -55,16 +55,16 @@ const datasetCard: SchemaNode = {
     {
       type: 'we-text',
       props: { variant: 'footnote', color: 'text-faint' },
-      children: [{ $concat: ['ID: ', '$dataset.id'] }],
+      children: [{ $: '`ID: ${dataset.id}`' }],
     },
     {
       type: '$if',
       props: {
-        condition: '$dataset.sharedUri',
+        condition: { $: 'dataset.sharedUri' },
         then: {
           type: 'we-text',
           props: { variant: 'footnote', color: 'text-faint' },
-          children: [{ $concat: ['URL: ', '$dataset.sharedUri'] }],
+          children: [{ $: '`URL: ${dataset.sharedUri}`' }],
         },
       },
     },
@@ -79,8 +79,8 @@ const datasetCard: SchemaNode = {
             size: 'sm',
             onClick: {
               $action: 'datasetStore.cleanupSpaceSdna',
-              args: ['$dataset.id'],
-              onSuccess: [{ $setLocal: 'sdnaCleanupResult', from: '$result' }],
+              args: [{ $: 'dataset.id' }],
+              onSuccess: [{ $setLocal: 'sdnaCleanupResult', value: { $: 'result' } }],
             },
           },
           children: [
@@ -93,13 +93,41 @@ const datasetCard: SchemaNode = {
           props: {
             variant: 'danger',
             size: 'sm',
-            onClick: { $action: 'spaceStore.removeSpace', args: ['$dataset.id'] },
+            onClick: { $setLocal: 'confirmDeleteOpen', value: true },
           },
           children: [
             { type: 'we-icon', props: { name: 'trash' } },
             { type: 'we-text', props: { variant: 'label' }, children: ['Delete'] },
           ],
         },
+        /*
+          The one delete in the app that can take everything, and it had no confirmation at all.
+
+          `spaceStore.removeSpace` is wired straight through `DatasetStore.removeDataset` to
+          `client.perspective.remove`, and this section lists the **system** datasets alongside the
+          rest — so one tap on the `we-root` row destroys the agent's settings, installed templates
+          and themes, Pocket and profile cache together. The sibling delete in the spaces list, which
+          can only remove one community, asked first; this one did not.
+
+          Chrome, so the host's own destructive guard does not cover it: that one stands in front of
+          *space templates*, which is the tier nobody in this repo authored. Chrome asks for itself.
+
+          The body changes for the root dataset rather than adding a second dialog. A footnote under
+          the row already says what `we-root` is, and a footnote is exactly what a person about to
+          press Delete is not reading.
+        */
+        confirmModal({
+          open: { $: 'local.confirmDeleteOpen' },
+          close: { $setLocal: 'confirmDeleteOpen', value: false },
+          title: expr`${isRoot} ? 'Delete your root dataset?' : \`Delete "\${dataset.name}"?\``,
+          body: expr`${isRoot}
+            ? 'This holds your settings, your installed templates and themes, your Pocket and your cached profiles. Deleting it resets this agent to a clean install. It cannot be undone.'
+            : 'The dataset and everything stored in it are removed from this device. If it is shared, other members keep their own copies. This cannot be undone.'`,
+          detail: { $: '`ID: ${dataset.id}`' },
+          confirmLabel: 'Delete',
+          busyLocal: 'deleting',
+          confirm: { $action: 'spaceStore.removeSpace', args: [{ $: 'dataset.id' }] },
+        }),
       ],
     },
     // Deleting we-root is deliberately allowed — resetting to a clean agent is a thing worth being
@@ -121,11 +149,11 @@ const datasetCard: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $local: 'sdnaCleanupResult' },
+        condition: { $: 'local.sdnaCleanupResult' },
         then: {
           type: 'we-text',
           props: { variant: 'footnote', color: 'text-faint' },
-          children: [{ $local: 'sdnaCleanupResult' }],
+          children: [{ $: 'local.sdnaCleanupResult' }],
         },
       },
     },
@@ -143,7 +171,7 @@ export const advancedDatasetsSection: SchemaNode = {
       children: [
         {
           type: 'we-icon',
-          props: { name: { $if: { condition: { $local: 'advancedOpen' }, then: 'caret-down', else: 'caret-right' } } },
+          props: { name: { $: "local.advancedOpen ? 'caret-down' : 'caret-right'" } },
         },
         { type: 'we-text', props: { variant: 'label' }, children: ['Advanced — all datasets'] },
       ],
@@ -151,7 +179,7 @@ export const advancedDatasetsSection: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $local: 'advancedOpen' },
+        condition: { $: 'local.advancedOpen' },
         then: {
           type: 'Column',
           props: { gap: '200' },
@@ -163,7 +191,7 @@ export const advancedDatasetsSection: SchemaNode = {
             },
             {
               type: '$each',
-              props: { items: { $store: 'datasetStore.datasets' }, as: 'dataset' },
+              props: { items: { $: 'datasetStore.datasets' }, as: 'dataset' },
               children: [datasetCard],
             },
           ],

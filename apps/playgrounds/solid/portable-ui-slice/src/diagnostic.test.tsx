@@ -19,7 +19,7 @@ function seed() {
 describe('diagnostics', () => {
   it('A: backend query().subscribe delivers rows (pure, no renderer)', async () => {
     const backend = seed();
-    const model = backend.stores.$getModel('Post');
+    const model = backend.stores.$getEntity('Post');
     let got: unknown[] = [];
     model.query({ id: 'ds' }, {}).subscribe((rows) => (got = rows));
     await tick();
@@ -34,7 +34,7 @@ describe('diagnostics', () => {
         {
           type: '$each',
           props: { items: [{ title: 'Alpha' }, { title: 'Beta' }], as: 'row' },
-          children: [{ type: 'we-text', children: ['$row.title'] }],
+          children: [{ type: 'we-text', children: [{ $: 'row.title' }] }],
         },
       ],
     };
@@ -52,7 +52,7 @@ describe('diagnostics', () => {
         {
           type: '$each',
           props: { items: { $query: { entity: 'Post' } }, as: 'post' },
-          children: [{ type: 'we-text', children: ['$post.title'] }],
+          children: [{ type: 'we-text', children: [{ $: 'post.title' }] }],
         },
       ],
     };

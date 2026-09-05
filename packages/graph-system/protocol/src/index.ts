@@ -37,6 +37,7 @@ export type {
   ExpandRequest,
   ExpandResult,
   SeedSource,
+  WatchQuery,
 } from './expander';
 export type {
   EdgeCurve,

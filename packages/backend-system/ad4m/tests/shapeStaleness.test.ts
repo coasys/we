@@ -25,10 +25,10 @@
  * The unit under test is the diff. So the declared side is a fixture, and the two assertions that
  * genuinely are about the runtime are marked as such below.
  */
-import { declaredShape, missingModels, shapeIsStale, type StoredShape } from '@we/backend-ad4m';
+import { declaredShape, missingEntities, shapeIsStale, type StoredShape } from '@we/backend-ad4m';
 import { describe, expect, it } from 'vitest';
 
-import { TaskBlock } from '../src/models';
+import { TaskBlock } from '../src/entities';
 
 const TARGET = 'we://TaskBlock';
 
@@ -224,7 +224,7 @@ describe('missing models', () => {
     const { proxy } = perspective(['we://Placement']);
     const stored = new Map([withPaths('we://Placement')]);
 
-    const missing = await missingModels(proxy, [model('we://Placement'), model('we://TypeStyle')], stored);
+    const missing = await missingEntities(proxy, [model('we://Placement'), model('we://TypeStyle')], stored);
 
     expect(missing.map((m) => m.generateSHACL().shape.targetClass)).toEqual(['we://TypeStyle']);
   });
@@ -235,7 +235,7 @@ describe('missing models', () => {
     // ends up needing `cleanupSpaceSdna`.
     const { proxy } = perspective(['we://Placement']);
 
-    expect(await missingModels(proxy, [model('we://Placement')], new Map())).toEqual([]);
+    expect(await missingEntities(proxy, [model('we://Placement')], new Map())).toEqual([]);
   });
 
   it('asks the perspective nothing when every shape is already stored', async () => {
@@ -244,7 +244,7 @@ describe('missing models', () => {
     const { proxy, queried } = perspective([]);
     const stored = new Map([withPaths('we://Placement'), withPaths('we://TypeStyle')]);
 
-    await missingModels(proxy, [model('we://Placement'), model('we://TypeStyle')], stored);
+    await missingEntities(proxy, [model('we://Placement'), model('we://TypeStyle')], stored);
 
     expect(queried).toEqual([]);
   });
@@ -253,6 +253,6 @@ describe('missing models', () => {
     const { proxy } = perspective([]);
     const nameless = { generateSHACL: () => ({ shape: null }) } as never;
 
-    expect(await missingModels(proxy, [nameless], new Map())).toEqual([]);
+    expect(await missingEntities(proxy, [nameless], new Map())).toEqual([]);
   });
 });

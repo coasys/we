@@ -28,10 +28,12 @@ import type {
   InterpretationProposal,
   InterpretationRequest,
   InterpretationResult,
+  InterpretationScope,
   TranscriptTurn,
   WatchRequest,
 } from '@we/backend-shared';
-import { getModel, getModelTargetClass, getRegisteredModelNames } from '@we/models';
+import { trace } from '@we/backend-shared';
+import { getEntitiesForPerspective, getEntity, getEntityTargetClass, getRegisteredEntityNames } from '@we/entities';
 
 const proxy = (dataset: DatasetHandle) => dataset as PerspectiveProxy;
 
@@ -62,8 +64,24 @@ const WATCH_DEFAULTS = {
   batchMin: 3,
   batchMax: 100,
   maxWaitMs: 120_000,
-  /** How long a won claim is authoritative before another peer may take it — a pass, plus slack. */
-  claimTtlMs: 60_000,
+  /**
+   * How long a won claim is authoritative before another peer may take it.
+   *
+   * This has to outlast a whole pass, and the previous minute did not. The executor writes the
+   * claim once, when it wins, with `expires_at = now + claimTtlMs`, and never refreshes it; and it
+   * uses the same number as the stall clock after which a peer that stood down for the elected
+   * runner escalates straight to a claim of its own. So on a local model — where one LLM call is
+   * routinely minutes — every stood-down peer found the runner's claim expired at sixty seconds,
+   * won its own, and re-ran the batch: one extra LLM call per peer per batch, each ending in a
+   * "Nothing to add" row (the dedup found the runner's records) or, when sync was slower than the
+   * model, in duplicates.
+   *
+   * Ten minutes matches `INTERPRETATION_ACTIVITY_TTL_MS` — the point past which a running pass is
+   * disbelieved anyway — and is the bound on how long a runner that genuinely died holds the batch
+   * hostage. The proper fix is a claim that refreshes during the pass; that is the executor's, and
+   * this is what can be done from here. See `notes/ad4m/auto-processor-claim-followups.md`.
+   */
+  claimTtlMs: 10 * 60 * 1000,
 } as const;
 
 /**
@@ -122,9 +140,9 @@ function withTime(turns: TranscriptTurn[]): { speaker: string; text: string }[] 
 async function predicateNames(perspective: PerspectiveProxy): Promise<Map<string, string>> {
   const map = new Map<string, string>();
 
-  for (const name of getRegisteredModelNames()) {
+  for (const name of getRegisteredEntityNames()) {
     const shape = (
-      getModel(name) as unknown as { generateSHACL?: () => { shape: { properties?: unknown[] } } }
+      getEntity(name) as unknown as { generateSHACL?: () => { shape: { properties?: unknown[] } } }
     ).generateSHACL?.().shape;
     for (const p of (shape?.properties ?? []) as { path?: string; name?: string }[]) {
       if (p.path && p.name && !map.has(p.path)) map.set(p.path, p.name);
@@ -135,7 +153,7 @@ async function predicateNames(perspective: PerspectiveProxy): Promise<Map<string
   // failure here costs a proposal its readable field names, which is worth degrading over rather
   // than failing the whole review list for.
   try {
-    const native = new Set(getRegisteredModelNames());
+    const native = new Set(getRegisteredEntityNames());
     for (const shapeName of await perspective.getShaclNames()) {
       if (native.has(shapeName)) continue; // already covered above, without the round trip
       const shape = await perspective.getShacl(shapeName);
@@ -168,10 +186,101 @@ function decode(value: unknown): unknown {
 }
 
 /**
+ * Predicates whose value is a *reference* to another record rather than a literal.
+ *
+ * Only these can point somewhere, so only these need checking. `Relationship`'s two endpoints are
+ * the case that matters — see {@link assertEndpointsAreLocal}.
+ */
+const REFERENCE_PREDICATES = new Set(['we://relationship_source', 'we://relationship_target', 'we://placed_node']);
+
+/**
+ * Refuse to commit a proposal that points outside this perspective.
+ *
+ * ## What is being defended against
+ *
+ * The values in a proposal were written by a language model reading a transcript, and a transcript
+ * is whatever anybody in the call said out loud — so a prompt-injected utterance is a person
+ * choosing what the model proposes. WE never sees those values before committing them: `accept`
+ * hands the overlay's id to the executor and the executor writes what it staged.
+ *
+ * Most of that is bounded already. The class list is the intersection of extractable, the space's
+ * targets and the call's, and a scalar an attacker chooses is a scalar in a record somebody clicked
+ * Accept on — visible, wrong, and removable. `Relationship` is the exception, because its `source`
+ * and `target` are untyped references: a proposal can name **any base in the dataset**, so a
+ * plausible-looking "X contradicts Y" can be committed pointing at a record from an unrelated part
+ * of the space, authored by whoever clicked Accept.
+ *
+ * So the endpoints are resolved before the commit and refused if they name nothing here. That does
+ * not make the *claim* true — nothing can — but it bounds what a proposal can attach itself to, to
+ * records this perspective actually holds, which is the difference between a wrong statement and a
+ * statement about somewhere the reviewer cannot see.
+ *
+ * Best-effort by construction: a runtime that will not list its overlays cannot be checked, and
+ * refusing every accept on that basis would break review on exactly the runtimes that work. It
+ * throws only on a *resolved* violation.
+ */
+async function assertEndpointsAreLocal(perspective: PerspectiveProxy, overlayId: string): Promise<void> {
+  let overlay: { base: string; inferred?: [string, unknown][] } | undefined;
+  try {
+    overlay = (await perspective.interpretationOverlays()).find((o) => o.base === overlayId);
+  } catch {
+    return;
+  }
+  if (!overlay?.inferred) return;
+
+  for (const [predicate, raw] of overlay.inferred) {
+    if (!REFERENCE_PREDICATES.has(predicate)) continue;
+    const target = decode(raw);
+    if (typeof target !== 'string' || !target) continue;
+    // A base with no links at all is a base this perspective does not hold.
+    const links = await perspective.get(new LinkQuery({ source: target }));
+    if (!links.length) {
+      throw new Error(
+        `interpretation: this suggestion points at "${target}", which is not a record in this space — not committing it`,
+      );
+    }
+  }
+}
+
+/**
+ * Which staged bases belong to one node — the test behind `proposals`' `scope`.
+ *
+ * ## Two ways to belong, and both are needed
+ *
+ * **The link**, which is what containment actually is: a pass parents what it minted onto the
+ * collection it read, and that link is what every route in WE reaches the record by.
+ *
+ * **The namespace**, for the window before that link exists. An instance is minted under a prefix
+ * derived from its parent, and the parenting is a separate write afterwards — on the watch path, a
+ * write on whichever peer ran the pass. So there is a real interval, and a real failure mode, where
+ * a record of *this* call is not yet linked to it. `reconcile` repairs exactly that case and keys on
+ * exactly this prefix; a scope that admitted only the link would hide a suggestion the reviewer is
+ * the right person to see, which is the failure this narrowing must not introduce.
+ *
+ * One read, not one per overlay: the parent's children are fetched once and the prefix is a string
+ * test. Falls open — everything passes — if the children cannot be read at all, because a review
+ * list that silently empties on a failed read is worse than one showing too much.
+ */
+async function scopeFilter(
+  perspective: PerspectiveProxy,
+  scope: InterpretationScope,
+): Promise<(base: string) => boolean> {
+  const prefix = `${DEFAULT_BASE_PREFIX}${encodeURIComponent(scope.parent.id)}/`;
+  let contained: Set<string>;
+  try {
+    const links = await perspective.get(new LinkQuery({ source: scope.parent.id, predicate: scope.parent.predicate }));
+    contained = new Set(links.map((link) => link.data.target));
+  } catch {
+    return () => true;
+  }
+  return (base: string) => contained.has(base) || base.startsWith(prefix);
+}
+
+/**
  * Whether the connected runtime actually implements interpretation.
  *
  * The methods are declared as part of `PerspectiveProxy` (see `interpretationOptions.d.ts` in
- * `@we/models`) so the repo builds against a runtime that predates them — which means the type
+ * `@we/entities`) so the repo builds against a runtime that predates them — which means the type
  * system can no longer answer this and something has to ask at run time. One probe is enough:
  * the four arrived together.
  *
@@ -242,10 +351,16 @@ export function runtimeSupportsObservation(dataset: DatasetHandle): boolean {
  * `notCandidate` and `awaitingAuthor` are this executor announcing that somebody else has the work,
  * or that nobody does. They are worth a log line and are not worth a row: a row per non-runner
  * would put four "skipped" entries on every bar in a five-person call, for one pass.
+ *
+ * `batchReady` is `null` for a related reason. It fires on *every* peer's executor, before the
+ * election, and carries no `agentDid` — so it is filtered out for an ordinary session and, for an
+ * admin one, arrives as an unattributed event that the `mine` rule below would claim as this
+ * agent's. A row opened on it says "You are about to extract" on four machines that are about to
+ * stand down, and nothing ever closes it. `claimed` is the first step that means a pass is running
+ * here, and it is where a row should open.
  */
 function phaseOf(step: string): InterpretationPhase | null {
   switch (step) {
-    case 'batchReady':
     case 'claimed':
       return 'queued';
     case 'gatheringTranscript':
@@ -447,7 +562,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
         which makes those the only evidence there is. Filtering them out at the listener was the
         difference between a diagnosable failure and a shrug.
       */
-      console.debug('[interpretation]', event.step, {
+      trace('interpretation', event.step, {
         processor: event.processorId,
         agent: event.agentDid,
         items: event.itemIds?.length ?? 0,
@@ -549,7 +664,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       } catch (error) {
         if (!isMissingHandler(error)) {
           // Inconclusive. Left unset so the next dataset change asks again.
-          console.debug('[interpretation] capability probe inconclusive', error);
+          trace('interpretation', 'probe:inconclusive', { error: String(error) });
           return true;
         }
         console.info('[interpretation] this node cannot interpret — its executor predates the extraction stack');
@@ -652,7 +767,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       return () => stream.observers.delete(entry);
     },
 
-    async proposals(dataset: DatasetHandle): Promise<InterpretationProposal[]> {
+    async proposals(dataset: DatasetHandle, scope?: InterpretationScope): Promise<InterpretationProposal[]> {
       // Empty rather than thrown: a review surface asking "anything pending?" on a runtime that
       // cannot propose anything has its answer, and it is "no" — not an error worth a toast on
       // every render.
@@ -661,20 +776,24 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       const overlays = await perspective.interpretationOverlays();
       if (!overlays.length) return [];
 
+      const wanted = scope ? await scopeFilter(perspective, scope) : () => true;
       const names = await predicateNames(perspective);
-      return overlays.map((o) => {
-        const values: Record<string, unknown> = {};
-        for (const [predicate, value] of o.inferred ?? []) {
-          const name = names.get(predicate);
-          if (name) values[name] = decode(value);
-        }
-        return { id: o.base, kind: o.kind, values };
-      });
+      return overlays
+        .filter((o) => wanted(o.base))
+        .map((o) => {
+          const values: Record<string, unknown> = {};
+          for (const [predicate, value] of o.inferred ?? []) {
+            const name = names.get(predicate);
+            if (name) values[name] = decode(value);
+          }
+          return { id: o.base, kind: o.kind, values };
+        });
     },
 
     async accept(dataset: DatasetHandle, id: string, property?: string): Promise<boolean> {
       if (!runtimeSupportsInterpretation(dataset)) throw new Error(UNSUPPORTED);
       const perspective = proxy(dataset);
+      await assertEndpointsAreLocal(perspective, id);
       return perspective.acceptInterpretation(id, property ? await toPredicate(perspective, property) : undefined);
     },
 
@@ -699,7 +818,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       await attachListener(perspective);
 
       const sourceScopeQuery = transcriptScopeQuery(request.parent.id, request.parent.predicate);
-      const interpretationClasses = targetClasses(request.classes);
+      const interpretationClasses = targetClasses(perspective, request.classes);
       /*
         Both at debug, and the query included deliberately.
 
@@ -707,8 +826,48 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
         reads exactly like a conversation with nothing in it. That cost a day to find once. Keeping
         the query one console-filter away means the next person can copy it and run it by hand.
       */
-      console.debug('[interpretation] registering watch', { watchId: request.watchId, interpretationClasses });
-      console.debug('[interpretation] scope query\n%s', sourceScopeQuery);
+      trace('interpretation', 'watch:register', { watchId: request.watchId, classes: interpretationClasses });
+      trace('interpretation', 'watch:scope-query', { query: sourceScopeQuery });
+
+      /*
+        Create, or replace — never register over what is already there.
+
+        `addAutoProcessor` is create-only, and the reason is not obvious from its name.
+        `write_processor` overwrites a processor's scalars (its setters are `setSingleTarget`) but
+        writes `interpretationClasses` through the shape's `addLink` setter, so registering twice
+        under one processor id **unions** the two class lists rather than replacing them. Narrowing
+        by re-registering therefore *widens*, permanently, for the whole neighbourhood — the class
+        list is shared state and there is no subtraction.
+
+        That was harmless while the list was a constant naming two core classes: every registration
+        unioned a set with itself. It stops being harmless the moment the list can differ between
+        one registration and the next, which is exactly what a space defining its own models does.
+
+        So: read what is registered, and if the set differs, delete the config first. The
+        `InterpretationRun` nodes survive a delete by design — they are the processed-turn cursor —
+        so a processor re-registered under the same id resumes where it left off rather than
+        re-reading the whole conversation. Right for narrowing; for widening it means the new class
+        applies to what is said from here, and a one-shot press is how the rest of the transcript
+        gets swept with it.
+
+        Best-effort: a read that fails leaves `existing` empty and falls through to a plain
+        registration, which is the pre-existing behaviour rather than a new failure mode.
+      */
+      let existing: string[] = [];
+      try {
+        existing = await readProcessorClasses(perspective, request.watchId);
+      } catch (error) {
+        trace('interpretation', 'watch:classes-unreadable', { error: String(error) });
+      }
+      const desired = [...interpretationClasses].sort();
+      if (existing.length && existing.join(',') !== desired.join(',')) {
+        trace('interpretation', 'watch:classes-changed', {
+          watchId: request.watchId,
+          from: existing,
+          to: desired,
+        });
+        await deleteProcessorConfig(perspective, request.watchId);
+      }
 
       try {
         await perspective.addAutoProcessor({
@@ -762,7 +921,17 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
 
       let linked = 0;
       for (const name of request.classes) {
-        const model = getModel(name) as unknown as
+        /*
+          Perspective-scoped, and the `continue` below now means something.
+
+          This read the global registry through `getEntity`, which *throws* for an unregistered name
+          rather than returning undefined — so the guard beneath it was unreachable, and one
+          community shape in the list took the whole repair pass down before it reached the classes
+          it could have repaired. Skipping is the right answer here in a way it is not on the watch
+          path: this attaches what a pass already minted, so a name it cannot resolve has nothing to
+          find and nothing to lose.
+        */
+        const model = getEntitiesForPerspective(name, perspective) as unknown as
           { findAll(p: PerspectiveProxy, o?: unknown): Promise<{ id: string }[]> } | undefined;
         if (!model) continue;
         for (const instance of await model.findAll(perspective)) {
@@ -781,53 +950,8 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       // up, and a call ending on a host that never registered anything is not a failure worth
       // throwing into a teardown path.
       if (!runtimeSupportsAutoProcessing(dataset)) return;
-      const perspective = proxy(dataset);
-
-      /*
-        Deleting the config *is* the removal, because there is no other.
-
-        `addAutoProcessor` has no counterpart — not on `PerspectiveProxy`, not in the WS handler
-        map, not in the engine. What it does is `write_processor`, which puts an
-        `AutoProcessorConfig` instance into the perspective's own graph, and the watch loop reads
-        its processors back out of that graph on every tick. So the registration is data, and
-        deleting the record is what stops the loop seeing it.
-
-        That also makes this the right shape rather than a workaround: the config is shared with
-        every peer, so removing it stops the watch for the neighbourhood rather than only for
-        whoever pressed stop — which is what a shared watch has to mean.
-      */
       watchParents.delete(watchId);
-      /*
-        Delete the processor's links directly, without going through the ORM.
-
-        This used to call `AutoProcessorConfig.register(perspective)` first, because `findAll`
-        resolves a shape by name and the client model is named differently from the class the
-        executor registers. But `register` *writes SDNA*: it installs the TypeScript model's SHACL
-        over the same target class the executor hard-wires, replacing a definition the engine owns
-        as a side effect of tidying up after a call.
-
-        The two shapes agree on property names and paths — there is a parity test for exactly that
-        — and that test compares nothing else. Setters, constructors and literal encoding are all
-        free to differ while it passes, and the write path is made of setters. So the class an
-        executor wrote through on one call could be a different class by the next one, with nothing
-        in between reporting a problem.
-
-        Whether or not that is what bit us, a delete has no business redefining a class. The node
-        URI is derived from the processor id (`processor_node` in the executor), so its links can be
-        removed directly — no shape lookup, no registration, nothing for the engine's own definition
-        to collide with.
-      */
-      const node = `ad4m://autoprocessor/${watchId}`;
-      const links = await perspective.get(new LinkQuery({ source: node }));
-      for (const link of links) {
-        try {
-          await perspective.remove(link);
-        } catch (error) {
-          // One stubborn link should not strand the rest: what stops the watch is the required
-          // scalars going away, and a partial removal still achieves that.
-          console.warn('[interpretation] could not remove a watch config link', error);
-        }
-      }
+      await deleteProcessorConfig(proxy(dataset), watchId);
     },
   };
 }
@@ -867,6 +991,78 @@ export function transcriptScopeQuery(parentId: string, childPredicate: string): 
 ORDER BY ?timestamp`;
 }
 
+/** Where the executor mints a processor's config node — `processor_node` in `auto_processor`. */
+const processorNode = (watchId: string) => `ad4m://autoprocessor/${watchId}`;
+
+/** How the executor stores a processor's class list: one link per member, literal-encoded. */
+const INTERPRETATION_CLASS_PREDICATE = 'ad4m://interpretation_class';
+
+/**
+ * The target classes a registered watch is currently looking for, or `[]` when there is no config.
+ *
+ * Read off the links rather than through the ORM, for the reason spelled out in
+ * {@link deleteProcessorConfig}: `AutoProcessorConfig.findAll` needs `register`, and `register`
+ * writes SDNA over a class the engine owns.
+ *
+ * Sorted, so a comparison against a desired list is about membership rather than about the order
+ * two writers happened to add links in — which is also how the executor's own loader returns it.
+ */
+async function readProcessorClasses(perspective: PerspectiveProxy, watchId: string): Promise<string[]> {
+  const links = await perspective.get(
+    new LinkQuery({ source: processorNode(watchId), predicate: INTERPRETATION_CLASS_PREDICATE }),
+  );
+  return links
+    .map((link) => decode(link.data.target))
+    .filter((value): value is string => typeof value === 'string')
+    .sort();
+}
+
+/**
+ * Delete a processor's config, which is what stops it — and the seam an AD4M release closes.
+ *
+ * Deleting the config *is* the removal. `write_processor` puts an `AutoProcessorConfig` instance
+ * into the perspective's own graph and the watch loop reads its processors back out of that graph
+ * on every tick, so removing the record is what stops the loop seeing it. That also makes it the
+ * right shape rather than a workaround: the config is shared with every peer, so this stops the
+ * watch for the neighbourhood rather than only for whoever pressed stop — which is what a shared
+ * watch has to mean.
+ *
+ * **`perspective.removeAutoProcessor(watchId)` replaces this whole body** once WE's pinned
+ * `@coasys/ad4m` carries it. It landed in `coasys/ad4m` #931 and is on `dev`; the version pinned
+ * here (`0.13.0-test-interpretation-2`) was published before it, so until a build is cut from
+ * `dev` the links have to be removed by hand. Nothing else about the feature waits on that.
+ *
+ * ## Why the links, and not the ORM
+ *
+ * This used to call `AutoProcessorConfig.register(perspective)` first, because `findAll` resolves a
+ * shape by name and the client model is named differently from the class the executor registers.
+ * But `register` *writes SDNA*: it installs the TypeScript model's SHACL over the same target class
+ * the executor hard-wires, replacing a definition the engine owns as a side effect of tidying up
+ * after a call.
+ *
+ * The two shapes agree on property names and paths — there is a parity test for exactly that — and
+ * that test compares nothing else. Setters, constructors and literal encoding are all free to
+ * differ while it passes, and the write path is made of setters. So the class an executor wrote
+ * through on one call could be a different class by the next one, with nothing in between reporting
+ * a problem.
+ *
+ * Whether or not that is what bit us, a delete has no business redefining a class. The node URI is
+ * derived from the processor id, so its links can be removed directly — no shape lookup, no
+ * registration, nothing for the engine's own definition to collide with.
+ */
+async function deleteProcessorConfig(perspective: PerspectiveProxy, watchId: string): Promise<void> {
+  const links = await perspective.get(new LinkQuery({ source: processorNode(watchId) }));
+  for (const link of links) {
+    try {
+      await perspective.remove(link);
+    } catch (error) {
+      // One stubborn link should not strand the rest: what stops the watch is the required scalars
+      // going away, and a partial removal still achieves that.
+      console.warn('[interpretation] could not remove a watch config link', error);
+    }
+  }
+}
+
 /**
  * Entity names → SHACL target-class URIs.
  *
@@ -878,11 +1074,17 @@ ORDER BY ?timestamp`;
  *
  * So the conversion is explicit and it throws rather than dropping: a name with no registered model
  * behind it would otherwise silently narrow what a watch extracts.
+ *
+ * **Resolved against the perspective, not the global registry.** A community's own shape is compiled
+ * and registered *for its dataset only* (`mergeDynamicEntities`), so `getEntity` — which reads the
+ * global map and throws rather than answering — could not see one and took the whole watch down
+ * with it. That was invisible while the target list was a constant naming two core classes; it is
+ * the ordinary case the moment a space can add to it.
  */
-function targetClasses(names: readonly string[]): string[] {
+function targetClasses(perspective: PerspectiveProxy, names: readonly string[]): string[] {
   return names.map((name) => {
-    const model = getModel(name);
-    const targetClass = model ? getModelTargetClass(model as never) : undefined;
+    const model = getEntitiesForPerspective(name, perspective);
+    const targetClass = model ? getEntityTargetClass(model as never) : undefined;
     if (!targetClass) throw new Error(`interpretation: no target class for "${name}" — is the model registered?`);
     return targetClass;
   });
@@ -896,8 +1098,41 @@ function targetClasses(names: readonly string[]): string[] {
  * are both worse than a caller finding out its name was wrong.
  */
 async function toPredicate(perspective: PerspectiveProxy, property: string): Promise<string> {
-  for (const [predicate, name] of await predicateNames(perspective)) {
-    if (name === property) return predicate;
+  /*
+    Read from the shapes, not by inverting `predicateNames`.
+
+    `predicateNames` is `predicate → name` and keeps the **first** name it sees for a predicate,
+    because a readable label for a proposal only needs one. Two properties legitimately share a
+    predicate: `we://title` is `title` on most blocks and `label` on `Relationship` and `EmbedBlock`.
+    So the map holds `we://title → title`, inverting it never yields `label`, and
+    `toPredicate(p, 'label')` threw — per-property accept of a Relationship's label was impossible,
+    latently, because only whole-record accept is wired today.
+
+    Scanning the shapes for the *name* asks the question in the direction it is being asked in, and
+    a name shared across two entities resolves to the same predicate either way.
+  */
+  for (const name of getRegisteredEntityNames()) {
+    const shape = (
+      getEntity(name) as unknown as { generateSHACL?: () => { shape: { properties?: unknown[] } } }
+    ).generateSHACL?.().shape;
+    for (const p of (shape?.properties ?? []) as { path?: string; name?: string }[]) {
+      if (p.name === property && p.path) return p.path;
+    }
   }
+
+  // Then the perspective's own shapes — a module's entities, or a foreign app's.
+  try {
+    const native = new Set(getRegisteredEntityNames());
+    for (const shapeName of await perspective.getShaclNames()) {
+      if (native.has(shapeName)) continue;
+      const shape = await perspective.getShacl(shapeName);
+      for (const p of (shape?.properties ?? []) as { path?: string; name?: string }[]) {
+        if (p.name === property && p.path) return p.path;
+      }
+    }
+  } catch {
+    // Fall through to the error below, which says the useful thing either way.
+  }
+
   throw new Error(`interpretation: no property named "${property}" in this dataset's schemas`);
 }

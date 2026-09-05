@@ -65,13 +65,11 @@ export function LinkInput(props: LinkInputProps) {
         </Show>
       </Show>
 
-      {/* Add/edit modal — portalled to escape the Lexical contenteditable context. */}
+      {/* Add/edit modal — portalled to escape the editor's contenteditable context. */}
       <Show when={showModal()}>
         <Portal>
-          <we-modal close={() => setShowModal(false)} ax="center" minWidth="400px">
-            <we-text fontWeight="bold" fontSize="600" textAlign="center">
-              {props.url ? 'Edit Link' : 'Add Link'}
-            </we-text>
+          <we-modal close={() => setShowModal(false)} size="sm">
+            <we-text variant="heading-md">{props.url ? 'Edit Link' : 'Add Link'}</we-text>
 
             <Column width="100%" gap="400">
               <we-input

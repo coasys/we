@@ -16,17 +16,9 @@ export const templatesRoute: SchemaNode = marketplaceList({
     mode: 'marketplace',
     // Matched on slug *and* author: a marketplace is a shared space, so two agents can publish
     // templates under the same slug and only one of them is the one you installed.
-    installed: {
-      $find: {
-        items: { $store: 'templateStore.myTemplates' },
-        where: { id: '$template.slug', author: '$template.author' },
-        select: 'templateVersion',
-      },
-    },
-    onInstall: { $action: 'templateStore.installFromMarketplace', args: ['$template.id'] },
-    onDelete: { $action: 'templateStore.deleteMarketplaceTemplate', args: ['$template.id'] },
-    isLoading: {
-      $eq: [{ $store: 'templateStore.operationLoading' }, { $concat: ['marketplace-install:', '$template.id'] }],
-    },
+    installed: { $: 'find(templateStore.myTemplates, { id: template.slug, author: template.author }).templateVersion' },
+    onInstall: { $action: 'templateStore.installFromMarketplace', args: [{ $: 'template.id' }] },
+    onDelete: { $action: 'templateStore.deleteMarketplaceTemplate', args: [{ $: 'template.id' }] },
+    isLoading: { $: 'templateStore.operationLoading == `marketplace-install:${template.id}`' },
   },
 });

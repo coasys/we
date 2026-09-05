@@ -1,5 +1,6 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { adminSection, emptyNote } from '@we/template-kit';
+import { expr } from '@we/schema-shared';
+import { adminSection, discardGuard, emptyNote } from '@we/template-kit';
 
 /**
  * AI — the models the backend runs or calls, and the prompts apps have registered against them.
@@ -29,8 +30,8 @@ function field(label: string, name: string, placeholder = '', type = 'text'): Sc
         props: {
           type,
           placeholder,
-          value: { $store: `runtimeStore.aiForm.${name}` },
-          onInput: { $action: 'runtimeStore.setAiFormField', args: [name, '$event.detail'] },
+          value: { $: `runtimeStore.aiForm.${name}` },
+          onInput: { $action: 'runtimeStore.setAiFormField', args: [name, { $: 'event.detail' }] },
         },
       },
     ],
@@ -42,7 +43,7 @@ function whenSource(kind: string, children: SchemaNode[]): SchemaNode {
   return {
     type: '$if',
     props: {
-      condition: { $eq: [{ $store: 'runtimeStore.aiForm.sourceKind' }, kind] },
+      condition: expr`runtimeStore.aiForm.sourceKind == ${kind}`,
       then: { type: 'Column', props: { gap: '300' }, children },
     },
   };
@@ -59,9 +60,9 @@ const tokenizerFields: SchemaNode = {
         {
           type: 'we-switch',
           props: {
-            checked: { $store: 'runtimeStore.aiForm.useTokenizer' },
+            checked: { $: 'runtimeStore.aiForm.useTokenizer' },
             size: 'sm',
-            onChange: { $action: 'runtimeStore.setAiFormField', args: ['useTokenizer', '$event.detail'] },
+            onChange: { $action: 'runtimeStore.setAiFormField', args: ['useTokenizer', { $: 'event.detail' }] },
           },
         },
         { type: 'we-text', props: { variant: 'label' }, children: ['Use a separate tokenizer'] },
@@ -70,7 +71,7 @@ const tokenizerFields: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $store: 'runtimeStore.aiForm.useTokenizer' },
+        condition: { $: 'runtimeStore.aiForm.useTokenizer' },
         then: {
           type: 'Column',
           props: { gap: '300' },
@@ -85,9 +86,23 @@ const tokenizerFields: SchemaNode = {
   ],
 };
 
+/*
+  The form holds a base URL and an API key somebody pasted in, neither of which is anywhere else —
+  so a click on the backdrop used to throw away a credential. `aiFormDirty` compares against a
+  snapshot taken when the form opened, so opening a model to look at its settings and closing again
+  still asks nothing.
+*/
+const guard = discardGuard({
+  dirty: { $: 'runtimeStore.aiFormDirty' },
+  close: { $action: 'runtimeStore.closeAiForm' },
+  title: 'Discard these settings?',
+  body: 'The changes you have made to this model will be lost.',
+});
+
 const modelForm: SchemaNode = {
   type: 'we-modal',
-  props: { close: { $action: 'runtimeStore.closeAiForm' }, maxWidth: '560px', width: '100%' },
+  props: { size: 'md', close: guard.close },
+  $localState: guard.localState,
   children: [
     {
       type: 'Column',
@@ -96,11 +111,7 @@ const modelForm: SchemaNode = {
         {
           type: 'we-text',
           props: { variant: 'heading-md' },
-          children: [
-            {
-              $if: { condition: { $store: 'runtimeStore.aiForm.id' }, then: 'Edit model', else: 'Add a model' },
-            },
-          ],
+          children: [{ $: "runtimeStore.aiForm.id ? 'Edit model' : 'Add a model'" }],
         },
 
         field('Name', 'name', 'What you will call it'),
@@ -112,13 +123,13 @@ const modelForm: SchemaNode = {
             {
               type: 'we-select',
               props: {
-                value: { $store: 'runtimeStore.aiForm.kind' },
+                value: { $: 'runtimeStore.aiForm.kind' },
                 options: [
                   { label: 'Language model', value: 'llm' },
                   { label: 'Embeddings', value: 'embedding' },
                   { label: 'Transcription', value: 'transcription' },
                 ],
-                onChange: { $action: 'runtimeStore.setAiFormField', args: ['kind', '$event.detail'] },
+                onChange: { $action: 'runtimeStore.setAiFormField', args: ['kind', { $: 'event.detail' }] },
               },
             },
           ],
@@ -131,14 +142,14 @@ const modelForm: SchemaNode = {
             {
               type: 'we-select',
               props: {
-                value: { $store: 'runtimeStore.aiForm.sourceKind' },
+                value: { $: 'runtimeStore.aiForm.sourceKind' },
                 options: [
                   { label: 'A model this node downloads', value: 'preset' },
                   { label: 'A remote API', value: 'api' },
                   { label: 'A Hugging Face repository', value: 'huggingface' },
                   { label: 'A file on this machine', value: 'file' },
                 ],
-                onChange: { $action: 'runtimeStore.setAiFormField', args: ['sourceKind', '$event.detail'] },
+                onChange: { $action: 'runtimeStore.setAiFormField', args: ['sourceKind', { $: 'event.detail' }] },
               },
             },
           ],
@@ -152,11 +163,11 @@ const modelForm: SchemaNode = {
               {
                 type: 'we-select',
                 props: {
-                  value: { $store: 'runtimeStore.aiForm.presetName' },
+                  value: { $: 'runtimeStore.aiForm.presetName' },
                   placeholder: 'Choose a model',
                   searchable: true,
-                  options: { $store: 'runtimeStore.aiPresetOptions' },
-                  onChange: { $action: 'runtimeStore.setAiFormField', args: ['presetName', '$event.detail'] },
+                  options: { $: 'runtimeStore.aiPresetOptions' },
+                  onChange: { $action: 'runtimeStore.setAiFormField', args: ['presetName', { $: 'event.detail' }] },
                 },
               },
             ],
@@ -191,14 +202,15 @@ const modelForm: SchemaNode = {
           children: [
             {
               type: 'we-button',
-              props: { text: 'Cancel', variant: 'ghost', onClick: { $action: 'runtimeStore.closeAiForm' } },
+              // Guarded like the backdrop — one way out of the modal.
+              props: { text: 'Cancel', variant: 'secondary', onClick: guard.close },
             },
             {
               type: 'we-button',
               props: {
                 text: 'Save',
-                loading: { $store: 'runtimeStore.loading' },
-                disabled: { $not: { $store: 'runtimeStore.aiFormComplete' } },
+                loading: { $: 'runtimeStore.loading' },
+                disabled: { $: '!runtimeStore.aiFormComplete' },
                 onClick: { $action: 'runtimeStore.saveAiModel' },
               },
             },
@@ -206,6 +218,7 @@ const modelForm: SchemaNode = {
         },
       ],
     },
+    guard.node,
   ],
 };
 
@@ -221,11 +234,11 @@ const modelCard: SchemaNode = {
           type: 'Row',
           props: { gap: '200', ay: 'center' },
           children: [
-            { type: 'we-text', props: { variant: 'label' }, children: ['$model.name'] },
+            { type: 'we-text', props: { variant: 'label' }, children: [{ $: 'model.name' }] },
             {
               type: '$if',
               props: {
-                condition: '$model.isDefault',
+                condition: { $: 'model.isDefault' },
                 then: { type: 'we-badge', props: { variant: 'primary', size: 'xs' }, children: ['Default'] },
               },
             },
@@ -240,7 +253,7 @@ const modelCard: SchemaNode = {
             {
               type: '$if',
               props: {
-                condition: { $store: 'runtimeStore.canConfigureAi' },
+                condition: { $: 'runtimeStore.canConfigureAi' },
                 then: {
                   type: 'Row',
                   props: { gap: '200', ay: 'center' },
@@ -249,14 +262,14 @@ const modelCard: SchemaNode = {
                     {
                       type: '$if',
                       props: {
-                        condition: { $not: '$model.isDefault' },
+                        condition: { $: '!model.isDefault' },
                         then: {
                           type: 'we-button',
                           props: {
                             text: 'Make default',
                             variant: 'ghost',
                             size: 'sm',
-                            onClick: { $action: 'runtimeStore.setDefaultAiModel', args: ['$model.id'] },
+                            onClick: { $action: 'runtimeStore.setDefaultAiModel', args: [{ $: 'model.id' }] },
                           },
                         },
                       },
@@ -266,7 +279,7 @@ const modelCard: SchemaNode = {
                       props: {
                         variant: 'ghost',
                         size: 'sm',
-                        onClick: { $action: 'runtimeStore.editAiModel', args: ['$model.id'] },
+                        onClick: { $action: 'runtimeStore.editAiModel', args: [{ $: 'model.id' }] },
                       },
                       children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],
                     },
@@ -275,7 +288,7 @@ const modelCard: SchemaNode = {
                       props: {
                         variant: 'ghost',
                         size: 'sm',
-                        onClick: { $action: 'runtimeStore.removeAiModel', args: ['$model.id'] },
+                        onClick: { $action: 'runtimeStore.removeAiModel', args: [{ $: 'model.id' }] },
                       },
                       children: [{ type: 'we-icon', props: { name: 'trash' } }],
                     },
@@ -291,22 +304,26 @@ const modelCard: SchemaNode = {
       type: 'Row',
       props: { gap: '200', ay: 'center', wrap: true },
       children: [
-        { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: ['$model.kindLabel'] },
+        { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: [{ $: 'model.kindLabel' }] },
         { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: ['·'] },
-        { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: ['$model.sourceLabel'] },
+        {
+          type: 'we-text',
+          props: { variant: 'footnote', color: 'text-muted' },
+          children: [{ $: 'model.sourceLabel' }],
+        },
         { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: ['·'] },
-        { type: 'we-text', props: { variant: 'footnote' }, children: ['$model.detail'] },
+        { type: 'we-text', props: { variant: 'footnote' }, children: [{ $: 'model.detail' }] },
       ],
     },
     // Only models this node hosts have anything to report; a remote one is ready or it is not.
     {
       type: '$if',
       props: {
-        condition: '$model.statusText',
+        condition: { $: 'model.statusText' },
         then: {
           type: 'we-text',
           props: { variant: 'footnote', color: 'text-muted' },
-          children: ['$model.statusText'],
+          children: [{ $: 'model.statusText' }],
         },
       },
     },
@@ -321,17 +338,17 @@ const taskCard: SchemaNode = {
       type: 'Row',
       props: { gap: '300', ay: 'center', ax: 'between' },
       children: [
-        { type: 'we-text', props: { variant: 'label' }, children: ['$task.name'] },
+        { type: 'we-text', props: { variant: 'label' }, children: [{ $: 'task.name' }] },
         {
           type: '$if',
           props: {
-            condition: { $store: 'runtimeStore.canConfigureAi' },
+            condition: { $: 'runtimeStore.canConfigureAi' },
             then: {
               type: 'we-button',
               props: {
                 variant: 'ghost',
                 size: 'sm',
-                onClick: { $action: 'runtimeStore.removeAiTask', args: ['$task.id'] },
+                onClick: { $action: 'runtimeStore.removeAiTask', args: [{ $: 'task.id' }] },
               },
               children: [{ type: 'we-icon', props: { name: 'trash' } }],
             },
@@ -348,7 +365,7 @@ const taskCard: SchemaNode = {
         {
           type: 'we-text',
           props: { variant: 'footnote', color: 'text-muted', styles: { 'white-space': 'pre-wrap' } },
-          children: ['$task.systemPrompt'],
+          children: [{ $: 'task.systemPrompt' }],
         },
       ],
     },
@@ -358,7 +375,7 @@ const taskCard: SchemaNode = {
 export const aiSection: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $store: 'runtimeStore.canManageAi' },
+    condition: { $: 'runtimeStore.canManageAi' },
     then: {
       type: 'Column',
       props: { gap: '600' },
@@ -371,14 +388,14 @@ export const aiSection: SchemaNode = {
             {
               type: '$if',
               props: {
-                condition: { $count: { items: { $store: 'runtimeStore.aiModels' } } },
+                condition: { $: 'count(runtimeStore.aiModels)' },
                 then: {
                   type: 'Column',
                   props: { gap: '200' },
                   children: [
                     {
                       type: '$each',
-                      props: { items: { $store: 'runtimeStore.aiModels' }, as: 'model' },
+                      props: { items: { $: 'runtimeStore.aiModels' }, as: 'model' },
                       children: [modelCard],
                     },
                   ],
@@ -389,7 +406,7 @@ export const aiSection: SchemaNode = {
             {
               type: '$if',
               props: {
-                condition: { $store: 'runtimeStore.canConfigureAi' },
+                condition: { $: 'runtimeStore.canConfigureAi' },
                 then: {
                   type: 'Row',
                   children: [
@@ -418,14 +435,14 @@ export const aiSection: SchemaNode = {
             {
               type: '$if',
               props: {
-                condition: { $count: { items: { $store: 'runtimeStore.aiTasks' } } },
+                condition: { $: 'count(runtimeStore.aiTasks)' },
                 then: {
                   type: 'Column',
                   props: { gap: '200' },
                   children: [
                     {
                       type: '$each',
-                      props: { items: { $store: 'runtimeStore.aiTasks' }, as: 'task' },
+                      props: { items: { $: 'runtimeStore.aiTasks' }, as: 'task' },
                       children: [taskCard],
                     },
                   ],
@@ -436,7 +453,7 @@ export const aiSection: SchemaNode = {
           ],
         }),
 
-        { type: '$if', props: { condition: { $store: 'runtimeStore.aiForm' }, then: modelForm } },
+        { type: '$if', props: { condition: { $: 'runtimeStore.aiForm' }, then: modelForm } },
       ],
     },
   },

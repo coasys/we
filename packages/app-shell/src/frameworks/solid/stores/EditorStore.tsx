@@ -16,7 +16,7 @@ import { EDITOR_STORE_ID } from '@shared/registries/editorDocks';
 import { deepClone } from '@shared/utils';
 import { type EditingTheme, useDatasetStore, useTemplateStore, useThemeStore } from '@solid/stores';
 import { toastService } from '@we/components/solid';
-import { ChatMessage as ChatMessageModel, ChatSession as ChatSessionModel } from '@we/models';
+import { ChatMessage as ChatMessageRecord, ChatSession as ChatSessionRecord } from '@we/entities';
 import type { DockEdge, DockSize } from '@we/module-shared';
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { contextData, setLocalWarningSink } from '@we/schema-shared';
@@ -75,7 +75,7 @@ export interface EditorStore {
   pickerShowDestination: Accessor<boolean>;
 
   // --- Session management ---
-  sessions: Accessor<ChatSessionModel[]>;
+  sessions: Accessor<ChatSessionRecord[]>;
   activeSessionId: Accessor<string | null>;
   newChat: () => void;
   switchSession: (sessionId: string) => void;
@@ -156,7 +156,24 @@ export interface EditorStore {
   clearHistory: () => void;
 
   // --- Settings ---
-  setApiKey: (key: string) => void;
+  setApiKey: (key: string) => Promise<boolean>;
+}
+
+/**
+ * A development-only console line, with the guard written once.
+ *
+ * The AI patch loop is the one path in the app where watching the intermediate values is the only
+ * way to understand a failure — what the model asked for, what the merge produced, which validation
+ * rejected it — so the lines are worth keeping. Every one of them carried its own
+ * `if (import.meta.env.DEV)`, which is eight chances to forget the guard and ship the noise, and
+ * eight things a reader has to check.
+ *
+ * `console.log` rather than `info`: this genuinely is debugging output, and the lint rule that
+ * refuses it in library source is right to. The disable is here, once, where the guard is.
+ */
+function devLog(...args: unknown[]): void {
+  // eslint-disable-next-line no-console
+  if (import.meta.env.DEV) console.log(...args);
 }
 
 const EditorContext = createContext<EditorStore>();
@@ -203,14 +220,14 @@ export function EditorStoreProvider(props: ParentProps) {
 
   // Reactive validation context — perspective-accurate model allowlist.
   // When a perspective is active its full manifest (WE + external) is used to
-  // narrow modelNames to only what is actually registered there.  WE models
+  // narrow entityNames to only what is actually registered there.  WE models
   // not present in the manifest (e.g. CollectionBlock in we-root) are excluded.
   // Falls back to the all-WE base context when no perspective is set.
   const getValidationCtx = createMemo(() => {
-    const manifest = datasetStore.currentDatasetModels();
+    const manifest = datasetStore.currentDatasetEntities();
     if (manifest.length === 0) return baseValidationCtx;
-    const perspectiveModelNames = new Set(manifest.map((m) => m.name));
-    return { ...baseValidationCtx, modelNames: perspectiveModelNames };
+    const perspectiveEntityNames = new Set(manifest.map((m) => m.name));
+    return { ...baseValidationCtx, entityNames: perspectiveEntityNames };
   });
 
   // --- Chat state ---
@@ -223,10 +240,10 @@ export function EditorStoreProvider(props: ParentProps) {
   const apiKeyConfigured = () => apiKey().length > 0;
 
   // --- Session management ---
-  const [sessions, setSessions] = createSignal<ChatSessionModel[]>([]);
+  const [sessions, setSessions] = createSignal<ChatSessionRecord[]>([]);
   const [activeSessionId, setActiveSessionId] = createSignal<string | null>(null);
   // Track the AD4M ChatSession model instance for the active session
-  let activeSessionModel: ChatSessionModel | null = null;
+  let activeSessionRecord: ChatSessionRecord | null = null;
 
   // --- Content mode (preview / visual / code) ---
   const [contentMode, setContentModeSignal] = createSignal<'preview' | 'visual'>('preview');
@@ -359,16 +376,16 @@ export function EditorStoreProvider(props: ParentProps) {
     if (templateStore.isBuiltInTemplate(templateId)) {
       setSessions([]);
       setActiveSessionId(null);
-      activeSessionModel = null;
+      activeSessionRecord = null;
       setMessages([]);
       return;
     }
 
-    const templateModel = templateStore.getTemplateModel(templateId);
-    if (!templateModel) {
+    const templateRecord = templateStore.getTemplateRecord(templateId);
+    if (!templateRecord) {
       setSessions([]);
       setActiveSessionId(null);
-      activeSessionModel = null;
+      activeSessionRecord = null;
       setMessages([]);
       return;
     }
@@ -378,8 +395,8 @@ export function EditorStoreProvider(props: ParentProps) {
 
     try {
       // Single query: sessions for this template with messages already hydrated
-      const templateSessions = await ChatSessionModel.findAll(perspective, {
-        where: { templateId: templateModel.id },
+      const templateSessions = await ChatSessionRecord.findAll(perspective, {
+        where: { templateId: templateRecord.id },
         order: { updatedAt: 'DESC' },
         include: { messages: { order: { createdAt: 'ASC' } } },
       });
@@ -390,18 +407,18 @@ export function EditorStoreProvider(props: ParentProps) {
       if (templateSessions.length > 0) {
         const latest = templateSessions[0];
         setActiveSessionId(latest.id);
-        activeSessionModel = latest;
+        activeSessionRecord = latest;
         setMessages((latest.messages as ChatMessage[]) || []);
       } else {
         setActiveSessionId(null);
-        activeSessionModel = null;
+        activeSessionRecord = null;
         setMessages([]);
       }
     } catch (err) {
       console.error('Failed to load sessions for template', templateId, err);
       setSessions([]);
       setActiveSessionId(null);
-      activeSessionModel = null;
+      activeSessionRecord = null;
       setMessages([]);
     }
   }
@@ -416,25 +433,28 @@ export function EditorStoreProvider(props: ParentProps) {
       return;
     }
 
-    const templateModel = templateStore.getTemplateModel(templateId);
+    const templateRecord = templateStore.getTemplateRecord(templateId);
     const perspective = datasetStore.rootDataset()?.handle;
-    if (!templateModel || !perspective) return;
+    if (!templateRecord || !perspective) return;
 
     try {
       const sessionName = `Chat ${sessions().length + 1}`;
       const now = new Date().toISOString();
-      const session = await ChatSessionModel.create(perspective, {
+      const session = await ChatSessionRecord.create(perspective, {
         name: sessionName,
-        templateId: templateModel.id,
+        templateId: templateRecord.id,
         updatedAt: now,
       });
 
-      activeSessionModel = session;
+      activeSessionRecord = session;
       setActiveSessionId(session.id);
       setMessages([]);
       setSessions((prev) => [session, ...prev]);
     } catch (err) {
       console.error('Failed to create new chat session', err);
+      // The button leaves the old conversation on screen when this fails, so without a word it
+      // reads as "New chat does nothing".
+      toastService.error('Could not start a new chat');
     }
   }
 
@@ -445,7 +465,7 @@ export function EditorStoreProvider(props: ParentProps) {
     const target = sessions().find((s) => s.id === sessionId);
     if (!target) return;
 
-    activeSessionModel = target;
+    activeSessionRecord = target;
     setActiveSessionId(sessionId);
     setMessages((target.messages as ChatMessage[]) || []);
   }
@@ -455,9 +475,9 @@ export function EditorStoreProvider(props: ParentProps) {
     const templateId = templateStore.currentTemplate.id;
     if (!templateId) return;
 
-    const templateModel = templateStore.getTemplateModel(templateId);
+    const templateRecord = templateStore.getTemplateRecord(templateId);
     const perspective = datasetStore.rootDataset()?.handle;
-    if (!templateModel || !perspective) return;
+    if (!templateRecord || !perspective) return;
 
     try {
       const target = sessions().find((s) => s.id === sessionId);
@@ -465,7 +485,7 @@ export function EditorStoreProvider(props: ParentProps) {
 
       // Delete all hydrated messages in the session
       for (const msg of target.messages || []) {
-        await (msg as ChatMessageModel).delete();
+        await (msg as ChatMessageRecord).delete();
       }
 
       await target.delete();
@@ -477,32 +497,35 @@ export function EditorStoreProvider(props: ParentProps) {
         const remaining = sessions();
         if (remaining.length > 0) {
           const next = remaining[0];
-          activeSessionModel = next;
+          activeSessionRecord = next;
           setActiveSessionId(next.id);
           setMessages((next.messages as ChatMessage[]) || []);
         } else {
           setActiveSessionId(null);
-          activeSessionModel = null;
+          activeSessionRecord = null;
           setMessages([]);
         }
       }
     } catch (err) {
       console.error('Failed to delete session', err);
+      // A delete that fails silently leaves the row there, which reads as a stuck button — and
+      // invites a second press at a delete that may have half-run.
+      toastService.error('Could not delete that chat');
     }
   }
 
   /** Persist a message to AD4M and link it to the active session */
   async function persistMessage(role: 'user' | 'assistant', content: string) {
-    if (!activeSessionModel) return;
+    if (!activeSessionRecord) return;
 
     const perspective = datasetStore.rootDataset()?.handle;
     if (!perspective) return;
 
     try {
-      await ChatMessageModel.create(
+      await ChatMessageRecord.create(
         perspective,
         { role, content },
-        { parent: { model: ChatSessionModel, id: activeSessionModel.id } },
+        { parent: { model: ChatSessionRecord, id: activeSessionRecord.id } },
       );
     } catch (err) {
       console.error('Failed to persist message', err);
@@ -720,9 +743,11 @@ export function EditorStoreProvider(props: ParentProps) {
   // ----------------------------------------------------------------
   // API key management (persisted to AgentSettings)
   // ----------------------------------------------------------------
-  function setApiKey(key: string) {
+  // Returns the write rather than dropping it, so a schema's `onError`/`onFinally` can fire and a
+  // caller can await. `updateAgentSettings` toasts a failure of its own; this is the other channel.
+  function setApiKey(key: string): Promise<boolean> {
     setApiKeySignal(key);
-    datasetStore.updateAgentSettings({ claudeApiKey: key });
+    return datasetStore.updateAgentSettings({ claudeApiKey: key });
   }
 
   // Load persisted API key when agentSettings become available
@@ -807,7 +832,7 @@ export function EditorStoreProvider(props: ParentProps) {
   async function sendMessage(text: string) {
     // Lazy session creation for custom templates: if no active session, create one
     const templateId = templateStore.currentTemplate.id;
-    if (templateId && !templateStore.isBuiltInTemplate(templateId) && !activeSessionModel) {
+    if (templateId && !templateStore.isBuiltInTemplate(templateId) && !activeSessionRecord) {
       await newChat();
     }
 
@@ -816,7 +841,7 @@ export function EditorStoreProvider(props: ParentProps) {
     setMessages((prev) => [...prev, userMsg]);
 
     // Persist user message to AD4M (custom templates only)
-    if (activeSessionModel) {
+    if (activeSessionRecord) {
       persistMessage('user', text);
     }
 
@@ -865,6 +890,26 @@ export function EditorStoreProvider(props: ParentProps) {
 
     let allTextContent = '';
     const maxContinuations = 5; // Safety limit to prevent infinite loops
+
+    /**
+     * The template each turn patches — carried across turns, not re-read from the store.
+     *
+     * ## What re-reading lost
+     *
+     * `accumulatedSchema` was cloned from `templateStore.currentTemplate` at the top of every
+     * continuation turn, on the assumption that the previous turn's patches are in the store by
+     * then. For a *read-only* template they are not: the apply branch puts them in
+     * `pendingTemplate` and deliberately leaves the store alone. So each turn patched the original
+     * again and the buffer was overwritten — of five tool calls across five turns, only the last
+     * one's work survived to the fork, and the assistant reported all five as applied.
+     *
+     * Held here instead, and updated wherever a turn's patches are accepted. `pendingTemplate` is
+     * the seed rather than `currentTemplate`, so a conversation resumed against a template with
+     * buffered changes continues from them rather than reverting them.
+     */
+    let workingSchema: SchemaNode = ensureNodeIds(
+      deepClone(pendingTemplate() ?? templateStore.currentTemplate) as SchemaNode,
+    );
 
     const showInlineStatus = (status: string) => {
       const sep = allTextContent ? '\n\n' : '';
@@ -944,7 +989,9 @@ export function EditorStoreProvider(props: ParentProps) {
       // --- Atomic patching: accumulate all patches before applying ---
       // We clone the template once and apply all tool calls' patches to it.
       // Only after ALL patches succeed and validate do we apply to the store.
-      let accumulatedSchema: SchemaNode = ensureNodeIds(deepClone(templateStore.currentTemplate) as SchemaNode);
+      // From the running total, so a turn builds on the last one's patches rather than on the
+      // template as it was when the conversation started. See `workingSchema`.
+      let accumulatedSchema: SchemaNode = ensureNodeIds(deepClone(workingSchema) as SchemaNode);
 
       // Capture baseline validation issues so we only reject patches that introduce NEW problems
       const baselineSemantic = validateSemantic(accumulatedSchema as TemplateSchema, getValidationCtx());
@@ -966,12 +1013,12 @@ export function EditorStoreProvider(props: ParentProps) {
             continue;
           }
 
-          if (import.meta.env.DEV) console.log(`[EditorStore] Tool call ${tc.id} — ${patches.length} patch(es):`);
+          devLog(`[EditorStore] Tool call ${tc.id} — ${patches.length} patch(es):`);
           for (const p of patches) {
             const op = p.node ? 'update' : p.insert ? 'insert' : 'remove';
-            if (import.meta.env.DEV) console.log(`  targetId: "${p.targetId}", op: ${op}`);
+            devLog(`  targetId: "${p.targetId}", op: ${op}`);
           }
-          if (import.meta.env.DEV) console.log('[EditorStore] Patch detail:', JSON.stringify(patches, null, 2));
+          devLog('[EditorStore] Patch detail:', JSON.stringify(patches, null, 2));
 
           // Apply ID-based patches to the accumulated schema (not to the store yet) — the
           // mechanics live in shared/ai/schemaPatches.
@@ -1013,7 +1060,7 @@ export function EditorStoreProvider(props: ParentProps) {
       // --- Atomic apply: validate + apply only if ALL tool calls succeeded ---
       if (allPatchesValid) {
         const mergedTemplate = accumulatedSchema as TemplateSchema;
-        if (import.meta.env.DEV) console.log('[EditorStore] merged template:', JSON.stringify(mergedTemplate, null, 2));
+        devLog('[EditorStore] merged template:', JSON.stringify(mergedTemplate, null, 2));
 
         // Step 1: Structural validation (Zod schema check)
         const structural = validateStructure(mergedTemplate);
@@ -1033,7 +1080,7 @@ export function EditorStoreProvider(props: ParentProps) {
             tr.is_error = true;
           }
         } else {
-          if (import.meta.env.DEV) console.log('[EditorStore] Structural validation passed');
+          devLog('[EditorStore] Structural validation passed');
 
           // Step 2: Semantic validation (component/prop/store checks)
           // Only fail on NEW issues introduced by the patch, not pre-existing ones
@@ -1045,7 +1092,7 @@ export function EditorStoreProvider(props: ParentProps) {
 
           if (semantic.errors.length > 0 && newIssues.length === 0) {
             if (import.meta.env.DEV)
-              console.log(`[EditorStore] Semantic validation: ${semantic.errors.length} pre-existing issue(s) ignored`);
+              devLog(`[EditorStore] Semantic validation: ${semantic.errors.length} pre-existing issue(s) ignored`);
           }
 
           if (!isClean) {
@@ -1065,15 +1112,17 @@ export function EditorStoreProvider(props: ParentProps) {
             }
           } else if (isReadOnly()) {
             if (import.meta.env.DEV)
-              console.log('[EditorStore] Semantic validation passed — buffering (read-only template)');
+              devLog('[EditorStore] Semantic validation passed — buffering (read-only template)');
             pushSnapshot();
+            workingSchema = mergedTemplate as SchemaNode;
             setPendingTemplate(stripNodeIds(mergedTemplate) as TemplateSchema);
             for (const tr of toolResults) {
               tr.content = 'Schema changes validated and buffered. Template is read-only — user must fork to apply.';
             }
           } else {
-            if (import.meta.env.DEV) console.log('[EditorStore] Semantic validation passed — applying to store');
+            devLog('[EditorStore] Semantic validation passed — applying to store');
             pushSnapshot();
+            workingSchema = mergedTemplate as SchemaNode;
             templateStore.updateTemplate({
               ...stripNodeIds(mergedTemplate),
               id: templateStore.currentTemplate.id,
@@ -1137,22 +1186,29 @@ export function EditorStoreProvider(props: ParentProps) {
       }
     }
 
-    // Add current message with latest schema (with node IDs for ID-based patching)
-    const schemaWithIds = ensureNodeIds(deepClone(templateStore.currentTemplate) as SchemaNode);
-    const manifest = datasetStore.currentDatasetModels();
+    /*
+      The schema the assistant is shown: buffered changes if there are any, else the store's.
+
+      `currentTemplate` alone is wrong on a read-only template, where a validated patch goes to
+      `pendingTemplate` and the store is deliberately untouched — so the model was shown the
+      original, patched it again, and its second answer conflicted with a first it could not see.
+      Same reason `workingSchema` in `sendMessage` carries across turns rather than re-reading.
+    */
+    const schemaWithIds = ensureNodeIds(deepClone(pendingTemplate() ?? templateStore.currentTemplate) as SchemaNode);
+    const manifest = datasetStore.currentDatasetEntities();
     const payload: Record<string, unknown> = {
       request: latestText,
       currentSchema: schemaWithIds,
     };
     if (manifest.length > 0) {
-      const weModelNames = new Set(baseValidationCtx.modelNames);
-      const weInPerspective = manifest.filter((m) => weModelNames.has(m.name)).map((m) => m.name);
-      const externalInPerspective = manifest.filter((m) => !weModelNames.has(m.name));
+      const weEntityNames = new Set(baseValidationCtx.entityNames);
+      const weInPerspective = manifest.filter((m) => weEntityNames.has(m.name)).map((m) => m.name);
+      const externalInPerspective = manifest.filter((m) => !weEntityNames.has(m.name));
       // WE models: send only names — AI already has their full structure in schemaContext
-      if (weInPerspective.length > 0) payload.availableWeModels = weInPerspective;
+      if (weInPerspective.length > 0) payload.availableWeEntities = weInPerspective;
       // External models: send full property descriptions — AI has no other knowledge of them
       if (externalInPerspective.length > 0)
-        payload.externalModels = formatExternalManifestForPrompt(externalInPerspective);
+        payload.externalEntities = formatExternalManifestForPrompt(externalInPerspective);
     }
     history.push({
       role: 'user',
@@ -1171,7 +1227,7 @@ export function EditorStoreProvider(props: ParentProps) {
     }
 
     // Persist to AD4M (fire-and-forget for custom templates)
-    if (activeSessionModel) {
+    if (activeSessionRecord) {
       persistMessage('assistant', content);
     }
   }
@@ -1199,14 +1255,14 @@ export function EditorStoreProvider(props: ParentProps) {
   // ----------------------------------------------------------------
   async function clearHistory() {
     // If persisted session, delete messages from AD4M
-    if (activeSessionModel) {
+    if (activeSessionRecord) {
       try {
         // Messages are already hydrated on the session model
-        for (const msg of activeSessionModel.messages || []) {
-          await activeSessionModel.removeMessages(msg as ChatMessageModel);
-          await (msg as ChatMessageModel).delete();
+        for (const msg of activeSessionRecord.messages || []) {
+          await activeSessionRecord.removeMessages(msg as ChatMessageRecord);
+          await (msg as ChatMessageRecord).delete();
         }
-        activeSessionModel.messages = [];
+        activeSessionRecord.messages = [];
       } catch (err) {
         console.error('Failed to clear persisted messages', err);
       }

@@ -12,7 +12,7 @@
  * `BlockComposer.onSave` does not fire when the user types, or when the modal closes. It fires when
  * somebody calls the composer's own `save()`, which it hands out exactly once through `onReady`. So
  * the sequence is: `onReady` stores that function in a `function`-typed local, the button calls it
- * with `$callLocal`, `save()` serializes the Lexical tree, and `onSave` runs the action with the
+ * with `$callLocal`, `save()` serializes the document, and `onSave` runs the action with the
  * tree as `$arg`.
  *
  * Written the obvious way instead — a button that calls the action with a `draft` local the
@@ -27,6 +27,8 @@
  * `onSave` and no `onReady`.
  */
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
+
+import { discardGuard } from './discardGuard.ts';
 
 export interface ComposerModalOptions {
   /**
@@ -57,11 +59,42 @@ export interface ComposerModalOptions {
    * what was just written. These run alongside the fragment's own rather than instead of them.
    */
   onSaved?: SchemaProp[];
-  /** Content to prefill — `'$post.editorState'` for an edit. Omit for a blank composition. */
+  /** Content to prefill — `{ $: 'post.editorState' }` for an edit. Omit for a blank composition. */
   editorState?: SchemaProp;
+  /**
+   * Ask before a backdrop click or Escape throws the draft away. **On by default** — pass `false`
+   * only for a composer where losing the content costs nothing.
+   *
+   * On by default here and opt-in on `formModal`, because a composer is the one place in WE where
+   * somebody may have written several paragraphs, and it is the one place a template author cannot
+   * write the guard themselves: the content lives inside the editor, so no `$local` can see whether
+   * anything was typed. The composer reports that through `onDirtyChange`, which this wires up.
+   */
+  guardDraft?: boolean;
+  /**
+   * Actions to run whenever the modal closes — cancelled, dismissed, or saved. For telling the
+   * world the composer is no longer open on something (a presence activity, a lease).
+   */
+  onClose?: SchemaProp[];
+  /**
+   * The id of a collection to co-edit live. Given, the composer joins that composition's session
+   * (see `BlockHostProvider.collab`) and every other agent with it open sees the edits as they
+   * happen; the save still materialises the document to the models as usual.
+   */
+  collaborate?: SchemaProp;
 }
 
 export function composerModal(opts: ComposerModalOptions): SchemaNode {
+  const close: SchemaProp = opts.onClose?.length
+    ? [{ $setLocal: opts.openLocal, value: false }, ...opts.onClose]
+    : { $setLocal: opts.openLocal, value: false };
+  /*
+    `draftDirty` is written by the composer, not by the schema. It is the one piece of modal state
+    in the kit whose source is a component rather than a control, because the editor's document is not
+    reachable from `$local` — see `BlockComposer.onDirtyChange`.
+  */
+  const guard = opts.guardDraft === false ? null : discardGuard({ dirty: { $: 'local.draftDirty' }, close });
+
   return {
     /*
       Mounted only while open, rather than hidden. Remounting is what resets the composer between
@@ -70,19 +103,23 @@ export function composerModal(opts: ComposerModalOptions): SchemaNode {
     */
     type: '$if',
     props: {
-      condition: { $local: opts.openLocal },
+      condition: { $: `local.${opts.openLocal}` },
       then: {
         type: 'we-modal',
-        props: {
-          close: { $setLocal: opts.openLocal, value: false },
-          maxWidth: 'var(--we-layout-md)',
-          width: '100%',
-          ax: 'center',
-        },
+        // A workspace, not a form: the composer is a document editor and wants the room. `ax` used
+        // to be `center` here, which shrink-wrapped the scroll region to the longest line of text
+        // and turned the composer's own overflow into a horizontal scrollbar — see the note on
+        // `[part='content']` in `modal.ts`. Nothing needs it: the children below are `width: 100%`.
+        props: { size: 'lg', close: guard?.close ?? close },
         $localState: {
           /** The composer's own `save()`, handed over by `onReady`. Read by `$callLocal`. */
           savePost: { type: 'function', initial: null },
           submitting: { type: 'boolean', initial: false },
+          ...(guard && {
+            /** Whether the author has written anything since the composer loaded. */
+            draftDirty: { type: 'boolean', initial: false },
+            ...guard.localState,
+          }),
         },
         children: [
           { type: 'we-text', props: { variant: 'heading-md' }, children: [opts.title] },
@@ -95,7 +132,9 @@ export function composerModal(opts: ComposerModalOptions): SchemaNode {
                 type: 'BlockComposer',
                 props: {
                   ...(opts.editorState !== undefined && { editorState: opts.editorState }),
-                  onReady: { $setLocal: 'savePost', from: '$event.save' },
+                  ...(opts.collaborate !== undefined && { collaborate: opts.collaborate }),
+                  ...(guard && { onDirtyChange: { $setLocal: 'draftDirty', value: { $: 'event' } } }),
+                  onReady: { $setLocal: 'savePost', value: { $: 'event.save' } },
                   onSave: [
                     { $setLocal: 'submitting', value: true },
                     {
@@ -103,7 +142,11 @@ export function composerModal(opts: ComposerModalOptions): SchemaNode {
                       args: opts.saveAction.args,
                       // The close first, so anything the caller adds runs against a modal that has
                       // already gone — a refresh it triggers repaints what is behind, not under it.
-                      onSuccess: [{ $setLocal: opts.openLocal, value: false }, ...(opts.onSaved ?? [])],
+                      onSuccess: [
+                        { $setLocal: opts.openLocal, value: false },
+                        ...(opts.onClose ?? []),
+                        ...(opts.onSaved ?? []),
+                      ],
                       onFinally: [{ $setLocal: 'submitting', value: false }],
                     },
                   ],
@@ -117,23 +160,34 @@ export function composerModal(opts: ComposerModalOptions): SchemaNode {
             children: [
               {
                 type: 'we-button',
-                props: { variant: 'ghost', onClick: { $setLocal: opts.openLocal, value: false } },
+                // Guarded like the backdrop, so the modal has one way out rather than two that
+                // disagree — the house precedent is the model wizard, whose Cancel routes through
+                // the same `requestCloseWizard` its backdrop does.
+                props: { variant: 'secondary', onClick: guard?.close ?? close },
                 children: ['Cancel'],
               },
               {
                 type: 'we-button',
                 props: {
                   variant: 'primary',
-                  loading: { $local: 'submitting' },
+                  loading: { $: 'local.submitting' },
                   // Disabled only while in flight, never on "nothing typed yet" — the house rule.
                   // Nothing about a draft is locally judgeable anyway.
-                  disabled: { $local: 'submitting' },
+                  disabled: { $: 'local.submitting' },
                   onClick: { $callLocal: 'savePost' },
                 },
                 children: [opts.saveLabel ?? 'Post'],
               },
             ],
           },
+          /*
+            The question itself. Omitting this while still taking the guard's `close` is a modal
+            with no way out: the backdrop raises a flag, and nothing in the tree reads it. That is
+            not a hypothetical — it shipped, and it made "New post" inescapable the moment anything
+            was typed. `kit.test.ts` now fails any guarded fragment that raises the flag without
+            mounting something that reads it.
+          */
+          ...(guard ? [guard.node] : []),
         ],
       },
     },

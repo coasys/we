@@ -71,15 +71,21 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
           description:
             'Entity holding this board\'s colour per kind of thing — WE passes "TypeStyle". Read onto every node as `boardTypeColor`, for a style rule to pick up with `{ from: "data.boardTypeColor" }`. This is what a board\'s key writes.',
         },
+        {
+          name: 'pending',
+          type: 'string[]',
+          description:
+            'Record ids whose card stands for a suggestion nobody has agreed to yet — an extraction pass can stage a whole record, so it is on the board and answers every query the accepted ones do. Read onto the matching node as `data.pending`, for a style rule or a node action to pick up with `{ when: { "data.pending": true } }` — the `data.` prefix is required, since a bare key reads a node field rather than seeded data, and matches nothing here. Ids rather than a query because only the capability that staged them knows which they are.',
+        },
         { name: 'limit', type: 'number', description: 'Rows per type. Default 200.' },
       ],
-      example: `{ "source": "board", "options": { "board": { "$local": "boardId" } } }`,
+      example: `{ "source": "board", "options": { "board": { "$": "local.boardId" } } }`,
     },
     {
       id: 'dataset',
       category: 'seed',
       description: 'Seeds a single node for the current space — the starting point for exploring outward.',
-      options: [{ name: 'label', type: 'string' }],
+      options: [{ name: 'label', type: 'string', description: 'What the node is called. Defaults to the space name.' }],
       example: `{ "source": "dataset", "options": { "label": "This space" } }`,
     },
 
@@ -145,9 +151,13 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       category: 'layout',
       description: 'Layered hierarchy from the graph roots. The right choice for containment and org charts.',
       options: [
-        { name: 'direction', type: '"down" | "right"' },
-        { name: 'levelGap', type: 'number' },
-        { name: 'siblingGap', type: 'number' },
+        {
+          name: 'direction',
+          type: '"down" | "right"',
+          description: 'Which way the tree grows from its roots. Default "down".',
+        },
+        { name: 'levelGap', type: 'number', description: 'Distance between one rank and the next.' },
+        { name: 'siblingGap', type: 'number', description: 'Distance between neighbours on the same rank.' },
       ],
       example: `{ "type": "tree", "options": { "direction": "right", "levelGap": 200 } }`,
     },
@@ -155,7 +165,7 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       id: 'radial',
       category: 'layout',
       description: 'Concentric rings by hop distance from the roots — reads as distance from a centre.',
-      options: [{ name: 'ringGap', type: 'number' }],
+      options: [{ name: 'ringGap', type: 'number', description: 'Distance between one ring and the next.' }],
       example: `{ "type": "radial" }`,
     },
     {
@@ -163,7 +173,7 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       category: 'layout',
       description: 'Uniform grid, optionally ordered by a node data field. Honest default when edges say little.',
       options: [
-        { name: 'columns', type: 'number' },
+        { name: 'columns', type: 'number', description: 'How many columns. Derived from the node count when omitted.' },
         { name: 'sortBy', type: 'string', description: 'Node data field to order by.' },
       ],
       example: `{ "type": "grid", "options": { "columns": 6, "sortBy": "name" } }`,
@@ -319,7 +329,7 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
           description: 'Whether the gesture is live. Default true. Disarmed, the press falls through to drag-node.',
         },
       ],
-      example: `"behaviours": [{ "type": "connect-nodes", "options": { "armed": { "$local": "connecting" } } }, "select", { "type": "drag-node" }, "pan-zoom"]`,
+      example: `"behaviours": [{ "type": "connect-nodes", "options": { "armed": { "$": "local.connecting" } } }, "select", { "type": "drag-node" }, "pan-zoom"]`,
     },
     {
       id: 'node-double-click',
@@ -339,13 +349,27 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       id: 'expand-on-double-click',
       category: 'behaviour',
       description: 'Double-click a node to expand it. The usual gesture on a map you also want to select on.',
-      options: [{ name: 'direction', type: '"in" | "out" | "both"' }],
+      options: [
+        {
+          name: 'direction',
+          type: '"in" | "out" | "both"',
+          description: 'Which way relations are followed when the node opens. Default "both".',
+        },
+      ],
+      example: `{ "type": "expand-on-double-click", "options": { "direction": "out" } }`,
     },
     {
       id: 'expand-on-click',
       category: 'behaviour',
       description: 'Single click expands — for maps meant purely for exploring, where selection is not needed.',
-      options: [{ name: 'direction', type: '"in" | "out" | "both"' }],
+      options: [
+        {
+          name: 'direction',
+          type: '"in" | "out" | "both"',
+          description: 'Which way relations are followed when the node opens. Default "both".',
+        },
+      ],
+      example: `{ "type": "expand-on-click", "options": { "direction": "out" } }`,
     },
   ],
 };

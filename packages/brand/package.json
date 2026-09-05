@@ -1,0 +1,25 @@
+{
+  "private": true,
+  "name": "@we/brand",
+  "version": "0.1.0",
+  "description": "The one source for WE's mark — and the generator that derives every app icon from it",
+  "type": "module",
+  "scripts": {
+    "build:steps": "tsx src/generate.ts",
+    "build": "we-build",
+    "generate-icons": "tsx src/generate.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@we/themes": "workspace:*",
+    "@we/tokens": "workspace:*"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.11.4",
+    "@types/node": "^26.4.0",
+    "@we/cli": "workspace:*",
+    "tsx": "^4.23.13",
+    "typescript": "^5.7.2"
+  },
+  "sideEffects": false
+}

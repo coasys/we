@@ -22,6 +22,7 @@
  * formatting, so "0:42" and "Extracted 3 tasks" are unreachable from a template — the same reason
  * `runtimeStore.aiModels` carries `statusText` and `themeStore` builds its own view models.
  */
+import { detailWithheld } from '@shared/interpretation/activityView';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { useDatasetStore } from '@solid/stores/DatasetStore';
 import { useProfileStore } from '@solid/stores/ProfileStore';
@@ -31,6 +32,7 @@ import type { InterpretationActivity, InterpretationPhase, InterpretationRelay }
 import {
   byActivityInterest,
   createInterpretationRelay,
+  displayName,
   INTERPRETATION_ACTIVITY_CHANNEL,
   isSettled,
 } from '@we/backend-shared';
@@ -98,6 +100,23 @@ export interface InterpretationStore {
   /** Whether there is anything at all to show. The bar mounts on this. */
   hasActivity: Accessor<boolean>;
   /**
+   * The feed split the two ways a readout draws it, and counted.
+   *
+   * Derivations of {@link activity} and nothing else, which is why they belong here rather than
+   * where they were: `@we/module-transcribe` published all five, filtering the feed the host had
+   * already assembled, so the same state had two names and nothing chose which was canonical. A
+   * module that re-exports a host capability is a dependency wearing a store member's clothes.
+   */
+  runningPasses: Accessor<InterpretationActivityView[]>;
+  settledPasses: Accessor<InterpretationActivityView[]>;
+  settledCount: Accessor<number>;
+  /**
+   * A peer's pass is on screen whose exchange this agent cannot open, because the space does not
+   * share it. What a footnote explaining the absence is gated on — the row's own `hasDetail` cannot
+   * answer it, since a pass has no exchange until it reaches the model whatever the setting says.
+   */
+  detailWithheld: Accessor<boolean>;
+  /**
    * Whether this node can interpret at all — as distinct from being able to and having no model
    * configured. False means no rebuild-free fix exists, so a UI should say so rather than offering
    * a control that cannot work.
@@ -164,8 +183,10 @@ function labelFor(phase: InterpretationPhase, name: string, mine: boolean, count
     // "Running interpretation" tells somebody staring at it nothing they can act on.
     case 'thinking':
       return `${who} waiting on the model`;
+    // Second person for one's own pass, and "they" for anyone else's: the subject of the sentence
+    // is the runner, and "what it found" read as though a machine had run off with the work.
     case 'writing':
-      return `${who} writing what it found`;
+      return `${who} writing what ${mine ? 'you' : 'they'} found`;
     case 'done':
       // "Nothing to add" rather than "0 records": a pass over a conversation with no commitments in
       // it succeeded, and a zero reads as a failure.
@@ -351,7 +372,11 @@ export function InterpretationStoreProvider(props: ParentProps) {
         const running = !isSettled(row.phase);
         const mine = row.mine || (!!me && row.runner === me);
         const profile = row.runner ? profileStore.profiles().find((p) => p.did === row.runner) : undefined;
-        const name = [profile?.firstName, profile?.lastName].filter(Boolean).join(' ') || profile?.handle || 'Someone';
+        // `displayName` rather than the concatenation this used to inline — the same rule as every
+        // byline, so one person is not "Anonymous" on their post and something else in this bar.
+        // 'Someone' survives as the fallback for a *missing* profile, which is a different fact
+        // from a profile that is present and unnamed, and reads better in the labels below.
+        const name = profile ? displayName(profile) : 'Someone';
         const count = row.ids?.length ?? 0;
 
         return {
@@ -394,16 +419,51 @@ export function InterpretationStoreProvider(props: ParentProps) {
     shell's internals, and `phase` — the one field they differ on — is a backend vocabulary a module
     has no business matching on. It reads `label` and `running` instead.
   */
-  provideModuleHostServices({
-    interpretationAvailable: () => capable(),
-    interpretationActivity: () => activity(),
-  });
+  onCleanup(
+    provideModuleHostServices({
+      interpretationAvailable: () => capable(),
+      interpretationActivity: () => activity(),
+      /*
+        The space's sharing decision, for a module explaining why a peer's row will not open.
+
+        Published rather than left for the module to infer from `hasDetail`: a row can lack detail
+        for reasons that have nothing to do with the setting — a peer's pass that has not reached the
+        model yet, a skipped pass that never had an exchange, a row broadcast before the setting
+        synced — and gating an explanation of the *setting* on those showed it with sharing on.
+      */
+      interpretationDetailShared: () => shareDetail(),
+      /*
+        Whether automatic extraction is on, published for the same reason the sharing one is: a module
+        has to be able to *react* to it.
+
+        Its only reader used to be a throw inside `datasetStore.watchCollection`, which meant switching
+        it on mid-call changed nothing — nothing re-ran the registration, so a call kept reporting that
+        auto-extraction was unavailable until everybody left and rejoined. Published here, a module's
+        watch effect depends on it and follows the toggle.
+
+        Asked about a *call* now, with the space's answer underneath it. Participants can stop a
+        standing pass on this conversation without the community changing its mind about every future
+        one — and without needing whoever administers the space to be in the room, which was the only
+        way to stop one before. Called with no id, it answers for the space, which is what a surface
+        asking "does this space do this at all" wants.
+      */
+      autoInterpretEnabled: (collectionId?: string) =>
+        collectionId ? spaceStore.autoInterpretForCall(collectionId) : spaceStore.autoInterpret(),
+    }),
+  );
 
   const store: InterpretationStore = {
     activity,
     capable,
     runningCount: createMemo(() => activity().filter((row) => row.running).length),
     hasActivity: createMemo(() => activity().length > 0),
+    runningPasses: createMemo(() => activity().filter((row) => row.running)),
+    settledPasses: createMemo(() => activity().filter((row) => !row.running)),
+    settledCount: createMemo(() => activity().filter((row) => !row.running).length),
+    // The rule itself is in `shared/interpretation/activityView.ts`, where it can be tested without
+    // a store — it has been got wrong twice, and its failure is a footnote that outlives the thing
+    // it explains, which nobody reports.
+    detailWithheld: createMemo(() => detailWithheld(activity(), shareDetail())),
     // Only the settled ones, and only from this view: a running pass is not this agent's to
     // dismiss, and the rows themselves belong to whoever is running them.
     dismissSettled: () =>

@@ -1,9 +1,10 @@
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
+import { expr } from '@we/schema-shared';
 
 import type { Content } from '../types.ts';
 
 export interface PickerRowOptions {
-  /** The row's icon — usually a context ref, `'$theme.icon'`. */
+  /** The row's icon — usually a reference, `{ $: 'theme.icon' }`. */
   icon: SchemaProp;
   label: Content;
   /** Truthy on the one row that is currently in use. */
@@ -68,7 +69,11 @@ export function pickerRow(opts: PickerRowOptions): SchemaNode {
       px: '200',
       py: '100',
       r: '200',
-      bg: { $if: { condition: opts.selected, then: 'primary-100', else: 'transparent' } },
+      // `accent-muted` is the role whose value IS `primary-100` — so this is the same colour under
+      // the default theme and the right one under every other, since a theme that pins its accent
+      // tint cannot be heard by a step. It read as clean for as long as it did because `role-audit`
+      // only inspected colours written as plain strings, and this one is inside an expression.
+      bg: expr`${opts.selected} ? 'accent-muted' : 'transparent'`,
       // Static, like the rows this replaces. A token nested inside `hoverProps` resolves to an
       // accessor the style layer does not call, so a conditional here would be a hover colour that
       // silently never applied — and the selected row briefly reading as unselected under the

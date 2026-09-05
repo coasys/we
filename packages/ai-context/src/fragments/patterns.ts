@@ -51,9 +51,7 @@ array, a missing model).
 **If the list filters on a search box**, say so instead of claiming the space is empty:
 
 \`\`\`json
-{ "$if": { "condition": { "$local": "searchText" },
-           "then": "No posts match your search.",
-           "else": "This space doesn't have any posts." } }
+{ "$": "local.searchText ? 'No posts match your search.' : \"This space doesn't have any posts.\"" }
 \`\`\`
 
 ### A list with its empty state — hoist the query so the count is readable
@@ -67,14 +65,14 @@ array, a missing model).
     {
       "type": "$if",
       "props": {
-        "condition": { "$count": { "items": { "$local": "postRows" } } },
+        "condition": { "$": "count(local.postRows)" },
         "then": {
           "type": "Grid",
           "props": { "columns": 1, "gap": "400", "width": "100%" },
           "children": [
             {
               "type": "$each",
-              "props": { "items": { "$local": "postRows" }, "as": "post" },
+              "props": { "items": { "$": "local.postRows" }, "as": "post" },
               "children": [{ "type": "Card", "children": ["…"] }]
             }
           ]
@@ -119,53 +117,133 @@ what a theme *decides* a faint foreground is, and the contrast corrections at ap
 entirely, so nothing ever measures it against what is behind it. Guidance that names a step
 reproduces that in every template written from it.
 
+### How wide is a modal — always \`size\`, never a pixel width
+
+\`we-modal\` sizes itself from a \`size\` prop, and **every modal should set one**:
+
+| \`size\` | Measure | For |
+|---|---|---|
+| \`sm\` | 420px | A confirmation, or one or two fields. |
+| \`md\` | 640px | **The default.** A form. |
+| \`lg\` | 900px | A workspace — a composer, a wizard, a card opened out to be read. |
+| \`fullscreen\` | The viewport, less a gutter | A lightbox, where the content is the size. |
+
+Each keeps a gutter between itself and the edge of the screen, so a modal on a phone is never
+edge-to-edge. Do **not** write \`"width": "100%"\` beside a \`"maxWidth"\` — that is what \`size\`
+replaced, and \`100%\` of a viewport-wide host is the viewport.
+
+Without a size, \`[part='base']\` shrink-wraps to its widest line of text: a short confirmation comes
+out too narrow to read and a wordy one too wide, from the same rule. \`width\`/\`maxWidth\` still
+override \`size\` for the rare modal that genuinely needs its own number.
+
 ### Confirm dialog
 
-\`\`\`json
-{
-  "type": "$if",
-  "props": {
-    "condition": { "$local": "confirmDeleteOpen" },
-    "then": {
-      "type": "we-modal",
-      "props": { "close": { "$setLocal": "confirmDeleteOpen", "value": false } },
-      "children": [
-        { "type": "we-text", "props": { "fontWeight": "semibold" }, "children": ["Delete post?"] },
-        { "type": "we-text", "children": ["This cannot be undone."] },
-        {
-          "type": "Row",
-          "props": { "ax": "end", "gap": "200" },
-          "children": [
-            { "type": "we-button", "props": { "variant": "ghost", "onClick": { "$setLocal": "confirmDeleteOpen", "value": false } }, "children": ["Cancel"] },
-            {
-              "type": "we-button",
-              "props": {
-                "variant": "danger",
-                "onClick": { "$action": "spaceStore.deleteCollection", "args": ["$post.id"],
-                             "onSuccess": [{ "$setLocal": "confirmDeleteOpen", "value": false }] }
-              },
-              "children": ["Delete"]
-            }
-          ]
-        }
-      ]
-    }
-  }
-}
+**Use \`confirmModal\` from \`@we/template-kit\`.** Every "are you sure?" in WE goes through it, so
+they share an icon, a heading, a width and a button row:
+
+\`\`\`ts
+confirmModal({
+  open: { $: 'local.confirmDeleteOpen' },
+  close: { $setLocal: 'confirmDeleteOpen', value: false },
+  title: 'Delete post?',
+  body: 'This will permanently delete the post and everything inside it. This cannot be undone.',
+  confirmLabel: 'Delete',
+  confirm: { $action: 'spaceStore.deleteCollection', args: [{ $: 'post.id' }] },
+})
 \`\`\`
+
+It returns the \`$if\` as well as the modal, and clears \`open\` from all three exits — the backdrop,
+Cancel, and the action's \`onSuccess\`.
+
+- \`open\` and \`close\` are **expressions**, so a dialog gated on a store flag
+  (\`{ $: 'shapeStore.confirmDiscard' }\`) or on a string id works the same way.
+- \`cancel\` for a cancel button that does more than close — "Keep editing" dismisses the question
+  and leaves the wizard behind it open.
+- \`tone: 'primary'\` for a question with no casualty; the default \`danger\` picks a warning icon and
+  a danger confirm button.
+- \`detail\` for a quieter second line, \`children\` for a \`we-alert\` naming a surprising consequence.
+- \`busyLocal\` if the action is not instant — a recursive delete walks its whole collection, and
+  without a spinner the button absorbs the click and invites a second one. \`busy\` instead when a
+  store already owns the flag.
 
 The flag must be declared by an ancestor of **the button that opens it**, not merely of the modal.
 Undeclared, \`$setLocal\` warns and no-ops: the button renders, takes the click, and does nothing.
 
-If the action is slow (a recursive delete walks its whole collection), add a \`busy\` boolean set
-before it and cleared in \`onFinally\`, and bind the confirm button's \`loading\` and \`disabled\` to it.
+### A form in a modal
+
+**Use \`formModal\` from \`@we/template-kit\`** — title, fields, Cancel and Save:
+
+\`\`\`ts
+formModal({
+  open: { $: 'local.composerOpen' },
+  close: { $setLocal: 'composerOpen', value: false },
+  title: 'New task',
+  size: 'sm',
+  localState: { draftTitle: { type: 'string', initial: '' } },
+  children: [field({ name: 'draftTitle', label: 'What needs doing?', placeholder: 'Ship the docs' })],
+  disabled: { $: '!local.draftTitle' },
+  submitLabel: 'Add task',
+  submit: { $action: 'record.create', args: ['TaskBlock', { title: { $: 'local.draftTitle' } }] },
+})
+\`\`\`
+
+- **Declare the draft in \`localState\`, not on the page.** The modal is mounted only while open, so
+  the draft resets when it closes — for free. A draft declared higher up has to be cleared by hand
+  in \`onSuccess\`, and the field somebody forgets is the one that re-opens holding last time's value.
+- \`disabled\` is the **precondition** only ("a task needs a title"); the in-flight flag is OR-ed
+  in for you, so the Save button cannot start a second save.
+- It uses the header and footer slots, so a long form scrolls its fields and never its Save button.
+
+Reach past it only for a form with real \`validate\` rules and a \`{ "$touch": "$all" }\` submit guard
+— that shape deliberately keeps the button clickable, and is written out by hand.
+
+### Don't lose what somebody typed — the discard guard
+
+A modal closes on a backdrop click and on Escape. Both are easy to hit by accident, and neither is
+recoverable: the modal is \`$if\`-mounted, so closing unmounts the draft with it. **Any modal a
+person can type into must ask before throwing that away.**
+
+| Writing | How |
+|---|---|
+| \`formModal\` | \`discardWhen: <expression>\` |
+| \`composerModal\` | Nothing — on by default (\`guardDraft: false\` turns it off) |
+| A hand-written \`we-modal\` | \`discardGuard({ dirty, close })\` |
+
+\`discardGuard\` returns three pieces, because a modal cannot be guarded from outside it:
+
+\`\`\`ts
+const guard = discardGuard({
+  dirty: { $: 'local.name || local.description' },
+  close: { $action: 'shellStore.setCreateSpaceOpen', args: [false] },
+  title: 'Discard this space?',
+  body: 'The name, description and images you have entered will be lost.',
+});
+
+{ type: 'we-modal',
+  props: { size: 'md', close: guard.close },
+  $localState: { ...myFields, ...guard.localState },
+  children: [ …the form…, guard.node ] }
+\`\`\`
+
+Wire the Cancel button to \`guard.close\` as well — one way out of a modal, not two that disagree.
+
+**Writing \`dirty\` is the part that goes wrong**, and always in one direction: a guard that fires
+when there is nothing to lose. A dialog people learn to click through is worse than no dialog.
+
+- **Test only what the person typed.** A field with a default and a picker — a status, a mode, a
+  colour — is set from the first frame, so including it makes the guard fire on an untouched form.
+- **A form seeded from a record asks whether it _changed_**, not whether it is filled in:
+  \`{ "$": "local.titleDraft != call.title" }\`, not \`{ "$": "local.titleDraft" }\`.
+- **Where the fields are not known in advance, a store answers** — \`recordStore.recordDraftDirty\`,
+  \`runtimeStore.aiFormDirty\`.
+- **Leave it off a single-field form** ("name this board"). The guard costs more attention than one
+  word is worth.
 
 **Tall modals — pin the title and buttons.** A modal whose content can outgrow the viewport (a
 long form, a settings editor) scrolls its *content*, never its own title or its action buttons.
 Give the title node \`"slot": "header"\` and the button row \`"slot": "footer"\`: both are pinned
 outside the scroll region, sharing the modal's padding and gap, while the default slot scrolls.
-Put a \`width\` on the \`we-modal\` itself when using these slots — no single child spans it any
-more. A short confirm dialog like the one above needs none of this; the default slot alone is right.
+\`confirmModal\` and \`formModal\` already do this; write it out only for a modal that is neither.
 
 ### Composing a post — the BlockComposer save handshake
 
@@ -173,12 +251,12 @@ more. A short confirm dialog like the one above needs none of this; the default 
 closes — it fires when somebody calls the composer's own \`save()\`, which it hands out exactly once
 through \`onReady\`. So the sequence is: \`onReady\` stores that function in a **\`function\`-typed**
 \`$localState\` field, the button calls it with \`$callLocal\`, \`save()\` serializes the tree, and
-\`onSave\` runs the action with the tree as \`$arg\`.
+\`onSave\` runs the action with the tree as \`arg\`.
 
 \`\`\`json
 {
   "type": "we-modal",
-  "props": { "close": { "$setLocal": "composeOpen", "value": false } },
+  "props": { "size": "lg", "close": { "$setLocal": "composeOpen", "value": false } },
   "$localState": {
     "savePost": { "type": "function", "initial": null },
     "submitting": { "type": "boolean", "initial": false }
@@ -187,13 +265,13 @@ through \`onReady\`. So the sequence is: \`onReady\` stores that function in a *
     {
       "type": "BlockComposer",
       "props": {
-        "perspective": { "$store": "datasetStore.currentDataset.handle" },
-        "onReady": { "$setLocal": "savePost", "from": "$event.save" },
+        "perspective": { "$": "datasetStore.currentDataset.handle" },
+        "onReady": { "$setLocal": "savePost", "value": { "$": "event.save" } },
         "onSave": [
           { "$setLocal": "submitting", "value": true },
           {
             "$action": "spaceStore.createPost",
-            "args": ["$arg"],
+            "args": [{ "$": "arg" }],
             "onSuccess": [{ "$setLocal": "composeOpen", "value": false }],
             "onFinally": [{ "$setLocal": "submitting", "value": false }]
           }
@@ -204,8 +282,8 @@ through \`onReady\`. So the sequence is: \`onReady\` stores that function in a *
       "type": "we-button",
       "props": {
         "variant": "primary",
-        "loading": { "$local": "submitting" },
-        "disabled": { "$local": "submitting" },
+        "loading": { "$": "local.submitting" },
+        "disabled": { "$": "local.submitting" },
         "onClick": { "$callLocal": "savePost" }
       },
       "children": ["Post"]
@@ -221,7 +299,7 @@ the cause. And because \`onReady\` is optional, omitting it makes the composer r
 save button of its own, so the screen ends up with two buttons and only the unexpected one works.
 (\`we-validate-schemas\` rejects \`onSave\` without \`onReady\`.)
 
-\`$arg\` goes wherever the action wants it — first for \`createPost(json, options)\`, second for
+\`{ "$": "arg" }\` goes wherever the action wants it — first for \`createPost(json, options)\`, second for
 \`updatePost(postId, json)\`.
 
 **Prefer \`composerModal\` from \`@we/template-kit\`**, which owns all of the above; write it out by
@@ -232,48 +310,123 @@ hand only when the modal itself needs a different shape.
 \`\`\`json
 {
   "type": "we-form-field",
-  "props": { "label": "Name", "error": { "$error": "name" } },
+  "props": { "label": "Name", "error": { "$": "error('name')" } },
   "children": [
     {
       "type": "we-input",
       "props": {
         "placeholder": "Space name…",
-        "value": { "$local": "name" },
-        "onInput": { "$setLocal": "name", "from": "$event.detail" }
+        "value": { "$": "local.name" },
+        "onInput": { "$setLocal": "name", "value": { "$": "event.detail" } }
       }
     }
   ]
 }
 \`\`\`
 
-\`$error\` is already empty until the field is touched, so it needs no \`$if\` around it. Which event
+\`error()\` is already empty until the field is touched, so it needs no condition around it. Which event
 carries the value depends on the control: \`we-input\`/\`we-textarea\` emit \`onInput\` with
-\`$event.detail\`, \`we-select\` emits \`onChange\` with \`$event.detail\`, and \`Search\` calls back
-with the value itself as \`$arg\`.
+\`event.detail\`, \`we-select\` emits \`onChange\` with \`event.detail\`, and \`Search\` calls back
+with the value itself as \`arg\`.
 
 ### Author byline
 
 \`\`\`json
 {
   "type": "$agent",
-  "props": { "did": "$post.author", "as": "author" },
+  "props": { "did": { "$": "post.author" }, "as": "author" },
   "children": [
     {
       "type": "Row",
       "props": { "ay": "center", "gap": "300" },
       "children": [
-        { "type": "we-avatar", "props": { "size": "sm", "image": "$author.avatar", "hash": "$author.did" } },
-        { "type": "we-text", "props": { "fontWeight": "semibold" }, "children": ["$author.name"] },
-        { "type": "we-timestamp", "props": { "value": "$post.createdAt", "relative": true, "color": "textMuted" } }
+        { "type": "we-avatar", "props": { "size": "sm", "image": { "$": "author.avatar" }, "hash": { "$": "author.did" } } },
+        { "type": "we-text", "props": { "fontWeight": "semibold" }, "children": [{ "$": "author.name" }] },
+        { "type": "we-timestamp", "props": { "value": { "$": "post.createdAt" }, "relative": true, "color": "text-muted" } }
       ]
     }
   ]
 }
 \`\`\`
 
-Always set \`hash\` as well as \`image\`, never as a fallback for it: \`hash\` seeds a generated avatar
-that is stable per agent, so somebody whose profile has not arrived is still visually distinct from
-everybody else whose profile has not arrived. A real picture wins where there is one.
+Always set \`hash\` as well as \`image\`, never as a fallback for it — and seed it with an **id**, never
+a name. \`hash\` is the stable thing a row *is*: a DID for a person, a uuid for a space. It does two
+jobs. It colours the generated initials, so the colour survives a rename; and it draws an identicon
+when there are no initials to draw, which is the case it exists for — somebody whose profile has not
+arrived has no name yet, and two unresolved peers must not be two identical blank discs.
+
+What \`we-avatar\` draws, in order: **a picture, else letters, else a generated pattern, else a
+glyph.** Letters outrank the pattern, so a row that has both shows its initials on a colour seeded
+from the hash. Seeding \`hash\` with a *name* is the mistake to avoid: it makes the colour change when
+somebody renames the thing, which is identity art contradicting the identity.
+
+### A record of any type — rendering from the declaration
+
+A community can define a model this morning and record one this afternoon; the feed that lists it
+was written before either. So a card cannot name the fields. It reads how the model asks to be
+shown — \`recordStore.displays\`, derived from the same declaration the form comes from — and draws
+whatever is there:
+
+\`\`\`json
+{
+  "type": "$each",
+  "props": { "items": { "$query": { "entity": "Sighting" } }, "as": "row" },
+  "children": [
+    {
+      "type": "Card",
+      "$localState": { "display": { "type": "object", "initial": { "$": "recordStore.displays['Sighting']" } } },
+      "children": [
+        {
+          "type": "$if",
+          "props": {
+            "condition": { "$": "local.display.media" },
+            "then": { "type": "we-image", "props": { "src": { "$": "row[local.display.media]" }, "fit": "cover", "r": "media" } }
+          }
+        },
+        { "type": "we-text", "props": { "variant": "heading-sm" }, "children": [{ "$": "row[local.display.title]" }] },
+        { "type": "we-text", "props": { "color": "text-muted" }, "children": [{ "$": "row[local.display.summary]" }] },
+        {
+          "type": "$each",
+          "props": { "items": { "$": "local.display.fields.filter(f, f.role == 'detail')" }, "as": "field" },
+          "children": [
+            {
+              "type": "Row",
+              "props": { "gap": "300", "ay": "center" },
+              "children": [
+                { "type": "we-text", "props": { "variant": "label", "color": "text-muted" }, "children": [{ "$": "field.label" }] },
+                {
+                  "type": "$if",
+                  "props": {
+                    "condition": { "$": "field.kind == 'datetime' || field.kind == 'date'" },
+                    "then": { "type": "we-timestamp", "props": { "value": { "$": "row[field.name]" }, "relative": true } },
+                    "else": {
+                      "type": "$if",
+                      "props": {
+                        "condition": { "$": "field.kind == 'boolean'" },
+                        "then": { "type": "we-badge", "children": [{ "$": "row[field.name] ? 'Yes' : 'No'" }] },
+                        "else": { "type": "we-text", "children": [{ "$": "row[field.name]" }] }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+\`\`\`
+
+Nothing here names a property of \`Sighting\`. \`row[local.display.title]\` reads whichever property the
+declaration (or the derivation) says is the title; the detail rows switch on \`field.kind\`, which is
+resolved once in the store so a template switches on one word. Add branches for \`image\`, \`url\`,
+\`color\` and \`longText\` as a layout needs them — the kinds are listed under \`recordStore.displays\`.
+
+The \`$localState\` holding the display is a convenience: \`recordStore.displays['Sighting']\` could be
+read in place each time. For a feed of *mixed* types, index by the row instead —
+\`recordStore.displays[row.type]\` — and the same card draws every kind of record the space holds.
 
 ### A group of faces with a count
 
@@ -285,8 +438,7 @@ everybody else whose profile has not arrived. A real picture wins where there is
     {
       "type": "AvatarStack",
       "props": {
-        "avatars": { "$map": { "items": { "$store": "spaceStore.members" },
-                               "select": { "image": "$item.avatar", "hash": "$item.did" } } },
+        "avatars": { "$": "spaceStore.members.map(m, { image: m.avatar, hash: m.did })" },
         "max": 5, "size": "sm", "ring": "0 0 0 2px var(--we-ring-color)"
       }
     },
@@ -294,23 +446,19 @@ everybody else whose profile has not arrived. A real picture wins where there is
       "type": "Row",
       "props": { "gap": "100", "ay": "center" },
       "children": [
-        { "type": "we-number", "props": { "value": { "$count": { "items": { "$store": "spaceStore.members" } } }, "shorten": true } },
-        { "type": "we-text", "children": [{ "$plural": { "count": { "$count": { "items": { "$store": "spaceStore.members" } } }, "one": "Member", "other": "Members" } }] }
+        { "type": "we-number", "props": { "value": { "$": "count(spaceStore.members)" }, "shorten": true } },
+        { "type": "we-text", "children": [{ "$": "plural(count(spaceStore.members), 'Member', 'Members')" }] }
       ]
     }
   ]
 }
 \`\`\`
 
-**When the items are bare DIDs rather than profiles**, join each to its profile — and note the trap:
-inside a \`$map\` \`select\`, a string is substituted only when it starts with \`$item.\`. A bare
-\`"$item"\` is a **literal**, so every generated face comes out identical. Wrap it in a token object:
+**When the items are bare DIDs rather than profiles**, join each to its profile inside the
+comprehension — the variable is the DID itself:
 
 \`\`\`json
-"select": {
-  "image": { "$find": { "items": { "$store": "profileStore.profiles" }, "where": { "did": "$item" }, "select": "avatar" } },
-  "hash": { "$concat": ["$item"] }
-}
+"avatars": { "$": "spaceStore.memberDids.map(did, { image: find(profileStore.profiles, { did: did }).avatar, hash: did })" }
 \`\`\`
 
 \`minHeight\` on the row is worth keeping: \`AvatarStack\` has no height with no avatars, and people
@@ -410,7 +558,7 @@ themselves come from a \`$query\`.
     "collapsedGroups": { "type": "array", "initial": [] }
   },
   "props": {
-    "width": { "$if": { "condition": { "$local": "expanded" }, "then": "240px", "else": "80px" } },
+    "width": { "$": "local.expanded ? '240px' : '80px'" },
     "transition": "width 300 ease-in-out",
     "height": "100%",
     "overflow": "hidden",
@@ -428,7 +576,7 @@ themselves come from a \`$query\`.
         {
           "type": "$if",
           "props": {
-            "condition": { "$local": "expanded" },
+            "condition": { "$": "local.expanded" },
             "enterTransition": [{ "type": "reveal", "axis": "inline", "duration": 250 }, { "type": "fade", "duration": 150 }],
             "exitTransition": [{ "type": "reveal", "axis": "inline", "duration": 250 }, { "type": "fade", "duration": 150 }],
             "then": { "type": "we-text", "props": { "truncate": true }, "children": ["Profile"] }
@@ -453,15 +601,7 @@ A group heading toggles its own id in the set, and its body reveals on the block
   "children": [
     {
       "type": "we-icon",
-      "props": {
-        "name": {
-          "$if": {
-            "condition": { "$in": ["spaces", { "$local": "collapsedGroups" }] },
-            "then": "caret-right",
-            "else": "caret-down"
-          }
-        }
-      }
+      "props": { "name": { "$": "'spaces' in local.collapsedGroups ? 'caret-right' : 'caret-down'" } }
     },
     { "type": "we-text", "children": ["Spaces"] }
   ]
@@ -475,5 +615,5 @@ are only valid inside a \`railShell\`.
 For drag-to-reorder, wrap a group's items in \`we-sortable\` and give each row a \`data-we-id\` on
 a **native element** — a web component's props are assigned as DOM properties, so the attribute
 \`we-sortable\` looks for would never exist on a \`we-button\`. Listen with \`onReorder\` and read
-the new order from \`$arg.detail\`.
+the new order from \`{ "$": "arg.detail" }\`.
 `;

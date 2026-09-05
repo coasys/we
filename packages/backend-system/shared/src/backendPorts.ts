@@ -13,8 +13,8 @@ import type { EphemeralPort } from './ephemeral';
 import type { InterpretationPort } from './interpretation';
 import type { LanguageModelPort } from './languageModel';
 import type { AgentSessionPort, DatasetLifecyclePort } from './lifecycle';
-import type { ModelManifest } from './manifest';
-import type { ModelManifestEntry } from './manifestEntry';
+import type { EntityManifest } from './manifest';
+import type { EntityManifestEntry } from './manifestEntry';
 import type { AgentProfileSummary, PublishProfileFields } from './profileTypes';
 import type { RuntimeAdminPort } from './runtimeAdmin';
 import type { TranscriptionPort } from './transcription';
@@ -29,8 +29,15 @@ import type { TranscriptionPort } from './transcription';
  * same rule as `DatasetHandle`.
  */
 export interface SchemaPort {
-  /** Install the host's root-dataset schemas (personal config entities). Idempotent. */
-  installRoot(dataset: DatasetHandle): Promise<void>;
+  /**
+   * Install the host's root-dataset schemas (personal config entities), plus any agent-scoped
+   * module entities. Idempotent.
+   *
+   * The module list is separate from `installSpace`'s and must stay that way: an agent-scoped
+   * entity installed into a shared space would sync one person's private records to the whole
+   * community. See `ModuleDefinition.entities.scope`.
+   */
+  installRoot(dataset: DatasetHandle, moduleSchemas?: readonly unknown[]): Promise<void>;
   /** Install the host's space schemas plus the given module schemas. Idempotent. */
   installSpace(dataset: DatasetHandle, moduleSchemas: readonly unknown[]): Promise<void>;
   /** Install only the given module schemas (runs on every space switch — diffs before writing). */
@@ -57,7 +64,7 @@ export interface SchemaPort {
    * Discover schemas foreign to the host (another app's entities synced into the dataset),
    * registering them for name-based query resolution and returning their manifest entries.
    */
-  foreignSchemas(dataset: DatasetHandle): Promise<ModelManifestEntry[]>;
+  foreignSchemas(dataset: DatasetHandle): Promise<EntityManifestEntry[]>;
   /**
    * Compile a declared manifest into this backend's installable schema payloads, registered for
    * name-based query resolution. Keys are entity names. `resolveExternal` resolves relation
@@ -65,9 +72,27 @@ export interface SchemaPort {
    * payloads — pass through what the backend previously minted, never construct one.
    */
   declare(
-    manifest: ModelManifest,
+    manifest: EntityManifest,
     opts: { moduleId: string; predicates?: Record<string, string>; resolveExternal?: (name: string) => unknown },
   ): Record<string, unknown>;
+  /**
+   * The same manifest, projected onto neutral entries — every property and relation with the
+   * predicate this backend actually minted for it.
+   *
+   * The read half of `declare`, and needed because a query's `scope` is resolved against a list of
+   * entries rather than against the compiled classes: an adapter looks `via` up by name and reads
+   * its predicate. A module declaring a relation and then drilling into it had no way to be in that
+   * list, so the drill-down failed with "no such relation in the current perspective's model
+   * manifest" — which is a true statement about a list the entity was never added to.
+   *
+   * A port rather than a rule the host reapplies, because *this backend* decides what a declared
+   * property is called on the wire — override, then core vocabulary, then minted under the module's
+   * subtree — and a second implementation of that ordering is a second chance to disagree with it.
+   */
+  entries(
+    manifest: EntityManifest,
+    opts: { moduleId: string; predicates?: Record<string, string> },
+  ): EntityManifestEntry[];
   /**
    * Compile a declared manifest and register its entities for name-based query resolution *in one
    * dataset only* — the space-shape path. A shape a space carries must resolve there and nowhere
@@ -77,7 +102,7 @@ export interface SchemaPort {
    */
   declareInDataset(
     dataset: DatasetHandle,
-    manifest: ModelManifest,
+    manifest: EntityManifest,
     opts: { moduleId: string },
   ): Record<string, unknown>;
   /**
@@ -130,7 +155,7 @@ export interface ProfileDirectoryPort {
 /** What the host hands the backend to build the renderer's data bindings. */
 export interface DataBindingDeps {
   currentDataset(): DatasetHandle | null;
-  currentDatasetModels(): ModelManifestEntry[];
+  currentDatasetEntities(): EntityManifestEntry[];
   /** Reactive profile cache read — must be read inside the accessor (see `$identities`). */
   profiles(): Array<{ did?: string }>;
   fetchProfile(id: string): Promise<void> | void;

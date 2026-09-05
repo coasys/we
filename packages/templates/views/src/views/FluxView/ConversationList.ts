@@ -60,7 +60,7 @@ export const conversationList: SchemaNode = {
                         overflow: 'hidden',
                         styles: { 'text-overflow': 'ellipsis', 'white-space': 'nowrap' },
                       },
-                      children: ['$conversation.conversationName'],
+                      children: [{ $: 'conversation.conversationName' }],
                     },
                   ],
                 },
@@ -68,7 +68,7 @@ export const conversationList: SchemaNode = {
                 {
                   type: '$if',
                   props: {
-                    condition: '$conversation.summary',
+                    condition: { $: 'conversation.summary' },
                     then: {
                       type: 'we-text',
                       props: {
@@ -81,7 +81,7 @@ export const conversationList: SchemaNode = {
                           overflow: 'hidden',
                         },
                       },
-                      children: ['$conversation.summary'],
+                      children: [{ $: 'conversation.summary' }],
                     },
                   },
                 },

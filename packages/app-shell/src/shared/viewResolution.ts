@@ -62,6 +62,40 @@ export function resolveEnabledViews(
   return fallbackOrder.filter(known);
 }
 
+/**
+ * Put back the ids this build does not know, where they were.
+ *
+ * ## The one-way pruning this exists to prevent
+ *
+ * `resolveEnabledViews` drops an unknown id from the *resolved* list and says, in its own docblock,
+ * that the stored value keeps it — so a space configured where the globe ships, opened where it does
+ * not, is missing that section and nothing else. That promise held right up until somebody flicked a
+ * switch: `setViewEnabled` and `reorderViews` both start from the resolved list and write it back,
+ * which persists the pruning. One member on an older build toggling one section removed every
+ * section that build had never heard of, for the whole community, permanently.
+ *
+ * So a write starts from the resolved list — that is what the toggle acted on — and this restores
+ * the unknown ids at their stored indices before it is persisted. Position matters because the list
+ * *is* the nav order: an unknown section reappearing at the end when the build that has it comes
+ * back would be a silent reordering of somebody else's arrangement.
+ *
+ * `stored` is the raw list, unfiltered. Ids present in `next` are never duplicated.
+ */
+export function preserveUnknownViews(next: string[], stored: string[], known: (id: string) => boolean): string[] {
+  const unknown = stored.map((id, index) => ({ id, index })).filter((entry) => !known(entry.id));
+  if (!unknown.length) return next;
+
+  const carried = new Set(next);
+  const out = [...next];
+  // Ascending, so each insertion lands before the ones after it and the stored order is reproduced.
+  for (const { id, index } of unknown) {
+    if (carried.has(id)) continue;
+    out.splice(Math.min(index, out.length), 0, id);
+    carried.add(id);
+  }
+  return out;
+}
+
 /** Parse a stored JSON id list of exclusions. A malformed one excludes nothing. */
 export function parseIdList(raw: string | undefined): string[] {
   if (!raw) return [];

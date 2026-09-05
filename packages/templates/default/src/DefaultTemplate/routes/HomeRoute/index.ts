@@ -36,7 +36,7 @@ export const homeRoute: RouteSchema = {
             {
               type: '$each',
               props: {
-                items: { $store: 'spaceStore.orderedSidebarItems' },
+                items: { $: 'spaceStore.orderedSidebarItems' },
                 as: 'space',
               },
               children: [
@@ -47,15 +47,15 @@ export const homeRoute: RouteSchema = {
                     bg: 'surface-sunken',
                     width: '160px',
                     styles: { cursor: 'pointer' },
-                    onClick: { $action: 'spaceStore.navigateToSpace', args: ['$space.spaceId'] },
-                    title: { $concat: ['Open ', '$space.name'] },
+                    onClick: { $action: 'spaceStore.navigateToSpace', args: [{ $: 'space.spaceId' }] },
+                    title: { $: '`Open ${space.name}`' },
                   },
                   children: [
                     {
                       type: 'we-avatar',
                       props: {
-                        image: '$space.avatar',
-                        initials: '$space.name',
+                        image: { $: 'space.avatar' },
+                        initials: { $: 'space.name' },
                         size: '56px',
                       },
                     },
@@ -72,7 +72,7 @@ export const homeRoute: RouteSchema = {
                           'max-width': '140px',
                         },
                       },
-                      children: ['$space.name'],
+                      children: [{ $: 'space.name' }],
                     },
                   ],
                 },
@@ -88,7 +88,7 @@ export const homeRoute: RouteSchema = {
         {
           type: '$if',
           props: {
-            condition: { $not: { $count: { items: { $store: 'spaceStore.orderedSidebarItems' } } } },
+            condition: { $: '!count(spaceStore.orderedSidebarItems)' },
             then: {
               type: 'Card',
               props: { ax: 'center', bg: 'surface-sunken', width: '100%' },

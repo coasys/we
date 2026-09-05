@@ -15,6 +15,13 @@
  * chrome, they render at `CHROME_TIER`, and asking them to fit the space tier would be asking the
  * app to be unable to sign anybody out.
  */
+import {
+  consentPrompt,
+  consentSecret,
+  createSpaceModalMount,
+  namePrompt,
+  removeAccountModal,
+} from '@we/template-shell';
 import { describe, expect, it } from 'vitest';
 
 import { bundledModules } from '../src/shared/registries/bundledModules';
@@ -144,6 +151,19 @@ describe('the chrome the shell renders', () => {
     ['profile', profileTemplate],
     ['marketplace', marketplaceTemplate],
     ['landingPage', landingPageTemplate],
+    /*
+      The overlay slot's other contributions. They were not here, and the create-space modal is
+      where that showed: it reads `datasetStore.globalDataset` to offer a global listing, the member
+      was classified as wiring, and the option never appeared — with this test green throughout,
+      because the sidebar it hangs off was covered and the modal itself was not. Everything
+      `slotRegistry` registers from the shell is a schema the chrome bag renders, so all of it is
+      judged here.
+    */
+    ['createSpaceModal', createSpaceModalMount],
+    ['consentPrompt', consentPrompt],
+    ['consentSecret', consentSecret],
+    ['namePrompt', namePrompt],
+    ['removeAccountModal', removeAccountModal],
     // One docked panel, on one edge. The frame is identical for every module and every edge — what
     // is under test is which store members it names, not the geometry it computes from them.
     ['a docked panel', dockFrame({ id: 'call', edge: 'left' } as never, { type: 'Column' } as never)],
@@ -163,7 +183,7 @@ describe('the chrome the shell renders', () => {
     const paths = allowed.map((reference) => reference.path);
 
     expect(paths).toContain('shellStore.beginDockResize');
-    expect(paths.some((path) => path.startsWith('shellStore.dockGeometry.'))).toBe(true);
+    expect(paths.some((path) => path.startsWith('shellStore.dockGeometry'))).toBe(true);
   });
 
   it('keeps the app furniture out of a space template', () => {
@@ -173,5 +193,43 @@ describe('the chrome the shell renders', () => {
       SPACE_TIER,
     );
     expect(blocked.map((reference) => reference.path)).toContain('shellStore.beginDockResize');
+  });
+});
+
+describe('a template’s declared panels are part of its surface', () => {
+  /*
+    `meta.panels[].node` is a schema like any other, rendered against the same bag — so a panel
+    naming a chrome-tier member is a template reaching past its tier, and the walk has to see it.
+
+    It does, and nothing said so. The audit read `inspectTemplateSurface` as checking `meta.requires`
+    only, which is a reasonable thing to conclude from a walk with no test on it: nothing here
+    exercised a panel node, so a refactor that stopped descending into `meta` would have taken this
+    boundary with it silently. Workshop is the live case — its panel reads `interpretationStore`,
+    which happens to be granted at the space tier, so even that one proves nothing on its own.
+  */
+  const withPanel = (node: unknown) => ({
+    meta: { name: 'Test', description: '', icon: '', panels: [{ id: 'inspector', node }] },
+    type: 'Column',
+  });
+
+  it('reports a chrome-only member named by a panel', () => {
+    const template = withPanel({ type: 'we-text', children: [{ $: 'runtimeStore.trustedAgents' }] });
+    const { blocked } = inspectTemplateSurface(template, SPACE_TIER);
+    expect(blocked.map((reference) => reference.path)).toEqual(['runtimeStore.trustedAgents']);
+  });
+
+  it('reports an action a panel calls, not only a value it reads', () => {
+    const template = withPanel({
+      type: 'we-button',
+      props: { onClick: { $action: 'sessionStore.logout' } },
+      children: ['Sign out'],
+    });
+    const { blocked } = inspectTemplateSurface(template, SPACE_TIER);
+    expect(blocked.map((reference) => reference.path)).toEqual(['sessionStore.logout']);
+  });
+
+  it('leaves a panel that stays inside the tier alone', () => {
+    const template = withPanel({ type: 'we-text', children: [{ $: 'spaceStore.members' }] });
+    expect(inspectTemplateSurface(template, SPACE_TIER).blocked).toEqual([]);
   });
 });

@@ -56,6 +56,28 @@ export function Search(allProps: SearchComponentProps) {
     if (debounceId !== undefined) clearTimeout(debounceId);
   });
 
+  /*
+    Follow `value` when the consumer changes it.
+
+    The signal was seeded from the prop once and never looked again, so the field was
+    write-only-by-the-user: a "Clear search" button, a filter reset, a route change that emptied the
+    query — all of them set `value=''`, and the box went on showing what had been typed. The list
+    updated and the input contradicted it.
+
+    Guarded on inequality so this does not fight typing: a keystroke sets `localValue` first, and by
+    the time `value` comes back round through the consumer it already matches. What is left is the
+    case where they genuinely differ, which is the consumer having changed its mind.
+
+    A pending debounce is dropped with it — it belongs to a search the consumer has just replaced.
+  */
+  createEffect(() => {
+    const incoming = props.value ?? '';
+    if (incoming === localValue()) return;
+    if (debounceId !== undefined) clearTimeout(debounceId);
+    debounceId = undefined;
+    setLocalValue(incoming);
+  });
+
   createEffect(() => {
     if (!inputRef) return;
     for (const key of Object.keys(inputProps as object)) {

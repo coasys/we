@@ -45,6 +45,32 @@ import type { RouteSchema, SchemaNode, TemplateSchema } from './types';
 export const VIEWS_MARKER = '$views';
 
 /**
+ * Where every space template lives, and the one place this literal is written.
+ *
+ * The URL is what answers "which space am I in" — `SpaceStore`'s dataset effect reads
+ * `segments[0] === 'space'` and does nothing otherwise — so a template mounted anywhere else has no
+ * space at all, whatever its content assumes. That is a property of the prefix and not of routing
+ * your own screens, which is why the host supplies it to every template rather than each one
+ * remembering: a template declaring it (the marker kind) matches this, and one that does not is
+ * wrapped in it.
+ *
+ * Four places spelled this by hand before — this route, `spacePath`, `navigateToSpace` and
+ * `switchTemplate` — which is the shape `RECORD_ROUTE_PATH`'s note records going wrong: two strings
+ * that must agree, a typechecker that sees only strings, and a mismatch whose sole symptom is a
+ * catch-all that says nothing about why.
+ */
+export const SPACE_ROUTE_PATH = '/space/:spaceId';
+
+/**
+ * How many segments that prefix occupies — what a relative link inside a space resolves against.
+ *
+ * Derived rather than written, so it cannot drift from the path above. Read by `TemplateLayout` to
+ * give a template's own chrome a base to navigate from: chrome renders outside the router, so it
+ * has no route of its own to take a depth from, and a self-routing template's nav strip is chrome.
+ */
+export const SPACE_ROUTE_DEPTH = SPACE_ROUTE_PATH.split('/').filter(Boolean).length;
+
+/**
  * A section, resolved: which view template renders, and at which segment.
  *
  * The pairing is the point — `segment` comes from the space's section list rather than from the
@@ -64,6 +90,49 @@ export type ResolvedView = {
 const TEMPLATE_ONLY = ['id', 'meta', 'author', 'templateVersion', 'schemaVersion', '_fromSpace'] as const;
 
 /**
+ * Where one template stops and another begins, marked in the DOM.
+ *
+ * A view is a *different template* from the shell around it, and nothing downstream could tell.
+ * That is invisible until something walks the rendered tree expecting one schema to explain all of
+ * it — which the visual editor does: it finds the nearest `data-we-node-id` and looks it up in the
+ * template being edited. A view's nodes carry no such id, so a click inside one walked straight past
+ * the whole section and selected a *shell* node several levels up. Nothing said why, so a section
+ * read as a hole in the editor rather than as a boundary.
+ *
+ * The name rides along beside the id so a reader of the DOM needs no second lookup — and, more to
+ * the point, so `@we/editor` can say which section it is without taking a dependency on the view
+ * registry to find out.
+ */
+export const VIEW_BOUNDARY_ATTR = 'data-we-view';
+export const VIEW_BOUNDARY_NAME_ATTR = 'data-we-view-name';
+
+/**
+ * Put the boundary where the DOM will actually show it.
+ *
+ * On the view's own root wherever that root is a Solid component, which costs nothing: the renderer
+ * spreads unrecognised props onto the element, so the attribute simply appears.
+ *
+ * A custom-element root is the exception and needs the wrapper. The renderer delivers a web
+ * component's props as **DOM properties** rather than attributes (`hostRef[key] = …`), so an
+ * attribute selector would never match one and the boundary would go missing on exactly the views
+ * nobody tested — silently, and looking like the bug this exists to remove. `display: contents`
+ * generates no box, so the wrapper costs a DOM node and no layout.
+ */
+function markBoundary(node: Record<string, unknown>, view: ResolvedView): Record<string, unknown> {
+  const marks = {
+    [VIEW_BOUNDARY_ATTR]: view.id,
+    [VIEW_BOUNDARY_NAME_ATTR]: view.schema.meta?.name ?? view.id,
+  };
+
+  // The renderer's own test for a custom element — see `isWebComponent` in SchemaRenderer.
+  if (!(typeof node.type === 'string' && node.type.includes('-'))) {
+    return { ...node, props: { ...((node.props as Record<string, unknown>) ?? {}), ...marks } };
+  }
+
+  return { type: 'Column', props: { styles: { display: 'contents' }, ...marks }, children: [node] };
+}
+
+/**
  * What decides, at render time, whether a section is one this space offers.
  *
  * The table holds a route for every view that *could* render here — that is what keeps a toggle from
@@ -71,15 +140,27 @@ const TEMPLATE_ONLY = ['id', 'meta', 'author', 'templateVersion', 'schemaVersion
  * Doing it in the body rather than by omitting the route is the difference between a question
  * answered on every render and one answered by rebuilding the application.
  *
- * The host supplies both halves. `activeIds` is a `$store` path to the ids currently offered, and
+ * The host supplies both halves. `activeIds` is a store path to the ids currently offered, and
  * `notInSpace` is what to draw instead — passed in rather than written here, because this file has
  * no business inventing UI text that no template could restyle.
  */
 export type ViewGate = {
-  /** `$store` path to the ids of the sections this space currently offers. */
+  /** Store path, as an expression reads it, to the ids of the sections this space currently offers. */
   activeIds: string;
   /** Rendered in place of a section the space does not offer. */
   notInSpace: SchemaNode;
+  /**
+   * Routes the host wants beside the sections — a record's own page, and anything like it.
+   *
+   * Placed at the marker rather than appended to the tree, because that is the one position that is
+   * right for every shell: a shell decides where its sections live, and whatever nests them (a
+   * layout route, a space id) is exactly what a record page needs nesting under too. A host that
+   * appended at the root would put the record page outside the space it belongs to.
+   *
+   * Supplied rather than written here for the same reason `notInSpace` is: this file has no business
+   * inventing UI no template could restyle.
+   */
+  extraRoutes?: RouteSchema[];
 };
 
 /**
@@ -94,14 +175,19 @@ export type ViewGate = {
  * to survive, since a route body is not a place a view can reach out of anyway.
  */
 function viewAsRoute(view: ResolvedView, gate?: ViewGate): RouteSchema {
-  const node = { ...view.schema } as Record<string, unknown>;
-  for (const key of TEMPLATE_ONLY) delete node[key];
+  const stripped = { ...view.schema } as Record<string, unknown>;
+  for (const key of TEMPLATE_ONLY) delete stripped[key];
+
+  // Marked before the gate rather than after: the boundary belongs to the *view*, and the gate's
+  // other arm is the host saying this space does not have this section — which is chrome, not a
+  // section, and should behave like the rest of the shell.
+  const node = markBoundary(stripped, view);
 
   const body: Record<string, unknown> = gate
     ? {
         type: '$if',
         props: {
-          condition: { $in: [view.id, { $store: gate.activeIds }] },
+          condition: { $: `'${view.id}' in ${gate.activeIds}` },
           then: node,
           else: gate.notInSpace,
         },
@@ -129,6 +215,9 @@ export function expandViewRoutes(routes: RouteSchema[], views: ResolvedView[], g
   for (const route of routes) {
     if (route.path === VIEWS_MARKER) {
       for (const view of views) out.push(viewAsRoute(view, gate));
+      // After the sections, so a section that happens to be segmented `record` still wins its own
+      // path — a community's own section is more theirs than the host's page is.
+      for (const extra of gate?.extraRoutes ?? []) out.push(extra);
       continue;
     }
 

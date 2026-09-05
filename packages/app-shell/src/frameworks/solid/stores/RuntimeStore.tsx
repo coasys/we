@@ -43,6 +43,7 @@ import type {
 } from '@we/backend-shared';
 import {
   type Accessor,
+  batch,
   createContext,
   createEffect,
   createMemo,
@@ -80,6 +81,14 @@ export interface RuntimeStore {
   aiPresetOptions: Accessor<{ label: string; value: string }[]>;
   /** True when the open form has every field its chosen source needs. */
   aiFormComplete: Accessor<boolean>;
+  /**
+   * The open model form has been edited since it opened — what a discard guard reads.
+   *
+   * Compared against a snapshot taken when the form opened, so opening a model to look at its
+   * settings and closing again asks nothing, while a pasted API key is not thrown away by a click
+   * on the backdrop.
+   */
+  aiFormDirty: Accessor<boolean>;
   languages: Accessor<InstalledLanguage[]>;
   trustedAgents: Accessor<string[]>;
   authorizedApps: Accessor<AuthorizedApp[]>;
@@ -222,6 +231,29 @@ export function RuntimeStoreProvider(props: ParentProps) {
   });
 
   /**
+   * What the form held when it opened, so "has this been edited" can be answered by comparison.
+   *
+   * A snapshot rather than the "an edit always counts as dirty" rule `shapeStore.draftHasWork` uses.
+   * That rule is right for the model wizard, where opening an existing model reconstructs a draft
+   * from the space and there is nothing to compare against — here the form is a flat object with a
+   * known shape, so the accurate answer is cheap, and it means opening a model to look at its
+   * settings and closing again asks nothing.
+   */
+  const [aiFormOpenedAs, setAiFormOpenedAs] = createSignal('');
+
+  function openAiForm(form: AiModelForm): void {
+    batch(() => {
+      setAiForm(form);
+      setAiFormOpenedAs(JSON.stringify(form));
+    });
+  }
+
+  const aiFormDirty = createMemo(() => {
+    const form = aiForm();
+    return !!form && JSON.stringify(form) !== aiFormOpenedAs();
+  });
+
+  /**
    * Every action runs through here: one loading flag, one error slot, and a guarantee that a
    * rejected runtime call surfaces as text on the settings page rather than an unhandled rejection
    * in a console nobody has open.
@@ -241,6 +273,16 @@ export function RuntimeStoreProvider(props: ParentProps) {
       return { ok: true, value: await fn() };
     } catch (err) {
       console.error('RuntimeStore: runtime call failed', err);
+      /*
+        The executor's own words, deliberately — this is the one surface where they are the useful
+        thing rather than the leak.
+
+        Everywhere else a raw `error.message` went through `explain` (see `shared/userMessage.ts`),
+        because a GraphQL failure from three layers down tells a member nothing they can act on.
+        Here the reader is administering the node, and the messages *are* the answer: "Choose a port
+        between 1024 and 65535", "languages is part of the running node and cannot be removed". A
+        generic sentence would replace a fix with a shrug.
+      */
       setError(err instanceof Error ? err.message : String(err));
       return { ok: false };
     } finally {
@@ -467,12 +509,12 @@ export function RuntimeStoreProvider(props: ParentProps) {
   }
 
   function newAiModel(): void {
-    setAiForm({ ...EMPTY_FORM });
+    openAiForm({ ...EMPTY_FORM });
   }
 
   function editAiModel(id: string): void {
     const model = aiModels().find((candidate) => candidate.id === id);
-    if (model) setAiForm(draftFrom(model));
+    if (model) openAiForm(draftFrom(model));
   }
 
   function setAiFormField(field: string, value: string | boolean): void {
@@ -602,6 +644,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
     aiForm,
     aiPresetOptions,
     aiFormComplete,
+    aiFormDirty,
     languages,
     trustedAgents,
     authorizedApps,

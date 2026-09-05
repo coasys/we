@@ -11,6 +11,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   activeSections,
   parseIdList,
+  preserveUnknownViews,
   resolveEnabledViews,
   routableSections,
   viewSettings,
@@ -276,5 +277,42 @@ describe('viewSettings', () => {
     const settings = viewSettings({ ...opts, enabledRaw: undefined, hidden: [] });
 
     expect(settings[0]).toMatchObject({ name: 'about', description: 'the about section', icon: 'square' });
+  });
+});
+
+describe('preserveUnknownViews', () => {
+  /*
+    `resolveEnabledViews` promises that an id naming a view this build does not have is dropped from
+    the resolved list and kept in the stored one — so a space configured where the globe ships,
+    opened where it does not, is missing that section and nothing else. Both writers started from the
+    resolved list and wrote it back, which persisted the pruning: one member on an older build
+    toggling one section removed every section that build lacked, for everybody, permanently.
+  */
+  const known = (id: string) => id !== 'globe' && id !== 'flux';
+
+  it('puts an unknown id back where it was stored', () => {
+    expect(preserveUnknownViews(['about', 'cards'], ['about', 'globe', 'cards'], known)).toEqual([
+      'about',
+      'globe',
+      'cards',
+    ]);
+  });
+
+  it('keeps several, in their stored order', () => {
+    expect(preserveUnknownViews(['about'], ['globe', 'about', 'flux'], known)).toEqual(['globe', 'about', 'flux']);
+  });
+
+  it('leaves a list with nothing unknown in it exactly as it is', () => {
+    // Including a reorder, which is the whole point of `reorderViews`: this must not fight it.
+    expect(preserveUnknownViews(['cards', 'about'], ['about', 'cards'], known)).toEqual(['cards', 'about']);
+  });
+
+  it('does not duplicate an id the caller kept', () => {
+    // A build that *does* know the id resolves it into `next`; carrying it again would double the tab.
+    expect(preserveUnknownViews(['about', 'globe'], ['about', 'globe'], known)).toEqual(['about', 'globe']);
+  });
+
+  it('appends rather than throwing when the stored index is past the end', () => {
+    expect(preserveUnknownViews([], ['about', 'globe'], known)).toEqual(['globe']);
   });
 });

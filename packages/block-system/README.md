@@ -1,11 +1,11 @@
 # @we/block-solid
 
-SolidJS block editor and renderer for the WE block system. Part of a two-package system:
+SolidJS block composer and renderer for the WE block system, on ProseMirror. Part of a two-package system:
 
-| Package                           | Purpose                                                                    |
-| --------------------------------- | -------------------------------------------------------------------------- |
-| `@we/block-shared` (`../shared/`) | Framework-agnostic registry, serialization, AD4M model bindings            |
-| `@we/block-solid` (this package)  | SolidJS `BlockComposer`, `BlockRenderer`, all block components and plugins |
+| Package                           | Purpose                                                                                           |
+| --------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `@we/block-shared` (`../shared/`) | Framework-agnostic content model, standoff marks, Portable Text projection, registry, persistence |
+| `@we/block-solid` (this package)  | SolidJS `BlockComposer`, `BlockRenderer`, all block components, the editor schema and plugins     |
 
 For architecture, conventions, and how to add new block types, see [`CONVENTIONS.md`](./CONVENTIONS.md).
 
@@ -14,7 +14,7 @@ For architecture, conventions, and how to add new block types, see [`CONVENTIONS
 ## Quick Start
 
 ```tsx
-import { BlockComposer, BlockRenderer, registerCoreBlockComponents } from '@we/block-solid';
+import { BlockComposer, BlockHostProvider, BlockRenderer, registerCoreBlockComponents } from '@we/block-solid';
 import { registerCoreBlocks } from '@we/block-shared';
 import '@we/block-solid/styles';
 
@@ -22,18 +22,18 @@ import '@we/block-solid/styles';
 registerCoreBlocks();
 registerCoreBlockComponents();
 
-// Editable composer
-<BlockComposer
-  editorState={savedState}
-  perspective={perspective}
-  onSave={(state) => saveToAD4M(state)}
-/>
+// The host says where blocks live and who can be mentioned — once
+<BlockHostProvider dataset={() => currentDataset} mentions={() => members}>
+  {/* Editable composer — onSave receives a ContentDocument: { _type: 'document', blocks, base } */}
+  <BlockComposer
+    editorState={savedState}
+    onReady={(api) => (save = api.save)}
+    onSave={(doc) => spaceStore.updatePost(id, doc)}
+  />
 
-// Read-only renderer
-<BlockRenderer
-  editorState={savedState}
-  perspective={perspective}
-/>
+  {/* Read-only renderer — walks the content, instantiates no editor */}
+  <BlockRenderer editorState={savedState} />
+</BlockHostProvider>;
 ```
 
 ---
@@ -42,31 +42,24 @@ registerCoreBlockComponents();
 
 ### Components
 
-| Export                  | Description                                                |
-| ----------------------- | ---------------------------------------------------------- |
-| `BlockComposer`         | Full-featured block editor (Lexical + all plugins)         |
-| `BlockRenderer`         | Read-only renderer with AD4M asset resolution              |
-| `BlockDisplayOverrides` | Context provider to override display components per render |
+| Export                  | Description                                                                         |
+| ----------------------- | ----------------------------------------------------------------------------------- |
+| `BlockComposer`         | The editor: one ProseMirror document per composition, with WE's chrome as plugins   |
+| `BlockRenderer`         | Read-only walker with file-address resolution; `Blocks` renders a block list inline |
+| `BlockHostProvider`     | Context: the dataset blocks read/write and the mention roster                       |
+| `BlockDisplayOverrides` | Context provider to override display components per render                          |
+| `BlockToolbar`          | The floating per-block settings toolbar shell input components use                  |
 
-### Nodes
+### Editor
 
-| Export                          | Description                                                                                      |
-| ------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `blockNodeClasses`              | Array of all registered `DecoratorNode` classes — pass to `nodes:` in a custom `LexicalComposer` |
-| `blockNodeClassMap`             | `Map<nodeType, NodeClass>` for individual lookup                                                 |
-| `createBlockNodeClass(type)`    | Factory — creates a `DecoratorNode` class for a custom block type                                |
-| `CollectionBlockNode`           | Hand-written node for blocks with nested Lexical editors                                         |
-| `$createBlockNode(type, props)` | Creates a new block node instance inside `editor.update()`                                       |
-| `$isBlockNode(node)`            | Type guard                                                                                       |
-
-### Helpers
-
-| Export                                                | Description                                                                                                      |
-| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `INSERT_BLOCK_COMMAND`                                | Dispatch to insert a block at current selection: `editor.dispatchCommand(INSERT_BLOCK_COMMAND, { type, props })` |
-| `TRANSFORM_BLOCK_COMMAND`                             | Dispatch to change a block's type in place                                                                       |
-| `REORDER_BLOCK_COMMAND`                               | Dispatch to move a block to a new position (used by drag handles)                                                |
-| `transformBlock(editor, nodeKey, newType, newProps?)` | Imperative helper for block type transformation                                                                  |
+| Export                                    | Description                                                            |
+| ----------------------------------------- | ---------------------------------------------------------------------- |
+| `createBlockSchema(customTypes)`          | The ProseMirror schema for a set of registered block types             |
+| `contentToDoc` / `docToContent`           | Content blocks ⇄ ProseMirror document                                  |
+| `blockToNode` / `nodeToBlock`             | One block ⇄ one node                                                   |
+| `transformBlock(view, pos, type)`         | Change the block at `pos` to another kind (the block menu's operation) |
+| `insertBlocks` / `insertBlockAtSelection` | Insert nodes beside a block, or at the selection                       |
+| `moveBlock(view, from, to, before)`       | Reorder — into and out of collections — in one transaction             |
 
 ---
 
@@ -75,52 +68,41 @@ registerCoreBlockComponents();
 ```
 src/
 ├── components/
-│   ├── BlockComposer.tsx         # Edit-mode LexicalComposer with all plugins
-│   ├── BlockRenderer.tsx         # Read-only renderer
+│   ├── BlockComposer.tsx         # The editor: EditorView + plugins + overlays
+│   ├── BlockRenderer.tsx         # Read-only walker (text through the schema's serializer)
+│   ├── BlockHost.tsx             # Dataset + mention roster context
 │   ├── BlockDisplayOverrides.tsx # Context for display component overrides
-│   ├── BlockMenu/                # Slash-command block picker popup
-│   ├── BlockToolbar/             # Per-block settings toolbar
-│   ├── AudioBlock/               # AudioDisplay + AudioInput
-│   ├── CalloutBlock/
-│   ├── CodeBlock/
-│   ├── CollectionBlock/          # CollectionDisplay + CollectionInput (nested editor)
-│   ├── DividerBlock/
-│   ├── EmbedBlock/
-│   ├── EventBlock/
-│   ├── FileBlock/
-│   ├── ImageBlock/
-│   ├── LinkBlock/
-│   ├── LocationBlock/
-│   ├── TagBlock/
-│   ├── TaskBlock/
-│   └── VideoBlock/
-├── nodes/
-│   ├── createBlockNodeClass.tsx  # DecoratorNode factory + BlockBridge
-│   └── CollectionBlockNode.tsx   # Nested-editor node (not generated by factory)
-├── plugins/
-│   ├── BlockHandlesPlugin/       # Drag handles, hover/focus highlights, reorder
-│   ├── BlockInsertPlugin/        # INSERT_BLOCK_COMMAND handler
-│   ├── BlockKeyboardPlugin/      # Arrow/Enter/Backspace/Delete for decorator blocks
-│   ├── IndentationPlugin/        # Tab/Shift-Tab list nesting
-│   ├── PlaceholdersPlugin/       # Empty-block placeholder text
-│   └── SlashCommandPlugin/       # "/" → block picker
+│   ├── BlockMenu/                # Block-type picker (slash command, handle settings)
+│   ├── BlockToolbar/             # Per-block settings toolbar shell
+│   ├── BlockPlaceholder/         # Empty-state placeholder for media blocks
+│   ├── CollectionBlock/          # CollectionDisplay (walker) + CollectionInput (layout toolbar)
+│   └── <Type>Block/              # <Type>Display + <Type>Input per block type
+├── editor/
+│   ├── schema.ts                 # The ProseMirror schema — the one definition of the DOM
+│   ├── converter.ts              # Content blocks ⇄ document
+│   ├── nodeViews.tsx             # Custom-block and collection node views (Solid roots)
+│   ├── commands.ts               # Transform / insert / move / list commands
+│   ├── blockIndex.ts             # Block positions and depths
+│   ├── context.ts                # What the chrome shares (EditorContext)
+│   └── plugins/                  # handles, chrome, placeholders, keymap, input rules, mentions, links, toolbar, slash
 ├── core-block-components.ts      # registerCoreBlockComponents()
-├── helpers.ts                    # Commands + transformBlock()
 └── styles/
-    ├── blocks.scss               # Block highlight/handle styles
+    ├── blocks.scss               # Shared block styles (composer and renderer)
+    ├── editor.scss               # Composer chrome: toolbar, mention menu, ProseMirror essentials
+    ├── handles.scss              # Block handles and the drop indicator
+    ├── placeholders.scss         # Placeholder text
     ├── block-inputs.scss         # Block input UI styles
     └── index.scss                # Aggregator (exported as ./styles)
 ```
 
 ---
 
-## Building
+## Building & testing
 
 ```bash
-pnpm build
+pnpm build   # tsup + sass; CSS is emitted separately — consumers import @we/block-solid/styles
+pnpm test    # converter round-trips and composer/renderer DOM parity (happy-dom)
 ```
-
-Uses `tsup`. Output in `dist/`. CSS is emitted separately — consumers must import `@we/block-solid/styles`.
 
 ## Used By
 
@@ -130,6 +112,6 @@ Uses `tsup`. Output in `dist/`. CSS is emitted separately — consumers must imp
 
 ## Related Packages
 
-- `@we/block-shared` — framework-agnostic registry and serialization
-- `@we/models` — AD4M data models for all block types
+- `@we/block-shared` — framework-agnostic content model and persistence
+- `@we/entities` — data models for all block types
 - `@we/schema-solid` — schema-driven UI system that hosts `BlockComposer` in document views

@@ -1,4 +1,5 @@
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
+import { expr } from '@we/schema-shared';
 import { recordFormModal } from '@we/template-kit';
 
 import { boardBar, boardCanvas, boardQuery } from './Board';
@@ -38,14 +39,8 @@ const LAYOUTS = [
 
 /** Layout spec built from the picker, so every mode honours the same choice. */
 const layoutSpec = {
-  type: { $local: 'layout' },
-  options: {
-    $if: {
-      condition: { $eq: [{ $local: 'layout' }, 'tree'] },
-      then: { direction: 'right', levelGap: 200 },
-      else: { distance: 130 },
-    },
-  },
+  type: { $: 'local.layout' },
+  options: { $: "local.layout == 'tree' ? { direction: 'right', levelGap: 200 } : { distance: 130 }" },
 };
 
 /**
@@ -70,7 +65,7 @@ const schemaGraph: SchemaNode = {
     // before `select`, that press never reaches selection and clicking the background cannot clear it.
     behaviours: ['node-double-click', 'select', { type: 'drag-node' }, 'pan-zoom'],
     height: '100%',
-    revision: { $local: 'revision' },
+    revision: { $: '`${datasetStore.currentDataset.id}:${local.revision}`' },
     onNodeClick: selectNode,
     onSelectionChange: clearOnEmptySelection,
     onNodeDoubleClick: { $setLocal: 'cardOpen', value: true },
@@ -133,23 +128,12 @@ const knowledgeGraph: SchemaNode = {
         contribute rules alongside hand-written ones.
       */
       {
-        $map: {
-          items: { $local: 'relationshipKinds' },
-          select: {
-            when: { 'data.relationshipTypeId': '$item.id' },
-            style: {
-              showLabel: true,
-              width: 2,
-              color: '$item.color',
-              arrow: { $if: { condition: '$item.directed', then: 'target', else: 'none' } },
-            },
-          },
-        },
+        $: "local.relationshipKinds.map(item, { when: { 'data.relationshipTypeId': item.id }, style: { showLabel: true, width: 2, color: item.color, arrow: item.directed ? 'target' : 'none' } })",
       },
     ],
     behaviours: [
       // Before drag-node, which is what makes arming mean anything: both claim a press on a node.
-      { type: 'connect-nodes', options: { armed: { $local: 'connecting' } } },
+      { type: 'connect-nodes', options: { armed: { $: 'local.connecting' } } },
       // `select` before `pan-zoom`, which is the background fallback: pan-zoom claims a press on the
       // background, and dispatch stops at the first behaviour that claims — so listing it first left
       // `select` never seeing a background press, and clicking empty canvas could not deselect.
@@ -167,15 +151,15 @@ const knowledgeGraph: SchemaNode = {
       'pan-zoom',
     ],
     height: '100%',
-    revision: { $local: 'revision' },
+    revision: { $: '`${datasetStore.currentDataset.id}:${local.revision}`' },
     onNodeClick: selectNode,
     onSelectionChange: clearOnEmptySelection,
     onNodeDoubleClick: { $setLocal: 'cardOpen', value: true },
     expandRequest,
-    onEdgeClick: { $setLocal: 'selectedEdge', from: '$event' },
+    onEdgeClick: { $setLocal: 'selectedEdge', value: { $: 'event' } },
     // Straight to the store: it opens the same record form every other model uses, on
     // `Relationship`, holding the two ends the gesture produced.
-    onEdgeCreate: { $action: 'recordStore.connectNodes', args: ['$event'] },
+    onEdgeCreate: { $action: 'recordStore.connectNodes', args: [{ $: 'event' }] },
   },
 };
 
@@ -211,7 +195,7 @@ const contentGraph: SchemaNode = {
     // one behaviour ever sees the gesture. The panel's Open button still reaches a document here.
     behaviours: ['select', 'expand-on-double-click', 'pan-zoom'],
     height: '100%',
-    revision: { $local: 'revision' },
+    revision: { $: '`${datasetStore.currentDataset.id}:${local.revision}`' },
     onNodeClick: selectNode,
     onSelectionChange: clearOnEmptySelection,
     expandRequest,
@@ -226,7 +210,7 @@ const picker = (field: string, options: readonly { value: string; label: string 
     type: 'we-button',
     props: {
       size: 'sm',
-      variant: { $if: { condition: { $eq: [{ $local: field }, option.value] }, then: 'primary', else: 'ghost' } },
+      variant: expr`${{ $: `local.${field}` }} == ${option.value} ? 'primary' : 'ghost'`,
       onClick: { $setLocal: field, value: option.value },
     },
     children: [option.label],
@@ -314,6 +298,14 @@ export const graphView: TemplateSchema = {
       reporting the write, and this is the one case where the template *knows* something changed
       because it is what changed it. The graph merges either way, so the update arriving twice costs
       a query and changes nothing on screen.
+
+      **The dataset is part of the revision** wherever it is passed to a graph — see the `revision`
+      props below. The space route is a layout route and the router is keyed on template plus views,
+      so walking from space A to space B with the same template remounts nothing: the graph restarts
+      only on a seed or expansion change, and neither of those mentions the dataset. A's nodes stayed
+      on screen under B's URL, which reads as B containing A's content. Folding the dataset id into
+      the revision makes a space switch exactly what it is — everything on this canvas is now about
+      somewhere else.
     */
     revision: { type: 'number', initial: 0 },
   },
@@ -371,12 +363,12 @@ export const graphView: TemplateSchema = {
                 {
                   type: '$if',
                   props: {
-                    condition: { $eq: [{ $local: 'mode' }, 'knowledge'] },
+                    condition: { $: "local.mode == 'knowledge'" },
                     then: {
                       type: 'we-button',
                       props: {
                         size: 'sm',
-                        variant: { $if: { condition: { $local: 'connecting' }, then: 'primary', else: 'ghost' } },
+                        variant: { $: "local.connecting ? 'primary' : 'ghost'" },
                         onClick: { $toggleLocal: 'connecting' },
                       },
                       children: [{ type: 'we-icon', props: { name: 'flow-arrow' } }, 'Connect'],
@@ -386,7 +378,7 @@ export const graphView: TemplateSchema = {
                 {
                   type: '$if',
                   props: {
-                    condition: { $eq: [{ $local: 'mode' }, 'board'] },
+                    condition: { $: "local.mode == 'board'" },
                     // A board's positions are its data, so there is no layout to choose. Its own
                     // controls — which board, and adding to it — take the same place instead.
                     then: boardBar,
@@ -414,12 +406,7 @@ export const graphView: TemplateSchema = {
                 {
                   type: '$if',
                   props: {
-                    condition: {
-                      $and: [
-                        { $ne: [{ $local: 'mode' }, 'board'] },
-                        { $count: { items: { $store: 'recordStore.creatableEntities' } } },
-                      ],
-                    },
+                    condition: { $: "local.mode != 'board' && count(recordStore.creatableEntities)" },
                     then: {
                       type: 'we-button',
                       props: {
@@ -449,7 +436,7 @@ export const graphView: TemplateSchema = {
       board work says so twice. A modal is not a compromise here: what is being authored is a
       record, which has nothing to do with where it will land.
     */
-    recordFormModal({ onCreated: [{ $setLocal: 'revision', by: 1 }] }),
+    recordFormModal({ onCreated: [{ $setLocal: 'revision', value: { $: 'local.revision + 1' } }] }),
 
     {
       type: 'Column',
@@ -465,19 +452,19 @@ export const graphView: TemplateSchema = {
       children: [
         {
           type: '$if',
-          props: { condition: { $eq: [{ $local: 'mode' }, 'schema'] }, then: schemaGraph },
+          props: { condition: { $: "local.mode == 'schema'" }, then: schemaGraph },
         },
         {
           type: '$if',
-          props: { condition: { $eq: [{ $local: 'mode' }, 'knowledge'] }, then: knowledgeGraph },
+          props: { condition: { $: "local.mode == 'knowledge'" }, then: knowledgeGraph },
         },
         {
           type: '$if',
-          props: { condition: { $eq: [{ $local: 'mode' }, 'content'] }, then: contentGraph },
+          props: { condition: { $: "local.mode == 'content'" }, then: contentGraph },
         },
         {
           type: '$if',
-          props: { condition: { $eq: [{ $local: 'mode' }, 'board'] }, then: boardCanvas },
+          props: { condition: { $: "local.mode == 'board'" }, then: boardCanvas },
         },
         // Inside the graph container, not after it: the panel overlays the canvas rather than
         // taking a slice of the route, which is what keeps the camera still when it opens.

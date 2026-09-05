@@ -1,7 +1,7 @@
 /**
  * Module Registry — installed feature modules and what they contribute.
  *
- * The fourth registry alongside `appRegistry`, `modelRegistry`, `templateRegistry` and `themeRegistry`,
+ * The fourth registry alongside `appRegistry`, `entityRegistry`, `templateRegistry` and `themeRegistry`,
  * and deliberately the same shape: modules become the next thing that follows an existing pattern
  * rather than a new concept. Runtime only — the durable half (`AgentSettings.installedModules`,
  * `Space.enabledModules`) arrives with the marketplace, when modules become installable rather than
@@ -14,26 +14,29 @@
  *
  * ## The `modules` namespace must always exist
  *
- * Subtle and easy to get wrong. `$store` resolution splits on `.`, and a **single-segment** path does
- * `stores[storeName][prop]` with no guard — so `{ $store: 'modules.notes' }` throws if the `modules`
+ * Subtle and easy to get wrong. Store-path resolution splits on `.`, and a **single-segment** path does
+ * `stores[storeName][prop]` with no guard — so reading `modules.notes` throws if the `modules`
  * key is absent, rather than returning undefined. Deeper paths go through `walkPath`, which does
  * degrade safely.
  *
  * So: the namespace object is always present, and an individual module's key is absent until it
- * registers. That is exactly what makes `{ $if: { condition: { $store: 'modules.notes' } } }` the
+ * registers. That is exactly what makes `{ $: 'modules.notes' }` as a condition the
  * supported way for a template to depend on an optional module.
  */
-import { type SchemaPort, validateManifest } from '@we/backend-shared';
-import { getModelPredicates, type ModelClass, registerModel, unregisterModel } from '@we/models';
+import { type EntityManifestEntry, type SchemaPort, validateManifest } from '@we/backend-shared';
+import { type EntityClass, getEntityPredicates, registerEntity, unregisterEntity } from '@we/entities';
 import {
   checkModuleCompatibility,
   type ModuleDefinition,
+  type ModuleLauncher,
   modulePredicatePrefix,
   modulePredicateViolations,
+  type ModuleScope,
   type ModuleStoreDeps,
 } from '@we/module-shared';
 import { collectComponentTypes, type SchemaNode } from '@we/schema-shared';
 
+import type { SettingGroup, SettingValue } from '../moduleSettings';
 import { dockFrame, dockRegistry } from './dockRegistry';
 import { slotRegistry } from './slotRegistry';
 
@@ -93,6 +96,19 @@ export interface RegisteredModule {
 const modules = new Map<string, RegisteredModule>();
 
 /**
+ * What each module's settings currently resolve to, answered by whoever can see a space.
+ *
+ * Injected rather than computed here for the reason every `provide*` on `DatasetStore` is: the
+ * answer lives on a `Space`, on a `SpacePreference` and in the agent's own root dataset, and this
+ * registry mounts below all three and knows about none of them. Defaults to silence, so a host that
+ * has not wired it hands every module its declared defaults rather than nothing at all.
+ *
+ * Read at *call* time, not at registration: a module store is built once at boot and the space it is
+ * in changes underneath it all day.
+ */
+let readSettings: (group: string) => Record<string, SettingValue> = () => ({});
+
+/**
  * Wrap a module's chrome so it only renders where the community has the module turned on.
  *
  * Done as a schema condition rather than by filtering the registry, for two reasons. It needs no
@@ -114,13 +130,20 @@ const modules = new Map<string, RegisteredModule>();
  * where it started, and gating its bar on the destination space took away the controls — hang-up
  * included — while the call carried on regardless. So the gate widens to "enabled here, or holding
  * something". See `ModuleDefinition.holdsWhen`.
+ *
+ * ## Chrome that is not about a space at all
+ *
+ * A module declaring `scope: 'agent'` needs no separate gate here, because `activeModules` already
+ * answers for it: its subject is the person rather than a community, so the community layer is
+ * skipped there and being installed is the whole test. One gate, one store member, and no way for
+ * the two to disagree. See `ModuleDefinition.scope` and `spaceStore.activeModules`.
  */
 function gateOnSpace(moduleId: string, node: SchemaNode, holdsWhen?: string): SchemaNode {
-  const enabledHere = { $in: [moduleId, { $store: 'spaceStore.activeModules' }] };
+  const enabledHere = `'${moduleId}' in spaceStore.activeModules`;
   return {
     type: '$if',
     props: {
-      condition: holdsWhen ? { $or: [enabledHere, { $store: holdsWhen }] } : enabledHere,
+      condition: { $: holdsWhen ? `${enabledHere} || ${holdsWhen}` : enabledHere },
       then: node,
     },
   };
@@ -152,6 +175,69 @@ export interface RegisterResult {
 
 const compiledEntities = new Map<string, unknown[]>();
 
+/**
+ * Compile every module-declared entity of one scope, once.
+ *
+ * Memoised per module because install runs on every dataset switch and compiling produces fresh
+ * classes each time, which would churn the model registry underneath live queries.
+ */
+function declaredEntities(schemas: SchemaPort, scope: ModuleScope): unknown[] {
+  return moduleRegistry.all().flatMap(({ definition }) => {
+    if (!definition.entities) return [];
+    if ((definition.entities.scope ?? 'space') !== scope) return [];
+    const cached = compiledEntities.get(definition.id);
+    if (cached) return cached;
+    const compiled = Object.values(
+      schemas.declare(definition.entities.manifest, {
+        moduleId: definition.id,
+        predicates: definition.entities.predicates,
+      }),
+    );
+    compiledEntities.set(definition.id, compiled);
+    return compiled;
+  });
+}
+
+/**
+ * The interface's own composition of this module's panel, or the module's default.
+ *
+ * The middle rung of the content chain — the same shape position and openness already have. A
+ * module's presentation is a *default*, not a monopoly: an interface that wants the pieces arranged
+ * differently used to have to hand-write copies and place them beside the module's panel, which is
+ * how the workshop template ended up with two transcripts on screen the moment somebody pressed
+ * record.
+ *
+ * Resolved at render rather than at registration, because a template is chosen and re-chosen while
+ * the module stays installed, and a `$if` is how a schema asks a question it cannot answer when it
+ * is written. The module's dock is untouched: its edge, size and open flag still decide *whether*
+ * the surface is up, which is the module's to say. Only what is inside it moves.
+ *
+ * ## Keyed by dock, not by module
+ *
+ * A template's entry names a *module* — `{ module: 'transcribe', node }` — because that is the
+ * question a template author is asking. The gate is keyed by **dock id** anyway, and the difference
+ * only shows up for a module contributing more than one panel: keyed by module, one supplied body
+ * would have replaced the contents of every one of them, so a template overriding a module's
+ * transcript panel would silently have overwritten its settings panel with the same node.
+ *
+ * No module contributes two docks today, which is exactly why it is worth keying correctly now —
+ * the day one does, the failure is a panel showing the wrong thing rather than an error. Resolving
+ * a module name to a dock id is `ShellStore.panelSupplied`'s job, and it refuses the ambiguous case
+ * out loud rather than picking.
+ */
+function suppliedOrOwn(moduleId: string, dockId: string, dock: string, own: SchemaNode): SchemaNode {
+  return {
+    type: '$if',
+    props: {
+      condition: { $: `shellStore.panelSupplied['${dockId}']` },
+      // The dock's own name travels with the request: a module with two panels has two frames
+      // asking, and a body found by module alone would land in whichever asked first.
+      then: { type: 'TemplatePanelBody', props: { moduleId, dock } },
+      else: own,
+    },
+  };
+}
+
 export const moduleRegistry = {
   /**
    * Register a module against this host.
@@ -170,7 +256,10 @@ export const moduleRegistry = {
     // can adjudicate. Refused at registration for the same reason an incompatible backend is.
     const badPredicates = [
       ...(definition.models ?? []).flatMap((model) =>
-        modulePredicateViolations(definition.id, getModelPredicates(model as Parameters<typeof getModelPredicates>[0])),
+        modulePredicateViolations(
+          definition.id,
+          getEntityPredicates(model as Parameters<typeof getEntityPredicates>[0]),
+        ),
       ),
       // Declared entities mint under the module's subtree by construction, so the only way a bad
       // predicate enters is an explicit override — which exists precisely to name something the
@@ -198,6 +287,25 @@ export const moduleRegistry = {
       }
     }
 
+    /*
+      Two ways a settings declaration is inert, and both are silent without this.
+
+      A `restrict` setting that defaults to `false` can never be true: restriction is an AND, so no
+      level can grant what the default withholds. And an `enum` with no options offers nothing to
+      pick. Reported rather than refused — a module is still worth having with one dud setting, and
+      taking the whole thing out of the app over a declaration mistake is the larger failure.
+    */
+    for (const setting of definition.settings ?? []) {
+      if (setting.resolution === 'restrict' && setting.default === false) {
+        console.warn(
+          `module "${definition.id}" setting "${setting.key}" is restrict and defaults to false, so no level can ever turn it on`,
+        );
+      }
+      if (setting.type === 'enum' && !setting.options?.length) {
+        console.warn(`module "${definition.id}" setting "${setting.key}" is an enum with no options`);
+      }
+    }
+
     const compatibility = checkModuleCompatibility(definition, host);
     if (!compatibility.compatible) {
       console.warn(`module "${definition.id}" not registered: ${compatibility.problems.join('; ')}`);
@@ -216,17 +324,23 @@ export const moduleRegistry = {
     // than running none.
     const disposers: Array<() => void> = [];
     const store = storeDeps
-      ? definition.createStore?.({ ...storeDeps, onDispose: (fn) => disposers.push(fn) })
+      ? definition.createStore?.({
+          ...storeDeps,
+          onDispose: (fn) => disposers.push(fn),
+          // Its own group, never the whole map: a module reads what it declared and has no business
+          // knowing what another one was configured with.
+          settings: () => readSettings(definition.id),
+        })
       : undefined;
     modules.set(definition.id, { definition, store, disposers });
     if (store) moduleStores[definition.id] = store;
 
     // Two registrations are needed for a module-owned entity, and missing either fails at a
     // different moment: SDNA install (in `installSpaceSdna`) puts the *shape* in the perspective,
-    // while this puts the *class* where `model.create` / `$query` can resolve it by name. Without
+    // while this puts the *class* where `record.create` / `$query` can resolve it by name. Without
     // this one the panel renders and only writing a note fails.
-    for (const model of (definition.models ?? []) as ModelClass[]) {
-      registerModel((model as unknown as { className: string }).className, model);
+    for (const model of (definition.models ?? []) as EntityClass[]) {
+      registerEntity((model as unknown as { className: string }).className, model);
     }
 
     for (const [index, slot] of (definition.slots ?? []).entries()) {
@@ -244,7 +358,9 @@ export const moduleRegistry = {
     // has wrapped it in a positioned box it is ordinary shell chrome and needs no second render
     // path. The `dock:` id prefix keeps the two namespaces from colliding.
     for (const [index, dock] of (definition.docks ?? []).entries()) {
-      const id = `${definition.id}:${index}`;
+      // The declared name where there is one, so a module that adds a second panel does not
+      // renumber the first and throw away wherever anybody had dragged it.
+      const id = `${definition.id}:${dock.name ?? index}`;
       dockRegistry.register({ ...dock, id, moduleId: definition.id });
       slotRegistry.register({
         anchor: 'dock-right',
@@ -252,7 +368,10 @@ export const moduleRegistry = {
         id: `dock:${id}`,
         node: gateOnSpace(
           definition.id,
-          dockFrame({ ...dock, id, moduleId: definition.id }, dock.node),
+          dockFrame(
+            { ...dock, id, moduleId: definition.id },
+            suppliedOrOwn(definition.id, id, dock.name ?? String(index), dock.node),
+          ),
           definition.holdsWhen,
         ),
       });
@@ -272,6 +391,37 @@ export const moduleRegistry = {
    * nowhere, which looks exactly like a module that is simply switched off. The same reason
    * `activateSeedModules` reports ids this build does not contain.
    */
+  /**
+   * Say what each module's settings resolve to. Returns a function that takes it back.
+   *
+   * The counterpart of `DatasetStore.provideAutoInterpretGate`, and injected for the same reason —
+   * see `readSettings`.
+   */
+  provideSettings(reader: (group: string) => Record<string, SettingValue>): () => void {
+    readSettings = reader;
+    return () => {
+      if (readSettings === reader) readSettings = () => ({});
+    };
+  },
+
+  /**
+   * Every registered module that declares settings, as a group a screen can render.
+   *
+   * A module's group id is its module id, and its label is the module's name — so a settings screen
+   * is built from what is installed rather than from a list somebody maintains, which is the
+   * registration step that otherwise fails silently.
+   */
+  settingGroups(): SettingGroup[] {
+    return [...modules.values()]
+      .filter((entry) => entry.definition.settings?.length)
+      .map((entry) => ({
+        id: entry.definition.id,
+        label: entry.definition.name,
+        ...(entry.definition.description ? { description: entry.definition.description } : {}),
+        settings: entry.definition.settings ?? [],
+      }));
+  },
+
   danglingAnchors(): string[] {
     const provided = new Set([...modules.values()].flatMap(({ definition }) => definition.anchors ?? []));
     return slotRegistry.contributedAnchors().filter((anchor) => !provided.has(anchor));
@@ -285,14 +435,14 @@ export const moduleRegistry = {
       dockRegistry.remove(`${id}:${index}`);
       slotRegistry.remove(`dock:${id}:${index}`);
     }
-    for (const model of (entry.definition.models ?? []) as ModelClass[]) {
-      unregisterModel((model as unknown as { className: string }).className);
+    for (const model of (entry.definition.models ?? []) as EntityClass[]) {
+      unregisterEntity((model as unknown as { className: string }).className);
     }
     // Declared entities are compiled lazily and cached, so withdrawing a module has to drop both
     // the resolvable classes and the cache — otherwise re-registering it would reuse classes
     // compiled against the previous declaration.
     for (const entityName of Object.keys(entry.definition.entities?.manifest.entities ?? {})) {
-      unregisterModel(entityName);
+      unregisterEntity(entityName);
     }
     compiledEntities.delete(id);
     delete moduleStores[id];
@@ -360,6 +510,40 @@ export const moduleRegistry = {
   },
 
   /**
+   * Store members each module keeps for host chrome, keyed by module id.
+   *
+   * Read by `buildTemplateBag` when it assembles the space-tier `modules` namespace — see
+   * `ModuleStoreSurface` for why a module rather than the host declares this. Rebuilt on each call
+   * rather than memoised: modules register and unregister at runtime, and this is consulted once per
+   * bag construction, not per read.
+   */
+  /**
+   * A module's launchers, however it declared them.
+   *
+   * `launcher` and `launchers` concatenated rather than one superseding the other, so a module that
+   * grows a second entry point does not have to rewrite the first — and so every module that
+   * declares only the singular keeps behaving exactly as it did.
+   *
+   * The key is what the rail addresses: the plain module id for a launcher that names none, which
+   * is every module with one, and `<moduleId>:<key>` otherwise.
+   */
+  launchersOf(definition: ModuleDefinition): { key: string; launcher: ModuleLauncher }[] {
+    const all = [...(definition.launcher ? [definition.launcher] : []), ...(definition.launchers ?? [])];
+    return all.map((launcher) => ({
+      key: launcher.key ? `${definition.id}:${launcher.key}` : definition.id,
+      launcher,
+    }));
+  },
+
+  chromeOnlyStoreMembers(): Record<string, readonly string[]> {
+    const out: Record<string, readonly string[]> = {};
+    for (const { definition } of moduleRegistry.all()) {
+      if (definition.chromeOnlyStoreMembers?.length) out[definition.id] = definition.chromeOnlyStoreMembers;
+    }
+    return out;
+  },
+
+  /**
    * Components every registered module contributes, for the host's component registry.
    *
    * Most modules should contribute none: in a schema fragment `Column` is a registry key rather than
@@ -391,20 +575,48 @@ export const moduleRegistry = {
    * classes each time, which would otherwise churn the model registry underneath live queries.
    */
   moduleSchemas(schemas: SchemaPort): unknown[] {
-    const declared = moduleRegistry.all().flatMap(({ definition }) => {
-      if (!definition.entities) return [];
-      const cached = compiledEntities.get(definition.id);
-      if (cached) return cached;
-      const compiled = Object.values(
-        schemas.declare(definition.entities.manifest, {
-          moduleId: definition.id,
-          predicates: definition.entities.predicates,
-        }),
-      );
-      compiledEntities.set(definition.id, compiled);
-      return compiled;
-    });
-    return [...moduleRegistry.models(), ...declared];
+    return [...moduleRegistry.models(), ...declaredEntities(schemas, 'space')];
+  },
+
+  /**
+   * The same, for entities a module declared `scope: 'agent'` — installed into the **root dataset**
+   * rather than into every space.
+   *
+   * Separate from `moduleSchemas` rather than filtered by the caller, because the two go to
+   * different datasets and mixing them is the failure this split exists to prevent: an agent-scoped
+   * entity installed into a shared space would sync one person's private records to a whole
+   * community, and a space-scoped one installed into the root would be queryable nowhere useful.
+   *
+   * `models` are deliberately not offered here. They are backend-written classes, which predate
+   * the manifest path; a module wanting private per-agent storage declares its entities.
+   */
+  agentSchemas(schemas: SchemaPort): unknown[] {
+    return declaredEntities(schemas, 'agent');
+  },
+
+  /**
+   * Every module-declared entity as a neutral manifest entry, whatever scope it installs into.
+   *
+   * What a `scope` drill-down is resolved against: an adapter looks the anchor up by name and reads
+   * the `via` relation's predicate. Module entities were in neither list the host merged — not
+   * foreign schemas, not core vocabulary — so a module declaring a relation and then drilling into
+   * it failed with "no such relation in the current perspective's model manifest", which is a true
+   * statement about a list it was never added to. The Pocket is the first module to have its own
+   * relation to drill through; every one before it anchored on core vocabulary and resolved by luck.
+   *
+   * Both scopes, deliberately. Which dataset an entity is *installed* into says nothing about where
+   * a query naming it runs from — the Pocket's panel reads the root dataset while a space is open,
+   * so filtering this list by scope would put its relations out of reach exactly when they are used.
+   */
+  entityEntries(schemas: SchemaPort): EntityManifestEntry[] {
+    return moduleRegistry.all().flatMap(({ definition }) =>
+      definition.entities
+        ? schemas.entries(definition.entities.manifest, {
+            moduleId: definition.id,
+            predicates: definition.entities.predicates,
+          })
+        : [],
+    );
   },
 
   /**
@@ -428,12 +640,19 @@ export const moduleRegistry = {
       }));
   },
 
-  /** Named schema fragments, keyed `<moduleId>.<fragment>` so two modules can't collide. */
-  schemas(): Record<string, unknown> {
-    const out: Record<string, unknown> = {};
+  /**
+   * Named schema fragments, keyed `<moduleId>.<fragment>` so two modules can't collide.
+   *
+   * Normalised: a part written as a bare node comes back as one with no subject, so a caller has one
+   * shape to handle rather than two. See `ModulePart` — the subject is what lets a placer point a
+   * part at a record the module never knew about.
+   */
+  schemas(): Record<string, { node: SchemaNode; subject?: string }> {
+    const out: Record<string, { node: SchemaNode; subject?: string }> = {};
     for (const { definition } of moduleRegistry.all()) {
-      for (const [name, node] of Object.entries(definition.schemas ?? {})) {
-        out[`${definition.id}.${name}`] = node;
+      for (const [name, part] of Object.entries(definition.schemas ?? {})) {
+        const normalised = 'node' in part ? (part as { node: SchemaNode; subject?: string }) : { node: part };
+        out[`${definition.id}.${name}`] = normalised;
       }
     }
     return out;

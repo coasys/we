@@ -1,6 +1,6 @@
 import type { DesignSystemProps } from '@we/design-types';
 import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
-import { css, html } from 'lit';
+import { css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
@@ -19,12 +19,19 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   border: '1px solid border',
   r: '300',
   color: 'text',
-  // Ring on focus only; fill and outline on hover and press; all three eased — see the note on
-  // `we-input`, which carries the same states and has to look identical beside this.
-  hoverProps: { bg: 'surface-hover', border: '1px solid border-strong' },
-  activeProps: { bg: 'surface-hover', border: '1px solid border-strong' },
-  focusProps: { bg: 'surface-hover', ring: '0 0 0 2px var(--we-ring-color)' },
-  transition: 'box-shadow 200 ease, background-color 200 ease, border-color 200 ease',
+  // Fill and outline on hover and press; on focus the outline becomes the ring's inner pixel. Every
+  // one of those decisions, and the reason this carries no `transition` of its own, is argued on
+  // `we-input` — which has the same states and has to look identical beside this.
+  hoverProps: { bg: 'surface-sunken-hover', border: '1px solid border-hover' },
+  // Pressed resolves to the same fill as hover, deliberately — a field is clicked INTO, not
+  // pushed, so a distinct pressed step is a flash that snaps back on release. See the note on
+  // the `surfaceSunkenHover` role.
+  activeProps: { bg: 'surface-sunken-hover', border: '1px solid border-hover' },
+  focusProps: {
+    bg: 'surface-sunken-hover',
+    border: '1px solid var(--we-ring-color)',
+    ring: '0 0 0 1px var(--we-ring-color)',
+  },
 };
 
 const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
@@ -88,6 +95,21 @@ export default class Textarea extends DesignSystemElement {
 
   @property({ type: String, reflect: true }) value = '';
   @property({ type: String, reflect: true }) name = '';
+  /**
+   * What this control is called, for anybody who cannot see the label beside it.
+   *
+   * Rendered as `aria-label` on the **inner control**, which is the whole point. `we-form-field`
+   * puts `aria-labelledby` on its own `role="group"` wrapper, and naming a group does not name the
+   * widget inside it — so a screen reader announced these as "edit text", "checkbox, not checked",
+   * "slider", with nothing to say which one. `aria-label` on the host does not help either: the
+   * host is not the focusable thing.
+   *
+   * `we-form-field` sets this from its own label when the control does not already carry one, so an
+   * existing field gets a name with no change at its call site. Set it directly for a control that
+   * has no visible label at all.
+   */
+  @property({ type: String }) label = '';
+
   @property({ type: String, reflect: true }) placeholder = '';
   @property({ type: Number }) rows = 3;
   @property({ type: Number, reflect: true }) maxlength = Infinity;
@@ -141,6 +163,7 @@ export default class Textarea extends DesignSystemElement {
         <slot name="start"></slot>
         <textarea
           part="textarea"
+          aria-label=${this.label || nothing}
           .value=${this.value}
           rows=${this.rows}
           maxlength=${this.maxlength}

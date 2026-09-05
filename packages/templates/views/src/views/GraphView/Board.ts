@@ -1,5 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { composerModal, emptyState } from '@we/template-kit';
+import { composerModal, emptyState, field, formModal } from '@we/template-kit';
 
 import { boardLegend } from './Legend';
 import { clearOnEmptySelection, selectNode } from './NodeDetail';
@@ -36,7 +36,7 @@ import { clearOnEmptySelection, selectNode } from './NodeDetail';
  */
 
 /** Which board is open. A picker writes it; the seed refuses to load until it is set. */
-const BOARD = { $local: 'boardId' };
+const BOARD = { $: 'local.boardId' };
 
 const boardCards: SchemaNode = {
   type: 'GraphView',
@@ -116,7 +116,7 @@ const boardCards: SchemaNode = {
     ],
     behaviours: [
       // Before drag-node, which is what makes arming mean anything: both claim a press on a node.
-      { type: 'connect-nodes', options: { armed: { $local: 'connecting' } } },
+      { type: 'connect-nodes', options: { armed: { $: 'local.connecting' } } },
       // The two halves of a double-click: on a node it opens, on empty canvas it creates.
       'node-double-click',
       'canvas-double-click',
@@ -138,25 +138,14 @@ const boardCards: SchemaNode = {
       // One rule per kind the community has named, exactly as the knowledge map does — a board's
       // connections mean the same things and should look the same way.
       {
-        $map: {
-          items: { $local: 'relationshipKinds' },
-          select: {
-            when: { 'data.relationshipTypeId': '$item.id' },
-            style: {
-              showLabel: true,
-              width: 2,
-              color: '$item.color',
-              arrow: { $if: { condition: '$item.directed', then: 'target', else: 'none' } },
-            },
-          },
-        },
+        $: "local.relationshipKinds.map(item, { when: { 'data.relationshipTypeId': item.id }, style: { showLabel: true, width: 2, color: item.color, arrow: item.directed ? 'target' : 'none' } })",
       },
     ],
     // `lock` rather than `pin`: every card is placed already, so there is nothing to hold, and the
     // risk worth guarding against is rearranging somebody else's board by accident.
     controls: ['zoom-in', 'zoom-out', 'fit', 'lock'],
     height: '100%',
-    revision: { $local: 'revision' },
+    revision: { $: '`${datasetStore.currentDataset.id}:${local.revision}`' },
     onNodeClick: selectNode,
     // Clicking empty canvas deselects — the same handler the other three modes carry. The board is
     // where it matters most: it is the mode you click around in, and without it the only way to
@@ -167,10 +156,10 @@ const boardCards: SchemaNode = {
     // id: the click that precedes the second one has already selected the node, and the modal reads
     // the selection.
     onNodeDoubleClick: { $setLocal: 'cardOpen', value: true },
-    onEdgeClick: { $setLocal: 'selectedEdge', from: '$event' },
+    onEdgeClick: { $setLocal: 'selectedEdge', value: { $: 'event' } },
     // The same store call the knowledge map makes: connecting two things means the same thing
     // wherever you drew the line, and both end up in the same form.
-    onEdgeCreate: { $action: 'recordStore.connectNodes', args: ['$event'] },
+    onEdgeCreate: { $action: 'recordStore.connectNodes', args: [{ $: 'event' }] },
     /*
       Double-click empty canvas to make something there.
 
@@ -179,7 +168,7 @@ const boardCards: SchemaNode = {
       where a note goes before you know what it says.
     */
     onCanvasDoubleClick: [
-      { $setLocal: 'newCardAt', from: '$event' },
+      { $setLocal: 'newCardAt', value: { $: 'event' } },
       { $setLocal: 'newCardOpen', value: true },
     ],
     /*
@@ -196,7 +185,7 @@ const boardCards: SchemaNode = {
     */
     onNodeDragEnd: {
       $action: 'recordStore.placeOnBoard',
-      args: [BOARD, '$event.recordId', '$event.recordType', '$event.x', '$event.y'],
+      args: [BOARD, { $: 'event.recordId' }, { $: 'event.recordType' }, { $: 'event.x' }, { $: 'event.y' }],
     },
     /*
       The corner drag, written back — and binding this is what puts the handle on a selected card.
@@ -205,7 +194,7 @@ const boardCards: SchemaNode = {
       fact about the pair. Shrinking a post to fit six of them on a wall is not editing the post, and
       the same post on somebody else's board must not change size because of it.
     */
-    onNodeResize: { $action: 'recordStore.resizeOnBoard', args: [BOARD, '$event'] },
+    onNodeResize: { $action: 'recordStore.resizeOnBoard', args: [BOARD, { $: 'event' }] },
   },
 };
 
@@ -228,11 +217,9 @@ export const boardBar: SchemaNode = {
       props: {
         size: 'sm',
         placeholder: 'Pick a board…',
-        options: {
-          $map: { items: { $local: 'boards' }, select: { label: '$item.title', value: '$item.id' } },
-        },
+        options: { $: 'local.boards.map(item, { label: item.title, value: item.id })' },
         value: BOARD,
-        onChange: { $setLocal: 'boardId', from: '$event.detail' },
+        onChange: { $setLocal: 'boardId', value: { $: 'event.detail' } },
       },
     },
     {
@@ -263,7 +250,7 @@ export const boardBar: SchemaNode = {
               type: 'we-button',
               props: {
                 size: 'sm',
-                variant: { $if: { condition: { $local: 'connecting' }, then: 'primary', else: 'ghost' } },
+                variant: { $: "local.connecting ? 'primary' : 'ghost'" },
                 onClick: { $toggleLocal: 'connecting' },
               },
               children: [{ type: 'we-icon', props: { name: 'flow-arrow' } }, 'Connect'],
@@ -279,7 +266,7 @@ export const boardBar: SchemaNode = {
               type: 'we-button',
               props: {
                 size: 'sm',
-                variant: { $if: { condition: { $local: 'legendOpen' }, then: 'secondary', else: 'ghost' } },
+                variant: { $: "local.legendOpen ? 'secondary' : 'ghost'" },
                 onClick: { $toggleLocal: 'legendOpen' },
               },
               children: [{ type: 'we-icon', props: { name: 'palette' } }, 'Key'],
@@ -300,7 +287,7 @@ export const boardBar: SchemaNode = {
             {
               type: '$if',
               props: {
-                condition: { $count: { items: { $store: 'recordStore.creatableEntities' } } },
+                condition: { $: 'count(recordStore.creatableEntities)' },
                 then: {
                   type: 'we-button',
                   props: {
@@ -319,68 +306,29 @@ export const boardBar: SchemaNode = {
   ],
 };
 
-/** Naming a board. `model.create` rather than the composer — a board is a container, not a document. */
-const newBoardModal: SchemaNode = {
-  type: '$if',
-  props: {
-    condition: { $local: 'newBoardOpen' },
-    then: {
-      type: 'we-modal',
-      props: { close: { $setLocal: 'newBoardOpen', value: false }, maxWidth: 'var(--we-layout-xs)', width: '100%' },
-      $localState: { boardName: { type: 'string', initial: '' } },
-      children: [
-        { type: 'we-text', props: { variant: 'heading-md' }, children: ['New board'] },
-        {
-          type: 'we-form-field',
-          props: { label: 'Name', width: '100%' },
-          children: [
-            {
-              type: 'we-input',
-              props: {
-                width: '100%',
-                placeholder: 'Ideas, retro, roadmap…',
-                value: { $local: 'boardName' },
-                onInput: { $setLocal: 'boardName', from: '$event.detail' },
-              },
-            },
-          ],
-        },
-        {
-          type: 'Row',
-          props: { gap: '300', ax: 'end', width: '100%' },
-          children: [
-            {
-              type: 'we-button',
-              props: { variant: 'ghost', onClick: { $setLocal: 'newBoardOpen', value: false } },
-              children: ['Cancel'],
-            },
-            {
-              type: 'we-button',
-              props: {
-                variant: 'primary',
-                // Nothing about a name is locally judgeable beyond its presence, so this gates on
-                // the value itself rather than dragging in the validation machinery.
-                disabled: { $not: { $local: 'boardName' } },
-                onClick: {
-                  $action: 'model.create',
-                  args: ['CollectionBlock', { kind: 'board', title: { $local: 'boardName' } }],
-                  // Straight into the new board: making one and then having to find it in a picker
-                  // is a step nobody wanted.
-                  onSuccess: [
-                    { $setLocal: 'boardId', from: '$result.id' },
-                    { $setLocal: 'newBoardOpen', value: false },
-                    { $setLocal: 'revision', by: 1 },
-                  ],
-                },
-              },
-              children: ['Create'],
-            },
-          ],
-        },
-      ],
-    },
+/** Naming a board. `record.create` rather than the composer — a board is a container, not a document. */
+const newBoardModal: SchemaNode = formModal({
+  open: { $: 'local.newBoardOpen' },
+  close: { $setLocal: 'newBoardOpen', value: false },
+  title: 'New board',
+  size: 'sm',
+  localState: { boardName: { type: 'string', initial: '' } },
+  children: [field({ name: 'boardName', label: 'Name', placeholder: 'Ideas, retro, roadmap…' })],
+  // Nothing about a name is locally judgeable beyond its presence, so this gates on the value
+  // itself rather than dragging in the validation machinery.
+  disabled: { $: '!local.boardName' },
+  submitLabel: 'Create',
+  submit: {
+    $action: 'record.create',
+    args: ['CollectionBlock', { kind: 'board', title: { $: 'local.boardName' } }],
+    // Straight into the new board: making one and then having to find it in a picker is a step
+    // nobody wanted.
+    onSuccess: [
+      { $setLocal: 'boardId', value: { $: 'result.id' } },
+      { $setLocal: 'revision', value: { $: 'local.revision + 1' } },
+    ],
   },
-};
+});
 
 /**
  * A card, composed.
@@ -409,11 +357,11 @@ const newCardModal: SchemaNode = composerModal({
   saveAction: {
     $action: 'recordStore.createCardOnBoard',
     // `'$arg'` first: the serialized tree, then where it goes.
-    args: ['$arg', { board: BOARD, at: { $local: 'newCardAt' } }],
+    args: [{ $: 'arg' }, { board: BOARD, at: { $: 'local.newCardAt' } }],
   },
   onSaved: [
     { $setLocal: 'newCardAt', value: null },
-    { $setLocal: 'revision', by: 1 },
+    { $setLocal: 'revision', value: { $: 'local.revision + 1' } },
   ],
 });
 
@@ -435,7 +383,7 @@ export const boardCanvas: SchemaNode = {
         else: {
           type: '$if',
           props: {
-            condition: { $count: { items: { $local: 'boards' } } },
+            condition: { $: 'count(local.boards)' },
             then: emptyState({ icon: 'squares-four', label: 'boards', message: 'Pick a board to open it.' }),
             else: emptyState({
               icon: 'squares-four',

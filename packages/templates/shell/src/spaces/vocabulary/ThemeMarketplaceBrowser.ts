@@ -17,16 +17,8 @@ export const themeMarketplaceBrowser: SchemaNode = marketplaceList({
   layout: 'list',
   card: {
     mode: 'compact',
-    installed: {
-      $find: {
-        items: { $store: 'themeStore.spaceThemes' },
-        where: { name: '$marketplaceTheme.name' },
-        select: 'version',
-      },
-    },
-    onInstall: { $action: 'themeStore.installToSpace', args: ['$marketplaceTheme.id'] },
-    isLoading: {
-      $eq: [{ $store: 'themeStore.operationLoading' }, { $concat: ['space-install:', '$marketplaceTheme.id'] }],
-    },
+    installed: { $: 'find(themeStore.spaceThemes, { name: marketplaceTheme.name }).version' },
+    onInstall: { $action: 'themeStore.installToSpace', args: [{ $: 'marketplaceTheme.id' }] },
+    isLoading: { $: 'themeStore.operationLoading == `space-install:${marketplaceTheme.id}`' },
   },
 });

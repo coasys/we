@@ -8,6 +8,15 @@ interface MenuItemBase {
   label: string;
   icon?: string;
   disabled?: boolean;
+  /**
+   * Leave the entry out while true — the way a schema makes an item conditional.
+   *
+   * A schema cannot wrap an entry in a conditional: an entry carries a handler, and a value
+   * expression cannot hold one. So the condition travels *on* the entry — `hidden: { $:
+   * '!modules.call.focusedId' }` — and the menu keeps the entry's place in the list so its
+   * neighbours are not rebuilt when it comes and goes.
+   */
+  hidden?: boolean;
 }
 
 /**
@@ -16,7 +25,8 @@ interface MenuItemBase {
 export interface DropdownMenuAction extends MenuItemBase {
   type?: 'action';
   variant?: 'default' | 'danger';
-  onAction: () => void;
+  /** Optional when the menu has `onSelect`, which is how a schema handles rows that came from data. */
+  onAction?: () => void;
 }
 
 /**
@@ -61,9 +71,37 @@ export type DropdownMenuEntry = DropdownMenuAction | DropdownMenuToggle | Dropdo
  */
 export interface DropdownMenuProps {
   items: DropdownMenuEntry[];
+  /**
+   * Fired with the action item that was chosen, after its own `onAction` if it has one.
+   *
+   * What lets a schema build a menu out of data: `items` can be a comprehension over rows —
+   * `local.columns.map(c, { id: c.id, label: c.title })` — which cannot attach a handler per row,
+   * so the menu reports the row and one handler on the menu reads it as `arg`.
+   */
+  onSelect?: (item: DropdownMenuAction) => void;
   placement?: Placement;
   triggerLabel?: string;
   triggerIcon?: string;
+  /**
+   * How the trigger is drawn, from `we-button`'s own variants. Defaults to `secondary` — a filled
+   * neutral chip, which is what a menu standing on its own should look like.
+   *
+   * `ghost` is the one that matters, and the reason this exists: a menu that belongs to a *row* of
+   * controls has to look like one of them rather than like the row's only filled thing. Without it
+   * the call bar could not use this component at all — it hand-rolled a `we-popover` around a ghost
+   * square instead — and the shell's panel titlebar put a filled pill among four ghost squares.
+   */
+  triggerVariant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline' | 'bare';
+  /**
+   * Tooltip on the trigger, and its accessible name.
+   *
+   * Worth setting on any icon-only trigger, which otherwise says only what its glyph says. A menu's
+   * subject is exactly the thing a glyph is worst at carrying — "position", "move to", "more
+   * controls" are all `dots-three`-shaped — and the neighbours an icon-only trigger sits among are
+   * usually tooltipped already, so leaving it out reads as the one control that will not say what
+   * it does.
+   */
+  triggerTitle?: string;
   /**
    * Trigger size, matching `we-button`'s scale.
    *

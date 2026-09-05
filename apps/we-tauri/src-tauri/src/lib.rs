@@ -1,7 +1,7 @@
 mod accounts;
+mod app_server;
 mod app_state;
 mod commands;
-mod app_server;
 mod generated;
 
 // Declared by path rather than through `generated/mod.rs`: that module is only emitted on the
@@ -108,12 +108,11 @@ fn enable_media(app: &tauri::App) {
 
 pub fn run() {
     // Find a free port for the GraphQL server
-    let graphql_port = find_port(12000, 13000)
-        .expect("Failed to find free port");
-    
+    let graphql_port = find_port(12000, 13000).expect("Failed to find free port");
+
     // Generate a credential token
     let req_credential = Uuid::new_v4().to_string();
-    
+
     let home = dirs::home_dir().expect("Failed to get home directory");
     let config_dir = config_dir();
     let default_data_path = seed_data_path(&home);
@@ -133,13 +132,13 @@ pub fn run() {
     // debugging something specific, and a settings screen quietly overriding that would be the
     // opposite of helpful.
     if !executor_settings.log_levels.is_empty() && std::env::var("RUST_LOG").is_err() {
-        let rust_log = rust_executor::logging::build_rust_log_from_config(&executor_settings.log_levels);
+        let rust_log =
+            rust_executor::logging::build_rust_log_from_config(&executor_settings.log_levels);
         std::env::set_var("RUST_LOG", rust_log);
     }
     println!("AD4M data path: {}", app_data_path.display());
 
-    std::fs::create_dir_all(&app_data_path)
-        .expect("Failed to create app data directory");
+    std::fs::create_dir_all(&app_data_path).expect("Failed to create app data directory");
 
     // Scaffold the directory only when the executor has never run against it, matching the
     // electron host's `ensureDataPathInitialised`. `init` is idempotent apart from one branch: an
@@ -147,7 +146,10 @@ pub fn run() {
     // cleaned. Calling it unconditionally meant an old enough account was silently wiped on the
     // boot that opened it — where electron would not have made the call at all.
     if !app_data_path.join("mainnet_seed.seed").exists() {
-        println!("Data path not initialised, scaffolding: {}", app_data_path.display());
+        println!(
+            "Data path not initialised, scaffolding: {}",
+            app_data_path.display()
+        );
         rust_executor::init::init(
             Some(app_data_path.to_str().unwrap().to_string()),
             None, // No bootstrap seed override — the account uses mainnet.
@@ -192,7 +194,7 @@ pub fn run() {
                     eprintln!("Warning: Failed to get resource directory");
                 }
             }
-            
+
             let config = Ad4mConfig {
                 admin_credential: Some(req_credential.clone()),
                 app_data_path: Some(app_data_path.to_str().unwrap().to_string()),
@@ -208,12 +210,12 @@ pub fn run() {
                 mcp_port: Some(executor_settings.mcp_port),
                 ..Default::default()
             };
-            
+
             // Start the executor in the background
             tauri::async_runtime::spawn(async move {
                 rust_executor::run(config).await;
             });
-            
+
             // WebRTC needs the webview told it may have the devices — see `enable_media`.
             #[cfg(target_os = "linux")]
             enable_media(app);
@@ -225,7 +227,7 @@ pub fn run() {
             //     let window = app.get_webview_window("main").unwrap();
             //     window.open_devtools();
             // }
-            
+
             Ok(())
         })
         .run(tauri::generate_context!())

@@ -1,11 +1,9 @@
 // Shared block styles (used by both BlockComposer and BlockRenderer)
-@use './blocks.scss';
-@use './block-inputs.scss';
+@use './blocks';
+@use './block-inputs';
 
-// Components
-@use '../components/BlockComposer.scss';
-@use '../components/BlockMenu/BlockMenu.scss';
-
-// Plugins
-@use '../plugins/BlockHandlesPlugin/BlockHandlesPlugin.scss';
-@use '../plugins/PlaceholdersPlugin/PlaceholdersPlugin.scss';
+// Editor chrome
+@use './editor';
+@use './handles';
+@use './placeholders';
+@use '../components/BlockMenu/BlockMenu';

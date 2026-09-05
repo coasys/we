@@ -1,8 +1,8 @@
 import type { SchemaNode } from '@we/schema-shared';
 import { cardList, cardShell, emptyState, peopleRow } from '@we/template-kit';
 
-const hasConversationSubgroupModel = {
-  $find: { items: { $store: 'datasetStore.currentDatasetModels' }, where: { name: 'ConversationSubgroup' } },
+const hasConversationSubgroupRecord = {
+  $: "find(datasetStore.currentDatasetEntities, { name: 'ConversationSubgroup' })",
 };
 
 /*
@@ -13,37 +13,43 @@ const hasConversationSubgroupModel = {
   nothing. The distinction is real but not the reader's problem: what they asked was whether this
   space has Flux conversation subgroups, and the answer is no either way.
 */
-const noModel: SchemaNode = emptyState({ icon: 'chat-dots', label: 'Flux conversation subgroups', delay: 0 });
+const noRecord: SchemaNode = emptyState({ icon: 'chat-dots', label: 'Flux conversation subgroups', delay: 0 });
 const noRows: SchemaNode = emptyState({ icon: 'chat-dots', label: 'Flux conversation subgroups', searchable: true });
 
 export const fluxConversationSubgroupsList: SchemaNode = {
   type: '$if',
   props: {
-    condition: hasConversationSubgroupModel,
+    condition: hasConversationSubgroupRecord,
     then: cardList({
       query: {
         entity: 'ConversationSubgroup',
         dataset: '$currentDataset',
         where: {
           OR: [
-            { subgroupName: { contains: { $local: 'searchText' } } },
-            { summary: { contains: { $local: 'searchText' } } },
+            { subgroupName: { contains: { $: 'local.searchText' } } },
+            { summary: { contains: { $: 'local.searchText' } } },
           ],
         },
-        order: { timestamp: { $local: 'sortDirection' } },
+        order: { timestamp: { $: 'local.sortDirection' } },
         limit: 20,
       },
       as: 'subgroup',
       empty: noRows,
       children: [
         cardShell({
+          drag: {
+            entity: 'ConversationSubgroup',
+            id: { $: 'subgroup.id' },
+            label: { $: 'subgroup.subgroupName' },
+            icon: 'chat-dots',
+          },
           header: [
             {
               type: 'Row',
               props: { ay: 'center', gap: '300' },
               children: [
                 { type: 'we-icon', props: { name: 'chat-dots' } },
-                { type: 'we-text', props: { variant: 'heading-sm' }, children: ['$subgroup.subgroupName'] },
+                { type: 'we-text', props: { variant: 'heading-sm' }, children: [{ $: 'subgroup.subgroupName' }] },
               ],
             },
           ],
@@ -51,15 +57,15 @@ export const fluxConversationSubgroupsList: SchemaNode = {
             {
               type: '$if',
               props: {
-                condition: '$subgroup.summary',
-                then: { type: 'we-text', props: { color: 'text-muted' }, children: ['$subgroup.summary'] },
+                condition: { $: 'subgroup.summary' },
+                then: { type: 'we-text', props: { color: 'text-muted' }, children: [{ $: 'subgroup.summary' }] },
               },
             },
-            peopleRow({ items: '$subgroup.participants', dids: true, noun: 'Participant' }),
+            peopleRow({ items: { $: 'subgroup.participants' }, dids: true, noun: 'Participant' }),
           ],
         }),
       ],
     }),
-    else: noModel,
+    else: noRecord,
   },
 };

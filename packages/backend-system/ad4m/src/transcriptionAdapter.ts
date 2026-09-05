@@ -8,8 +8,8 @@
  */
 import type { Ad4mClient } from '@coasys/ad4m';
 import type {
-  TranscriptionModel,
   TranscriptionPort,
+  TranscriptionRecord,
   TranscriptionStream,
   TranscriptionTuning,
 } from '@we/backend-shared';
@@ -47,14 +47,14 @@ export function createAd4mTranscriptionPort(backendClient: unknown): Transcripti
       // transcription model unready.
       return Boolean(status.downloaded || status.loaded);
     } catch {
-      // No row yet — the executor raises ModelNotFound rather than returning an empty status, and an
+      // No row yet — the executor raises EntityNotFound rather than returning an empty status, and an
       // API-backed model has nothing to download so may never get one.
       return true;
     }
   }
 
   return {
-    async models(): Promise<TranscriptionModel[]> {
+    async models(): Promise<TranscriptionRecord[]> {
       const all = (await client.ai.getModels()) as unknown as Ad4mAiModel[];
       const transcription = all.filter((m) => m.modelType === TRANSCRIPTION_MODEL_TYPE);
 

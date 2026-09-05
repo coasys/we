@@ -31,8 +31,11 @@
  * generate its groups from a `$query` — see `$toggleLocalIn` in OPERATORS.md.
  */
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
+import { expr } from '@we/schema-shared';
+import type { AvatarTone } from '@we/tokens';
 
 import type { Content } from '../types.ts';
+import { badgedAvatar } from './badgedAvatar.ts';
 
 /**
  * How long the rail takes to open, in ms, and the duration its own reveals agree on.
@@ -113,6 +116,15 @@ export interface RailShellOptions {
   /** Start open. Defaults to false. */
   defaultExpanded?: boolean;
   /**
+   * Extra `$localState` fields, declared on the rail's own node.
+   *
+   * A rail holds controls, and a control that opens a dialog needs a flag declared by an *ancestor
+   * of the button*, not merely of the dialog — undeclared, `$setLocal` warns and no-ops, so the
+   * control renders, takes the click and does nothing. The rail is the only node above every item
+   * in it, so a caller with such a control has nowhere else to put one.
+   */
+  localState?: Record<string, unknown>;
+  /**
    * Ids of groups that start collapsed.
    *
    * Here rather than an option on `railGroup`, because a group declaring its own `$localState`
@@ -130,13 +142,7 @@ export function railShell(opts: RailShellOptions): SchemaNode {
   return {
     type: 'Column',
     props: {
-      width: {
-        $if: {
-          condition: { $local: 'expanded' },
-          then: opts.expandedWidth ?? '240px',
-          else: opts.collapsedWidth ?? '80px',
-        },
-      },
+      width: expr`local.expanded ? ${opts.expandedWidth ?? '240px'} : ${opts.collapsedWidth ?? '80px'}`,
       // The token, not a number of ms — this is the one duration here that can be a token, and a
       // theme's animationSpeed preset overrides it. See DURATION_MS.
       transition: 'width 300 ease-in-out',
@@ -163,6 +169,8 @@ export function railShell(opts: RailShellOptions): SchemaNode {
         ...(opts.persistKey && { persist: opts.persistKey }),
       },
       collapsedGroups: { type: 'array', initial: opts.initialCollapsedGroups ?? [] },
+      // Last, so a caller's field cannot shadow the two the rail runs on.
+      ...(opts.localState ?? {}),
     },
     children: [
       ...(opts.header ? [opts.header] : []),
@@ -229,7 +237,7 @@ export function railButton(opts: RailButtonOptions): SchemaNode {
         type: 'we-button',
         props: {
           square: true,
-          variant: { $if: { condition: opts.active ?? false, then: 'secondary', else: 'ghost' } },
+          variant: expr`${opts.active ?? false} ? 'secondary' : 'ghost'`,
           ...(opts.onClick !== undefined && { onClick: opts.onClick }),
         },
         children: [{ type: 'we-icon', props: { name: opts.icon } }],
@@ -242,8 +250,14 @@ export interface RailItemOptions {
   label: Content;
   /** Phosphor icon name. Ignored when `avatar` is given. */
   icon?: SchemaProp;
-  /** `{ src, name }` — a space or a person, rather than a destination. */
-  avatar?: { src: SchemaProp; name: SchemaProp };
+  /**
+   * A space or a person, rather than a destination.
+   *
+   * `hash` is optional and is the stable id — a uuid, a DID. It seeds the generated colour behind
+   * the initials, so the colour survives a rename; pass a name and it does not. A row without one
+   * still gets a colour, seeded from the name it has.
+   */
+  avatar?: { src: SchemaProp; name: SchemaProp; hash?: SchemaProp };
   /** A count beside the label. Only visible while the rail is open. */
   badge?: Content;
   /** Highlights the row. Usually a `$eq` against a route segment or a store's active id. */
@@ -261,20 +275,23 @@ export interface RailItemOptions {
   /**
    * Ring the row's avatar and mark it with a glyph — "something is live here".
    *
-   * A ring rather than a dot, and on the avatar rather than beside the label, for two reasons that
-   * both come from the collapsed rail: a label-side badge is not rendered at all while the rail is
-   * closed, which is exactly when an ambient cue is worth having, and the dot position on
-   * `we-avatar` already means `online`.
+   * A ring rather than a dot, and on the avatar rather than beside the label, for one reason that
+   * comes from the collapsed rail: a label-side badge is not rendered at all while the rail is
+   * closed, which is exactly when an ambient cue is worth having.
    *
-   * `tone` takes a colour role, and `success` or the accent is almost always right. Avoid `danger`:
-   * red is the app's word for something being wrong, and spending it on a healthy call in progress
-   * makes the genuinely wrong things harder to see.
+   * `tone` is an {@link AvatarTone}, shared with `AvatarStack` so a tone means one colour wherever
+   * it is written. `success` is the default and is almost always right. Avoid `danger`: red is the
+   * app's word for something being wrong, and spending it on a healthy call in progress makes the
+   * genuinely wrong things harder to see.
    *
    * The glyph is what makes it legible — a coloured ring says "something", an icon says what. It
    * must read correctly without motion: a theme's reduced-motion setting zeroes the animation
    * tokens, so anything relying on a pulse to be noticed is invisible to those users.
+   *
+   * Needs an `avatar`; an icon row is a destination rather than a place, and has nothing for a
+   * presence mark to be about. Drawn by {@link badgedAvatar}, which owns the geometry.
    */
-  live?: { when: SchemaProp; icon: string; tone?: string };
+  live?: { when: SchemaProp; icon: string; tone?: AvatarTone };
 }
 
 export function railItem(opts: RailItemOptions): SchemaNode {
@@ -283,63 +300,38 @@ export function railItem(opts: RailItemOptions): SchemaNode {
   const live = opts.live;
   const tone = live?.tone ?? 'success';
 
-  const face: SchemaNode = opts.avatar
-    ? {
-        type: 'we-avatar',
-        props: { image: opts.avatar.src, initials: opts.avatar.name, hash: opts.avatar.name, size: 'sm' },
-      }
+  const avatar = opts.avatar;
+  const face: SchemaNode = avatar
+    ? badgedAvatar({ avatar: { src: avatar.src, name: avatar.name, hash: avatar.hash }, size: 'sm' })
     : { type: 'we-icon', props: { name: opts.icon ?? '' } };
 
   /*
-    The ring and its glyph, wrapped around whatever the row's mark is.
+    The live mark: the same face, ringed and badged.
 
-    The ring is drawn on a box around the avatar rather than on the avatar itself: `we-avatar` spends
-    its own ring on `[selected]` and its dot on `[online]`, and borrowing either would mean this
-    reads as one of those instead. A box also keeps the badge's corner well defined, which an
-    `avatar` radius following the theme would not.
+    All of the geometry moved to `badgedAvatar`, which is where it stopped being wrong at every
+    avatar size but one. What is left here is the *condition* — when a rail row is live — which is
+    the only part of this that was ever the rail's business.
+
+    Only rows with an avatar can be marked, which is what `live` has always documented itself as
+    doing ("ring the row's avatar"). An icon row is a destination rather than a place, so there is
+    nothing there for a presence mark to be about.
   */
-  const mark: SchemaNode = live
-    ? {
-        type: '$if',
-        props: {
-          condition: live.when,
-          then: {
-            type: 'Column',
-            props: {
-              position: 'relative',
-              // Round, because it rings something round. `full` is an ellipse on a non-square box,
-              // and this box is square by construction — it holds one `sm` avatar.
-              r: 'full',
-              border: `2px solid ${tone}`,
-              // The ring sits *outside* the avatar rather than over its edge, so a face is never
-              // clipped by the thing announcing it.
-              p: '100',
-            },
-            children: [
-              face,
-              {
-                // The glyph's disc is a wrapper, not the icon: `we-icon` takes layout props only, so
-                // `bg`, `r` and `p` on it resolve to nothing and the badge is a bare glyph on the
-                // avatar's edge. The validator catches this, which is how it was found.
-                type: 'Column',
-                props: {
-                  position: 'absolute',
-                  bottom: '0',
-                  right: '0',
-                  bg: tone,
-                  r: 'full',
-                  p: '100',
-                  ax: 'center',
-                  ay: 'center',
-                },
-                children: [{ type: 'we-icon', props: { name: live.icon, size: '10px', color: 'on-accent' } }],
-              },
-            ],
+  const mark: SchemaNode =
+    live && avatar
+      ? {
+          type: '$if',
+          props: {
+            condition: live.when,
+            then: badgedAvatar({
+              avatar: { src: avatar.src, name: avatar.name, hash: avatar.hash },
+              size: 'sm',
+              ring: tone,
+              badge: { icon: live.icon, tone },
+            }),
+            else: face,
           },
-          else: face,
-        },
-      }
-    : face;
+        }
+      : face;
 
   const button: SchemaNode = {
     type: 'we-button',
@@ -362,8 +354,8 @@ export function railItem(opts: RailItemOptions): SchemaNode {
         `accent-muted` is a small chroma shift from the `neutral-100` it replaces rather than a
         redesign — same lightness, the theme's primary saturation instead of its neutral one.
       */
-      bg: { $if: { condition: active, then: 'accent-muted', else: '' } },
-      color: { $if: { condition: active, then: 'accent-text', else: 'text-muted' } },
+      bg: expr`${active} ? 'accent-muted' : ''`,
+      color: expr`${active} ? 'accent-text' : 'text-muted'`,
       /*
         The current row deepens on hover rather than losing its colour.
 
@@ -377,20 +369,8 @@ export function railItem(opts: RailItemOptions): SchemaNode {
         answer to a different question. The inactive arm repeats ghost's own values, since replacing
         the object means restating everything it would have set.
       */
-      hoverProps: {
-        $if: {
-          condition: active,
-          then: { bg: 'surface-active', color: 'accent-text' },
-          else: { bg: 'surface-hover', color: 'text' },
-        },
-      },
-      activeProps: {
-        $if: {
-          condition: active,
-          then: { bg: 'surface-active', color: 'accent-text' },
-          else: { bg: 'surface-active', color: 'text' },
-        },
-      },
+      hoverProps: expr`${active} ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-hover', color: 'text' }`,
+      activeProps: expr`${active} ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-active', color: 'text' }`,
     },
     children: [
       mark,
@@ -405,7 +385,7 @@ export function railItem(opts: RailItemOptions): SchemaNode {
       {
         type: '$if',
         props: {
-          condition: { $local: 'expanded' },
+          condition: { $: 'local.expanded' },
           enterTransition: revealInline,
           exitTransition: revealInline,
           then: {
@@ -474,7 +454,7 @@ export function railItem(opts: RailItemOptions): SchemaNode {
 export interface RailGroupOptions {
   /**
    * Identifies the group in the shell's `collapsedGroups` set. Unique within one rail, and free to
-   * be an expression (`'$category.id'`) — which is the point: groups can come from data.
+   * be an expression (`{ $: 'category.id' }`) — which is the point: groups can come from data.
    */
   id: SchemaProp;
   label: Content;
@@ -493,8 +473,8 @@ export interface RailGroupOptions {
 }
 
 export function railGroup(opts: RailGroupOptions): SchemaNode {
-  const isCollapsed = { $in: [opts.id, { $local: 'collapsedGroups' }] };
-  const isExpanded = { $local: 'expanded' };
+  const isCollapsed = expr`${opts.id} in local.collapsedGroups`;
+  const isExpanded = { $: 'local.expanded' };
 
   const items: SchemaNode = opts.reorderable
     ? {
@@ -525,8 +505,8 @@ export function railGroup(opts: RailGroupOptions): SchemaNode {
           width: '100%',
           ay: 'center',
           gap: '100',
-          opacity: { $if: { condition: isExpanded, then: 1, else: 0 } },
-          pointerEvents: { $if: { condition: isExpanded, then: 'auto', else: 'none' } },
+          opacity: expr`${isExpanded} ? 1 : 0`,
+          pointerEvents: expr`${isExpanded} ? 'auto' : 'none'`,
           transition: 'opacity 300 ease-in-out',
         },
         children: [
@@ -549,7 +529,7 @@ export function railGroup(opts: RailGroupOptions): SchemaNode {
               {
                 type: 'we-icon',
                 props: {
-                  name: { $if: { condition: isCollapsed, then: 'caret-right', else: 'caret-down' } },
+                  name: expr`${isCollapsed} ? 'caret-right' : 'caret-down'`,
                   size: 'xs',
                   color: 'text-faint',
                 },
@@ -611,7 +591,7 @@ export function railGroup(opts: RailGroupOptions): SchemaNode {
       {
         type: '$animate',
         props: {
-          condition: { $not: isCollapsed },
+          condition: expr`!${isCollapsed}`,
           enterTransition: revealBlock,
           exitTransition: revealBlock,
         },

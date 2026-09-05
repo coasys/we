@@ -42,7 +42,7 @@ Recommended pattern — header above tabs (routes on ROOT, $routes outlet nested
     ]},
     {
       "type": "we-tabs",
-      "props": { "selectedKey": { "$store": "routeStore.segments.0" } },
+      "props": { "selectedKey": { "$": "routeStore.segments[0]" } },
       "children": [
         { "type": "we-tab", "props": { "key": "posts", "label": "Posts", "onClick": { "$action": "routeStore.navigate", "args": ["/posts"] } } },
         { "type": "we-tab", "props": { "key": "articles", "label": "Articles", "onClick": { "$action": "routeStore.navigate", "args": ["/articles"] } } }
@@ -81,9 +81,9 @@ WRONG — two common mistakes that produce empty tabs (validator will catch both
   "children": [{ "type": "$routes" }]
 }
 
-Alternative: single onChange on we-tabs (fires with $event.detail.value = selected key):
-{ "onChange": { "$action": "routeStore.navigate", "args": [{ "$concat": ["/", "$arg.detail.value"] }] } }
-This replaces all per-tab onClick handlers but requires $concat to build the path.
+Alternative: single onChange on we-tabs (fires with event.detail.value = selected key):
+{ "onChange": { "$action": "routeStore.navigate", "args": [{ "$": "\`/\${arg.detail.value}\`" }] } }
+This replaces all per-tab onClick handlers but requires an interpolation to build the path.
 
 Nested routing example:
 {

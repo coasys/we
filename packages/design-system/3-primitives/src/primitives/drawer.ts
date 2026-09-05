@@ -58,6 +58,14 @@ export default class Drawer extends OverlayElement {
 
   @property({ type: String, reflect: true }) position: DrawerPosition = 'right';
   @property({ type: Boolean }) hideclosebutton = false;
+  /**
+   * What to call this drawer, for a screen reader.
+   *
+   * A drawer has one slot and no header, so unlike `we-modal` there is nothing here to point
+   * `aria-labelledby` at — the name has to be given. Announced as "dialog" without it, which is a
+   * true statement about focus and no statement at all about what is in front of you.
+   */
+  @property({ type: String }) label = '';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
   @property({ attribute: false }) close: () => void = () => {};
 
@@ -77,9 +85,20 @@ export default class Drawer extends OverlayElement {
   }
 
   private _onKeyDown(e: KeyboardEvent) {
+    // Topmost only — see the note on `we-modal`'s handler.
+    if (!this.isTopmostOverlay()) return;
     if (e.key === 'Escape') {
       this.close();
+    } else if (e.key === 'Tab') {
+      // A drawer says `aria-modal="true"` and had no trap at all, so Tab walked straight out behind
+      // the scrim while a screen reader went on saying "dialog". See `OverlayElement.trapFocus`.
+      this.trapFocus(e);
     }
+  }
+
+  /** Focus goes in once the slotted content exists, and back where it came from on close. */
+  firstUpdated() {
+    this.captureFocus();
   }
 
   render() {
@@ -87,7 +106,13 @@ export default class Drawer extends OverlayElement {
 
     return html`
       <div part="backdrop" @click=${this.close}></div>
-      <div part="base" role="dialog" aria-modal="true" style=${styleMap({ ...posStyles, ...this.styles })}>
+      <div
+        part="base"
+        role="dialog"
+        aria-modal="true"
+        aria-label=${this.label || nothing}
+        style=${styleMap({ ...posStyles, ...this.styles })}
+      >
         ${
           !this.hideclosebutton
             ? html`

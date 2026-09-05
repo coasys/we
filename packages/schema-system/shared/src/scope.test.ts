@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { ModelEntry, StoreEntry } from './contextTypes';
+import type { EntityEntry, StoreEntry } from './contextTypes';
 import { findNodeChain, findScopeRef, getScopeAtNode, inferRefKind, scopeRefToToken } from './scope';
 import type { SchemaNode } from './types';
 
@@ -16,7 +16,7 @@ const storeEntries: StoreEntry[] = [
   },
 ];
 
-const models: ModelEntry[] = [
+const models: EntityEntry[] = [
   {
     name: 'Space',
     className: 'Space',
@@ -113,19 +113,39 @@ describe('getScopeAtNode', () => {
       children: [{ id: 'card', type: 'Column' }],
     };
     const item = getScopeAtNode(tree, 'card', { storeEntries, models }).find((g) => g.kind === 'item');
-    expect(item?.refs.map((r) => r.path)).toContain('$space.name');
-    expect(item?.refs.map((r) => r.path)).toContain('$space.location');
+    expect(item?.refs.map((r) => r.path)).toContain('space.name');
+    expect(item?.refs.map((r) => r.path)).toContain('space.location');
   });
 
   it('infers $each item fields from a store array source', () => {
     const tree: SchemaNode = {
       id: 'root',
       type: '$each',
-      props: { items: { $store: 'sessionStore.personalSpaces' } },
+      props: { items: { $: 'sessionStore.personalSpaces' } },
       children: [{ id: 'card', type: 'Column' }],
     };
     const item = getScopeAtNode(tree, 'card', { storeEntries, models }).find((g) => g.kind === 'item');
-    expect(item?.refs.map((r) => r.path)).toEqual(['$item', '$item.uuid', '$item.name']);
+    expect(item?.refs.map((r) => r.path)).toEqual(['item', 'item.uuid', 'item.name']);
+  });
+
+  it('passes the item shape through a filter and reads a map projection', () => {
+    const filtered: SchemaNode = {
+      id: 'root',
+      type: '$each',
+      props: { items: { $: "sessionStore.personalSpaces.filter(s, s.name != '')" } },
+      children: [{ id: 'card', type: 'Column' }],
+    };
+    const item = getScopeAtNode(filtered, 'card', { storeEntries, models }).find((g) => g.kind === 'item');
+    expect(item?.refs.map((r) => r.path)).toEqual(['item', 'item.uuid', 'item.name']);
+
+    const mapped: SchemaNode = {
+      id: 'root',
+      type: '$each',
+      props: { items: { $: 'sessionStore.personalSpaces.map(s, { label: s.name, value: s.uuid })' } },
+      children: [{ id: 'card', type: 'Column' }],
+    };
+    const projected = getScopeAtNode(mapped, 'card', { storeEntries, models }).find((g) => g.kind === 'item');
+    expect(projected?.refs.map((r) => r.path)).toEqual(['item', 'item.label', 'item.value']);
   });
 
   it('infers $each item fields from a literal array', () => {
@@ -136,14 +156,14 @@ describe('getScopeAtNode', () => {
       children: [{ id: 'card', type: 'Column' }],
     };
     const item = getScopeAtNode(tree, 'card', { storeEntries }).find((g) => g.kind === 'item');
-    expect(item?.refs.map((r) => r.path)).toEqual(['$post', '$post.title', '$post.author']);
+    expect(item?.refs.map((r) => r.path)).toEqual(['post', 'post.title', 'post.author']);
   });
 
   it('shadows an outer $each that reuses the same `as` name', () => {
     const tree: SchemaNode = {
       id: 'root',
       type: '$each',
-      props: { items: { $store: 'sessionStore.personalSpaces' } },
+      props: { items: { $: 'sessionStore.personalSpaces' } },
       children: [
         {
           id: 'inner',
@@ -155,7 +175,7 @@ describe('getScopeAtNode', () => {
     };
     const itemGroups = getScopeAtNode(tree, 'leaf', { storeEntries }).filter((g) => g.kind === 'item');
     expect(itemGroups).toHaveLength(1);
-    expect(itemGroups[0].refs.map((r) => r.path)).toEqual(['$item', '$item.label']);
+    expect(itemGroups[0].refs.map((r) => r.path)).toEqual(['item', 'item.label']);
   });
 
   it('lists one group per store, plus context, ordered nearest-scope-first', () => {
@@ -231,16 +251,20 @@ describe('store members that hold model instances', () => {
 describe('inferRefKind', () => {
   const tree: SchemaNode = {
     id: 'root',
-    type: 'Column',
+    type: '$each',
+    props: { items: [{ title: 'a' }], as: 'post' },
     $localState: { draft: { type: 'string', initial: '' } },
+    children: [{ id: 'leaf', type: 'we-text' }],
   };
-  const groups = getScopeAtNode(tree, 'root', { storeEntries });
+  const groups = getScopeAtNode(tree, 'leaf', { storeEntries });
 
   it('resolves paths the listed scope does not contain', () => {
     // The whole point: a store member whose metadata is incomplete is still reachable.
     expect(inferRefKind('sessionStore.somethingUndocumented.deep', groups)).toBe('store');
     expect(inferRefKind('draft.nested', groups)).toBe('local');
-    expect(inferRefKind('$post.title', groups)).toBe('context');
+    expect(inferRefKind('local.draft', groups)).toBe('local');
+    expect(inferRefKind('post.title', groups)).toBe('item');
+    expect(inferRefKind('me.did', groups)).toBe('context');
   });
 
   it('refuses paths whose first segment matches nothing known', () => {
@@ -251,11 +275,11 @@ describe('inferRefKind', () => {
 });
 
 describe('token conversion', () => {
-  it('builds the right token per ref kind', () => {
-    expect(scopeRefToToken({ kind: 'store', path: 'a.b' })).toEqual({ $store: 'a.b' });
-    expect(scopeRefToToken({ kind: 'local', path: 'draft' })).toEqual({ $local: 'draft' });
-    expect(scopeRefToToken({ kind: 'item', path: '$post.name' })).toBe('$post.name');
-    expect(scopeRefToToken({ kind: 'context', path: '$me.did' })).toBe('$me.did');
+  it('builds the expression per ref kind', () => {
+    expect(scopeRefToToken({ kind: 'store', path: 'a.b' })).toEqual({ $: 'a.b' });
+    expect(scopeRefToToken({ kind: 'local', path: 'draft' })).toEqual({ $: 'local.draft' });
+    expect(scopeRefToToken({ kind: 'item', path: 'post.name' })).toEqual({ $: 'post.name' });
+    expect(scopeRefToToken({ kind: 'context', path: 'me.did' })).toEqual({ $: 'me.did' });
   });
 
   it('matches a token back to its scope ref', () => {
@@ -265,15 +289,15 @@ describe('token conversion', () => {
       $localState: { open: { type: 'boolean', initial: false } },
     };
     const groups = getScopeAtNode(tree, 'root', { storeEntries });
-    expect(findScopeRef(groups, { $local: 'open' })?.id).toBe('local:open');
-    expect(findScopeRef(groups, { $store: 'sessionStore.isWeSpace' })?.id).toBe('store:sessionStore.isWeSpace');
-    expect(findScopeRef(groups, '$me.did')?.id).toBe('context:$me.did');
+    expect(findScopeRef(groups, { $: 'local.open' })?.id).toBe('local:open');
+    expect(findScopeRef(groups, { $: 'sessionStore.isWeSpace' })?.id).toBe('store:sessionStore.isWeSpace');
+    expect(findScopeRef(groups, { $: 'me.did' })?.id).toBe('context:me.did');
   });
 
   it('returns null for tokens that are not plain references', () => {
     const groups = getScopeAtNode({ id: 'root', type: 'Column' }, 'root', { storeEntries });
-    expect(findScopeRef(groups, { $concat: ['a'] })).toBeNull();
+    expect(findScopeRef(groups, { $: '`${a}`' })).toBeNull();
     expect(findScopeRef(groups, 'plain text')).toBeNull();
-    expect(findScopeRef(groups, { $store: 'unknownStore.x' })).toBeNull();
+    expect(findScopeRef(groups, { $: 'unknownStore.x' })).toBeNull();
   });
 });

@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { queryIRFlag } from '@shared/queryIRFlag';
-import type { ModelManifest, SchemaPort } from '@we/backend-shared';
+import type { EntityManifest, SchemaPort } from '@we/backend-shared';
 import { type Accessor, createEffect, createSignal } from 'solid-js';
 
 // ---------------------------------------------------------------------------
@@ -12,7 +12,7 @@ import { type Accessor, createEffect, createSignal } from 'solid-js';
 // the relation patterns (count / single projection / include) — the trickiest IR mappings.
 // ---------------------------------------------------------------------------
 
-const TEST_MANIFEST: ModelManifest = {
+const TEST_MANIFEST: EntityManifest = {
   version: '1',
   entities: {
     TestChild: {
@@ -51,7 +51,7 @@ export function createTestStore(
   // here runs post-boot. `declare` compiles the manifest and registers the models queryable.
   let TestItem: any;
   let TestChild: any;
-  function ensureModels(): boolean {
+  function ensureEntities(): boolean {
     if (TestItem) return true;
     const port = schemas();
     if (!port) return false;
@@ -131,7 +131,7 @@ export function createTestStore(
 
   async function createTestItem() {
     const p = perspective();
-    if (!p || !ensureModels()) return;
+    if (!p || !ensureEntities()) return;
     createdCount++;
     try {
       await TestItem.create(p, {
@@ -158,7 +158,7 @@ export function createTestStore(
   //   Alpha (2 children, 1 mine) · Beta (0 children) · Gamma (1 child, mine)
   async function seedQueryData() {
     const p = perspective();
-    if (!p || !ensureModels()) return;
+    if (!p || !ensureEntities()) return;
     try {
       for (const c of await TestChild.findAll(p)) await TestChild.delete(p, c.id);
       for (const it of await TestItem.findAll(p)) await TestItem.delete(p, it.id);
@@ -188,7 +188,7 @@ export function createTestStore(
 
   createEffect(() => {
     const ref = testPerspective();
-    if (!ref || !ensureModels()) return;
+    if (!ref || !ensureEntities()) return;
 
     const p = ref.handle as any;
 

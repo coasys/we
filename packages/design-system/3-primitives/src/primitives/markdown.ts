@@ -18,9 +18,15 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
 };
 
 const styles = css`
+  /*
+    No word-break: break-word here any more — the typography layer's overflow-wrap default covers
+    it, on [part='base'] where the overflowWrap prop can override it, and it inherits into the
+    rendered markdown's own elements from there. The old rule was the same behaviour under a
+    deprecated alias and, being on :host with no custom-property indirection, was unreachable from
+    a schema.
+  */
   :host {
     line-height: 1.5;
-    word-break: break-word;
   }
 
   /* Paragraphs */
@@ -102,7 +108,9 @@ const styles = css`
     margin: var(--we-markdown-gap, 0.5em) 0;
     padding-left: 0.75em;
     border-left: 3px solid var(--we-role-border);
-    color: var(--we-color-neutral-600);
+    /* Muted body text, beside a border already written as a role. A scale position is never
+       measured against what is behind it by the contrast corrections at apply time. */
+    color: var(--we-role-text-muted);
   }
 
   /* Links */
@@ -120,24 +128,24 @@ const styles = css`
 
   /* Status markers */
   [part='base'] .success {
-    color: var(--we-color-success-500);
+    color: var(--we-role-success-text);
     font-weight: 600;
   }
   [part='base'] .warning {
-    color: var(--we-color-warning-500);
+    color: var(--we-role-warning-text);
     font-weight: 600;
   }
   [part='base'] .danger {
-    color: var(--we-color-danger-500);
+    color: var(--we-role-danger-text);
     font-weight: 600;
   }
   [part='base'] .shimmer {
-    color: var(--we-color-neutral-600);
+    color: var(--we-role-text-muted);
     background: linear-gradient(
       90deg,
       var(--we-role-border) 40%,
       rgba(255, 255, 255, 0.8) 50%,
-      var(--we-color-neutral-500) 60%
+      var(--we-role-text-faint) 60%
     );
     background-size: 200% 100%;
     -webkit-background-clip: text;

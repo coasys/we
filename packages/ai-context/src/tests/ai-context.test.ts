@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 import { assembleReference } from '../assembler.js';
 import { extractPrimitives } from '../extractors/cem.js';
-import { extractModels } from '../extractors/models.js';
+import { extractEntities } from '../extractors/entities.js';
 import { extractTokens } from '../extractors/tokens.js';
 import { extractComponentProps } from '../extractors/typescript.js';
 import { contributionSurfaces } from '../fragments/contribution-surfaces.js';
@@ -27,7 +27,7 @@ const paths = {
   components: resolve(designSystemRoot, '4-components/src'),
   widgets: resolve(repoRoot, 'packages/graph-system/frameworks/solid/src'),
   tokens: resolve(designSystemRoot, '1-tokens/src'),
-  models: resolve(repoRoot, 'packages/models/src'),
+  models: resolve(repoRoot, 'packages/entities/src'),
 };
 
 describe('extractPrimitives', () => {
@@ -84,9 +84,9 @@ describe('extractTokens', () => {
   });
 });
 
-describe('extractModels', () => {
+describe('extractEntities', () => {
   it('extracts models from source', async () => {
-    const models = await extractModels(paths.models);
+    const models = await extractEntities(paths.models);
     expect(models.length).toBeGreaterThan(0);
 
     const textBlock = models.find((m) => m.name === 'TextBlock');
@@ -95,7 +95,7 @@ describe('extractModels', () => {
   });
 
   it('extracts HasMany relations', async () => {
-    const models = await extractModels(paths.models);
+    const models = await extractEntities(paths.models);
     const collection = models.find((m) => m.name === 'CollectionBlock');
     expect(collection).toBeDefined();
     expect(collection!.relations.some((r) => r.kind === 'HasMany' && r.name === 'children')).toBe(true);
@@ -110,13 +110,14 @@ describe('assembleReference', () => {
         ...extractComponentProps(paths.components, 'components'),
         ...extractComponentProps(paths.widgets, 'widgets'),
       ],
-      models: await extractModels(paths.models),
+      models: await extractEntities(paths.models),
       tokens: extractTokens(paths.tokens),
       storeEntries: [],
       fragments: {
         schemaOperators: 'schema operators content',
         designSystemProps: 'design system props content',
         routing: 'routing content',
+        panels: 'panels content',
         stores: 'stores content',
         storePatterns: 'store patterns content',
         patterns: 'patterns content',
@@ -145,13 +146,14 @@ describe('assembleReference', () => {
         ...extractComponentProps(paths.components, 'components'),
         ...extractComponentProps(paths.widgets, 'widgets'),
       ],
-      models: await extractModels(paths.models),
+      models: await extractEntities(paths.models),
       tokens: extractTokens(paths.tokens),
       storeEntries: [],
       fragments: {
         schemaOperators: '',
         designSystemProps: '',
         routing: '',
+        panels: '',
         stores: '',
         storePatterns: '',
         patterns: '',
@@ -219,6 +221,41 @@ describe('contribution surfaces', () => {
       .filter((p) => !p.includes('<'))
       .filter((p) => !existsSync(resolve(repoRoot, p.replace(/\/$/, ''))));
     expect(missing, 'these paths in docs/contributing/surfaces.md no longer exist').toEqual([]);
+  });
+
+  it('only links anchors that exist in it', () => {
+    /*
+      A heading rename breaks every link to it, and a broken in-document anchor is invisible: the
+      link still renders, the text still reads correctly, and clicking it goes nowhere. The
+      "Schema operators" section became "Expression functions" and the table above it went on
+      pointing at `#schema-operators` from two places.
+
+      GitHub's slug rule: lower-cased, non-alphanumerics dropped, spaces to hyphens.
+    */
+    const slug = (heading: string) =>
+      heading
+        .toLowerCase()
+        .replace(/[^\w\s-]/g, '')
+        .trim()
+        .replace(/\s+/g, '-');
+
+    const headings = new Set([...guide.matchAll(/^#{2,4} (.+)$/gm)].map((m) => slug(m[1].trim())));
+    const anchors = [...guide.matchAll(/\]\(#([A-Za-z0-9-]+)\)/g)].map((m) => m[1]);
+    expect(anchors.length).toBeGreaterThan(10);
+
+    const broken = [...new Set(anchors)].filter((anchor) => !headings.has(anchor));
+    expect(broken, 'these anchors in docs/contributing/surfaces.md point at no heading').toEqual([]);
+  });
+
+  it('does not teach a token the schema language no longer has', () => {
+    /*
+      `$store` was replaced by the expression token in #169. Prose still naming it teaches a
+      spelling the validator rejects — the same class as the reference's own old-string examples,
+      and worse here because this is the document a contributor is sent to first.
+
+      Matched with a word boundary so `$storeName` in an example is not a false positive.
+    */
+    expect(guide, 'docs/contributing/surfaces.md names the removed `$store` token').not.toMatch(/\$store\b/);
   });
 
   it('keeps the router and the guide agreeing about which surfaces exist', () => {

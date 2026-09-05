@@ -31,16 +31,16 @@ export interface PropEntry {
   default?: string;
 }
 
-/** A block or entity model from @we/models */
-export interface ModelEntry {
+/** A block or entity model from @we/entities */
+export interface EntityEntry {
   name: string;
   className: string;
   extends?: string;
-  fields: ModelFieldEntry[];
-  relations: ModelRelationEntry[];
+  fields: EntityFieldEntry[];
+  relations: EntityRelationEntry[];
 }
 
-export interface ModelFieldEntry {
+export interface EntityFieldEntry {
   name: string;
   type: string;
   predicate: string;
@@ -48,7 +48,7 @@ export interface ModelFieldEntry {
   default?: string;
 }
 
-export interface ModelRelationEntry {
+export interface EntityRelationEntry {
   name: string;
   kind: 'HasMany' | 'HasOne';
   predicate: string;
@@ -63,7 +63,7 @@ export interface StateMemberMeta {
   /**
    * The model this member holds instances of, when it holds model instances.
    * Preferred over spelling out `properties` by hand: the model's fields are generated
-   * from `@we/models`, so they stay complete as the model changes. Consumers union both.
+   * from `@we/entities`, so they stay complete as the model changes. Consumers union both.
    */
   model?: string;
 }
@@ -118,13 +118,30 @@ export interface PluginCatalog {
 export interface ContextData {
   primitives: PrimitiveEntry[];
   components: ComponentEntry[];
-  models: ModelEntry[];
+  models: EntityEntry[];
   tokens: TokenCategory[];
   storeEntries: StoreEntry[];
   /** Shell/internal component names known to the validator but excluded from AI docs. */
   shellComponents?: string[];
   /** Sub-registries a component resolves by name — see {@link PluginCatalog}. */
   pluginCatalogs?: PluginCatalog[];
+  /** Functions the host lends to expressions beyond the built-in library — see {@link SourceEntry}. */
+  sources?: SourceEntry[];
+}
+
+/**
+ * A host-registered function — what `$source` reaches by name and an expression calls directly.
+ *
+ * Catalogued for the same reason a plugin is: a name that is not in the generated context is one an
+ * author has to already know. The validator reads the same list, so a call to a registered source
+ * is accepted and a typo in one is reported.
+ */
+export interface SourceEntry {
+  name: string;
+  /** Parameter names in the library's notation — `?` for optional. */
+  params: string[];
+  doc: string;
+  example: string;
 }
 
 /** A partial context fragment that a single package exports at build time */

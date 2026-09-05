@@ -24,8 +24,8 @@ const joinPrompt: SchemaNode = gatePrompt({
       $localState: { joining: { type: 'boolean', initial: false } },
       props: {
         variant: 'primary',
-        loading: { $local: 'joining' },
-        disabled: { $local: 'joining' },
+        loading: { $: 'local.joining' },
+        disabled: { $: 'local.joining' },
         onClick: [
           { $setLocal: 'joining', value: true },
           {
@@ -34,7 +34,7 @@ const joinPrompt: SchemaNode = gatePrompt({
             // over that space. The marketplace's own routes name `datasetStore.marketplaceDataset`
             // explicitly, so it never needed to be the current one.
             $action: 'spaceStore.joinSpace',
-            args: [{ $store: 'datasetStore.marketplaceId' }, false],
+            args: [{ $: 'datasetStore.marketplaceId' }, false],
             onFinally: [{ $setLocal: 'joining', value: false }],
           },
         ],
@@ -47,7 +47,7 @@ const joinPrompt: SchemaNode = gatePrompt({
 export const marketplaceGate: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $store: 'datasetStore.marketplaceConfigured' },
+    condition: { $: 'datasetStore.marketplaceConfigured' },
     then: joinPrompt,
     else: notConfiguredPrompt,
   },

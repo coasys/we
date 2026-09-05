@@ -13,7 +13,7 @@ import type { SchemaNode } from '@we/schema-shared';
  * the entire editing UI via slotRegistry.replace('core:templateEditor', node).
  *
  * *Starting* a session is no longer here: the template and theme pickers live in the chrome rail,
- * as data (`ChromeRail.schema.ts` → `DesignControls.schema.ts`). What is left is what only makes
+ * as data (`ChromeRail.schema.ts` → `DesignControls.ts`). What is left is what only makes
  * sense once editing has begun, which is why this whole slot can be removed without taking the
  * ability to change template or theme with it.
  *
@@ -23,16 +23,14 @@ import type { SchemaNode } from '@we/schema-shared';
 export const templateEditor: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'ready'] },
+    condition: { $: "sessionStore.bootState == 'ready'" },
     then: {
       type: 'Column',
       children: [
         {
           type: '$if',
           props: {
-            condition: {
-              $and: [{ $not: { $store: 'appStore.activeAppId' } }, { $not: { $store: 'shellStore.activeShellView' } }],
-            },
+            condition: { $: '!appStore.activeAppId && !shellStore.activeShellView' },
             then: { type: 'EditingBar' },
           },
         },

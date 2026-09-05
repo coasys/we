@@ -11,7 +11,7 @@
  */
 import type { SchemaNode } from '@we/schema-shared';
 
-/** Values the fixtures read through `$store`. Plain data — this harness has no backend. */
+/** Values the fixtures read through expressions. Plain data — this harness has no backend. */
 export const benchStore = {
   stringValue: 'hello',
   numberValue: 42,
@@ -78,7 +78,7 @@ export function staticCard(id: number): SchemaNode {
   };
 }
 
-/** One or two `$store` / `$concat` tokens per card. */
+/** One or two store reads / interpolations per card. */
 export function tokenCard(id: number): SchemaNode {
   return {
     type: 'Column',
@@ -87,21 +87,21 @@ export function tokenCard(id: number): SchemaNode {
       {
         type: 'we-text',
         props: { fontSize: '400', fontWeight: '600', color: 'neutral-800' },
-        children: [{ $concat: ['Card ', { $store: 'benchStore.stringValue' }, ` #${id}`] }],
+        children: [{ $: `\`Card \${benchStore.stringValue} #${id}\`` }],
       },
       {
         type: 'we-text',
         props: {
           fontSize: '300',
-          color: { $if: { condition: { $store: 'benchStore.boolTrue' }, then: 'neutral-600', else: 'danger-600' } },
+          color: { $: "benchStore.boolTrue ? 'neutral-600' : 'danger-600'" },
         },
-        children: [{ $concat: ['Count: ', { $store: 'benchStore.numberValue' }] }],
+        children: [{ $: '`Count: ${benchStore.numberValue}`' }],
       },
     ],
   };
 }
 
-/** Deeply composed tokens — `$if($and($eq($store,…), $not(…)))`. */
+/** Deeply composed expressions — a ternary over a conjunction of comparisons. */
 export function heavyTokenCard(id: number): SchemaNode {
   return {
     type: 'Column',
@@ -109,18 +109,7 @@ export function heavyTokenCard(id: number): SchemaNode {
       p: '300',
       gap: '200',
       r: '300',
-      bg: {
-        $if: {
-          condition: {
-            $and: [
-              { $eq: [{ $store: 'benchStore.stringValue' }, 'hello'] },
-              { $not: { $store: 'benchStore.boolFalse' } },
-            ],
-          },
-          then: 'neutral-0',
-          else: 'danger-50',
-        },
-      },
+      bg: { $: "benchStore.stringValue == 'hello' && !benchStore.boolFalse ? 'neutral-0' : 'danger-50'" },
     },
     children: [
       {
@@ -129,54 +118,15 @@ export function heavyTokenCard(id: number): SchemaNode {
           fontSize: '400',
           fontWeight: '600',
           color: {
-            $if: {
-              condition: {
-                $or: [
-                  { $eq: [{ $store: 'benchStore.numberValue' }, 42] },
-                  { $ne: [{ $store: 'benchStore.stringValue' }, 'goodbye'] },
-                ],
-              },
-              then: 'primary-700',
-              else: 'danger-700',
-            },
+            $: "benchStore.numberValue == 42 || benchStore.stringValue != 'goodbye' ? 'primary-700' : 'danger-700'",
           },
         },
-        children: [
-          {
-            $concat: [
-              'Heavy #',
-              `${id}`,
-              ' — ',
-              {
-                $if: {
-                  condition: { $store: 'benchStore.boolTrue' },
-                  then: { $store: 'benchStore.stringValue' },
-                  else: 'fallback',
-                },
-              },
-            ],
-          },
-        ],
+        children: [{ $: `\`Heavy #${id} — \${benchStore.boolTrue ? benchStore.stringValue : 'fallback'}\`` }],
       },
       {
         type: 'we-text',
         props: { fontSize: '300', color: 'neutral-500' },
-        children: [
-          {
-            $concat: [
-              'Status: ',
-              {
-                $if: {
-                  condition: {
-                    $and: [{ $store: 'benchStore.boolTrue' }, { $not: { $store: 'benchStore.boolFalse' } }],
-                  },
-                  then: 'active',
-                  else: 'inactive',
-                },
-              },
-            ],
-          },
-        ],
+        children: [{ $: "`Status: ${benchStore.boolTrue && !benchStore.boolFalse ? 'active' : 'inactive'}`" }],
       },
     ],
   };
@@ -305,7 +255,7 @@ export function solidCard(id: number): SchemaNode {
   };
 }
 
-/** 100 nodes all bound to one `$store` value — the fixture the update benchmark mutates. */
+/** 100 nodes all bound to one store value — the fixture the update benchmark mutates. */
 export function boundCard(id: number): SchemaNode {
   return {
     type: 'Column',
@@ -315,7 +265,7 @@ export function boundCard(id: number): SchemaNode {
       {
         type: 'we-text',
         props: { fontWeight: '600', color: 'primary-700' },
-        children: [{ $concat: ['#', { $store: 'benchStore.counter' }] }],
+        children: [{ $: '`#${benchStore.counter}`' }],
       },
     ],
   };
@@ -435,14 +385,18 @@ export const fixtures: Fixture[] = [
       children: [
         {
           type: '$each',
-          props: { items: { $store: 'benchStore.list100' } },
+          props: { items: { $: 'benchStore.list100' } },
           children: [
             {
               type: 'Column',
               props: { p: '300', gap: '100', bg: 'neutral-0', r: '300' },
               children: [
-                { type: 'we-text', props: { color: 'neutral-700' }, children: ['$item.name'] },
-                { type: 'we-text', props: { fontSize: '200', color: 'neutral-400' }, children: ['$item.category'] },
+                { type: 'we-text', props: { color: 'neutral-700' }, children: [{ $: 'item.name' }] },
+                {
+                  type: 'we-text',
+                  props: { fontSize: '200', color: 'neutral-400' },
+                  children: [{ $: 'item.category' }],
+                },
               ],
             },
           ],
@@ -459,7 +413,7 @@ export const fixtures: Fixture[] = [
       children: [
         {
           type: '$each',
-          props: { items: { $store: 'benchStore.groups' }, as: 'group' },
+          props: { items: { $: 'benchStore.groups' }, as: 'group' },
           children: [
             {
               type: 'Column',
@@ -468,21 +422,21 @@ export const fixtures: Fixture[] = [
                 {
                   type: 'we-text',
                   props: { fontWeight: '600', color: 'neutral-700', fontSize: '400' },
-                  children: ['$group.name'],
+                  children: [{ $: 'group.name' }],
                 },
                 {
                   type: '$each',
-                  props: { items: '$group.items', as: 'sub' },
+                  props: { items: { $: 'group.items' }, as: 'sub' },
                   children: [
                     {
                       type: 'Row',
                       props: { gap: '200', pl: '300', ay: 'center' },
                       children: [
-                        { type: 'we-text', props: { fontSize: '300' }, children: ['$sub.label'] },
+                        { type: 'we-text', props: { fontSize: '300' }, children: [{ $: 'sub.label' }] },
                         {
                           type: 'we-text',
                           props: { fontSize: '200', color: 'neutral-400' },
-                          children: ['$sub.detail'],
+                          children: [{ $: 'sub.detail' }],
                         },
                       ],
                     },

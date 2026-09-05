@@ -27,7 +27,7 @@ function detail(label: string, value: SchemaProp): SchemaNode {
           { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: [label] },
           {
             type: 'we-text',
-            props: { variant: 'footnote', textAlign: 'right', styles: { 'word-break': 'break-all' } },
+            props: { variant: 'footnote', textAlign: 'right' },
             children: [value],
           },
         ],
@@ -43,8 +43,8 @@ const identity: SchemaNode = {
     {
       type: 'we-avatar',
       props: {
-        image: { $store: 'sessionStore.host.imageUrl' },
-        initials: { $store: 'sessionStore.host.name' },
+        image: { $: 'sessionStore.host.imageUrl' },
+        initials: { $: 'sessionStore.host.name' },
         size: 'md',
       },
     },
@@ -55,18 +55,18 @@ const identity: SchemaNode = {
         {
           type: 'we-text',
           props: { variant: 'body', fontWeight: 'medium' },
-          children: [{ $store: 'sessionStore.host.name' }],
+          children: [{ $: 'sessionStore.host.name' }],
         },
         {
           // Tested on the container, not the field: `host` present with no description is a host
           // that did not write one, and `host` absent is a section that should not be rendering.
           type: '$if',
           props: {
-            condition: { $store: 'sessionStore.host.description' },
+            condition: { $: 'sessionStore.host.description' },
             then: {
               type: 'we-text',
               props: { variant: 'footnote', color: 'text-muted' },
-              children: [{ $store: 'sessionStore.host.description' }],
+              children: [{ $: 'sessionStore.host.description' }],
             },
           },
         },
@@ -84,9 +84,7 @@ const identity: SchemaNode = {
 const credits: SchemaNode = {
   type: '$if',
   props: {
-    condition: {
-      $and: [{ $store: 'sessionStore.hostAccount' }, { $not: { $store: 'sessionStore.hostAccount.freeAccess' } }],
-    },
+    condition: { $: 'sessionStore.hostAccount && !sessionStore.hostAccount.freeAccess' },
     then: {
       type: 'Row',
       props: { gap: '300', ay: 'center', ax: 'between', bg: 'surface-sunken', r: '300', px: '300', py: '200' },
@@ -101,7 +99,7 @@ const credits: SchemaNode = {
         },
         {
           type: 'we-number',
-          props: { value: { $store: 'sessionStore.hostAccount.remainingCredits' }, shorten: true },
+          props: { value: { $: 'sessionStore.hostAccount.remainingCredits' }, shorten: true },
         },
       ],
     },
@@ -117,7 +115,7 @@ const credits: SchemaNode = {
 const advertisedModels: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $count: { items: { $store: 'sessionStore.host.aiModels' } } },
+    condition: { $: 'count(sessionStore.host.aiModels)' },
     then: {
       type: 'Column',
       props: { gap: '200' },
@@ -129,8 +127,8 @@ const advertisedModels: SchemaNode = {
           children: [
             {
               type: '$each',
-              props: { items: { $store: 'sessionStore.host.aiModels' }, as: 'model' },
-              children: [{ type: 'we-tag', props: { variant: 'neutral' }, children: ['$model'] }],
+              props: { items: { $: 'sessionStore.host.aiModels' }, as: 'model' },
+              children: [{ type: 'we-tag', props: { variant: 'neutral' }, children: [{ $: 'model' }] }],
             },
           ],
         },
@@ -142,7 +140,7 @@ const advertisedModels: SchemaNode = {
 const pricing: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $count: { items: { $store: 'sessionStore.host.rates' } } },
+    condition: { $: 'count(sessionStore.host.rates)' },
     then: {
       type: 'Column',
       props: { gap: '200' },
@@ -150,17 +148,17 @@ const pricing: SchemaNode = {
         { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: ['Rates'] },
         {
           type: '$each',
-          props: { items: { $store: 'sessionStore.host.rates' }, as: 'rate' },
+          props: { items: { $: 'sessionStore.host.rates' }, as: 'rate' },
           children: [
             {
               type: 'Row',
               props: { gap: '300', ax: 'between', ay: 'center' },
               children: [
-                { type: 'we-text', props: { variant: 'footnote' }, children: ['$rate.description'] },
+                { type: 'we-text', props: { variant: 'footnote' }, children: [{ $: 'rate.description' }] },
                 {
                   type: 'we-text',
                   props: { variant: 'footnote', color: 'text-muted' },
-                  children: [{ $concat: ['$rate.priceInHOT', ' HOT'] }],
+                  children: [{ $: '`${rate.priceInHOT} HOT`' }],
                 },
               ],
             },
@@ -174,7 +172,7 @@ const pricing: SchemaNode = {
 export const hostSection: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $store: 'sessionStore.host' },
+    condition: { $: 'sessionStore.host' },
     then: {
       type: 'Column',
       props: { gap: '300' },
@@ -201,10 +199,10 @@ export const hostSection: SchemaNode = {
                   type: 'Column',
                   props: { gap: '150' },
                   children: [
-                    detail('Address', { $store: 'sessionStore.host.url' }),
-                    detail('Location', { $store: 'sessionStore.host.location' }),
-                    detail('Hardware', { $store: 'sessionStore.host.computeSpecs' }),
-                    detail('Signed in as', { $store: 'sessionStore.hostAccount.email' }),
+                    detail('Address', { $: 'sessionStore.host.url' }),
+                    detail('Location', { $: 'sessionStore.host.location' }),
+                    detail('Hardware', { $: 'sessionStore.host.computeSpecs' }),
+                    detail('Signed in as', { $: 'sessionStore.hostAccount.email' }),
                   ],
                 },
                 advertisedModels,

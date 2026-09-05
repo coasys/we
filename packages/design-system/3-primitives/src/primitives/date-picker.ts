@@ -1,10 +1,11 @@
 import type { DesignSystemProps } from '@we/design-types';
-import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
-import { css, html, nothing, type PropertyValues } from 'lit';
+import { type DSLayer, familyVar, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
+import { css, html, nothing, type PropertyValues, unsafeCSS } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
+import { fieldSurface } from '../shared/field-surface';
 import { openFloatingPanel } from '../shared/floating-panel';
 import sharedStyles from '../shared/styles';
 import type { ComponentSize } from '../types';
@@ -36,19 +37,17 @@ const styles = css`
   [part='input-wrapper'] {
     display: flex;
     align-items: center;
-    border: 1px solid var(--we-role-border);
-    border-radius: var(--we-radius-400);
-    background: var(--we-role-surface);
     padding: 0 var(--we-space-300);
     /* The clear button and the calendar icon sat flush against each other, reading as one control. */
     gap: var(--we-space-200);
     cursor: pointer;
-    transition: border-color var(--we-transition-200, 150ms) ease;
   }
 
-  [part='input-wrapper']:focus-within {
-    border-color: var(--we-role-accent);
-  }
+  /*
+    Focus-within, since the focusable thing is the display input inside this wrapper — the same shape
+    we-select has, and for the same reason: the ring follows the caret rather than waiting for Tab.
+  */
+  ${fieldSurface("[part='input-wrapper']", ':focus-within')}
 
   [part='clear'] {
     all: unset;
@@ -174,28 +173,20 @@ const styles = css`
 
   /* Built the way we-input builds its own field, rather than resetting with all: unset — same
      border, padding and focus ring, so the time reads as a control in this design system rather
-     than as a browser one. */
+     than as a browser one. It now says that by construction: the border, fill and states come from
+     the one definition every other field uses, rather than from a restatement that had already
+     fallen a version behind it. */
   input[part='time'] {
     flex: 1;
     min-width: 0;
-    border: 1px solid var(--we-role-border);
-    border-radius: var(--we-radius-400);
-    background: var(--we-role-surface);
     color: var(--we-role-text);
     font: inherit;
     outline: none;
     padding: var(--we-space-100) var(--we-space-200);
     cursor: pointer;
-    transition: border-color var(--we-transition-200, 150ms) ease;
   }
 
-  input[part='time']:hover {
-    border-color: var(--we-role-border-strong);
-  }
-
-  input[part='time']:focus-visible {
-    border-color: var(--we-role-focus);
-  }
+  ${fieldSurface("input[part='time']", ':focus-within')}
 
   /*
     No native picker glyph, for the reason we-input hides the native number spinners: the browser
@@ -220,7 +211,9 @@ const styles = css`
     overflow-y: auto;
     background: var(--we-role-surface-raised);
     border: 1px solid var(--we-role-border);
-    border-radius: var(--we-theme-surface-radius, var(--we-radius-400));
+    /* A surface, though the control that opens it is an input — the panel is its own kind of thing.
+       Through the table rather than by hand, so it cannot drift from every other surface. */
+    border-radius: ${unsafeCSS(familyVar('surface', 'radius'))};
     box-shadow: 0 4px 12px color-mix(in srgb, var(--we-role-shadow-color) 10%, transparent);
     padding: var(--we-space-100) 0;
   }
@@ -283,6 +276,8 @@ export default class DatePicker extends DesignSystemElement {
   @property({ type: String }) placeholder = 'Select date';
   @property({ type: Boolean, reflect: true }) disabled = false;
   @property({ type: String }) name = '';
+  /** What this picker is called, for a reader who cannot see the field label beside it. */
+  @property({ type: String }) label = '';
   @property({ type: String, reflect: true }) size: ComponentSize = 'md';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
@@ -394,6 +389,36 @@ export default class DatePicker extends DesignSystemElement {
    * `change` every other path does, with an empty string — which is what "unset" is everywhere
    * this value is read.
    */
+  /** Open or close, refusing when disabled. The one place both the click and the keys go through. */
+  private _toggleOpen = () => {
+    if (this.disabled) return;
+    this._open = !this._open;
+  };
+
+  /**
+   * The keyboard half of a combobox: Enter, Space and ArrowDown open it, Escape closes it.
+   *
+   * There was none. `aria-haspopup` announced a popup that could only be summoned with a pointer,
+   * so somebody navigating by keyboard reached the field, found it readonly, and had no way forward
+   * — which for a required date is a form that cannot be completed at all.
+   *
+   * Escape returns focus to the input rather than leaving it inside a panel that has gone.
+   */
+  private _onKeyDown = (e: KeyboardEvent) => {
+    if (this.disabled) return;
+    if (!this._open && (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown')) {
+      e.preventDefault();
+      this._open = true;
+      return;
+    }
+    if (this._open && e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      this._open = false;
+      this.renderRoot.querySelector<HTMLElement>('[part="display"]')?.focus();
+    }
+  };
+
   private _clear = (e: Event) => {
     // The wrapper opens the calendar on click; clearing must not also open it.
     e.stopPropagation();
@@ -541,9 +566,29 @@ export default class DatePicker extends DesignSystemElement {
     });
 
     return html`
-      <div part="base" style=${styleMap({ position: 'relative', ...this.styles })}>
-        <div part="input-wrapper" style=${styleMap({ height: h })} @click=${() => (this._open = !this._open)}>
-          <input part="display" readonly .value=${this._displayValue} placeholder=${this.placeholder} />
+      <div part="base" style=${styleMap({ position: 'relative', ...this.styles })} @keydown=${this._onKeyDown}>
+        <div part="input-wrapper" style=${styleMap({ height: h })} @click=${this._toggleOpen}>
+          <!--
+            The input is the control, and it opens the calendar.
+
+            It was \`readonly\` inside a \`<div @click>\` with no keydown handler anywhere in the file,
+            so the picker could be opened by pointer and by nothing else: a keyboard user tabbed onto
+            a field they could type nothing into and that did nothing when they pressed anything. It
+            stays readonly — the calendar is how a date is chosen — but it now answers Enter, Space
+            and ArrowDown to open, and Escape to close, which is the combobox pattern this already
+            claims with \`aria-haspopup\`.
+          -->
+          <input
+            part="display"
+            readonly
+            role="combobox"
+            aria-haspopup="dialog"
+            aria-expanded=${this._open ? 'true' : 'false'}
+            aria-label=${this.label || nothing}
+            ?disabled=${this.disabled}
+            .value=${this._displayValue}
+            placeholder=${this.placeholder}
+          />
           ${
             this.value
               ? html`

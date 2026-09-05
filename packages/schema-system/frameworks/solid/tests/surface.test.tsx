@@ -40,7 +40,7 @@ describe('$surface', () => {
     // mechanisms report the same un-adapted layout rather than disagreeing about it.
     const { container } = renderSchema({
       type: '$surface',
-      children: [{ type: 'Label', props: { text: '$surface.tier' } }],
+      children: [{ type: 'Label', props: { text: { $: 'surface.tier' } } }],
     });
 
     expect(container.querySelector('[data-testid="label"]')?.textContent).toBe('base');
@@ -55,8 +55,8 @@ describe('$surface', () => {
           type: '$surface',
           props: { as: 'pane' },
           children: [
-            { type: 'Label', props: { text: '$page.tier' } },
-            { type: 'Label', props: { text: '$pane.tier' } },
+            { type: 'Label', props: { text: { $: 'page.tier' } } },
+            { type: 'Label', props: { text: { $: 'pane.tier' } } },
           ],
         },
       ],

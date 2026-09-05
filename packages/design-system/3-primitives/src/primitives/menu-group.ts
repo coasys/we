@@ -1,4 +1,4 @@
-import { css, html } from 'lit';
+import { css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
@@ -73,6 +73,15 @@ export default class MenuGroup extends LayoutElement {
   @property({ type: String, reflect: true }) title = '';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
+  /*
+    `role="group"`, not `role="menuitem"`.
+
+    A group is a *container* of menu items, and calling it a menu item told a screen reader that the
+    whole section was one selectable row — with every real item nested inside a thing that claimed to
+    be one. `group` with the section's own name is what it is, and it also keeps `we-menu`'s arrow
+    walk honest: it collects `we-menu-item` hosts, so a container that pretended to be one would
+    have been a focus stop with nothing to activate.
+  */
   collapsibleContent() {
     const inline = this.styles || {};
     return html`
@@ -83,7 +92,8 @@ export default class MenuGroup extends LayoutElement {
           this.open = open;
         }}
         part="base"
-        role="menuitem"
+        role="group"
+        aria-label=${this.title || nothing}
         style=${styleMap(inline)}
       >
         <summary part="summary">
@@ -101,7 +111,7 @@ export default class MenuGroup extends LayoutElement {
   normal() {
     const inline = this.styles || {};
     return html`
-      <div part="base" role="menuitem" style=${styleMap(inline)}>
+      <div part="base" role="group" aria-label=${this.title || nothing} style=${styleMap(inline)}>
         <div part="summary">
           <slot part="start" name="start"></slot>
           <div part="title">${this.title}</div>

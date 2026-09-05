@@ -7,7 +7,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build:steps": "vite build",
+    "build": "we-build",
     "serve": "vite preview",
     "typecheck": "tsc --noEmit",
     "shoot": "node scripts/shoot.mjs"
@@ -17,11 +18,12 @@
     "@we/backend-inmemory": "workspace:*",
     "@we/backend-shared": "workspace:*",
     "@we/components": "workspace:*",
-    "@we/models": "workspace:*",
+    "@we/entities": "workspace:*",
     "@we/template-fixtures": "workspace:*",
     "solid-js": "^1.9.15"
   },
   "devDependencies": {
+    "@we/cli": "workspace:*",
     "playwright-core": "^1.62.1",
     "typescript": "^5.7.2",
     "vite": "^8.2.2",

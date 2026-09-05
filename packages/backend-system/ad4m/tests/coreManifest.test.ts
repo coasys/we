@@ -10,11 +10,12 @@
  * is exhaustive rather than a spot check.
  */
 import type { SHACLShape } from '@coasys/ad4m';
-import { CORE_MANIFEST } from '@we/models/manifest';
+import { CORE_MANIFEST } from '@we/entities/manifest';
 import { describe, expect, it } from 'vitest';
 
+import * as Classes from '../src/entities';
 import { compileManifest } from '../src/manifestCompiler';
-import * as Classes from '../src/models';
+import { ROOT_MODELS, SPACE_MODELS } from '../src/sdnaEntities';
 
 type Shaped = { generateSHACL: () => { shape: SHACLShape | null } };
 
@@ -85,5 +86,33 @@ describe('core manifest ↔ hand-written classes', () => {
     const plain = (o: Record<string, unknown>) =>
       Object.fromEntries(Object.entries(o).filter(([k, v]) => typeof v !== 'function' && !k.startsWith('_')));
     expect(plain(new FromManifest()), REGENERATE).toEqual(plain(new Original()));
+  });
+});
+
+/**
+ * An entity nobody registers is an entity that does not exist.
+ *
+ * `Topic` was declared in the manifest, generated as a class, exported from `entities`, listed in
+ * `CORE_MANIFEST` and rendered by a section of space settings — and absent from `SPACE_MODELS`. So
+ * `getEntity('Topic')` threw, and every visit to Vocabulary raised a danger toast saying the model
+ * was not available in this perspective. Five of the six places that have to agree did, which is
+ * exactly the shape of thing review does not catch.
+ *
+ * Registration is what `$query` resolves a name through, so this is the step between "the entity is
+ * written" and "the entity can be used". Nothing else asserts it.
+ */
+describe('every core entity is registered somewhere', () => {
+  const registered = new Set(
+    [...ROOT_MODELS, ...SPACE_MODELS].map((model) => (model as { className?: string }).className ?? model.name),
+  );
+
+  it.each(entityNames)('%s is in ROOT_MODELS or SPACE_MODELS', (name) => {
+    expect(registered.has(name)).toBe(true);
+  });
+
+  it('registers nothing that the manifest does not declare', () => {
+    // The other direction, and it fails differently: a class registered under a name the manifest
+    // does not carry is one whose shape nothing checks, so it would drift from its own SDNA silently.
+    for (const name of registered) expect(entityNames).toContain(name);
   });
 });

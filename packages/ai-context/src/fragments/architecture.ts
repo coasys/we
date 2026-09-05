@@ -92,13 +92,13 @@ Glossary (these terms pervade stores, models, and \`$query\`/\`perspective\` in 
 | \`@we/schema-shared\` | schema-system/shared | Schema semantics: prop resolvers, validation, indexer, registry types, reactivity port | **Agnostic** |
 | \`@we/schema-solid\` | schema-system/frameworks/solid | The schema renderer (walks the tree, mounts components) | Solid (thin adapter) |
 | \`@we/backend-shared\` | backend-system/shared | The backend contract: \`DataSource\`, query IR + engine, ephemeral, presence & transcription ports, model manifest | **Agnostic** |
-| \`@we/backend-ad4m\` | backend-system/ad4m | The AD4M adapter: query adapter, ports, agent identity, SDNA install — and the AD4M model classes, generated from @we/models' manifest (src/models) | Agnostic |
+| \`@we/backend-ad4m\` | backend-system/ad4m | The AD4M adapter: query adapter, ports, agent identity, SDNA install — and the AD4M model classes, generated from @we/entities' manifest (src/models) | Agnostic |
 | \`@we/backend-inmemory\` | backend-system/inmemory | In-memory adapter — the reference implementation, and how stores test without an executor | Agnostic |
 | \`@we/module-shared\` | module-system/shared | The feature-module contract — what a module author installs | Agnostic |
 | \`@we/module-globe\` · \`-call\` · \`-notes\` · \`-transcribe\` · \`-graph\` | module-system/* | Bundled feature modules; globe is a *family* (module · protocol · layers · widget) | Agnostic (components injected) |
 | \`@we/graph-protocol\` · \`-core\` · \`-expanders\` · \`-layouts\` · \`-solid\` | graph-system/* | The graph engine: expander/layout/renderer contracts, the neutral engine, first-party plugins, and the Solid adapter | **Agnostic** (Solid only in the adapter) |
 | \`@we/block-shared\` | block-system/shared | Block content types + serialization | Agnostic |
-| \`@we/models\` | packages/models | WE's domain models: the authored neutral manifest (src/manifest, the source of truth), the neutral type contract, and the entity proxies backends register into | **Agnostic** |
+| \`@we/entities\` | packages/entities | WE's domain models: the authored neutral manifest (src/manifest, the source of truth), the neutral type contract, and the entity proxies backends register into | **Agnostic** |
 | \`@we/app-shell\` | packages/app-shell | App shell, stores, registries, built-in template schemas | Solid |
 | \`@we/ai-context\` | packages/ai-context | Generates this reference (CLAUDE.md et al.) from code + fragments | Build tool |
 
@@ -108,7 +108,7 @@ Each supplies two things: a \`PlatformAdapter\` (where am I running) and a \`Bac
 
 **Dependency direction:** \`templates → shell → backend-shared ← backend-ad4m\`, and
 \`modules → shell → backend-shared\`. Dependencies point inward toward the contract packages; there are
-no sideways edges. \`@coasys/*\` may be imported by \`@we/backend-ad4m\`, \`@we/models\`, and any module
+no sideways edges. \`@coasys/*\` may be imported by \`@we/backend-ad4m\`, \`@we/entities\`, and any module
 that declares \`backends: ['ad4m']\` — nothing else. See \`docs/architecture/package-conventions.md\`.
 
 ### The Three Seams (why the layering holds)
@@ -120,7 +120,7 @@ that declares \`backends: ['ad4m']\` — nothing else. See \`docs/architecture/p
    code — a DX layer, not a runtime one.)
 
 2. **Schema semantics live in \`@we/schema-shared\`, parameterized by a reactivity port.** All token
-   resolution (\`$store\`, \`$if\`, \`$query\`, \`$local\`, \`$action\`, …) is in \`propResolvers/\`.
+   resolution (\`{ $ }\` expressions, \`$action\`, \`$query\`, \`$setLocal\`, …) is in \`propResolvers/\`.
    \`resolveProp(value, stores, context, memo)\` takes a framework-injected memoization function
    (\`memo\`), and \`markReactive()\` (see \`propResolvers/reactive.ts\`) tags accessors so a renderer
    knows a prop is reactive. The entire schema engine AND its reactivity wiring are framework-neutral;
@@ -137,7 +137,7 @@ that declares \`backends: ['ad4m']\` — nothing else. See \`docs/architecture/p
 1. A schema node has \`type\` (component/tag name), \`props\`, \`children\`, optional
    \`routes\`/\`slots\`/\`$localState\`/\`$queries\`.
 2. Props are resolved by the shared dispatcher (\`propResolvers/dispatcher.ts\`): token objects
-   (\`$store\`, \`$if\`, \`$query\`, …) become values or reactive accessors via the injected \`memo\`;
+   (\`{ $ }\` expressions, \`$query\`, handlers) become values or reactive accessors via the injected \`memo\`;
    event-handler arrays resolve lazily at call time.
 3. The renderer looks up \`type\` in the \`ComponentRegistry\` — a custom-element tag for
    \`@we/primitives\`, a framework component for \`@we/components\`/\`@we/widgets\`.
@@ -158,13 +158,18 @@ that declares \`backends: ['ad4m']\` — nothing else. See \`docs/architecture/p
 - The backend contract (ports, query IR) → \`packages/backend-system/shared/src/\`.
 - AD4M wiring (query adapter, SDNA install, agent identity) → \`packages/backend-system/ad4m/src/\`.
 - The feature-module contract → \`packages/module-system/shared/src/module.ts\`; a module → \`packages/module-system/<id>/\`.
-- Data models (Space, blocks) → \`packages/models/src/\` (see packages/models/CONVENTIONS.md).
+- Data models (Space, blocks) → \`packages/entities/src/\` (see packages/entities/CONVENTIONS.md).
 - A space's sections (views) → \`packages/templates/views/\`; how they resolve →
   \`packages/app-shell/src/shared/viewResolution.ts\` (see docs/architecture/views.md).
 - Graph engine (expanders, layouts, expansion state) → \`packages/graph-system/\` (see its README);
   its data binding lives at \`packages/app-shell/src/frameworks/solid/components/GraphHost.tsx\`.
 - App chrome and module panels (the sidebar, the module rail, floating vs displacing, who moves for
   whom) → \`packages/app-shell/src/shared/dockGeometry.ts\` (see docs/architecture/chrome-and-panels.md).
+
+**Where a new thing goes** — module or host store, panel or fragment, who decides placement, and how
+two capabilities cooperate without depending on each other — is
+docs/architecture/capabilities-and-surfaces.md. Read it before adding a module, a panel or a store:
+it is four rules, and half of it is the shapes that are refused on purpose.
 
 For deeper detail (data sync/persistence, block & editor internals, the local dev/test loop),
 see docs/architecture/codebase-map.md.

@@ -34,9 +34,10 @@ type AnimateRendererProps = {
  *                           accordion row shouldn't tear down.
  *  - `props.scrollReveal` — fire enter transition when element scrolls into viewport
  *  - `props.scrollLeave`  — fire exit transition when element scrolls out of viewport
- *  - `props.scrollPast`   — fire enter/exit transitions keyed to a sentinel element's
- *                           viewport visibility (enter fires when sentinel leaves,
- *                           exit fires when sentinel returns). Use for sticky headers.
+ *  - `props.scrollPast`   — fire enter/exit transitions keyed to a sentinel element by DOM id:
+ *                           enter fires when the sentinel is scrolled out of its scroll container
+ *                           (past a sticky bar's edge), exit fires when it returns. Use for sticky
+ *                           headers.
  *  - None of the above    — fire enter animation on mount
  *
  * Transition effects are composed as arrays:
@@ -158,27 +159,71 @@ export function AnimateRenderer({ node, stores, context, renderNode }: AnimateRe
       }
     });
   } else if (scrollPast) {
-    // Sentinel-based trigger: observe a separate element by DOM id.
-    // enterTransition fires when the sentinel leaves the viewport (user scrolled past it).
-    // exitTransition fires when the sentinel returns (user scrolled back up).
+    /*
+      Sentinel-based trigger: a separate element, by DOM id, that this one watches go by.
+
+      Observed against the nearest scroll container rather than the window. The case this exists
+      for is a sticky bar: the sentinel sits at the bottom of the header above it, the bar sticks at
+      the top of the box the template scrolls in, and the header keeps going — so the sentinel is
+      clipped out of that box at exactly the bar's edge. That is the moment the mini-profile should
+      appear, and an observer rooted on the box reports it. Rooted on the window it does not: the
+      box starts below the app's own chrome, so the sentinel is clipped long before it leaves the
+      viewport, and a space too short to scroll that far never showed the mini-profile at all.
+
+      Looked up again whenever the document changes, not once. The sentinel is usually rendered by a
+      sibling that arrives with the same data this element does — but not always, and a lookup that
+      ran once and found nothing left the element closed for good. A sentinel that is replaced (the
+      header remounting on a space switch) is re-observed the same way.
+    */
     createEffect(() => {
-      const sentinel = document.getElementById(scrollPast);
-      if (!sentinel) return;
+      let observer: IntersectionObserver | undefined;
+      let observed: Element | null = null;
+      let frame: number | undefined;
 
-      const observer = new IntersectionObserver(
-        (entries) => {
-          const entry = entries[0];
-          if (!entry.isIntersecting && enterTransition) {
-            animateIn(enterTransition);
-          } else if (entry.isIntersecting && exitTransition) {
-            animateOut(exitTransition);
-          }
-        },
-        { threshold: 0 },
-      );
+      const scrollParent = (el: Element): Element | null => {
+        for (let p = el.parentElement; p; p = p.parentElement) {
+          const overflow = getComputedStyle(p).overflowY;
+          if (overflow === 'auto' || overflow === 'scroll' || overflow === 'overlay') return p;
+        }
+        return null;
+      };
 
-      observer.observe(sentinel);
-      onCleanup(() => observer.disconnect());
+      const attach = () => {
+        frame = undefined;
+        const sentinel = document.getElementById(scrollPast);
+        if (!sentinel || sentinel === observed) return;
+        observer?.disconnect();
+        observed = sentinel;
+        observer = new IntersectionObserver(
+          (entries) => {
+            const entry = entries[0];
+            if (!entry.isIntersecting && enterTransition) animateIn(enterTransition);
+            else if (entry.isIntersecting && exitTransition) animateOut(exitTransition);
+          },
+          /*
+            A sentinel exactly on the box's top edge counts as gone. A zero-height sentinel at the
+            bottom of a header, on a page that can scroll by precisely the header's height, comes to
+            rest *on* that edge — and edge-adjacent is intersecting, so it never left. One pixel of
+            margin is the difference between a mini-profile that appears and one that appears only
+            when there is a little more to scroll.
+          */
+          { root: scrollParent(sentinel), rootMargin: '-1px 0px 0px 0px', threshold: 0 },
+        );
+        observer.observe(sentinel);
+      };
+      const schedule = () => {
+        if (frame === undefined) frame = requestAnimationFrame(attach);
+      };
+
+      attach();
+      const changes = new MutationObserver(schedule);
+      changes.observe(document.body, { childList: true, subtree: true });
+
+      onCleanup(() => {
+        observer?.disconnect();
+        changes.disconnect();
+        if (frame !== undefined) cancelAnimationFrame(frame);
+      });
     });
   } else if (hasSelfScrollTrigger) {
     // Bidirectional scroll observer — does not disconnect after first intersection

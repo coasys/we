@@ -29,6 +29,35 @@ const KEYFRAMES_CSS = `
 // opaque ancestor background several levels up, making it invisible. isolation:isolate
 // creates a local stacking context with no other visual side effects (unlike z-index,
 // which needs a position value; unlike opacity<1, which visually changes rendering).
+/**
+ * A panel arriving.
+ *
+ * The content region eases aside to make room for a displacing panel, and the panel appeared at its
+ * full width in the first frame of that — the room opening slowly and the thing filling it instantly.
+ * It cannot be fixed with a transition: the element did not exist a moment ago, so there is no
+ * previous value to interpolate from.
+ *
+ * And it cannot be fixed by wrapping the frame, which is what `$if`'s own transitions do — a panel
+ * whose whole job is to be positioned by the host must not sit inside a box that also positions
+ * itself. So the animation is on the frame directly, keyed off the attribute it already carries, and
+ * runs once when the element is created. Timed with the inset it is arriving into.
+ *
+ * `prefers-reduced-motion` turns it off rather than shortening it: this animation exists to soften a
+ * change of layout, and to a reader who has asked for less movement it *is* the movement.
+ */
+const DOCK_CSS = `
+@keyframes we-dock-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+[data-we-dock-frame] {
+  animation: we-dock-in var(--we-transition-300, 300ms) ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-we-dock-frame] { animation: none; }
+}
+`;
+
 const BG_IMAGE_CSS = `
 [data-we-bg-image] {
   position: relative;
@@ -53,10 +82,28 @@ const BG_IMAGE_CSS = `
 // source of truth, so this stylesheet can never drift out of sync with the JS that populates
 // it. The focus selector comes from the shared focusSelector() for the same reason: it is the
 // one place that decides what `focusProps` means, for Lit primitives and Solid layout
-// primitives alike. Declaration order below is the precedence order: for equal-specificity
-// selectors, the rule declared later wins when multiple states are true at once (e.g.
-// :hover:active), so focus < :hover < :active reproduces the same active-over-hover-over-focus
-// precedence useStateProps used to compute via JS merge order before this stylesheet existed.
+// primitives alike.
+//
+// Declaration order below is the precedence order: at equal specificity the rule declared later
+// wins when several states are true at once, so this reads hover < focus < active < disabled — the
+// same order `ELEMENT_STATES` gives the Lit primitives, and the two families must agree because
+// `hoverProps` and `focusProps` mean one thing to whoever writes them.
+//
+// **Focus outranks hover**, and that is the load-bearing half. A state rule declares every property
+// in the set and falls back to the *base* value for whatever it does not set, so whichever state
+// wins discards the loser's values wholesale — including properties only the loser mentions. With
+// hover last, the hover rule's `box-shadow` resolves to base (none) and **takes the focus ring with
+// it** for as long as the pointer rests on the focused element. That is the common case, not an
+// exotic one: clicking a text field focuses it with the pointer sitting right there.
+//
+// This used to read focus < hover, on the stated grounds of reproducing the JS merge order
+// `useStateProps` computed before this stylesheet existed. That is a description of what the code
+// did, not an argument for it, and what it did was drop the ring.
+//
+// The cost of the choice is real and is the lesser one: a focused element shows its *resting* fill
+// rather than its hover fill while the pointer is over it, because focus stays quiet about the
+// properties hover sets. Where that matters, `focusProps` restates them — see `we-input`, which is
+// where this was found.
 function buildInteractiveStateCSS(): string {
   /*
     Both gates share the base declarations.
@@ -75,7 +122,7 @@ function buildInteractiveStateCSS(): string {
   // way and the styling follows. Declared last so a disabled element's styles win
   // over hover/active at equal specificity.
   const disabled = `[data-we-interactive][aria-disabled='true'] { ${joinStateDeclsCSS('--we-ds-disabled-', '--we-ds-', INTERACTIVE_SPECS)} }`;
-  return [base, focus, hover, active, disabled].join('\n');
+  return [base, hover, focus, active, disabled].join('\n');
 }
 
 /*
@@ -98,6 +145,14 @@ function buildResponsiveCSS(): string {
 }
 
 /**
+ * The state rules alone, for the precedence test.
+ *
+ * Exported rather than reached through `injectDSInteropStyles`, which needs a document and returns
+ * nothing — and the thing under test is the *order* of these rules, which is decided here.
+ */
+export const buildInteractiveStateCSSForTest = buildInteractiveStateCSS;
+
+/**
  * The DS interop stylesheet — the escape hatch for the handful of CSS features Solid's
  * inline-style-driven DesignSystemProps model can't express directly: pseudo-elements
  * and native :hover/:active/focus. Not a theme: no [data-we-theme] scoping, no
@@ -105,7 +160,7 @@ function buildResponsiveCSS(): string {
  * regardless of which theme is active.
  */
 export function injectDSInteropStyles() {
-  const css = [BG_IMAGE_CSS, buildInteractiveStateCSS(), buildResponsiveCSS(), KEYFRAMES_CSS].join('\n');
+  const css = [BG_IMAGE_CSS, buildInteractiveStateCSS(), buildResponsiveCSS(), KEYFRAMES_CSS, DOCK_CSS].join('\n');
   let styleEl = document.getElementById(STYLE_EL_ID) as HTMLStyleElement | null;
   if (!styleEl) {
     styleEl = document.createElement('style');

@@ -3,21 +3,108 @@ import type { AgentProfileSummary, PublishProfileFields } from '@we/backend-shar
 
 export { isProfileEmpty } from '@we/backend-shared';
 export type { AgentProfileSummary, PublishProfileFields } from '@we/backend-shared';
-import { FILE_STORAGE_LANGUAGE } from '@we/models';
+import { FILE_STORAGE_LANGUAGE } from '@we/entities';
 
 export const WE_PROFILE_SOURCE = 'we://profile';
 export const WE_LOCATION_SOURCE = 'we://location';
+/**
+ * Where the ADAM Launcher puts a profile: links whose source is the agent's own DID. It shares no
+ * predicate with either of the other two formats — see the launcher fallback in {@link getProfile}.
+ */
+export const LAUNCHER_PROFILE_SOURCE = 'ad4m://profile';
 
+/**
+ * Unwrap a literal target into the string it stands for.
+ *
+ * Three shapes reach this, because three different apps have written a name into an agent's public
+ * perspective and none of them agreed:
+ *
+ * - `literal:string:James` — what `Literal.from(value).toUrl()` produces, and what WE itself writes.
+ * - `literal:json:{"author":…,"data":"James","proof":…}` — what `expression.create(value, 'literal')`
+ *   produces, which is what Flux's profile writer calls. The executor signs the content and encodes
+ *   the whole **signed-expression envelope** as the literal (see `expression_create` in
+ *   rust-executor's `languages/mod.rs`), so the decoded value is an object with the real value on
+ *   `data`. Flux's own reader unwraps it; this one did not, and `String(envelope)` is the string
+ *   `"[object Object]"` — which is what every Flux-origin peer was called throughout WE.
+ * - `literal://string:James` — the pre-0.9 spelling. `Literal.fromUrl` refuses it outright, so it
+ *   fell to the catch and was displayed as the raw URL.
+ *
+ * Never returns a non-string, whatever it is handed: this is the sole gate between a peer's
+ * published bytes and every byline, avatar label and member row in the app, and the failure mode of
+ * letting an object through is not an error anybody sees — it is a person rendered as
+ * `[object Object]` and no clue where it came from.
+ */
 function parseLiteralTarget(target: string): string {
-  if (target.startsWith('literal:')) {
-    try {
-      const val = Literal.fromUrl(target).get();
-      return String(val);
-    } catch {
-      return target;
-    }
+  if (!target.startsWith('literal:')) return target;
+
+  // `literal://` is rejected by `Literal.fromUrl`, and the payload after the slashes is otherwise
+  // identical — so normalise rather than lose it.
+  const url = target.startsWith('literal://') ? `literal:${target.slice('literal://'.length)}` : target;
+
+  try {
+    return stringifyLiteralValue(Literal.fromUrl(url).get(), target);
+  } catch {
+    return target;
   }
-  return target;
+}
+
+/**
+ * A decoded literal as display text, unwrapping a signed-expression envelope if that is what it is.
+ *
+ * The envelope check is `data` plus one of the signing fields rather than `data` alone: a profile
+ * field could legitimately be an object with a `data` key, and taking `.data` off that would be a
+ * different silent corruption in place of the one this fixes. `data` may itself be any JSON value,
+ * so it recurses once — an envelope inside an envelope is not a shape anything writes, and the
+ * recursion is bounded by unwrapping only when the envelope test passes.
+ */
+function stringifyLiteralValue(value: unknown, fallback: string): string {
+  if (value == null) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+
+  if (typeof value === 'object') {
+    const envelope = value as { data?: unknown; author?: unknown; proof?: unknown; timestamp?: unknown };
+    const signed = 'author' in envelope || 'proof' in envelope || 'timestamp' in envelope;
+    if ('data' in envelope && signed) return stringifyLiteralValue(envelope.data, fallback);
+    // An object that is not an envelope has no sensible display form. The raw target at least says
+    // where to look; `[object Object]` says nothing at all.
+    return fallback;
+  }
+
+  return fallback;
+}
+
+/*
+  How much of a peer's profile this client will hold.
+
+  ## Why there is a cap at all
+
+  Every field below is written by whoever the profile belongs to, published to a public perspective,
+  and read here with no ceiling. That is the whole shape of the problem: a peer chooses the number
+  of bytes this client stores and then renders — into every byline, every member row, every avatar,
+  every mention candidate, on every screen where they appear — and does so without needing to be in
+  a space, since a profile is fetched by DID from a public perspective.
+
+  A megabyte "handle" is not a clever attack, which is why it kept being nobody's job to stop. It is
+  a peer making a member list unusable for everybody in a community, and it costs them one string.
+
+  The numbers are generous rather than tight: they exist to bound the damage, not to enforce a style
+  guide, and a limit that real profiles bump into would be a bug of its own. Truncated rather than
+  refused — a name cut short still identifies somebody, where a blank one does not, and refusing
+  would hand a peer a way to make themselves invisible instead of merely loud.
+*/
+const MAX_NAME_CHARS = 120;
+const MAX_BIO_CHARS = 4000;
+/**
+ * An image is a data URI held in memory and put in an `<img src>`. Base64 is 4 chars per 3 bytes,
+ * so this is roughly 3 MB of picture — far past anything the app's own upload path produces (it
+ * compresses) and far short of what makes a member list fall over.
+ */
+const MAX_IMAGE_CHARS = 4_000_000;
+
+/** `value`, cut to `max` characters. See the caps above for why this exists. */
+function capped(value: string, max: number): string {
+  return value.length > max ? value.slice(0, max) : value;
 }
 
 async function resolveExpressionToDataUri(url: string, client: Ad4mClient): Promise<string | undefined> {
@@ -27,8 +114,14 @@ async function resolveExpressionToDataUri(url: string, client: Ad4mClient): Prom
     const { data_base64, file_type } = JSON.parse(res.data) as { data_base64?: string; file_type?: string };
     if (!data_base64) return undefined;
     // data_base64 may be a full data URI (WE format) or raw base64 (Flux format)
-    if (data_base64.startsWith('data:')) return data_base64;
-    return `data:${file_type};base64,${data_base64}`;
+    const uri = data_base64.startsWith('data:') ? data_base64 : `data:${file_type};base64,${data_base64}`;
+    // Dropped rather than truncated, unlike the text fields: half a data URI is a broken image, and
+    // an absent picture is a better rendering of an oversized one than a broken-image glyph.
+    if (uri.length > MAX_IMAGE_CHARS) {
+      console.warn(`ad4m: profile image at ${url} is too large to display (${uri.length} chars)`);
+      return undefined;
+    }
+    return uri;
   } catch (cause) {
     // Best-effort by design — a peer's avatar expression can be unfetched, offline, or malformed,
     // and a missing picture must not fail the profile it decorates. Logged (unlike before) because
@@ -40,7 +133,16 @@ async function resolveExpressionToDataUri(url: string, client: Ad4mClient): Prom
 
 /**
  * Fetch and parse an agent's profile from their public AD4M perspective.
- * Reads WE format (we://profile source) first, falls back to Flux/SIOC format.
+ *
+ * Three formats, tried in order, because an AD4M agent is not created by WE. Somebody who reaches
+ * WE Web through ad4m-connect brought an identity made somewhere else — the ADAM Launcher, Flux, a
+ * hosted node — and whatever named them there is the only name they have. Reading one format meant
+ * every such peer arrived nameless, and WE never asks for a name from an agent that already exists
+ * (see `SessionStore.initialise`: an existing agent goes straight to `login`, skipping the setup
+ * screen that collects one), so nameless is where they stayed.
+ *
+ * Order is precedence: WE's own format wins where it exists, since it is the one WE writes and so
+ * the one the person edited most recently.
  */
 export async function getProfile(did: string, backendClient: unknown): Promise<AgentProfileSummary> {
   const client = backendClient as Ad4mClient;
@@ -58,16 +160,16 @@ export async function getProfile(did: string, backendClient: unknown): Promise<A
       const val = parseLiteralTarget(link.data.target);
       switch (link.data.predicate) {
         case 'we://first_name':
-          result.firstName = val;
+          result.firstName = capped(val, MAX_NAME_CHARS);
           break;
         case 'we://last_name':
-          result.lastName = val;
+          result.lastName = capped(val, MAX_NAME_CHARS);
           break;
         case 'we://handle':
-          result.handle = val;
+          result.handle = capped(val, MAX_NAME_CHARS);
           break;
         case 'we://bio':
-          result.bio = val;
+          result.bio = capped(val, MAX_BIO_CHARS);
           break;
         case 'we://profile_image':
           result.avatar = await resolveExpressionToDataUri(link.data.target, client);
@@ -85,19 +187,47 @@ export async function getProfile(did: string, backendClient: unknown): Promise<A
         const val = parseLiteralTarget(link.data.target);
         switch (link.data.predicate) {
           case 'sioc://has_given_name':
-            result.firstName = val;
+            result.firstName = capped(val, MAX_NAME_CHARS);
             break;
           case 'sioc://has_family_name':
-            result.lastName = val;
+            result.lastName = capped(val, MAX_NAME_CHARS);
             break;
           case 'sioc://has_username':
-            result.handle = val;
+            result.handle = capped(val, MAX_NAME_CHARS);
             break;
           case 'sioc://has_bio':
-            result.bio = val;
+            result.bio = capped(val, MAX_BIO_CHARS);
             break;
           case 'sioc://has_profile_image':
             if (!result.avatar) result.avatar = await resolveExpressionToDataUri(link.data.target, client);
+            break;
+        }
+      }
+    }
+
+    // Fallback: ADAM Launcher format.
+    //
+    // It matches neither of the above on either axis. Its source is the agent's own DID (the code
+    // that writes it passes `source: agentStatus.did`, though `ad4m://profile` is declared beside
+    // the predicates and may be what a future version uses, so both are accepted), and its name
+    // predicates are `has_firstname`/`has_lastname` — not the `has_given_name`/`has_family_name`
+    // that Flux uses. Two near-misses in one format, which is why a launcher-created agent read as
+    // a completely blank profile rather than a partially-parsed one.
+    if (!result.firstName && !result.lastName && !result.handle) {
+      const launcherLinks = links.filter(
+        (l) => l.data.source === cleanedDid || l.data.source === LAUNCHER_PROFILE_SOURCE,
+      );
+      for (const link of launcherLinks) {
+        const val = parseLiteralTarget(link.data.target);
+        switch (link.data.predicate) {
+          case 'sioc://has_firstname':
+            result.firstName = capped(val, MAX_NAME_CHARS);
+            break;
+          case 'sioc://has_lastname':
+            result.lastName = capped(val, MAX_NAME_CHARS);
+            break;
+          case 'sioc://has_username':
+            result.handle = capped(val, MAX_NAME_CHARS);
             break;
         }
       }
@@ -116,8 +246,8 @@ export async function getProfile(did: string, backendClient: unknown): Promise<A
         result.location = {
           latitude: lat,
           longitude: lng,
-          city: cityLink ? parseLiteralTarget(cityLink.data.target) : undefined,
-          country: countryLink ? parseLiteralTarget(countryLink.data.target) : undefined,
+          city: cityLink ? capped(parseLiteralTarget(cityLink.data.target), MAX_NAME_CHARS) : undefined,
+          country: countryLink ? capped(parseLiteralTarget(countryLink.data.target), MAX_NAME_CHARS) : undefined,
         };
       }
     }

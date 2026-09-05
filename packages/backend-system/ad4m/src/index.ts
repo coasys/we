@@ -15,32 +15,33 @@ export {
   ad4mCapabilities,
   createAd4mDataBindings,
   createAd4mQueryAdapter,
-  toRendererModel,
+  toRendererEntity,
+  VERIFIED_AGAINST_AD4M,
   type Ad4mAdapterDeps,
 } from './ad4mAdapter';
 export { ad4mEphemeralCapabilities, createAd4mEphemeralPort } from './ad4mEphemeralAdapter';
 export * from './agentHelpers';
 // Compat re-exports — the manifest-entry types now live in the contract, and the model registry
-// lives with the model layer (@we/models); consumers migrate an import at a time.
-export type { ModelManifestEntry, ModelManifestProperty } from '@we/backend-shared';
+// lives with the model layer (@we/entities); consumers migrate an import at a time.
+export type { EntityManifestEntry, EntityManifestProperty } from '@we/backend-shared';
 export {
-  getModel,
-  getModelForPerspective,
-  getModelPredicates,
-  getModelTargetClass,
-  getRegisteredModelNames,
-  type ModelClass,
-  registerDynamicModels,
-  registerModel,
-  unregisterModel,
-} from '@we/models';
+  getEntity,
+  getEntitiesForPerspective,
+  getEntityPredicates,
+  getEntityTargetClass,
+  getRegisteredEntityNames,
+  type EntityClass,
+  registerDynamicEntities,
+  registerEntity,
+  unregisterEntity,
+} from '@we/entities';
 export { type NeutralManifestResult, toNeutralManifest } from './neutralManifest';
 export * from './interpretationHints';
 export * from './perspectiveHelpers';
-export * from './sdnaModels';
+export * from './sdnaEntities';
 export * from './syncHelpers';
 export {
-  buildModelFromEntry,
+  buildEntityFromEntry,
   compileManifest,
   type CompileManifestOptions,
   CORE_VOCABULARY,

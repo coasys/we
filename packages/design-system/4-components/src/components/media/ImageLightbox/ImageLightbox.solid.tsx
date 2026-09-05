@@ -26,7 +26,10 @@ export function ImageLightbox(props: ImageLightboxProps) {
 
   return (
     <Portal>
-      <we-modal close={props.onClose} hideclosebutton p="0" r="500" overflow="hidden" width="calc(100vw - 80px)">
+      {/* `fullscreen`: the picture is the size here, so the sheet only keeps clear of the edges.
+          `p="0"` because the image goes to the sheet's own corners — the one modal where the
+          content is not something to be read at a comfortable measure. */}
+      <we-modal close={props.onClose} hideclosebutton size="fullscreen" p="0" r="500" overflow="hidden">
         <div style={{ position: 'relative', width: '100%', height: 'calc(100dvh - 120px)', 'max-height': '900px' }}>
           <we-image src={props.srcs[index()]} alt="" fit="contain" width="100%" height="100%" />
 

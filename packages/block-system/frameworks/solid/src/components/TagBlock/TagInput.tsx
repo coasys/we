@@ -54,10 +54,10 @@ export function TagInput(props: TagInputProps) {
       </Show>
 
       <Show when={showModal()}>
-        <we-modal close={closeModal} p="500" width="320px" r="300">
+        <we-modal close={closeModal} size="sm">
           <form onSubmit={handleSubmit}>
             <Column gap="300">
-              <we-text variant="subheading">Add Tag</we-text>
+              <we-text variant="heading-md">Add Tag</we-text>
               <we-form-field label="Tag Name">
                 <we-input
                   type="text"

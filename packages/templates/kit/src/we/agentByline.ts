@@ -38,12 +38,12 @@ export function agentByline(opts: AgentBylineOptions): SchemaNode {
   const as = opts.as ?? 'author';
   const avatar: SchemaNode = {
     type: 'we-avatar',
-    props: { size: opts.avatarSize ?? 'sm', image: `$${as}.avatar`, hash: `$${as}.did` },
+    props: { size: opts.avatarSize ?? 'sm', image: { $: `${as}.avatar` }, hash: { $: `${as}.did` } },
   };
   const name: SchemaNode = {
     type: 'we-text',
     props: { fontWeight: 'semibold', ...(opts.nameColor && { color: opts.nameColor }) },
-    children: [`$${as}.name`],
+    children: [{ $: `${as}.name` }],
   };
   const time: SchemaNode[] =
     opts.timestamp !== undefined

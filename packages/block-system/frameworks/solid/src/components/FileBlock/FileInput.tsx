@@ -1,6 +1,6 @@
 import { Column, Row } from '@we/components/solid';
-import type { FileData } from '@we/models';
-import { readFileAsFileData } from '@we/models';
+import type { FileData } from '@we/entities';
+import { readFileAsFileData } from '@we/entities';
 import { createSignal, Show } from 'solid-js';
 import { Portal } from 'solid-js/web';
 
@@ -126,13 +126,11 @@ export function FileInput(props: FileInputProps) {
         </Show>
       </Show>
 
-      {/* Add/edit file modal — portalled to escape the Lexical contenteditable context. */}
+      {/* Add/edit file modal — portalled to escape the editor's contenteditable context. */}
       <Show when={showModal()}>
         <Portal>
-          <we-modal close={closeModal} ax="center" minWidth="400px">
-            <we-text fontWeight="bold" fontSize="600" textAlign="center">
-              {isEditing() ? 'Edit File' : 'Add File'}
-            </we-text>
+          <we-modal close={closeModal} size="sm">
+            <we-text variant="heading-md">{isEditing() ? 'Edit File' : 'Add File'}</we-text>
 
             <Show when={!isEditing()}>
               <we-file-upload on:change={handleModalFileChange} width="100%">

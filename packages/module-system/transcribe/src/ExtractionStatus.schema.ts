@@ -15,8 +15,8 @@
  * ## What it shows to whom
  *
  * Everyone sees every row: who is extracting, what phase, how long. That is deliberate and it is
- * what the host's relay exists to make possible — the peer running a pass is chosen by an election,
- * so which member holds the detailed view is otherwise decided by a coin flip.
+ * what the host's relay exists to make possible — a pass runs on whichever member's machine happened
+ * to start it, so which member holds the detailed view is otherwise decided by who pressed first.
  *
  * What only the runner has is the model exchange, because only their machine produced it. So the
  * disclosure is offered to everyone and *disabled* with a reason for a pass that is not theirs,
@@ -29,35 +29,8 @@
  * which is the shape James asked for, and the right one: a bar that grew a row per concurrent pass
  * would push the whole call's chrome around while somebody was using it.
  */
-import { type SchemaNode } from '@we/schema-shared';
-
-/** Must match `CALL_STATUS_ANCHOR` in `@we/module-call`. Deliberately not imported — a shared
- *  constant would be a hard dependency on the module this is meant to work without, exactly as
- *  `CALL_CONTROLS_ANCHOR` explains at greater length. */
-export const CALL_STATUS_ANCHOR = 'call-status';
-
-/**
- * The panel's own corners — the theme's **surface** radius, not the control radius the bar above it
- * takes.
- *
- * The two look interchangeable and are not. `control-radius` describes a capsule, and a capsule is
- * only coherent on a box about one line tall: the call bar is exactly that, so it follows it and a
- * `pill` theme rounds it beautifully. This panel is a stack of disclosures hundreds of pixels tall,
- * and the same variable turned it into a lozenge with its own text running off both ends.
- *
- * `surface-radius` is the theme's answer for a box that is not a capsule — modals, drawers and
- * alerts all take it — and every preset already caps it for that reason: WE's own `pill` preset sets
- * controls to `pill` and surfaces to `600`.
- */
-const STATUS_RADIUS = 'var(--we-theme-surface-radius, var(--we-radius-400))';
-
-/**
- * Matching the call bar's material exactly.
- *
- * Two floating strips a spacing token apart that disagreed about their surface would read as one
- * piece of chrome and one bug. Restated rather than imported for the reason the anchor is.
- */
-const STATUS_SURFACE = { bg: 'page', border: '1px solid border', shadow: 'md' } as const;
+import { type SchemaNode, type SchemaProp } from '@we/schema-shared';
+import { expr } from '@we/schema-shared';
 
 /**
  * How big the leading glyph is, whichever glyph it happens to be.
@@ -92,28 +65,14 @@ const CARET_SIZE = 'xs';
 const phaseIcon: SchemaNode = {
   type: '$if',
   props: {
-    condition: '$pass.running',
+    condition: { $: 'pass.running' },
     then: { type: 'we-spinner', props: { size: GLYPH_SIZE } },
     else: {
       type: 'we-icon',
       props: {
         size: GLYPH_SIZE,
-        name: {
-          $if: {
-            condition: { $eq: ['$pass.phase', 'failed'] },
-            then: 'warning',
-            else: {
-              $if: { condition: { $eq: ['$pass.phase', 'skipped'] }, then: 'minus-circle', else: 'check-circle' },
-            },
-          },
-        },
-        color: {
-          $if: {
-            condition: { $eq: ['$pass.phase', 'failed'] },
-            then: 'danger-text',
-            else: { $if: { condition: { $eq: ['$pass.phase', 'done'] }, then: 'success-text', else: 'text-muted' } },
-          },
-        },
+        name: { $: "pass.phase == 'failed' ? 'warning' : pass.phase == 'skipped' ? 'minus-circle' : 'check-circle'" },
+        color: { $: "pass.phase == 'failed' ? 'danger-text' : pass.phase == 'done' ? 'success-text' : 'text-muted'" },
       },
     },
   },
@@ -128,7 +87,7 @@ const phaseIcon: SchemaNode = {
  */
 const runnerFace: SchemaNode = {
   type: 'we-avatar',
-  props: { size: 'xs', image: '$pass.avatar', hash: '$pass.runner' },
+  props: { size: 'xs', image: { $: 'pass.avatar' }, hash: { $: 'pass.runner' } },
 };
 
 /**
@@ -149,16 +108,16 @@ const runnerFace: SchemaNode = {
 const passRowChildren: SchemaNode[] = [
   phaseIcon,
   runnerFace,
-  { type: 'we-text', props: { fontSize: '200', truncate: true, flex: '1' }, children: ['$pass.label'] },
+  { type: 'we-text', props: { fontSize: '200', truncate: true, flex: '1' }, children: [{ $: 'pass.label' }] },
   {
     type: '$if',
     props: {
-      condition: '$pass.elapsed',
+      condition: { $: 'pass.elapsed' },
       then: {
         // Tabular, so the seconds column does not jitter the row every time it ticks.
         type: 'we-text',
         props: { fontSize: '200', color: 'text-faint', styles: { fontVariantNumeric: 'tabular-nums' } },
-        children: ['$pass.elapsed'],
+        children: [{ $: 'pass.elapsed' }],
       },
       /*
         Once settled, when it happened rather than how long it took.
@@ -174,10 +133,10 @@ const passRowChildren: SchemaNode[] = [
       else: {
         type: '$if',
         props: {
-          condition: '$pass.finishedAt',
+          condition: { $: 'pass.finishedAt' },
           then: {
             type: 'we-timestamp',
-            props: { value: '$pass.finishedAt', relative: true, fontSize: '200', color: 'text-faint' },
+            props: { value: { $: 'pass.finishedAt' }, relative: true, fontSize: '200', color: 'text-faint' },
           },
         },
       },
@@ -205,19 +164,13 @@ const passRowChildren: SchemaNode[] = [
 const disclosureCaret: SchemaNode = {
   type: '$if',
   props: {
-    condition: '$pass.openable',
+    condition: { $: 'pass.openable' },
     then: {
       type: 'we-icon',
       props: {
         size: CARET_SIZE,
         color: 'text-muted',
-        name: {
-          $if: {
-            condition: { $in: ['$pass.passId', { $local: 'openPasses' }] },
-            then: 'caret-up',
-            else: 'caret-down',
-          },
-        },
+        name: { $: "pass.passId in local.openPasses ? 'caret-up' : 'caret-down'" },
       },
     },
   },
@@ -249,7 +202,7 @@ function paneLabel(label: string): SchemaNode {
 function codePane(options: {
   label: string;
   /** The already-indented text, from the store — a schema has no `JSON.stringify`. */
-  value: string;
+  value: SchemaProp;
   /** Resolves true while this pane is open. */
   isOpen: SchemaNode | Record<string, unknown>;
   /** The `$localState` array field this pane's toggle writes into. */
@@ -268,7 +221,7 @@ function codePane(options: {
             props: {
               variant: 'bare',
               width: '100%',
-              onClick: { $toggleLocalIn: options.field, value: '$pass.passId' },
+              onClick: { $toggleLocalIn: options.field, value: { $: 'pass.passId' } },
             },
             children: [
               {
@@ -281,7 +234,7 @@ function codePane(options: {
                     props: {
                       size: CARET_SIZE,
                       color: 'text-faint',
-                      name: { $if: { condition: options.isOpen, then: 'caret-up', else: 'caret-down' } },
+                      name: expr`${options.isOpen} ? 'caret-up' : 'caret-down'`,
                     },
                   },
                 ],
@@ -336,9 +289,9 @@ function codePane(options: {
  */
 const promptPane: SchemaNode = codePane({
   label: 'Prompt',
-  value: '$pass.prompt',
+  value: { $: 'pass.prompt' },
   field: 'openPrompts',
-  isOpen: { $in: ['$pass.passId', { $local: 'openPrompts' }] },
+  isOpen: { $: 'pass.passId in local.openPrompts' },
 });
 
 /**
@@ -352,9 +305,9 @@ const promptPane: SchemaNode = codePane({
  */
 const responsePane: SchemaNode = codePane({
   label: 'Response',
-  value: '$pass.response',
+  value: { $: 'pass.response' },
   field: 'closedResponses',
-  isOpen: { $not: { $in: ['$pass.passId', { $local: 'closedResponses' }] } },
+  isOpen: { $: '!(pass.passId in local.closedResponses)' },
 });
 
 /**
@@ -370,7 +323,7 @@ const responsePane: SchemaNode = codePane({
 const passDetail: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $in: ['$pass.passId', { $local: 'openPasses' }] },
+    condition: { $: 'pass.passId in local.openPasses' },
     enterTransition: { type: 'reveal', duration: 200 },
     exitTransition: { type: 'reveal', duration: 160 },
     then: {
@@ -382,11 +335,11 @@ const passDetail: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: '$pass.detail',
+            condition: { $: 'pass.detail' },
             then: {
               type: 'we-text',
               props: { fontSize: '200', color: 'danger-text' },
-              children: ['$pass.detail'],
+              children: [{ $: 'pass.detail' }],
             },
           },
         },
@@ -430,7 +383,7 @@ const passEntry: SchemaNode = {
         ax: 'start',
         ay: 'center',
         gap: '200',
-        disabled: { $not: '$pass.openable' },
+        disabled: { $: '!pass.openable' },
         /*
           Keep the row legible when it cannot be opened.
 
@@ -444,7 +397,7 @@ const passEntry: SchemaNode = {
           appearance is overridden.
         */
         disabledProps: { cursor: 'default', opacity: 1 },
-        onClick: { $toggleLocalIn: 'openPasses', value: '$pass.passId' },
+        onClick: { $toggleLocalIn: 'openPasses', value: { $: 'pass.passId' } },
       },
       children: [...passRowChildren, disclosureCaret],
     },
@@ -455,7 +408,7 @@ const passEntry: SchemaNode = {
 /** The passes still in flight. Always listed — this is the half somebody is waiting on. */
 const runningList: SchemaNode = {
   type: '$each',
-  props: { items: { $store: 'modules.transcribe.runningPasses' }, as: 'pass' },
+  props: { items: { $: 'interpretationStore.runningPasses' }, as: 'pass' },
   children: [passEntry],
 };
 
@@ -474,7 +427,7 @@ const runningList: SchemaNode = {
 const settledSection: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $store: 'modules.transcribe.settledCount' },
+    condition: { $: 'interpretationStore.settledCount' },
     then: {
       type: 'Column',
       props: { gap: '200', width: '100%' },
@@ -500,15 +453,9 @@ const settledSection: SchemaNode = {
                   type: 'we-text',
                   props: { fontSize: '200', color: 'text-muted', flex: '1', textAlign: 'left' },
                   children: [
-                    { $store: 'modules.transcribe.settledCount' },
+                    { $: 'interpretationStore.settledCount' },
                     ' ',
-                    {
-                      $plural: {
-                        count: { $store: 'modules.transcribe.settledCount' },
-                        one: 'extraction processed',
-                        other: 'extractions processed',
-                      },
-                    },
+                    { $: "plural(interpretationStore.settledCount, 'extraction processed', 'extractions processed')" },
                   ],
                 },
                 {
@@ -516,7 +463,7 @@ const settledSection: SchemaNode = {
                   props: {
                     size: CARET_SIZE,
                     color: 'text-muted',
-                    name: { $if: { condition: { $local: 'historyOpen' }, then: 'caret-up', else: 'caret-down' } },
+                    name: { $: "local.historyOpen ? 'caret-up' : 'caret-down'" },
                   },
                 },
               ],
@@ -526,7 +473,7 @@ const settledSection: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $local: 'historyOpen' },
+            condition: { $: 'local.historyOpen' },
             enterTransition: { type: 'reveal', duration: 200 },
             exitTransition: { type: 'reveal', duration: 160 },
             then: {
@@ -535,7 +482,7 @@ const settledSection: SchemaNode = {
               children: [
                 {
                   type: '$each',
-                  props: { items: { $store: 'modules.transcribe.settledPasses' }, as: 'pass' },
+                  props: { items: { $: 'interpretationStore.settledPasses' }, as: 'pass' },
                   children: [passEntry],
                 },
               ],
@@ -548,92 +495,74 @@ const settledSection: SchemaNode = {
 };
 
 /**
- * The bar itself.
+ * The disclosures a pass carries, and the state that opens them.
  *
- * Absent entirely when nothing is happening — not empty, absent. A permanently reserved strip under
- * the call bar would be a piece of chrome whose only job is to report, sitting there reporting
- * nothing, and it would push the rest of the call's furniture down to do it.
+ * Split out from the chrome node because the two now live in different places — see
+ * {@link extractionActivity} and {@link extractionSignal} below.
  */
-export const extractionStatus: SchemaNode = {
+const activityLocalState = {
+  /**
+   * Which rows are open, as a set of pass ids.
+   *
+   * An array rather than a boolean each, because the rows come from data: `$localState` names
+   * are fixed when the template is written, and there is no name to give a row that does not
+   * exist yet. `$toggleLocalIn` writes it and `$in` reads it back.
+   */
+  openPasses: { type: 'array', initial: [] },
+  /**
+   * Which prompts are open, separately from which rows are.
+   *
+   * Its own set because the two disclosures answer different questions: opening a row asks
+   * "what happened", opening a prompt asks "what exactly was sent". The second is reference
+   * material and mostly shape definitions identical on every pass, so it stays closed until
+   * somebody asks — otherwise it fills the screen above the response they opened the row for.
+   */
+  openPrompts: { type: 'array', initial: [] },
+  /** Which responses have been closed — see `responsePane` on why this one is inverted. */
+  closedResponses: { type: 'array', initial: [] },
+  /**
+   * Whether the finished-passes history is open.
+   *
+   * Starts closed, and stays closed as passes complete. Opening it is a deliberate act — the
+   * bar's job is to report what is happening, and a history that unfolded itself every time
+   * something finished would be the growth this collapse exists to stop.
+   */
+  historyOpen: { type: 'boolean', initial: false },
+};
+
+/**
+ * Everything a pass did, and everything anyone may read about it.
+ *
+ * ## Why this is in the transcript panel and not the call bar
+ *
+ * It used to be the whole of the chrome contribution, and that was one surface answering two
+ * questions of very different sizes. "Is something happening?" is a glance, is wanted by everybody
+ * in the call, and must not move the chrome around while somebody is using it. "What exactly was
+ * sent to the model?" is reading — a prompt pane and a response pane, hundreds of pixels of
+ * monospace — and is wanted occasionally, by one person, who is by then not looking at the call at
+ * all.
+ *
+ * Putting both in a floating strip under the call bar meant the second kept winning: opening one
+ * row took the strip to 520px and pushed the call's own controls around, and a bar that grew a row
+ * per concurrent pass would have kept doing it. So the reading moves to the panel that is already
+ * about the transcript, where there is room and where opening something costs the call nothing, and
+ * the glance stays in the chrome as one line.
+ *
+ * The original argument for the chrome — that a pass outlives the panel that started it, and that
+ * the four people who did *not* start it are the ones most likely to want the readout — is what
+ * {@link extractionSignal} still satisfies. It says who and how long, for everybody, without
+ * needing the panel open.
+ */
+export const extractionActivity: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $store: 'modules.transcribe.hasActivity' },
-    // Slides down from behind the bar rather than appearing. The bar is a fixed object somebody is
-    // already looking at, and something materialising a few pixels under it reads as a glitch.
-    enterTransition: [
-      { type: 'reveal', duration: 220 },
-      { type: 'fade', duration: 160 },
-    ],
+    condition: { $: 'interpretationStore.hasActivity' },
     then: {
       type: 'Column',
-      $localState: {
-        /**
-         * Which rows are open, as a set of pass ids.
-         *
-         * An array rather than a boolean each, because the rows come from data: `$localState` names
-         * are fixed when the template is written, and there is no name to give a row that does not
-         * exist yet. `$toggleLocalIn` writes it and `$in` reads it back.
-         */
-        openPasses: { type: 'array', initial: [] },
-        /**
-         * Which prompts are open, separately from which rows are.
-         *
-         * Its own set because the two disclosures answer different questions: opening a row asks
-         * "what happened", opening a prompt asks "what exactly was sent". The second is reference
-         * material and mostly shape definitions identical on every pass, so it stays closed until
-         * somebody asks — otherwise it fills the screen above the response they opened the row for.
-         */
-        openPrompts: { type: 'array', initial: [] },
-        /** Which responses have been closed — see `responsePane` on why this one is inverted. */
-        closedResponses: { type: 'array', initial: [] },
-        /**
-         * Whether the finished-passes history is open.
-         *
-         * Starts closed, and stays closed as passes complete. Opening it is a deliberate act — the
-         * bar's job is to report what is happening, and a history that unfolded itself every time
-         * something finished would be the growth this collapse exists to stop.
-         */
-        historyOpen: { type: 'boolean', initial: false },
-      },
+      $localState: activityLocalState,
       props: {
-        ...STATUS_SURFACE,
-        r: STATUS_RADIUS,
-        px: '300',
-        py: '200',
         gap: '200',
-        // Wide enough for a name and a clause, capped so a long failure message wraps rather than
-        // stretching the bar past the one above it.
-        minWidth: '260px',
-        maxWidth: '520px',
-        /*
-          Full width as soon as anything is open, rather than growing with each pane.
-
-          Sized to content, the bar stepped wider every time a disclosure was opened — expand a row
-          and it jumps, open the prompt beneath it and it jumps again. Each step moves a floating
-          object somebody is reading.
-
-          Taking the cap the moment the first row opens makes it one movement instead of several:
-          every pane after that renders into space the bar already has. Closed, it still shrinks to
-          whatever the rows need, which is the point of the cap being a maximum in the first place.
-        */
-        width: {
-          $if: {
-            condition: { $count: { items: { $local: 'openPasses' } } },
-            then: '520px',
-            else: 'auto',
-          },
-        },
-        /*
-          Glide rather than snap, matching the reveals inside it.
-
-          Every vertical change here is a `reveal` transition, so the one horizontal change being
-          instant read as a glitch beside them. An animation token rather than `300ms`: a theme's
-          reduced-motion setting overrides the token and cannot touch a hardcoded duration.
-
-          Only `width` — the bar's other properties have no business animating, and a blanket
-          transition would drag the surface colour through a fade every time a theme changed.
-        */
-        transition: 'width 300 ease-in-out',
+        width: '100%',
       },
       children: [
         runningList,
@@ -646,22 +575,96 @@ export const extractionStatus: SchemaNode = {
           explanation was repeated per pass. It also happened to be the box that stopped the caret
           reaching the right edge.
 
-          Shown only when there is a locked row to explain, and it names the way out: this is the
-          one moment somebody wants that setting, and settings is not where anyone looks for a
-          control they have never seen.
+          Shown only while the space's setting is the reason a peer's row will not open, and it
+          names the way out: this is the one moment somebody wants that setting, and settings is not
+          where anyone looks for a control they have never seen. Gated on the setting rather than on
+          a row lacking detail — see `detailWithheld` in the store for what the other gate showed.
+
+          One short line at footnote size. Two sentences at body size took more of the bar than the
+          rows it was explaining, for a fact that is the same on every pass.
         */
         {
           type: '$if',
           props: {
-            condition: { $store: 'modules.transcribe.hasLockedPass' },
+            condition: { $: 'interpretationStore.detailWithheld' },
             then: {
               type: 'we-text',
-              props: { fontSize: '200', color: 'text-faint' },
-              children: [
-                'Other people’s prompts stay on their machine. A space can share extraction detail in its settings.',
-              ],
+              props: { variant: 'footnote', color: 'text-faint' },
+              children: ['Prompts stay on each person’s machine — share them in space settings.'],
             },
           },
+        },
+      ],
+    },
+  },
+};
+
+/**
+ * Read this call as it happens, or stop — the extraction counterpart of the record button.
+ *
+ * ## Why a verb and not a way in
+ *
+ * It opened the extraction panel first, which the rail already does, so the bar carried a second
+ * button for something a person could already reach. The record button beside it is not a way in
+ * either: it *starts and stops the thing*, and opening the panel is a side effect of switching it
+ * on. That is the pairing the bar wants — one control for capturing the conversation, one for
+ * reading it — and the rail keeps the panels.
+ *
+ * ## The three states are the record button's three states
+ *
+ * Off is `ghost`, matching the call's own mute and camera buttons so the row reads as one set of
+ * controls. On but idle is `secondary` — the watch is registered and waiting for something to be
+ * said. A pass actually in flight is `danger`, and it is the same argument recording makes: a state
+ * that arrives on its own, spending somebody's tokens, has to be legible without being looked for,
+ * and the loudest thing in the bar is the way out of it.
+ *
+ * ## What it changes is everyone's
+ *
+ * The button beside it is this agent's microphone; this is the whole call's. A standing watch is one
+ * registration the neighbourhood shares, so it cannot be a private preference — which makes two
+ * near-identical squares with different blast radii, and the tooltip is the only place that can say
+ * so. It says so.
+ *
+ * Absent where there is no call to decide about, rather than disabled: `canChooseTargets` asks about
+ * the same record, and a control explaining why it cannot work belongs in the panel, which has room
+ * for a sentence.
+ */
+export const extractionControl: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'modules.transcribe.canChooseTargets' },
+    then: {
+      type: 'we-tooltip',
+      props: {
+        title: {
+          $: "modules.transcribe.autoExtract ? 'Stop reading this call for everyone in it' : 'Read this call as it happens, for everyone in it'",
+        },
+        placement: 'bottom',
+      },
+      children: [
+        {
+          type: 'we-button',
+          props: {
+            // No `size`, and `square`, for `callControl`'s reasons: a contributed button is only one
+            // of the bar's controls while it is the same shape as the rest of them.
+            square: true,
+            variant: {
+              $: "interpretationStore.runningCount ? 'danger' : modules.transcribe.autoExtract ? 'secondary' : 'ghost'",
+            },
+            onClick: { $action: 'modules.transcribe.toggleAutoExtract' },
+          },
+          children: [
+            {
+              // A spinner while a pass is in flight, so "on" and "working right now" are told apart
+              // in the control rather than by a second object appearing beside it.
+              type: '$if',
+              props: {
+                condition: { $: 'interpretationStore.runningCount' },
+                then: { type: 'we-spinner', props: { size: 'xs' } },
+                else: { type: 'we-icon', props: { name: 'sparkle' } },
+              },
+            },
+          ],
         },
       ],
     },

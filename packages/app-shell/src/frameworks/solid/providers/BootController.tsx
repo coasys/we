@@ -8,6 +8,8 @@
  *
  * Renders nothing.
  */
+import { consumeGuestBootTarget } from '@shared/guestLink';
+
 import { useDatasetStore } from '../stores/DatasetStore';
 import { useProfileStore } from '../stores/ProfileStore';
 import { useRouteStore } from '../stores/RouteStore';
@@ -21,9 +23,23 @@ export function BootController() {
   const spaceStore = useSpaceStore();
   const routeStore = useRouteStore();
 
-  // Capture the URL the user landed on before any boot-time navigation.
-  // Used to restore deep links after auth completes (e.g. refresh on /space/uuid/flux).
-  const initialPath = window.location.pathname;
+  /*
+    The URL the user landed on, captured before any boot-time navigation and spent once.
+
+    Held as a `let` and cleared on use, because this handler runs on *every* unlock rather than only
+    the first. Signing out and back in within one session re-ran it against the path the app was
+    opened at half an hour earlier — so coming back landed you wherever you started, quite possibly
+    a space you have since left, rather than where you were. Once it has been spent, the second
+    unlock reads the location as it is now, which is the honest answer.
+
+    The search string travels with it: a deep link is routinely `?type=posts&sort=new`, and
+    restoring only the pathname put somebody back on the page they linked to with every filter reset.
+  */
+  let pendingDeepLink: string | null = window.location.pathname + window.location.search;
+
+  // Read the guest target before any async work — the entry point sets it synchronously, and
+  // reading it removes it, so a remount cannot join a second time.
+  const guestBoot = consumeGuestBootTarget();
 
   session.onSessionUnlocked(async () => {
     if (!session.lifecycle()) return;
@@ -41,8 +57,36 @@ export function BootController() {
     const ownDid = session.me()?.did;
     if (ownDid) profileStore.fetchProfile(ownDid);
 
+    /*
+      Somebody arrived on a guest invite link.
+
+      Only a session this link created joins on its own — see `GuestBootTarget.autoJoin`. Anybody
+      who already had an identity is taken to the space's own join gate, which is what the ordinary
+      share link does and what the invite copy promises.
+
+      The navigation happens either way, including after a failure: `/space/<id>` IS the join gate,
+      and it states the reason (`joinError`, matched against this route segment) beside a Join
+      button. Landing there is how a guest whose join did not complete finds out and retries;
+      nothing else on the page could have told them. `/space/<id>` accepts a local uuid and a
+      neighbourhood CID alike, so the shared id the link carries resolves.
+
+      `replace`, not push: `/join/<id>` must not stay in the history. Backing onto it puts the app
+      on a path no route claims, and reloading there re-runs the whole guest flow.
+    */
+    if (guestBoot) {
+      if (guestBoot.autoJoin) {
+        await spaceStore.joinSpace(guestBoot.spaceId).catch((err) => {
+          console.error('BootController: guest join failed', err);
+        });
+      }
+      routeStore.navigate(`/space/${guestBoot.spaceId}`, { replace: true });
+      return;
+    }
+
     // Restore the original URL (e.g. a deep link opened via refresh), falling back to '/'
-    routeStore.navigate(initialPath || '/');
+    const target = pendingDeepLink ?? window.location.pathname + window.location.search;
+    pendingDeepLink = null;
+    routeStore.navigate(target || '/');
   });
 
   return null;

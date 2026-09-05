@@ -23,12 +23,15 @@ import type {
   DatasetHandle,
   EphemeralPort,
   InterpretationPort,
+  InterpretationProposal,
   InterpretationResult,
   Peer,
   TranscriptionPort,
 } from '@we/backend-shared';
 import type {
+  AgentDataAccess,
   CreateEntityOptions,
+  DatasetTarget,
   InterpretationActivitySummary,
   ModuleDatasetAccess,
   ModuleIdentityAccess,
@@ -41,6 +44,14 @@ import { moduleRegistry, moduleStores } from './moduleRegistry';
 export interface ModuleHostServices {
   dataset?: () => DatasetHandle | null;
   datasetUri?: () => string | null;
+  /**
+   * Resolve a dataset URI a module named, or `undefined` when this agent does not hold it.
+   *
+   * The half of {@link DatasetTarget} only the host can supply. Distinguishes "not named" from
+   * "named and not found", because those must not have the same outcome: the first means the space
+   * on screen, and the second must refuse rather than silently write somewhere else.
+   */
+  datasetByUri?: (uri: string) => DatasetHandle | undefined;
   selfId?: () => string | null;
   ephemeral?: EphemeralPort;
   presence?: {
@@ -55,10 +66,26 @@ export interface ModuleHostServices {
    * dataset's models. Separate from `interpretation` because the port takes turns and only the host
    * can produce them — see `shared/interpretation/transcriptTurns.ts`.
    */
-  interpretCollection?: (collectionId: string, request: { classes: string[] }) => Promise<InterpretationResult>;
-  watchCollection?: (collectionId: string, request: { classes: string[] }) => Promise<void>;
+  interpretCollection?: (collectionId: string) => Promise<InterpretationResult>;
+  /**
+   * The suggestions staged on one collection's contents, published by the same store as
+   * `interpretCollection` and for the same reason: narrowing to a collection needs the containment
+   * predicate, which only a store that can read the dataset's models can resolve.
+   *
+   * Absent means a host that cannot narrow, and the unscoped port call stands in — the behaviour
+   * every caller had before, and too much rather than too little.
+   */
+  proposalsForCollection?: (dataset: DatasetHandle, collectionId: string) => Promise<InterpretationProposal[]>;
+  /**
+   * What one call extracts and what else it could, published by the store that can see all three
+   * layers. Absent reads as an empty list — see `ModuleInterpretationAccess.targets`.
+   */
+  extractionTargets?: (collectionId: string) => { entity: string; selected: boolean }[];
+  /** Add or remove one model from what a call extracts. Absent means the host cannot record it. */
+  setExtractionTarget?: (collectionId: string, entity: string, on: boolean) => Promise<void>;
+  watchCollection?: (collectionId: string) => Promise<void>;
   unwatchCollection?: (collectionId: string) => Promise<void>;
-  reconcileCollection?: (collectionId: string, request: { classes: string[] }) => Promise<number>;
+  reconcileCollection?: (collectionId: string) => Promise<number>;
   /**
    * Live extraction activity for the current space, published by the store that holds the feed.
    *
@@ -76,18 +103,47 @@ export interface ModuleHostServices {
    * never re-read.
    */
   interpretationAvailable?: () => boolean;
+  /**
+   * Whether this space has automatic extraction switched on — the community's decision, reactive.
+   *
+   * Separate from `interpretationAvailable`, which is what the *node* can do. Both are needed, and
+   * conflating them put the wrong sentence on screen: a space with the setting off reported that
+   * this node could not auto-extract, which is neither true nor something anybody can act on.
+   */
+  /**
+   * Whether a call is extracted as it happens — its participants' answer, else the space's.
+   *
+   * Takes a collection because the answer is per call: a community's standing decision is the
+   * default, and the people in one conversation may turn it off for that conversation. Omit it to
+   * ask about the space itself.
+   */
+  autoInterpretEnabled?: (collectionId?: string) => boolean;
+  /** Turn it on or off for one call, for everyone in it. */
+  setAutoInterpret?: (collectionId: string, on: boolean) => Promise<void>;
+  /**
+   * Whether this space shares the model exchange between peers — the space setting, reactive.
+   *
+   * What a module reads to explain a peer's row that cannot be opened. Separate from the rows
+   * themselves because a row without detail is not evidence about the setting: see
+   * `InterpretationStore` on why the two were conflated and what that showed.
+   */
+  interpretationDetailShared?: () => boolean;
   /** The profile cache, so a module can put a face to an agent id. See `ModuleIdentityAccess`. */
   identities?: ModuleIdentityAccess;
   /** Naming and reaching spaces, for a module whose state can outlive the space on screen. */
   datasets?: ModuleDatasetAccess;
-  /** Write a record into the current dataset — the host's `model.create`, in imperative form. */
+  /** Write a record — the host's `record.create`, in imperative form. Honours `options.dataset`. */
   createEntity?: (
     entity: string,
     fields: Record<string, unknown>,
     options?: CreateEntityOptions,
   ) => Promise<string | null>;
   /** Add one value to a to-many relation on an existing record. See `ModuleStoreDeps.linkEntity`. */
-  linkEntity?: (entity: string, id: string, relation: string, value: string) => Promise<void>;
+  linkEntity?: (entity: string, id: string, relation: string, value: string, options?: DatasetTarget) => Promise<void>;
+  /** This agent's own records, in the root dataset. See `AgentDataAccess`. */
+  agentData?: AgentDataAccess;
+  /** How the current dataset is named in a record reference. See `ModuleStoreDeps.datasetRefKey`. */
+  datasetRefKey?: () => string;
 }
 
 const services: ModuleHostServices = {};
@@ -98,13 +154,57 @@ const services: ModuleHostServices = {};
  * Merges rather than replaces, because the slices arrive from different stores at different times —
  * `DatasetStore`/`SessionStore` have the dataset and the transport, `PresenceStore` has the roster.
  */
-export function provideModuleHostServices(slice: ModuleHostServices): void {
+export function provideModuleHostServices(slice: ModuleHostServices): () => void {
   Object.assign(services, slice);
+
+  /*
+    Returns the withdrawal, and withdraws only what is still ours.
+
+    Six stores merge slices into one global object and nothing ever removed one. A provider that
+    unmounted — `TemplateProvider` does, on every template switch — left its closures here, bound to
+    signals from a scope that had been disposed, and a module going through them wrote against the
+    previous template's stores with nothing anywhere reporting it.
+
+    Key by key rather than wholesale, because the slices genuinely overlap in time: a store that has
+    already been superseded must take back only the entries it still owns, or its cleanup would blank
+    its replacement's.
+  */
+  const mine = Object.entries(slice) as [keyof ModuleHostServices, unknown][];
+  return () => {
+    for (const [key, value] of mine) {
+      if (services[key] === value) delete services[key];
+    }
+  };
 }
 
 /** Test seam: drop everything between cases so one test's bindings cannot leak into the next. */
 export function resetModuleHostServices(): void {
   for (const key of Object.keys(services)) delete services[key as keyof ModuleHostServices];
+}
+
+/**
+ * The dataset a module's call means: the one it named, or the space on screen.
+ *
+ * ## Why a missing one is `null` rather than the current dataset
+ *
+ * Falling back is the bug this exists to fix. A module names a dataset precisely when its work does
+ * *not* belong to whatever is on screen — a transcript belongs to the call, and the call's space may
+ * be two navigations behind. Resolving a name it does not hold and quietly writing to the current
+ * dataset instead is how a transcript ended up in the wrong space with a `children` link to a record
+ * that space does not hold.
+ *
+ * So there are three answers, not two: unnamed means here, named-and-found means there, and
+ * named-and-missing means nowhere. A caller that gets nothing does nothing — which loses one
+ * utterance, where the alternative loses the transcript and corrupts a second space.
+ */
+function targeted(target?: DatasetTarget): DatasetHandle | null {
+  if (!target?.dataset) return services.dataset?.() ?? null;
+  const found = services.datasetByUri?.(target.dataset);
+  if (!found) {
+    console.warn(`module host: no dataset for "${target.dataset}" — refusing rather than writing elsewhere`);
+    return null;
+  }
+  return found;
 }
 
 /**
@@ -123,6 +223,7 @@ export function createModuleStoreDeps(framework: {
 
     dataset: () => services.dataset?.() ?? null,
     datasetUri: () => services.datasetUri?.() ?? null,
+    datasetRefKey: () => services.datasetRefKey?.() ?? '',
     selfId: () => services.selfId?.() ?? null,
 
     // A stable function that forwards, so a module capturing `deps.ephemeral` at construction still
@@ -172,10 +273,27 @@ export function createModuleStoreDeps(framework: {
         services.interpretationAvailable?.() ??
         services.interpretation?.available?.() ??
         services.interpretation !== undefined,
-      runOnCollection: async (collectionId, request) => {
+      // The community's decision, read through on every call so a module's standing watch follows a
+      // mid-call toggle. Absent reads as off, matching the gate in DatasetStore — the right way
+      // round for something that spends somebody's LLM budget.
+      autoEnabled: (collectionId?: string) => services.autoInterpretEnabled?.(collectionId) ?? false,
+      setAuto: async (collectionId: string, on: boolean) => {
+        const set = services.setAutoInterpret;
+        if (!set) throw new Error('interpretation: this host cannot record a call’s extraction settings');
+        await set(collectionId, on);
+      },
+      // Read through on every call rather than captured, like every accessor here: a module store
+      // outlives a space switch, and a captured list would offer the previous space's models.
+      targets: (collectionId) => services.extractionTargets?.(collectionId) ?? [],
+      setTarget: async (collectionId, entity, on) => {
+        const set = services.setExtractionTarget;
+        if (!set) throw new Error('interpretation: this host cannot record a call’s extraction targets');
+        await set(collectionId, entity, on);
+      },
+      runOnCollection: async (collectionId) => {
         const run = services.interpretCollection;
         if (!run) throw new Error('interpretation: this backend cannot interpret');
-        return run(collectionId, request);
+        return run(collectionId);
       },
       /*
         Keep interpreting this collection as it grows — the standing counterpart to
@@ -189,16 +307,15 @@ export function createModuleStoreDeps(framework: {
         Rejects on a backend that cannot hold one, so a module can offer the affordance only where
         it means something instead of silently doing nothing.
       */
-      watchCollection: async (collectionId, request) => {
+      watchCollection: async (collectionId) => {
         const start = services.watchCollection;
         if (!start) throw new Error('interpretation: this backend cannot run a standing watch');
-        return start(collectionId, request);
+        return start(collectionId);
       },
       unwatchCollection: async (collectionId) => {
         await services.unwatchCollection?.(collectionId);
       },
-      reconcileCollection: async (collectionId, request) =>
-        (await services.reconcileCollection?.(collectionId, request)) ?? 0,
+      reconcileCollection: async (collectionId) => (await services.reconcileCollection?.(collectionId)) ?? 0,
       /*
         Reads through on every call rather than capturing, like every accessor here — a module store
         outlives a space switch, and a captured array would keep showing the passes of the space the
@@ -209,18 +326,35 @@ export function createModuleStoreDeps(framework: {
         neither is a state worth a module branching on.
       */
       activity: () => services.interpretationActivity?.() ?? [],
-      proposals: async () => {
-        const dataset = services.dataset?.();
+      // False until the store publishes, which reads as "not shared" — the conservative answer,
+      // and the one the footnote it gates should give while the setting is still unknown.
+      detailShared: () => services.interpretationDetailShared?.() ?? false,
+      /*
+        `target` names the dataset, and an unresolvable one refuses rather than falling through.
+
+        Interpretation follows the *call*, and a call outlives the space on screen — so reading
+        proposals from `dataset()` answered about wherever the reader had wandered to, and accepting
+        one committed it there. `targeted` is the one place that decision is made; see it for why a
+        named-and-missing dataset is not the same as an unnamed one.
+      */
+      proposals: async (target, collection) => {
+        const dataset = targeted(target);
         if (!dataset || !services.interpretation) return [];
+        // Narrowed where the host can say what containment is here, and unscoped where it cannot —
+        // the same feature test every other optional service in this file makes, and the fallback is
+        // the answer this returned before there was a scope at all.
+        if (collection && services.proposalsForCollection) {
+          return services.proposalsForCollection(dataset, collection);
+        }
         return services.interpretation.proposals(dataset);
       },
-      accept: async (id, property) => {
-        const dataset = services.dataset?.();
+      accept: async (id, property, target) => {
+        const dataset = targeted(target);
         if (!dataset || !services.interpretation) return false;
         return services.interpretation.accept(dataset, id, property);
       },
-      reject: async (id, property) => {
-        const dataset = services.dataset?.();
+      reject: async (id, property, target) => {
+        const dataset = targeted(target);
         if (!dataset || !services.interpretation) return false;
         return services.interpretation.reject(dataset, id, property);
       },
@@ -231,6 +365,10 @@ export function createModuleStoreDeps(framework: {
     datasets: {
       get: (uri) => services.datasets?.get(uri),
       open: (uri) => services.datasets?.open(uri),
+      openRef: (ref) => services.datasets?.openRef(ref),
+      // No-op unsubscribe where the host cannot report removals, so a module's cleanup is
+      // unconditional rather than another thing to guard.
+      onRemoved: (cb) => services.datasets?.onRemoved?.(cb) ?? (() => {}),
     },
 
     identities: {
@@ -242,8 +380,23 @@ export function createModuleStoreDeps(framework: {
 
     createEntity: async (entity, fields, options) => (await services.createEntity?.(entity, fields, options)) ?? null,
 
-    linkEntity: async (entity, id, relation, value) => {
-      await services.linkEntity?.(entity, id, relation, value);
+    // Forwarded rather than captured, like every other port here: a module store is built before
+    // the root dataset has been found, and an agent-scoped module reading it at construction would
+    // capture nothing and never notice.
+    agentData: {
+      ready: () => services.agentData?.ready() ?? false,
+      create: async (entity, fields, options) => (await services.agentData?.create(entity, fields, options)) ?? null,
+      find: async (entity, query) => (await services.agentData?.find(entity, query)) ?? [],
+      update: async (entity, id, fields) => {
+        await services.agentData?.update(entity, id, fields);
+      },
+      remove: async (entity, id) => {
+        await services.agentData?.remove(entity, id);
+      },
+    },
+
+    linkEntity: async (entity, id, relation, value, options) => {
+      await services.linkEntity?.(entity, id, relation, value, options);
     },
   };
 }

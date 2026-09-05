@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { getProperty, getRelation, type ModelManifest, validateManifest } from './manifest';
+import { type EntityManifest, getProperty, getRelation, validateManifest } from './manifest';
 
 // A hand-authored manifest for a domain that is NOT WE's (a library) — proving the format is
 // backend- and domain-neutral, i.e. it serves third parties describing their own entities.
-const library: ModelManifest = {
+const library: EntityManifest = {
   version: '1',
   entities: {
     Book: {
@@ -29,7 +29,7 @@ const library: ModelManifest = {
   },
 };
 
-describe('ModelManifest', () => {
+describe('EntityManifest', () => {
   it('validates a well-formed, non-WE manifest', () => {
     const result = validateManifest(library);
     expect(result.valid).toBe(true);
@@ -44,7 +44,7 @@ describe('ModelManifest', () => {
   });
 
   it('rejects a relation pointing at an unknown entity', () => {
-    const bad: ModelManifest = {
+    const bad: EntityManifest = {
       version: '1',
       entities: { Book: { properties: {}, relations: { author: { target: 'Ghost', cardinality: 'one' } } } },
     };
@@ -59,7 +59,7 @@ describe('ModelManifest', () => {
   });
 
   it('rejects a reverseOf that is not a relation on the target', () => {
-    const bad: ModelManifest = {
+    const bad: EntityManifest = {
       version: '1',
       entities: {
         Book: { properties: {}, relations: { author: { target: 'Author', cardinality: 'one', reverseOf: 'nope' } } },

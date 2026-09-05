@@ -1,28 +1,35 @@
-import type { SerializedBlockNode } from '@we/block-shared';
+import type { ContentBlock } from '@we/block-shared';
 
-import { BlockRenderer } from '../BlockRenderer';
+import { Blocks } from '../BlockRenderer';
 
 interface CollectionDisplayProps {
   layout?: string;
   columnCount?: number;
   gap?: string;
-  childEditorState?: SerializedBlockNode;
+  content?: ContentBlock[];
 }
 
+/**
+ * A nested composition, read-only. The wrapper's classes and custom properties match the
+ * collection node's `toDOM` in the editor schema, so one stylesheet lays out both.
+ */
 export function CollectionDisplay(props: CollectionDisplayProps) {
   const colCount = () => props.columnCount ?? 2;
   const layout = () => props.layout ?? 'grid';
 
   return (
     <div
-      class="we-collection-block"
+      class="we-block we-collection-block"
+      data-block-type="collection"
       data-layout={layout()}
       style={{
         '--we-cols': String(colCount()),
-        '--we-gap': props.gap ? `var(--we-spacing-${props.gap}, 1rem)` : '1rem',
+        '--we-gap': props.gap ? `var(--we-space-${props.gap}, 1rem)` : '1rem',
       }}
     >
-      <BlockRenderer editorState={props.childEditorState} />
+      <div class="we-collection-content we-block-content">
+        <Blocks blocks={props.content ?? []} />
+      </div>
     </div>
   );
 }

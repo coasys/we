@@ -19,18 +19,18 @@
   },
   "dependencies": {
     "@we/backend-shared": "workspace:*",
-    "@we/models": "workspace:*"
+    "@we/entities": "workspace:*"
   },
   "peerDependencies": {
     "@coasys/ad4m": "*"
   },
   "devDependencies": {
     "@coasys/ad4m": "0.13.0-test-interpretation-2",
-    "@types/node": "^26.3.0",
+    "@types/node": "^26.4.0",
     "@we/cli": "workspace:*",
     "tsup": "^8.5.1",
     "vitest": "^4.1.11",
-    "tsx": "^4.23.12"
+    "tsx": "^4.23.13"
   },
   "sideEffects": false
 }

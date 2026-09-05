@@ -18,6 +18,12 @@ packages/design-system/3-primitives/src/generated/
 # PR summary drafts — scratch documents for a pull request description,
 # never part of the repo (see CLAUDE.md, "PR summary convention").
 PR_*.md
+
+# Audit reports, for the same reason PR summaries are ignored: they are a snapshot of a moment,
+# written to be read once and acted on. `AUDIT_2026-08-11.md` rode in on an unrelated commit and
+# then sat in the tree describing a repository that had moved on — which is worse than absent,
+# because it reads as current.
+AUDIT*.md
 template-bundle.json
 
 # Generated from we-seed.json by apps/we-electron/scripts/generate-seed-config.cjs, on every build

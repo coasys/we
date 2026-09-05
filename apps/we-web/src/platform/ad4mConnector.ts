@@ -2,6 +2,8 @@ import { getAd4mConnect } from '@coasys/ad4m-connect';
 import type { BackendConnector, BackendInitResult } from '@we/app-shell/shared';
 import { capabilitiesFromToken, createAd4mBackendPorts } from '@we/backend-ad4m';
 
+import { storedGuestHost } from './storedSession';
+
 export const ad4mConnector: BackendConnector = {
   async initialize(ctx): Promise<BackendInitResult> {
     // `getAd4mConnect` is the advanced API: `core` comes back immediately, so listeners can be
@@ -45,9 +47,31 @@ export const ad4mConnector: BackendConnector = {
 
     const host = core.connectedHost;
 
+    /*
+      A reloaded guest is still a guest.
+
+      `guest` is set by the guest connector and lives only as long as that tab: `BootController`
+      rewrites the URL to `/space/<id>`, and every load after that comes through here. So a guest
+      who refreshed became an ordinary local user — asked for a name every launch with a sentence
+      that was untrue of them, unable to see whose node they were on, and with `administersNode`
+      resting on the executor's own answer rather than on anything this app knew.
+
+      Read from the credentials on disk rather than from a flag of our own: `connectAsGuest` already
+      records one marker per host, so the question is answerable from what is there. See
+      `storedGuestHost`.
+    */
+    const guestHost = storedGuestHost();
+    const isGuest = !!guestHost && (!core.baseUrl || core.baseUrl === guestHost);
+
     return {
       client,
-      ports: createAd4mBackendPorts(client, ctx, { administersNode, capabilities }),
+      // A guest never operates the node, whatever the executor says about itself. This is the app
+      // declining to offer node-wide controls, which is a decision it can make locally and should.
+      ports: createAd4mBackendPorts(client, ctx, {
+        administersNode: administersNode && !isGuest,
+        capabilities,
+      }),
+      ...(isGuest ? { guest: true as const } : {}),
       // Only for a host chosen from the directory. A local executor is not somewhere the user needs
       // telling about, and pointing at "your own machine" would be noise in the settings page.
       ...(host

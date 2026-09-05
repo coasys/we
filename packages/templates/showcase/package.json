@@ -4,6 +4,7 @@
   "description": "Showcase templates — six applications over one universal container, demonstrating the template system's range",
   "type": "module",
   "scripts": {
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "exports": {
@@ -17,6 +18,7 @@
     "@we/template-kit": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^26.3.0"
+    "@types/node": "^26.4.0",
+    "vitest": "^4.1.11"
   }
 }

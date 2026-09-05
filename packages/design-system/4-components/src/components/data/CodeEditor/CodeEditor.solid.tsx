@@ -143,8 +143,10 @@ const baseThemeSpec: Record<string, Record<string, string>> = {
     outline: 'none',
   },
   // Cursor
+  // The caret is chrome, not syntax — it marks where typing goes, so it is the text colour. The
+  // palette exemption below covers the tokens beneath it and not this.
   '.cm-cursor, .cm-dropCursor': {
-    borderLeftColor: 'var(--we-color-neutral-700)',
+    borderLeftColor: 'var(--we-role-text)',
   },
   /*
     Syntax tokens are a palette, so they keep their scale positions: a theme pinning `dangerText`
@@ -206,6 +208,27 @@ export function CodeEditor(props: CodeEditorProps) {
           }
         }),
         cmView.EditorView.theme(themeSpecFor(props.maxHeight)),
+        /*
+          Mod-S saves.
+
+          `onSave` was in the props type, documented, passed by callers — and bound to nothing. The
+          editor took the browser's own Save-page dialog instead, which is the one keystroke every
+          person editing text in a box will try. Registered ahead of `basicSetup`'s keymap
+          (`Prec.highest`) so nothing there can claim it first, and it returns `true` so the browser
+          does not also act on it.
+        */
+        cmState.Prec.highest(
+          cmView.keymap.of([
+            {
+              key: 'Mod-s',
+              preventDefault: true,
+              run: (target) => {
+                props.onSave?.(target.state.doc.toString());
+                return true;
+              },
+            },
+          ]),
+        ),
       ],
       parent: containerRef,
       root: containerRef.ownerDocument,

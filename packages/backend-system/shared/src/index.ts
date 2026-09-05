@@ -17,7 +17,7 @@ export type {
   DatasetHandle,
   QueryOptions,
   QuerySubscription,
-  ModelClass,
+  EntityClass,
   MutationApi,
   DataSource,
   QueryAdapter,
@@ -69,9 +69,17 @@ export type {
 export { setTraceSink, trace, tracing } from './trace';
 export type { TraceSink } from './trace';
 
-export { modelManifestSchema, validateManifest, getEntity, getProperty, getRelation } from './manifest';
+export {
+  blockableEntities,
+  extractableEntities,
+  getEntity,
+  getProperty,
+  getRelation,
+  modelManifestSchema,
+  validateManifest,
+} from './manifest';
 export type {
-  ModelManifest,
+  EntityManifest,
   EntitySchema,
   PropertySchema,
   RelationSchema,
@@ -79,6 +87,24 @@ export type {
   Cardinality,
   ManifestError,
 } from './manifest';
+
+/**
+ * How one record names another that lives in a different dataset — the address a gathered item, an
+ * embed and a deep link all hold. Here rather than in an adapter because an address only one
+ * backend can write is not an address.
+ */
+export {
+  datasetIdOf,
+  datasetKey,
+  HERE,
+  datasetKindOf,
+  formatAgentRef,
+  formatRef,
+  isPortableRef,
+  parseRef,
+  sameRef,
+} from './recordRef';
+export type { DatasetKind, RecordRef } from './recordRef';
 
 export { queryIRSchema, filterSchema, validateQueryIR } from './queryIR';
 export { validateQueryAgainstManifest } from './queryValidation';
@@ -110,8 +136,8 @@ export type {
   DatasetRef,
 } from './lifecycle';
 export { manifestEntries } from './manifestEntry';
-export type { ModelManifestEntry, ModelManifestProperty } from './manifestEntry';
-export { displayName, isProfileEmpty } from './profileTypes';
+export type { EntityManifestEntry, EntityManifestProperty } from './manifestEntry';
+export { ANONYMOUS_AGENT_NAME, displayName, isProfileEmpty } from './profileTypes';
 export type { AgentProfileSummary, PublishProfileFields } from './profileTypes';
 export type {
   BackendInterop,
@@ -138,26 +164,27 @@ export type {
 export type {
   IncludeExtras,
   IncludeOf,
-  ModelDataKeys,
-  ModelInstance,
-  ModelStatic,
+  RecordDataKeys,
+  RecordInstance,
+  EntityStatic,
   PropertyKeysOf,
-  RelatedModel,
+  RelatedEntity,
   RelationKeysOf,
   TypedIncludeMap,
   TypedIncludeProjection,
-  TypedModelQuery,
+  TypedEntityQuery,
   TypedOrder,
   TypedWhere,
   WriteProperties,
-} from './modelContract';
+} from './recordContract';
 export type { LanguageModelPort } from './languageModel';
-export type { TranscriptionModel, TranscriptionPort, TranscriptionStream, TranscriptionTuning } from './transcription';
+export type { TranscriptionRecord, TranscriptionPort, TranscriptionStream, TranscriptionTuning } from './transcription';
 export type {
   InterpretationPort,
   InterpretationProposal,
   InterpretationRequest,
   InterpretationResult,
+  InterpretationScope,
   TranscriptTurn,
   WatchRequest,
 } from './interpretation';

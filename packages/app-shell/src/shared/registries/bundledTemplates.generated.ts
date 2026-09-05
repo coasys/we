@@ -16,11 +16,13 @@ import {
   instagramTemplate,
   kanbanTemplate,
   twitterTemplate,
+  workshopTemplate,
   youtubeTemplate,
 } from '@we/template-showcase';
 
 export const bundledTemplates: Record<string, TemplateSchema> = {
   default: defaultTemplate,
+  workshop: workshopTemplate,
   discord: discordTemplate,
   twitter: twitterTemplate,
   instagram: instagramTemplate,

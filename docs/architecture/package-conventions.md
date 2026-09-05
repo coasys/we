@@ -103,7 +103,36 @@ Use the **shortest unambiguous** name within the `@we/` scope.
 | `backend-system/ad4m`        | `@we/backend-ad4m`  | Needs prefix — "ad4m" alone says nothing about its role |
 | `design-system/1-tokens`     | `@we/tokens`        | Standalone identity — unambiguous without prefix        |
 | `design-system/3-primitives` | `@we/primitives`    | Standalone identity                                     |
-| `models`                     | `@we/models`        | Standalone package                                      |
+| `models`                     | `@we/entities`      | Standalone package                                      |
+
+### The shipped product's name — `WE` or `we`
+
+Everything above names things a developer reads. A packaged desktop app also names things a **user**
+reads, and the two want different spellings of the same word. The rule is which of them is reading:
+
+| Spelling | Where                                                                                | Why                                                                                          |
+| -------- | ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| `WE`     | Window title, `.desktop` `Name=`, macOS bundle name, About screen, artifact filename | A person reads it as a name, and the capital is what stops it reading as the word "we"       |
+| `we`     | Executable, Rust crate, `@we/` scope, reverse-DNS identifier, config directory       | A machine reads it as an identifier, where Unix convention is lowercase and nothing collides |
+
+**Nothing carries both spellings for the same job.** That is the whole point of the rule, and the
+failure it prevents is not cosmetic: a config directory derived from the display name in one host and
+written lowercase in another is two directories on a case-sensitive filesystem, so the two hosts stop
+seeing each other's data.
+
+Concretely, in `apps/we-tauri/src-tauri/tauri.conf.json` `productName` is `WE` and `mainBinaryName` is
+`we`; in `apps/we-electron/electron-builder.config.js` `productName` is `WE` and `executableName` is
+`we`. Tauri's `mainBinaryName` must match the crate name in `Cargo.toml.template`, so both are `we`.
+
+**Identifiers are product-then-runtime**: `io.weco.we.electron` and `io.weco.we.tauri`. Both hosts are
+shipped, and an identifier is what macOS and Windows install _by_ — two apps sharing one cannot be
+installed side by side. The runtime is the qualifier because the product is the same either way.
+
+**Artifact filenames match across hosts**, since a release can hold one from each:
+`WE-<version>-linux-x86_64.AppImage` from Electron and `WE-<version>-tauri-linux-x86_64.AppImage`
+from Tauri. Electron carries no qualifier — it is the primary download, and choosing a file should not
+require knowing what a runtime is. Electron gets this from its `artifactName` template; Tauri has no
+equivalent, so `apps/we-tauri/scripts/rename-bundle.cjs` does it after the build.
 
 ## Grouping directories
 
@@ -214,7 +243,7 @@ Load-bearing, and previously written nowhere.
 > injection, never by import.**
 
 `@we/module-globe` peer-depends on `@we/widgets` and takes `CesiumGlobe` as a constructor argument;
-`@we/models` peer-depends on `@coasys/ad4m`; every module peer-depends on `@we/module-shared`. The
+`@we/entities` peer-depends on `@coasys/ad4m`; every module peer-depends on `@we/module-shared`. The
 failure this prevents is documented in `bundledModules.ts`: a bundle carrying its own reactive
 runtime gets a _second_ one, and reactivity silently stops crossing the boundary.
 

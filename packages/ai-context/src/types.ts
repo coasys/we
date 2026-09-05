@@ -6,15 +6,16 @@ export type {
   PrimitiveEntry,
   ComponentEntry,
   PropEntry,
-  ModelEntry,
-  ModelFieldEntry,
-  ModelRelationEntry,
+  EntityEntry,
+  EntityFieldEntry,
+  EntityRelationEntry,
   StateMemberMeta,
   StoreEntry,
   TokenCategory,
   ContextData,
   PluginCatalog,
   PluginEntry,
+  SourceEntry,
 } from '@we/schema-shared';
 
 import type { ContextData } from '@we/schema-shared';
@@ -25,6 +26,7 @@ export interface AssembledContext extends ContextData {
     schemaOperators: string;
     designSystemProps: string;
     routing: string;
+    panels: string;
     stores: string;
     storePatterns: string;
     /** Ready-made JSON shapes to copy — the recipes behind `@we/template-kit`. */

@@ -3,8 +3,10 @@ import type {
   FontFamilyValue,
   FontSizeValue,
   FontWeightToken,
+  GapValue,
   LetterSpacingValue,
   LineHeightValue,
+  PaddingValue,
   RadiusValue,
   ShadowValue,
   SpaceValue,
@@ -80,6 +82,23 @@ export type Cursor =
 export type TextDecoration = 'underline' | 'line-through' | 'overline' | 'none';
 export type TextTransform = 'uppercase' | 'lowercase' | 'capitalize' | 'none';
 export type WhiteSpace = 'normal' | 'nowrap' | 'pre' | 'pre-wrap' | 'pre-line' | 'break-spaces';
+/**
+ * Where a line may break inside a word that does not fit.
+ *
+ * `anywhere` is the design system's default, and the distinction from `break-word` is the whole
+ * reason this prop exists rather than being left to the raw `styles` escape hatch. Both break in the
+ * same *places*; only `anywhere` also reduces the element's min-content width. A flex item and a
+ * `1fr` grid track are both sized by min-content, so under `break-word` an unbreakable string still
+ * pushes its container — and everything above it — wider than the viewport, which is precisely the
+ * failure the default is here to prevent.
+ *
+ * `word-break: break-all` — break every word at the line edge, including ones that would have fit —
+ * is deliberately not offered here. It is a different statement, right for a dense column of hashes
+ * and wrong for prose, and on a bare identifier (which is what every site reaching for it in this
+ * repo held) it renders identically to `anywhere`. The raw `styles` escape hatch remains for the
+ * case that genuinely wants it.
+ */
+export type OverflowWrap = 'normal' | 'break-word' | 'anywhere';
 export type PointerEvents = 'none' | 'auto';
 export type Visibility = 'hidden' | 'visible' | 'collapse';
 export type ScrollbarWidth = 'auto' | 'thin' | 'none';
@@ -137,6 +156,7 @@ export interface DesignSystemProps {
   textDecoration?: TextDecoration;
   textTransform?: TextTransform;
   whiteSpace?: WhiteSpace;
+  overflowWrap?: OverflowWrap;
 
   // Interaction
   cursor?: Cursor;
@@ -155,7 +175,7 @@ export interface DesignSystemProps {
   ax?: FlexMainAxis | FlexCrossAxis;
   ay?: FlexMainAxis | FlexCrossAxis;
   wrap?: boolean;
-  gap?: SpaceValue;
+  gap?: GapValue;
   flex?: string;
   /**
    * `flex-shrink`. The shorthand `flex` can express this, but only by also committing to a
@@ -186,13 +206,13 @@ export interface DesignSystemProps {
   my?: SpaceValue;
 
   // Padding
-  p?: SpaceValue;
-  pl?: SpaceValue;
-  pr?: SpaceValue;
-  pt?: SpaceValue;
-  pb?: SpaceValue;
-  px?: SpaceValue;
-  py?: SpaceValue;
+  p?: PaddingValue;
+  pl?: PaddingValue;
+  pr?: PaddingValue;
+  pt?: PaddingValue;
+  pb?: PaddingValue;
+  px?: PaddingValue;
+  py?: PaddingValue;
 
   // Radius
   r?: RadiusValue;

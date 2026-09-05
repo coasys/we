@@ -12,6 +12,12 @@
           "default": "'primary'"
         },
         {
+          "name": "appearance",
+          "type": "'soft' | 'accent'",
+          "optional": false,
+          "default": "'soft'"
+        },
+        {
           "name": "dismissible",
           "type": "boolean",
           "optional": false,
@@ -85,18 +91,6 @@
           "default": "''"
         },
         {
-          "name": "selected",
-          "type": "boolean",
-          "optional": false,
-          "default": "false"
-        },
-        {
-          "name": "online",
-          "type": "boolean",
-          "optional": false,
-          "default": "false"
-        },
-        {
           "name": "initials",
           "type": "string",
           "optional": false,
@@ -133,6 +127,12 @@
           "default": "'neutral'"
         },
         {
+          "name": "appearance",
+          "type": "'soft' | 'solid'",
+          "optional": false,
+          "default": "'soft'"
+        },
+        {
           "name": "size",
           "type": "'xs' | 'sm' | 'md' | 'lg' | 'xl'",
           "optional": false,
@@ -167,6 +167,12 @@
           "name": "text",
           "type": "string | undefined",
           "optional": true
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "optional": false,
+          "default": "''"
         },
         {
           "name": "href",
@@ -218,6 +224,12 @@
         },
         {
           "name": "name",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "label",
           "type": "string",
           "optional": false,
           "default": "''"
@@ -328,6 +340,12 @@
           "default": "''"
         },
         {
+          "name": "label",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
           "name": "size",
           "type": "'xs' | 'sm' | 'md' | 'lg' | 'xl'",
           "optional": false,
@@ -365,6 +383,66 @@
       ]
     },
     {
+      "tagName": "we-draggable",
+      "className": "Draggable",
+      "description": "Makes whatever is inside it something that can be picked up and carried somewhere else.\n\n## Why this exists as a primitive\n\nA post card, a member row and a space in the sidebar are rendered by **templates**, which are\ndata. If making one draggable were a code change, every future draggable surface would be a code\nchange too, and the contribution ladder says arrangement stays data. This is the same rung\n`we-sortable` occupies: two custom elements and an existing `$action`, with no new prop resolver,\nno new operator, and nothing added to the expression grammar.\n\n```json\n{ \"type\": \"we-draggable\",\n  \"props\": { \"entity\": \"CollectionBlock\", \"recordId\": { \"$\": \"post.id\" }, \"label\": { \"$\": \"post.title\" } },\n  \"children\": [ \"…the card…\" ] }\n```\n\n## What it carries\n\nA **reference** — `{ dataset?, entity, id }` — never DOM, and never the row object. `dataset` is\ndeliberately left empty here: a card fragment cannot name its own dataset without reading a\nstore, and portable fragments name no store by construction. The receiver stamps it, from\nwhichever dataset was current when the drop happened.\n\n## `display: contents`\n\nThe wrapper must not exist as a box. A card inside a grid track, a row inside a flex column: a\nreal element in between would take the track and leave the card laid out against the wrapper\ninstead of the grid. What is dragged is therefore the *child*, which is also what the ghost and\nthe geometry are measured from.",
+      "superclass": "LayoutElement",
+      "ownProps": [
+        {
+          "name": "entity",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "recordId",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "datasetKey",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "icon",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "preview",
+          "type": "{ thumbnail?: string; content?: string; author?: string; date?: string } | undefined",
+          "optional": true
+        },
+        {
+          "name": "origin",
+          "type": "unknown | undefined",
+          "optional": true
+        },
+        {
+          "name": "effect",
+          "type": "'move' | 'copy' | 'link'",
+          "optional": false,
+          "default": "'copy'"
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
+        }
+      ]
+    },
+    {
       "tagName": "we-drawer",
       "className": "Drawer",
       "superclass": "OverlayElement",
@@ -376,9 +454,47 @@
           "default": "false"
         },
         {
+          "name": "label",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
           "name": "close",
           "type": "() => void",
           "optional": false
+        }
+      ]
+    },
+    {
+      "tagName": "we-drop-zone",
+      "className": "DropZone",
+      "description": "Anything a `we-draggable` can be dropped into.\n\nThe receiving half of the pair, and the same rung: two custom elements and an existing `$action`,\nso a template can make a region a drop target without a code change.\n\n```json\n{ \"type\": \"we-drop-zone\",\n  \"props\": { \"accepts\": \"CollectionBlock,Space,Agent\",\n             \"onDropped\": { \"$action\": \"modules.pocket.gather\", \"args\": [{ \"$\": \"event.detail\" }] } },\n  \"children\": [ \"…the panel…\" ] }\n```\n\n## It emits intent, it never mutates\n\nExactly `we-sortable`'s rule, and for the same reason: what a drop *means* differs. A panel writes\na record, a composer inserts a block, a board records a position. A primitive that assumed one of\nthose would be useless to the others.\n\n## `accepts` is a list of entity names, as a string\n\nA comma-separated string rather than an array because that is what an HTML attribute is, and\nbecause a schema writing `\"accepts\": \"CollectionBlock,Space\"` needs no expression. Empty means\n\"anything\", which is right for a general-purpose tray and wrong for a composer — say what you\ntake.\n\n## Zones nest, and the innermost one wins\n\nA folder inside a panel, a card inside a board. Hit-testing picks the innermost accepting zone\nand fires exactly one drop — and these events **do not bubble**, so that decision survives the\nDOM. See `_zone` for what happened when they did.\n\nGive every nested zone `noArm`, so picking something up speaks once about the container rather\nthan once about every row inside it.",
+      "superclass": "LayoutElement",
+      "ownProps": [
+        {
+          "name": "accepts",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
+        },
+        {
+          "name": "noArm",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
+        },
+        {
+          "name": "noSelf",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
         }
       ]
     },
@@ -525,6 +641,12 @@
           "default": "''"
         },
         {
+          "name": "label",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
           "name": "size",
           "type": "'xs' | 'sm' | 'md' | 'lg' | 'xl'",
           "optional": false,
@@ -654,6 +776,12 @@
         },
         {
           "name": "name",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "label",
           "type": "string",
           "optional": false,
           "default": "''"
@@ -885,6 +1013,12 @@
       "superclass": "OverlayElement",
       "ownProps": [
         {
+          "name": "size",
+          "type": "'sm' | 'md' | 'lg' | 'fullscreen'",
+          "optional": false,
+          "default": "'md'"
+        },
+        {
           "name": "hideclosebutton",
           "type": "boolean",
           "optional": false,
@@ -996,6 +1130,12 @@
         },
         {
           "name": "name",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "label",
           "type": "string",
           "optional": false,
           "default": "''"
@@ -1130,6 +1270,12 @@
           "default": "''"
         },
         {
+          "name": "label",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
           "name": "value",
           "type": "string",
           "optional": false,
@@ -1197,6 +1343,12 @@
           "type": "string",
           "optional": false,
           "default": "''"
+        },
+        {
+          "name": "pin",
+          "type": "'' | 'end'",
+          "optional": false,
+          "default": "''"
         }
       ]
     },
@@ -1244,6 +1396,12 @@
         },
         {
           "name": "name",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "label",
           "type": "string",
           "optional": false,
           "default": "''"
@@ -1318,6 +1476,12 @@
         },
         {
           "name": "name",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "label",
           "type": "string",
           "optional": false,
           "default": "''"
@@ -1412,6 +1576,12 @@
         },
         {
           "name": "name",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "label",
           "type": "string",
           "optional": false,
           "default": "''"
@@ -1582,6 +1752,12 @@
         },
         {
           "name": "name",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "label",
           "type": "string",
           "optional": false,
           "default": "''"
@@ -1924,7 +2100,7 @@
       "props": [
         {
           "name": "editorState",
-          "type": "SerializedBlockNode",
+          "type": "EditorStateInput",
           "optional": true
         },
         {
@@ -1934,12 +2110,27 @@
         },
         {
           "name": "onSave",
-          "type": "((json: SerializedBlockNode) => void)",
+          "type": "((document: ContentDocument) => void)",
           "optional": true
         },
         {
           "name": "onReady",
           "type": "((api: { save: () => void; }) => void)",
+          "optional": true
+        },
+        {
+          "name": "onDirtyChange",
+          "type": "((dirty: boolean) => void)",
+          "optional": true
+        },
+        {
+          "name": "mentions",
+          "type": "MentionCandidate[]",
+          "optional": true
+        },
+        {
+          "name": "collaborate",
+          "type": "string",
           "optional": true
         }
       ],
@@ -1987,7 +2178,7 @@
       "props": [
         {
           "name": "editorState",
-          "type": "SerializedBlockNode",
+          "type": "EditorStateInput",
           "optional": true
         },
         {
@@ -2147,8 +2338,8 @@
           "optional": true
         },
         {
-          "name": "childEditorState",
-          "type": "SerializedBlockNode",
+          "name": "content",
+          "type": "ContentBlock[]",
           "optional": true
         }
       ],
@@ -2157,11 +2348,6 @@
     {
       "name": "CollectionInput",
       "props": [
-        {
-          "name": "nodeKey",
-          "type": "string",
-          "optional": false
-        },
         {
           "name": "layout",
           "type": "string",
@@ -2175,11 +2361,6 @@
         {
           "name": "gap",
           "type": "string",
-          "optional": true
-        },
-        {
-          "name": "childEditorState",
-          "type": "SerializedBlockNode",
           "optional": true
         },
         {
@@ -2249,6 +2430,21 @@
           "name": "displayMode",
           "type": "string | undefined",
           "optional": false
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "thumbnail",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "onOpenRef",
+          "type": "((ref: string) => void)",
+          "optional": true
         }
       ],
       "source": "components"
@@ -3069,6 +3265,11 @@
           "optional": true
         },
         {
+          "name": "onSelect",
+          "type": "((item: DropdownMenuAction) => void)",
+          "optional": true
+        },
+        {
           "name": "placement",
           "type": "Placement",
           "optional": true
@@ -3080,6 +3281,16 @@
         },
         {
           "name": "triggerIcon",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "triggerVariant",
+          "type": "\"primary\" | \"danger\" | \"secondary\" | \"ghost\" | \"outline\" | \"bare\"",
+          "optional": true
+        },
+        {
+          "name": "triggerTitle",
           "type": "string",
           "optional": true
         },
@@ -3541,6 +3752,16 @@
           "optional": true
         },
         {
+          "name": "empty",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "emptyIcon",
+          "type": "string",
+          "optional": true
+        },
+        {
           "name": "showControls",
           "type": "boolean",
           "optional": true
@@ -3552,7 +3773,7 @@
         },
         {
           "name": "onNodeClick",
-          "type": "((node: GraphNode & { recordId?: string; fields: { name: string; value: string; }[]; }) => void)",
+          "type": "((node: GraphNode & { recordId?: string; recordType?: string; fields: { name: string; value: string; }[]; }) => void)",
           "optional": true
         },
         {
@@ -3593,6 +3814,16 @@
         {
           "name": "onNodeResize",
           "type": "((payload: { id: string; x: number; y: number; width: number; height: number; recordId?: string; recordType?: string; }) => void)",
+          "optional": true
+        },
+        {
+          "name": "nodeActions",
+          "type": "NodeAction[]",
+          "optional": true
+        },
+        {
+          "name": "onNodeAction",
+          "type": "((payload: { action: string; id: string; recordId?: string; recordType?: string; }) => void)",
           "optional": true
         },
         {
@@ -3700,6 +3931,12 @@
           "type": "string",
           "predicate": "we://installed_modules",
           "required": false
+        },
+        {
+          "name": "moduleSettings",
+          "type": "string",
+          "predicate": "we://module_settings",
+          "required": false
         }
       ],
       "relations": [
@@ -3795,6 +4032,32 @@
           "name": "version",
           "type": "number",
           "predicate": "we://version",
+          "required": false
+        }
+      ],
+      "relations": []
+    },
+    {
+      "name": "CallExtraction",
+      "className": "CallExtraction",
+      "extends": "WeNode",
+      "fields": [
+        {
+          "name": "callId",
+          "type": "string",
+          "predicate": "we://call_id",
+          "required": false
+        },
+        {
+          "name": "entities",
+          "type": "string",
+          "predicate": "we://extraction_targets",
+          "required": false
+        },
+        {
+          "name": "auto",
+          "type": "string",
+          "predicate": "we://auto_interpret",
           "required": false
         }
       ],
@@ -3984,6 +4247,18 @@
           "name": "targetType",
           "type": "string",
           "predicate": "we://target_type",
+          "required": false
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "predicate": "we://title",
+          "required": false
+        },
+        {
+          "name": "thumbnail",
+          "type": "string",
+          "predicate": "we://thumbnail",
           "required": false
         },
         {
@@ -4349,6 +4624,12 @@
       "extends": "WeNode",
       "fields": [
         {
+          "name": "connection",
+          "type": "string",
+          "predicate": "we://connection",
+          "required": false
+        },
+        {
           "name": "relationshipTypeId",
           "type": "string",
           "predicate": "we://relationship_type_id",
@@ -4606,6 +4887,13 @@
           "default": "true"
         },
         {
+          "name": "retired",
+          "type": "boolean",
+          "predicate": "we://retired",
+          "required": false,
+          "default": "false"
+        },
+        {
           "name": "valueType",
           "type": "string",
           "predicate": "we://signal_value_type",
@@ -4695,11 +4983,23 @@
           "required": false
         },
         {
+          "name": "extractionTargets",
+          "type": "string",
+          "predicate": "we://extraction_targets",
+          "required": false
+        },
+        {
           "name": "autoInterpret",
           "type": "boolean",
           "predicate": "we://auto_interpret",
           "required": false,
-          "default": "false"
+          "default": "true"
+        },
+        {
+          "name": "moduleSettings",
+          "type": "string",
+          "predicate": "we://module_settings",
+          "required": false
         },
         {
           "name": "shareExtractionDetail",
@@ -4733,6 +5033,12 @@
           "name": "mutedModules",
           "type": "string",
           "predicate": "we://muted_modules",
+          "required": false
+        },
+        {
+          "name": "moduleSettings",
+          "type": "string",
+          "predicate": "we://module_settings",
           "required": false
         },
         {
@@ -4931,9 +5237,35 @@
       "extends": "WeNode",
       "fields": [
         {
-          "name": "type",
+          "name": "style",
           "type": "string",
-          "predicate": "we://type",
+          "predicate": "we://style",
+          "required": false,
+          "default": "'normal'"
+        },
+        {
+          "name": "listItem",
+          "type": "string",
+          "predicate": "we://list_item",
+          "required": false
+        },
+        {
+          "name": "level",
+          "type": "number",
+          "predicate": "we://level",
+          "required": false
+        },
+        {
+          "name": "checked",
+          "type": "boolean",
+          "predicate": "we://checked",
+          "required": false,
+          "default": "false"
+        },
+        {
+          "name": "align",
+          "type": "string",
+          "predicate": "we://align",
           "required": false
         },
         {
@@ -4943,57 +5275,53 @@
           "required": false
         },
         {
-          "name": "format",
-          "type": "string",
-          "predicate": "we://format",
-          "required": false
-        },
-        {
-          "name": "indent",
-          "type": "number",
-          "predicate": "we://indent",
-          "required": false
-        },
-        {
-          "name": "textFormat",
-          "type": "number",
-          "predicate": "we://textFormat",
-          "required": false
-        },
-        {
-          "name": "textStyle",
-          "type": "string",
-          "predicate": "we://textStyle",
-          "required": false
-        },
-        {
-          "name": "listType",
-          "type": "string",
-          "predicate": "we://listType",
-          "required": false
-        },
-        {
-          "name": "start",
-          "type": "number",
-          "predicate": "we://start",
-          "required": false
-        },
-        {
-          "name": "tag",
-          "type": "string",
-          "predicate": "we://tag",
-          "required": false
-        },
-        {
           "name": "text",
           "type": "string",
           "predicate": "we://text",
           "required": false
         },
         {
+          "name": "marks",
+          "type": "json",
+          "predicate": "we://marks",
+          "required": false
+        },
+        {
           "name": "version",
           "type": "number",
           "predicate": "we://version",
+          "required": false
+        }
+      ],
+      "relations": []
+    },
+    {
+      "name": "Topic",
+      "className": "Topic",
+      "extends": "WeNode",
+      "fields": [
+        {
+          "name": "name",
+          "type": "string",
+          "predicate": "we://name",
+          "required": true
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "predicate": "we://description",
+          "required": false
+        },
+        {
+          "name": "icon",
+          "type": "string",
+          "predicate": "we://icon",
+          "required": false
+        },
+        {
+          "name": "color",
+          "type": "string",
+          "predicate": "we://color",
           "required": false
         }
       ],
@@ -5494,7 +5822,6 @@
       "actions": [
         "refresh",
         "createAccount",
-        "syncDisplay",
         "switchAccount",
         "removeAccount",
         "requestRemoval",
@@ -5518,7 +5845,7 @@
           "type": "string"
         }
       },
-      "actions": ["activateApp", "deactivateApp", "provideInstalledModules"]
+      "actions": ["activateApp", "deactivateApp"]
     },
     {
       "name": "datasetStore",
@@ -5541,7 +5868,7 @@
         "currentDatasetCid": {
           "type": "string"
         },
-        "currentDatasetModels": {
+        "currentDatasetEntities": {
           "type": "array"
         },
         "isWeSpace": {
@@ -5560,9 +5887,6 @@
           "type": "object",
           "properties": ["id", "name", "sharedUri", "sharedId", "handle"]
         },
-        "testDataset": {
-          "type": "object"
-        },
         "globalDataset": {
           "type": "object",
           "properties": ["id", "name", "sharedUri", "sharedId", "handle"]
@@ -5570,9 +5894,6 @@
         "marketplaceDataset": {
           "type": "object",
           "properties": ["id", "name", "sharedUri", "sharedId", "handle"]
-        },
-        "agentSettings": {
-          "type": "object"
         },
         "globalSpaceConfigured": {
           "type": "boolean"
@@ -5588,25 +5909,9 @@
         },
         "marketplaceJoined": {
           "type": "boolean"
-        },
-        "getDatasetOrder": {
-          "type": "array"
         }
       },
-      "actions": [
-        "switchDataset",
-        "reorderDatasets",
-        "removeDataset",
-        "updateAgentSettings",
-        "clearCurrentDataset",
-        "cleanupSpaceSdna",
-        "trackDataset",
-        "onDatasetRemoved",
-        "initSystemDatasets",
-        "loadDatasets",
-        "subscribeToChanges",
-        "provideAutoInterpretGate"
-      ]
+      "actions": ["switchDataset", "reorderDatasets", "removeDataset", "cleanupSpaceSdna"]
     },
     {
       "name": "editorStore",
@@ -5713,10 +6018,8 @@
         "switchSession",
         "deleteSession",
         "setContentMode",
-        "onSchemaEdit",
         "undo",
         "redo",
-        "pushSnapshot",
         "startFork",
         "startFresh",
         "confirmPicker",
@@ -5737,8 +6040,7 @@
         "exitThemeEditing",
         "toggleThemeEditing",
         "sendMessage",
-        "clearHistory",
-        "setApiKey"
+        "clearHistory"
       ]
     },
     {
@@ -5751,6 +6053,18 @@
           "type": "number"
         },
         "hasActivity": {
+          "type": "boolean"
+        },
+        "runningPasses": {
+          "type": "array"
+        },
+        "settledPasses": {
+          "type": "array"
+        },
+        "settledCount": {
+          "type": "number"
+        },
+        "detailWithheld": {
           "type": "boolean"
         },
         "capable": {
@@ -5794,12 +6108,20 @@
           "type": "object",
           "properties": ["did", "firstName", "lastName", "handle", "bio", "avatar", "coverImage", "location"]
         },
+        "ownProfileLoaded": {
+          "type": "boolean"
+        },
+        "needsName": {
+          "type": "boolean"
+        },
         "pendingAvatar": {
           "type": "string"
         }
       },
       "actions": [
         "setPendingAvatar",
+        "saveNameFromPrompt",
+        "dismissNamePrompt",
         "completeAccountSetup",
         "fetchProfile",
         "updateOwnProfile",
@@ -5817,6 +6139,12 @@
         "recordDraft": {
           "type": "object"
         },
+        "recordDraftDirty": {
+          "type": "boolean"
+        },
+        "displays": {
+          "type": "object"
+        },
         "recordErrors": {
           "type": "array"
         },
@@ -5831,9 +6159,6 @@
         },
         "relationshipKind": {
           "type": "string"
-        },
-        "pendingCardStyle": {
-          "type": "object"
         }
       },
       "actions": [
@@ -5848,7 +6173,6 @@
         "removeFromBoard",
         "resizeOnBoard",
         "setCardStyle",
-        "confirmPending",
         "previewCardStyle",
         "setTypeColor",
         "createOnBoard",
@@ -5864,11 +6188,14 @@
         "segments": {
           "type": "array"
         },
+        "templateSegments": {
+          "type": "array"
+        },
         "params": {
           "type": "object"
         }
       },
-      "actions": ["setNavigateFunction", "setCurrentPath", "navigate", "setParam"]
+      "actions": ["navigate", "setParam", "back"]
     },
     {
       "name": "runtimeStore",
@@ -5942,6 +6269,9 @@
           "properties": ["label", "value"]
         },
         "aiFormComplete": {
+          "type": "boolean"
+        },
+        "aiFormDirty": {
           "type": "boolean"
         },
         "languages": {
@@ -6051,30 +6381,9 @@
         "createAgentLoading": {
           "type": "boolean"
         },
-        "client": {
-          "type": "object"
-        },
-        "agentSession": {
-          "type": "object"
-        },
-        "lifecycle": {
-          "type": "object"
-        },
-        "backendPorts": {
-          "type": "object"
-        },
         "me": {
           "type": "object",
           "properties": ["did", "perspective", "directMessageLanguage"]
-        },
-        "port": {
-          "type": "number"
-        },
-        "token": {
-          "type": "string"
-        },
-        "serverUrl": {
-          "type": "string"
         },
         "host": {
           "type": "object",
@@ -6094,24 +6403,17 @@
           "type": "object",
           "properties": ["email", "remainingCredits", "walletAddress", "freeAccess"]
         },
+        "isGuest": {
+          "type": "boolean"
+        },
         "isDevelopment": {
           "type": "boolean"
         },
-        "ephemeralPort": {
-          "type": "object"
+        "devTools": {
+          "type": "boolean"
         }
       },
-      "actions": [
-        "login",
-        "createAgent",
-        "clearPasswordError",
-        "finishSetup",
-        "logout",
-        "retryBoot",
-        "refreshMe",
-        "markReady",
-        "onSessionUnlocked"
-      ]
+      "actions": ["setDevTools", "login", "createAgent", "clearPasswordError", "finishSetup", "logout", "retryBoot"]
     },
     {
       "name": "shapeStore",
@@ -6156,6 +6458,9 @@
           "type": "array",
           "properties": ["entity", "source"]
         },
+        "extractionCandidates": {
+          "type": "array"
+        },
         "relationshipTargets": {
           "type": "array",
           "properties": ["label", "value"]
@@ -6169,6 +6474,9 @@
           "properties": ["entity", "classHint", "defaultClassHint", "rows", "customized"]
         },
         "hintBusy": {
+          "type": "boolean"
+        },
+        "extractionNeedsIdentity": {
           "type": "boolean"
         },
         "memberOptions": {
@@ -6186,6 +6494,9 @@
         },
         "confirmDiscard": {
           "type": "boolean"
+        },
+        "hintEditorDirty": {
+          "type": "object"
         }
       },
       "actions": [
@@ -6193,6 +6504,7 @@
         "cancelShapeWizard",
         "setShapeField",
         "setIdentityMember",
+        "setExtractable",
         "addProperty",
         "addRelationship",
         "removeMember",
@@ -6222,16 +6534,25 @@
         "activeShellView": {
           "type": "string"
         },
-        "takePendingPath": {
-          "type": "object"
-        },
         "createSpaceOpen": {
           "type": "boolean"
+        },
+        "pendingDestructive": {
+          "type": "object"
+        },
+        "spaceSettingsOpen": {
+          "type": "boolean"
+        },
+        "spaceSettingsTab": {
+          "type": "string"
         },
         "dockGeometry": {
           "type": "object"
         },
         "contentInset": {
+          "type": "object"
+        },
+        "coveredInset": {
           "type": "object"
         },
         "dockResizing": {
@@ -6257,25 +6578,65 @@
         },
         "activeInsert": {
           "type": "string"
+        },
+        "dragGhost": {
+          "type": "object"
+        },
+        "layoutPinned": {
+          "type": "object"
+        },
+        "layoutDirty": {
+          "type": "boolean"
+        },
+        "panelSupplied": {
+          "type": "object"
+        },
+        "layoutNames": {
+          "type": "array"
+        },
+        "activeLayout": {
+          "type": "string"
         }
       },
       "actions": [
         "openShellView",
         "closeShellView",
-        "rememberShellPath",
         "setCreateSpaceOpen",
+        "confirmDestructive",
+        "cancelDestructive",
+        "toggleSpaceSettings",
+        "openSpaceSettings",
+        "closeSpaceSettings",
         "scrollToId",
         "beginDockResize",
         "resizeDock",
+        "resizeColumn",
         "endDockResize",
         "fitDock",
         "beginDockMove",
+        "raiseDock",
         "moveDock",
+        "beginTabDrag",
+        "moveTab",
+        "endTabDrag",
         "endDockMove",
+        "resetDockToLayout",
+        "closeTemplatePanel",
+        "openTemplatePanel",
+        "resetTemplateLayout",
+        "saveLayout",
+        "applyLayout",
+        "deleteLayout",
         "snapDock",
         "insertDock",
         "toggleMaximiseDock",
-        "toggleDockDisplace"
+        "toggleDockDisplace",
+        "toggleCollapseDock",
+        "breakOut",
+        "returnHome",
+        "stackDock",
+        "insertHome",
+        "saveArrangementAsTemplate"
       ]
     },
     {
@@ -6323,6 +6684,7 @@
             "canAdminister",
             "modules",
             "shareLink",
+            "guestLink",
             "defaultTemplateId",
             "defaultThemeId",
             "templateOverride",
@@ -6331,6 +6693,9 @@
         },
         "routeSpaceUnjoined": {
           "type": "boolean"
+        },
+        "spacePath": {
+          "type": "string"
         },
         "creatingSpace": {
           "type": "boolean"
@@ -6415,10 +6780,25 @@
           "type": "array",
           "properties": ["id", "author", "createdAt"]
         },
+        "spaceModuleSettings": {
+          "type": "array"
+        },
+        "myModuleSettings": {
+          "type": "array"
+        },
+        "agentModuleSettings": {
+          "type": "array"
+        },
         "autoInterpret": {
           "type": "boolean"
         },
         "shareExtractionDetail": {
+          "type": "boolean"
+        },
+        "extractionTargets": {
+          "type": "array"
+        },
+        "canAdministerCurrentSpace": {
           "type": "boolean"
         }
       },
@@ -6440,8 +6820,14 @@
         "setSpaceDefaultTemplate",
         "setSpaceDefaultTheme",
         "setModuleEnabled",
+        "setSpaceModuleSetting",
+        "setMyModuleSetting",
+        "setAgentModuleSetting",
+        "autoInterpretForCall",
+        "setAutoInterpretForCall",
         "setAutoInterpret",
         "setShareExtractionDetail",
+        "setExtractionTarget",
         "setModuleInstalled",
         "setModuleVisible",
         "setViewEnabled",
@@ -6454,15 +6840,16 @@
         "launchModule",
         "createSignalType",
         "createRelationshipType",
+        "setSignalTypeRetired",
         "upsertSignal",
         "navigateToSpace",
+        "openRecordRef",
         "canAdministerSpace",
         "copyShareLink",
+        "copyGuestLink",
         "getSubgroupMessages",
         "exportCallTranscript",
-        "removeSpaceFromGlobal",
-        "updateSpaceInCache",
-        "loadSpaces"
+        "removeSpaceFromGlobal"
       ]
     },
     {
@@ -6509,14 +6896,14 @@
         "defaultTemplateId": {
           "type": "string"
         },
+        "pendingInstall": {
+          "type": "object"
+        },
         "operationLoading": {
           "type": "string"
         }
       },
       "actions": [
-        "provideSpaceLookup",
-        "updateTemplate",
-        "replaceTemplate",
         "switchTemplate",
         "removeTemplate",
         "deleteTemplate",
@@ -6524,6 +6911,8 @@
         "uninstallTemplate",
         "installFromMarketplace",
         "installToSpace",
+        "confirmInstall",
+        "cancelInstall",
         "toggleInstalled",
         "setDefaultTemplate",
         "saveTemplate",
@@ -6531,14 +6920,7 @@
         "publishToSpace",
         "deleteMarketplaceTemplate",
         "publishToMarketplace",
-        "persistCurrentTemplate",
-        "preloadSpaceTemplates",
-        "loadSpaceTemplates",
-        "refreshSpaceTemplates",
-        "clearSpaceTemplates",
-        "isBuiltInTemplate",
-        "isInstalled",
-        "getTemplateModel"
+        "refreshSpaceTemplates"
       ]
     },
     {
@@ -6613,14 +6995,9 @@
         },
         "activeTemplateTheme": {
           "type": "object"
-        },
-        "saveEditingTheme": {
-          "type": "object"
         }
       },
       "actions": [
-        "registerHistoryCallbacks",
-        "applySnapshot",
         "setCurrentTheme",
         "setDefaultTheme",
         "focusRole",
@@ -6629,9 +7006,6 @@
         "previewThemeScope",
         "setThemeScopeGlobal",
         "setUseTemplateTheme",
-        "replaceTheme",
-        "restorePersonalTheme",
-        "clearSpaceTheme",
         "startEditing",
         "changeBasePreset",
         "updateEditingOverrides",
@@ -6639,6 +7013,7 @@
         "updateEditingMeta",
         "cancelEditing",
         "createAndStartEditing",
+        "saveEditingTheme",
         "saveEditingThemeAs",
         "deleteTheme",
         "installFromMarketplace",
@@ -6647,13 +7022,11 @@
         "deleteMarketplaceTheme",
         "publishToMarketplace",
         "publishToSpace",
-        "loadInstalledThemes",
-        "refreshSpaceThemes",
-        "requestNamedThemes"
+        "refreshSpaceThemes"
       ]
     },
     {
-      "name": "model",
+      "name": "record",
       "state": {},
       "actions": ["create", "update", "delete"]
     }
@@ -6665,7 +7038,35 @@
     "EditorCodePanel",
     "EditorInspectorPanel",
     "EditorThemePanel",
+    "PanelLane",
     "TemplateCard",
+    "TemplatePanelBody",
     "WeCube"
+  ],
+  "sources": [
+    {
+      "name": "calendarMonth",
+      "params": ["options?"],
+      "doc": "The days of a month as rows — { date, day, inMonth, isToday, weekday } — padded to whole weeks. Options: month (YYYY-MM-DD, default today), offset (months from it), weekStartsOn (0 Sunday … 6), fixedWeeks (six rows, default on).",
+      "example": "calendarMonth({ offset: local.monthOffset, weekStartsOn: 1 })"
+    },
+    {
+      "name": "calendarMonths",
+      "params": ["options?"],
+      "doc": "The twelve months of the year an offset lands in — { label, month, year, offset, isThisMonth, isShown } — each carrying its own offset from today, for a jump-to-month picker.",
+      "example": "calendarMonths({ offset: local.monthOffset })"
+    },
+    {
+      "name": "monthLabel",
+      "params": ["options?"],
+      "doc": "The month a calendar is showing, as \"August 2026\" in the viewer’s language. Same options as calendarMonth.",
+      "example": "monthLabel({ offset: local.monthOffset })"
+    },
+    {
+      "name": "yearLabel",
+      "params": ["options?"],
+      "doc": "The year a calendar is showing, on its own. Same options as calendarMonth.",
+      "example": "yearLabel({ offset: local.monthOffset })"
+    }
   ]
 }

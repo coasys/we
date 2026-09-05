@@ -90,13 +90,13 @@ Glossary (these terms pervade stores, models, and `$query`/`perspective` in sche
 | `@we/schema-shared` | schema-system/shared | Schema semantics: prop resolvers, validation, indexer, registry types, reactivity port | **Agnostic** |
 | `@we/schema-solid` | schema-system/frameworks/solid | The schema renderer (walks the tree, mounts components) | Solid (thin adapter) |
 | `@we/backend-shared` | backend-system/shared | The backend contract: `DataSource`, query IR + engine, ephemeral, presence & transcription ports, model manifest | **Agnostic** |
-| `@we/backend-ad4m` | backend-system/ad4m | The AD4M adapter: query adapter, ports, agent identity, SDNA install — and the AD4M model classes, generated from @we/models' manifest (src/models) | Agnostic |
+| `@we/backend-ad4m` | backend-system/ad4m | The AD4M adapter: query adapter, ports, agent identity, SDNA install — and the AD4M model classes, generated from @we/entities' manifest (src/models) | Agnostic |
 | `@we/backend-inmemory` | backend-system/inmemory | In-memory adapter — the reference implementation, and how stores test without an executor | Agnostic |
 | `@we/module-shared` | module-system/shared | The feature-module contract — what a module author installs | Agnostic |
 | `@we/module-globe` · `-call` · `-notes` · `-transcribe` · `-graph` | module-system/* | Bundled feature modules; globe is a *family* (module · protocol · layers · widget) | Agnostic (components injected) |
 | `@we/graph-protocol` · `-core` · `-expanders` · `-layouts` · `-solid` | graph-system/* | The graph engine: expander/layout/renderer contracts, the neutral engine, first-party plugins, and the Solid adapter | **Agnostic** (Solid only in the adapter) |
 | `@we/block-shared` | block-system/shared | Block content types + serialization | Agnostic |
-| `@we/models` | packages/models | WE's domain models: the authored neutral manifest (src/manifest, the source of truth), the neutral type contract, and the entity proxies backends register into | **Agnostic** |
+| `@we/entities` | packages/entities | WE's domain models: the authored neutral manifest (src/manifest, the source of truth), the neutral type contract, and the entity proxies backends register into | **Agnostic** |
 | `@we/app-shell` | packages/app-shell | App shell, stores, registries, built-in template schemas | Solid |
 | `@we/ai-context` | packages/ai-context | Generates this reference (CLAUDE.md et al.) from code + fragments | Build tool |
 
@@ -106,7 +106,7 @@ Each supplies two things: a `PlatformAdapter` (where am I running) and a `Backen
 
 **Dependency direction:** `templates → shell → backend-shared ← backend-ad4m`, and
 `modules → shell → backend-shared`. Dependencies point inward toward the contract packages; there are
-no sideways edges. `@coasys/*` may be imported by `@we/backend-ad4m`, `@we/models`, and any module
+no sideways edges. `@coasys/*` may be imported by `@we/backend-ad4m`, `@we/entities`, and any module
 that declares `backends: ['ad4m']` — nothing else. See `docs/architecture/package-conventions.md`.
 
 ### The Three Seams (why the layering holds)
@@ -118,7 +118,7 @@ that declares `backends: ['ad4m']` — nothing else. See `docs/architecture/pack
    code — a DX layer, not a runtime one.)
 
 2. **Schema semantics live in `@we/schema-shared`, parameterized by a reactivity port.** All token
-   resolution (`$store`, `$if`, `$query`, `$local`, `$action`, …) is in `propResolvers/`.
+   resolution (`{ $ }` expressions, `$action`, `$query`, `$setLocal`, …) is in `propResolvers/`.
    `resolveProp(value, stores, context, memo)` takes a framework-injected memoization function
    (`memo`), and `markReactive()` (see `propResolvers/reactive.ts`) tags accessors so a renderer
    knows a prop is reactive. The entire schema engine AND its reactivity wiring are framework-neutral;
@@ -135,7 +135,7 @@ that declares `backends: ['ad4m']` — nothing else. See `docs/architecture/pack
 1. A schema node has `type` (component/tag name), `props`, `children`, optional
    `routes`/`slots`/`$localState`/`$queries`.
 2. Props are resolved by the shared dispatcher (`propResolvers/dispatcher.ts`): token objects
-   (`$store`, `$if`, `$query`, …) become values or reactive accessors via the injected `memo`;
+   (`{ $ }` expressions, `$query`, handlers) become values or reactive accessors via the injected `memo`;
    event-handler arrays resolve lazily at call time.
 3. The renderer looks up `type` in the `ComponentRegistry` — a custom-element tag for
    `@we/primitives`, a framework component for `@we/components`/`@we/widgets`.
@@ -156,13 +156,18 @@ that declares `backends: ['ad4m']` — nothing else. See `docs/architecture/pack
 - The backend contract (ports, query IR) → `packages/backend-system/shared/src/`.
 - AD4M wiring (query adapter, SDNA install, agent identity) → `packages/backend-system/ad4m/src/`.
 - The feature-module contract → `packages/module-system/shared/src/module.ts`; a module → `packages/module-system/<id>/`.
-- Data models (Space, blocks) → `packages/models/src/` (see packages/models/CONVENTIONS.md).
+- Data models (Space, blocks) → `packages/entities/src/` (see packages/entities/CONVENTIONS.md).
 - A space's sections (views) → `packages/templates/views/`; how they resolve →
   `packages/app-shell/src/shared/viewResolution.ts` (see docs/architecture/views.md).
 - Graph engine (expanders, layouts, expansion state) → `packages/graph-system/` (see its README);
   its data binding lives at `packages/app-shell/src/frameworks/solid/components/GraphHost.tsx`.
 - App chrome and module panels (the sidebar, the module rail, floating vs displacing, who moves for
   whom) → `packages/app-shell/src/shared/dockGeometry.ts` (see docs/architecture/chrome-and-panels.md).
+
+**Where a new thing goes** — module or host store, panel or fragment, who decides placement, and how
+two capabilities cooperate without depending on each other — is
+docs/architecture/capabilities-and-surfaces.md. Read it before adding a module, a panel or a store:
+it is four rules, and half of it is the shapes that are refused on purpose.
 
 For deeper detail (data sync/persistence, block & editor internals, the local dev/test loop),
 see docs/architecture/codebase-map.md.
@@ -206,11 +211,11 @@ The spine of every one of these decisions is a single rule, from `packages/templ
 | Change a space's whole chrome, arrangement and route table | **Shell template** |
 | Reuse an arrangement across templates | **Fragment** |
 | Stateless UI needing measurement, focus or a browser API | **Primitive** (Lit) or **component** (Solid) |
-| Component-agnostic schema boilerplate | **Schema operator** |
+| Computation the expression library lacks | **Expression function** |
 | A new kind of content composed into a page | **Block type** |
 | A stateful capability a community turns on | **Feature module** |
 | A new source of nodes, or arrangement, in a graph | **Graph plugin** |
-| A new kind of thing that gets stored | **Model** |
+| A new kind of thing that gets stored | **Entity** |
 | State or an action a template needs to reach | **Store** |
 | A differently-shaped deployment | **Seed** (write nothing — select what exists) |
 
@@ -229,6 +234,16 @@ Three distinctions that have each been got wrong at least once:
 And overriding all of them: **never extract speculatively.** Three real uses of the same shape, or a
 divergence that is already a bug. Two is a coincidence.
 
+**The four reuse units on their axes.** Fragment, primitive, component and widget are all "a reusable
+piece of UI"; what separates them is two questions asked in order. *Does it need to do something, or
+only be arranged?* Arranged → a **fragment**, whatever the framework, because data is neutral by
+construction. Must do something — *can it be neutral?* Focus, top layer, measurement, keyboard →
+a **primitive** (Lit). Only what needs the host's reactive framework in its implementation is a
+**component** (Solid); a **widget** is a component big enough to own a protocol (`GraphView` and its
+plugin catalogue) and lives with its feature. Nothing that is arrangement is ever framework-bound;
+a "component" that turns out to be arrangement is a fragment in the wrong language. The left side of
+that line crosses the trust boundary as data; the right side merges.
+
 ### The surfaces
 
 Each row: where it lives → its rules → **what registers it** → what checks it. The registration
@@ -246,9 +261,9 @@ the seed's list is correct code that never appears.
 | Primitive | `design-system/3-primitives/src/primitives/` | its `CONVENTIONS.md` | — (CEM generated by its build) | `--filter @we/primitives test`, then `generate-context` |
 | Component | `design-system/4-components/src/components/` | `design-system/CONVENTIONS.md` | `componentRegistry.tsx` | `--filter @we/components test`, then `generate-context` |
 | Block type | `block-system/shared/` + `frameworks/solid/` | `block-system/CONVENTIONS.md` | `registerBlock()` in `core-blocks.ts` | `--filter @we/block-shared test` |
-| Schema operator | `schema-system/shared/src/propResolvers/` | `schema-system/CONVENTIONS.md` (6-step checklist) | `dispatcher.ts` + `OperatorToken` union + `index.ts` | `--filter @we/schema-shared test`, then document in `fragments/schema-operators.ts` |
+| Expression function | `schema-system/shared/src/expressions/functions.ts` | `schema-system/CONVENTIONS.md` ("Adding a function") | `defineFunction()` — the registry feeds the validator, the evaluator and the generated context | `--filter @we/schema-shared test`, then `generate-context` |
 | Store | `app-shell/src/frameworks/solid/stores/` | `app-shell/CONVENTIONS.md` | classify in `templateSurface.ts` **and** describe in `fragments/stores.ts` — both fail the build if you don't | `--filter @we/app-shell test`, then `generate-context` |
-| Model | `models/src/manifest/entities/` | `models/CONVENTIONS.md` + `docs/architecture/relations.md` | `--filter @we/models generate:types` **and** `--filter @we/backend-ad4m generate:classes` | `--filter @we/backend-ad4m test` |
+| Entity | `entities/src/manifest/` | `entities/CONVENTIONS.md` + `docs/architecture/relations.md` | `--filter @we/entities generate:types` **and** `--filter @we/backend-ad4m generate:classes` | `--filter @we/backend-ad4m test` |
 | Feature module | `module-system/<id>/` | `module-system/shared/src/module.ts` (the contract is the documentation) | `bundledModules.ts` + seed `modules` | `--filter @we/module-shared test`, `validate:schemas` |
 | Graph plugin | `graph-system/expanders/src/`, `layouts/src/` | `graph-system/CONVENTIONS.md` | package index **and** `GRAPH_PLUGIN_CATALOG` in `module-system/graph/src/catalog.ts` | `--filter @we/graph-core test`, then `generate-context` |
 | Globe layer | `module-system/globe/layers/src/` | its `README.md` / `EXAMPLES.md` | export from `index.ts` | `--filter @we/globe-layers typecheck` |
@@ -261,7 +276,7 @@ widget there was retired once template-kit's rail fragments replaced it, and fea
 with their module family. Treat that as a strong prior that what you have is a fragment or a module.
 
 **A store member is public API, and classifying it is a security decision.** Every member is
-reachable from any template via `$store`/`$action`, so name it for template authors and treat removal
+reachable from any template through an expression or `$action`, so name it for template authors and treat removal
 as breaking. Before `templateSurface.ts` existed, all 388 members were in the bag a template rendered
 against — including `runtimeStore.trustAgent` and the settings holding the API key — so a template
 that merely *painted* could trust an attacker's DID. Put a new member in the narrowest group that
@@ -281,12 +296,15 @@ no error channel to probe), and `templateAcceptance.ts` refuses structurally bro
 while admitting-and-reporting references past the tier.
 
 **Every other surface ships by merging into this repo.** Feature modules are bundled rather than
-dynamically loaded — deliberately: a dynamically-loaded bundle carrying its own reactive runtime gets
-a *second* one, and reactivity silently stops crossing the boundary. Blocks and components have a
-design in `docs/internal/plans/module-marketplace.md` and no implementation.
+dynamically loaded, and the reason is trust, not reactivity: `createStore(deps)` already injects the
+reactive primitives, but a store factory is arbitrary code with the host's ports, and the capability
+model covers what a schema may *name*, not what code may *do*.
 
-Two of nineteen surfaces have an out-of-repo path. Do not describe the marketplace as though it
-covers the rest.
+Three of nineteen surfaces (templates, themes, views) have an out-of-repo path. Do not describe the
+marketplace as though it covers the rest. `docs/internal/plans/module-marketplace.md` places every
+surface on a **distribution ladder** — pure data, declared data + fragments, sandboxed embed,
+host-provided capability kernels, code — and says which rung each can reach. Nothing `import()`s a
+bundle from an expression, at any rung; a contribution that needs code merges here.
 
 The long-form guide — reference example per surface, the reasoning, the full distribution status —
 is `docs/contributing/surfaces.md`. `CONTRIBUTING.md` covers the workflow.
@@ -298,11 +316,19 @@ is `docs/contributing/surfaces.md`. `CONTRIBUTING.md` covers the workflow.
 A schema is a tree of nodes. Each node can have:
 - type: The component to render (string, e.g. "we-button", "Column")
 - props: An object of props for the component
-- children: An array of child nodes (or strings for text), or token objects like { $store: '...' } or { $concat: [...] }.
+- children: An array of child nodes, strings for text, or expressions like { "$": "post.title" } (rendered as text).
 - slots: Named slots for advanced composition (optional)
 - slot: The name of the slot this node should be rendered into (optional)
 - routes: For routing components, an array of nestable route objects (optional)
+- $localState / $queries: ephemeral state and hoisted subscriptions declared on the node (optional; see Dynamic Logic)
 - styles: Raw CSS escape hatch — Record<string, string | number> applied as inline styles on a **wrapper div** that surrounds the component. Use only for CSS that must live on a wrapper: filter, clip-path, backdrop-filter, mix-blend-mode. When present the wrapper participates in layout (no display:contents), so CSS effects apply correctly. **Important:** this is NOT the same as props.styles. If you want to apply custom CSS to a Column, Row, or Grid's own element (e.g. a background image), put it in props.styles instead — node-level styles go on a wrapper div around the component and will be hidden behind the component's own background.
+
+The ROOT node carries one more, and it is required:
+
+- meta: { name, description, icon } — what the template is called and how it is listed. Optional
+  keys: role: 'view' for a section rather than a shell (absent means shell), themeId for a theme the
+  template was designed with, panels for the surfaces the interface has (see Panels), and
+  chromeReserve for a band the shell pins over the content. A root node without meta is refused.
 
 Example node:
 {
@@ -318,11 +344,13 @@ Example node:
 
 ## Prop-level Dynamic Logic & Expressions
 
-Special tokens in props enable dynamic, reactive, or computed behavior.
+Two kinds of token go in props: an EXPRESSION, { "$": "…" }, for anything computed (a store read, a
+condition, a label, a list), and a HANDLER ($action, $setLocal, …) for anything that happens on an
+event. A plain string is always text. There are no other value tokens.
 
 Store reference:
-{ "$store": "storeName.property.path" }
-Resolves a value from a named store, supporting nested paths.
+{ "$": "storeName.property.path" }
+Reads a value from a named store, supporting nested paths — reactive, so the prop follows the store.
 
 Action/event:
 { "$action": "storeName.method", "args": [...] }
@@ -334,166 +362,221 @@ first parameter is OPTIONAL receives a PointerEvent from a button written the ob
 you mean explicitly when the method has an optional leading parameter — note "args": [] does not help, since
 an empty list is treated as "no args given" and forwards the event too.
 Supports async lifecycle callbacks — fired after the store method's Promise resolves/rejects:
-  onSuccess: [...actions]  — fired on resolve; '$result' (and '$result.<path>') in args refers to the resolved value
-  onError: [...actions]    — fired on reject; '$result.message' etc. refers to the error object
+  onSuccess: [...actions]  — fired on resolve; { "$": "result" } (and result.<path>) in args refers to the resolved value
+  onError: [...actions]    — fired on reject; { "$": "result.message" } etc. refers to the error object
   onFinally: [...actions]  — fired regardless of outcome
 Non-promise (synchronous) methods are unaffected — lifecycle keys are ignored.
 Example — close modal after async submission:
 { "$action": "spaceStore.createSpace", "args": [...], "onSuccess": [{ "$setLocal": "modalOpen", "value": false }] }
 Example — navigate to newly created item:
-{ "$action": "spaceStore.createSpace", "args": [...], "onSuccess": [{ "$setLocal": "modalOpen", "value": false }, { "$action": "routeStore.navigate", "args": [{ "$concat": ["/space/", "$result.uuid"] }] }] }
+{ "$action": "spaceStore.createSpace", "args": [...], "onSuccess": [{ "$setLocal": "modalOpen", "value": false }, { "$action": "routeStore.navigate", "args": [{ "$": "`/space/${result.uuid}`" }] }] }
 
-Model mutations via $action (use these for creating/updating/deleting model instances):
-model.create — creates a model instance in the current perspective (default) or a specified one:
-{ "$action": "model.create", "args": ["ModelName", { "field": "value" }, { "perspective": "datasetStore.rootDataset" }] }
+Record mutations via $action (use these for creating/updating/deleting records):
+A RECORD is one stored thing; an ENTITY is its type. Every one of these takes the entity name first
+and acts on a record of it.
+
+record.create — creates a record in the current perspective (default) or a specified one:
+{ "$action": "record.create", "args": ["EntityName", { "field": "value" }, { "perspective": "datasetStore.rootDataset" }] }
 The third argument is an options object. Omit it to use the current space perspective.
 
-model.update — updates a model instance:
-{ "$action": "model.update", "args": ["ModelName", "$item.id", { "field": "newValue" }] }
-To target a non-current perspective: { "$action": "model.update", "args": ["ModelName", "$item.id", { "field": "value" }, { "perspective": "datasetStore.rootDataset" }] }
+record.update — updates one record:
+{ "$action": "record.update", "args": ["EntityName", { "$": "item.id" }, { "field": "newValue" }] }
+To target a non-current perspective: { "$action": "record.update", "args": ["EntityName", { "$": "item.id" }, { "field": "value" }, { "perspective": "datasetStore.rootDataset" }] }
 
-model.delete — deletes a model instance:
-{ "$action": "model.delete", "args": ["ModelName", "$item.id"] }
+record.delete — deletes one record:
+{ "$action": "record.delete", "args": ["EntityName", { "$": "item.id" }] }
 
-Use perspective: 'datasetStore.rootDataset' for we-root models (AgentSettings, ChatSession, etc.).
-Use the default (no perspective) for space-scoped models (Space, Signal, etc.).
+Use perspective: 'datasetStore.rootDataset' for we-root entities (AgentSettings, ChatSession, etc.).
+Use the default (no perspective) for space-scoped entities (Space, Signal, etc.).
 
-Conditional logic:
-{ "$if": { "condition": ..., "then": ..., "else": ... } }
-Evaluates condition; if truthy, returns then, else returns else.
+record.* writes directly; recordStore is the form surface over the same job — it derives a form from
+the entity's own declaration, so a community's newest entity is creatable with no schema written for
+it. Reach for record.create when the template knows the fields, recordStore when a person is filling
+them in.
 
-Map/iterate:
-{ "$map": { "items": { "$store": "templateStore.templates" }, "select": { ... } } }
-Iterates over an array, mapping each item to a new object using the select mapping.
+Expressions:
+{ "$": "<expression>" }
+Every computed value — a condition, a label, a number, a filtered list — is one expression string in a
+{ "$": … } token. This is the value layer's whole vocabulary. The node layer ($each, node-level $if,
+$routes, $animate…), queries ($query, $queries) and handlers ($action, $setLocal, $toggleLocal…) stay
+as tokens; an expression goes anywhere a VALUE goes — a prop, a condition, $each's items, a children
+array (rendered as text), a where value, an $action argument.
 
-Pick:
-{ "$pick": { "from": { "$store": "userStore.profile" }, "props": ["name", "email"] } }
-Picks specific properties from an object.
+References — what a name starts from:
+  spaceStore.members             a store member (any store in the Stores section; modules.<id>.<key> for a module)
+  local.searchText               a $localState or $queries field; dot paths read into object fields
+  post.title                     a name bound by $each / $single / $agent through "as" — the default is item
+  index, prev                    $each's row position, and the previous row
+  me.did, currentDataset         the current agent, and the active dataset
+  surface.tier, surface.width    the responsive boundary
+  event, arg, result             the callback argument inside a handler, and a settled $action's value
+A plain string in an expression is ALWAYS a literal: 'item.name' is five words, item.name is a read.
+A plain string in a PROP or in children is text too: "$item.name" renders those ten characters. A
+reference is always written { "$": "item.name" }; the validator rejects the old string spelling.
+A store's actions are unreachable — spaceStore.createPost reads as nothing; only $action calls.
 
-Concat (string building):
-{ "$concat": ["part1", "$context.value", "part2"] }
-Joins multiple parts into a single string.
+Operators, in JavaScript's spelling and precedence:
+  == !=                          strict equality
+  < > <= >=                      numeric comparison
+  in                             list membership:  item.role in ['admin', 'moderator']
+  ! && ||                        boolean logic. && and || ANSWER WITH A BOOLEAN, never with an operand
+  ??                             the fallback-value idiom:  local.name ?? 'Untitled'
+  test ? a : b                   conditional value
+  + - * / %                      arithmetic; + joins strings when either side is one; / by 0 is 0
+  `…${expr}…`                    interpolation
+  a.name   a[i]                  property and index reads; a missing path is undefined, never an error
+  [a, b]   { key: value }        list and object literals — the where-object below is one
 
-Context references:
-Strings starting with "$" followed by a context key resolve to context values.
-Example: "$space.name" resolves to the name property of the space context variable.
-Dot paths supported: "$item.profile.avatar".
+Comprehensions — the one place a name is bound, over a list:
+  items.filter(x, x.done)          items.map(x, x.name)          items.find(x, x.id == local.selected)
+  items.exists(x, x.role == 'admin')                            items.all(x, x.read)
+Over something that is not a list: filter and map give [], find gives undefined, exists false, all true.
 
-Equality / inequality checks:
-{ "$eq": [a, b] } — strict equality
-{ "$ne": [a, b] } — strict inequality
+Functions — the library. f(a, b) and a.f(b) are the same call; a value's own methods are never callable.
+Nothing is ever added to the grammar above: a new capability is a function here, or one the host
+registers (listed last). Wrong-typed input answers with the empty value of its kind, never an error.
+  Lists:
+    count(items) — How many entries a list has. Anything that is not a list counts as 0.  e.g. count(spaceStore.members)
+    filter(items, where, limit?) — The entries matching a where-object — the same grammar $query takes. `limit` keeps the first N. Prefer the comprehension `items.filter(x, …)` when the test is not a where-object.  e.g. filter(spaceStore.members, { role: 'admin' }, 5)
+    find(items, where?) — The first entry matching a where-object, or undefined. Without `where`, the first entry. Read a field off the result directly: `find(…).id` is undefined when nothing matched.  e.g. find(local.signalTypes, { slug: 'like' }).id
+    first(items) — The first entry of a list, or undefined when it is empty.  e.g. first(local.posts).title
+    join(items, separator?) — The entries of a list as one string, separated by `separator` (default ', ').  e.g. join(item.tags, ' · ')
+    last(items) — The last entry of a list, or undefined when it is empty.  e.g. last(item.messages).text
+  Text:
+    contains(text, needle) — Whether the text contains `needle`, ignoring case — the same test the where-object `contains` makes.  e.g. contains(item.name, local.search)
+    endsWith(text, suffix) — Whether the text ends with `suffix`, case-sensitively.  e.g. endsWith(item.url, '.png')
+    lower(text) — The text in lower case.  e.g. lower(item.handle)
+    plural(count, one, other) — `one` when count is exactly 1, otherwise `other`.  e.g. plural(count(spaceStore.members), 'Member', 'Members')
+    startsWith(text, prefix) — Whether the text starts with `prefix`, case-sensitively — for structured strings such as an ISO date or a URI.  e.g. startsWith(item.startDate, '2026-08')
+    trim(text) — The text without leading and trailing whitespace.  e.g. trim(local.search) != ''
+    upper(text) — The text in upper case.  e.g. upper(item.code)
+  Numbers:
+    max(...values) — The largest of the numbers given. Non-numbers count as 0.  e.g. max(local.page - 1, 0)
+    min(...values) — The smallest of the numbers given. Non-numbers count as 0.  e.g. min(count(local.rows), 20)
+    round(value, digits?) — The number rounded to `digits` decimal places (default 0). Non-numbers round to 0.  e.g. round(item.progress * 100)
+  Objects:
+    pick(object, keys) — A new object holding only the named keys of `object`. Anything that is not an object gives `{}`.  e.g. pick(profileStore.ownProfile, ['handle', 'avatar'])
+  Form state:
+    error(field) — A field's first validation message, once it has been touched; empty otherwise. The field is named as a string.  e.g. error('email')
+    formValid() — Whether every validated field in the enclosing $localState scope passes.  e.g. formValid()
+    touched(field) — Whether the field has been blurred or marked with $touch.  e.g. touched('email')
+    valid(field) — Whether every validation rule on the field passes, touched or not. True for a field with no rules.  e.g. valid('email')
+  Host functions (this deployment registers them):
+    calendarMonth(options?) — The days of a month as rows — { date, day, inMonth, isToday, weekday } — padded to whole weeks. Options: month (YYYY-MM-DD, default today), offset (months from it), weekStartsOn (0 Sunday … 6), fixedWeeks (six rows, default on).  e.g. calendarMonth({ offset: local.monthOffset, weekStartsOn: 1 })
+    calendarMonths(options?) — The twelve months of the year an offset lands in — { label, month, year, offset, isThisMonth, isShown } — each carrying its own offset from today, for a jump-to-month picker.  e.g. calendarMonths({ offset: local.monthOffset })
+    monthLabel(options?) — The month a calendar is showing, as "August 2026" in the viewer’s language. Same options as calendarMonth.  e.g. monthLabel({ offset: local.monthOffset })
+    yearLabel(options?) — The year a calendar is showing, on its own. Same options as calendarMonth.  e.g. yearLabel({ offset: local.monthOffset })
 
-Numeric comparisons:
-{ "$lt": [a, b] } — a < b (less than)
-{ "$gt": [a, b] } — a > b (greater than)
-Example: { "$gt": [{ "$count": { "items": { "$store": "listStore.items" } } }, 0] }
+The where-object — one grammar shared by filter(), find(), and $query's where. Keys are field names;
+values may be expressions (in an expression) or tokens (in a $query):
 
-Set membership:
-{ "$in": [value, array] } — true if array contains value (false if second operand is not an array)
-Example: { "$in": [{ "$store": "spaceStore.uuid" }, { "$store": "datasetStore.systemDatasetUuids" }] }
-Example: { "$in": ["$item.role", ["admin", "moderator"]] }
+  { field: 'value' }                       — strict equality
+  { field: ['a', 'b'] }                    — set membership (IN); matches any of them
+  { field: { not: 'value' } }              — inequality; a list excludes several values
+  { field: { contains: 'text' } }          — case-insensitive substring match (strings only)
+  { field: { startsWith: 'text' } }        — anchored prefix match, case-SENSITIVE
+  { field: { endsWith: 'text' } }          — anchored suffix match, case-SENSITIVE
+  { field: { exists: true } }              — non-null / non-undefined presence check
+  { field: { exists: false } }             — null or undefined check
+  { OR: [ {…}, {…} ] }  { AND: [ … ] }  { NOT: {…} }   — combinators; sibling keys are implicitly ANDed
 
-Boolean logic:
-{ "$and": [a, b, ...] } — all truthy
-{ "$or": [a, b, ...] } — any truthy
-{ "$not": a } — negation
+A bare list is the positive counterpart of "not" with a list, and the way to fetch a known set:
+{ id: ['id1', 'id2', 'id3'] }. Native on the AD4M backend, where it pushes down to a SPARQL VALUES
+clause. An empty list matches nothing, which is what "none of these" should mean.
 
-Array operators:
-{ "$filter": { "items": <array>, "where": { "field": "value", ... }, "limit": <number> } }
-Filters an array to items where all where conditions match. Mirrors the $query where operator set:
+An ABSENT property is the trap worth knowing, and "not" is where the two backends disagree.
 
-  { "field": "value" }                                   — strict equality
-  { "field": ["a", "b"] }                                — set membership (IN); matches any of them
-  { "field": { "not": "value" } }                        — inequality; array form excludes multiple values
-  { "field": { "contains": "text" } }                    — case-insensitive substring match (strings only)
-  { "field": { "startsWith": "text" } }                  — anchored prefix match, case-SENSITIVE
-  { "field": { "endsWith": "text" } }                    — anchored suffix match, case-SENSITIVE
-  { "field": { "exists": true } }                        — non-null / non-undefined presence check
-  { "field": { "exists": false } }                       — null or undefined check
+A record that never had a property written carries no value for it — on AD4M a property is a link,
+so it is simply not there. Three cases, and the middle one differs by backend:
 
-A bare array is the positive counterpart of "not" with an array, and it is the way to fetch a known
-set: { "id": ["id1", "id2", "id3"] }. Native on the AD4M backend, where it pushes down to a SPARQL
-VALUES clause, so it is index-friendly rather than a scan. An empty array matches nothing, which is
-what "none of these" should mean.
+  { field: 'x' }             — does NOT match an absent value. Both agree.
+  { field: { not: 'x' } }    — MATCHES an absent value inside filter() and on the in-memory
+                               backend (undefined !== 'x'), and does NOT match on AD4M, where
+                               != over an unbound variable excludes the row, exactly as SQL's
+                               three-valued logic excludes NULL. A $query where written with "not"
+                               can therefore pass every test and come back empty in production.
+  { field: { exists: false } } — means absent, unambiguously, on both.
 
-startsWith/endsWith are case-sensitive where contains is not: they exist to match structured strings
-against a known prefix (an ISO date out of a datetime, an id out of a URI), where folding case would
-match things it should not. contains searches prose, which is a different question.
-Note they are NOT native to the AD4M backend, so a $query using one is refused outright — use
-contains there. Inside $filter they are evaluated client-side and always available.
+A declared "default" does not rescue this. The manifest's default is applied when a record is
+CONSTRUCTED, so anything created normally does carry it — but a field added to an entity after
+some records already existed reads as absent on every one of them, and the query layer never
+consults the default when filtering.
 
-"limit" keeps only the first N matches — the only way to express "the first few", since the operator
-set has no arithmetic and no slice. Use it for a cell showing two of a day's events with a "more"
-marker; without it the only option is rendering all of them and clipping, which cuts a row through
-the middle of the last one. It is resolved through the prop system, so it can come from $local.
+Say "absent counts as the default" explicitly when you mean it:
 
-Where values (including those inside operator objects) are resolved through the prop system,
-so $store, $local, and context refs like { "$local": "searchText" } all work.
+  { OR: [ { retired: false }, { retired: { exists: false } } ] }
 
-Logical combinators (OR / AND / NOT) — supported in both $query's where and $filter's where:
-  { "OR": [ { "field": "value" }, { "field2": "value2" } ] }   — matches if ANY branch matches
-  { "AND": [ { ... }, { ... } ] }                              — matches if ALL branches match (sibling keys at the
-                                                                  same level are already implicitly ANDed — use AND
-                                                                  to group a set of conditions alongside an OR/NOT)
-  { "NOT": { "field": "value" } }                              — matches if the branch does NOT match
-Branches are full where-clause objects (can contain multiple fields, and can nest OR/AND/NOT inside each other).
-Sibling keys alongside OR/AND/NOT at the same level are implicitly ANDed with it.
-Example — case-insensitive search across two fields ($filter takes the same shape, e.g. a member
-list matching name OR handle):
-{
-  "$query": {
-    "entity": "Space",
-    "where": {
-      "OR": [
-        { "name": { "contains": { "$local": "searchText" } } },
-        { "description": { "contains": { "$local": "searchText" } } }
-      ]
-    }
-  }
-}
-Note: using OR/AND/NOT disables the SPARQL-level sort/pagination pushdown (see count-projection and
-relation-property ordering below) — those orderings silently stop working if combined with OR/AND/NOT in the
-same query's where clause, because the fallback sort runs before the projection/relation data is attached.
+Native on AD4M — "exists" and the combinators are both supported — but the OR costs this query's
+sort pushdown (see below), so pair it with a plain sort or none. Where the set is small and already
+in hand, filtering client-side with filter() sidesteps the whole question.
+
+startsWith/endsWith are case-sensitive where contains is not: they match structured strings against
+a known prefix (an ISO date, an id out of a URI). They are NOT native to the AD4M backend, so a $query
+using one is refused — use contains there; inside filter() they are evaluated client-side.
+
+Note: OR/AND/NOT in a $query's where disables the SPARQL-level sort/pagination pushdown (see
+count-projection and relation-property ordering below) — those orderings silently stop working in the
+same query's where clause, because the fallback sort runs before the projection data is attached.
 
 Examples:
-{ "$filter": { "items": { "$store": "spaceStore.members" }, "where": { "role": "admin" } } }
-{ "$filter": { "items": { "$store": "spaceStore.members" }, "where": { "location": { "exists": true }, "handle": { "contains": { "$local": "searchText" } } } } }
-{ "$filter": { "items": { "$local": "dayEvents" }, "where": { "startDate": { "startsWith": "$cell.date" } }, "limit": 2 } }
+{ "$": "filter(spaceStore.members, { role: 'admin' })" }
+{ "$": "filter(spaceStore.members, { location: { exists: true }, handle: { contains: local.searchText } })" }
+{ "$": "filter(local.dayEvents, { startDate: { startsWith: cell.date } }, 2)" }        — the first two only
+{ "$": "find(local.signalTypes, { slug: 'like' }).id" }                                — undefined when nothing matches
+{ "$": "count(local.rows) > 0 && local.searchText != ''" }
+{ "$": "item.author == me.did ? 'mine' : 'theirs'" }
+{ "$": "`${count(spaceStore.members)} ${plural(count(spaceStore.members), 'Member', 'Members')}`" }
+{ "$": "spaceStore.members.filter(m, m.did != me.did).map(m, m.handle).join(', ')" }
+{ "$": "post.author in spaceStore.mutedDids" }
 
-{ "$count": { "items": <array> } }
-Returns the length of an array.
-Example: { "badge": { "$count": { "items": { "$store": "notificationStore.unread" } } } }
-
-{ "$find": { "items": <array>, "where"?: { ... }, "select"?: "fieldName" } }
-Finds the first matching item. where is optional (returns first item if omitted). select plucks a single field.
-Example: { "$find": { "items": { "$store": "spaceStore.members" }, "where": { "id": "$item.creatorId" }, "select": "name" } }
-
-{ "$plural": { "count": <number>, "one": "singular", "other": "plural" } }
-Returns "one" when count === 1, otherwise "other". Use in children arrays for count-noun labels.
-count is resolved through the prop system — any numeric expression ($count, $store, context ref) works.
-Example: { "$plural": { "count": { "$count": { "items": { "$store": "spaceStore.members" } } }, "one": "Member", "other": "Members" } }
-Compose with we-number for a full "N Members" display:
-  we-number (value: { "$count": ... }, shorten: true) + we-text (children: [{ "$plural": { "count": { "$count": ... }, "one": "Member", "other": "Members" } }])
+Rules:
+- An expression naming event/arg/result at the TOP LEVEL of an $action's args, or as a $setLocal
+  "value", is evaluated when the handler fires. Nested inside another token it is evaluated at render
+  time against no event and becomes a constant — the validator rejects that.
+- The validator reports every mistake with a column: an unknown name (with "did you mean"), an unknown
+  store member, an undeclared local, an unknown function, a wrong argument count, prototype access.
+- No new value operators will be added and no new syntax. Computation the library lacks is a function
+  the host registers, catalogued under "Host functions" above.
 
 Query (data retrieval):
-{ "$query": { "entity": "ModelName", "where": { "field": "value" }, "limit": 10, "order": { "field": "asc" } } }
+{ "$query": { "entity": "EntityName", "where": { "field": "value" }, "limit": 10, "order": { "field": "asc" } } }
 Queries the current dataset for entity instances. Always returns an array.
 Options: entity (required), where, order, limit, offset, include, scope, dataset, subscribe.
 subscribe defaults to true — reactive live updates. Set subscribe: false to do a one-time fetch.
-By default $query targets the current dataset ($currentDataset). Use dataset to query a different dataset —
-required when reading entities from an external app (e.g. Flux) that is open as a WE space:
-{ "$query": { "entity": "Channel", "dataset": "$currentDataset" } }
+By default $query targets the current dataset. Use dataset to query a different dataset — required
+when reading entities from an external app (e.g. Flux) that is open as a WE space:
+{ "$query": { "entity": "Channel", "dataset": { "$": "currentDataset" } } }
+
+entity may be an expression rather than a literal name — what lets a list render records of a type
+the template was not written for. Put the query inside an $each over a list of model names and read
+the row:
+{
+  "type": "$each",
+  "props": { "items": { "$": "shapeStore.extractionTargets" }, "as": "target" },
+  "children": [{
+    "type": "Column",
+    "$queries": { "found": { "entity": { "$": "target" }, "order": { "createdAt": "asc" } } },
+    "children": ["…one group per model, each with its own subscription…"]
+  }]
+}
+Pair it with recordStore.displays[target] to draw the rows, and the group renders a model a
+community defined this morning with no template change (see "A record of any type").
+USE A LITERAL WHEREVER THE TYPE IS KNOWN. The validator cannot check a name it only sees at
+runtime, so a typo fails as a silently empty list rather than as an error — and a name that has not
+resolved yet reads as "not ready", so the query simply waits. Note the counts of such a set cannot
+be totalled: each group is its own subscription and a schema cannot sum a list of queries whose
+length it does not know, so put a count inside each group rather than above them.
 
 Backend-neutral identity & dataset refs — prefer these over backend-store paths inside $query and conditions:
-- $currentDataset — the currently active dataset (an AD4M perspective, in the AD4M backend). Use as a dataset value.
+- currentDataset — the currently active dataset (an AD4M perspective, in the AD4M backend). Use as a dataset value.
   A host store's dataset accessor (e.g. `dataset: 'datasetStore.marketplaceDataset'`) works as a dataset value too.
   When passing a dataset to a *component prop* rather than a query, append `.handle` — component props take the
-  backend's own dataset handle: { "perspective": { "$store": "datasetStore.currentDataset.handle" } }.
-- $me — the current agent's identity object. Use $me.did for their DID (ownership checks, author filters, e.g. { "$eq": ["$post.author", "$me.did"] }); $me.handle / $me.avatar for profile fields once loaded.
+  backend's own dataset handle: { "perspective": { "$": "datasetStore.currentDataset.handle" } }.
+- me — the current agent's identity object. Use me.did for their DID (ownership checks, author filters, e.g. { "$": "post.author == me.did" }); me.handle / me.avatar for profile fields once loaded.
 
 Eager-loading relations with include (most common relational pattern):
 include hydrates related model instances in the same query — no extra fetches needed.
-Relation names come from the HasMany relations listed for each model in externalModels.
+Relation names come from the HasMany relations listed for each model in externalEntities.
 
 Simple include — hydrate all related instances:
 { "$query": { "entity": "Channel", "include": { "conversations": true } } }
@@ -522,15 +605,9 @@ Sorting by a count projection — order can reference a $-prefixed count key dir
 Requirements: only a single order key is supported when it targets a projection (mixing it with a second sort key falls back
 to a plain property sort), and the query must also specify limit or offset — without one the count isn't computed yet at
 sort time and the order silently has no effect. Always pair count-projection ordering with a limit.
-Combine with $if for a user-togglable sort field (e.g. "newest" vs "most liked"):
+Combine with a ternary for a user-togglable sort field (e.g. "newest" vs "most liked"):
 {
-  "order": {
-    "$if": {
-      "condition": { "$eq": [{ "$local": "sortField" }, "likes"] },
-      "then": { "$likeCount": { "$local": "sortDirection" } },
-      "else": { "createdAt": { "$local": "sortDirection" } }
-    }
-  }
+  "order": { "$": "local.sortField == 'likes' ? { $likeCount: local.sortDirection } : { createdAt: local.sortDirection }" }
 }
 
 Sorting by a related model property — order can reference a dotted "relation.property" path for a HasOne/HasMany
@@ -546,31 +623,31 @@ relation declared on the model, sorting by a scalar property on the related inst
 Same requirements as count-projection ordering above: only a single order key, and pair with limit/offset — without
 one the relation data isn't attached yet at sort time and the order silently has no effect. include isn't required
 for the sort itself (the relation is resolved from the model's declared shape), but you'll usually want it anyway to
-read the field in the UI (e.g. "$space.location.country").
-Combine with $if the same way as count-projection ordering to let the user toggle between sort fields.
+read the field in the UI (e.g. { "$": "space.location.country" }).
+Combine with a ternary the same way as count-projection ordering to let the user toggle between sort fields.
 
 Single-item projection — add a derived field that resolves to one instance or null:
-{ "$query": { "entity": "Post", "include": { "$myLike": { "from": "likes", "where": { "author": "$me.did" }, "limit": 1 } } } }
+{ "$query": { "entity": "Post", "include": { "$myLike": { "from": "likes", "where": { "author": { "$": "me.did" } }, "limit": 1 } } } }
 With limit: 1 the field unwraps to T | null instead of an array.
 
 include only works with typed relations — ones where the target model class is known.
-For WE models this is always the case. For external models, check the externalModels listing:
-relations marked "→ ModelName" are typed (safe for include); relations marked "parent query only"
+For WE models this is always the case. For external models, check the externalEntities listing:
+relations marked "→ EntityName" are typed (safe for include); relations marked "parent query only"
 are untyped and will crash at runtime if used with include — use a scope drill-down instead.
 
 Relational queries — fetch a parent record's children (drill-down navigation):
-{ "$query": { "entity": "Conversation", "scope": { "anchor": "Channel", "via": "conversations", "anchorId": "$channel.id" } } }
+{ "$query": { "entity": "Conversation", "scope": { "anchor": "Channel", "via": "conversations", "anchorId": { "$": "channel.id" } } } }
 scope.anchor is the parent entity type; scope.via is its relation whose targets are this query's entity (the
-HasMany relation listed for that entity in externalModels); scope.anchorId is the parent record's id (typically
+HasMany relation listed for that entity in externalEntities); scope.anchorId is the parent record's id (typically
 from a $each context variable or a route segment). The adapter resolves the relation to a backend handle —
 no protocol details live in the template.
 Use this pattern when navigating to a detail route and loading only that record's children.
-For external-app datasets, always add dataset: "$currentDataset".
+For external-app datasets, always add dataset: { "$": "currentDataset" }.
 
 Local state (scoped ephemeral state):
 Declare on any node: "$localState": { "name": { "type": "string", "initial": "" } }
 Supported types: "string", "boolean", "number", "function", "object", "array".
-"array" is a set of values — the type $toggleLocalIn writes and $in reads. Use it for per-row state
+"array" is a set of values — the type $toggleLocalIn writes and `in` reads. Use it for per-row state
 (which rows are open, which are selected) where the rows come from data.
 Two opt-in persistence tiers (see docs/architecture/routing-and-view-state.md for the full rules):
 - "syncParam": "<param>" mirrors the field into a URL query parameter — for VIEW STATE (selected
@@ -588,20 +665,20 @@ The deciding question: "if I sent this URL to someone, should they see the effec
 no but future-me should: persist; no one: plain.
 Links may also carry ?template=<id> and ?theme=<id> — the shell applies them when the recipient has
 them and warns (toast) when not. Templates never handle these params themselves.
-Read:  { "$local": "name" } — returns the signal value (reactive).
-       { "$local": "name.nested.path" } — dot-notation reads into object-typed fields (reactive).
-Write: { "$setLocal": "name", "from": "$event.target.value" } — event handler that updates the signal.
+Read:  { "$": "local.name" } — the signal value (reactive).
+       { "$": "local.name.nested.path" } — dot paths read into object-typed fields (reactive).
+Write: { "$setLocal": "name", "value": { "$": "event.target.value" } } — event handler that sets what the expression computes when it fires, with event in scope.
        { "$setLocal": "name", "value": "literal" } — sets to a literal value (string, number, boolean, null, object).
-       { "$setLocal": "name", "merge": { "field": "$event.detail" } } — shallow-merges fields into an object-typed signal. Values are resolved as event paths (e.g. "$event.detail") or passed as literals. Use for partial updates to object state.
-       { "$setLocal": "name", "by": 20 } — adds to a NUMBER field, reading the current value first. The only arithmetic the schema layer has: use it to advance a page size ("show 20 more") or bump a counter something else watches. A non-numeric current value counts as 0.
-Note "value" is a LITERAL and is not resolved — a token object inside it is stored as the object, not as what it would resolve to. To store something computed, bind the prop that reads it instead, or use "from"/"merge", whose values ARE resolved as event paths.
+       { "$setLocal": "name", "merge": { "field": { "$": "event.detail" } } } — shallow-merges fields into an object-typed signal; each field is a literal or an expression. Use for partial updates to object state.
+       { "$setLocal": "name", "value": { "$": "local.name + 20" } } — arithmetic on the current value, for paging and counters.
+Note "value" is a LITERAL unless it is an expression: any other token object inside it is stored as the object, not as what it would resolve to.
 Toggle: { "$toggleLocal": "fieldName" } — toggles a boolean field (equivalent to setting it to !current). Use for show/hide, open/close, expand/collapse patterns.
-Toggle one of many: { "$toggleLocalIn": "fieldName", "value": "$group.id" } — adds the value to an
-  array-typed field, or removes it if already there. Read it back with $in:
-  { "$in": ["$group.id", { "$local": "collapsedGroups" }] }.
+Toggle one of many: { "$toggleLocalIn": "fieldName", "value": { "$": "group.id" } } — adds the value to an
+  array-typed field, or removes it if already there. Read it back with `in`:
+  { "$": "group.id in local.collapsedGroups" }.
   This is how PER-ROW state works when the rows come from data. $localState field names are fixed
   when the template is written, so "expanded?" cannot be a boolean per row for rows that come from a
-  $query or a $store — there is no name to give them. Hold the ids instead:
+  $query or a store — there is no name to give them. Hold the ids instead:
     "$localState": { "collapsedGroups": { "type": "array", "initial": [] } }
   A fixed, known-in-advance set of sections is still better served by one boolean each.
 Call function: { "$callLocal": "fieldName" } — event handler that calls the function stored in a function-typed local field.
@@ -609,33 +686,34 @@ Call function: { "$callLocal": "fieldName" } — event handler that calls the fu
   The field must be declared as type: 'function' and set via $setLocal.
   Example: { "onClick": { "$callLocal": "onConfirm" } }
 State is created on mount and destroyed on unmount. Nested $localState declarations merge, inner fields shadow outer.
-$local values can be used in $action args: { "$action": "store.method", "args": [{ "$local": "name" }] }
+Local values can be used in $action args: { "$action": "store.method", "args": [{ "$": "local.name" }] }
 
 Object-typed local state (consolidating related scalar fields):
 When several related fields share a common condition on their initial values (e.g. all null/empty when a store value is absent), prefer a single "object" field seeded from the store, then read sub-fields with dot-notation and write with merge.
-Example — location object (replaces 5 separate scalar fields with $if guards):
-  "$localState": { "location": { "type": "object", "initial": { "$store": "spaceStore.currentSpace.location" } } }
-  Read:  { "$local": "location.latitude" }, { "$local": "location.city" }
-  Write (picker confirm): { "$setLocal": "location", "from": "$event.detail" }
-  Write (partial edit):   { "$setLocal": "location", "merge": { "city": "$event.detail" } }
+Example — location object (replaces 5 separate scalar fields with conditional initials):
+  "$localState": { "location": { "type": "object", "initial": { "$": "spaceStore.currentSpace.location" } } }
+  Read:  { "$": "local.location.latitude" }, { "$": "local.location.city" }
+  Write (picker confirm): { "$setLocal": "location", "value": { "$": "event.detail" } }
+  Write (partial edit):   { "$setLocal": "location", "merge": { "city": { "$": "event.detail" } } }
   Write (clear):          { "$setLocal": "location", "value": null }
-  Condition (has location): { "$local": "location" }
-Use "object" whenever you would otherwise write 3+ related scalar fields each needing $if on their initial value.
+  Condition (has location): { "$": "local.location" }
+Use "object" whenever you would otherwise write 3+ related scalar fields each needing a conditional initial value.
 
 Hoisted query state ($queries):
-Declare on any node to run reactive subscriptions at the node root and expose results in $local.
-Solves two problems: avoids N duplicate subscriptions inside $each loops, and makes query results available for $if conditions.
+Declare on any node to run reactive subscriptions at the node root and expose results under local.
+Solves two problems: avoids N duplicate subscriptions inside $each loops, and makes query results available to conditions.
 "$queries": { "signalTypes": { "entity": "SignalType", "subscribe": true } }
-Results are injected into $local as read-only reactive arrays, accessible via { "$local": "signalTypes" }.
+Results are injected into local as read-only reactive arrays, read as { "$": "local.signalTypes" }.
 Query options are identical to $each's $query prop (entity, where, order, limit, include, dataset, subscribe).
-Each entry also exposes a read-only boolean { "$local": "<name>Loaded" } — false until the first
-result set (or error) arrives, then true for good. Gate a loading skeleton on it so the empty
-state only ever asserts "loaded and empty", never "not answered yet":
-{ "$if": { "condition": { "$local": "signalTypesLoaded" }, "then": <list-or-empty>, "else": <skeleton> } }
-$queries and $localState share the same $local namespace — avoid duplicate names across both.
+Each entry also exposes a read-only boolean local.<name>Loaded — false until the first result set (or
+error) arrives, then true for good. Gate a loading skeleton on it so the empty state only ever
+asserts "loaded and empty", never "not answered yet":
+{ "type": "$if", "props": { "condition": { "$": "local.signalTypesLoaded" }, "then": <list-or-empty>, "else": <skeleton> } }
+$queries and $localState share the same local namespace — avoid duplicate names across both.
 $setLocal will warn and no-op on $queries entries (they are read-only).
-Use with $count + $gt for conditional visibility:
-{ "condition": { "$gt": [{ "$count": { "items": { "$local": "signalTypes" } } }, 0] } }
+A $query cannot be read inside an expression — a question for the backend is hoisted here and read
+back through local. Use count() for conditional visibility:
+{ "condition": { "$": "count(local.signalTypes)" } }
 Example:
 {
   "$queries": { "signalTypes": { "entity": "SignalType", "subscribe": true } },
@@ -643,7 +721,7 @@ Example:
   "children": [
     {
       "type": "$each",
-      "props": { "items": { "$local": "signalTypes" }, "as": "sig" },
+      "props": { "items": { "$": "local.signalTypes" }, "as": "sig" },
       "children": [...]
     }
   ]
@@ -664,7 +742,7 @@ Boolean toggle pattern (show/hide comments, expand/collapse sections, etc.):
     {
       "type": "$if",
       "props": {
-        "condition": { "$local": "showComments" },
+        "condition": { "$": "local.showComments" },
         "then": { "type": "Column", "children": [{ "type": "we-text", "children": ["Comments visible"] }] }
       }
     }
@@ -686,11 +764,11 @@ Declare validation rules on fields:
 
 Built-in rules: required, minLength (value: N), maxLength (value: N), min (value: N), max (value: N), pattern (value: regex string), match (field: otherFieldName). All accept optional "message" override.
 
-Read tokens:
-{ "$error": "fieldName" } — first validation error message (only shown after field is touched), or "".
-{ "$valid": "fieldName" } — true if all rules pass (regardless of touched state).
-{ "$touched": "fieldName" } — true after the field has been blurred/touched.
-{ "$formValid": "$scope" } — true if ALL validated fields in the current $localState scope pass.
+Read functions (in an expression):
+{ "$": "error('fieldName')" } — first validation error message (only shown after field is touched), or "".
+{ "$": "valid('fieldName')" } — true if all rules pass (regardless of touched state).
+{ "$": "touched('fieldName')" } — true after the field has been blurred/touched.
+{ "$": "formValid()" } — true if ALL validated fields in the current $localState scope pass.
 
 Action tokens:
 { "$touch": "fieldName" } — marks a single field as touched (in onBlur; opt-in, see below).
@@ -698,8 +776,9 @@ Action tokens:
 { "$resetLocal": "$scope" } — resets all fields to initial values and clears touched state.
 
 Handler arrays (compose multiple actions on one event):
-{ "onClick": [{ "$touch": "$all" }, { "$if": { "condition": { "$formValid": "$scope" }, "then": { "$action": "store.submit", "onSuccess": [{ "$setLocal": "modalOpen", "value": false }] } } }] }
-Array entries execute sequentially. Non-function entries (e.g. $if with false condition) are skipped.
+{ "onClick": [{ "$touch": "$all" }, { "$if": { "condition": { "$": "formValid()" }, "then": { "$action": "store.submit", "onSuccess": [{ "$setLocal": "modalOpen", "value": false }] } } }] }
+Array entries execute sequentially. { "$if": { "condition", "then", "else" } } in a handler position runs one side or the
+other when the event fires — its condition may read event. It is the one place $if is a token rather than a node.
 Prefer onSuccess over a bare $setLocal before the $action — the bare form closes the modal immediately (losing the loading spinner); onSuccess waits for the Promise to resolve.
 
 Typical form pattern — validate on submit:
@@ -711,23 +790,23 @@ Typical form pattern — validate on submit:
   "children": [
     {
       "type": "we-form-field",
-      "props": { "label": "Name", "error": { "$error": "name" } },
+      "props": { "label": "Name", "error": { "$": "error('name')" } },
       "children": [{
         "type": "we-input",
         "props": {
-          "value": { "$local": "name" },
-          "onInput": { "$setLocal": "name", "from": "$event.detail" }
+          "value": { "$": "local.name" },
+          "onInput": { "$setLocal": "name", "value": { "$": "event.detail" } }
         }
       }]
     },
     {
       "type": "we-button",
       "props": {
-        "loading": { "$local": "submitting" },
-        "disabled": { "$local": "submitting" },
+        "loading": { "$": "local.submitting" },
+        "disabled": { "$": "local.submitting" },
         "onClick": [
           { "$touch": "$all" },
-          { "$if": { "condition": { "$formValid": "$scope" }, "then": { "$action": "store.save", "args": [{ "$local": "name" }], "onSuccess": [{ "$setLocal": "submitDone", "value": true }] } } }
+          { "$if": { "condition": { "$": "formValid()" }, "then": { "$action": "store.save", "args": [{ "$": "local.name" }], "onSuccess": [{ "$setLocal": "submitDone", "value": true }] } } }
         ]
       },
       "children": ["Submit"]
@@ -735,13 +814,13 @@ Typical form pattern — validate on submit:
   ]
 }
 
-The submit button is disabled only while the request is in flight — NOT on { "$not": { "$formValid": "$scope" } }.
+The submit button is disabled only while the request is in flight — NOT on { "$": "!formValid()" }.
 Those two are mutually exclusive. A button disabled while the form is invalid can never be clicked in the one
 state where { "$touch": "$all" } would reveal something, so the guard chain becomes dead code and blur is left
 as the user's only feedback path. Choose one shape:
   - Validate on submit (above). The button is always clickable and the errors appear on the click that was
     refused, which is where the user asked the question.
-  - Hard gate: "disabled": { "$not": { "$formValid": "$scope" } }, and then drop { "$touch": "$all" } as dead
+  - Hard gate: "disabled": { "$": "!formValid()" }, and then drop { "$touch": "$all" } as dead
     and wire "onBlur": { "$touch": "fieldName" } per field — otherwise no error is ever reachable.
 
 "onBlur": { "$touch": "fieldName" } is an opt-in, not boilerplate. It earns its place on long multi-field forms
@@ -754,7 +833,7 @@ validation machinery and gate on the value itself:
 {
   "$localState": { "password": { "type": "string", "initial": "" } },
   ...
-  "disabled": { "$not": { "$local": "password" } }
+  "disabled": { "$": "!local.password" }
 }
 A "required" rule here would exist only to drive "disabled", and its message is then one stray { "$touch": … }
 away from telling the user "Password is required" about a field they simply have not typed into yet.
@@ -764,28 +843,28 @@ away from telling the user "Password is required" about a field they simply have
 Block-level structures use "type" starting with "$" for dynamic rendering of schema nodes.
 
 Each loop:
-{ "type": "$each", "props": { "items": { "$store": "storeName.arrayProperty" }, "as": "itemName" }, "children": [ ... ] }
-Renders children once for each item. The "as" name becomes a context key. Defaults to "item" — omit "as" unless you need a different name.
+{ "type": "$each", "props": { "items": { "$": "storeName.arrayProperty" }, "as": "itemName" }, "children": [ ... ] }
+Renders children once for each item. The "as" name becomes a name expressions read — { "$": "itemName.title" }. Defaults to "item" — omit "as" unless you need a different name.
 
-Each row also gets two context keys describing its position in the list:
-- { "$index": ... } — read as "$index", the 0-based position.
-- "$prev" — the previous item, absent on the first row. Read fields off it like any context ref: "$prev.author".
+Each row also gets two names describing its position in the list:
+- index — the 0-based position.
+- prev — the previous item, absent on the first row. Read fields off it like any name: { "$": "prev.author" }.
 
-"$prev" is what makes **grouping** expressible — collapsing consecutive rows by the same author so
+prev is what makes **grouping** expressible — collapsing consecutive rows by the same author so
 a run of messages shows one avatar and byline instead of repeating them. Without it a row can only
 ask about itself, and the compact form is unreachable by any prop or theme:
 {
   "type": "$if",
   "props": {
-    "condition": { "$eq": ["$message.author", "$prev.author"] },
+    "condition": { "$": "message.author == prev.author" },
     "then": { "...": "compact row — no avatar, no byline" },
     "else": { "...": "full row" }
   }
 }
-The first row has no "$prev" at all, so the condition is false there and it keeps its byline —
+The first row has no prev at all, so the condition is false there and it keeps its byline —
 which is what a feed wants, and why absent must not read as "same as the last item".
 
-Both shadow in a nested $each, exactly as the item does: the inner "$index" restarts at 0.
+Both shadow in a nested $each, exactly as the item does: the inner index restarts at 0.
 
 Conditional rendering:
 { "type": "$if", "props": { "condition": ..., "then": { ... }, "else": { ... } } }
@@ -819,7 +898,7 @@ Do NOT use $animate when the child should be absent from the DOM. Use $if for co
 For an open/close that must NOT destroy what is inside it — a section holding a scroll position, a
 half-typed field, or a live subscription a collapsed row shouldn't tear down — use $animate with
 condition rather than $if, which unmounts the content when closed.
-condition works like $if's condition (any resolvable prop — $store, $local, $eq, …), except the child
+condition works like $if's condition (an expression), except the child
 is never unmounted: only enterTransition/exitTransition replay as it changes. The initial render
 already matches whatever the condition is at mount — a node that starts open does not flash
 closed-then-open, and one that starts closed does not briefly show its content first.
@@ -832,9 +911,11 @@ sole trigger — scrollReveal/scrollLeave/scrollPast are ignored on that node.
 scrollReveal: true fires enterTransition when the element enters the viewport.
 scrollReveal: -100 fires 100px before the element would enter (negative = earlier reveal).
 scrollLeave fires exitTransition when the element leaves the viewport.
-scrollPast: "element-id" observes a sentinel element (by DOM id) instead of the $animate element itself.
-  enterTransition fires when the sentinel leaves the viewport (user scrolled past it).
-  exitTransition fires when the sentinel returns (user scrolled back up).
+scrollPast: "element-id" watches a sentinel element (by DOM id) go past the $animate element itself.
+  enterTransition fires once the sentinel has scrolled above the $animate element's top edge (or out of
+  the viewport) — so a sentinel sliding under a sticky bar counts as gone the moment it does.
+  exitTransition fires when the sentinel comes back below it (user scrolled back up).
+  The sentinel may mount later than the $animate node; it is picked up when it appears.
   Use this for sticky headers: place a zero-height sentinel div at the bottom of the non-sticky header section,
   then wrap the mini-profile in $animate with scrollPast pointing to that sentinel's id.
   scrollPast is mutually exclusive with scrollReveal/scrollLeave.
@@ -845,11 +926,11 @@ must not resubscribe every time it opens):
 {
   "type": "$animate",
   "props": {
-    "condition": { "$not": { "$local": "sectionCollapsed" } },
+    "condition": { "$": "!local.sectionCollapsed" },
     "enterTransition": { "type": "reveal", "duration": 250 }
   },
-  "children": [{ "type": "$each", "props": { "items": { "$store": "listStore.items" }, "as": "item" },
-    "children": [{ "type": "we-text", "children": ["$item.name"] }] }]
+  "children": [{ "type": "$each", "props": { "items": { "$": "listStore.items" }, "as": "item" },
+    "children": [{ "type": "we-text", "children": [{ "$": "item.name" }] }] }]
 }
 Example (scroll-reveal):
 {
@@ -874,8 +955,8 @@ Place a sentinel at the bottom of the header, reference it in the sticky nav:
     "exitTransition": { "type": "fade", "duration": 200 }
   },
   "children": [{ "type": "Row", "props": { "ay": "center", "gap": "300" }, "children": [
-    { "type": "we-avatar", "props": { "image": "$space.avatar", "size": "sm" } },
-    { "type": "we-text", "props": { "fontWeight": "600" }, "children": ["$space.name"] }
+    { "type": "we-avatar", "props": { "image": { "$": "space.avatar" }, "size": "sm" } },
+    { "type": "we-text", "props": { "fontWeight": "600" }, "children": [{ "$": "space.name" }] }
   ]}]
 }
 
@@ -883,10 +964,10 @@ Single model item (load one record, render children with it in context):
 {
   "type": "$single",
   "props": {
-    "item": { "$query": { "entity": "ModelName", "params": { ... }, "subscribe": true } },
+    "item": { "$query": { "entity": "EntityName", "params": { ... }, "subscribe": true } },
     "as": "profile"   // context key for children — default: 'item'
   },
-  "children": [{ "type": "we-text", "children": ["$profile.username"] }]
+  "children": [{ "type": "we-text", "children": [{ "$": "profile.username" }] }]
 }
 Renders nothing until a matching record is found. Like $each but for a single result.
 query options (entity, params, include, dataset, subscribe) work identically to $query.
@@ -898,7 +979,7 @@ Indicates where nested routes should render within a layout.
 Responsive boundary:
 { "type": "$surface", "props": { "as": "pane" }, "children": [ ... ] }
 A box the content inside it measures itself against. Everything inside it — `*UpProps` on any
-descendant, and `$surface.tier` read as a context ref — is answered by THIS box rather than by the
+descendant, and `surface.tier` read in an expression — is answered by THIS box rather than by the
 window or the page.
 
 The host already puts one wherever it mounts a schema tree (the template area, the shell overlays,
@@ -907,10 +988,9 @@ Declare one when a *part* of your layout should adapt to itself — a two-pane w
 pane is narrow while the page is wide. Nesting works; the innermost surface wins.
 
 `as` names the context key (default `surface`), so a nested one can be addressed separately.
-Read it with `"$surface.tier"` (`base` | `sm` | `md` | `lg`) or `"$surface.width"` (px):
+Read it with `surface.tier` (`base` | `sm` | `md` | `lg`) or `surface.width` (px):
 
-{ "$if": { "condition": { "$eq": [{ "$store": "…" }, "…"] } } }   ← ordinary
-{ "$if": { "condition": { "$eq": ["$surface.tier", "base"] }, "then": <drawer>, "else": <sidebar> } }
+{ "type": "$if", "props": { "condition": { "$": "surface.tier == 'base'" }, "then": <drawer>, "else": <sidebar> } }
 
 USE THIS SPARINGLY, and only for a genuinely different tree. `$if` unmounts and rebuilds its
 subtree when the condition changes, which loses scroll position, half-typed input and any live
@@ -934,28 +1014,92 @@ Most @we/primitives also accept Design System Props (see next section for detail
 
 @we/primitives:
 - we-alert (DesignSystemElement)
-  Props: variant: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' = 'primary', dismissible: boolean = false
+  Props: variant: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' = 'primary', appearance: 'soft' | 'accent' = 'soft', dismissible: boolean = false
 - we-audio (LayoutVisualElement)
   Props: src: string = '', controls: boolean = false, preload: 'none' | 'metadata' | 'auto' = 'metadata', autoplay: boolean = false, loop: boolean = false, muted: boolean = false, stream?: MediaStream | null | undefined
 - we-avatar (LayoutVisualElement)
-  Props: image: string = '', hash: string = '', selected: boolean = false, online: boolean = false, initials: string = '', icon: string = '', size?: 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '{css-length}' | undefined, clickable: boolean = false
+  Props: image: string = '', hash: string = '', initials: string = '', icon: string = '', size?: 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '{css-length}' | undefined, clickable: boolean = false
 - we-badge (DesignSystemElement)
-  Props: variant: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' = 'neutral', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
+  Props: variant: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' = 'neutral', appearance: 'soft' | 'solid' = 'soft', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-blockquote (DesignSystemElement)
 - we-button (DesignSystemElement)
-  Props: variant: 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline' | 'bare' = 'primary', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', text?: string | undefined, href?: string | undefined, disabled: boolean = false, loading: boolean = false, gradient: boolean = false, square: boolean = false
+  Props: variant: 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline' | 'bare' = 'primary', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', text?: string | undefined, label: string = '', href?: string | undefined, disabled: boolean = false, loading: boolean = false, gradient: boolean = false, square: boolean = false
 - we-checkbox (DesignSystemElement)
-  Props: checked: boolean = false, disabled: boolean = false, name: string = '', value: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
+  Props: checked: boolean = false, disabled: boolean = false, name: string = '', label: string = '', value: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-code (DesignSystemElement)
   Props: block: boolean = false
 - we-color-picker (DesignSystemElement)
   Props: value: string = '#000000', disabled: boolean = false, name: string = '', palette: array = [ '#000000', '#434343', '#666666', '#999999', '#b7b7b7', '#cccccc', '#d9d9d9', '#ffffff', '#980000', '#ff0000', '#ff9900', '#ffff00', '#00ff00', '#00ffff', '#4a86e8', '#0000ff', '#9900ff', '#ff00ff', '#e6b8af', '#f4cccc', '#fce5cd', '#fff2cc', '#d9ead3', '#d0e0e3', '#c9daf8', '#cfe2f3', '#d9d2e9', '#ead1dc', ], tokens: boolean = false, alpha: boolean = false
 - we-date-picker (DesignSystemElement)
-  Props: value: string = '', showTime: boolean = false, placeholder: string = 'Select date', disabled: boolean = false, name: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
+  Props: value: string = '', showTime: boolean = false, placeholder: string = 'Select date', disabled: boolean = false, name: string = '', label: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-divider (LayoutElement)
   Props: orientation: 'horizontal' | 'vertical' = 'horizontal', variant: 'solid' | 'dashed' | 'dotted' = 'solid', color?: string | undefined, thickness?: string | undefined
+- we-draggable (LayoutElement) — Makes whatever is inside it something that can be picked up and carried somewhere else.
+
+#### Why this exists as a primitive
+
+A post card, a member row and a space in the sidebar are rendered by **templates**, which are
+data. If making one draggable were a code change, every future draggable surface would be a code
+change too, and the contribution ladder says arrangement stays data. This is the same rung
+`we-sortable` occupies: two custom elements and an existing `$action`, with no new prop resolver,
+no new operator, and nothing added to the expression grammar.
+
+```json
+{ "type": "we-draggable",
+  "props": { "entity": "CollectionBlock", "recordId": { "$": "post.id" }, "label": { "$": "post.title" } },
+  "children": [ "…the card…" ] }
+```
+
+#### What it carries
+
+A **reference** — `{ dataset?, entity, id }` — never DOM, and never the row object. `dataset` is
+deliberately left empty here: a card fragment cannot name its own dataset without reading a
+store, and portable fragments name no store by construction. The receiver stamps it, from
+whichever dataset was current when the drop happened.
+
+#### `display: contents`
+
+The wrapper must not exist as a box. A card inside a grid track, a row inside a flex column: a
+real element in between would take the track and leave the card laid out against the wrapper
+instead of the grid. What is dragged is therefore the *child*, which is also what the ghost and
+the geometry are measured from.
+  Props: entity: string = '', recordId: string = '', datasetKey: string = '', label: string = '', icon: string = '', preview?: { thumbnail?: string; content?: string; author?: string; date?: string } | undefined, origin?: unknown | undefined, effect: 'move' | 'copy' | 'link' = 'copy', disabled: boolean = false
 - we-drawer (OverlayElement)
-  Props: hideclosebutton: boolean = false, close: () => void
+  Props: hideclosebutton: boolean = false, label: string = '', close: () => void
+- we-drop-zone (LayoutElement) — Anything a `we-draggable` can be dropped into.
+
+The receiving half of the pair, and the same rung: two custom elements and an existing `$action`,
+so a template can make a region a drop target without a code change.
+
+```json
+{ "type": "we-drop-zone",
+  "props": { "accepts": "CollectionBlock,Space,Agent",
+             "onDropped": { "$action": "modules.pocket.gather", "args": [{ "$": "event.detail" }] } },
+  "children": [ "…the panel…" ] }
+```
+
+#### It emits intent, it never mutates
+
+Exactly `we-sortable`'s rule, and for the same reason: what a drop *means* differs. A panel writes
+a record, a composer inserts a block, a board records a position. A primitive that assumed one of
+those would be useless to the others.
+
+#### `accepts` is a list of entity names, as a string
+
+A comma-separated string rather than an array because that is what an HTML attribute is, and
+because a schema writing `"accepts": "CollectionBlock,Space"` needs no expression. Empty means
+"anything", which is right for a general-purpose tray and wrong for a composer — say what you
+take.
+
+#### Zones nest, and the innermost one wins
+
+A folder inside a panel, a card inside a board. Hit-testing picks the innermost accepting zone
+and fires exactly one drop — and these events **do not bubble**, so that decision survives the
+DOM. See `_zone` for what happened when they did.
+
+Give every nested zone `noArm`, so picking something up speaks once about the container rather
+than once about every row inside it.
+  Props: accepts: string = '', disabled: boolean = false, noArm: boolean = false, noSelf: boolean = false
 - we-file-upload (DesignSystemElement)
   Props: accept: string = '', multiple: boolean = false, disabled: boolean = false, name: string = ''
 - we-form-field (DesignSystemElement)
@@ -969,13 +1113,13 @@ fragment; it is sanitized before rendering so XSS payloads are stripped.
 - we-icon (LayoutElement)
   Props: name: string = '', color: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '{css-length}' = '', weight: 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone' = 'regular', gradient: string = ''
 - we-icon-picker (DesignSystemElement)
-  Props: value: string = '', disabled: boolean = false, name: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', placeholder: string = 'Pick icon'
+  Props: value: string = '', disabled: boolean = false, name: string = '', label: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', placeholder: string = 'Pick icon'
 - we-iframe (LayoutVisualElement)
   Props: src: string = '', title: string = 'Embedded content', allow: string = '', sandbox?: string | undefined
 - we-image (LayoutVisualElement)
   Props: src: string | File = '', alt: string = '', fit: '' | 'cover' | 'contain' | 'fill' | 'none' | 'scale-down' = '', loading: 'eager' | 'lazy' = 'eager', gradient: string = '', objectPosition: string = ''
 - we-input (DesignSystemElement)
-  Props: value: string = '', max: string = '', min: string = '', maxlength: unknown = Infinity, minlength: number = 0, pattern: string = '', name: string = '', step: string = '', placeholder: string = '', autocomplete: string = '', autofocus: boolean = false, disabled: boolean = false, required: boolean = false, readonly: boolean = false, type: string = 'text', revealable: boolean = false, size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
+  Props: value: string = '', max: string = '', min: string = '', maxlength: unknown = Infinity, minlength: number = 0, pattern: string = '', name: string = '', label: string = '', step: string = '', placeholder: string = '', autocomplete: string = '', autofocus: boolean = false, disabled: boolean = false, required: boolean = false, readonly: boolean = false, type: string = 'text', revealable: boolean = false, size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-link (DesignSystemElement)
   Props: href: string = '', target: string = '', rel: string = '', download: string = '', disabled: boolean = false
 - we-location-picker (DesignSystemElement)
@@ -990,13 +1134,13 @@ Not a standalone selector — wrap in we-popover for dropdown behavior.
 Supports selected, active, and danger states.
   Props: selected: boolean = false, active: boolean = false, variant: 'default' | 'danger' = 'default', label: unknown, value: unknown
 - we-modal (OverlayElement)
-  Props: hideclosebutton: boolean = false, close: () => void
+  Props: size: 'sm' | 'md' | 'lg' | 'fullscreen' = 'md', hideclosebutton: boolean = false, close: () => void
 - we-move-handle (LayoutElement)
   Props: step: number = 24, dragging: boolean = false, label: string = 'Move'
 - we-number (DesignSystemElement) — Displays a number, optionally abbreviated (1 200 → 1.2K, 1 500 000 → 1.5M).
   Props: value: number = 0, shorten: boolean = false, precision: number = 1, locale: string = 'en', formattedValue: string
 - we-number-input (DesignSystemElement)
-  Props: value: number | '' = 0, min: number = -Infinity, max: unknown = Infinity, step: number = 1, disabled: boolean = false, name: string = '', placeholder: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
+  Props: value: number | '' = 0, min: number = -Infinity, max: unknown = Infinity, step: number = 1, disabled: boolean = false, name: string = '', label: string = '', placeholder: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-pagination (DesignSystemElement)
   Props: page: number = 1, total: number = 1, siblings: number = 1, size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-popover (LayoutElement) — Low-level floating panel anchored to a trigger element.
@@ -1005,10 +1149,10 @@ Use DropdownMenu component for dropdown menus.
 - we-progress-bar (DesignSystemElement)
   Props: value: number = 0, max: number = 100, variant: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' = 'primary', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-radio (DesignSystemElement)
-  Props: checked: boolean = false, disabled: boolean = false, name: string = '', value: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
+  Props: checked: boolean = false, disabled: boolean = false, name: string = '', label: string = '', value: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-resize-handle (LayoutElement) — A drag target that reports how far it has moved, and nothing else.
 
-## Why it reports a delta rather than owning a size
+#### Why it reports a delta rather than owning a size
 
 The obvious design is a handle that resizes its neighbour. It is the wrong one, because "what does
 this drag mean" is never the handle's business: the editor's panel rails grow *leftwards* from a
@@ -1022,7 +1166,7 @@ captures its own starting size and applies whatever sign and limits it has. Delt
 rather than incremental, because every consumer would otherwise have to accumulate, and one of
 them would get it wrong after a dropped event.
 
-## Why a primitive rather than a hook
+#### Why a primitive rather than a hook
 
 There were two implementations of this before it existed and they diverged in ways nobody chose:
 the editor's is mouse-only, so it does not work on a touchscreen at all, and its rail is a plain
@@ -1030,23 +1174,23 @@ div — not focusable, so there is no way to resize a panel from the keyboard. P
 `separator` role fix both once, for every consumer, in the layer where imperative DOM work belongs.
   Props: orientation: 'vertical' | 'horizontal' = 'vertical', align: 'start' | 'center' | 'end' = 'center', line: 'auto' | 'none' = 'auto', step: number = 16, dragging: boolean = false
 - we-scroll-area (DesignSystemElement)
-  Props: maxHeight: string = '', maxWidth: string = ''
+  Props: maxHeight: string = '', maxWidth: string = '', pin: '' | 'end' = ''
 - we-select (DesignSystemElement) — Pick a single value from a list of options. Custom-rendered dropdown.
 Use for form fields, settings, filters. Set searchable=true for type-to-filter.
-  Props: options: SelectOption[] = [], value: string = '', placeholder: string = '', disabled: boolean = false, searchable: boolean = false, fit: boolean = false, name: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
+  Props: options: SelectOption[] = [], value: string = '', placeholder: string = '', disabled: boolean = false, searchable: boolean = false, fit: boolean = false, name: string = '', label: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-skeleton (DesignSystemElement)
   Props: width: string = '100%', height: string = '20px', animation: 'pulse' | 'wave' = 'pulse'
 - we-slider (DesignSystemElement)
-  Props: value: number = 0, min: number = 0, max: number = 100, step: number = 1, disabled: boolean = false, name: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', showValue: boolean = false
+  Props: value: number = 0, min: number = 0, max: number = 100, step: number = 1, disabled: boolean = false, name: string = '', label: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', showValue: boolean = false
 - we-sortable (DesignSystemElement) — A drop zone whose items can be picked up, reordered, and moved to other zones.
 
-## One element, not two
+#### One element, not two
 
 A zone *is* the container and its children *are* the items, which is what makes nesting free: a
 sortable inside an item of another sortable is simply a zone inside a zone, with no special case
 anywhere. A separate `we-drag-item` would buy nothing and cost boilerplate at every call site.
 
-## It emits intent, it never mutates
+#### It emits intent, it never mutates
 
 A drop fires SortableMoveDetail — "this item moved from there to here, at this index" —
 and nothing else. What that *means* is the consumer's business, and it differs: a kanban route
@@ -1057,7 +1201,7 @@ This is also why the element does not reorder its own DOM. The list is rendered 
 data changes; the list re-renders. A primitive that moved nodes itself would fight whatever
 renders them.
 
-## Nesting, and why cycles are not a problem
+#### Nesting, and why cycles are not a problem
 
 The hard part of nested drag-and-drop is refusing to drop a container into its own descendant.
 Because nesting here is expressed *in the DOM*, that check is `dragged.contains(zone)` — correct
@@ -1065,14 +1209,14 @@ by construction, needing no knowledge of the consumer's data shape. The innermos
 under the pointer wins, so dropping into a nested list does not also count as dropping into its
 parent.
 
-## Keyboard
+#### Keyboard
 
 Space or Enter picks up the focused item; the arrow keys move it, along the list and across
 zones; Space drops and Escape cancels. Built in rather than added later, because a board that can
 only be operated by dragging is a board some people cannot operate at all — and because the
 events are identical, a consumer gets it for nothing.
 
-## Items that contain form controls: `[data-we-handle]`
+#### Items that contain form controls: `[data-we-handle]`
 
 By default the whole item is the grab area, which is right for a card or a nav row. It is wrong
 the moment an item contains a text field: dragging to select text would start a drag, and — worse
@@ -1095,7 +1239,7 @@ on a focused handle picks the row up exactly as it does on a plain item.
 - we-spinner (LayoutElement)
   Props: size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | (string & {}) = 'md', color: string = ''
 - we-switch (DesignSystemElement)
-  Props: checked: boolean = false, disabled: boolean = false, name: string = '', value: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', labelOff: string = '', labelOn: string = ''
+  Props: checked: boolean = false, disabled: boolean = false, name: string = '', label: string = '', value: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', labelOff: string = '', labelOn: string = ''
 - we-tab (DesignSystemElement)
   Props: key: string = '', selected: boolean = false, label?: string | undefined, selectedProps?: Partial<DesignSystemProps> | undefined
 - we-tabs (DesignSystemElement)
@@ -1105,7 +1249,7 @@ on a focused handle picks the row up exactly as it does on a plain item.
 - we-text (DesignSystemElement)
   Props: text?: string | undefined, variant: '' | 'body' | 'label' | 'footnote' | 'subheading' | 'ingress' | 'heading-sm' | 'heading-md' | 'heading-lg' | 'heading-xl' = '', tag: 'p' | 'span' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'small' | 'b' | 'i' | 'label' | 'div' = 'span', inline: boolean = false, uppercase: boolean = false, italic: boolean = false, truncate: boolean = false, gradient: string = '', loading: boolean = false, loadingWidth: string = '100%'
 - we-textarea (DesignSystemElement)
-  Props: value: string = '', name: string = '', placeholder: string = '', rows: number = 3, maxlength: unknown = Infinity, minlength: number = 0, disabled: boolean = false, required: boolean = false, readonly: boolean = false, resize: 'none' | 'vertical' | 'horizontal' | 'both' = 'vertical', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
+  Props: value: string = '', name: string = '', label: string = '', placeholder: string = '', rows: number = 3, maxlength: unknown = Infinity, minlength: number = 0, disabled: boolean = false, required: boolean = false, readonly: boolean = false, resize: 'none' | 'vertical' | 'horizontal' | 'both' = 'vertical', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-timestamp (DesignSystemElement) — Displays a formatted or relative timestamp that self-updates each minute
 when `relative` is enabled.
   Props: value: string = '', relative: boolean = false, locale: string = 'en', dateStyle: Intl.DateTimeFormatOptions['dateStyle'] | null = null, timeStyle: Intl.DateTimeFormatOptions['timeStyle'] | null = null, weekday: Intl.DateTimeFormatOptions['weekday'] | null = null, year: Intl.DateTimeFormatOptions['year'] | null = null, month: Intl.DateTimeFormatOptions['month'] | null = null, day: Intl.DateTimeFormatOptions['day'] | null = null, hour: Intl.DateTimeFormatOptions['hour'] | null = null, minute: Intl.DateTimeFormatOptions['minute'] | null = null, second: Intl.DateTimeFormatOptions['second'] | null = null, timeZone: string | null = null, hourCycle: Intl.DateTimeFormatOptions['hourCycle'] | null = null, formattedTime: string
@@ -1120,11 +1264,11 @@ when `relative` is enabled.
 - AudioInput
   Props: title: string | undefined, artist: string | undefined, audioUrl: string | FileData | undefined, duration: number | undefined, albumArt: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - BlockComposer (DesignSystemElement)
-  Props: editorState?: SerializedBlockNode, perspective?: unknown, onSave?: ((json: SerializedBlockNode) => void), onReady?: ((api: { save: () => void; }) => void)
+  Props: editorState?: EditorStateInput, perspective?: unknown, onSave?: ((document: ContentDocument) => void), onReady?: ((api: { save: () => void; }) => void), onDirtyChange?: ((dirty: boolean) => void), mentions?: MentionCandidate[], collaborate?: string
 - BlockPlaceholder
   Props: icon: string, label: string, hint?: string, accept?: string, onFileDrop?: ((file: File) => void), onClick?: (() => void)
 - BlockRenderer (DesignSystemElement)
-  Props: editorState?: SerializedBlockNode, perspective?: unknown, rootClass?: string
+  Props: editorState?: EditorStateInput, perspective?: unknown, rootClass?: string
 - BlockToolbar
   Props: placement?: BlockToolbarPlacement, children: JSX.Element, stopPropagation?: boolean
 - CalloutDisplay
@@ -1136,15 +1280,15 @@ when `relative` is enabled.
 - CodeInput
   Props: code: string | undefined, language: string | undefined, title: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - CollectionDisplay
-  Props: layout?: string, columnCount?: number, gap?: string, childEditorState?: SerializedBlockNode
+  Props: layout?: string, columnCount?: number, gap?: string, content?: ContentBlock[]
 - CollectionInput
-  Props: nodeKey: string, layout?: string, columnCount?: number, gap?: string, childEditorState?: SerializedBlockNode, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
+  Props: layout?: string, columnCount?: number, gap?: string, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - DividerDisplay
   Props: style: "solid" | "dashed" | "dotted" | undefined
 - DividerInput
   Props: style: DividerVariant | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - EmbedDisplay
-  Props: url: string | undefined, target: string | undefined, targetType: string | undefined, displayMode: string | undefined
+  Props: url: string | undefined, target: string | undefined, targetType: string | undefined, displayMode: string | undefined, label?: string, thumbnail?: string, onOpenRef?: ((ref: string) => void)
 - EmbedInput
   Props: url: string | undefined, target: string | undefined, targetType: string | undefined, displayMode: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - EventDisplay
@@ -1194,7 +1338,7 @@ when `relative` is enabled.
 - Combobox (DesignSystemElement)
   Props: options: string[] | ComboboxOption[], value?: string, placeholder?: string, size?: "xs" | "sm" | "md" | "lg" | "xl", onChange?: ((value: string) => void)
 - DropdownMenu — Flexible dropdown menu for actions, toggles, and grouped items. Use for context menus, settings panels, layer controls, and command palettes.
-  Props: styles?: Record<string, string | number>, class?: string, placement?: Placement, triggerLabel?: string, triggerIcon?: string, size?: "xs" | "sm" | "md" | "lg" | "xl", itemSize?: "xs" | "sm" | "md" | "lg" | "xl", items: SolidDropdownMenuEntry[]
+  Props: styles?: Record<string, string | number>, class?: string, onSelect?: ((item: DropdownMenuAction) => void), placement?: Placement, triggerLabel?: string, triggerIcon?: string, triggerVariant?: "primary" | "danger" | "secondary" | "ghost" | "outline" | "bare", triggerTitle?: string, size?: "xs" | "sm" | "md" | "lg" | "xl", itemSize?: "xs" | "sm" | "md" | "lg" | "xl", items: SolidDropdownMenuEntry[]
 - EditableImage (DesignSystemElement)
   Props: src?: string, alt?: string, fit?: "cover" | "contain" | "none" | "fill" | "scale-down", placeholderIcon?: string, onImageChange?: ((file: File) => void), onImageRemove?: (() => void), uploadLabel?: string, editLabel?: string, class?: string, aspect?: number, maxSize?: number
 - FlipCard
@@ -1231,7 +1375,7 @@ Common recipes:
 the relations between them. Picks up model types added later with no template change.
 - **Hierarchy** — `layout: { type: 'tree' }` with a `collection` expansion for nested content.
 - **Static diagram** — `seeds: { literal: true, nodes: [...], edges: [...] }` and no expansion at all.
-  Props: seeds?: SeedSpec | SeedSpec[], expansion?: ExpansionSpec, revision?: string | number | boolean, live?: boolean, layout?: LayoutSpec, nodeStyle?: NodeStyleRules, edgeStyle?: EdgeStyleRules, behaviours?: BehaviourSpec[], reified?: Record<string, { source: string; target: string; type?: string; sourceType?: string; targetType?: string; }>, width?: string, height?: string, bg?: string, showStatus?: boolean, showControls?: boolean, controls?: string[], onNodeClick?: ((node: GraphNode & { recordId?: string; fields: { name: string; value: string; }[]; }) => void), expandRequest?: { id: string; expanders?: string[]; direction?: "in" | "out" | "both"; } | null, onNodeDoubleClick?: ((node: GraphNode & { recordId?: string; recordType?: string; }) => void), onEdgeClick?: ((edge: GraphEdge & { recordId?: string; recordType?: string; }) => void), onEdgeCreate?: ((payload: { source: GraphNode; target: GraphNode; sourceId: string; sourceType: string; targetId: string; targetType: string; sourceLabel: string; targetLabel: string; }) => void), onCanvasDoubleClick?: ((payload: { x: number; y: number; }) => void), onSelectionChange?: ((ids: string[]) => void), onNodeDragEnd?: ((payload: { id: string; x: number; y: number; recordId?: string; recordType?: string; }) => void), onNodeResize?: ((payload: { id: string; x: number; y: number; width: number; height: number; recordId?: string; recordType?: string; }) => void), host?: GraphHostBindings
+  Props: seeds?: SeedSpec | SeedSpec[], expansion?: ExpansionSpec, revision?: string | number | boolean, live?: boolean, layout?: LayoutSpec, nodeStyle?: NodeStyleRules, edgeStyle?: EdgeStyleRules, behaviours?: BehaviourSpec[], reified?: Record<string, { source: string; target: string; type?: string; sourceType?: string; targetType?: string; }>, width?: string, height?: string, bg?: string, showStatus?: boolean, empty?: string, emptyIcon?: string, showControls?: boolean, controls?: string[], onNodeClick?: ((node: GraphNode & { recordId?: string; recordType?: string; fields: { name: string; value: string; }[]; }) => void), expandRequest?: { id: string; expanders?: string[]; direction?: "in" | "out" | "both"; } | null, onNodeDoubleClick?: ((node: GraphNode & { recordId?: string; recordType?: string; }) => void), onEdgeClick?: ((edge: GraphEdge & { recordId?: string; recordType?: string; }) => void), onEdgeCreate?: ((payload: { source: GraphNode; target: GraphNode; sourceId: string; sourceType: string; targetId: string; targetType: string; sourceLabel: string; targetLabel: string; }) => void), onCanvasDoubleClick?: ((payload: { x: number; y: number; }) => void), onSelectionChange?: ((ids: string[]) => void), onNodeDragEnd?: ((payload: { id: string; x: number; y: number; recordId?: string; recordType?: string; }) => void), onNodeResize?: ((payload: { id: string; x: number; y: number; width: number; height: number; recordId?: string; recordType?: string; }) => void), nodeActions?: NodeAction[], onNodeAction?: ((payload: { action: string; id: string; recordId?: string; recordType?: string; }) => void), host?: GraphHostBindings
 
 ---
 
@@ -1262,10 +1406,11 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
   - via: string — Relation holding the contents. Defaults to "children".
   - connections: string — Reified relation entity to draw as lines between the cards — e.g. "Relationship". Only pairs whose two ends are both on the board are drawn, since a line to something elsewhere would leave the canvas. Each line carries the record it stands for, so clicking one can open it. Omit for a board with no connections.
   - typeStyles: string — Entity holding this board's colour per kind of thing — WE passes "TypeStyle". Read onto every node as `boardTypeColor`, for a style rule to pick up with `{ from: "data.boardTypeColor" }`. This is what a board's key writes.
+  - pending: string[] — Record ids whose card stands for a suggestion nobody has agreed to yet — an extraction pass can stage a whole record, so it is on the board and answers every query the accepted ones do. Read onto the matching node as `data.pending`, for a style rule or a node action to pick up with `{ when: { "data.pending": true } }` — the `data.` prefix is required, since a bare key reads a node field rather than seeded data, and matches nothing here. Ids rather than a query because only the capability that staged them knows which they are.
   - limit: number — Rows per type. Default 200.
-  - Example: `{ "source": "board", "options": { "board": { "$local": "boardId" } } }`
+  - Example: `{ "source": "board", "options": { "board": { "$": "local.boardId" } } }`
 - `dataset` — Seeds a single node for the current space — the starting point for exploring outward.
-  - label: string
+  - label: string — What the node is called. Defaults to the space name.
   - Example: `{ "source": "dataset", "options": { "label": "This space" } }`
 
 **expander**
@@ -1295,15 +1440,15 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
   - collide: number — Minimum spacing. Default 28.
   - Example: `{ "type": "force", "options": { "distance": 140 } }`
 - `tree` — Layered hierarchy from the graph roots. The right choice for containment and org charts.
-  - direction: "down" | "right"
-  - levelGap: number
-  - siblingGap: number
+  - direction: "down" | "right" — Which way the tree grows from its roots. Default "down".
+  - levelGap: number — Distance between one rank and the next.
+  - siblingGap: number — Distance between neighbours on the same rank.
   - Example: `{ "type": "tree", "options": { "direction": "right", "levelGap": 200 } }`
 - `radial` — Concentric rings by hop distance from the roots — reads as distance from a centre.
-  - ringGap: number
+  - ringGap: number — Distance between one ring and the next.
   - Example: `{ "type": "radial" }`
 - `grid` — Uniform grid, optionally ordered by a node data field. Honest default when edges say little.
-  - columns: number
+  - columns: number — How many columns. Derived from the node count when omitted.
   - sortBy: string — Node data field to order by.
   - Example: `{ "type": "grid", "options": { "columns": 6, "sortBy": "name" } }`
 - `manual` — Positions come from the nodes themselves — a board, where position is the data being edited rather than something derived. Pair with drag-node and persist via onNodeDragEnd.
@@ -1360,15 +1505,17 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
   - Example: `{ "type": "drag-node", "options": { "pin": true } }`
 - `connect-nodes` — Drag from one node to another to connect them, emitting onEdgeCreate with both ends. Writes nothing — what a connection means is the template's decision, so it answers by creating whatever record it thinks the connection is. List it BEFORE drag-node: both claim a press on a node and the first wins. Arm it from a control the user can see rather than a modifier key, which is undiscoverable and absent on a touchscreen.
   - armed: boolean — Whether the gesture is live. Default true. Disarmed, the press falls through to drag-node.
-  - Example: `"behaviours": [{ "type": "connect-nodes", "options": { "armed": { "$local": "connecting" } } }, "select", { "type": "drag-node" }, "pan-zoom"]`
+  - Example: `"behaviours": [{ "type": "connect-nodes", "options": { "armed": { "$": "local.connecting" } } }, "select", { "type": "drag-node" }, "pan-zoom"]`
 - `node-double-click` — Double-click a node to emit onNodeDoubleClick, with the record it stands for resolved onto the payload. Writes nothing — what opening a node means is the template's decision. Pairs with canvas-double-click, which handles the same gesture on empty canvas; list both and exactly one fires. Do NOT list it alongside expand-on-double-click, which claims the same gesture to do something else.
   - Example: `"behaviours": ["node-double-click", "canvas-double-click", "pan-zoom", "select"]`
 - `canvas-double-click` — Double-click empty canvas to emit onCanvasDoubleClick with the world point. Writes nothing — what gets made there is the template's decision. List it BEFORE pan-zoom, which is the background fallback. Claims only the background, so it composes with expand-on-double-click: a double-click on a node opens it, one beside a node creates.
   - Example: `"behaviours": ["canvas-double-click", "pan-zoom", "select", { "type": "drag-node", "options": { "pin": true } }]`
 - `expand-on-double-click` — Double-click a node to expand it. The usual gesture on a map you also want to select on.
-  - direction: "in" | "out" | "both"
+  - direction: "in" | "out" | "both" — Which way relations are followed when the node opens. Default "both".
+  - Example: `{ "type": "expand-on-double-click", "options": { "direction": "out" } }`
 - `expand-on-click` — Single click expands — for maps meant purely for exploring, where selection is not needed.
-  - direction: "in" | "out" | "both"
+  - direction: "in" | "out" | "both" — Which way relations are followed when the node opens. Default "both".
+  - Example: `{ "type": "expand-on-click", "options": { "direction": "out" } }`
 
 ---
 
@@ -1382,13 +1529,45 @@ Most @we/primitives inherit **all** layers below. Props use design token values 
 |---|---|
 | SpaceValue | "0", "100", "200", "300", "400", "500", "600", "700", "800", "900", "1000" (or CSS length e.g. "16px") |
 | ColorValue | A **role** — see the table below — or a scale position "{hue}-{shade}" where hue = neutral, primary, success, warning, danger and shade = 0, 25, 50, 75, 100, 200–900, 1000. Also "white", "black". (or CSS color). **Prefer a role.** |
-| RadiusValue | "0", "100", "200", "300", "400", "500", "600", "700", "800", "900", "pill", "full" (or CSS length). Also two *semantic* values that follow the theme instead of naming a size: "avatar" (circular by default; use for anything square that reads as a profile picture) and "media" (square by default; images, video, embeds). Prefer these on an `EditableImage` or a raw element standing in for one — a pinned "full" or "pill" cannot follow a theme's shape settings. Note "full" is 50%, so it is an ellipse on any box that is not square; reach for "pill" on wide boxes. |
+| RadiusValue | "0", "100", "200", "300", "400", "500", "600", "700", "800", "900", "pill", "full" (or CSS length). Also five *theme-family* names that follow the theme instead of naming a size — see "Theme families" below. Prefer them on an `EditableImage`, a `Card`, or a raw element standing in for one: a pinned "full" or "pill" cannot follow a theme's shape settings. Note "full" is 50%, so it is an ellipse on any box that is not square; reach for "pill" on wide boxes. |
 | ShadowValue | "sm", "md", "lg", "xl" |
 | FontSizeValue | "base", "100", "200", "300", "400", "500", "600", "700", "800", "900", "1000" (or CSS length) |
 | FontFamilyValue | "base" (or CSS font-family) |
 | LineHeightValue | "none", "tight", "snug", "normal", "relaxed", "loose" (or CSS value) |
 | LetterSpacingValue | "tighter", "tight", "normal", "wide", "wider", "widest" (or CSS value) |
 | FontWeightValue | Named tokens: "regular" (400), "medium" (500), "semibold" (600), "bold" (700). Numeric: "100"–"900". CSS pass-through: "light", "normal", "bolder". |
+
+### Theme families — for `r`, `p` and `gap`, the counterpart of a colour role
+
+A colour role says what a colour is *for*. A **family** says what kind of thing a box *is*, so the
+theme can decide its shape and density: buttons are rounded like this, sheets like that. Naming one
+is how a box follows a theme's `surfaceRadius` or `surfacePadding` instead of pinning a number.
+
+| Name | `r` | `p` | `gap` | For |
+|---|---|---|---|---|
+| `control` | ✓ | | ✓ | Buttons, badges, tags — anything pressed. |
+| `surface` | ✓ | ✓ | ✓ | Cards, modals, sheets — **and anything inset inside one**. |
+| `input` | ✓ | | | Fields, selects, pickers. |
+| `avatar` | ✓ | | | Anything square that reads as a profile picture. |
+| `media` | ✓ | | | A **full-bleed** banner, video or embed spanning an edge. |
+
+`surface` and `media` read the same theme variable and differ only in what they fall back to when a
+theme sets nothing: `surface` is rounded like a card, `media` is **square**. Pick by whether the box
+is inset in something rounded or spans the edge — a cover image inside a modal is `surface`, the
+same image as a page-width header is `media`.
+
+```json
+{ "type": "Column", "props": { "bg": "surface", "r": "surface", "p": "surface", "gap": "surface" } }
+```
+
+**The blanks are constraints, not gaps.** A family only takes `p` when its theme value is a single
+length: `control`'s padding is horizontal-only (the vertical comes from the control's height, per
+size) and `input`'s is a full shorthand, and padding is assembled as four values in one declaration,
+so either would produce an invalid rule.
+
+**Only these props.** A family is meaningless on a margin or an offset — it says how much room a box
+puts *inside* itself, which answers nothing about the space between it and its neighbour. `m:
+"surface"` resolves to nothing and warns.
 
 ### Semantic Colour Roles — reach for these before a scale position
 
@@ -1414,7 +1593,8 @@ a user-chosen swatch.
 | `surface` | A card, panel or sheet sitting on the page. |
 | `surface-raised` | Something floating above the page — a popover, a floating bar, a docked rail with a shadow. |
 | `surface-sunken` | A well recessed into a surface — an inset box, a code block, an input trough. |
-| `surface-hover` / `surface-active` | Row and item feedback. Use inside `hoverProps` / `activeProps`. |
+| `surface-hover` / `surface-active` | Row and item feedback — something sitting **on** a surface. Use inside `hoverProps` / `activeProps`. |
+| `surface-sunken-hover` | A **well** lifted — an input, a textarea, a picker trigger. Hovering one with `surface-hover` lands it at about surface level and it stops looking recessed, so use this wherever the resting fill is `surface-sunken`. One state, not a hover/pressed pair: a field is clicked *into* rather than pushed, so hover, press and focus all resolve here and the ring is what says "focused". |
 | `control-surface` | The filled neutral of a *control* — a slider or switch track, a progress trough, a scrollbar thumb, a secondary button, a count chip. Not a surface and not a state. |
 | `text` | Primary body and heading text. |
 | `text-muted` | Secondary text — captions, labels, metadata. |
@@ -1422,7 +1602,8 @@ a user-chosen swatch.
 | `surface-inverse` | A surface deliberately opposite to the page — a tooltip. Holds a fixed lightness, so it does *not* flip with the theme. |
 | `on-inverse` | Text or an icon **on top of** `surface-inverse` — a tooltip's own text. **Not** for text on the accent, which is `on-accent`. |
 | `border` | Default borders and dividers. |
-| `border-strong` | Emphasised separation. |
+| `border-strong` | Emphasised separation — two regions that are genuinely apart. Not a hover state. |
+| `border-hover` | The edge of an interactive box under the pointer. Sits between `border` and `border-strong`, which are three ramp steps apart; borrowing the latter for hover makes an outline jump rather than acknowledge. |
 | `accent` | An accent *fill* — a primary button, a selected disc. |
 | `accent-hover` / `accent-active` | Hover and pressed states of an accent fill. |
 | `on-accent` | Text or an icon **on top of** an accent fill. |
@@ -1443,7 +1624,13 @@ a user-chosen swatch.
 ```
 
 Roles work anywhere a colour token does, including inside a border shorthand
-(`"1px solid border"`) and behind `$if` (`{ "$if": { "condition": …, "then": "accent-muted", "else": "surface-sunken" } }`).
+(`"1px solid border"`) and behind a ternary
+(`{ "$": "row.selected ? 'accent-muted' : 'surface-sunken'" }`).
+
+**Not `$if` in a prop.** `$if` is a *node* type and, in a value position, resolves to a handler —
+so the colour resolver is handed a function, paints nothing, and warns about nothing. The validator
+does not catch it either. A condition that chooses a value is a ternary, which is what the
+expression language has one for.
 
 **Always kebab-case: `"surface-sunken"`, never `"surfaceSunken"`.** The camelCase spelling is the
 TypeScript key of a `ThemeRole`; a schema writes the CSS spelling. Getting it wrong fails silently —
@@ -1471,8 +1658,13 @@ we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
 | zIndex | number | Stack order |
 | display | "flex" \| "block" \| "inline" \| "inline-block" \| "grid" \| "inline-flex" | Display mode |
 | flex | string | Flex shorthand (e.g. "1", "0 0 auto", "none") — controls grow/shrink/basis |
+| flexShrink | number \| string | `flex-shrink` alone, for the common "just don't let it shrink" case (`0`) without committing to a grow and a basis |
 | alignSelf | string | Override parent cross-axis alignment for this child |
-| overflow | "hidden" \| "auto" | Overflow behavior |
+| overflow | "hidden" \| "auto" \| "overlay" | Overflow behavior, both axes |
+| overflowX | "hidden" \| "auto" \| "overlay" | Horizontal overflow alone — a nav strip or tab bar that scrolls sideways instead of pushing the page wide |
+| overflowY | "hidden" \| "auto" \| "overlay" | Vertical overflow alone |
+| scrollbarWidth | "auto" \| "thin" \| "none" | How much room the scrollbar takes. `none` for a strip in fixed-height chrome, where a gutter would not fit. **Use `none` or leave it unset — never `thin` or `auto`:** Chromium reads this property as "use the platform scrollbar" and drops the app's own styling for that element, so it becomes the one scroll region that does not match the rest (a different colour, square corners, and stepper arrows on Linux). `none` is safe because a hidden bar has nothing to style. |
+| scrollbarGutter | "auto" \| "stable" \| "stable both-edges" | Reserve the gutter whether or not it scrolls, so content does not shift when a scrollbar appears |
 | m | SpaceValue | Margin (all sides) |
 | mx | SpaceValue | Margin left + right |
 | my | SpaceValue | Margin top + bottom |
@@ -1480,6 +1672,27 @@ we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
 | mr | SpaceValue | Margin right |
 | mb | SpaceValue | Margin bottom |
 | ml | SpaceValue | Margin left |
+
+**A row that overflows is a row where nobody said who gives up space.** Inside a `Row`, a child's
+`maxWidth` is not a promise: a flex item's automatic minimum size is its *content*, so an item whose
+content cannot narrow — a strip of `we-button`s, which set `white-space: nowrap` — refuses every
+request to compress. Flexbox then takes the whole deficit out of whichever sibling *can* shrink
+(usually a run of text, which folds onto two lines) and pushes the rest past the container. Where a
+template is mounted in a scrolling box, that reads as the entire page sliding sideways.
+
+Say who does what, and the row cannot overflow:
+
+```json
+{ "type": "Row", "props": { "ay": "center" }, "children": [
+  { "type": "Row", "props": { "flex": "1 1 auto", "minWidth": "0", "overflowX": "auto", "scrollbarWidth": "none" },
+    "children": ["…the strip that gives up space and scrolls instead…"] },
+  { "type": "Row", "props": { "flex": "0 0 auto" },
+    "children": ["…the ornament that never absorbs somebody else's overflow…"] }
+]}
+```
+
+`minWidth: '0'` is the half that gets forgotten. Without it `overflowX` has nothing to do, because
+the item is never asked to be narrower than its content in the first place.
 
 ### Visual
 
@@ -1504,7 +1717,7 @@ we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
 | cursor | "pointer" \| "default" \| "text" \| "not-allowed" | Cursor style |
 | pointerEvents | "none" \| "auto" | Pointer events |
 | transform | string | CSS transform |
-| transition | string | CSS transition. Durations may be animation tokens (`'0'`–`'500'`): `'width 300 ease-in-out'`. Prefer the token — a theme's animationSpeed preset overrides those, so `300` respects a reduced-motion setting where `300ms` overrides it. Use for a property whose *value* changes in place (a width bound to `$local`); for something appearing and disappearing use `$if`/`$animate` transitions instead |
+| transition | string | CSS transition. Durations may be animation tokens (`'0'`–`'500'`): `'width 300 ease-in-out'`. Prefer the token — a theme's animationSpeed preset overrides those, so `300` respects a reduced-motion setting where `300ms` overrides it. Use for a property whose *value* changes in place (a width bound to a local); for something appearing and disappearing use `$if`/`$animate` transitions instead |
 | r | RadiusValue | Border radius (all corners) |
 | rt | RadiusValue | Border radius top |
 | rb | RadiusValue | Border radius bottom |
@@ -1544,6 +1757,18 @@ we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
 | letterSpacing | "tighter" \| "tight" \| "normal" \| "wide" \| "wider" \| "widest" | Letter spacing token |
 | textDecoration | "underline" \| "line-through" \| "overline" \| "none" | Text decoration |
 | textTransform | "uppercase" \| "lowercase" \| "capitalize" \| "none" | Text transform |
+| whiteSpace | "normal" \| "nowrap" \| "pre" \| "pre-wrap" \| "pre-line" \| "break-spaces" | How whitespace and line breaks in the source text are treated |
+| overflowWrap | "normal" \| "break-word" \| "anywhere" | Where a line may break inside a word too long to fit. **Defaults to `anywhere`** — see below |
+
+**Text that cannot break is text that breaks the page.** `overflowWrap` defaults to `anywhere` on
+every typography component and on `Column`/`Row`/`Grid`/`Card`, so a URL, a DID, or a transcriber's
+run-together output wraps instead of stretching its card off the screen. **Do not set it, and do not
+reach for `styles: { 'word-break': ... }` — that is the patch this default replaced.**
+
+Set `overflowWrap: 'normal'` only to deliberately opt a box *out* of breaking. Note `'break-word'` is
+the value that looks right and is not: it breaks in the same places as `anywhere` but does not
+reduce the element's min-content width, and a flex item and a `1fr` grid track are both sized by
+min-content — so under it the long string still pushes its container wider than the viewport.
 
 **Typography defaults:** fontSize and fontWeight have **no built-in defaults** — omitting them inherits from parent elements (browser default is ~16px / normal weight). Do not set fontSize or fontWeight unless you need a non-default value. For example, `fontSize: '300'` (16px) and `fontWeight: '500'` (normal) are the inherited defaults — omit them.
 
@@ -1596,7 +1821,7 @@ Three ways to respond to size, and they are not interchangeable:
 | Need | Use | Why |
 |---|---|---|
 | Different **values** — padding, gap, width, font size | `*UpProps` | Pure CSS. Nothing remounts. |
-| A different **tree** — a pane becomes a drawer, two panes become one | `$surface` + `$if` on `$surface.tier` | Only a branch can swap DOM. |
+| A different **tree** — a pane becomes a drawer, two panes become one | `$surface` + `$if` on `surface.tier` | Only a branch can swap DOM. |
 | Same-shaped things **filling a box** — video tiles, a photo wall | `Grid` with `childAspect` | Needs both axes and an argmax; CSS cannot express it. |
 
 **Prefer `*UpProps` for anything that is a value.** `$if` on the tier works and is tempting, because
@@ -1675,6 +1900,15 @@ zIndex: 'dropdown', 'sticky', 'chrome', 'modal', 'popover', 'toast', 'tooltip'
 
 Available data models for $query and store data:
 
+A `json` field is a stored blob rather than a queryable value. `TextBlock.marks` is the one worth
+knowing: it holds inline structure over `text` as standoff annotations — a JSON array of
+`{ start, end, type, ...data }` ranges, offsets in Unicode **code points** — with types `strong`,
+`em`, `underline`, `strike`, `code`, `link` (`href`), `nodeLink` and `mention` (`did`). A block
+with `text` and no `marks` is one unmarked span, which is why a transcriber can write a
+well-formed block without knowing marks exist. Render from it; never filter on it — anything
+queryable is written beside it as a relation (a mention is also a `we://mention` link on the root,
+which is where "who is named in this post" is answered).
+
 AgentSettings extends Ad4mModel:
   Fields:
   - currentTemplateId: string = 'default' [we://current_template]
@@ -1691,6 +1925,7 @@ AgentSettings extends Ad4mModel:
   - useTemplateTheme: boolean = true [we://use_template_theme]
   - themeScope: string [we://theme_scope]
   - installedModules: string [we://installed_modules]
+  - moduleSettings: string [we://module_settings]
   Relations:
   - installedTemplates: HasMany → Template [we://installed_template]
   - installedThemes: HasMany → Theme [we://installed_theme]
@@ -1711,6 +1946,12 @@ CalloutBlock extends WeNode:
   - variant: string = 'info' [we://variant]
   - icon: string [we://icon]
   - version: number [we://version]
+
+CallExtraction extends WeNode:
+  Fields:
+  - callId: string [we://call_id]
+  - entities: string [we://extraction_targets]
+  - auto: string [we://auto_interpret]
 
 ChatMessage extends WeNode:
   Fields:
@@ -1754,6 +1995,8 @@ EmbedBlock extends WeNode:
   - url: string [we://url]
   - target: string [we://target]
   - targetType: string [we://target_type]
+  - label: string [we://title]
+  - thumbnail: string [we://thumbnail]
   - displayMode: string = 'card' [we://display_mode]
   - version: number [we://version]
 
@@ -1830,6 +2073,7 @@ ReadMarker extends WeNode:
 
 Relationship extends WeNode:
   Fields:
+  - connection: string [we://connection]
   - relationshipTypeId: string [we://relationship_type_id]
   - label: string [we://title]
   - description: string [we://description]
@@ -1879,6 +2123,7 @@ SignalType extends WeNode:
   - aggregate: SignalAggregate = 'count' [we://aggregate]
   - semantic: SignalSemantic = 'custom' [we://semantic]
   - allowChange: boolean = true [we://allow_change]
+  - retired: boolean = false [we://retired]
   - valueType: string = 'numeric' [we://signal_value_type]
   - schemaVersion: number = 1 [we://schema_version]
 
@@ -1895,7 +2140,9 @@ Space extends WeNode:
   - defaultThemeId: string [we://default_theme_id]
   - enabledModules: string [we://enabled_modules]
   - enabledViews: string [we://enabled_views]
-  - autoInterpret: boolean = false [we://auto_interpret]
+  - extractionTargets: string [we://extraction_targets]
+  - autoInterpret: boolean = true [we://auto_interpret]
+  - moduleSettings: string [we://module_settings]
   - shareExtractionDetail: boolean = false [we://share_extraction_detail]
   Relations:
   - location: HasOne → LocationBlock [we://location]
@@ -1904,6 +2151,7 @@ SpacePreference extends WeNode:
   Fields:
   - spaceUuid: string [we://space_uuid]
   - mutedModules: string [we://muted_modules]
+  - moduleSettings: string [we://module_settings]
   - hiddenViews: string [we://hidden_views]
   - templateId: string [we://template_id]
   - themeId: string [we://theme_id]
@@ -1945,17 +2193,22 @@ Template extends WeNode:
 
 TextBlock extends WeNode:
   Fields:
-  - type: string [we://type]
+  - style: string = 'normal' [we://style]
+  - listItem: string [we://list_item]
+  - level: number [we://level]
+  - checked: boolean = false [we://checked]
+  - align: string [we://align]
   - direction: string [we://direction]
-  - format: string [we://format]
-  - indent: number [we://indent]
-  - textFormat: number [we://textFormat]
-  - textStyle: string [we://textStyle]
-  - listType: string [we://listType]
-  - start: number [we://start]
-  - tag: string [we://tag]
   - text: string [we://text]
+  - marks: json [we://marks]
   - version: number [we://version]
+
+Topic extends WeNode:
+  Fields:
+  - name: string (required) [we://name]
+  - description: string [we://description]
+  - icon: string [we://icon]
+  - color: string [we://color]
 
 Theme extends WeNode:
   Fields:
@@ -1997,8 +2250,8 @@ WeNode extends Ad4mModel:
 ## Stores
 
 Stores provide state (readable values) and actions (methods) for dynamic logic in schemas.
-Access state with $store and call actions with $action.
-For ephemeral/form state, use $localState/$local/$setLocal instead of stores (see Dynamic Logic).
+Read state in an expression ({ "$": "storeName.member" }) and call actions with $action.
+For ephemeral/form state, use $localState with local.* reads and $setLocal writes instead of stores (see Dynamic Logic).
 
 AccountStore:
 - State:
@@ -2016,7 +2269,6 @@ AccountStore:
 - Actions:
   - refresh(): re-reads the account list from the host
   - createAccount(): creates an account under a provisional name and switches into it — the setup screen names it. Does not return on success
-  - syncDisplay({ name?, avatar? }): mirrors the profile onto the running account, so the locked sign-in screen has a name and picture. Never throws
   - switchAccount(id: string): switches to another account. Does not return on success
   - removeAccount(id: string): deletes an account and its data. Refuses the active one
   - requestRemoval(id: string): opens the removal confirmation for that account
@@ -2027,146 +2279,139 @@ AccountStore:
 AppStore:
 - State:
   - apps: RegisteredApp[] — list of registered external apps (id, name, image)
-  - appsWithWe: unknown
+  - appsWithWe: RegisteredApp[] — the apps list with a WE entry prepended, for an app switcher that offers the way back to templates as one more row. Prepended here because a schema can map a list but cannot add to it
   - activeAppId: string | null — id of the currently active app, or null if none
 - Actions:
   - activateApp(id: string): activates an app and switches to its view
   - deactivateApp(): deactivates the current app and returns to the template view
-  - provideInstalledModules(): unknown
 
 DatasetStore:
 - State:
   - datasets: array of dataset handles (all joined datasets; AD4M perspectives in this backend)
   - orderedDatasets: datasets sorted by user-defined sidebar order, system datasets excluded
   - currentDataset: dataset handle | null (the dataset currently being viewed)
-  - currentDatasetUri: unknown
+  - currentDatasetUri: string | undefined — the shared URL of the current dataset with its scheme (neighbourhood://…), or undefined for a personal one. Prefer currentDatasetCid for comparisons; this is the form a share link carries
   - currentDatasetCid: string | undefined — the neighbourhood CID of the current dataset (prefix stripped)
-  - currentDatasetModels: ModelManifestEntry[] (non-WE SHACL models from the current dataset; injected as externalModels into AI messages)
+  - currentDatasetEntities: EntityManifestEntry[] (non-WE SHACL models from the current dataset; injected as externalEntities into AI messages)
   - isWeSpace: boolean — true once the current dataset is confirmed to have WE's Space SDNA installed (false for a joined-but-foreign dataset, e.g. one synced in from Flux)
   - joinedSpaceCids: string[] — CIDs of every joined shared dataset
   - datasetsLoaded: boolean — the backend has answered with the dataset list. An empty list is otherwise indistinguishable from "not fetched yet", so anything asking "have I joined this?" reads the boot frame as "no". The same reason accountStore.accountsLoaded exists
   - systemDatasetUuids: string[] — uuids of the we-root/we-test system datasets
   - rootDataset: dataset handle | null — the agent's personal root dataset (we-root models live here)
-  - testDataset: unknown
   - globalDataset: dataset handle | null — the seed-configured global discovery space, once joined
   - marketplaceDataset: dataset handle | null — the seed-configured marketplace, once joined
-  - agentSettings: unknown
   - globalSpaceConfigured: boolean — the seed declares a global space
   - globalSpaceId: string | null — the dataset id of the seed-configured global discovery space, or null when it is not configured or not joined. Compare a route segment against it to tell "the user is in the global space" from "the user is in a space of their own"
   - marketplaceConfigured: boolean — the seed declares a marketplace
-  - marketplaceId: unknown
+  - marketplaceId: string | null — the dataset id of the seed-configured marketplace, or null when it is not configured or not joined. The marketplace counterpart of globalSpaceId
   - marketplaceJoined: boolean — the marketplace dataset is joined locally
-  - getDatasetOrder: unknown
 - Actions:
-  - switchDataset(uuid: string): switches to a dataset by UUID, registers its SHACL models as dynamic model classes, and populates currentDatasetModels
+  - switchDataset(uuid: string): switches to a dataset by UUID, registers its SHACL models as dynamic model classes, and populates currentDatasetEntities
   - reorderDatasets(newOrder: string[]): reorders the sidebar items by UUID array
-  - removeDataset(): unknown
-  - updateAgentSettings(updates: Partial<AgentSettings>): merges and persists root-dataset agent settings
-  - clearCurrentDataset(): unknown
+  - removeDataset(uuid: string): removes a dataset from the backend and from local state. The low-level half of spaceStore.removeSpace, which also clears the global-discovery listing — call that from a template, and this only for a dataset that is not a space
   - cleanupSpaceSdna(uuid?: string): one-time remediation for a space that accumulated duplicate SDNA installs — removes the redundant duplicate link copies. Defaults to the current dataset. Returns a display-ready summary string naming how many links were removed and the DIDs that authored them (your own DID annotated with "(you)"), or an empty string if nothing needed cleaning up
-  - trackDataset(): unknown
-  - onDatasetRemoved(): unknown
-  - initSystemDatasets(): unknown
-  - loadDatasets(): unknown
-  - subscribeToChanges(): unknown
-  - provideAutoInterpretGate(): unknown
 
 EditorStore:
 - State:
-  - messages: unknown
-  - isOpen: unknown
-  - isStreaming: unknown
-  - streamingContent: unknown
-  - apiKeyConfigured: unknown
-  - templateName: unknown
-  - templateIcon: unknown
-  - isReadOnly: unknown
-  - hasPendingChanges: unknown
-  - pickerOpen: unknown
-  - pickerAction: unknown
-  - pickerDefaultName: unknown
-  - pickerDefaultIcon: unknown
-  - pickerShowDestination: unknown
-  - sessions: unknown
-  - activeSessionId: unknown
-  - contentMode: unknown
-  - schemaJson: unknown
+  - messages: ChatMessage[] — the active AI session's messages (id, role: 'user' | 'assistant' | 'system', content, createdAt, status). Empty for a new chat
+  - isOpen: boolean — the AI chat panel is open
+  - isStreaming: boolean — an assistant reply is arriving; streamingContent holds what has arrived so far
+  - streamingContent: string — the partial assistant reply while isStreaming, empty otherwise
+  - apiKeyConfigured: boolean — the agent has an API key set, so sendMessage can work. Gate the composer on it and say what is missing rather than hiding it
+  - templateName: string — the name of the template being edited, for the editor’s own header
+  - templateIcon: string — its icon
+  - isReadOnly: boolean — the template on screen cannot be saved in place (a built-in, or somebody else's). Edits buffer as pending changes; offer Fork rather than Save. Answers for the template rendered, so do not use it to gate per-row controls in a list — switcherGroups carries `editable` per row
+  - hasPendingChanges: boolean — buffered edits exist against a read-only template, waiting for a fork to land in
+  - pickerOpen: boolean — the fork/fresh naming dialog is showing
+  - pickerAction: 'fork' | 'fresh' — which the open picker is for
+  - pickerDefaultName: string — what the picker’s name field starts with
+  - pickerDefaultIcon: string — what its icon field starts with
+  - pickerShowDestination: boolean — the picker offers a personal-or-space destination, which it can only do while a space is open to save into
+  - sessions: ChatSession[] — this template's saved AI sessions (id, name, templateId), newest first
+  - activeSessionId: string | null — the session whose messages are shown
+  - contentMode: 'preview' | 'visual' — whether the editor shows the rendered template or the visual editing surface
+  - schemaJson: string — the template being edited, serialised — what the code panel shows and edits
   - canUndo: boolean (true when there are schema edits that can be undone)
   - canRedo: boolean (true when there are undone schema edits that can be redone)
-  - isEditingTemplate: unknown
-  - editAction: unknown
-  - codePanelOpen: unknown
-  - themePanelOpen: unknown
-  - visualPanelOpen: unknown
-  - isEditingTheme: unknown
-  - aiDockEdge: unknown
-  - codeDockEdge: unknown
-  - themeDockEdge: unknown
-  - visualDockEdge: unknown
-  - editorDockSize: unknown
-  - editorDockFloat: unknown
+  - isEditingTemplate: boolean — a template editing session is open
+  - editAction: 'edit' | 'fork' | 'fresh' | null — how the current template session began, null outside one
+  - codePanelOpen: boolean — the code panel is open
+  - themePanelOpen: boolean — the theme panel is open
+  - visualPanelOpen: boolean — the visual properties panel is open
+  - isEditingTheme: boolean — a theme editing session is open, independently of template editing
+  - aiDockEdge: DockEdge — where the AI panel opens ('left' | 'right' | 'top' | 'bottom'), or null while it is closed. An opening bid: the shell remembers wherever the user drags it
+  - codeDockEdge: DockEdge — the same, for the code panel
+  - themeDockEdge: DockEdge — the same, for the theme panel
+  - visualDockEdge: DockEdge — the same, for the visual panel
+  - editorDockSize: DockSize — the opening size every editor panel shares ('sm' | 'md' | 'lg' | 'full')
+  - editorDockFloat: boolean — editor panels open floating over the content rather than pushing it aside
 - Actions:
-  - newChat(): unknown
-  - switchSession(): unknown
-  - deleteSession(): unknown
-  - setContentMode(): unknown
-  - onSchemaEdit(): unknown
+  - newChat(): starts a new AI session for this template and switches to it
+  - switchSession(sessionId: string): shows another saved session
+  - deleteSession(sessionId: string): deletes a saved session and its messages
+  - setContentMode(mode: 'preview' | 'visual'): switches the editor between the rendered preview and the visual editing surface
   - undo(): undoes the last schema edit
   - redo(): redoes the last undone schema edit
-  - pushSnapshot(): unknown
-  - startFork(): unknown
-  - startFresh(): unknown
-  - confirmPicker(): unknown
-  - cancelPicker(): unknown
-  - enterTemplateEditing(): unknown
-  - exitTemplateEditing(): unknown
+  - startFork(): opens the picker to copy the current template into one you own
+  - startFresh(): opens the picker to start an empty template
+  - confirmPicker(name: string, icon: string, destination: 'personal' | 'space'): creates the fork or fresh template and enters editing on it
+  - cancelPicker(): closes the picker without creating anything
+  - enterTemplateEditing(action?: 'edit' | 'fork' | 'fresh'): opens a template editing session on the template on screen. Omit action to edit in place; a read-only template buffers its edits
+  - exitTemplateEditing(): ends the template session. Buffered changes to a read-only template are dropped
   - toggle(): toggles the AI chat panel open/closed
-  - open(): unknown
-  - close(): unknown
-  - toggleCodePanel(): unknown
-  - openCodePanel(): unknown
-  - closeCodePanel(): unknown
-  - toggleThemePanel(): unknown
-  - openThemePanel(): unknown
-  - closeThemePanel(): unknown
-  - toggleVisualPanel(): unknown
-  - enterThemeEditing(): unknown
-  - exitThemeEditing(): unknown
-  - toggleThemeEditing(): unknown
-  - sendMessage(): unknown
-  - clearHistory(): unknown
-  - setApiKey(): unknown
+  - open(): opens the AI chat panel
+  - close(): closes it
+  - toggleCodePanel(): opens or closes the code panel
+  - openCodePanel(): opens the code panel
+  - closeCodePanel(): closes it
+  - toggleThemePanel(): opens or closes the theme panel
+  - openThemePanel(): opens the theme panel. Pair with themeStore.focusRole to land on a role
+  - closeThemePanel(): closes it
+  - toggleVisualPanel(): opens or closes the visual properties panel
+  - enterThemeEditing(): opens a theme editing session on the current theme, and the theme panel with it
+  - exitThemeEditing(): ends the theme session, discarding an unsaved draft
+  - toggleThemeEditing(): enters or exits theme editing — what a single button in chrome should call
+  - sendMessage(text: string): sends a message to the assistant. Patches it proposes are applied to the template and land in undo history; the reply streams into streamingContent
+  - clearHistory(): deletes the active session's messages
 
 InterpretationStore:
 - State:
   - activity: InterpretationActivityView[] — every extraction pass this agent knows about, its own and its peers’, running first then most recent. Each row carries display-ready strings: `label` is a whole clause ("Anna is waiting on the model", "Extracted 3 records"), `elapsed` is `m:ss` while running and empty once settled, `name`/`avatar`/`runner` identify who is running it, and `mine` says whether it is this agent’s. Only a row with `mine` can carry `prompt`/`response` — the exchange never left the runner’s machine — so gate a details affordance on `hasDetail` and explain the refusal rather than hiding it
   - runningCount: number — how many passes are still in flight. What a collapsed "N extractions running" summary counts
   - hasActivity: boolean — whether there is anything to show at all. Counts settled rows too, so a bar gated on it does not vanish the instant a pass finishes and take its result with it
+  - runningPasses: InterpretationActivityView[] — the passes still in flight, for a readout that lists them
+  - settledPasses: InterpretationActivityView[] — the passes that have finished, newest first
+  - settledCount: number — how many have finished. What a collapsed "N extractions processed" line counts
+  - detailWithheld: boolean — a peer's settled pass is on screen whose exchange this agent cannot open, because the space does not share it. Gate a footnote explaining the absence on this rather than on a row's own hasDetail, which is false for a pass that simply has not reached the model yet
   - capable: boolean — whether this node can interpret AT ALL, as distinct from being able to and having no model configured. Answered by asking the backend rather than by testing the client library, so it is false against a node whose executor predates the extraction stack. False means no fix exists from inside the app — say so rather than offering a control that cannot work
 - Actions:
   - dismissSettled(): forgets every finished row, leaving anything still running. A running pass is not this agent’s to dismiss
 
 PresenceStore:
 - State:
-  - peers: unknown
-  - online: unknown
-  - onlineHere: unknown
-  - calls: unknown
-  - available: unknown
-  - focusDepth: unknown
+  - peers: PresentAgent[] — every peer known in the current space, offline included, each joined to its cached profile (did, name, avatar, tone, focus, activities, availability). Sorted by liveness
+  - online: PresentAgent[] — peers in the current space who are not offline — the "who is here" list
+  - onlineHere: PresentAgent[] — peers at this agent's exact route path, for a per-page presence strip
+  - calls: Map<callId, PresentAgent[]> — the calls running in this space right now and who is in each
+  - available: boolean — a presence transport exists. False in a personal space, where there is nobody to be present to; gate presence UI on it rather than rendering an empty roster
+  - focusDepth: FocusDepth — how much of this agent's location peers are shown: the space only, the section, or the exact path
 - Actions:
-  - setFocusDepth(): unknown
-  - setAvailability(): unknown
-  - setActivity(): unknown
-  - clearActivity(): unknown
+  - setFocusDepth(depth: FocusDepth): sets how much of your location peers see
+  - setAvailability(availability: 'available' | 'busy' | 'away' | 'invisible'): sets the status published with your presence. 'invisible' stops publishing entirely rather than asking peers not to look
+  - setActivity(activity: Activity): adds or replaces a published activity — a call, an edit, a work claim — keyed by its type and id
+  - clearActivity(type: string, id?: string): withdraws a published activity; omit id to withdraw every one of that type
 
 ProfileStore:
 - State:
   - profiles: AgentProfileSummary[] — cache of all fetched profiles (did, firstName, lastName, handle, bio, avatar, coverImage, location)
-  - ownProfile: AgentProfileSummary | undefined — reactive accessor for the current user's own profile (derived from the cache)
-  - pendingAvatar: unknown
+  - ownProfile: AgentProfileSummary | undefined — reactive accessor for the current user's own profile (derived from the cache). Note `name` is assembled for display and falls back to "Anonymous", so it is never empty — test firstName/lastName/handle to ask whether somebody has a name
+  - ownProfileLoaded: boolean — the own-profile fetch has answered. An empty profile is otherwise indistinguishable from an unfetched one, so anything asking "has this person set a name?" reads every boot frame as "no". Same reason as datasetStore.datasetsLoaded
+  - needsName: boolean — this agent has no name of any kind and has not waved the question away this session, as a settled fact (false until the app is ready and the profile fetch has answered). What the name prompt mounts on; also the right gate for any "finish setting up" nudge of your own
+  - pendingAvatar: File | null — a picture chosen before the agent exists, held until completeAccountSetup uploads it. Read it to preview the choice on the setup screen; null once uploaded or when nothing was picked
 - Actions:
   - setPendingAvatar(file: File): holds a picture chosen before an agent exists; uploaded by completeAccountSetup
+  - saveNameFromPrompt(name: string): sets the name and stops asking. Dismisses before publishing, so a failed write cannot re-raise the prompt on top of the toast explaining it — which is why this exists rather than calling updateOwnProfile from the schema
+  - dismissNamePrompt(): stops asking for a name until the next launch. Not persisted: a nameless agent degrades every other member's experience, so the only permanent exit is setting a name
   - completeAccountSetup(name: string, password: string): the whole of first-run setup — creates the agent, then publishes the name and picture, then lets the app appear
   - fetchProfile(did: string): fetches and caches an agent's profile from their public dataset
   - updateOwnProfile(fields: { firstName?, lastName?, handle?, bio? }): updates own profile text fields and publishes to the public dataset
@@ -2178,40 +2423,40 @@ RecordStore:
 - State:
   - creatableEntities: { label, value, icon, group }[] — models a person can create an instance of here, ready for a we-select: this space's own models first, then WE's built-in content types. A model appears here by declaring `authoring` in the manifest, or by being a shape this community defined
   - recordDraft: the open form's draft ({ entity, label, icon, fields[] }) or null while closed — its non-nullness is what mounts the modal. Each field is { name, label, control, required, options, placeholder, value }, derived from the model's own declaration, so a form exists for a model nobody wrote a form for
+  - recordDraftDirty: boolean — the open form holds something worth keeping. What a discard guard reads: the fields come from the model, so a shape this community defined has properties no schema was written against and there is no set of local names an expression could test. Pass it to discardGuard's `dirty`
+  - displays: Record<entity, RecordDisplay> — how to show an instance of each creatable model, keyed by entity name and derived from its declaration: { entity, label, icon, title, summary, media, fields[] }, where title/summary/media name the properties playing those roles ('' when none does) and each field is { name, label, kind, role }. kind is one of text, longText, number, boolean, date, datetime, color, url, image, file, json; role is title, summary, media or detail. Index it by a row's type — { $: 'recordStore.displays[row.type]' } — and render the fields with $each; see "A record of any type" in the patterns
   - recordErrors: string[] — validation errors from the last save attempt, plus any backend failure
   - savingRecord: boolean — a create is in flight
   - lastCreatedId: string — the id of the last record created, empty before the first. Read it to act on what was just made; kept in the store because an $action's onSuccess can read a store and cannot hold a value
   - pendingLink: the two records a pending connection joins ({ sourceId, sourceType, sourceLabel, targetId, targetType, targetLabel }), or null when the open form is an ordinary one. Read it to name what is being connected
-  - relationshipKind: unknown
-  - pendingCardStyle: unknown
+  - relationshipKind: string — which named RelationshipType the pending connection is, or empty for one carrying only a label. Held beside the draft because the kinds are a list to pick from, which a generated form cannot render
 - Actions:
   - openRecordForm(entity?): opens the create form — on that model, or on the first offered one. Clears any pending connection
   - connectNodes(link): opens the form on a Relationship joining two records. Takes the graph's onEdgeCreate payload as it arrives
   - setRecordEntity(entity): switches which model is being created, discarding what was typed
   - setRecordField(name, value): sets one field. Takes the field name, so one action serves every control — which is the only shape that works when the fields come from data
-  - setRelationshipKind(): unknown
+  - setRelationshipKind(id): sets which named kind the pending connection is; an empty value clears it
   - cancelRecordForm(): closes the form, discarding it
   - saveRecord(): validates and creates. Errors land in recordErrors and the form stays open holding what was typed; success closes it and sets lastCreatedId
-  - placeOnBoard(): unknown
-  - removeFromBoard(): unknown
-  - resizeOnBoard(): unknown
-  - setCardStyle(): unknown
-  - confirmPending(): unknown
-  - previewCardStyle(): unknown
-  - setTypeColor(): unknown
-  - createOnBoard(): unknown
-  - createCardOnBoard(): unknown
+  - placeOnBoard(board: string, nodeId: string, nodeType: string, x: number, y: number): puts a record at a position on a board, or moves one already there. An upsert, so dragging twice leaves one coordinate. Pair with the graph’s onNodeDragEnd
+  - removeFromBoard(board: string, nodeId: string): takes a record off a board, leaving the record itself alone. A card the board owns survives as an unplaced one in the tray
+  - resizeOnBoard(board: string, payload): resizes a card on a board. Takes the graph's onNodeResize payload as it arrives; the size lives on the placement, so the same post on another board is unaffected
+  - setCardStyle(board: string, nodeId: string, field: string, value): sets one presentation property of one card on one board — 'color', 'cardShape', 'contentScale'. Takes the field name so one action serves a swatch, a picker and a slider. Undone by taking the card off the board
+  - previewCardStyle(nodeId: string, field: string, value): shows a presentation change without writing it — for a slider that reports while it moves. Pair with setCardStyle on release; both go through the same pending map so the card never jumps
+  - setTypeColor(board: string, nodeType: string, color): sets the colour every card of one type is drawn in, on one board — the board's key, made writable. An empty colour clears it
+  - createOnBoard(board: string, x?: number, y?: number): opens the create form and places whatever it makes onto that board, at the point given. Pair with the graph’s onCanvasDoubleClick
+  - createCardOnBoard(editorState, { board, at? }): composes a card onto a board and records where it sits, as one write. Without `at` the card lands in the board's tray. The composer's counterpart to createOnBoard
 
 RouteStore:
 - State:
   - currentPath: string (the current route path)
   - segments: string[] (currentPath split by "/", e.g. ["/foo/bar"] → ["foo", "bar"])
-  - params: Record<string, string> — the URL's query parameters, reactive; read one as { $store: 'routeStore.params.<name>' }. Prefer $localState with syncParam for fields a view owns; read params directly only for parameters something else writes
+  - templateSegments: string[] — the segments BELOW the space prefix, which is a template's own coordinate space. A template mounted at /space/<id> reading its own route params wants this: at /space/abc/photo/xyz it is ["photo", "xyz"], so a `/photo/:postId` route reads templateSegments[1] and keeps reading it wherever the host mounts the template. Reading `segments` by index pins a template to the host's prefix and breaks when it moves.
+  - params: Record<string, string> — the URL's query parameters, reactive; read one as { $: 'routeStore.params.<name>' }. Prefer $localState with syncParam for fields a view owns; read params directly only for parameters something else writes
 - Actions:
-  - setNavigateFunction(): unknown
-  - setCurrentPath(): unknown
   - navigate(to: string, options?): navigates to a route (a bare path restores that route's remembered query string)
   - setParam(name: string, value: string | null, options?: { push?: boolean }): writes one query parameter (null removes); replaceState by default, push: true for changes that deserve a Back entry. Prefer $localState syncParam over calling this directly
+  - back(): goes back one entry, the browser's own way. Use it on a page reached from several places — a record page is opened from a list, from a search and from a link somebody sent, and only one of those has a parent worth guessing. Does nothing at the start of the session's history
 
 RuntimeStore:
 - State:
@@ -2228,6 +2473,7 @@ RuntimeStore:
   - aiForm: AiModelForm | null — the model form while it is open, null when closed. One flat field per input; read with runtimeStore.aiForm.<field>
   - aiPresetOptions: { label, value }[] — model names the backend can fetch itself, for the open form kind
   - aiFormComplete: boolean — the open form has every field its chosen source needs
+  - aiFormDirty: boolean — the open form has been edited since it opened. What a discard guard reads; compared against a snapshot taken on open, so looking at a model's settings and closing again asks nothing
   - languages: InstalledLanguage[] — language plugins installed in this backend (address, name, system). Empty until loadLanguages() runs
   - trustedAgents: string[] — trusted peer ids. Empty until loadTrustedAgents() runs
   - authorizedApps: AuthorizedApp[] — external apps holding credentials (id, name, description, url, iconUrl, capabilities, revoked). Empty until loadAuthorizedApps() runs
@@ -2286,28 +2532,20 @@ SessionStore:
   - loginLoading: boolean
   - createAgentError: string — the backend message from a failed agent creation, or empty
   - createAgentLoading: boolean
-  - client: the backend client handle | undefined
-  - agentSession: unknown
-  - lifecycle: unknown
-  - backendPorts: unknown
   - me: Agent | undefined — the authenticated identity; prefer the $me token in schemas
-  - port: unknown
-  - token: unknown
-  - serverUrl: unknown
   - host: BackendHostInfo | undefined — the node this session runs against when it is somebody's hosting rather than this machine (id, name, description, imageUrl, location, url, computeSpecs, aiModels, rates). Undefined on desktop and on a local executor, so its presence is also the answer to "am I a guest here?" — gate any "connected to" UI on it. `aiModels` comes from the host directory and needs no capability, so it answers "can this node transcribe?" even where the executor refuses to list its models
   - hostAccount: BackendAccountInfo | undefined — this agent's account with that node (email, remainingCredits, walletAddress, freeAccess). Check freeAccess before showing a balance: on a free node the credit figure means nothing and "0" reads as an account that has run dry
-  - isDevelopment: unknown
-  - ephemeralPort: unknown
+  - isGuest: boolean — this identity was minted for somebody who arrived on a guest invite link rather than chosen by them. NOT the same question as `host`: an ordinary member of a hosted deployment has a host and is not a guest. Read it where the app explains itself to the person using it — why it is asking for a name, what "log out" would mean for an identity with no other way back
+  - isDevelopment: boolean — whether this is a development build. A fact about the build. Do NOT gate developer-only UI on it; gate on devTools, which is the same answer plus a switch
+  - devTools: boolean — whether developer affordances should be VISIBLE. True in a development build unless a developer has thrown the Settings → Developer switch to see what a shipped app looks like. Reactive, so a control gated on it appears and disappears on the press. Gate any developer-only control on this — a schema-test page, a fixture toggle — and wrap it in $if rather than hiding it, since a hidden row is still in the accessibility tree and still found by find-in-page. Never true in a production build, whatever the switch says
 - Actions:
+  - setDevTools(on: boolean): shows or hides developer affordances for this session. Takes the value the control shows, so a we-switch can pass `event.detail` bare. Cannot turn developer UI on in a production build
   - login(password: string): unlocks the agent and loads user data
   - createAgent(password: string): creates the agent, loads user data, and lands on the 'finishing' boot state (not 'ready')
   - clearPasswordError(): clears the failed-unlock flag. Chain it after the password field's $setLocal — the verdict was on the submitted password, so editing that password retracts it and a stale "Incorrect password" should not sit over the correction
   - finishSetup(): leaves 'finishing' for the running app — sets bootState to 'ready'
   - logout(): locks the agent and returns to the login screen
   - retryBoot(): starts the whole boot again from the failure screen, by reloading. A failed boot can have got anywhere before it threw, so retrying in place would race the remains of the first attempt
-  - refreshMe(): unknown
-  - markReady(): unknown
-  - onSessionUnlocked(): unknown
 
 ShapeStore:
 - State:
@@ -2320,25 +2558,29 @@ ShapeStore:
   - aiAvailable: boolean — AI model generation is available (the agent has a Claude API key configured)
   - generating: boolean — an AI generation is in flight
   - hintEntities: { entity, source: 'core' | 'shape' }[] — entities offering AI-hint tuning in this space: core interpretable vocabulary (TaskBlock, EventBlock) plus the space's own shapes
+  - extractionCandidates: string[] — entity names an extraction pass COULD write here: core vocabulary that declares itself extractable, plus every adopted shape that does. Candidacy, not a decision — which of these a call actually looks for is two layers down (spaceStore.extractionTargets, then the call's own participants). Read it to offer a choice, and to display findings: a card should show a record somebody extracted an hour ago even if the target has since been switched off
   - relationshipTargets: { label, value }[] — what a relationship may point at here, ready for a we-select: this space's own models, then block types, then other apps' models. Core infrastructure entities are deliberately absent
-  - identityOptions: { label, value }[] — "None" plus every named property of the open draft, for the identity picker. Built in the store because a schema can $map options but cannot prepend one
+  - identityOptions: { label, value }[] — "None" plus every named property of the open draft, for the identity picker. Built in the store because a schema can map options but cannot prepend one
   - hintEditor: the hint editor state ({ entity, classHint, defaultClassHint, rows: { name, predicate, hint, defaultHint }[], customized }) or null while closed — non-nullness mounts the hint editor modal
   - hintBusy: boolean — the hint editor is loading or saving
-  - memberOptions: { rowId, options }[] — each member's default-value picker entries. Read with $find on rowId rather than off $member: rows are mutated in place while typing, so values hanging off the row cannot be reactive
-  - expandedMembers: string[] — rowIds whose detail panel is open. Read with { $in: ['$member.rowId', { $store: 'shapeStore.expandedMembers' }] }; a new row and any row an error names open themselves. Generation leaves rows closed — a collapsed row shows its hint, so what was generated is readable without opening anything
+  - extractionNeedsIdentity: boolean — the open draft would be extracted into and has no field to recognise what it already wrote, so every pass duplicates everything. A warning to put beside the switch, not a refusal: the wizard saves either way
+  - memberOptions: { rowId, options }[] — each member's default-value picker entries. Read with find(shapeStore.memberOptions, { rowId: member.rowId }) rather than off member: rows are mutated in place while typing, so values hanging off the row cannot be reactive
+  - expandedMembers: string[] — rowIds whose detail panel is open. Read with { $: 'member.rowId in shapeStore.expandedMembers' }; a new row and any row an error names open themselves. Generation leaves rows closed — a collapsed row shows its hint, so what was generated is readable without opening anything
   - generateIntent: 'none' | 'generate' | 'regenerate' | 'replace' — what the generate button would do right now, given what the draft holds. Label it "Regenerate" on 'regenerate' and 'replace' and "Generate" otherwise — 'none' is an empty draft, which has nothing to re-run, so testing for 'generate' alone labels a fresh form wrongly. Disable only on 'none', and route the click through requestGenerateFields, which decides whether to ask first
   - confirmReplaceFields: boolean — the "replace the fields below?" confirmation is showing. Only ever raised for a generation over hand-written rows; a generated proposal nobody touched re-runs on the click
   - confirmDiscard: boolean — the "discard this model?" confirmation is showing
+  - hintEditorDirty: whether the open hint editor holds edits that closing would lose. What a discard guard reads: the rows come from the model’s declaration, so a schema has no set of local names it could test. Compares against the state the editor opened in, so an editor somebody only read closes without a question
 - Actions:
   - openShapeWizard(shapeRecordId?): opens the model wizard — empty for a new model, or pre-filled from a stored shape to edit it
   - cancelShapeWizard(): closes the wizard, discarding the draft
   - setShapeField(field: 'name' | 'description' | 'icon' | 'classHint', value): sets one top-level draft field
   - setIdentityMember(rowId): chooses which member identifies duplicates for AI extraction; 'none' clears it. At most one, which is why it is a picker rather than a per-row flag
+  - setExtractable(on: boolean): allows or refuses an AI extraction pass writing instances of the open draft. Its own action rather than a setShapeField case, because the value is a boolean and that field takes strings
   - addProperty(): appends an empty property (scalar field) row to the draft
   - addRelationship(): appends an empty relationship (edge to another model) row to the draft
   - removeMember(rowId): removes one member row
   - setMemberField(rowId, field, value): sets one field of one member row. 'options' takes the comma-separated string as typed
-  - reorderMembers(rowIds: string[]): applies a drag-reorder. Pair with we-sortable's onReorder and pass "$arg.detail" — order is the stored declaration order, not decoration
+  - reorderMembers(rowIds: string[]): applies a drag-reorder. Pair with we-sortable's onReorder and pass { $: "arg.detail" } — order is the stored declaration order, not decoration
   - toggleMemberExpanded(rowId): opens or closes one member's detail panel (hint, default, allowed values)
   - commitDraft(): publishes in-place edits to the draft signal. Typed fields are mutated without touching it so inputs keep focus, which leaves derived values stale — pair with onBlur on a field something else is computed from
   - replaceDraft(draft): replaces the whole draft — how the LLM flow hands a generated model to the same review path
@@ -2351,7 +2593,7 @@ ShapeStore:
   - saveShapeDraft(): validates, stores and adopts the draft. Errors land in draftErrors; success closes the wizard and the new entity becomes queryable via $query in this space
   - deleteShape(shapeRecordId): removes a model definition from the space. Existing entries keep their data; only the definition goes
   - openHintEditor(entity): opens per-space AI-hint tuning for an entity (core or space-defined)
-  - closeHintEditor(): closes the hint editor, discarding unsaved edits
+  - closeHintEditor(): closes the hint editor, discarding unsaved edits. Pair it with hintEditorDirty in a discardGuard rather than wiring it to a modal’s close directly
   - setHintDraft(key, value): sets one hint in the open editor — key is 'class' or a property predicate
   - saveHintEditor(): writes the hints to this space and marks them customized, so schema refreshes stop reverting them
   - resetHintEditor(): back to the declaration's hints; release improvements flow again
@@ -2359,35 +2601,66 @@ ShapeStore:
 ShellStore:
 - State:
   - activeShellView: string | null — id of the currently open shell overlay ('profile' | 'settings' | 'schema-tests' | 'landing-page'), or null
-  - takePendingPath: unknown
-  - createSpaceOpen: unknown
-  - dockGeometry: unknown
-  - contentInset: unknown
-  - dockResizing: unknown
-  - panelMaximised: unknown
-  - dockPlacement: unknown
-  - movingDock: unknown
-  - activeSnap: unknown
-  - snapTargets: unknown
-  - insertSlots: unknown
-  - activeInsert: unknown
+  - createSpaceOpen: boolean — the create-space modal is open. Shell state because more than one place opens it; bind the modal’s open prop to this and close it with setCreateSpaceOpen
+  - pendingDestructive: the destructive action a space template just asked for ({ path, title, body }), or null. The host raises its own confirmation in front of every one of them — a space template arrives from a stranger, so whether it asks before deleting is not the stranger's decision. Host chrome renders it; a template writing its own dialog for a destructive store action would be a second question about one click
+  - spaceSettingsOpen: boolean — the space-settings panel is open. It configures whichever space is open, so it needs no id; bind a launcher’s active state to this
+  - spaceSettingsTab: string — the tab the space-settings panel opens on ('about' | 'features' | 'vocabulary'). A starting position read once as the panel mounts, not a controlled value: somebody who then walks to another tab stays there. Set it by passing a tab to openSpaceSettings
+  - dockGeometry: Record<dockId, DockGeometry> — every registered panel's resolved box (top, left, width, height, edge, mode). Read a field as { $: "shellStore.dockGeometry['<id>'].<field>" } — by index, since a dock id holds a colon; the frame a panel is wrapped in binds its geometry this way so a move rewrites props rather than remounting
+  - contentInset: { top, right, bottom, left } in pixels — what the content viewport gives up to panels that displace it. Read it to keep your own fixed chrome clear of docked panels
+  - coveredInset: { top, right, bottom, left } in pixels — what FLOATING panels are covering. They take no room, so they leave contentInset at zero while still sitting over the content: this is the part of your own box the reader cannot see. Read it to keep something in the clear where contentInset would say there is nothing in the way
+  - dockResizing: boolean — a panel is being dragged or resized right now. Suspend transitions while it is true so the edge tracks the cursor
+  - panelMaximised: boolean — some panel covers the whole window. The app's own chrome — sidebar, module rail — hides while it is true; a template's fixed chrome should too
+  - dockPlacement: Record<dockId, { snap, displace, canDisplace, … }> — where each panel is parked, for its frame to read: which of the eight snaps it is at, whether it displaces content, and whether it may. The state a position menu ticks; dockGeometry is the resulting box
+  - movingDock: string | null — the id of the panel being dragged, or null. What mounts the snap-target overlay
+  - activeSnap: SnapPoint | null — the snap the moving panel would take if dropped now ('top-left' | 'top' | … | 'left'), so that target can light up
+  - snapTargets: { id, top, left, width, height }[] — every snap target’s box while a panel is being dragged, measured against the room left for it. A place a card is already parked at is left out: the question there has stopped being whether and started being where among what is there, which the insert slots answer. Empty otherwise
+  - insertSlots: { key, index, edge, lane, mode: 'band' | 'lane' | 'tab', top, left, width, height }[] — every place a dragged panel could land, while one is being dragged. 'band' offers a new lane at that distance inboard, 'lane' a new seat beside the panels in the lane it names, 'tab' the seat itself, to stack behind whatever is showing there. A 'tab' slot naming no edge is a floating panel offered as somewhere to stack. Empty otherwise
+  - activeInsert: string | null — the slot a drop would take right now, as that slot's `key`. Compare it against slot.key rather than rebuilding the string, which names four things
+  - dragGhost: { top, left, width, height, title } | null — the outline following the cursor while one TAB is dragged out of a stack. A panel is moved instead, and so is a whole stack — whose other tabs ride along hidden — so this is null for both of those and between drags
+  - layoutPinned: Record<string, boolean> keyed by panel id — whether that panel has been dragged away from where meta.panels declared it. False for a panel no layout mentions, since there is nothing to go back to. Gate a "reset to layout" affordance on it rather than on a placement merely existing
+  - layoutDirty: boolean — the interface on screen has been rearranged: one of its panels moved, resized or closed. What a whole-arrangement "reset layout" control is gated on, and not the same question as any layoutPinned entry — a closed panel has no placement, and a panel declared for another route is not among the docks at all. False for an interface declaring no panels
+  - panelSupplied: Record<moduleId, boolean> — modules whose panel this interface supplies itself, by declaring a `meta.panels` entry that names the module and carries a `node`. What a module's dock frame asks before drawing its own contents; the module still owns whether the panel is open and how big it is
+  - layoutNames: string[] — the arrangements saved for the interface on screen, by name, sorted. The three-rung chain has one user slot; these are how to keep more than one — a “recording” and a “reviewing” for the same template. Empty for an interface with none
+  - activeLayout: string — the saved layout the arrangement on screen is, or '' once anything has been moved since. Mark the matching row as selected
 - Actions:
   - openShellView(id: string, path?: string): opens a shell overlay by id, optionally at a route inside it — the overlay keeps its own memory router, so this never touches the browser URL
   - closeShellView(): closes the currently open shell overlay
-  - rememberShellPath(): unknown
   - setCreateSpaceOpen(open: boolean): opens or closes the create-space modal. Shell state rather than a page’s $localState because more than one place opens it — the settings page and the sidebar’s spaces group — and a page-scoped flag could only be set from inside that page
+  - confirmDestructive(): runs the destructive action the host is asking about. Host chrome only, for the reason pendingDestructive is: an action able to answer its own confirmation is the confirmation being skipped
+  - cancelDestructive(): refuses it. The waiting action resolves as though it had been blocked
+  - toggleSpaceSettings(): opens or closes the settings panel for the space on screen. What a gear in chrome should call — a control that is always present toggles, so a second press puts back what the first press changed
+  - openSpaceSettings(): opens that panel without closing it again. For a control that sits on the very fields it leads to (the About view’s pencil), where a toggle would break the promise to show them
+  - closeSpaceSettings(): closes the space-settings panel
   - scrollToId(id: string): smooth-scrolls the element with that DOM id into view
-  - beginDockResize(): unknown
-  - resizeDock(): unknown
-  - endDockResize(): unknown
-  - fitDock(): unknown
-  - beginDockMove(): unknown
-  - moveDock(): unknown
-  - endDockMove(): unknown
-  - snapDock(): unknown
-  - insertDock(): unknown
-  - toggleMaximiseDock(): unknown
-  - toggleDockDisplace(): unknown
+  - beginDockResize(id: string): remembers a panel's current size so the drag that follows is measured from it. Wire it to we-resize-handle's resizestart. For a divider between lane-mates it first makes every member's stored size what is on screen, so the boundary can then travel the whole lane
+  - resizeDock(id: string, side: 'left' | 'right' | 'top' | 'bottom' | 'top-left' | …, dx: number, dy: number): applies a resize drag from that side or corner, in screen pixels since it began. Wire it to resize with { $: 'arg.detail.delta' }
+  - resizeColumn(id, delta): moves the boundary between this panel and the next one in its lane, giving one what the other loses. What the earlier panel's trailing grip calls when it has a lane-mate — its bottom in a side lane, its right-hand edge in a top or bottom one. A boundary belongs to both panels, so only one of them draws it
+  - endDockResize(): ends the drag and persists the size
+  - fitDock(id: string): shrinks a panel to the shape its content wants, keeping the width the user chose — only when the module declares an aspect for its panel
+  - beginDockMove(id: string, pointerX: number, pointerY: number): begins moving a panel, remembering where it and the pointer started. A maximised panel shrinks back under the cursor
+  - raiseDock(id: string): brings a panel in front of the others — what a pointer landing on its frame does, and what a drag or maximising does on its own. The most recently raised panel is the one on top; nothing else decides stacking
+  - moveDock(id: string, dx: number, dy: number): applies a move, in pixels from where beginDockMove was called
+  - beginTabDrag(id: string, pointerX: number, pointerY: number): a press on one tab of a stack. Records only — a tab is a click until the pointer travels, and the panel does not leave its seat until the drop
+  - moveTab(id: string, dx: number, dy: number): past the drag threshold, shows where the tab would land. The tab itself stays put; only the guides follow
+  - endTabDrag(id: string, pointerX: number, pointerY: number): a press that went nowhere brings the tab forward; one that travelled lands it, or leaves it as a card under the pointer
+  - endDockMove(id: string): drops the panel — onto the snap or insert slot it is over, or where it is if that is nowhere
+  - resetDockToLayout(panelId: string): puts a panel back where meta.panels asked for it, forgetting where it was dragged. Forgets rather than rewrites, so the panel keeps following the layout afterwards — including when the template changes it. Pair with layoutPinned
+  - closeTemplatePanel(panelId: string): dismisses a panel the interface declared in meta.panels, by that panel's id. What its titlebar's close button calls
+  - openTemplatePanel(panelId: string): puts a closed one back. The only way back to a panel that has been closed — it has no titlebar left to ask from — so a template offering a close should offer this too
+  - resetTemplateLayout(): puts every panel of the interface on screen back the way meta.panels declared them, and reopens the ones that were closed. The whole-arrangement counterpart of resetDockToLayout, and the only way back for a closed panel, which has no titlebar to reset itself from. Scoped to the template rather than the route, so a declaration that varies by route is reset once. Pair with layoutDirty
+  - saveLayout(name: string): saves the arrangement on screen under a name — its panels’ placements, which tab of each seat is showing, and which panels are closed. Scoped to the template, as placements are. Replaces a layout of that name
+  - applyLayout(name: string): puts the arrangement back to a saved layout. What the layout does not mention returns to what meta.panels declared, exactly as a reset would leave it
+  - deleteLayout(name: string): forgets a saved layout
+  - snapDock(id: string, snap: SnapPoint): parks a panel at one of the eight positions from a menu — the keyboard's way to move it
+  - insertDock(id: string, edge: 'left' | 'right' | 'top' | 'bottom', position: number, mode?: 'band' | 'lane' | 'tab', lane?: number | 'float'): puts a panel on that edge, renumbering what it lands among — what a drop does. 'band' opens a lane of its own at that distance inboard; 'lane' takes a new seat at that position along the lane named by `lane` (a distance inboard, or 'float' for the floating one); 'tab' joins the seat at that position, stacking behind whatever is showing there
+  - toggleMaximiseDock(id: string): covers the content region with the panel, or goes back to being a card. Nothing about where the panel was is overwritten while it is on
+  - toggleDockDisplace(id: string): makes the panel push the content aside, or stop. A toggle rather than a setter because a menu item reports only that it was clicked
+  - toggleCollapseDock(id: string): folds a panel down to its titlebar, or opens it again. It keeps its place in its lane and its lane-mates take the room; the content is hidden, never unmounted. Refused where there is nowhere for that room to go — a sidebar alone on its edge, or the last open member of a lane. Read dockPlacement[id].canCollapse
+  - breakOut(panelId: string, x?: number, y?: number): takes a section out of the template and makes it a panel — floating under the pointer when given one, else at the snap its meta.panels entry named. Refused for a section declared `fixed`. Takes the panel's own id, not the dock id
+  - returnHome(panelId: string): puts a broken-out section back in the template at the outlet it came from. What the placeholder’s "Bring back" and the position menu’s "Return to page" call
+  - stackDockstackDock(id: string, position: number): stacks a panel onto a floating one so the two share a seat and a tab strip — what a drop into the middle of a float does. Two panels in open space are in no lane, so `position` indexes the floating panels a drop could land on rather than naming one
+  - insertHome(id: string, lane: string, position: number): drops a panel into a home lane at that position along it, renumbering the lane. Only a template's own sections land in one, and only where the lane's `accepts` allows
+  - saveArrangementAsTemplate(): saves the arrangement on screen as a template of your own — a copy of the schema with the resolved placements written into its meta.panels and nothing else changed. The explicit bridge from arranging to authoring. Resolves true on success. Pair with layoutDirty
 
 SpaceStore:
 - State:
@@ -2401,6 +2674,7 @@ SpaceStore:
   - sharedSpaces: array of Space objects (shared/neighbourhood spaces; all Space fields)
   - spaceList: { uuid, name, description, avatar, kind: 'shared' | 'personal' | 'foreign', isWeSpace, canAdminister }[] — one row per joined dataset the agent can act on, ordered like the sidebar and excluding the system datasets. Includes datasets that are not WE spaces (kind 'foreign', isWeSpace false), which are waiting to be initialized. `uuid` is the dataset id, so it keys navigation and settings whether or not a Space record exists
   - routeSpaceUnjoined: boolean — the current route points at a space this agent has not joined, as a settled fact. What a join gate should read: `currentDataset` being null is also true for the first frames of a refresh, so gating on that flashes a join prompt at someone already inside. False while the answer is still unknown
+  - spacePath: string — the path a space's own pages hang off (`/space/<segment>`), empty outside a space. What a link to one record is built from: an href has to be absolute, since a browser resolves a relative one against the current URL rather than against the route tree, and the segment is the neighbourhood CID for a shared space and the dataset id for a personal one — only the URL says which
   - creatingSpace: boolean (true while a new space is being created)
   - joiningSpace: string — the shared id of the space a join is running for, '' when none is. The id rather than a flag so a list can spin only the row being joined; a gate compares it against its own route segment. Stays set for the whole join, which outlives the network call that starts it
   - joinSlow: boolean — that join has been going long enough to be worth mentioning. Joining a shared space has to fetch and install it before it exists anywhere, so a first join routinely takes a minute; pair with joiningSpace to say so instead of spinning in silence
@@ -2408,7 +2682,7 @@ SpaceStore:
   - orderedSidebarItems: array of sidebar items in user-defined order (uuid, name, avatar, spaceId) — personal + shared spaces merged
   - foreignSpacePrefill: { name, description, avatar } | null — detected from a foreign app's own model (e.g. Flux's Community) for prefilling the "Initialize as WE space" gate; null once the perspective is a WE space or no recognized foreign model is found
   - enabledModules: string[] — ids of the feature modules THIS SPACE has turned on: the community’s decision, shared with every member. An unset value means "not decided", not "none": it falls back to every registered module, so spaces predating the setting keep the chrome they had
-  - templateOverrideOptions: { label, value }[] — options for the per-space template override picker: "Use the space’s default" (space-default), "Use my default" (agent-default), then every template. Each of the first two names what it resolves to. Pre-built because a schema can $map a store array into options but cannot prepend one, and without those entries overriding would be one-way
+  - templateOverrideOptions: { label, value }[] — options for the per-space template override picker: "Use the space’s default" (space-default), "Use my default" (agent-default), then every template. Each of the first two names what it resolves to. Pre-built because a schema can map a store array into options but cannot prepend one, and without those entries overriding would be one-way
   - themeOverrideOptions: { label, value }[] — the same, for themes
   - spaceThemePinned: boolean — this agent has pinned a theme for the space on screen that differs from what would otherwise apply, so there is something for a reset to undo. False outside a space, and false for a pin that happens to name what the space resolves to anyway. Gate a "pinned here / reset" affordance on it rather than on the pin merely existing
   - installedModules: string[] — ids of the feature modules THIS AGENT wants available anywhere. Personal, held in the root dataset; unset means "not decided" and falls back to every registered module
@@ -2416,18 +2690,23 @@ SpaceStore:
   - missingModules: string[] — of those, the ones this agent has not installed. Non-empty means the template is mounting a component nothing provides, so part of the page silently renders nothing. Empty in the ordinary case
   - activeModules: string[] — what actually renders here for this agent: registered ∩ installed ∩ enabled, less the modules muted in this space. Module chrome and the launcher rail gate on this; enabledModules alone is not sufficient
   - moduleInstallSettings: { id, name, description, icon, installed, surface, switchable }[] — every registered module and whether this agent wants it anywhere. The global Settings → Modules list, and the only place an 'app' or 'capability' module is decided about: a contribution is gated at the layer where it renders, and only 'chrome' renders inside a space. `surface` is derived from what the module contributes. Its per-space counterpart is `modules` on each spaceList row, which carries enabled/installed/visible/active together and lists chrome modules only
-  - moduleLaunchers: { id, icon, label, active }[] — launchers for the modules enabled here and available in this space; what the host module rail renders. Pair with { $action: "spaceStore.launchModule", args: ["$mod.id"] }
-  - spaceViews: unknown
-  - routableViews: unknown
-  - enabledViewIds: unknown
-  - viewNav: unknown
-  - mutedDids: unknown
-  - mutedAgents: unknown
-  - readMarkers: unknown
-  - unreadNodeIds: unknown
-  - myMentions: unknown
-  - autoInterpret: unknown
-  - shareExtractionDetail: unknown
+  - moduleLaunchers: { id, icon, label, active }[] — launchers for the modules enabled here and available in this space; what the host module rail renders. Pair with { $action: "spaceStore.launchModule", args: [{ $: "mod.id" }] }
+  - spaceViews: ResolvedView[] — this space's sections resolved: which view renders at which segment, in the space's order, each carrying its schema. The host builds the route tree from it; a nav strip reads viewNav, which is this without the payload
+  - routableViews: ResolvedView[] — every view that could render here, at its permanent segment — what routes are built from. Separate from spaceViews because it changes when a view is installed, not when a switch is flicked
+  - enabledViewIds: string[] — ids of the sections the community has turned on here. What a route body is gated on; not the nav list, which also drops this agent's hidden ones — hiding a section for yourself must not make its URL refuse you
+  - viewNav: { id, segment, label, icon, path }[] — the sections as a nav strip reads them: enabled by the community, minus those this agent hid, in order. One source with the routes, so nav and routes cannot disagree
+  - mutedDids: string[] — DIDs this agent has muted, everywhere. Private, held in the root dataset. A feed filters on it before rendering: { $: '!(post.author in spaceStore.mutedDids)' }. Hides on this screen only — a neighbourhood is writable by every member, so nothing here removes anything for anyone else
+  - mutedAgents: MutedAgent[] — the full mute records (did, description), for a settings list that wants the note as well as the DID
+  - readMarkers: { nodeId, lastReadAt }[] — when this agent last read each node. No row means never read, so everything is unread. Read with find(spaceStore.readMarkers, { nodeId: item.id }); a keyed map would not be indexable by a row
+  - unreadNodeIds: string[] — ids of the containers in this space holding something newer than this agent's marker for them, or never read. What an unread dot reads: { $: 'channel.id in spaceStore.unreadNodeIds' }. Ids rather than counts, since a count needs every child's timestamp
+  - myMentions: { id, author, createdAt }[] — nodes in this space that mention this agent, newest first. createdAt is the backend’s comparable timestamp. Filtered client-side, so right for a space and wrong for an inbox across many
+  - spaceModuleSettings: SettingRow[] — what each capability that declares settings is set to FOR THIS COMMUNITY, as rows a screen renders directly: { group, groupLabel, key, label, description, type, options, value, source, set, locked, lockedBy }. `value` is already resolved across every level that had an opinion; `source` names the level that decided it ('default' when nobody did); `set` says whether THIS level holds an opinion, so a reset has something to undo; `locked` says a level that BINDS this one has forced it and the control must be disabled rather than springing back — a member's private refusal does not bind the community, so it never locks this list. Built from what modules declare, so a module that adds a setting gets a control with nothing to register
+  - myModuleSettings: SettingRow[] — the same rows, for what THIS AGENT has decided in THIS space. Private, held in the root dataset. The most specific of the four levels
+  - agentModuleSettings: SettingRow[] — the same rows, for what THIS AGENT has decided everywhere. Private. Render it in global settings, where the question is what you want in every space
+  - autoInterpret: boolean — whether this space has calls interpreted (extracted into records) as they happen. A community decision, off by default. Readable by every member; writing it is space-settings
+  - shareExtractionDetail: boolean — whether extraction passes in this space broadcast their prompt and response to every member, so interpretationStore.activity rows carry detail for everyone. A community decision, off by default
+  - extractionTargets: string[] — the models a call in this space starts out extracting. The middle of three layers: shapeStore.extractionCandidates says what COULD be extracted, this says which of them a call begins with, and the call's own participants add or remove from there (modules.transcribe.extractionTargets). Unset falls back to the two classes that were hardcoded before the setting existed, so no space silently stops extracting. Writing it is space-settings
+  - canAdministerCurrentSpace: boolean — whether this agent may change what every member of the space on screen sees. The readable form of canAdministerSpace, which an expression cannot call. Gate an admin-only control on this rather than on `x.author == me.did`, which asks who made the row and not who runs the space
 - Actions:
   - createSpace(name, description, access: 'personal' | 'shared', discovery: 'hidden' | 'listed', avatarFile?, coverImageFile?, location?): creates a new space with full setup
   - joinSpace(id: string, focus = true): joins a shared space by share link, neighbourhood URL or CID, or focuses it if already joined. Pass focus: false to join without navigating there — for a caller that needs the dataset present rather than open, which is how the marketplace reads its own dataset without moving you out of the space you are in. Rejects when the join could not be completed, so onSuccess means what it says; watch joiningSpace/joinSlow/joinError for what to show while it runs. A join whose network call times out keeps going: the backend usually finishes anyway, and this waits for that before believing the failure
@@ -2435,10 +2714,10 @@ SpaceStore:
   - removeSpace(uuid: string): removes a space — clears its global-discovery listing (when authored by this agent) and removes the backing dataset
   - createPost(editorState: unknown): creates a new post
   - updatePost(postId: string, editorState: unknown): reconciles an edited post against its existing blocks — updates/reuses blocks whose id survived the edit, creates new ones, deletes ones no longer present
-  - moveChild(): unknown
-  - setAttending(): unknown
-  - setAgentMuted(): unknown
-  - markRead(): unknown
+  - moveChild(childId: string, fromId: string, toId: string): moves a child between two collections — a card between kanban columns. Relinks the two children edges; the child itself is untouched
+  - setAttending(nodeId: string, attending: boolean): joins or leaves a node's participant roster — an RSVP. Writes only this agent's own entry, so the roster stays conflict-free. Boolean, so a switch can pass `event.detail` bare
+  - setAgentMuted(did: string, muted: boolean, description?: string): mutes or unmutes an agent for this agent everywhere, with an optional note. Positively phrased so a switch can pass `event.detail` bare
+  - markRead(nodeId: string, spaceUuid?): marks a node read as of now, so it leaves unreadNodeIds. Silent on failure — a lost marker is a stale dot, not an error
   - uploadFile(file: File, name?: string): stores a file and returns the URL to reference it by, or null. Images are compressed on the way through. For a template doing its own media UI — without it, only the block composer could accept an upload
   - deleteCollection(collectionId: string): permanently deletes a CollectionBlock and everything inside it, recursively. Kind-agnostic — a post, a call record and a notes collection are the same shape, so this is the one delete for all of them
   - updateSpaceImage(field: "avatar" | "coverImage", imageFile: File, spaceUuid?): uploads and sets the space avatar or cover image
@@ -2446,29 +2725,36 @@ SpaceStore:
   - setSpaceDefaultTemplate(templateId: string, spaceUuid?): sets the template members see when they enter that space. Only repaints the app when the target is the space currently on screen
   - setSpaceDefaultTheme(themeId: string, spaceUuid?): sets the theme members see when they enter that space
   - setModuleEnabled(moduleId: string, enabled: boolean, spaceUuid?): turns a feature module on or off for a space; writes the resolved list, so the first toggle also pins whatever was on by fallback. Omit spaceUuid for the space on screen
-  - setAutoInterpret(): unknown
-  - setShareExtractionDetail(): unknown
+  - setSpaceModuleSetting(group: string, key: string, value?, spaceUuid?): sets one of a capability's settings for everyone in a space — `group` is the module id and `key` the setting's key, both off the row. **Omit `value` to clear it**, which returns the level to having no opinion: a stored value that happens to equal the default goes on overruling everything less specific while its control reads as untouched. Omit spaceUuid for the space on screen
+  - setMyModuleSetting(group: string, key: string, value?, spaceUuid?): the same, for this agent in one space. Private — written to the root dataset, never to the space. Omitting `value` clears it
+  - setAgentModuleSetting(group: string, key: string, value?): the same, for this agent in every space. Private, and global, so there is no space to name. Omitting `value` clears it
+  - autoInterpretForCall(collectionId): whether ONE CALL is extracted as it happens — its participants' answer if they gave one, else the space's. A function rather than a value because the answer is per call, like canAdministerSpace
+  - setAutoInterpretForCall(collectionId, on) => turns automatic extraction on or off for ONE CALL, for everyone in it. A participant's decision, unlike setAutoInterpret, which administers the space — and it leaves the space's default alone. Does not stop a pass already running: those tokens are spent
+  - setAutoInterpret(enabled: boolean, spaceUuid?): turns automatic call interpretation on or off for a space. Omit spaceUuid for the space on screen
+  - setShareExtractionDetail(enabled: boolean, spaceUuid?): turns broadcasting of extraction prompts and responses on or off for a space. Omit spaceUuid for the space on screen
+  - setExtractionTarget(entity: string, on: boolean, spaceUuid?): adds or removes one model from what this space's calls start out extracting. Writes the resolved list, so the first toggle also pins whatever was on by fallback. The community's decision; a call's participants override it per call
   - setModuleInstalled(moduleId: string, installed: boolean): turns a module on or off for this agent in every space. Personal — writes AgentSettings.installedModules in the root dataset, so no other member sees it
-  - setModuleVisible(moduleId: string, visible: boolean, spaceUuid?): shows or hides a module for this agent in one space, without changing what the community runs. Private: written to the root dataset, never to the space. Phrased positively so a switch can pass `$event.detail` bare — wrapping it in an operator such as `$not` would evaluate at render time and send a constant
-  - setViewEnabled(): unknown
-  - reorderViews(): unknown
-  - setViewVisible(): unknown
-  - setSpaceTemplateOverride(templateId: string, spaceUuid?): sets the template THIS AGENT sees in one space, overriding the community's default. Three values: 'space-default' follows the space, 'agent-default' follows your own global default (tracking later changes to it), or a concrete template id pins that one. Private, and applied immediately when that space is the one on screen. Note the sentinels are named values, not '' — the ORM skips empty strings on update, so '' cannot clear a property
+  - setModuleVisible(moduleId: string, visible: boolean, spaceUuid?): shows or hides a module for this agent in one space, without changing what the community runs. Private: written to the root dataset, never to the space. Phrased positively so a switch can pass `event.detail` bare — wrapping it in another token would evaluate at render time and send a constant
+  - setViewEnabled(viewId: string, enabled: boolean, spaceUuid?): adds or removes a section from a space. The community’s decision — every member sees it. Omit spaceUuid for the space on screen
+  - reorderViews(viewIds: string[], spaceUuid?): sets the whole section order at once — what a drag-reorder writes. Pair with we-sortable's onReorder
+  - setViewVisible(viewId: string, visible: boolean, spaceUuid?): shows or hides a section for this agent in one space, without changing what the community has. Private. Positively phrased so a switch can pass `event.detail` bare
+  - setSpaceTemplateOverride(templateId: string, spaceUuid?): sets the template THIS AGENT sees in one space, overriding the community's default. Three values: 'space-default' follows the space, 'agent-default' follows your own global default (tracking later changes to it), or a concrete template id pins that one. Private, and applied immediately when that space is the one on screen. The sentinels are named values rather than '' because they are three distinct meanings, and only one of them is no value at all
   - setSpaceThemeOverride(themeId: string, spaceUuid?): sets the theme THIS AGENT sees in one space. Same three values as setSpaceTemplateOverride. Private
-  - applyTheme(themeId: string): applies a theme where the agent is — pinned to the space on screen, or set as their global default when there is no space. What a theme picker in chrome should call: it persists, where setCurrentTheme only sets a signal that the next resolution overwrites. Which of the two it does is decided at click time, so a schema cannot express it with $if (whose args resolve at render time)
+  - applyTheme(themeId: string): applies a theme where the agent is — pinned to the space on screen, or set as their global default when there is no space. What a theme picker in chrome should call: it persists, where setCurrentTheme only sets a signal that the next resolution overwrites. Which of the two it does is decided at click time, against state a schema cannot see
   - clearSpaceThemePin(): drops this agent’s theme pin for the space on screen, returning it to whatever would otherwise apply. The way back out of applyTheme, so the picker need not spell the FOLLOW_SPACE sentinel as a literal. Pair with spaceThemePinned
   - launchModule(moduleId: string): invokes that module's declared launcher action. Takes an id rather than a path because $action resolves a literal string, so a rail iterating over modules cannot build modules.<id>.<method> itself
   - createSignalType(config: Partial<SignalType>): creates a new signal type in the community; slug auto-derived from name if blank
-  - createRelationshipType(): unknown
+  - createRelationshipType(config: Partial<RelationshipType>): names a kind of connection this community makes — "contradicts", "came out of". The counterpart to createSignalType; slug derived from name if blank
+  - setSignalTypeRetired(signalTypeId: string, retired: boolean): withdraws a signal type from use, or brings it back. Never deletes the signals given with it — a signal names its type by record id while templates resolve it by slug, so DELETING a type strands every reaction ever given and re-creating one with the same slug does not restore them. Retiring is the reversible version: the type stops being offered, existing counts keep working, and un-retiring brings everything back. Filter the offered list with OFFERED_SIGNAL_TYPES from @we/template-kit; leave find()-by-slug unfiltered so history still resolves
   - upsertSignal(nodeId: string, signalTypeId: string, value: number): adds or updates a signal on a node; value=0 deletes it
   - navigateToSpace(spaceId: string, view?: string): navigates to a space — accepts a perspective UUID or a neighbourhood CID (sharedUrl without the neighbourhood:// prefix); pre-loads space templates before switching so the template and data arrive together
-  - canAdministerSpace(uuid: string): whether this agent may change what every member of that space sees — true for a personal space, and for a shared one they authored. A UI affordance for deciding whether to offer the controls, NOT enforcement: a shared space is a neighbourhood every member can write to. Ask by name rather than comparing author to $me.did, so the answer can grow (multiple admins, roles) without every template changing
+  - openRecordRef(ref: string): goes to whatever a record reference names — the space, and the record's own page within it. Takes the whole `we:…` reference rather than its parts, so nothing outside the host restates where a record's page lives. A reference naming only a dataset opens the space; a relative one (`we:./…`) resolves against the space on screen; a person has no page, so nothing happens
+  - canAdministerSpace(uuid: string): whether this agent may change what every member of that space sees — true for a personal space, and for a shared one they authored. A UI affordance for deciding whether to offer the controls, NOT enforcement: a shared space is a neighbourhood every member can write to. Ask by name rather than comparing author to me.did, so the answer can grow (multiple admins, roles) without every template changing
   - copyShareLink(uuid: string): copies that space's share link to the clipboard, with a toast either way. No-op for a personal space, which has no global id and so no shareable link — read `spaceList[].shareLink` to decide whether to offer the control at all
+  - copyGuestLink(uuid: string): copies that space's guest invite link — a URL that creates an account on the space's host and joins, with no sign-up and no download. Empty, and the control hidden, unless BOTH this app's origin and the node's URL are addresses a recipient could reach: a loopback address on either half resolves to the reader's own machine. Read `spaceList[].guestLink` to decide whether to offer it; `shareLink` is the one for somebody who already has WE
   - getSubgroupMessages(subgroupId: string): messages belonging to one of Flux's conversation subgroups, fetched on demand. A dialect query against a foreign schema rather than a WE model, so it goes through the backend's interop surface instead of $query — which is why it is a store method and not a relation you can drill into
   - exportCallTranscript(callId: string): writes the call's transcript to a .txt file (one line per utterance: name, timestamp, text) and downloads it. Read-only and client-side — it reads the shared record and writes to the caller's own device
-  - removeSpaceFromGlobal(): unknown
-  - updateSpaceInCache(): unknown
-  - loadSpaces(): unknown
+  - removeSpaceFromGlobal(spaceUuid: string): withdraws a space's listing from the global discovery space, leaving the space itself alone. Only its author may; removeSpace does this for you
 
 TemplateStore:
 - State:
@@ -2478,38 +2764,31 @@ TemplateStore:
   - myTemplates: array of TemplateSchema objects — user's installed custom templates only (excludes built-in and space templates)
   - allTemplates: array of TemplateSchema objects — union of built-in + personal + space templates
   - templateManagementList: TemplateManagementItem[] — flat list of all templates with management metadata (id, name, icon, description, isBuiltIn, isInstalled, isDefault)
-  - switcherGroups: TemplateSwitcherGroup[] — pre-grouped flat items for the template switcher UI; each group has { label: string, items: { id, name, icon }[] }. Groups: "Space templates", "My templates", "Built-in". Use $filter where: { name: { contains: ... } } for search since items have a flat name field.
-  - currentSwitcherId: unknown
+  - switcherGroups: TemplateSwitcherGroup[] — pre-grouped flat items for the template switcher UI; each group has { label: string, items: { id, name, icon, editable }[] }. Groups: "Space templates", "My templates", "Built-in". Use filter(group.items, { name: { contains: local.search } }) for search since items have a flat name field. `editable` says whether editing THAT row would open a session that can be saved — gate a per-row edit control on it rather than on editorStore.isReadOnly, which answers for whichever template is currently rendered and so gives every row the same verdict.
+  - currentSwitcherId: string — the id the template switcher should show as selected. The switcher's own spelling of the current template: it differs from currentTemplate.id while a space override or a preview is in effect
   - currentTemplate: TemplateSchema (the active template)
-  - loading: unknown
-  - defaultTemplateId: unknown
-  - operationLoading: unknown
+  - loading: boolean — the template lists are still being read. Gate empty states on it
+  - defaultTemplateId: string — id of the agent's preferred default template, used where no space or override decides. Persisted to AgentSettings.defaultTemplateId
+  - pendingInstall: the template an install dialog is showing ({ marketplaceId, destination, name, icon, version, capabilities, blocked }), or null when none is open. `capabilities` is already in the words a person reads. Host chrome renders it: a dialog vouching for a template must not be drawn by a template
+  - operationLoading: string | null — the id of the template operation in flight, namespaced by kind ('marketplace-install:<id>', 'space-install:<id>'), or null. A key rather than a boolean so one row's spinner does not appear on every row
 - Actions:
-  - provideSpaceLookup(): unknown
-  - updateTemplate(newTemplate: TemplateSchema): updates the current template
-  - replaceTemplate(): unknown
   - switchTemplate(newTemplateId: string): switches to another template
   - removeTemplate(): removes the current template
-  - deleteTemplate(): unknown
-  - installTemplate(): unknown
-  - uninstallTemplate(): unknown
-  - installFromMarketplace(): unknown
-  - installToSpace(marketplaceTemplateId: string): copies a marketplace template into the current space, so every member of that community gets it — as opposed to installing it for yourself. Pair with templateStore.operationLoading to show progress on the row being installed
-  - toggleInstalled(): unknown
-  - setDefaultTemplate(): unknown
+  - deleteTemplate(templateId: string): permanently deletes a custom template from the library
+  - installTemplate(templateId: string): marks an installed custom template visible in the pickers
+  - uninstallTemplate(templateId: string): hides a custom template from the pickers without deleting it. The counterpart of installTemplate
+  - installFromMarketplace(marketplaceTemplateId: string): copies a marketplace template into your own library. A personal act — use installToSpace to give the community a template. Asks first: the template is fetched and inspected, and the host raises a dialog naming what it will be able to do. Nothing is written until that is confirmed, so treat this as "start an install", not "install"
+  - installToSpace(marketplaceTemplateId: string): copies a marketplace template into the current space, so every member of that community gets it — as opposed to installing it for yourself. Asks first, exactly as installFromMarketplace does. Pair with templateStore.operationLoading to show progress on the row being installed
+  - confirmInstall(): installs what the dialog is showing. Host chrome only, for the same reason pendingInstall is: a template able to call this is the disclosure being skipped
+  - cancelInstall(): closes the install dialog without installing
+  - toggleInstalled(templateId: string): installs or uninstalls by id — what the settings list’s switch calls. Prefer installTemplate/uninstallTemplate where the switch can pass its value
+  - setDefaultTemplate(templateId: string): sets the agent's preferred default template (persists to AgentSettings.defaultTemplateId)
   - saveTemplate(name: string): saves the current template
-  - saveTemplateAs(): unknown
-  - publishToSpace(): unknown
-  - deleteMarketplaceTemplate(): unknown
-  - publishToMarketplace(): unknown
-  - persistCurrentTemplate(): unknown
-  - preloadSpaceTemplates(): unknown
-  - loadSpaceTemplates(): unknown
-  - refreshSpaceTemplates(): unknown
-  - clearSpaceTemplates(): unknown
-  - isBuiltInTemplate(): unknown
-  - isInstalled(): unknown
-  - getTemplateModel(): unknown
+  - saveTemplateAs(schema: TemplateSchema, destination?: 'root' | 'space'): saves a schema as a new template in your library or in the current space. Resolves true on success. The editor's fork path; prefer editorStore.startFork from chrome
+  - publishToSpace(perspectiveUuid: string, spaceName: string): copies the current template into that space, so its members get it. Resolves true on success
+  - deleteMarketplaceTemplate(templateId: string): removes a template this agent published from the marketplace. Only its author may
+  - publishToMarketplace(options: { name, description, icon?, themeId?, slug?, screenshots: File[] }): publishes the current template to the marketplace under those details. Resolves true on success
+  - refreshSpaceTemplates(): re-reads the current space's templates. The list follows the space on its own; call this after a publish the subscription might have missed
 
 ThemeStore:
 - State:
@@ -2522,73 +2801,66 @@ ThemeStore:
   - currentTheme: ThemeData — the currently active theme object (id, name, icon, origin)
   - defaultThemeId: string — id of the user's preferred default theme (used for bootscreen, shell, and future space-override). Persisted to AgentSettings.defaultThemeId
   - themeManagementList: ThemeManagementItem[] — flat list of all themes (built-in + all custom) with management metadata (id, name, icon, isBuiltIn, isInstalled, isDefault)
-  - editingTheme: unknown
+  - editingTheme: EditingTheme | null — the theme being edited (id, name, icon, overrides, css, basePreset) or null when no theme editing session is open. Its non-nullness is what mounts the theme editor
   - operationLoading: string | null — the id of the theme operation currently in flight, namespaced by kind (e.g. 'marketplace-install:<themeId>'), or null when idle. A key rather than a boolean so one row's spinner does not appear on every row — compare it against the row you are rendering
-  - focusedRole: unknown
-  - systemThemes: unknown
-  - systemThemeOptions: unknown
-  - themeScope: unknown
-  - themeScopePreference: unknown
-  - themeScopeGlobal: unknown
-  - themeScopePreviewing: unknown
-  - templateThemePending: unknown
-  - useTemplateTheme: unknown
-  - activeTemplateTheme: unknown
-  - saveEditingTheme: unknown
+  - focusedRole: string — the kebab-case role the theme editor should scroll to ('surface-sunken'), or empty. Set by whatever sent somebody to the panel — the inspector's role readout — and re-announced on every set, so pressing the same chip twice scrolls twice
+  - systemThemes: { light, dark, resolved } — which two themes 'Follow system' chooses between. light/dark are the ids as chosen, empty for a side left at the built-in; resolved is 'light' | 'dark', whichever the OS is asking for now
+  - systemThemeOptions: { label, value }[] — options for either side of the Follow-system pair, with a "Built-in" entry a schema could not prepend itself
+  - themeScope: 'global' | 'scoped' — what actually applies right now: the theme editor's session preview if one is active, else the agent's preference
+  - themeScopePreference: 'global' | 'scoped' — the agent's persisted choice
+  - themeScopeGlobal: boolean — the preference as a boolean, for a switch to bind to
+  - themeScopePreviewing: boolean — a theme being edited is previewing a different scope, so the preference is temporarily masked. Worth saying so beside the setting
+  - templateThemePending: boolean — the template's suggested theme cannot be resolved yet and might still arrive. Hold what is on screen rather than painting a fallback while it is true
+  - useTemplateTheme: boolean — whether a template may bring the theme it was designed for (meta.themeId). Defaults on; one condition in the resolver rather than a setting to unwind, so turning it off restores whatever would otherwise apply immediately
+  - activeTemplateTheme: ThemeData | null — the theme the scoped template wrapper renders: the theme being edited if there is one, else the space's. Null in global mode, where the template inherits the document's theme
 - Actions:
-  - registerHistoryCallbacks(): unknown
-  - applySnapshot(): unknown
   - setCurrentTheme(themeId: string): sets and persists the active theme
   - setDefaultTheme(themeId: string): sets the preferred default theme (persists to AgentSettings.defaultThemeId)
-  - focusRole(): unknown
-  - setSystemTheme(): unknown
-  - setThemeInstalled(themeId: string, visible: boolean): shows or hides a custom theme in the pickers; does not delete it. Takes the value rather than toggling, so a `we-switch` can pass `$event.detail` straight through
+  - focusRole(role: string): asks the theme editor to reveal a role, kebab-case as a schema spells it. Pair with editorStore.openThemePanel so there is a panel to scroll
+  - setSystemTheme(polarity: 'light' | 'dark', themeId: string): sets one side of the Follow-system pair. An empty id returns that side to the built-in
+  - setThemeInstalled(themeId: string, visible: boolean): shows or hides a custom theme in the pickers; does not delete it. Takes the value rather than toggling, so a `we-switch` can pass `event.detail` straight through
   - previewThemeScope(scope: 'global' | 'scoped' | null): previews a scope for the current theme-editing session without writing the preference; null drops the preview. Cleared when editing ends
-  - setThemeScopeGlobal(global: boolean): persists whether a space's theme covers the whole window (true) or only the space's own content (false, the default). Takes a boolean because a switch emits one and a schema cannot map it to a string — `$if` in an action's args resolves at render time, before the event exists
-  - setUseTemplateTheme(): unknown
-  - replaceTheme(): unknown
-  - restorePersonalTheme(): unknown
-  - clearSpaceTheme(): unknown
-  - startEditing(): unknown
-  - changeBasePreset(): unknown
-  - updateEditingOverrides(): unknown
-  - updateEditingCss(): unknown
-  - updateEditingMeta(): unknown
-  - cancelEditing(): unknown
-  - createAndStartEditing(): unknown
-  - saveEditingThemeAs(): unknown
+  - setThemeScopeGlobal(global: boolean): persists whether a space's theme covers the whole window (true) or only the space's own content (false, the default). Takes a boolean because a switch emits one; an expression over event in the args is evaluated when the switch fires, so pass `event.detail` bare
+  - setUseTemplateTheme(enabled: boolean): persists whether templates may bring their own theme. Boolean, so a switch can pass `event.detail` bare
+  - startEditing(themeId?: string): opens a theme editing session on that theme, or on the current one. Prefer editorStore.enterThemeEditing, which also opens the panel
+  - changeBasePreset(preset: string | undefined): while editing, swaps the base preset the theme builds on — takes its polarity and lightness range and repopulates the controls from the preset's computed CSS
+  - updateEditingOverrides(overrides: Partial<ThemeOverrides>): while editing, merges parameter changes (hues, saturation, lightness range, role pins) into the draft. Applied live
+  - updateEditingCss(css: string): while editing, replaces the draft’s raw CSS layer. Applied live
+  - updateEditingMeta(fields: { name?, icon? }): while editing, renames or re-icons the draft
+  - cancelEditing(): ends the editing session and discards the draft, restoring what was applied before. Note the theme *panel* autosaves on unmount, so closing the panel keeps the draft — this is the explicit throw-away, and the only path that does
+  - createAndStartEditing(name: string, icon: string, sourceId?: string, destination?: 'personal' | 'space'): creates a new theme — copied from sourceId when given — and opens an editing session on it. Resolves true on success
+  - saveEditingTheme(): writes the draft over the theme being edited and keeps editing. Resolves to the saved theme, or null when nothing was being edited
+  - saveEditingThemeAs(name: string, icon: string): writes the draft as a new theme under that name, leaving the original untouched
   - deleteTheme(themeId: string): permanently deletes a custom theme
   - installFromMarketplace(marketplaceThemeId: string): installs a marketplace theme into your own library (installedThemes). A personal act — use installToSpace to give the community a theme
   - installToSpace(marketplaceThemeId: string): copies a marketplace theme into the current space, so every member of that community gets it. The counterpart to templateStore.installToSpace. Pair with themeStore.operationLoading to show progress on the row being installed
   - uninstallTheme(themeId: string): removes an installed theme (deletes the model)
-  - deleteMarketplaceTheme(): unknown
-  - publishToMarketplace(): unknown
-  - publishToSpace(): unknown
-  - loadInstalledThemes(): unknown
-  - refreshSpaceThemes(): unknown
-  - requestNamedThemes(): unknown
+  - deleteMarketplaceTheme(themeId: string): removes a theme this agent published from the marketplace. Only its author may
+  - publishToMarketplace(options: { name, description, icon?, slug?, screenshots: File[] }): publishes the current theme to the marketplace under those details. Resolves true on success
+  - publishToSpace(perspectiveUuid: string, spaceName: string): copies the current theme into that space, so its members get it. Resolves true on success
+  - refreshSpaceThemes(): re-reads the current space's themes. The list follows the space on its own; call this after a publish the subscription might have missed
 
-Model:
+Record:
 - State:
 - Actions:
-  - create(): unknown
-  - update(): unknown
-  - delete(): unknown
+  - create(entity: string, fields: object, options?: { perspective?: string }): creates a record in the current space, or in the dataset a store path names ('datasetStore.rootDataset' for we-root entities). See "Record mutations via $action" above
+  - update(entity: string, id: string, fields: object, options?: { perspective?: string }): updates the named fields of one record, leaving the rest
+  - delete(entity: string, id: string, options?: { perspective?: string }): deletes one record. Irreversible
 
 ---
 
 ## Store Usage Patterns
 
-Reading state:
-{ "$store": "storeName.property" }
-Example: { "$store": "routeStore.currentPath" }
+Reading state — an expression naming the store:
+{ "$": "storeName.property" }
+Example: { "$": "routeStore.currentPath" }
 
 Calling actions:
 { "$action": "storeName.method", "args": [...] }
 Example: { "$action": "routeStore.navigate", "args": ["/home"] }
 
 Feature-module stores:
-{ "$store": "modules.<moduleId>.<key>" } and { "$action": "modules.<moduleId>.<method>" }
+{ "$": "modules.<moduleId>.<key>" } and { "$action": "modules.<moduleId>.<method>" }
 Each installed feature module publishes its store under its own id — modules.call.tiles,
 modules.notes.open, modules.transcribe.pending. Which ids exist depends on the deployment's seed,
 so these are not listed in the Stores section below and are never checked against a known-member
@@ -2597,17 +2869,17 @@ list. A reference to a module that is not installed simply resolves to nothing.
 Iterating over store data:
 {
   "type": "$each",
-  "props": { "items": { "$store": "spaceStore.personalSpaces" }, "as": "space" },
+  "props": { "items": { "$": "spaceStore.personalSpaces" }, "as": "space" },
   "children": [
     {
       "type": "we-button",
       "props": {
         "variant": "ghost",
-        "onClick": { "$action": "routeStore.navigate", "args": [{ "$concat": ["/space/", "$space.uuid"] }] }
+        "onClick": { "$action": "routeStore.navigate", "args": [{ "$": "`/space/${space.uuid}`" }] }
       },
       "children": [
-        { "type": "we-avatar", "props": { "image": "$space.avatar", "initials": "$space.name", "size": "sm" } },
-        { "type": "we-text", "children": ["$space.name"] }
+        { "type": "we-avatar", "props": { "image": { "$": "space.avatar" }, "hash": { "$": "space.uuid" }, "initials": { "$": "space.name" }, "size": "sm" } },
+        { "type": "we-text", "children": [{ "$": "space.name" }] }
       ]
     }
   ]
@@ -2617,19 +2889,14 @@ Conditional rendering from store:
 {
   "type": "$if",
   "props": {
-    "condition": { "$eq": [{ "$store": "routeStore.currentPath" }, "/"] },
+    "condition": { "$": "routeStore.currentPath == '/'" },
     "then": { "type": "we-text", "children": ["Home"] },
     "else": { "type": "we-text", "children": ["Not home"] }
   }
 }
 
 Deriving options from store:
-{
-  "$map": {
-    "items": { "$store": "templateStore.templates" },
-    "select": { "name": "$item.meta.name", "icon": "$item.meta.icon" }
-  }
-}
+{ "$": "templateStore.templates.map(t, { name: t.meta.name, icon: t.meta.icon })" }
 
 Querying model data:
 {
@@ -2646,7 +2913,7 @@ Example — Channel list with conversation count and latest conversation:
     "items": {
       "$query": {
         "entity": "Channel",
-        "dataset": "$currentDataset",
+        "dataset": { "$": "currentDataset" },
         "include": {
           "$conversationCount": { "from": "conversations", "count": true },
           "$latestConversation": { "from": "conversations", "order": { "createdAt": "desc" }, "limit": 1 }
@@ -2658,8 +2925,8 @@ Example — Channel list with conversation count and latest conversation:
   "children": [{
     "type": "Row",
     "children": [
-      { "type": "we-text", "children": ["$channel.name"] },
-      { "type": "we-text", "children": ["$channel.$conversationCount"] }
+      { "type": "we-text", "children": [{ "$": "channel.name" }] },
+      { "type": "we-text", "children": [{ "$": "channel.$conversationCount" }] }
     ]
   }]
 }
@@ -2668,7 +2935,7 @@ Example — Nested include (Conversations with their messages):
 {
   "$query": {
     "entity": "Conversation",
-    "dataset": "$currentDataset",
+    "dataset": { "$": "currentDataset" },
     "include": {
       "messages": {
         "order": { "createdAt": "desc" },
@@ -2682,7 +2949,7 @@ Nesting works to any depth: "include": { "messages": { "include": { "reactions":
 
 Relational drill-down (master-detail navigation across entity relations):
 Use routes + a $query `scope` when you navigate to a detail route and need only that record's children.
-scope.anchor is the parent entity type; scope.via is its HasMany relation (see externalModels) whose targets
+scope.anchor is the parent entity type; scope.via is its HasMany relation (see externalEntities) whose targets
 are the query's entity; scope.anchorId is the parent record's id. The adapter resolves the relation to a
 backend handle, so no protocol details live in the template.
 routeStore.segments.N extracts the Nth dynamic path segment (segments splits currentPath by "/").
@@ -2697,16 +2964,16 @@ Example — Channel list → Conversation list:
       "children": [{
         "type": "$each",
         "props": {
-          "items": { "$query": { "entity": "Channel", "dataset": "$currentDataset" } },
+          "items": { "$query": { "entity": "Channel", "dataset": { "$": "currentDataset" } } },
           "as": "channel"
         },
         "children": [{
           "type": "we-button",
           "props": {
             "variant": "ghost",
-            "onClick": { "$action": "routeStore.navigate", "args": [{ "$concat": ["/channels/", "$channel.id"] }] }
+            "onClick": { "$action": "routeStore.navigate", "args": [{ "$": "`/channels/${channel.id}`" }] }
           },
-          "children": ["$channel.name"]
+          "children": [{ "$": "channel.name" }]
         }]
       }]
     },
@@ -2720,15 +2987,15 @@ Example — Channel list → Conversation list:
           "items": {
             "$query": {
               "entity": "Conversation",
-              "scope": { "anchor": "Channel", "via": "conversations", "anchorId": { "$store": "routeStore.segments.1" } },
-              "dataset": "$currentDataset"
+              "scope": { "anchor": "Channel", "via": "conversations", "anchorId": { "$": "routeStore.segments[1]" } },
+              "dataset": { "$": "currentDataset" }
             }
           },
           "as": "convo"
         },
         "children": [{
           "type": "we-text",
-          "children": ["$convo.conversationName"]
+          "children": [{ "$": "convo.conversationName" }]
         }]
       }]
     }
@@ -2737,7 +3004,7 @@ Example — Channel list → Conversation list:
 Notes:
 - Use include when you need related data displayed inline (e.g. a post with its comments, a channel with its conversation count).
 - Use a scope drill-down when you're on a detail route and want only children belonging to the current record.
-- dataset must point to the dataset that holds the data. For external apps (e.g. Flux) opened as a WE space, use "$currentDataset".
+- dataset must point to the dataset that holds the data. For external apps (e.g. Flux) opened as a WE space, use { "$": "currentDataset" }.
 - The relation name (in include, or scope.via) is the HasMany field name on the parent entity.
 
 Local state (form with validation):
@@ -2754,12 +3021,12 @@ Local state (form with validation):
   "children": [
     {
       "type": "we-form-field",
-      "props": { "label": "Name", "error": { "$error": "name" } },
+      "props": { "label": "Name", "error": { "$": "error('name')" } },
       "children": [{
         "type": "we-input",
         "props": {
-          "value": { "$local": "name" },
-          "onInput": { "$setLocal": "name", "from": "$event.detail" }
+          "value": { "$": "local.name" },
+          "onInput": { "$setLocal": "name", "value": { "$": "event.detail" } }
         }
       }]
     },
@@ -2767,17 +3034,17 @@ Local state (form with validation):
       "type": "we-button",
       "props": {
         "text": "Submit",
-        "loading": { "$local": "loading" },
-        "disabled": { "$local": "loading" },
+        "loading": { "$": "local.loading" },
+        "disabled": { "$": "local.loading" },
         "onClick": [
           { "$touch": "$all" },
-          { "$if": { "condition": { "$formValid": "$scope" }, "then": { "$action": "myStore.submit", "args": [{ "$local": "name" }] } } }
+          { "$if": { "condition": { "$": "formValid()" }, "then": { "$action": "myStore.submit", "args": [{ "$": "local.name" }] } } }
         ]
       }
     }
   ]
 }
-The button is disabled only while the submit is in flight. Disabling it on { "$not": { "$formValid": "$scope" } }
+The button is disabled only while the submit is in flight. Disabling it on { "$": "!formValid()" }
 instead contradicts the { "$touch": "$all" } beneath it — the button is unclickable in exactly the state that
 guard exists to report. See the "Typical form pattern" section for the full rationale and the two valid shapes.
 
@@ -2804,27 +3071,28 @@ Use literal arrays for fixed/sample data:
           "type": "Row",
           "props": { "gap": "300", "ay": "center" },
           "children": [
-            { "type": "we-avatar", "props": { "initials": "$post.author", "size": "sm" } },
-            { "type": "we-text", "props": { "variant": "label" }, "children": ["$post.author"] }
+            { "type": "we-avatar", "props": { "initials": { "$": "post.author" }, "hash": { "$": "post.author" }, "size": "sm" } },
+            { "type": "we-text", "props": { "variant": "label" }, "children": [{ "$": "post.author" }] }
           ]
         },
-        { "type": "we-text", "props": { "variant": "heading-sm" }, "children": ["$post.title"] },
-        { "type": "we-text", "children": ["$post.text"] }
+        { "type": "we-text", "props": { "variant": "heading-sm" }, "children": [{ "$": "post.title" }] },
+        { "type": "we-text", "children": [{ "$": "post.text" }] }
       ]
     }
   ]
 }
 
-Use $query or $store for dynamic data (more common in production):
+Use $query or a store read for dynamic data (more common in production):
 { "type": "$each", "props": { "items": { "$query": { "entity": "TextBlock" } }, "as": "post" }, "children": [...] }
-{ "type": "$each", "props": { "items": { "$store": "spaceStore.posts" }, "as": "post" }, "children": [...] }
+{ "type": "$each", "props": { "items": { "$": "spaceStore.posts" }, "as": "post" }, "children": [...] }
 
 Per-item customization inside $each:
-To style or highlight specific items, add a data flag to those items and use $if on the flag inside the template. Do NOT use $eq: ["$index", N] comparisons — they are fragile, repetitive, and break when items are reordered.
-Example: add "highlighted": true to one item's data, then use $if on "$post.highlighted" in the template:
-{ "type": "$if", "props": { "condition": "$post.highlighted", "then": { "type": "we-badge", "props": { "variant": "primary" }, "children": ["Featured"] } } }
-For conditional props (e.g. different bg on highlighted items):
-{ "bg": { "$if": { "condition": "$post.highlighted", "then": "primary-50", "else": "neutral-0" } } }
+To style or highlight specific items, add a data flag to those items and use $if on the flag inside the template. Do NOT use index == N comparisons — they are fragile, repetitive, and break when items are reordered.
+Example: add "highlighted": true to one item's data, then use $if on the flag in the template:
+{ "type": "$if", "props": { "condition": { "$": "post.highlighted" }, "then": { "type": "we-badge", "props": { "variant": "primary" }, "children": ["Featured"] } } }
+For a conditional PROP, use a ternary in an expression — NOT a prop-level $if, which is a node type
+and resolves to a handler in a value position:
+{ "bg": { "$": "post.highlighted ? 'accent-muted' : 'surface'" } }
 
 Boolean toggle (show/hide, expand/collapse):
 {
@@ -2832,7 +3100,7 @@ Boolean toggle (show/hide, expand/collapse):
   "$localState": { "showDetails": { "type": "boolean", "initial": false } },
   "children": [
     { "type": "we-button", "props": { "variant": "ghost", "onClick": { "$toggleLocal": "showDetails" } }, "children": ["Toggle Details"] },
-    { "type": "$if", "props": { "condition": { "$local": "showDetails" }, "then": { "type": "we-text", "children": ["Details content here"] } } }
+    { "type": "$if", "props": { "condition": { "$": "local.showDetails" }, "then": { "type": "we-text", "children": ["Details content here"] } } }
   ]
 }
 
@@ -2842,7 +3110,7 @@ Resolve them by slug from a hoisted $queries subscription on the node.
 
 There is no store accessor for this. spaceStore.signalTypesBySlug existed once and was removed;
 schemas still referencing it filtered on undefined — a like count that silently counted the wrong
-thing. Query the SignalType entity instead, and look the slug up with $find.
+thing. Query the SignalType entity instead, and look the slug up with find().
 
 ALWAYS ask the user: "What slug should I use? (e.g. 'like', 'upvote', 'star')"
 Then use that slug in the pattern below.
@@ -2863,7 +3131,7 @@ Pattern — live wired SignalControl (one hoisted query, reused by the projectio
               "$totalLikeCount": {
                 "from": "signals",
                 "where": {
-                  "signalTypeId": { "$find": { "items": { "$local": "signalTypes" }, "where": { "slug": "like" }, "select": "id" } }
+                  "signalTypeId": { "$": "find(local.signalTypes, { slug: 'like' }).id" }
                 },
                 "count": true
               }
@@ -2876,18 +3144,18 @@ Pattern — live wired SignalControl (one hoisted query, reused by the projectio
         {
           "type": "$if",
           "props": {
-            "condition": { "$count": { "items": { "$local": "signalTypes" } } },
+            "condition": { "$": "count(local.signalTypes)" },
             "then": {
               "type": "$each",
-              "props": { "items": { "$local": "signalTypes" }, "as": "sig" },
+              "props": { "items": { "$": "local.signalTypes" }, "as": "sig" },
               "children": [
                 {
                   "type": "SignalControl",
                   "props": {
-                    "signalType": "$sig",
-                    "signals": { "$filter": { "items": "$item.signals", "where": { "signalTypeId": "$sig.id" } } },
-                    "myDid": "$me.did",
-                    "onSignal": { "$action": "spaceStore.upsertSignal", "args": ["$item.id", "$sig.id", "$arg"] }
+                    "signalType": { "$": "sig" },
+                    "signals": { "$": "filter(item.signals, { signalTypeId: sig.id })" },
+                    "myDid": { "$": "me.did" },
+                    "onSignal": { "$action": "spaceStore.upsertSignal", "args": [{ "$": "item.id" }, { "$": "sig.id" }, { "$": "arg" }] }
                   }
                 }
               ]
@@ -2900,11 +3168,11 @@ Pattern — live wired SignalControl (one hoisted query, reused by the projectio
 }
 
 Notes:
-- $queries and $localState share one $local namespace, so { "$local": "signalTypes" } reads the
+- $queries and $localState share one local namespace, so { "$": "local.signalTypes" } reads the
   subscription from any descendant — the projection above and the controls below stay in agreement
   about which type a slug means.
-- The $count guard renders nothing until the community has created a signal type.
-- Iterating signalTypes renders every type the community defined; use $find with a slug only where
+- The count() guard renders nothing until the community has created a signal type.
+- Iterating signalTypes renders every type the community defined; use find() with a slug only where
   one specific type is meant (e.g. a like count).
 - Replace "like" with the user's slug.
 - $query include adds $totalLikeCount as a computed property on each item.
@@ -2963,9 +3231,7 @@ array, a missing model).
 **If the list filters on a search box**, say so instead of claiming the space is empty:
 
 ```json
-{ "$if": { "condition": { "$local": "searchText" },
-           "then": "No posts match your search.",
-           "else": "This space doesn't have any posts." } }
+{ "$": "local.searchText ? 'No posts match your search.' : "This space doesn't have any posts."" }
 ```
 
 ### A list with its empty state — hoist the query so the count is readable
@@ -2979,14 +3245,14 @@ array, a missing model).
     {
       "type": "$if",
       "props": {
-        "condition": { "$count": { "items": { "$local": "postRows" } } },
+        "condition": { "$": "count(local.postRows)" },
         "then": {
           "type": "Grid",
           "props": { "columns": 1, "gap": "400", "width": "100%" },
           "children": [
             {
               "type": "$each",
-              "props": { "items": { "$local": "postRows" }, "as": "post" },
+              "props": { "items": { "$": "local.postRows" }, "as": "post" },
               "children": [{ "type": "Card", "children": ["…"] }]
             }
           ]
@@ -3031,53 +3297,133 @@ what a theme *decides* a faint foreground is, and the contrast corrections at ap
 entirely, so nothing ever measures it against what is behind it. Guidance that names a step
 reproduces that in every template written from it.
 
+### How wide is a modal — always `size`, never a pixel width
+
+`we-modal` sizes itself from a `size` prop, and **every modal should set one**:
+
+| `size` | Measure | For |
+|---|---|---|
+| `sm` | 420px | A confirmation, or one or two fields. |
+| `md` | 640px | **The default.** A form. |
+| `lg` | 900px | A workspace — a composer, a wizard, a card opened out to be read. |
+| `fullscreen` | The viewport, less a gutter | A lightbox, where the content is the size. |
+
+Each keeps a gutter between itself and the edge of the screen, so a modal on a phone is never
+edge-to-edge. Do **not** write `"width": "100%"` beside a `"maxWidth"` — that is what `size`
+replaced, and `100%` of a viewport-wide host is the viewport.
+
+Without a size, `[part='base']` shrink-wraps to its widest line of text: a short confirmation comes
+out too narrow to read and a wordy one too wide, from the same rule. `width`/`maxWidth` still
+override `size` for the rare modal that genuinely needs its own number.
+
 ### Confirm dialog
 
-```json
-{
-  "type": "$if",
-  "props": {
-    "condition": { "$local": "confirmDeleteOpen" },
-    "then": {
-      "type": "we-modal",
-      "props": { "close": { "$setLocal": "confirmDeleteOpen", "value": false } },
-      "children": [
-        { "type": "we-text", "props": { "fontWeight": "semibold" }, "children": ["Delete post?"] },
-        { "type": "we-text", "children": ["This cannot be undone."] },
-        {
-          "type": "Row",
-          "props": { "ax": "end", "gap": "200" },
-          "children": [
-            { "type": "we-button", "props": { "variant": "ghost", "onClick": { "$setLocal": "confirmDeleteOpen", "value": false } }, "children": ["Cancel"] },
-            {
-              "type": "we-button",
-              "props": {
-                "variant": "danger",
-                "onClick": { "$action": "spaceStore.deleteCollection", "args": ["$post.id"],
-                             "onSuccess": [{ "$setLocal": "confirmDeleteOpen", "value": false }] }
-              },
-              "children": ["Delete"]
-            }
-          ]
-        }
-      ]
-    }
-  }
-}
+**Use `confirmModal` from `@we/template-kit`.** Every "are you sure?" in WE goes through it, so
+they share an icon, a heading, a width and a button row:
+
+```ts
+confirmModal({
+  open: { $: 'local.confirmDeleteOpen' },
+  close: { $setLocal: 'confirmDeleteOpen', value: false },
+  title: 'Delete post?',
+  body: 'This will permanently delete the post and everything inside it. This cannot be undone.',
+  confirmLabel: 'Delete',
+  confirm: { $action: 'spaceStore.deleteCollection', args: [{ $: 'post.id' }] },
+})
 ```
+
+It returns the `$if` as well as the modal, and clears `open` from all three exits — the backdrop,
+Cancel, and the action's `onSuccess`.
+
+- `open` and `close` are **expressions**, so a dialog gated on a store flag
+  (`{ $: 'shapeStore.confirmDiscard' }`) or on a string id works the same way.
+- `cancel` for a cancel button that does more than close — "Keep editing" dismisses the question
+  and leaves the wizard behind it open.
+- `tone: 'primary'` for a question with no casualty; the default `danger` picks a warning icon and
+  a danger confirm button.
+- `detail` for a quieter second line, `children` for a `we-alert` naming a surprising consequence.
+- `busyLocal` if the action is not instant — a recursive delete walks its whole collection, and
+  without a spinner the button absorbs the click and invites a second one. `busy` instead when a
+  store already owns the flag.
 
 The flag must be declared by an ancestor of **the button that opens it**, not merely of the modal.
 Undeclared, `$setLocal` warns and no-ops: the button renders, takes the click, and does nothing.
 
-If the action is slow (a recursive delete walks its whole collection), add a `busy` boolean set
-before it and cleared in `onFinally`, and bind the confirm button's `loading` and `disabled` to it.
+### A form in a modal
+
+**Use `formModal` from `@we/template-kit`** — title, fields, Cancel and Save:
+
+```ts
+formModal({
+  open: { $: 'local.composerOpen' },
+  close: { $setLocal: 'composerOpen', value: false },
+  title: 'New task',
+  size: 'sm',
+  localState: { draftTitle: { type: 'string', initial: '' } },
+  children: [field({ name: 'draftTitle', label: 'What needs doing?', placeholder: 'Ship the docs' })],
+  disabled: { $: '!local.draftTitle' },
+  submitLabel: 'Add task',
+  submit: { $action: 'record.create', args: ['TaskBlock', { title: { $: 'local.draftTitle' } }] },
+})
+```
+
+- **Declare the draft in `localState`, not on the page.** The modal is mounted only while open, so
+  the draft resets when it closes — for free. A draft declared higher up has to be cleared by hand
+  in `onSuccess`, and the field somebody forgets is the one that re-opens holding last time's value.
+- `disabled` is the **precondition** only ("a task needs a title"); the in-flight flag is OR-ed
+  in for you, so the Save button cannot start a second save.
+- It uses the header and footer slots, so a long form scrolls its fields and never its Save button.
+
+Reach past it only for a form with real `validate` rules and a `{ "$touch": "$all" }` submit guard
+— that shape deliberately keeps the button clickable, and is written out by hand.
+
+### Don't lose what somebody typed — the discard guard
+
+A modal closes on a backdrop click and on Escape. Both are easy to hit by accident, and neither is
+recoverable: the modal is `$if`-mounted, so closing unmounts the draft with it. **Any modal a
+person can type into must ask before throwing that away.**
+
+| Writing | How |
+|---|---|
+| `formModal` | `discardWhen: <expression>` |
+| `composerModal` | Nothing — on by default (`guardDraft: false` turns it off) |
+| A hand-written `we-modal` | `discardGuard({ dirty, close })` |
+
+`discardGuard` returns three pieces, because a modal cannot be guarded from outside it:
+
+```ts
+const guard = discardGuard({
+  dirty: { $: 'local.name || local.description' },
+  close: { $action: 'shellStore.setCreateSpaceOpen', args: [false] },
+  title: 'Discard this space?',
+  body: 'The name, description and images you have entered will be lost.',
+});
+
+{ type: 'we-modal',
+  props: { size: 'md', close: guard.close },
+  $localState: { ...myFields, ...guard.localState },
+  children: [ …the form…, guard.node ] }
+```
+
+Wire the Cancel button to `guard.close` as well — one way out of a modal, not two that disagree.
+
+**Writing `dirty` is the part that goes wrong**, and always in one direction: a guard that fires
+when there is nothing to lose. A dialog people learn to click through is worse than no dialog.
+
+- **Test only what the person typed.** A field with a default and a picker — a status, a mode, a
+  colour — is set from the first frame, so including it makes the guard fire on an untouched form.
+- **A form seeded from a record asks whether it _changed_**, not whether it is filled in:
+  `{ "$": "local.titleDraft != call.title" }`, not `{ "$": "local.titleDraft" }`.
+- **Where the fields are not known in advance, a store answers** — `recordStore.recordDraftDirty`,
+  `runtimeStore.aiFormDirty`.
+- **Leave it off a single-field form** ("name this board"). The guard costs more attention than one
+  word is worth.
 
 **Tall modals — pin the title and buttons.** A modal whose content can outgrow the viewport (a
 long form, a settings editor) scrolls its *content*, never its own title or its action buttons.
 Give the title node `"slot": "header"` and the button row `"slot": "footer"`: both are pinned
 outside the scroll region, sharing the modal's padding and gap, while the default slot scrolls.
-Put a `width` on the `we-modal` itself when using these slots — no single child spans it any
-more. A short confirm dialog like the one above needs none of this; the default slot alone is right.
+`confirmModal` and `formModal` already do this; write it out only for a modal that is neither.
 
 ### Composing a post — the BlockComposer save handshake
 
@@ -3085,12 +3431,12 @@ more. A short confirm dialog like the one above needs none of this; the default 
 closes — it fires when somebody calls the composer's own `save()`, which it hands out exactly once
 through `onReady`. So the sequence is: `onReady` stores that function in a **`function`-typed**
 `$localState` field, the button calls it with `$callLocal`, `save()` serializes the tree, and
-`onSave` runs the action with the tree as `$arg`.
+`onSave` runs the action with the tree as `arg`.
 
 ```json
 {
   "type": "we-modal",
-  "props": { "close": { "$setLocal": "composeOpen", "value": false } },
+  "props": { "size": "lg", "close": { "$setLocal": "composeOpen", "value": false } },
   "$localState": {
     "savePost": { "type": "function", "initial": null },
     "submitting": { "type": "boolean", "initial": false }
@@ -3099,13 +3445,13 @@ through `onReady`. So the sequence is: `onReady` stores that function in a **`fu
     {
       "type": "BlockComposer",
       "props": {
-        "perspective": { "$store": "datasetStore.currentDataset.handle" },
-        "onReady": { "$setLocal": "savePost", "from": "$event.save" },
+        "perspective": { "$": "datasetStore.currentDataset.handle" },
+        "onReady": { "$setLocal": "savePost", "value": { "$": "event.save" } },
         "onSave": [
           { "$setLocal": "submitting", "value": true },
           {
             "$action": "spaceStore.createPost",
-            "args": ["$arg"],
+            "args": [{ "$": "arg" }],
             "onSuccess": [{ "$setLocal": "composeOpen", "value": false }],
             "onFinally": [{ "$setLocal": "submitting", "value": false }]
           }
@@ -3116,8 +3462,8 @@ through `onReady`. So the sequence is: `onReady` stores that function in a **`fu
       "type": "we-button",
       "props": {
         "variant": "primary",
-        "loading": { "$local": "submitting" },
-        "disabled": { "$local": "submitting" },
+        "loading": { "$": "local.submitting" },
+        "disabled": { "$": "local.submitting" },
         "onClick": { "$callLocal": "savePost" }
       },
       "children": ["Post"]
@@ -3133,7 +3479,7 @@ the cause. And because `onReady` is optional, omitting it makes the composer ren
 save button of its own, so the screen ends up with two buttons and only the unexpected one works.
 (`we-validate-schemas` rejects `onSave` without `onReady`.)
 
-`$arg` goes wherever the action wants it — first for `createPost(json, options)`, second for
+`{ "$": "arg" }` goes wherever the action wants it — first for `createPost(json, options)`, second for
 `updatePost(postId, json)`.
 
 **Prefer `composerModal` from `@we/template-kit`**, which owns all of the above; write it out by
@@ -3144,48 +3490,123 @@ hand only when the modal itself needs a different shape.
 ```json
 {
   "type": "we-form-field",
-  "props": { "label": "Name", "error": { "$error": "name" } },
+  "props": { "label": "Name", "error": { "$": "error('name')" } },
   "children": [
     {
       "type": "we-input",
       "props": {
         "placeholder": "Space name…",
-        "value": { "$local": "name" },
-        "onInput": { "$setLocal": "name", "from": "$event.detail" }
+        "value": { "$": "local.name" },
+        "onInput": { "$setLocal": "name", "value": { "$": "event.detail" } }
       }
     }
   ]
 }
 ```
 
-`$error` is already empty until the field is touched, so it needs no `$if` around it. Which event
+`error()` is already empty until the field is touched, so it needs no condition around it. Which event
 carries the value depends on the control: `we-input`/`we-textarea` emit `onInput` with
-`$event.detail`, `we-select` emits `onChange` with `$event.detail`, and `Search` calls back
-with the value itself as `$arg`.
+`event.detail`, `we-select` emits `onChange` with `event.detail`, and `Search` calls back
+with the value itself as `arg`.
 
 ### Author byline
 
 ```json
 {
   "type": "$agent",
-  "props": { "did": "$post.author", "as": "author" },
+  "props": { "did": { "$": "post.author" }, "as": "author" },
   "children": [
     {
       "type": "Row",
       "props": { "ay": "center", "gap": "300" },
       "children": [
-        { "type": "we-avatar", "props": { "size": "sm", "image": "$author.avatar", "hash": "$author.did" } },
-        { "type": "we-text", "props": { "fontWeight": "semibold" }, "children": ["$author.name"] },
-        { "type": "we-timestamp", "props": { "value": "$post.createdAt", "relative": true, "color": "textMuted" } }
+        { "type": "we-avatar", "props": { "size": "sm", "image": { "$": "author.avatar" }, "hash": { "$": "author.did" } } },
+        { "type": "we-text", "props": { "fontWeight": "semibold" }, "children": [{ "$": "author.name" }] },
+        { "type": "we-timestamp", "props": { "value": { "$": "post.createdAt" }, "relative": true, "color": "text-muted" } }
       ]
     }
   ]
 }
 ```
 
-Always set `hash` as well as `image`, never as a fallback for it: `hash` seeds a generated avatar
-that is stable per agent, so somebody whose profile has not arrived is still visually distinct from
-everybody else whose profile has not arrived. A real picture wins where there is one.
+Always set `hash` as well as `image`, never as a fallback for it — and seed it with an **id**, never
+a name. `hash` is the stable thing a row *is*: a DID for a person, a uuid for a space. It does two
+jobs. It colours the generated initials, so the colour survives a rename; and it draws an identicon
+when there are no initials to draw, which is the case it exists for — somebody whose profile has not
+arrived has no name yet, and two unresolved peers must not be two identical blank discs.
+
+What `we-avatar` draws, in order: **a picture, else letters, else a generated pattern, else a
+glyph.** Letters outrank the pattern, so a row that has both shows its initials on a colour seeded
+from the hash. Seeding `hash` with a *name* is the mistake to avoid: it makes the colour change when
+somebody renames the thing, which is identity art contradicting the identity.
+
+### A record of any type — rendering from the declaration
+
+A community can define a model this morning and record one this afternoon; the feed that lists it
+was written before either. So a card cannot name the fields. It reads how the model asks to be
+shown — `recordStore.displays`, derived from the same declaration the form comes from — and draws
+whatever is there:
+
+```json
+{
+  "type": "$each",
+  "props": { "items": { "$query": { "entity": "Sighting" } }, "as": "row" },
+  "children": [
+    {
+      "type": "Card",
+      "$localState": { "display": { "type": "object", "initial": { "$": "recordStore.displays['Sighting']" } } },
+      "children": [
+        {
+          "type": "$if",
+          "props": {
+            "condition": { "$": "local.display.media" },
+            "then": { "type": "we-image", "props": { "src": { "$": "row[local.display.media]" }, "fit": "cover", "r": "media" } }
+          }
+        },
+        { "type": "we-text", "props": { "variant": "heading-sm" }, "children": [{ "$": "row[local.display.title]" }] },
+        { "type": "we-text", "props": { "color": "text-muted" }, "children": [{ "$": "row[local.display.summary]" }] },
+        {
+          "type": "$each",
+          "props": { "items": { "$": "local.display.fields.filter(f, f.role == 'detail')" }, "as": "field" },
+          "children": [
+            {
+              "type": "Row",
+              "props": { "gap": "300", "ay": "center" },
+              "children": [
+                { "type": "we-text", "props": { "variant": "label", "color": "text-muted" }, "children": [{ "$": "field.label" }] },
+                {
+                  "type": "$if",
+                  "props": {
+                    "condition": { "$": "field.kind == 'datetime' || field.kind == 'date'" },
+                    "then": { "type": "we-timestamp", "props": { "value": { "$": "row[field.name]" }, "relative": true } },
+                    "else": {
+                      "type": "$if",
+                      "props": {
+                        "condition": { "$": "field.kind == 'boolean'" },
+                        "then": { "type": "we-badge", "children": [{ "$": "row[field.name] ? 'Yes' : 'No'" }] },
+                        "else": { "type": "we-text", "children": [{ "$": "row[field.name]" }] }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+Nothing here names a property of `Sighting`. `row[local.display.title]` reads whichever property the
+declaration (or the derivation) says is the title; the detail rows switch on `field.kind`, which is
+resolved once in the store so a template switches on one word. Add branches for `image`, `url`,
+`color` and `longText` as a layout needs them — the kinds are listed under `recordStore.displays`.
+
+The `$localState` holding the display is a convenience: `recordStore.displays['Sighting']` could be
+read in place each time. For a feed of *mixed* types, index by the row instead —
+`recordStore.displays[row.type]` — and the same card draws every kind of record the space holds.
 
 ### A group of faces with a count
 
@@ -3197,8 +3618,7 @@ everybody else whose profile has not arrived. A real picture wins where there is
     {
       "type": "AvatarStack",
       "props": {
-        "avatars": { "$map": { "items": { "$store": "spaceStore.members" },
-                               "select": { "image": "$item.avatar", "hash": "$item.did" } } },
+        "avatars": { "$": "spaceStore.members.map(m, { image: m.avatar, hash: m.did })" },
         "max": 5, "size": "sm", "ring": "0 0 0 2px var(--we-ring-color)"
       }
     },
@@ -3206,23 +3626,19 @@ everybody else whose profile has not arrived. A real picture wins where there is
       "type": "Row",
       "props": { "gap": "100", "ay": "center" },
       "children": [
-        { "type": "we-number", "props": { "value": { "$count": { "items": { "$store": "spaceStore.members" } } }, "shorten": true } },
-        { "type": "we-text", "children": [{ "$plural": { "count": { "$count": { "items": { "$store": "spaceStore.members" } } }, "one": "Member", "other": "Members" } }] }
+        { "type": "we-number", "props": { "value": { "$": "count(spaceStore.members)" }, "shorten": true } },
+        { "type": "we-text", "children": [{ "$": "plural(count(spaceStore.members), 'Member', 'Members')" }] }
       ]
     }
   ]
 }
 ```
 
-**When the items are bare DIDs rather than profiles**, join each to its profile — and note the trap:
-inside a `$map` `select`, a string is substituted only when it starts with `$item.`. A bare
-`"$item"` is a **literal**, so every generated face comes out identical. Wrap it in a token object:
+**When the items are bare DIDs rather than profiles**, join each to its profile inside the
+comprehension — the variable is the DID itself:
 
 ```json
-"select": {
-  "image": { "$find": { "items": { "$store": "profileStore.profiles" }, "where": { "did": "$item" }, "select": "avatar" } },
-  "hash": { "$concat": ["$item"] }
-}
+"avatars": { "$": "spaceStore.memberDids.map(did, { image: find(profileStore.profiles, { did: did }).avatar, hash: did })" }
 ```
 
 `minHeight` on the row is worth keeping: `AvatarStack` has no height with no avatars, and people
@@ -3322,7 +3738,7 @@ themselves come from a `$query`.
     "collapsedGroups": { "type": "array", "initial": [] }
   },
   "props": {
-    "width": { "$if": { "condition": { "$local": "expanded" }, "then": "240px", "else": "80px" } },
+    "width": { "$": "local.expanded ? '240px' : '80px'" },
     "transition": "width 300 ease-in-out",
     "height": "100%",
     "overflow": "hidden",
@@ -3340,7 +3756,7 @@ themselves come from a `$query`.
         {
           "type": "$if",
           "props": {
-            "condition": { "$local": "expanded" },
+            "condition": { "$": "local.expanded" },
             "enterTransition": [{ "type": "reveal", "axis": "inline", "duration": 250 }, { "type": "fade", "duration": 150 }],
             "exitTransition": [{ "type": "reveal", "axis": "inline", "duration": 250 }, { "type": "fade", "duration": 150 }],
             "then": { "type": "we-text", "props": { "truncate": true }, "children": ["Profile"] }
@@ -3365,15 +3781,7 @@ A group heading toggles its own id in the set, and its body reveals on the block
   "children": [
     {
       "type": "we-icon",
-      "props": {
-        "name": {
-          "$if": {
-            "condition": { "$in": ["spaces", { "$local": "collapsedGroups" }] },
-            "then": "caret-right",
-            "else": "caret-down"
-          }
-        }
-      }
+      "props": { "name": { "$": "'spaces' in local.collapsedGroups ? 'caret-right' : 'caret-down'" } }
     },
     { "type": "we-text", "children": ["Spaces"] }
   ]
@@ -3387,7 +3795,7 @@ are only valid inside a `railShell`.
 For drag-to-reorder, wrap a group's items in `we-sortable` and give each row a `data-we-id` on
 a **native element** — a web component's props are assigned as DOM properties, so the attribute
 `we-sortable` looks for would never exist on a `we-button`. Listen with `onReorder` and read
-the new order from `$arg.detail`.
+the new order from `{ "$": "arg.detail" }`.
 
 ---
 
@@ -3429,7 +3837,7 @@ Recommended pattern — header above tabs (routes on ROOT, $routes outlet nested
     ]},
     {
       "type": "we-tabs",
-      "props": { "selectedKey": { "$store": "routeStore.segments.0" } },
+      "props": { "selectedKey": { "$": "routeStore.segments[0]" } },
       "children": [
         { "type": "we-tab", "props": { "key": "posts", "label": "Posts", "onClick": { "$action": "routeStore.navigate", "args": ["/posts"] } } },
         { "type": "we-tab", "props": { "key": "articles", "label": "Articles", "onClick": { "$action": "routeStore.navigate", "args": ["/articles"] } } }
@@ -3468,9 +3876,9 @@ WRONG — two common mistakes that produce empty tabs (validator will catch both
   "children": [{ "type": "$routes" }]
 }
 
-Alternative: single onChange on we-tabs (fires with $event.detail.value = selected key):
-{ "onChange": { "$action": "routeStore.navigate", "args": [{ "$concat": ["/", "$arg.detail.value"] }] } }
-This replaces all per-tab onClick handlers but requires $concat to build the path.
+Alternative: single onChange on we-tabs (fires with event.detail.value = selected key):
+{ "onChange": { "$action": "routeStore.navigate", "args": [{ "$": "`/${arg.detail.value}`" }] } }
+This replaces all per-tab onClick handlers but requires an interpolation to build the path.
 
 Nested routing example:
 {
@@ -3498,6 +3906,221 @@ Nested routing example:
 
 ---
 
+## Panels
+
+A **panel** is a floating or docked surface the host places over a template's content: it can be
+moved, resized, closed, and it survives navigation. A template declares which panels its interface
+has and where each one starts, in `meta.panels`.
+
+### When something should be a panel
+
+**A region is a panel if any of these is true:**
+
+- it must float over other content
+- the reader must be able to move or resize it, and have that remembered
+- it must be closable
+- it must survive navigation
+- it competes with other panels for a screen edge
+
+**Otherwise it is ordinary layout** — `Column` / `Row` / `Grid`, in flow, inside the route,
+arranged by its parent.
+
+This matters more than it looks. A dashboard where nothing overlaps, nothing is dragged and nothing
+persists position is a `Grid` of cards, and building it from panels instead gives something
+busier, harder to read and worse on a phone. **Do not reach for a panel because somebody said the
+word "panel"** — reach for one when a region needs to move, close, float or outlive the route.
+
+### Declaring them
+
+```json
+{
+  "meta": {
+    "name": "Workshop",
+    "description": "…",
+    "icon": "…",
+    "panels": [
+      { "id": "transcript", "module": "transcribe", "snap": "left", "order": 0, "size": "sm", "grow": 1 },
+      { "id": "notes", "node": { "type": "Column", "children": ["…"] }, "title": "Notes", "snap": "left", "order": 1, "grow": 0 },
+      { "id": "inspector", "node": { "…": "…" }, "snap": "right", "size": "md" }
+    ]
+  }
+}
+```
+
+Two kinds of entry, one list:
+
+- **`module`** places a panel a feature module already contributes, and opens it. The module still
+  owns what is inside it.
+- **`node`** supplies the content itself. Use `title` to name it in the titlebar.
+
+| Field      | What it means                                                                                  |
+| ---------- | ---------------------------------------------------------------------------------------------- |
+| `id`       | **Stable, and yours to choose.** Where the reader drags a panel is remembered per id.          |
+| `snap`     | One of `top-left` `top` `top-right` `left` `right` `bottom-left` `bottom` `bottom-right`. |
+| `order`    | Position *along* the edge among the panels sharing its lane — lower is nearer the start.       |
+| `band`     | Which lane, counting inward from the edge. `displace` only. Absent means a lane of its own.    |
+| `size`     | `sm` `md` `lg` `full`. Named, never pixels: only the host can see the viewport.             |
+| `grow`     | Share of the *spare* room in a lane, relative to lane-mates. Absent means 1; 0 pins a size.    |
+| `displace` | Push the content aside instead of covering it. Edge snaps only — ignored on a corner.          |
+| `tab`      | Position in a seat shared with others — entries with the same lane and `order` are tabs.      |
+| `home`     | Start **in the template**, at the `$panels` outlet of this name. See "Home lanes" below.        |
+| `fixed`    | Not promotable: no break-out grip, no drop can move it. For a section with no standalone value. |
+| `min`      | `{ width?, height? }` in pixels — the smallest box the content is usable in. A fact, not a size.  |
+| `route`    | Only while one of these segments is in the path — a segment or a list. Absent means every route. |
+| `open`     | Whether to open it as well as place it. Absent means yes — see the warning below.               |
+
+**`open: false` when a module's launcher does more than open a panel.** Placing a `module` panel
+invokes the action its launcher declares, and that is not always "open a panel" — the call module's
+is `goToCall`, which *joins a call* when there is not one. Declaring the call window without
+`open: false` would start a call the moment somebody entered the space.
+
+**Never write pixels.** A template cannot see the viewport, and a guessed pixel is wrong on a
+display it never ran on. That is what `size` and `grow` are for.
+
+### An edge is two axes
+
+**`band` is how far inboard, `order` is how far along.** A **lane** is a band across the edge;
+the panels sharing one divide it along its length. Between them the two numbers say everything an
+edge can hold:
+
+```
+ lanes of one panel each          one lane of two            a lane of one, then a lane of two
+ ┌────┬────┬──────────┐    ┌─────────┬──────────┐     ┌────┬─────┬──────────┐
+ │    │    │          │    │    A    │          │     │    │  B  │          │
+ │ A  │ B  │ content  │    ├─────────┤ content  │     │ A  ├─────┤ content  │
+ │    │    │          │    │    B    │          │     │    │  C  │          │
+ └────┴────┴──────────┘    └─────────┴──────────┘     └────┴─────┴──────────┘
+   band 0  band 1              band 0, order 0/1        band 0    band 1, order 0/1
+```
+
+- **`band` is for panels that `displace`.** Two that name the same band are one sidebar cut into
+  pieces: they share a width, meet flush, and cost the content that width **once**. Two that name
+  different bands stack inward and cost it both.
+- **Absent `band` means a lane of its own**, after every lane that named one. So a declaration that
+  says nothing about lanes gets the old behaviour — panels stacking inward — rather than silently
+  halving each other.
+- **A floating panel has no band.** It takes no room, so there is nothing to be inboard of: every
+  float on an edge already shares one lane, and `order` divides it. Two panels snapped `left`
+  share the height, one above the other.
+
+A lane divides by base size and `grow`: spare room goes out by grow ratio. "The transcript takes
+most of the height and the panel under it keeps its own" is a large panel with `grow` and a small
+one with `grow: 0`.
+
+**Seats.** Two entries in one lane with the same explicit `order` share a seat: one shows, the rest
+stack behind it as tabs, and the one showing carries a strip naming them all. `tab` orders the
+strip. Absent `order` is a seat of its own, so nothing that never said `order` starts sharing.
+A seat has **one size**: joining one means taking it, and resizing one member resizes all of them, so
+reading along the strip never reshapes the panel.
+
+A stack the reader drags into open space, or into a corner, stays a stack — it just stops being a
+place and starts being a name, since there is no lane left to imply membership from. That is a
+reader's doing and not something a template can declare: **declare seats with `order`, in a lane.**
+
+Below 900px of window width nothing displaces and a floating lane becomes one seat — every member a
+full-bleed sheet, tabbed, since two narrow cards over content leave nothing of either.
+
+### Home lanes — sections that start in the template
+
+Picture-in-picture, for any region of a page. A **home lane** is a lane in the template's own flow:
+an outlet in the tree says where it is, and `meta.panels` entries say which sections start there.
+
+```json
+{
+  "meta": {
+    "panels": [
+      { "id": "feed",     "node": { "…": "…" }, "home": "main",  "order": 0, "fixed": true },
+      { "id": "trending", "node": { "…": "…" }, "home": "right", "order": 0, "title": "Trending" },
+      { "id": "people",   "node": { "…": "…" }, "home": "right", "order": 1, "title": "Who to follow" }
+    ]
+  },
+  "type": "Row",
+  "children": [
+    { "type": "$panels", "props": { "lane": "left", "width": "280px" } },
+    { "type": "$panels", "props": { "lane": "main", "flex": "1" } },
+    { "type": "$panels", "props": { "lane": "right", "width": "320px", "accepts": "trending,people" } }
+  ]
+}
+```
+
+A section renders inline, with no frame, indistinguishable from the layout around it — until the
+reader hovers it, when a grip appears in its corner. Dragging the grip breaks the section out into
+a panel under the pointer; clicking it breaks it out to its declared `snap`. It is then an
+ordinary panel: it can be docked, folded, stacked, saved in a layout — and its position menu offers
+"Return to page". While it is away the outlet shows a placeholder in its place with the same offer.
+
+- **`$panels` is a layout node.** It takes `lane` (required), `direction` (`column` by default, or
+  `row`), `accepts` (section ids it will take, comma-separated; empty means any), and the ordinary
+  layout props — `width`, `flex`, `minWidth` — which is how a template holds room for an empty lane.
+- **Reordering within a lane is arrangement, not editing.** Dragging one section above another
+  rewrites `order` on the reader's placement; nothing touches the tree, and "Reset layout" restores
+  the author's order. Dragging a section to another lane changes `home`; to an edge, `snap`.
+- **A lane holds sections; a section does not hold a lane.** A `$panels` inside a panel's node is
+  refused. Fixed depth is what keeps every position a few integers, which is what keeps a
+  template's declaration a suggestion a drag can overrule.
+- **Not every region should be a section.** The test is standalone value: would somebody want it
+  beside a *different* page? Trending, yes; the compose box, no — say `fixed: true`, or leave it as
+  ordinary layout. A template where every region grows a corner grip reads as a widget grid. And
+  `$each` over collections is content, never lanes: a kanban's columns are data.
+- **A lane is not a Column.** Reach for one when a region should be movable by the reader. Two
+  Columns side by side that nobody will ever rearrange are two Columns.
+
+### Placing a module's own pieces
+
+A module publishes **named parts** and composes its own panel out of them, so an interface that
+wants them arranged differently places the pieces rather than copying them:
+
+```json
+{ "type": "$part", "props": { "id": "transcribe.transcriptFeed" } }
+```
+
+`subject` points a part at a different record from the one its module is about — a transcript feed
+over a call somebody opened from a link rather than the one being recorded:
+
+```json
+{ "type": "$part", "props": { "id": "transcribe.transcriptFeed", "subject": { "$": "routeStore.params.call" } } }
+```
+
+A part naming a module nobody has installed renders nothing and reports itself, the same way a
+contribution to an unprovided anchor does. Placing the module's *whole* panel is still
+`{ "module": "<id>" }` in `meta.panels`; parts are for building something else out of it.
+
+**Supplying a module's panel yourself.** A `meta.panels` entry carrying **both** `module` and
+`node` means "that module's panel, arranged here": the module goes on deciding whether the surface
+is up and how big it is, and the entry decides what is inside. Without it, an interface that wrote
+its own version got *two* panels — the module opens its own when its state says so, and it had no
+way to know somebody else was already showing it.
+
+### It is a suggestion, not a setting
+
+`meta.panels` is the middle rung of three. Whatever the reader last dragged a panel to wins; then
+the template's declaration; then the module's own opening bid. The declaration is resolved live and
+never written, so switching template or section is non-destructive.
+
+A shell that routes itself — every showcase template does — scopes a declaration with `route`
+instead, since it has no sections to hang one on. `route` says **whether**, never **where**: a
+panel that changed position from one page to the next would work until the reader dragged it once,
+since a stored placement is keyed by template and panel rather than by route and outranks every
+declaration. A page that genuinely needs its own arrangement wants to be a view.
+
+A **section** (`meta.role: 'view'`) may declare panels too, and should when the layout is about
+that section rather than the whole interface — a graph wants a transcript beside it and an inbox
+does not. The shell's declaration wins on a collision of `id`.
+
+### Fixed chrome
+
+If a shell pins its own bar or nav strip over the content, declare the band it occupies so floating
+panels clear it:
+
+```json
+{ "meta": { "chromeReserve": { "top": 56, "width": 420 } } }
+```
+
+Report the height it has when **collapsed**. Chrome that grows as somebody opens a disclosure would
+otherwise shove a floating panel down the screen mid-read.
+
+---
+
 ## Rules & Best Practices
 
 - Always use the correct prop names and value types for each component.
@@ -3506,7 +4129,7 @@ Nested routing example:
 - Use design tokens for spacing, color, radius, etc. (do not use raw CSS except in styles).
 - Use the styles prop for custom inline CSS (e.g., { "width": "100px" }).
 - Use hoverProps for hover state overrides, activeProps for pressed state, focusProps for keyboard-focus state. Supported on @we/primitives (we-text, we-button, etc.) and layout components (Column, Row). focusProps fires on `:focus-visible` (keyboard), not on mouse click. Do not add a focus ring by hand — `we-button` and `we-input` already have one, themeable via the `ringColor` theme key.
-- Use dynamic logic tokens ($store, $if, $action, etc.) for reactivity and conditional behavior.
+- Use expressions ({ "$": "…" }) for anything computed and handler tokens ($action, $setLocal, …) for anything that happens on an event; a plain string is always text.
 - Nest components using children or slots as needed.
 - For routes, use the routes array with path and child nodes.
 - Do not invent new components or props — use only those listed in the component registry.
@@ -3516,9 +4139,9 @@ Nested routing example:
 - For icon-only buttons, nest a `we-icon` child inside `we-button` rather than using a `text` prop with a Unicode character. **Omit the `size` prop on `we-icon` when nesting inside sized primitives** (`we-button`, `we-input`, `we-badge`, `we-textarea`) — these components auto-size nested icons via `--we-context-icon-size` (xs→12px, sm→16px, md→24px, lg→32px, xl→40px). Only set an explicit icon `size` if you need to override the automatic sizing. Example: `{ type: 'we-button', props: { variant: 'ghost', size: 'sm' }, children: [{ type: 'we-icon', props: { name: 'x' } }] }`.
 - NEVER pass a bare number like "16" as a size or dimension prop — it is not valid CSS. Always check the component's declared prop type: if it's a string union, use one of the listed values; if it accepts arbitrary strings, include a CSS unit (e.g. "16px", "2rem").
 - For interactive list items and selectable options, use `we-button` with variant switching (e.g., `secondary` when selected, `ghost` when not) instead of manually styling `Row` with cursor, bg, and onClick. Buttons provide hover, focus, and active states for free.
-- To make a block of content clickable **without any button appearance**, use `we-button` with `variant: 'bare'` — never a `Column`/`Row` with an `onClick`. `bare` is the appearance-free variant: no background, no hover, no padding, no radius, inherited colour — but still a real `<button>`, so it keeps keyboard activation, the `disabled` prop, and the accessibility role that a clickable `Column` silently loses. Do not use `ghost` for this: ghost's hover background is deliberate, and it paints a rectangle over content that supplies its own affordance. Example: `{ type: 'we-button', props: { variant: 'bare', disabled: { $store: 'someStore.busy' }, onClick }, children: [{ type: 'Column', props: { gap: '150', ax: 'center' }, children: [...] }] }`.
+- To make a block of content clickable **without any button appearance**, use `we-button` with `variant: 'bare'` — never a `Column`/`Row` with an `onClick`. `bare` is the appearance-free variant: no background, no hover, no padding, no radius, inherited colour — but still a real `<button>`, so it keeps keyboard activation, the `disabled` prop, and the accessibility role that a clickable `Column` silently loses. Do not use `ghost` for this: ghost's hover background is deliberate, and it paints a rectangle over content that supplies its own affordance. Example: `{ type: 'we-button', props: { variant: 'bare', disabled: { $: 'someStore.busy' }, onClick }, children: [{ type: 'Column', props: { gap: '150', ax: 'center' }, children: [...] }] }`.
 - For card-like layouts, compose from `Column` with DS props (bg, r, border, p, gap). This gives full control over spacing and appearance.
-- When rendering lists of similar items (posts, cards, users, etc.), ALWAYS use `$each` with a single template child — never duplicate the same node structure multiple times. Use literal arrays in `items` for static data, or `$store`/`$query` for dynamic data.
+- When rendering lists of similar items (posts, cards, users, etc.), ALWAYS use `$each` with a single template child — never duplicate the same node structure multiple times. Use literal arrays in `items` for static data, or a store read/`$query` for dynamic data.
 
 ### Icon Names (Phosphor Icons)
 
@@ -3553,7 +4176,7 @@ WRONG icon names (Heroicons/Material — do NOT use):
 - Colour every `bg`, `color` and border with a **semantic role** — `surface`, `text-muted`, `border`, `accent-text`, `danger-text` — rather than a scale position. See "Semantic Colour Roles" in the Design System Props section for the full table and what each is for. Scale positions are for palettes (a graph's node colours by category, a chart series), not for meanings.
 - Use `we-text`'s `loading` prop for text bound to data that has not arrived — never a hand-authored `$if` + `we-skeleton` beside it. A separate placeholder needs a height nobody can derive from the schema, and any value you measure drifts the moment a theme changes `fontScale` or the type scale. `we-text` sizes its own placeholder from the line it would occupy, so it stays right. Set `loadingWidth` (default `'100%'`) for the one thing the element cannot infer: how wide the absent text would have been.
 - An empty `we-text` already reserves one line, so text that simply arrives late does not shift the layout even without `loading`. Only `inline` text still collapses, which is correct for a run inside a sentence.
-- Distinguish "not loaded yet" from "loaded and empty" when the difference is visible. A condition like `{ $store: 'spaceStore.currentSpace.description' }` is falsy in both cases, so an `else` branch saying "No description" asserts it about a space that has not arrived. Test the container first (`currentSpace`), then its field.
+- Distinguish "not loaded yet" from "loaded and empty" when the difference is visible. A condition like `{ $: 'spaceStore.currentSpace.description' }` is falsy in both cases, so an `else` branch saying "No description" asserts it about a space that has not arrived. Test the container first (`currentSpace`), then its field.
 - Prefer intrinsic sizing to a fixed pixel width. A wrapping `Row` whose children carry `flex: '1'` and `minWidth: '0'`, or a `Grid` with `minChildWidth`, adapts at every width rather than at three thresholds and cannot overflow a narrow surface. An unconditional `minWidth: '500px'` inside a non-wrapping row pushes the whole route sideways on a phone or in a docked panel. Where the layout must genuinely change its mind rather than merely stretch, reach for `mdUpProps` — and write the narrow value at base, since every tier is min-width.
 - A set of same-shaped things filling a box — video tiles, a photo wall, a board of cards — wants `Grid` with `childAspect: '16 / 9'`, which solves for the arrangement that makes them largest in the box it is given. `columns` is fixed and letterboxes; `minChildWidth` uses width alone and gives columns of postage stamps in a tall box.
 - Size a template root with `minHeight`, never `height`. `height: '100%'` makes the root exactly as tall as the viewport, so a route with more content than that overflows the *box* — and the root's background stops at the fold while the content keeps scrolling. `minHeight: '100%'` fills the viewport when a route is short and grows when it is long, which is what a page background needs. The same applies to `'100vh'` — and prefer `'100dvh'` to `'100vh'` anywhere a full-viewport height is meant: on a phone the address bar makes `vh` taller than what is actually visible, so the last rows of the page sit under the browser chrome. Identical on a desktop.
@@ -3580,7 +4203,7 @@ After creating or modifying a `.schema.ts` file, always run validation to catch:
 - Prop type mismatches (e.g., number where string expected)
 - Missing required `meta` field on root TemplateSchema nodes
 - `$routes` outlet without a `routes` array on an ancestor
-- Orphan `$local` / `$setLocal` references without a `$localState` ancestor
+- Orphan `local.*` reads / `$setLocal` writes without a `$localState` ancestor, and references in the old string spelling (`'$item.name'`)
 - DS layer consistency (mixing props from layers the component doesn't support)
 
 ---
@@ -3815,48 +4438,42 @@ For per-file validation or other options, see the **Schema Validation** section 
 
 ---
 
-### Schema System — Before Suggesting New Operators
+### Schema System — The Grammar Is Closed
 
-Before proposing a new schema operator, read `packages/schema-system/OPERATORS.md` —
-the full operator set is documented there. Adding a new one is only warranted if the
-operator genuinely doesn't exist AND the workaround requires 3+ levels of nesting.
+**No new value operators, and no new syntax.** The value layer is one expression language —
+`{ "$": "count(local.rows) > 0 && local.search != ''" }` — with a closed grammar (references,
+comparison, boolean and arithmetic operators, interpolation, a ternary, five comprehension macros)
+and an open **function library** (`packages/schema-system/shared/src/expressions/functions.ts`).
+There are no other value tokens: a store read, a local read, a comparison, a count, a label — each
+is an expression, and a plain string anywhere in a schema is text.
 
-Operators that are easy to miss:
+A need for computation the language lacks is answered on the **code** side of the data/code line:
 
-| Operator | Syntax | What it does |
-|---|---|---|
-| `$in` | `{ $in: [value, array] }` | True if array contains value — array membership check |
-| `$find` | `{ $find: { items, where } }` | Returns the first matching item (or null) |
-| `$pick` | `{ $pick: { from, keys } }` | Extracts a subset of keys from an object |
-| `$map` | `{ $map: { items, as, value } }` | Maps an array to a new array of values |
-| `$ne` | `{ $ne: [a, b] }` | Not-equal comparison |
-| `$concat` | `{ $concat: [part, ...] }` | Joins strings: `['neighbourhood://', '$space.url']` |
+- **A function in the library** — `defineFunction({ name, category, params, doc, example, impl })`.
+  Pure and total: wrong-typed input answers with the empty value of its kind, never a throw. Same
+  bar as a component: three real uses, not one. The generated context lists it from the registry, so
+  there is no doc to update.
+- **A host source** — a function this deployment registers in
+  `packages/app-shell/src/shared/sources/index.ts`, reachable as `calendarMonth({ … })`.
+  Catalogued from the registry into the context and known to the validator.
 
-**Common mistake:** reaching for `$filter + $count + $gt` to check array membership
-when `$in` already exists. Example:
+Neither changes the parser, the validator's grammar, the renderer or the LLM's view of the syntax.
+That is the whole reason for the split: the accretion pressure that produced forty operators now
+lands where a docblock and a registry entry absorb it.
 
-```ts
-// ❌ Verbose — don't do this for a simple membership check
-{ $gt: [{ $count: { items: { $filter: { items: arr, where: { id: val } } } } }, 0] }
+**Common mistake:** rebuilding a library function out of operators. `count(filter(arr, { id: val })) > 0`
+is `val in arr` — hmm, no: it is `arr.exists(x, x.id == val)`; `val in arr` tests the values
+themselves. Read the library table in the schema reference before composing.
 
-// ✅ Use $in instead
-{ $in: [val, arr] }
-```
+**Common mistake:** `count(local.items) > 0` as a `$if` condition. Conditions use truthiness; `0`
+is falsy, so `count(local.items)` alone is the condition. Keep the comparison where a prop wants a
+real boolean — `&&`/`||` already answer with one.
 
-**Common mistake:** wrapping `$count` in `$gt [..., 0]` when used as a `$if` condition.
-`$if` conditions use standard JavaScript truthiness — `0` is falsy, any positive number is truthy.
-The `$gt` layer is redundant nesting that produces no change in behaviour.
-
-```ts
-// ❌ Unnecessary — $gt adds nothing here
-{ "condition": { "$gt": [{ "$count": { "items": { "$local": "items" } } }, 0] } }
-
-// ✅ $count alone is truthy/falsy in a condition
-{ "condition": { "$count": { "items": { "$local": "items" } } } }
-```
-
-Note: `$gt` is still needed when you want an explicit boolean value outside a condition context
-(e.g. as a prop that expects `boolean`, not just any truthy value).
+**Handlers stay tokens.** `$action`, `$setLocal`, `$toggleLocal`, `$toggleLocalIn`, `$callLocal`,
+`$touch`, `$resetLocal` are the statement layer — about seven verbs, enumerable on purpose because
+capability grants and `destructive` flags attach to verbs. Their *arguments* take expressions, and an
+expression naming `event`/`arg`/`result` at the top level of `args` or as a `$setLocal` `value`
+is evaluated when the handler fires.
 
 ---
 
@@ -3872,14 +4489,15 @@ Key packages with conventions files:
   roles pinned only where the parametric default is wrong. Several roles are *derived at apply time*
   — foregrounds, fills and interaction states all correct themselves — so pinning them is overruling
   a measurement, which is occasionally right and usually not.
-- `packages/models/CONVENTIONS.md` — model authoring: entities vs blocks, predicates, @Flag, WeNode, Model.create() pattern
+- `packages/entities/CONVENTIONS.md` — entity authoring: what makes one a block, predicates, @Flag, WeNode, the Entity.create() pattern
 - `packages/templates/kit/CONVENTIONS.md` — fragment authoring: what belongs in the kit, extraction threshold, options-object API, body style
 
 ---
 
-### Model CRUD Patterns
+### Record CRUD Patterns
 
-Use the static factory method for creation. **Never** use `new Model() + manual property assignment + save()`.
+A record is written through its entity's class. Use the static factory method for creation —
+**never** `new Entity() + manual property assignment + save()`.
 
 **Create**
 ```ts
@@ -3985,13 +4603,13 @@ include: {
   $myLikeSignal: {
     from: 'signals',
     where: {
-      signalTypeId: { $find: { items: { $local: 'signalTypes' }, where: { slug: 'like' }, select: 'id' } },
-      author: '$me.did',
+      signalTypeId: { $: "find(local.signalTypes, { slug: 'like' }).id" },
+      author: { $: 'me.did' },
     },
     limit: 1,
   },
 }
-// Access the result: '$post.$myLikeSignal.value'
+// Access the result: { $: 'post.$myLikeSignal.value' }
 ```
 
 Note: `count: true` works as a plain literal — the typed projection (`TypedIncludeProjection`)

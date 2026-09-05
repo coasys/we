@@ -54,16 +54,16 @@ export function commentThread(opts: CommentThreadOptions): SchemaNode {
     // One level further in, anchored to this reply. At the limit, a count instead — a thread that
     // simply stops looks finished, and someone who wrote the reply below it would never know.
     level < depth
-      ? commentThread({ ...opts, anchorId: `$${as}.id`, level: level + 1 })
+      ? commentThread({ ...opts, anchorId: { $: `${as}.id` }, level: level + 1 })
       : {
           type: '$if',
           props: {
-            condition: { $count: { items: `$${as}.comments` } },
+            condition: { $: `count(${as}.comments)` },
             then: {
               type: 'we-text',
               props: { variant: 'footnote', color: 'text-faint' },
               children: [
-                { type: 'we-number', props: { value: { $count: { items: `$${as}.comments` } } } },
+                { type: 'we-number', props: { value: { $: `count(${as}.comments)` } } },
                 ' more in this thread',
               ],
             },
@@ -77,7 +77,7 @@ export function commentThread(opts: CommentThreadOptions): SchemaNode {
     $queries: {
       [key]: {
         entity: 'CollectionBlock',
-        where: { author: { not: { $store: 'spaceStore.mutedDids' } } },
+        where: { author: { not: { $: 'spaceStore.mutedDids' } } },
         // The `comments` relation, drilled from the anchor. Untyped like `children`, so `scope` is
         // the only form available — `include` needs a known target class.
         scope: { anchor: 'CollectionBlock', via: 'comments', anchorId: opts.anchorId },
@@ -89,11 +89,11 @@ export function commentThread(opts: CommentThreadOptions): SchemaNode {
       {
         type: '$if',
         props: {
-          condition: { $count: { items: { $local: key } } },
+          condition: { $: `count(local.${key})` },
           then: {
             type: 'Column',
             props: { width: '100%', gap: '300' },
-            children: [{ type: '$each', props: { items: { $local: key }, as }, children }],
+            children: [{ type: '$each', props: { items: { $: `local.${key}` }, as }, children }],
           },
           ...(opts.empty && level === 1 && { else: opts.empty }),
         },
@@ -109,18 +109,16 @@ export function replyCount(anchor: string): SchemaNode {
     // "0 replies" under every post in a quiet feed is a column of zeroes asserting nothing, and it
     // is the row's whole height. A count is worth showing once there is something to count.
     props: {
-      condition: { $count: { items: `${anchor}.comments` } },
+      condition: { $: `count(${anchor}.comments)` },
       then: {
         type: 'Row',
         props: { gap: '100', ay: 'center' },
         children: [
-          { type: 'we-number', props: { value: { $count: { items: `${anchor}.comments` } }, shorten: true } },
+          { type: 'we-number', props: { value: { $: `count(${anchor}.comments)` }, shorten: true } },
           {
             type: 'we-text',
             props: { variant: 'footnote', color: 'text-faint' },
-            children: [
-              { $plural: { count: { $count: { items: `${anchor}.comments` } }, one: 'reply', other: 'replies' } },
-            ],
+            children: [{ $: `plural(count(${anchor}.comments), 'reply', 'replies')` }],
           },
         ],
       },

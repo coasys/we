@@ -39,7 +39,7 @@ function labeledRow(label: string, query: SchemaProp): SchemaNode {
       {
         type: '$each',
         props: { items: query, as: 'item' },
-        children: [{ type: 'we-tag', props: { variant: 'primary' }, children: ['$item.name'] }],
+        children: [{ type: 'we-tag', props: { variant: 'primary' }, children: [{ $: 'item.name' }] }],
       },
     ],
   };
@@ -57,25 +57,17 @@ const irToggle: SchemaNode = {
     {
       type: 'we-button',
       props: {
-        variant: { $if: { condition: { $store: 'testStore.queryIRenabled' }, then: 'primary', else: 'secondary' } },
+        variant: { $: "testStore.queryIRenabled ? 'primary' : 'secondary'" },
         onClick: { $action: 'testStore.toggleQueryIR' },
       },
       children: [
         {
           type: 'we-icon',
           props: {
-            name: {
-              $if: { condition: { $store: 'testStore.queryIRenabled' }, then: 'toggle-right', else: 'toggle-left' },
-            },
+            name: { $: "testStore.queryIRenabled ? 'toggle-right' : 'toggle-left'" },
           },
         },
-        {
-          $if: {
-            condition: { $store: 'testStore.queryIRenabled' },
-            then: 'QueryIR routing: ON',
-            else: 'QueryIR routing: OFF',
-          },
-        },
+        { $: "testStore.queryIRenabled ? 'QueryIR routing: ON' : 'QueryIR routing: OFF'" },
       ],
     },
     {
@@ -188,7 +180,7 @@ const projectionSection = section(
           include: {
             children: true,
             $childCount: { from: 'children', count: true },
-            $myChild: { from: 'children', where: { owner: { $store: 'testStore.queryOwner' } }, limit: 1 },
+            $myChild: { from: 'children', where: { owner: { $: 'testStore.queryOwner' } }, limit: 1 },
           },
         },
       },
@@ -198,25 +190,17 @@ const projectionSection = section(
         type: 'Row',
         props: { gap: '300', ay: 'center', wrap: true },
         children: [
-          { type: 'we-text', props: { variant: 'label', width: '120px' }, children: ['$item.name'] },
-          { type: 'we-tag', props: { variant: 'neutral' }, children: [{ $concat: ['count: ', '$item.$childCount'] }] },
+          { type: 'we-text', props: { variant: 'label', width: '120px' }, children: [{ $: 'item.name' }] },
+          { type: 'we-tag', props: { variant: 'neutral' }, children: [{ $: '`count: ${item.$childCount}`' }] },
           {
             type: 'we-tag',
-            props: { variant: { $if: { condition: '$item.$myChild', then: 'success', else: 'neutral' } } },
-            children: [
-              {
-                $if: {
-                  condition: '$item.$myChild',
-                  then: { $concat: ['mine: ', '$item.$myChild.label'] },
-                  else: 'mine: —',
-                },
-              },
-            ],
+            props: { variant: { $: "item.$myChild ? 'success' : 'neutral'" } },
+            children: [{ $: "item.$myChild ? `mine: ${item.$myChild.label}` : 'mine: —'" }],
           },
           {
             type: 'we-text',
             props: { variant: 'footnote', color: 'text-faint' },
-            children: [{ $concat: ['include: ', { $count: { items: '$item.children' } }, ' hydrated'] }],
+            children: [{ $: '`include: ${count(item.children)} hydrated`' }],
           },
         ],
       },

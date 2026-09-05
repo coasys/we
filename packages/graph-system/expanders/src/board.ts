@@ -77,6 +77,20 @@ export interface BoardSeedOptions {
    * fact about the board, and "this one is red" is a fact about the card.
    */
   typeStyles?: string;
+  /**
+   * Record ids whose card stands for something **not yet agreed** — a suggestion awaiting a person.
+   *
+   * Read onto the matching node's data as `pending: true`, for a style rule to pick up. Ids rather
+   * than a query, because what makes a record provisional is not a property of the record: an
+   * extraction pass can stage a whole instance, so it is in the graph and answers every query the
+   * accepted ones answer, and only the capability that staged it knows which those are. A board
+   * cannot ask; it can be told.
+   *
+   * Nothing here decides what provisional *looks* like — that is a `nodeStyle` rule, and an
+   * interface is entitled to draw it at half opacity, in a dashed outline, or exactly like the
+   * rest. The seed's job is only to make the distinction expressible.
+   */
+  pending?: string[];
   limit?: number;
 }
 
@@ -202,6 +216,17 @@ export function boardSeed(): SeedSource {
       ]);
 
       /*
+        Which of the records on this board are still only suggestions — see `pending` in the options.
+
+        A set rather than the array, because it is asked once per row and a board holds hundreds.
+      */
+      const pending = new Set(
+        Array.isArray(options.pending)
+          ? options.pending.filter((id): id is string => typeof id === 'string' && id !== '')
+          : [],
+      );
+
+      /*
         Placements *are* the membership: which records are on this board, of what type, and where.
         Everything after this is looking those records up.
       */
@@ -271,12 +296,25 @@ export function boardSeed(): SeedSource {
       const wanted = passes.filter((pass) => pass.entity !== placementEntity && declared(pass.entity));
       const results = await Promise.all(wanted.map((pass) => read(pass.entity, pass.where)));
 
+      /*
+        Rows a row-to-node could make nothing of, counted rather than passed over in silence.
+
+        `rowToNode` returns null for a row with no string `id`, which is the one shape of failure
+        that produces an empty board out of a successful read — and from outside the walk it is
+        indistinguishable from a read that found nothing.
+      */
+      let dropped = 0;
+
       for (const [index, pass] of wanted.entries()) {
         const entity = pass.entity;
         const shape = shapes.find((s) => s.name === entity);
         for (const row of results[index]) {
           const node = rowToNode(row, entity, dataset, shape, 'board');
-          if (!node) continue;
+          if (!node) {
+            dropped += 1;
+            context.trace?.('board:row-dropped', { entity, keys: Object.keys(row).slice(0, 8) });
+            continue;
+          }
           // A record both placed and owned answers both passes; the first one wins, and it is the
           // placed one, which is the one carrying a position.
           if (seen.has(node.id)) continue;
@@ -295,6 +333,10 @@ export function boardSeed(): SeedSource {
           const data = {
             ...node.data,
             ...(typeColor ? { boardTypeColor: typeColor } : {}),
+            // Only when true, so a style rule matching `{ pending: true }` and one matching nothing
+            // are the two states — an explicit `false` on every other card would make "not pending"
+            // a value a rule could accidentally match on.
+            ...(typeof row.id === 'string' && pending.has(row.id) ? { pending: true } : {}),
             ...(at ? { ...at.style, x: at.x, y: at.y } : {}),
           };
           nodes.push({ ...node, data });
@@ -337,6 +379,15 @@ export function boardSeed(): SeedSource {
           });
         }
       }
+
+      context.trace?.('board:built', {
+        board: options.board,
+        placements: placements.length,
+        rows: Object.fromEntries(wanted.map((pass, index) => [pass.entity, results[index].length])),
+        nodes: nodes.length,
+        edges: edges.length,
+        dropped,
+      });
 
       return { nodes, edges, total: nodes.length };
     },

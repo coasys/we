@@ -2,12 +2,10 @@ import type { SchemaNode } from '@we/schema-shared';
 import { cardList, cardShell, emptyState, statChip } from '@we/template-kit';
 
 // Flux's Channel model only exists in perspectives where Flux SDNA is installed (e.g. a
-// Flux community synced into WE). Guard on presence in currentPerspectiveModels so a plain
+// Flux community synced into WE). Guard on presence in currentPerspectiveEntities so a plain
 // WE space just shows the empty-state message instead of firing a query for a model that
 // isn't registered here (which would otherwise surface as an error toast).
-const hasChannelModel = {
-  $find: { items: { $store: 'datasetStore.currentDatasetModels' }, where: { name: 'Channel' } },
-};
+const hasChannelRecord = { $: "find(datasetStore.currentDatasetEntities, { name: 'Channel' })" };
 
 /*
   Two ways this list can be empty, one sentence for both.
@@ -17,24 +15,24 @@ const hasChannelModel = {
   nothing. The distinction is real but not the reader's problem: what they asked was whether this
   space has Flux channels, and the answer is no either way.
 */
-const noModel: SchemaNode = emptyState({ icon: 'hash', label: 'Flux channels', delay: 0 });
+const noRecord: SchemaNode = emptyState({ icon: 'hash', label: 'Flux channels', delay: 0 });
 const noRows: SchemaNode = emptyState({ icon: 'hash', label: 'Flux channels', searchable: true });
 
 export const fluxChannelsList: SchemaNode = {
   type: '$if',
   props: {
-    condition: hasChannelModel,
+    condition: hasChannelRecord,
     then: cardList({
       query: {
         entity: 'Channel',
         dataset: '$currentDataset',
         where: {
           OR: [
-            { name: { contains: { $local: 'searchText' } } },
-            { description: { contains: { $local: 'searchText' } } },
+            { name: { contains: { $: 'local.searchText' } } },
+            { description: { contains: { $: 'local.searchText' } } },
           ],
         },
-        order: { timestamp: { $local: 'sortDirection' } },
+        order: { timestamp: { $: 'local.sortDirection' } },
         limit: 20,
         include: {
           conversations: true,
@@ -46,6 +44,12 @@ export const fluxChannelsList: SchemaNode = {
       empty: noRows,
       children: [
         cardShell({
+          drag: {
+            entity: 'Channel',
+            id: { $: 'channel.id' },
+            label: { $: "channel.conversations[0].conversationName ?? 'Channel'" },
+            icon: 'hash',
+          },
           header: [
             {
               type: 'Row',
@@ -59,7 +63,7 @@ export const fluxChannelsList: SchemaNode = {
                     {
                       type: 'we-text',
                       props: { variant: 'heading-sm' },
-                      children: ['$channel.conversations[0].conversationName'],
+                      children: [{ $: 'channel.conversations[0].conversationName' }],
                     },
                   ],
                 },
@@ -70,22 +74,22 @@ export const fluxChannelsList: SchemaNode = {
             {
               type: '$if',
               props: {
-                condition: '$channel.description',
-                then: { type: 'we-text', props: { color: 'text-muted' }, children: ['$channel.description'] },
+                condition: { $: 'channel.description' },
+                then: { type: 'we-text', props: { color: 'text-muted' }, children: [{ $: 'channel.description' }] },
               },
             },
             {
               type: 'Row',
               props: { gap: '500', ay: 'center', wrap: true },
               children: [
-                statChip({ icon: 'chat-dots', count: '$channel.$conversationCount', label: 'Conversations' }),
-                statChip({ icon: 'envelope-simple', count: '$channel.$messageCount', label: 'Messages' }),
+                statChip({ icon: 'chat-dots', count: { $: 'channel.$conversationCount' }, label: 'Conversations' }),
+                statChip({ icon: 'envelope-simple', count: { $: 'channel.$messageCount' }, label: 'Messages' }),
               ],
             },
           ],
         }),
       ],
     }),
-    else: noModel,
+    else: noRecord,
   },
 };

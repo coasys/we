@@ -17,6 +17,12 @@ import { dockFrame } from '../src/shared/registries/dockRegistry';
 
 const entry = { id: 'call:0', moduleId: 'call', edge: 'bottom', aspect: 'dockAspect', close: 'closeStage' };
 
+/** The store path a gate negates — `{ $: '!shellStore.…' }` — or nothing for any other condition. */
+const negatedPath = (condition: unknown): string | undefined => {
+  const source = condition && typeof condition === 'object' && '$' in condition ? (condition as { $: string }).$ : '';
+  return source.startsWith('!') ? source.slice(1) : undefined;
+};
+
 /** Every `$if` in the tree, with the store path its condition negates — the gate, if it is one. */
 function gates(node: unknown, found: string[] = []): string[] {
   if (Array.isArray(node)) {
@@ -26,8 +32,8 @@ function gates(node: unknown, found: string[] = []): string[] {
   if (!node || typeof node !== 'object') return found;
   const record = node as Record<string, unknown>;
   const props = record.props as Record<string, unknown> | undefined;
-  const condition = props?.condition as { $not?: { $store?: string } } | undefined;
-  if (record.type === '$if' && condition?.$not?.$store) found.push(condition.$not.$store);
+  const negated = record.type === '$if' ? negatedPath(props?.condition) : undefined;
+  if (negated) found.push(negated);
   for (const value of Object.values(record)) if (value && typeof value === 'object') gates(value, found);
   return found;
 }
@@ -55,8 +61,7 @@ function hiddenInFullScreen(node: unknown, text: string, inside = false): boolea
   const record = node as Record<string, unknown>;
   const props = record.props as Record<string, unknown> | undefined;
   if (inside && (props?.title === text || props?.label === text)) return true;
-  const condition = props?.condition as { $not?: { $store?: string } } | undefined;
-  const within = inside || (record.type === '$if' && Boolean(condition?.$not?.$store?.endsWith('.maximised')));
+  const within = inside || (record.type === '$if' && Boolean(negatedPath(props?.condition)?.endsWith('.maximised')));
   return Object.values(record).some(
     (value) => value && typeof value === 'object' && hiddenInFullScreen(value, text, within),
   );
@@ -65,14 +70,15 @@ function hiddenInFullScreen(node: unknown, text: string, inside = false): boolea
 describe('a panel’s titlebar in full screen', () => {
   const frame = dockFrame(entry as unknown as DockEntry, { type: 'Column' } as never);
 
-  it('hides the three controls that would do nothing', () => {
-    // One gate per inert control, each on that panel's own maximised flag. Hidden rather than
-    // disabled, which is the choice `fitButton` already makes for a module publishing no aspect:
-    // a control that does nothing is worse than one that is not there.
-    const maximised = gates(frame).filter((path) => path === `shellStore.dockPlacement.${entry.id}.maximised`);
-    expect(maximised).toHaveLength(3);
+  it('hides the four controls that would do nothing', () => {
+    // One gate per inert control — fit, fold, displace and the position menu — each on that panel's
+    // own maximised flag. Hidden rather than disabled, which is the choice `fitButton` already makes
+    // for a module publishing no aspect: a control that does nothing is worse than one that is not
+    // there.
+    const maximised = gates(frame).filter((path) => path === `shellStore.dockPlacement['${entry.id}'].maximised`);
+    expect(maximised).toHaveLength(4);
 
-    // Named, for the one whose tooltip is a plain string — the other two write theirs conditionally,
+    // Named, for the one whose tooltip is a plain string — the others write theirs conditionally,
     // so the count above is what covers them.
     expect(hiddenInFullScreen(frame, 'Fit to content')).toBe(true);
   });
@@ -94,5 +100,84 @@ describe('a panel’s titlebar in full screen', () => {
   it('keeps close reachable, since a full-screen panel is still one you may not want', () => {
     expect(names(frame, 'Close')).toBe(true);
     expect(hiddenInFullScreen(frame, 'Close')).toBe(false);
+  });
+});
+
+/** Every menu item in the tree, whatever depth the position menu ended up at. */
+function menuItems(node: unknown, found: Record<string, unknown>[] = []): Record<string, unknown>[] {
+  if (Array.isArray(node)) {
+    for (const item of node) menuItems(item, found);
+    return found;
+  }
+  if (!node || typeof node !== 'object') return found;
+  const record = node as Record<string, unknown>;
+  const props = record.props as Record<string, unknown> | undefined;
+  if (Array.isArray(props?.items)) found.push(...(props.items as Record<string, unknown>[]));
+  for (const value of Object.values(record)) if (value && typeof value === 'object') menuItems(value, found);
+  return found;
+}
+
+describe('the way back to the layout an interface declared', () => {
+  const items = menuItems(dockFrame(entry as DockEntry, { type: 'Column' }));
+  const reset = items.find((item) => item.label === 'Reset to layout');
+
+  it('is offered on the panel’s own menu', () => {
+    // Without it the three-rung chain is one-way: a drag wins for good, and an author improving a
+    // layout is overruled forever by one stray drag.
+    expect(reset).toBeDefined();
+  });
+
+  it('is disabled rather than absent when there is nothing to go back to', () => {
+    // The same choice displaceButton makes: a control that vanishes when you move a panel is one you
+    // stop looking for, and the disabled state carries the actual rule.
+    expect(reset?.disabled).toEqual({ $: `!shellStore.layoutPinned['${entry.id}']` });
+  });
+
+  it('forgets the stored placement rather than writing the declared one', () => {
+    // Deleting is what keeps the panel following the layout afterwards, including when the template
+    // changes it. Writing the declared placement would pin it to today's version for ever.
+    expect(reset?.onAction).toEqual({ $action: 'shellStore.resetDockToLayout', args: [entry.id] });
+  });
+
+  it('comes before the eight positions, not among them', () => {
+    // It undoes a position rather than choosing one; listed among the eight it would read as a ninth
+    // place to put the panel. "Return to page" sits ahead of it, being the more specific undo — a
+    // section's way back into the template — and greyed for a panel with no page to return to.
+    expect(items[0]?.label).toBe('Return to page');
+    expect(items[1]?.label).toBe('Reset to layout');
+  });
+});
+
+/**
+ * A panel the *interface* supplied, whose close cannot be named as a store member.
+ *
+ * A module names a method and the titlebar builds `<store>.<method>`, which works because the
+ * module's store has it. A template panel's keys are minted per panel into `hostDockStores` — where
+ * the shell reads `edge`/`size`/`float` in TypeScript — and the close button is not read that way:
+ * it is a schema `$action`, resolved against the real `shellStore` surface, which has no
+ * `close:extraction`. So the button rendered, took the click, and logged
+ * `method "close:extraction" not found on store "shellStore"`: an authored panel could not be
+ * closed at all, and the log was the only sign.
+ */
+describe('a dock whose close takes an argument', () => {
+  const authored = {
+    id: 'template:extraction',
+    moduleId: 'template',
+    edge: 'edge:extraction',
+    storeRef: 'shellStore',
+    closeAction: { $action: 'shellStore.closeTemplatePanel', args: ['extraction'] },
+  } as unknown as DockEntry;
+
+  const frame = dockFrame(authored, { type: 'Column' });
+
+  it('renders the button on the written-out action alone, with no close key', () => {
+    expect(names(frame, 'Close')).toBe(true);
+    expect(JSON.stringify(frame)).toContain('shellStore.closeTemplatePanel');
+    // The failing spelling, which would be built from a `close` key it does not have.
+    expect(JSON.stringify(frame)).not.toContain('close:extraction');
+  });
+
+  it('leaves a module’s own close exactly as it was', () => {
+    expect(JSON.stringify(dockFrame(entry as DockEntry, { type: 'Column' }))).toContain('modules.call.closeStage');
   });
 });

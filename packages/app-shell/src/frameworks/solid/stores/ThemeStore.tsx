@@ -1,7 +1,8 @@
 import type { ThemeKey } from '@shared/registries/themeRegistry';
 import { isValidThemeKey, themeRegistry } from '@shared/registries/themeRegistry';
+import { explain } from '@shared/userMessage';
 import { toastService } from '@we/components/solid';
-import type { ThemeData } from '@we/models';
+import type { ThemeData } from '@we/entities';
 import {
   asFileField,
   compressImageToFileData,
@@ -9,7 +10,7 @@ import {
   ImageBlock,
   modelToThemeData,
   Theme,
-} from '@we/models';
+} from '@we/entities';
 import type { ThemeOverrides } from '@we/schema-shared';
 import {
   applyThemeVars,
@@ -80,7 +81,7 @@ export interface ThemeStore {
 
   // Actions
   setCurrentTheme: (themeId: string) => void;
-  setDefaultTheme: (themeId: string) => void;
+  setDefaultTheme: (themeId: string) => Promise<boolean>;
   /**
    * The role the theme editor should jump to, kebab-case, or empty.
    *
@@ -105,7 +106,7 @@ export interface ThemeStore {
    */
   systemThemes: Accessor<{ light: string; dark: string; resolved: 'light' | 'dark' }>;
   /** Set one side of the pair. An empty id returns that side to the built-in. */
-  setSystemTheme: (polarity: 'light' | 'dark', themeId: string) => void;
+  setSystemTheme: (polarity: 'light' | 'dark', themeId: string) => Promise<boolean>;
   /** Options for either side, with a "Built-in" entry a schema could not prepend itself. */
   systemThemeOptions: Accessor<{ label: string; value: string }[]>;
   /**
@@ -662,7 +663,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     allThemes().find((t) => t.id === currentThemeId()) ?? registryToThemeData('light');
 
   // Map theme AD4M model UUID → model instance for save/delete
-  const themeModelMap = new Map<string, Theme>();
+  const themeRecordMap = new Map<string, Theme>();
 
   async function loadSpaceThemes() {
     const perspective = datasetStore.currentDataset()?.handle;
@@ -672,7 +673,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     }
     try {
       const models = await Theme.findAll(perspective);
-      for (const model of models) themeModelMap.set(model.id, model);
+      for (const model of models) themeRecordMap.set(model.id, model);
       setSpaceThemes(models.map(modelToThemeData));
     } catch (e) {
       console.error('ThemeStore: failed to load space themes', e);
@@ -687,7 +688,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     if (!perspective) return;
     try {
       const models = await Theme.findAll(perspective);
-      for (const model of models) themeModelMap.set(model.id, model);
+      for (const model of models) themeRecordMap.set(model.id, model);
       setInstalledThemes(models.map(modelToThemeData));
       setThemesLoaded(true);
 
@@ -1009,10 +1010,10 @@ export function ThemeStoreProvider(props: ParentProps) {
     setFocusedRole(role);
   }
 
-  function setDefaultTheme(themeId: string) {
+  function setDefaultTheme(themeId: string): Promise<boolean> {
     localStorage.setItem(THEME_KEY, themeId);
     setCurrentThemeId(themeId);
-    datasetStore.updateAgentSettings({ defaultThemeId: themeId });
+    return datasetStore.updateAgentSettings({ defaultThemeId: themeId });
   }
 
   /**
@@ -1025,18 +1026,18 @@ export function ThemeStoreProvider(props: ParentProps) {
    * being resolved is the one input that cannot be answered, and the resolver's own guard should
    * not be the only thing standing between a click and a loop.
    */
-  function setSystemTheme(polarity: 'light' | 'dark', themeId: string) {
-    if (themeId === SYSTEM_THEME_ID) return;
+  function setSystemTheme(polarity: 'light' | 'dark', themeId: string): Promise<boolean> {
+    if (themeId === SYSTEM_THEME_ID) return Promise.resolve(false);
     const key = polarity === 'dark' ? SYSTEM_DARK_KEY : SYSTEM_LIGHT_KEY;
     if (themeId) localStorage.setItem(key, themeId);
     else localStorage.removeItem(key);
-    datasetStore.updateAgentSettings(
+    return datasetStore.updateAgentSettings(
       polarity === 'dark' ? { systemDarkThemeId: themeId } : { systemLightThemeId: themeId },
     );
   }
 
   async function setThemeInstalled(themeId: string, visible: boolean) {
-    const model = themeModelMap.get(themeId);
+    const model = themeRecordMap.get(themeId);
     const prefs = datasetStore.agentSettings();
     if (!model || !prefs) return;
 
@@ -1235,7 +1236,7 @@ export function ThemeStoreProvider(props: ParentProps) {
           : null,
         css: source?.css ? asFileField(encodeToFileData(source.css, 'theme.css', 'text/css')) : null,
       });
-      themeModelMap.set(model.id, model);
+      themeRecordMap.set(model.id, model);
       const data: ThemeData = {
         id: model.id,
         slug,
@@ -1295,7 +1296,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     if (!perspective) return null;
 
     try {
-      const existing = themeModelMap.get(editing.id);
+      const existing = themeRecordMap.get(editing.id);
       if (existing && existing.origin !== 'built-in') {
         existing.name = editing.name ?? '';
         existing.icon = editing.icon ?? '';
@@ -1357,7 +1358,7 @@ export function ThemeStoreProvider(props: ParentProps) {
           : null,
         css: editing.css ? asFileField(encodeToFileData(editing.css, 'theme.css', 'text/css')) : null,
       });
-      themeModelMap.set(model.id, model);
+      themeRecordMap.set(model.id, model);
       const data: ThemeData = {
         id: model.id,
         slug,
@@ -1381,11 +1382,11 @@ export function ThemeStoreProvider(props: ParentProps) {
   }
 
   async function deleteTheme(themeId: string) {
-    const model = themeModelMap.get(themeId);
+    const model = themeRecordMap.get(themeId);
     if (!model) return;
     try {
       await model.delete();
-      themeModelMap.delete(themeId);
+      themeRecordMap.delete(themeId);
       setInstalledThemes((prev) => prev.filter((t) => t.id !== themeId));
       // A space theme lives in spaceThemes, not installedThemes — drop it from
       // both lists so the deletion is visible without reloading the space.
@@ -1422,32 +1423,32 @@ export function ThemeStoreProvider(props: ParentProps) {
         Check if already installed by slug — update in place if so.
 
         Constrained to models that are actually *installed*, which means the ones living in the root
-        perspective. `themeModelMap` is also filled by `loadSpaceThemes`, from every space visited
-        this session and never pruned, so an unconstrained slug match could bind `existingModel` to a
+        perspective. `themeRecordMap` is also filled by `loadSpaceThemes`, from every space visited
+        this session and never pruned, so an unconstrained slug match could bind `existingRecord` to a
         theme belonging to a *space* — and `save()` would then publish marketplace content into that
         space, for every member, while the toast said "updated" and the installed list showed nothing
         new. Slugs are not unique across perspectives and were never meant to be.
       */
       const installedIds = new Set(installedThemes().map((theme) => theme.id));
-      let existingModel: Theme | undefined;
-      for (const model of themeModelMap.values()) {
+      let existingRecord: Theme | undefined;
+      for (const model of themeRecordMap.values()) {
         if (installedIds.has(model.id) && model.slug === sourceSlug) {
-          existingModel = model;
+          existingRecord = model;
           break;
         }
       }
 
-      if (existingModel) {
-        existingModel.name = source.name;
-        existingModel.icon = source.icon;
-        existingModel.version = source.version;
-        existingModel.overrides = sourceOverrides
+      if (existingRecord) {
+        existingRecord.name = source.name;
+        existingRecord.icon = source.icon;
+        existingRecord.version = source.version;
+        existingRecord.overrides = sourceOverrides
           ? asFileField(encodeToFileData(sourceOverrides, 'overrides.json', 'application/json'))
           : null;
-        existingModel.css = sourceCss ? asFileField(encodeToFileData(sourceCss, 'theme.css', 'text/css')) : null;
-        await existingModel.save();
-        const updated = modelToThemeData(existingModel);
-        setInstalledThemes((prev) => prev.map((t) => (t.id === existingModel!.id ? updated : t)));
+        existingRecord.css = sourceCss ? asFileField(encodeToFileData(sourceCss, 'theme.css', 'text/css')) : null;
+        await existingRecord.save();
+        const updated = modelToThemeData(existingRecord);
+        setInstalledThemes((prev) => prev.map((t) => (t.id === existingRecord!.id ? updated : t)));
         toastService.success(`Theme "${source.name}" updated to v${source.version}`);
         return;
       }
@@ -1463,7 +1464,7 @@ export function ThemeStoreProvider(props: ParentProps) {
           : null,
         css: sourceCss ? asFileField(encodeToFileData(sourceCss, 'theme.css', 'text/css')) : null,
       });
-      themeModelMap.set(model.id, model);
+      themeRecordMap.set(model.id, model);
       setInstalledThemes((prev) => [...prev, modelToThemeData(model)]);
 
       const settings = datasetStore.agentSettings();
@@ -1501,13 +1502,13 @@ export function ThemeStoreProvider(props: ParentProps) {
   }
 
   async function uninstallTheme(themeId: string) {
-    const model = themeModelMap.get(themeId);
+    const model = themeRecordMap.get(themeId);
     const settings = datasetStore.agentSettings();
     if (!model || !settings) return;
     try {
       await settings.removeInstalledThemes(model);
       await model.delete();
-      themeModelMap.delete(themeId);
+      themeRecordMap.delete(themeId);
       setInstalledThemes((prev) => prev.filter((t) => t.id !== themeId));
       if (currentThemeId() === themeId) setCurrentTheme('light');
       toastService.success('Theme uninstalled');
@@ -1545,6 +1546,23 @@ export function ThemeStoreProvider(props: ParentProps) {
     }
 
     try {
+      /*
+        Uploaded before anything is let go — the same argument as `templateStore.publishToMarketplace`.
+
+        Clearing the relation and then adding one file at a time meant an upload that failed part
+        way through left the listing with no screenshots and a "Failed to publish" toast: the
+        working listing destroyed by the attempt to update it.
+      */
+      const uploaded = await Promise.all(
+        options.screenshots.map(async (file) =>
+          ImageBlock.create(marketplacePerspective, {
+            src: asFileField(await compressImageToFileData(file, `screenshot-${Date.now()}`)),
+            altText: 'Screenshot',
+            version: 1,
+          }),
+        ),
+      );
+
       if (existing) {
         existing.name = options.name;
         existing.description = options.description;
@@ -1556,16 +1574,11 @@ export function ThemeStoreProvider(props: ParentProps) {
         existing.css = base.css ? asFileField(encodeToFileData(base.css, 'theme.css', 'text/css')) : null;
         await existing.save();
 
-        await existing.setScreenshots([]);
-        for (const file of options.screenshots) {
-          const fileData = await compressImageToFileData(file, `screenshot-${Date.now()}`);
-          const img = await ImageBlock.create(marketplacePerspective, {
-            src: asFileField(fileData),
-            altText: 'Screenshot',
-            version: 1,
-          });
-          await existing.addScreenshots(img);
-        }
+        // The new pictures are already uploaded — see `uploaded` above. Clearing the relation first
+        // and adding one at a time meant a failed upload destroyed the listing's existing
+        // screenshots and then reported failure; the same shape as `templateStore`'s, fixed the same
+        // way. Only when there are new ones: an update with none picked keeps what is there.
+        if (uploaded.length) await existing.setScreenshots(uploaded);
         toastService.success(`Theme "${options.name}" updated in marketplace (v${existing.version})`);
       } else {
         const theme = await Theme.create(marketplacePerspective, {
@@ -1580,15 +1593,7 @@ export function ThemeStoreProvider(props: ParentProps) {
             : null,
           css: base.css ? asFileField(encodeToFileData(base.css, 'theme.css', 'text/css')) : null,
         });
-        for (const file of options.screenshots) {
-          const fileData = await compressImageToFileData(file, `screenshot-${Date.now()}`);
-          const img = await ImageBlock.create(marketplacePerspective, {
-            src: asFileField(fileData),
-            altText: 'Screenshot',
-            version: 1,
-          });
-          await theme.addScreenshots(img);
-        }
+        if (uploaded.length) await theme.setScreenshots(uploaded);
         toastService.success(`Theme "${options.name}" published to marketplace`);
       }
       return true;
@@ -1654,8 +1659,7 @@ export function ThemeStoreProvider(props: ParentProps) {
       await loadSpaceThemes();
       toastService.success(`"${source.name}" added to this space`);
     } catch (error) {
-      console.error('ThemeStore: installToSpace error', error);
-      toastService.error(`Failed to add theme: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toastService.error(explain(error, 'Could not add that theme to this space'));
     } finally {
       setOperationLoading(null);
     }

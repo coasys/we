@@ -1,20 +1,20 @@
-import type { ModelInstance, ModelStatic } from '@we/backend-shared';
+import type { EntityStatic, RecordInstance } from '@we/backend-shared';
 
 /** Generic component type — avoids coupling the registry to a specific framework. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type BlockComponent = (props: any) => any;
 
 /** The static surface a block persists through — any backend's registered implementation. */
-export type BlockModelStatic = ModelStatic<ModelInstance>;
+export type BlockEntityStatic = EntityStatic<RecordInstance>;
 
 /**
  * A registered block type mapping node types to model entities and UI components.
  */
 export interface BlockRegistration {
-  /** Lexical/serialized node type strings that map to this block (e.g., ['paragraph', 'heading', 'quote']) */
+  /** Serialized node type strings that map to this block (e.g., ['paragraph', 'heading', 'quote']) */
   nodeTypes: string[];
-  /** The entity's static surface — the proxy from `@we/models`, resolving to whichever backend is connected. */
-  model: BlockModelStatic;
+  /** The entity's static surface — the proxy from `@we/entities`, resolving to whichever backend is connected. */
+  model: BlockEntityStatic;
   /** The entity's manifest name — how the persistence layer looks up field facts (file storage, property sets). */
   entity: string;
   /** Pure display component — props only, no onChange. Used in read-only mode and schema views. */
@@ -45,7 +45,7 @@ export function getBlockRegistration(nodeType: string): BlockRegistration | unde
 /**
  * Get the model class for a given serialized node type.
  */
-export function getBlockModel(nodeType: string): BlockModelStatic | undefined {
+export function getBlockRecord(nodeType: string): BlockEntityStatic | undefined {
   return blockRegistry.get(nodeType)?.model;
 }
 
@@ -54,8 +54,8 @@ export function getBlockModel(nodeType: string): BlockModelStatic | undefined {
  * 'paragraph'/'heading'/'quote', map to the same model) — model + entity name together, since the
  * persistence layer resolving an arbitrary block needs both.
  */
-export function getRegisteredBlockModels(): BlockRegistration[] {
-  const seen = new Set<BlockModelStatic>();
+export function getRegisteredBlockEntities(): BlockRegistration[] {
+  const seen = new Set<BlockEntityStatic>();
   const out: BlockRegistration[] = [];
   for (const reg of blockRegistry.values()) {
     if (seen.has(reg.model)) continue;

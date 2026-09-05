@@ -21,6 +21,20 @@ export interface CountryOutlinesOptions {
  * Renders borders using Entity API for simplicity and reliability.
  */
 
+/**
+ * Where the country boundaries come from — a **tagged release**, not a branch.
+ *
+ * This was `.../natural-earth-vector/master/...`, which is a third party's moving branch: every
+ * globe in every deployment fetched whatever was at the tip of somebody else's repository at page
+ * load, unpinned and unverified, and a change there changed what WE drew with nothing to notice it.
+ * Natural Earth publishes versioned tags precisely so a consumer does not have to do that.
+ *
+ * Move it forward deliberately, and look at what changed when you do — these are national borders,
+ * and which lines are drawn where is not a detail to inherit silently from upstream.
+ */
+export const COUNTRY_OUTLINES_URL =
+  'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/v5.1.2/geojson/ne_50m_admin_0_countries.geojson';
+
 export const countryOutlinesLayer: LayerFactory<CountryOutlinesOptions> = (options?: CountryOutlinesOptions) => ({
   name: 'country-outlines',
 
@@ -31,12 +45,7 @@ export const countryOutlinesLayer: LayerFactory<CountryOutlinesOptions> = (optio
 
   onMount: async (context: LayerContext) => {
     const { viewer, events, onCleanup } = context;
-    const {
-      color = '#ffffff',
-      opacity = 0.5,
-      width = 2,
-      dataUrl = 'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_admin_0_countries.geojson',
-    } = options || {};
+    const { color = '#ffffff', opacity = 0.5, width = 2, dataUrl = COUNTRY_OUTLINES_URL } = options || {};
 
     const entities: string[] = [];
     let cancelled = false;

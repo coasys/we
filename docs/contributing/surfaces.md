@@ -34,7 +34,7 @@ contribution one rung too high permanently costs more than it should.
 | Change a space's whole chrome, arrangement and route table                 | **Shell template**             | —                                                                                             |
 | Reuse an arrangement across templates                                      | **Fragment**                   | A component would make it opaque to the editor and unforkable by the people using it          |
 | Add a stateless piece of UI that needs measurement, focus or a browser API | **Primitive** or **component** | A fragment cannot express behaviour; this is the line the rule above draws                    |
-| Add schema boilerplate that is component-agnostic                          | **Schema operator**            | A fragment would bake design-system knowledge into something meant to be neutral              |
+| Computation the expression library lacks                                   | **Expression function**        | An operator would be new syntax, and the grammar is closed — see "no new value operators"     |
 | Add a new kind of content a user composes into a page                      | **Block type**                 | —                                                                                             |
 | Add a stateful capability a community turns on                             | **Feature module**             | Modules hold state and talk to ports; if yours holds neither, it is a fragment or a component |
 | Add a new source of nodes, or a new arrangement, in a graph                | **Graph plugin**               | A module would rebuild the engine; expanders and layouts plug into the one that exists        |
@@ -60,34 +60,58 @@ And one rule that overrides all of the above: **never extract speculatively.** T
 the same shape, or a divergence that is already a bug. Two is a coincidence. This applies to every
 row of the table, not just fragments.
 
+**The reuse units, on their axes.** Four of the rows above — fragment, primitive, component, widget — are all "a reusable piece of UI",
+and their names say nothing about what separates them. Untangling them has cost real time more than
+once, and `@we/widgets` ended up as `export {}` because its definition never distinguished it from
+its neighbours. The names are kept (they are in every import path), but they are placed here on the
+two axes that actually decide which one a thing is:
+
+|                                   | **Arrangement only** (data)         | **Needs a browser API** (code)                                                                |
+| --------------------------------- | ----------------------------------- | --------------------------------------------------------------------------------------------- |
+| **Framework-neutral**             | Fragment — expands to plain nodes   | Primitive — a Lit element                                                                     |
+| **Bound to the host's framework** | _(does not exist: data is neutral)_ | Component — a Solid function; Widget — a component whose props are a whole feature's protocol |
+
+Read it as two questions, in order. _Does it need to do something, or only be arranged?_ If
+arranged: a fragment, whatever the framework, because data is neutral by construction. If it must
+do something: _can it be neutral?_ A focus trap, a top layer, measurement and keyboard handling can
+— that is a primitive. Only what needs the host's reactive framework in its implementation (a
+component that takes callbacks and renders children through it) is a component; a widget is a
+component large enough to own a protocol of its own (`GraphView` and its plugin catalogue), and
+lives with the feature it belongs to.
+
+The cell that does not exist is the point of the table: nothing that is arrangement should ever be
+framework-bound, and if a "component" turns out to be arrangement it is a fragment written in the
+wrong language. For distribution the axes matter more than the names — the left column crosses the
+trust boundary as data; the right column merges.
+
 ---
 
 ## The surfaces
 
-| Surface                                     | What it is                                      | Reaches people by         |
-| ------------------------------------------- | ----------------------------------------------- | ------------------------- |
-| [Themes](#themes)                           | Token overrides + CSS, as a visual identity     | Install at runtime · repo |
-| [Shell templates](#shell-templates)         | A whole space interface, as a schema            | Install at runtime · repo |
-| [Views](#views)                             | One section of a space, as a schema             | Repo (seed)               |
-| [Portable fragments](#portable-fragments)   | A named arrangement that expands to plain nodes | Repo                      |
-| [WE-domain fragments](#we-domain-fragments) | The same, allowed to name WE's stores           | Repo                      |
-| [Design tokens](#design-tokens)             | Spacing, colour, radius… and the semantic roles | Repo                      |
-| [Primitives](#primitives)                   | Lit web components — framework-neutral currency | Repo                      |
-| [Components](#components)                   | Solid layout and composite components           | Repo                      |
-| [Widgets](#widgets)                         | The highest design-system layer                 | Repo                      |
-| [Block types](#block-types)                 | A kind of content a user composes into a page   | Repo                      |
-| [Schema operators](#schema-operators)       | New vocabulary in the schema language           | Repo                      |
-| [Stores](#stores)                           | Shell state and actions — schema-facing API     | Repo                      |
-| [Models](#models)                           | A kind of thing that gets stored                | Repo                      |
-| [Feature modules](#feature-modules)         | A stateful capability a community turns on      | Repo (bundled)            |
-| [Graph plugins](#graph-plugins)             | Expanders, layouts, renderers, behaviours       | Repo                      |
-| [Globe layers](#globe-layers)               | A layer on the Cesium globe                     | Repo                      |
-| [Seeds](#seeds)                             | What a deployment _is_                          | Fork                      |
-| [Backend adapters](#backend-adapters)       | WE over something other than AD4M               | Repo                      |
-| [Platform hosts](#platform-hosts)           | WE on a new platform                            | Repo                      |
+| Surface                                       | What it is                                      | Reaches people by         |
+| --------------------------------------------- | ----------------------------------------------- | ------------------------- |
+| [Themes](#themes)                             | Token overrides + CSS, as a visual identity     | Install at runtime · repo |
+| [Shell templates](#shell-templates)           | A whole space interface, as a schema            | Install at runtime · repo |
+| [Views](#views)                               | One section of a space, as a schema             | Install at runtime · repo |
+| [Portable fragments](#portable-fragments)     | A named arrangement that expands to plain nodes | Repo                      |
+| [WE-domain fragments](#we-domain-fragments)   | The same, allowed to name WE's stores           | Repo                      |
+| [Design tokens](#design-tokens)               | Spacing, colour, radius… and the semantic roles | Repo                      |
+| [Primitives](#primitives)                     | Lit web components — framework-neutral currency | Repo                      |
+| [Components](#components)                     | Solid layout and composite components           | Repo                      |
+| [Widgets](#widgets)                           | The highest design-system layer                 | Repo                      |
+| [Block types](#block-types)                   | A kind of content a user composes into a page   | Repo                      |
+| [Expression functions](#expression-functions) | Computation the expression library lacks        | Repo                      |
+| [Stores](#stores)                             | Shell state and actions — schema-facing API     | Repo                      |
+| [Models](#models)                             | A kind of thing that gets stored                | Repo                      |
+| [Feature modules](#feature-modules)           | A stateful capability a community turns on      | Repo (bundled)            |
+| [Graph plugins](#graph-plugins)               | Expanders, layouts, renderers, behaviours       | Repo                      |
+| [Globe layers](#globe-layers)                 | A layer on the Cesium globe                     | Repo                      |
+| [Seeds](#seeds)                               | What a deployment _is_                          | Fork                      |
+| [Backend adapters](#backend-adapters)         | WE over something other than AD4M               | Repo                      |
+| [Platform hosts](#platform-hosts)             | WE on a new platform                            | Repo                      |
 
 "Install at runtime" means the thing can be published and installed by a person using WE, without
-touching this repository. Only two surfaces can do that today — see
+touching this repository. Only three surfaces can do that today — templates, themes and views — see
 [How a contribution reaches other people](#how-a-contribution-reaches-other-people) for why, and for
 what is planned.
 
@@ -226,22 +250,28 @@ Blocks are stored as models, so a new block type is usually a new model too.
 - **Register** `registerBlock()` in `core-blocks.ts`; components via `registerCoreBlockComponents()`
 - **Verify** `pnpm --filter @we/block-shared test` and `pnpm --filter @we/block-solid typecheck`
 
-### Schema operators
+### Expression functions
 
-New vocabulary in the schema language itself (`$if`, `$concat`, `$plural`, …). The highest-leverage
-and highest-cost surface on this page: an operator is available to every template ever written, and
-removing one is breaking. Component-agnostic boilerplate only.
+Computation the expression language's library lacks. The grammar itself — references, operators,
+comprehensions — is closed and is not a contribution surface; what grows is the function library
+(`count`, `filter`, `plural`, `pick`, …), and every function is available to every template ever
+written, so removing one is breaking. Pure and total only: wrong-typed input answers with the empty
+value of its kind, never a throw. Three real uses before adding one, as for a component.
 
-- **Lives in** `packages/schema-system/shared/src/propResolvers/`
-- **Conventions** [schema-system/CONVENTIONS.md](../../packages/schema-system/CONVENTIONS.md) — "Adding a New Prop-Level Operator" is a six-step checklist; follow it exactly
-- **Copy** `packages/schema-system/shared/src/propResolvers/plural.ts`
-- **Register** wire into `dispatcher.ts`, add to the `OperatorToken` union in `types.ts`, export from `index.ts`
-- **Verify** `pnpm --filter @we/schema-shared test`, then document it in `packages/ai-context/src/fragments/schema-operators.ts` and `generate-context`
+- **Lives in** `packages/schema-system/shared/src/expressions/functions.ts`
+- **Conventions** [schema-system/CONVENTIONS.md](../../packages/schema-system/CONVENTIONS.md) — "Adding a function to the expression library"
+- **Copy** `plural` in `functions.ts`
+- **Register** `defineFunction({ name, category, params, doc, example, impl })` — the registry is the declaration; the validator, the evaluator and the generated context all read it
+- **Verify** `pnpm --filter @we/schema-shared test`, then `generate-context` (the library table in the schema reference comes from the registry)
+
+A function this deployment alone needs is a **host source** instead — registered in
+`packages/app-shell/src/shared/sources/index.ts`, catalogued under "Host functions" in the generated
+context, and known to the validator from there.
 
 ### Stores
 
 State and actions the app shell holds — and, because every member is reachable from a template via
-`$store`/`$action`, **schema-facing public API**. Name members for template authors rather than for
+an expression (`{ $: 'spaceStore.members' }`) or `$action`, **schema-facing public API**. Name members for template authors rather than for
 the code that calls them, and treat a removal as breaking.
 
 This surface has the strictest registration on the page, and both halves fail the build rather than
@@ -264,11 +294,11 @@ either invisible or dangerous.
 A kind of thing that gets stored. The **manifest is the source of truth** and the decorated AD4M
 classes are build artifacts — edit the manifest, then run both generators.
 
-- **Lives in** `packages/models/src/manifest/entities/` (or `blocks/`)
-- **Conventions** [models/CONVENTIONS.md](../../packages/models/CONVENTIONS.md), and
-  [docs/architecture/relations.md](../architecture/relations.md) **before adding any relation between two models**
-- **Copy** `packages/models/src/manifest/entities/Signal.ts`
-- **Register** `pnpm --filter @we/models generate:types` **and** `pnpm --filter @we/backend-ad4m generate:classes`
+- **Lives in** `packages/entities/src/manifest/`
+- **Conventions** [entities/CONVENTIONS.md](../../packages/entities/CONVENTIONS.md), and
+  [docs/architecture/relations.md](../architecture/relations.md) **before adding any relation between two entities**
+- **Copy** `packages/entities/src/manifest/Signal.ts`
+- **Register** `pnpm --filter @we/entities generate:types` **and** `pnpm --filter @we/backend-ad4m generate:classes`
 - **Verify** `pnpm --filter @we/backend-ad4m test` — `coreManifest.test.ts` holds the generated classes and the manifest in exhaustive agreement, so a stale generation fails there
 
 ---
@@ -400,21 +430,24 @@ as AD4M expressions, and they pass through a real trust boundary on the way in:
   but reported, because a quietly half-broken template looks exactly like one that is fine.
 
 **Everything else on this page ships by merging into this repository.** Feature modules are bundled
-rather than dynamically loaded — deliberately, because `import()` of a module carrying its own
-reactive runtime is the second-runtime problem above, and that is worth solving against a real module
-rather than speculatively. Blocks and components have a distribution design in
-[internal/plans/module-marketplace.md](../internal/plans/module-marketplace.md) and no implementation.
+rather than dynamically loaded. The reason used to be given as the second-runtime problem above; that
+is solved — `createStore(deps)` injects the reactivity primitives — and the reason that remains is
+trust: a store factory is arbitrary JavaScript with access to the ports the host hands it, and the
+capability model covers what a _schema_ may name, not what code may do.
 
-So: **two of nineteen surfaces have an out-of-repo path.** A module author must clone the monorepo.
-That is the real ceiling on outside contribution right now, and it is a code problem rather than a
-docs one — recorded here so nobody mistakes the marketplace design doc for a description of what
-exists.
+So: **three of nineteen surfaces have an out-of-repo path** (templates, themes, views), and a module
+author must clone the monorepo. That is the real ceiling on outside contribution right now, and it is
+a code problem rather than a docs one.
 
-That doc also predates most of this page. It names four types (components, blocks, templates,
-themes); this page lists nineteen surfaces, including views, fragments, feature modules, graph
-plugins and globe layers. **When the marketplace grows a type enum, it should be derived from this
-page's list**, so the slots people can contribute and the slots the marketplace distributes stay one
-list rather than two that drift.
+How it changes is the subject of
+[internal/plans/module-marketplace.md](../internal/plans/module-marketplace.md), which places every
+surface on this page on a **distribution ladder** — pure data, declared data + fragments, sandboxed
+embed, host-provided capability kernels, code — and says which rung each can reach and what moves
+it. The short version: sections, content types and (with research) modules can come down the ladder;
+primitives, components, plugins and stores are code and stay merge-only by decision. Nothing
+`import()`s a bundle from an expression, at any rung. **When the marketplace grows a type enum, it is
+derived from this page's list and carries the rung**, so the slots people can contribute, the slots
+the marketplace distributes, and what an install screen says is being trusted stay one list.
 
 ---
 

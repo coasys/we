@@ -2,9 +2,9 @@
  * Round-trip corpus: every distinct `$query` shape our real templates use, mapped to the QueryIR and
  * back. This is the load-bearing proof that the IR expresses what the app actually needs.
  *
- * The shapes are the **token-resolved** forms of the real queries (the IR sits below `$local`/`$store`/
- * `$if` resolution, so a `{ $local: 'searchText' }` becomes a concrete value, and an `order: { $if }`
- * becomes its resolved branch). Each is annotated with the source schema file it was lifted from.
+ * The shapes are the **token-resolved** forms of the real queries (the IR sits below expression
+ * resolution, so a `{ $: 'local.searchText' }` becomes a concrete value, and an `order` chosen by a
+ * ternary becomes its resolved branch). Each is annotated with the source schema file it was lifted from.
  *
  * `SUPPORTED` must translate with an empty `unsupported` list AND round-trip losslessly
  * (`flat → IR → flat → IR` re-derives the identical IR). The one drill-down shape uses the neutral

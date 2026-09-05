@@ -25,7 +25,7 @@
  * whichever of two simultaneous movers lost. Moving a card *between* columns works today, because
  * that is a relink rather than an ordering.
  */
-import type { SchemaNode } from '@we/schema-shared';
+import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
 import { emptyNote } from '../states/emptyState.ts';
 import type { AnchorId } from '../types.ts';
@@ -43,6 +43,20 @@ export interface KanbanBoardOptions {
   empty: SchemaNode;
   /** Width of each column. Defaults to `'300px'`. */
   columnWidth?: string;
+  /**
+   * What moving a card between columns *does* — the caller's, not the kit's.
+   *
+   * This was `{ $action: 'spaceStore.moveChild' }`, written into the fragment. `@we/schema-kit` is
+   * the portable tier and its whole promise is that it names no store: a fragment naming one is a
+   * fragment that only works inside WE, in the package whose reason for existing is that it works
+   * anywhere. The guard meant to catch that greps for `$store`, a token that no longer exists, so
+   * this sat green in the file the README points at as the example.
+   *
+   * Takes the handler, so a caller can pass `spaceStore.moveChild` (which WE's own kanban does) or
+   * anything else. The move is described the way the menu reports it: the card, the column it is
+   * leaving, and the column it is joining, which arrives as `arg.id`.
+   */
+  onMove: (of: { card: string; from: string; to: SchemaProp }) => SchemaProp;
 }
 
 export function kanbanBoard(opts: KanbanBoardOptions): SchemaNode {
@@ -62,10 +76,10 @@ export function kanbanBoard(opts: KanbanBoardOptions): SchemaNode {
       {
         type: '$if',
         props: {
-          condition: { $count: { items: { $local: 'columnRows' } } },
+          condition: { $: 'count(local.columnRows)' },
           then: {
             type: '$each',
-            props: { items: { $local: 'columnRows' }, as: 'column' },
+            props: { items: { $: 'local.columnRows' }, as: 'column' },
             children: [
               {
                 type: 'Column',
@@ -81,7 +95,7 @@ export function kanbanBoard(opts: KanbanBoardOptions): SchemaNode {
                 $queries: {
                   cardRows: {
                     entity: 'CollectionBlock',
-                    scope: { anchor: 'CollectionBlock', via: 'children', anchorId: '$column.id' },
+                    scope: { anchor: 'CollectionBlock', via: 'children', anchorId: { $: 'column.id' } },
                     order: { createdAt: 'asc' },
                     include: { signals: true },
                   },
@@ -94,26 +108,26 @@ export function kanbanBoard(opts: KanbanBoardOptions): SchemaNode {
                       {
                         type: 'we-text',
                         props: { fontWeight: 'semibold', truncate: true },
-                        children: ['$column.title'],
+                        children: [{ $: 'column.title' }],
                       },
                       {
                         type: 'we-badge',
                         props: { size: 'sm' },
-                        children: [{ type: 'we-number', props: { value: '$column.$cardCount' } }],
+                        children: [{ type: 'we-number', props: { value: { $: 'column.$cardCount' } } }],
                       },
                     ],
                   },
                   {
                     type: '$if',
                     props: {
-                      condition: { $count: { items: { $local: 'cardRows' } } },
+                      condition: { $: 'count(local.cardRows)' },
                       then: {
                         type: 'Column',
                         props: { gap: '200', width: '100%' },
                         children: [
                           {
                             type: '$each',
-                            props: { items: { $local: 'cardRows' }, as: 'card' },
+                            props: { items: { $: 'local.cardRows' }, as: 'card' },
                             children: opts.card('card'),
                           },
                         ],
@@ -126,7 +140,7 @@ export function kanbanBoard(opts: KanbanBoardOptions): SchemaNode {
               },
             ],
           },
-          else: { type: '$if', props: { condition: { $local: 'columnRowsLoaded' }, then: opts.empty } },
+          else: { type: '$if', props: { condition: { $: 'local.columnRowsLoaded' }, then: opts.empty } },
         },
       },
       ...(opts.boardFooter ? [opts.boardFooter] : []),
@@ -143,25 +157,21 @@ export function kanbanBoard(opts: KanbanBoardOptions): SchemaNode {
  * waiting on CRDT ordering. A menu moves a card correctly today and keeps working when dragging
  * arrives beside it.
  */
-export function moveCardMenu(cardRef: string, columnRef: string): SchemaNode {
+export function moveCardMenu(card: string, column: string, onMove: KanbanBoardOptions['onMove']): SchemaNode {
   return {
     type: 'DropdownMenu',
     props: {
       triggerIcon: 'arrows-left-right',
+      // Names the menu, since the glyph alone does not. Until icon-only triggers were inferred this
+      // read "Options" beside the arrows — the fallback label, which no caller here ever asked for.
+      triggerTitle: 'Move this card',
       size: 'xs',
-      items: {
-        $map: {
-          items: { $local: 'columnRows' },
-          select: {
-            id: '$item.id',
-            label: '$item.title',
-            onAction: {
-              $action: 'spaceStore.moveChild',
-              args: [`${cardRef}.id`, `${columnRef}.id`, '$item.id'],
-            },
-          },
-        },
-      },
+      /*
+        The rows come from data, so no handler can be written per row. The menu reports the chosen
+        entry through `onSelect`, and the one handler reads its id as `arg`.
+      */
+      items: { $: 'local.columnRows.map(c, { id: c.id, label: c.title })' },
+      onSelect: onMove({ card: `${card}.id`, from: `${column}.id`, to: { $: 'arg.id' } }),
     },
   };
 }

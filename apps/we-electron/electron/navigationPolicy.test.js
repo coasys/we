@@ -86,8 +86,26 @@ describe('the content security policy', () => {
   });
 
   it('does not permit eval in a shipped build', () => {
-    expect(production).not.toContain('unsafe-eval');
-    expect(development).toContain('unsafe-eval');
+    // Matched as a standalone source expression rather than a substring: `'wasm-unsafe-eval'`
+    // contains "unsafe-eval", so `not.toContain('unsafe-eval')` would read the WASM grant as an
+    // eval grant and fail on a policy that is in fact correct.
+    const sources = production
+      .split('; ')
+      .find((d) => d.startsWith('script-src'))
+      .split(' ');
+    expect(sources).not.toContain("'unsafe-eval'");
+    expect(development).toContain("'unsafe-eval'");
+  });
+
+  it('permits WebAssembly, which Cesium needs to load at all', () => {
+    // script-src governs WASM compilation too, so without this every Cesium module that ships a
+    // .wasm (meshoptimizer, Draco, Basis, zip, splats) throws on import — and a rejected chunk
+    // import takes app boot down with it, not just the globe.
+    const sources = production
+      .split('; ')
+      .find((d) => d.startsWith('script-src'))
+      .split(' ');
+    expect(sources).toContain("'wasm-unsafe-eval'");
   });
 
   it('does not permit inline script in a shipped build', () => {

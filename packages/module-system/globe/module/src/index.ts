@@ -16,7 +16,7 @@
  *
  * ## Why this module has no store
  *
- * Layer visibility is `$local` state inside the route schema (`enabled: { $local: 'showSkybox' }`).
+ * Layer visibility is local state inside the route schema (`enabled: { $: 'local.showSkybox' }`).
  * Inventing a store would be new behaviour and would break the "identical afterwards" property this
  * conversion exists to demonstrate. A module with no store is a legitimate shape, and worth having as
  * the first example so nobody assumes stores are mandatory.

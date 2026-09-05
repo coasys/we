@@ -1,9 +1,7 @@
-import type { RendererStores } from '@we/backend-shared';
 import type { TransitionConfig } from '@we/schema-shared';
 import { resolveProp } from '@we/schema-shared';
 import { createEffect, createMemo, createSignal, onCleanup, Show } from 'solid-js';
 
-import { hoistQueryItems, type QuerySignalFactory } from './queryHoist';
 import {
   buildTransitionCSS,
   hiddenOpacity,
@@ -19,13 +17,6 @@ type ConditionalRendererProps = {
   stores: Record<string, unknown>;
   context: Record<string, unknown>;
   renderNode: (node?: SchemaNode, nodeContext?: Record<string, unknown>) => RendererOutput;
-  /**
-   * How to turn a `$query` in the condition into a live subscription.
-   *
-   * Passed in rather than imported: it lives in `SchemaRenderer`, which imports this module, so
-   * importing it back would close a cycle.
-   */
-  createQuerySignal: QuerySignalFactory;
 };
 
 /**
@@ -58,31 +49,15 @@ const AXIS_OF_SIZE_PROP: Record<string, 'block' | 'inline'> = {
   maxHeight: 'block',
 };
 
-export function ConditionalRenderer({
-  node,
-  stores,
-  context,
-  renderNode,
-  createQuerySignal,
-}: ConditionalRendererProps): RendererOutput {
+export function ConditionalRenderer({ node, stores, context, renderNode }: ConditionalRendererProps): RendererOutput {
   const enterTransition = node.props?.enterTransition as TransitionConfig | undefined;
   const exitTransition = node.props?.exitTransition as TransitionConfig | undefined;
   const hasTransitions = enterTransition || exitTransition;
 
-  /*
-    Hoisted at setup, not inside the memo below, so a condition may ask a question of the backend:
-    `{ $count: { items: { $query: … } } }` is how "render this section only when there is something
-    in it" is written, and without hoisting the `$query` is never subscribed — `$count` receives the
-    raw token, reads it as a non-list, and returns 0. The section then never appears, and nothing
-    anywhere says why.
-
-    Identity-preserving when there is no query to hoist, which is almost every condition, so this
-    costs a walk of a small object and no extra reactivity.
-  */
-  const condition = hoistQueryItems(node.props?.condition, stores as RendererStores, context, createQuerySignal);
-
+  // A condition that asks the backend a question hoists its `$query` into `$queries` and reads the
+  // result from `local`; the condition itself is a plain expression over what is already in scope.
   const conditionMet = createMemo(() => {
-    const resolved = resolveProp(condition, stores, context, createMemo);
+    const resolved = resolveProp(node.props?.condition, stores, context, createMemo);
     return typeof resolved === 'function' ? resolved() : resolved;
   });
 
@@ -235,6 +210,34 @@ export function ConditionalRenderer({
 
   const contentNode = node.props?.then as SchemaNode | undefined;
   const contentProps = contentNode?.props || {};
+
+  /**
+   * One of the content's props, as a CSS string — **resolved**, not stringified.
+   *
+   * The wrapper mirrors a few of the content's props onto itself, and it used to do that with
+   * `String(declared)`. That is correct for a literal and silently wrong for every other kind of
+   * value a schema can write: a `{ $: … }` expression is an object, so `width: { $: 'geo.width' }`
+   * reached the DOM as the CSS string `[object Object]`. The declaration was not ignored — it was
+   * applied, invalidly — so the wrapper fell back to auto sizing and nothing said why.
+   *
+   * Resolved once here rather than inside the style memo, because resolving creates memos of its
+   * own and doing that in a memo body would rebuild them on every read.
+   */
+  const declaredCss = (name: string): (() => string | undefined) | undefined => {
+    const raw = contentProps[name];
+    if (raw === undefined || raw === null) return undefined;
+    const resolved = resolveProp(raw, stores, context, createMemo);
+    return () => {
+      const value = typeof resolved === 'function' ? (resolved as () => unknown)() : resolved;
+      return value === undefined || value === null ? undefined : String(value);
+    };
+  };
+
+  const declaredSize = SIZE_PROPS.map(([prop, cssProp]) => ({ prop, cssProp, read: declaredCss(prop) })).filter(
+    (entry) => entry.read !== undefined,
+  );
+  const declaredPosition = declaredCss('position');
+  const declaredZIndex = declaredCss('z-index') ?? declaredCss('zIndex');
   const contentType = String(contentNode?.type || '');
   const isOverlay = isOverlayComponent(contentType);
   const hasPosition = contentProps.position;
@@ -259,13 +262,15 @@ export function ConditionalRenderer({
     }
 
     if (isOverlay) {
-      if (hasZIndex) style['z-index'] = String(contentProps['z-index'] || contentProps.zIndex);
+      const z = declaredZIndex?.();
+      if (z !== undefined) style['z-index'] = z;
       return style;
     }
 
     if (hasPosition || hasZIndex) {
-      style.position = String(contentProps.position || 'relative');
-      if (hasZIndex) style['z-index'] = String(contentProps['z-index'] || contentProps.zIndex);
+      style.position = declaredPosition?.() ?? 'relative';
+      const z = declaredZIndex?.();
+      if (z !== undefined) style['z-index'] = z;
       if (!revealsAxis('inline')) style.width = '100%';
       if (!revealsAxis('block')) style.height = '100%';
     }
@@ -285,10 +290,10 @@ export function ConditionalRenderer({
     // Except along an axis being revealed. The grid track *is* the size there, and a copied
     // `height` would pin the wrapper open at full height while the track animated inside it —
     // the element would jump to its final size and then ease a gap shut underneath itself.
-    for (const [prop, cssProp] of SIZE_PROPS) {
+    for (const { prop, cssProp, read } of declaredSize) {
       if (revealsAxis(AXIS_OF_SIZE_PROP[prop])) continue;
-      const declared = contentProps[prop];
-      if (declared !== undefined && declared !== null) style[cssProp] = String(declared);
+      const value = read!();
+      if (value !== undefined) style[cssProp] = value;
     }
 
     return style;

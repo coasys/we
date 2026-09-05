@@ -1,5 +1,5 @@
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
-import { emptyState, field } from '@we/template-kit';
+import { emptyState, field, formModal } from '@we/template-kit';
 
 /**
  * The space's tasks, as a board.
@@ -40,13 +40,19 @@ const COLUMNS = [
   { status: 'done', label: 'Done', color: 'success-text' },
 ] as const;
 
-/** Tasks in one state, oldest first. */
+/** Tasks in one state, oldest first — hoisted on the view root under `rowsOf(status)`. */
 const tasksIn = (status: string) => ({
-  $query: { entity: 'TaskBlock', where: { status }, order: { createdAt: 'asc' }, limit: 100 },
+  entity: 'TaskBlock',
+  where: { status },
+  order: { createdAt: 'asc' },
+  limit: 100,
 });
+// `in-progress` → `inProgressTasks`: a hoisted query's name is read as an identifier.
+const rowsOf = (status: string) => `${status.replace(/-(\w)/g, (_, c: string) => c.toUpperCase())}Tasks`;
+const rows = (status: string) => ({ $: `local.${rowsOf(status)}` });
 
 /**
- * Moving a card is a `model.update` of one scalar.
+ * Moving a card is a `record.update` of one scalar.
  *
  * Cheap precisely because status is the truth here: no relinking, no read-modify-write, and two
  * people moving the same card concurrently converge on whichever wrote last rather than dropping
@@ -56,11 +62,14 @@ const moveMenu: SchemaNode = {
   type: 'DropdownMenu',
   props: {
     triggerIcon: 'arrows-left-right',
+    // Names the menu, since the glyph alone does not. Until icon-only triggers were inferred this
+    // read "Options" beside the arrows — the fallback label, which no caller here ever asked for.
+    triggerTitle: 'Move this task',
     size: 'xs',
     items: COLUMNS.map((spec) => ({
       id: spec.status,
       label: `Move to ${spec.label}`,
-      onAction: { $action: 'model.update', args: ['TaskBlock', '$task.id', { status: spec.status }] },
+      onAction: { $action: 'record.update', args: ['TaskBlock', { $: 'task.id' }, { status: spec.status }] },
     })),
   },
 };
@@ -77,15 +86,15 @@ const cardBody: SchemaNode = {
     border: '1px solid border',
   },
   children: [
-    { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['$task.title'] },
+    { type: 'we-text', props: { fontWeight: 'semibold' }, children: [{ $: 'task.title' }] },
     {
       type: '$if',
       props: {
-        condition: '$task.description',
+        condition: { $: 'task.description' },
         then: {
           type: 'we-text',
           props: { fontSize: '200', color: 'text', truncate: true },
-          children: ['$task.description'],
+          children: [{ $: 'task.description' }],
         },
       },
     },
@@ -97,36 +106,36 @@ const cardBody: SchemaNode = {
           // Only when it is not the default, so a board is not a wall of "medium".
           type: '$if',
           props: {
-            condition: { $ne: ['$task.priority', 'medium'] },
+            condition: { $: "task.priority != 'medium'" },
             then: {
               type: 'we-badge',
               props: {
                 size: 'xs',
-                variant: { $if: { condition: { $eq: ['$task.priority', 'high'] }, then: 'danger', else: 'neutral' } },
+                variant: { $: "task.priority == 'high' ? 'danger' : 'neutral'" },
               },
-              children: ['$task.priority'],
+              children: [{ $: 'task.priority' }],
             },
           },
         },
         {
           type: '$if',
           props: {
-            condition: '$task.dueDate',
+            condition: { $: 'task.dueDate' },
             then: {
               type: 'we-text',
               props: { fontSize: '200', color: 'text' },
-              children: ['$task.dueDate'],
+              children: [{ $: 'task.dueDate' }],
             },
           },
         },
         {
           type: '$if',
           props: {
-            condition: '$task.assignee',
+            condition: { $: 'task.assignee' },
             then: {
               type: 'we-text',
               props: { fontSize: '200', color: 'text' },
-              children: [{ $concat: ['@', '$task.assignee'] }],
+              children: [{ $: '`@${task.assignee}`' }],
             },
           },
         },
@@ -149,7 +158,7 @@ const cardBody: SchemaNode = {
  */
 const card: SchemaNode = {
   type: 'div',
-  props: { 'data-we-id': '$task.id', style: { width: '100%', cursor: 'grab' } },
+  props: { 'data-we-id': { $: 'task.id' }, style: { width: '100%', cursor: 'grab' } },
   children: [cardBody],
 };
 
@@ -185,7 +194,7 @@ const column = (spec: (typeof COLUMNS)[number]): SchemaNode => ({
             variant: 'footnote',
             color: 'text-muted',
             ml: 'auto',
-            text: { $count: { items: tasksIn(spec.status) } },
+            text: { $: `count(local.${rowsOf(spec.status)})` },
           },
         },
       ],
@@ -193,7 +202,7 @@ const column = (spec: (typeof COLUMNS)[number]): SchemaNode => ({
     /*
         The cards, in a drop zone.
 
-        `zone` is the status, which is what makes the drop handler a one-line `model.update`: the
+        `zone` is the status, which is what makes the drop handler a one-line `record.update`: the
         event says which zone an item landed in, and here a zone *is* a status. A containment board
         would read the same event and relink instead — the primitive reports intent and stays out of
         it.
@@ -211,12 +220,15 @@ const column = (spec: (typeof COLUMNS)[number]): SchemaNode => ({
         zone: spec.status,
         group: 'tasks',
         gap: 'var(--we-space-300)',
-        onMoved: { $action: 'model.update', args: ['TaskBlock', '$arg.detail.id', { status: '$arg.detail.to' }] },
+        onMoved: {
+          $action: 'record.update',
+          args: ['TaskBlock', { $: 'arg.detail.id' }, { status: { $: 'arg.detail.to' } }],
+        },
       },
       children: [
         {
           type: '$each',
-          props: { items: tasksIn(spec.status), as: 'task' },
+          props: { items: rows(spec.status), as: 'task' },
           children: [card],
         },
       ],
@@ -224,62 +236,51 @@ const column = (spec: (typeof COLUMNS)[number]): SchemaNode => ({
   ],
 });
 
-/** Creating a task by hand — the other way work gets onto this board, beside extraction. */
-const composer: SchemaNode = {
-  type: '$if',
-  props: {
-    condition: { $local: 'composerOpen' },
-    then: {
-      type: 'we-modal',
-      props: { close: { $setLocal: 'composerOpen', value: false } },
-      children: [
-        { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['New task'] },
-        field({ name: 'draftTitle', label: 'What needs doing?', placeholder: 'Ship the docs' }),
-        field({ name: 'draftDescription', label: 'Notes', control: 'textarea', placeholder: 'Optional' }),
-        field({
-          name: 'draftStatus',
-          label: 'Status',
-          control: 'select',
-          props: { options: COLUMNS.map((spec) => ({ label: spec.label, value: spec.status })) },
-        }),
-        {
-          type: 'Row',
-          props: { ax: 'end', gap: '200' },
-          children: [
-            {
-              type: 'we-button',
-              props: { variant: 'ghost', onClick: { $setLocal: 'composerOpen', value: false } },
-              children: ['Cancel'],
-            },
-            {
-              type: 'we-button',
-              props: {
-                disabled: { $not: { $local: 'draftTitle' } },
-                onClick: {
-                  $action: 'model.create',
-                  args: [
-                    'TaskBlock',
-                    {
-                      title: { $local: 'draftTitle' },
-                      description: { $local: 'draftDescription' },
-                      status: { $local: 'draftStatus' },
-                    },
-                  ],
-                  onSuccess: [
-                    { $setLocal: 'composerOpen', value: false },
-                    { $setLocal: 'draftTitle', value: '' },
-                    { $setLocal: 'draftDescription', value: '' },
-                  ],
-                },
-              },
-              children: ['Add task'],
-            },
-          ],
-        },
-      ],
-    },
+/**
+ * Creating a task by hand — the other way work gets onto this board, beside extraction.
+ *
+ * The drafts are declared on the modal rather than on the view, so closing it discards them: the
+ * modal is mounted only while open, and remounting is what resets a draft. Written the other way
+ * they had to be cleared by hand in `onSuccess`, and `draftStatus` was the one that got forgotten —
+ * so a task filed under "Done" left the picker on "Done" for the next one.
+ */
+const composer: SchemaNode = formModal({
+  open: { $: 'local.composerOpen' },
+  close: { $setLocal: 'composerOpen', value: false },
+  title: 'New task',
+  size: 'sm',
+  localState: {
+    draftTitle: { type: 'string', initial: '' },
+    draftDescription: { type: 'string', initial: '' },
+    draftStatus: { type: 'string', initial: 'todo' },
   },
-};
+  children: [
+    field({ name: 'draftTitle', label: 'What needs doing?', placeholder: 'Ship the docs' }),
+    field({ name: 'draftDescription', label: 'Notes', control: 'textarea', placeholder: 'Optional' }),
+    field({
+      name: 'draftStatus',
+      label: 'Status',
+      control: 'select',
+      props: { options: COLUMNS.map((spec) => ({ label: spec.label, value: spec.status })) },
+    }),
+  ],
+  disabled: { $: '!local.draftTitle' },
+  // `draftStatus` is excluded: it has a default and a picker, so it is set from the first frame
+  // and a guard including it would fire on a form nobody has touched.
+  discardWhen: { $: 'local.draftTitle || local.draftDescription' },
+  submitLabel: 'Add task',
+  submit: {
+    $action: 'record.create',
+    args: [
+      'TaskBlock',
+      {
+        title: { $: 'local.draftTitle' },
+        description: { $: 'local.draftDescription' },
+        status: { $: 'local.draftStatus' },
+      },
+    ],
+  },
+});
 
 export const tasksView: TemplateSchema = {
   meta: {
@@ -291,12 +292,13 @@ export const tasksView: TemplateSchema = {
   },
   type: 'Column',
   props: { width: '100%', ax: 'center', p: '500' },
+  // The drafts live on the composer itself — see `composer`. Only the gate that opens it is here,
+  // since the button that sets it is in this view's header.
   $localState: {
     composerOpen: { type: 'boolean', initial: false },
-    draftTitle: { type: 'string', initial: '' },
-    draftDescription: { type: 'string', initial: '' },
-    draftStatus: { type: 'string', initial: 'todo' },
   },
+  // One subscription per column, shared by the column's count and its cards.
+  $queries: Object.fromEntries(COLUMNS.map((spec) => [rowsOf(spec.status), tasksIn(spec.status)])),
   children: [
     {
       type: 'Column',
@@ -318,9 +320,7 @@ export const tasksView: TemplateSchema = {
         {
           type: '$if',
           props: {
-            condition: {
-              $or: COLUMNS.map((spec) => ({ $count: { items: tasksIn(spec.status) } })),
-            },
+            condition: { $: COLUMNS.map((spec) => `count(local.${rowsOf(spec.status)})`).join(' || ') },
             then: {
               type: 'Row',
               props: { width: '100%', gap: '400', ay: 'start', overflow: 'auto' },

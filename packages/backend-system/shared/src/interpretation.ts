@@ -23,7 +23,7 @@
  * The class list is the real control surface, and making it optional would invite the one call
  * nobody should make. Every selected class puts its **whole shape** into the prompt — every
  * property, hinted or not — so cost and quality both degrade with the size of the list, and a class
- * carrying serialization fields (a Lexical block's `indent`, `textFormat`, `listType`) offers the
+ * carrying layout fields (a text block's `style`, `level`, `marks`) offers the
  * model a dozen fields it should never fill. "Interpret against everything installed" is not a
  * convenient default; it is the failure mode.
  *
@@ -98,6 +98,18 @@ export interface InterpretationResult {
    * Always a subset of `ids`; empty from a backend with no provenance gate.
    */
   proposed: string[];
+}
+
+/**
+ * Which node's suggestions are being asked about — the same `{ id, predicate }` a pass was parented
+ * by, so a caller that ran one already holds it.
+ *
+ * A parent rather than a filter over the proposals themselves, because containment is what a pass
+ * actually establishes: an instance a pass minted for a call is linked into that call, and nothing
+ * else about the staged values says which conversation they came from.
+ */
+export interface InterpretationScope {
+  parent: { id: string; predicate: string };
 }
 
 /** A staged suggestion waiting on a human. */
@@ -175,8 +187,22 @@ export interface InterpretationPort {
     ctl?: { signal?: AbortSignal },
   ): Promise<InterpretationResult>;
 
-  /** Everything currently staged in this dataset. Empty means nothing pending — see the module docs. */
-  proposals(dataset: DatasetHandle): Promise<InterpretationProposal[]>;
+  /**
+   * What is currently staged in this dataset. Empty means nothing pending — see the module docs.
+   *
+   * `scope` narrows it to the suggestions staged **on one node's contents**, and a review surface
+   * about one conversation should always pass it. Without it this answers for the whole dataset,
+   * which is a different question than any caller is asking: a proposal left unresolved an hour ago
+   * is still staged, so it arrives in the next call's review list looking like something that call
+   * just found. Accepting one then commits a record parented to the *earlier* call — real,
+   * correct, and invisible on the board of the call the reader is actually in.
+   *
+   * Optional rather than required, because "everything staged" is the honest answer for a surface
+   * that is about the dataset rather than about one conversation, and a backend that cannot narrow
+   * may ignore it. A caller passing a scope must therefore treat the result as *at least* its
+   * scope, not exactly it.
+   */
+  proposals(dataset: DatasetHandle, scope?: InterpretationScope): Promise<InterpretationProposal[]>;
 
   /**
    * Commit a staged suggestion: the whole instance, or one property of it by host-facing name.

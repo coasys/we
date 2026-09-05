@@ -31,28 +31,58 @@
  *
  * Two gates, and the second is the one doing the work. `import.meta.env.DEV` is `false` in a
  * production build, which a bundler may or may not use to drop the code entirely depending on how
- * it substitutes; the guarantee is the `localStorage` key, which nobody sets by accident and which
- * no build carries. Together: it is not in a shipped app's behaviour, and it is not in a
+ * it substitutes; the guarantee is the `localStorage` count key, which nobody sets by accident and
+ * which no build carries. Together: it is not in a shipped app's behaviour, and it is not in a
  * developer's either until they ask.
+ *
+ * ## Turning it off in a build that has it
+ *
+ * A third gate, and the only one that can be thrown deliberately: `devToolsEnabled` reads the shared
+ * `we.devTools` switch (Settings → Developer), so a developer checking what a *user* sees loses
+ * these controls along with every other developer affordance rather than having to remember this
+ * one separately. Live in both directions — the count is re-read per solve and the controls are
+ * gated in the schema on `sessionStore.devTools`, so nothing here needs a reload.
  */
+
+import { devToolsEnabled } from '@we/module-shared';
 
 const STORAGE_KEY = 'we.call.fakePeers';
 
 /** More than this is a stray keypress rather than a test. */
 const MAX = 24;
 
+/** True in a development build. Cast rather than `vite/client` types — see `devPeersAvailable`. */
+const DEV_BUILD = (import.meta as { env?: { DEV?: boolean } }).env?.DEV === true;
+
 /**
  * Whether any of this exists at all.
  *
  * Read once, at module scope, so the module definition can decide whether to contribute its
- * controls to the call bar — a decision made when the module is defined, not per render, which is
- * what keeps the whole path out of a production bundle rather than merely inert in one.
+ * controls to the call bar and its actions to the store — a decision made when the module is
+ * defined, not per render, which is what keeps a production build carrying no callable
+ * `addFakePeer` rather than an inert one.
+ *
+ * The **build flag only**, deliberately. The `we.devTools` switch is a live one now, and folding it
+ * in here would mean a module-scope read deciding at boot what a switch is expected to change on
+ * the press — the controls would vanish when it was thrown off and never come back when it was
+ * thrown on again. So: the build decides existence, and `visible` below decides visibility.
  *
  * Cast rather than `vite/client` types: a feature module must not take a build tool as a
  * dependency, since one may be loaded into a host that uses none. The cast is erased at compile
  * time and the emitted `import.meta.env?.DEV` is what a bundler sees.
  */
-export const devPeersAvailable = (import.meta as { env?: { DEV?: boolean } }).env?.DEV === true;
+export const devPeersAvailable = DEV_BUILD;
+
+/**
+ * Whether they should be showing *right now* — the switch, re-read rather than remembered.
+ *
+ * Read per call so throwing the switch takes effect on the next solve rather than the next reload.
+ * That matters here more than anywhere: somebody muting developer UI to see what a user sees would
+ * otherwise be looking at a stage with two synthetic participants still on it.
+ */
+function visible(): boolean {
+  return devToolsEnabled(DEV_BUILD);
+}
 
 /** Identity and media for one synthetic participant. The store turns these into tiles. */
 export interface DevPeer {
@@ -67,7 +97,7 @@ const timers: ReturnType<typeof setInterval>[] = [];
 
 /** How many to add, or 0 — which is every production build, and every dev session but the ones asking. */
 export function readDevPeerCount(): number {
-  if (!devPeersAvailable || typeof localStorage === 'undefined') return 0;
+  if (!visible() || typeof localStorage === 'undefined') return 0;
   const raw = Number(localStorage.getItem(STORAGE_KEY));
   return clampCount(raw);
 }

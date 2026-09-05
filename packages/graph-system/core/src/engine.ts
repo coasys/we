@@ -22,6 +22,7 @@ import type {
   Placement,
   Point,
   StyleRules,
+  WatchQuery,
 } from '@we/graph-protocol';
 import { addressKind } from '@we/graph-protocol';
 
@@ -63,11 +64,30 @@ export type ChangeReason =
 
 export interface EngineStatus {
   loading: boolean;
+  /**
+   * The *whole* graph is being replaced — a {@link GraphEngine.start}, not an expansion or a refresh.
+   *
+   * A separate flag rather than a shade of `loading` because the two want opposite treatment. An
+   * expansion loads beside a graph that stays on screen and stays usable, so it belongs in a corner;
+   * a reload means everything currently drawn is about to be thrown away, and a renderer that cannot
+   * tell them apart has to pick one and be wrong about the other. It matters most where it is least
+   * visible: `start` clears the store and only notifies at the end, so the *previous* graph stays
+   * painted for the whole load — announcing that in a footnote is how a stale board reads as a live one.
+   */
+  reloading: boolean;
   /** Set when expansion stopped because the node budget was reached. */
   budgetReached: boolean;
   /** Non-fatal problems worth surfacing — an expander that could not answer, a dropped ref. */
   warnings: string[];
 }
+
+/**
+ * How much of the graph a load covers.
+ *
+ * `reload` is the whole graph; `partial` is anything that lands beside what is already there — a
+ * seed refresh, an expansion. Only the caller can tell them apart: `loadSeeds` runs under both.
+ */
+type LoadScope = 'reload' | 'partial';
 
 /** Metrics deliberately do not participate in hit-testing — see `hitRadius`. */
 const NO_METRICS = new Map<string, ReadonlyMap<string, number>>();
@@ -93,6 +113,20 @@ function referencedMetrics(rules: StyleRules<Record<string, unknown>> | undefine
 }
 
 const DEFAULT_MAX_NODES = 2000;
+
+/**
+ * The most nodes any spec may ask for, whatever it says.
+ *
+ * `maxNodes` is set by the *template*, which is data a stranger can write, and it is the only thing
+ * standing between an expansion and unbounded work: each node is a query, a layout body and a
+ * rendered mark. A template asking for a million is not a template with an ambitious map, it is a
+ * template that hangs the tab of everybody who opens the space it is installed in.
+ *
+ * Well above anything legible — a force graph is already unreadable at a few thousand marks — so the
+ * clamp is a backstop rather than a design constraint. It costs a template nothing it could have
+ * used, which is what makes it the right shape for a host limit.
+ */
+const HOST_MAX_NODES = 20000;
 const DEFAULT_EXPAND_LIMIT = 50;
 
 /**
@@ -104,15 +138,33 @@ const DEFAULT_EXPAND_LIMIT = 50;
  */
 const WATCH_DEBOUNCE_MS = 250;
 
-/** What the seeds read, and so what is worth watching. */
-interface WatchTarget {
-  entity: string;
-  dataset?: string;
-}
+/**
+ * What the seeds read, and so what is worth watching — the read itself, not merely its type.
+ *
+ * A host subscribes to what it is given, and a backend that reports "this query's answer changed"
+ * can only report about a query somebody asked. See `ExpanderContext.watch` for what the coarse
+ * form cost: a board whose records arrived behind an existing one was never told.
+ */
+type WatchTarget = WatchQuery;
 
-/** Identity of a watch. Only ever compared, never parsed back — the target is carried alongside it. */
+/**
+ * Identity of a watch. Only ever compared, never parsed back — the target is carried alongside it.
+ *
+ * Two spellings of one filter (the same keys in a different order) key as two watches. Harmless:
+ * duplicates cost a subscription and answer identically, where a key that tried to canonicalise
+ * would have to know what every field of a read means.
+ */
 function watchKey(target: WatchTarget): string {
-  return `${target.entity} ${target.dataset ?? ''}`;
+  return JSON.stringify([
+    target.entity,
+    target.dataset ?? '',
+    target.scope ?? null,
+    target.where ?? null,
+    target.order ?? null,
+    target.limit ?? null,
+    target.offset ?? null,
+    target.include ?? null,
+  ]);
 }
 
 export class GraphEngine {
@@ -133,8 +185,10 @@ export class GraphEngine {
   private layoutKey?: string;
   private layoutTimer?: ReturnType<typeof setTimeout>;
   private listeners = new Set<(reason: ChangeReason) => void>();
-  private status: EngineStatus = { loading: false, budgetReached: false, warnings: [] };
+  private status: EngineStatus = { loading: false, reloading: false, budgetReached: false, warnings: [] };
   private inFlight = 0;
+  /** Of those, how many cover the whole graph. See {@link EngineStatus.reloading}. */
+  private reloadsInFlight = 0;
   private disposed = false;
   /** What the layout last complained about, so a new arrangement can retire it. */
   private layoutWarnings: string[] = [];
@@ -298,21 +352,36 @@ export class GraphEngine {
     // A different graph cannot inherit holds on nodes it does not contain.
     this.pinnedIds.clear();
     this.selected.clear();
-    this.status = { loading: false, budgetReached: false, warnings: [] };
+    this.status = { loading: false, reloading: false, budgetReached: false, warnings: [] };
     this.layoutWarnings = [];
 
-    const fragment = await this.loadSeeds();
-    this.store.merge(fragment);
-    this.expansion.attribute(
-      SEED_OPENER,
-      fragment.nodes.map((n) => n.id),
-      fragment.edges.map((e) => e.id),
-    );
+    /*
+      Held across the whole method, not just the seed load.
 
-    await this.runAutoExpansion();
-    this.recomputeMetrics();
-    this.relayout({ fit: true });
-    this.notify('graph');
+      What follows the seeds — auto-expansion, metrics, the first layout — is still the graph
+      arriving, and `loadSeeds` releasing its own count between the two phases would report a settled
+      frame in the middle of a load. Held here, `reloading` covers the gap and the renderer never sees
+      an empty graph claim to be finished.
+    */
+    this.beginLoading('reload');
+    try {
+      const fragment = await this.loadSeeds();
+      this.store.merge(fragment);
+      this.expansion.attribute(
+        SEED_OPENER,
+        fragment.nodes.map((n) => n.id),
+        fragment.edges.map((e) => e.id),
+      );
+
+      await this.runAutoExpansion();
+      this.recomputeMetrics();
+      this.relayout({ fit: true });
+      // Before the count is released, so the nodes are on screen by the time the load reports itself
+      // finished. The other order hands the renderer one frame of "settled, and empty".
+      this.notify('graph');
+    } finally {
+      this.endLoading('reload');
+    }
   }
 
   /**
@@ -412,13 +481,15 @@ export class GraphEngine {
     const recording: ExpanderContext = {
       ...this.context,
       query: (request) => {
-        const target: WatchTarget = { entity: request.entity, dataset: request.dataset };
+        // The whole read, less the signal — a standing watch must not hold the abort signal of the
+        // load that happened to make the read.
+        const { signal: _signal, ...target } = request;
         read.set(watchKey(target), target);
         return this.context.query(request);
       },
     };
 
-    this.beginLoading();
+    this.beginLoading('partial');
     try {
       for (const seed of specs) {
         const fragment =
@@ -441,7 +512,7 @@ export class GraphEngine {
         edges.push(...fragment.edges);
       }
     } finally {
-      this.endLoading();
+      this.endLoading('partial');
     }
 
     this.lastSeedReads = read;
@@ -571,7 +642,7 @@ export class GraphEngine {
       edgeTypes: spec.edgeTypes,
     } as const;
 
-    this.beginLoading();
+    this.beginLoading('partial');
     let added = 0;
     let total: number | undefined;
     let cursor: string | undefined;
@@ -598,7 +669,7 @@ export class GraphEngine {
         cursor = cursor ?? result.cursor;
       }
     } finally {
-      this.endLoading();
+      this.endLoading('partial');
     }
 
     this.expansion.markExpanded(id, { cursor, total, added });
@@ -676,7 +747,10 @@ export class GraphEngine {
   // ─── Budget ──────────────────────────────────────────────────────────────────
 
   private maxNodes(): number {
-    return this.spec.expansion?.maxNodes ?? DEFAULT_MAX_NODES;
+    // Clamped, and floored at 1: a spec asking for zero or a negative would make every expansion a
+    // no-op with no way to tell that from an empty graph. See `HOST_MAX_NODES`.
+    const asked = this.spec.expansion?.maxNodes ?? DEFAULT_MAX_NODES;
+    return Math.max(1, Math.min(asked, HOST_MAX_NODES));
   }
 
   private atBudget(): boolean {
@@ -751,6 +825,21 @@ export class GraphEngine {
     // A fit that could not run yet (no surface measured) is remembered, not dropped.
     if (options?.fit && !this.positions.size) this.pendingFit = true;
     if (result.running) this.scheduleTick();
+
+    /*
+      The last line of the load, and the one that says which kind of empty this is.
+
+      A graph with no nodes, a graph whose nodes never got a position, and a graph laid out three
+      thousand world-units from the camera are the same blank rectangle on screen. These four numbers
+      separate them, and only here are all four in one place.
+    */
+    this.context.trace?.('layout', {
+      layout: spec.type,
+      nodes: this.store.nodeCount,
+      edges: [...this.store.edges()].length,
+      positioned: this.positions.size,
+      viewport: { width, height },
+    });
   }
 
   /**
@@ -762,11 +851,18 @@ export class GraphEngine {
    *
    * Only when there is a surface to measure: before the first resize the numbers are zero, and a
    * rectangle of nothing at the origin is worse than no answer at all.
+   *
+   * **What the reader can see, not what the canvas spans.** A host may float panels over the graph
+   * without shrinking its box — the covered pixels are still canvas — so the two differ, and this is
+   * the one that answers the question a layout asks. `manual` puts a node with no stored position in
+   * the top-left of this rectangle, which is right where a transcript panel sits: on the workshop's
+   * board every freshly extracted card appeared underneath one, present and unreachable. See
+   * `Viewport.setObscured`.
    */
   private visibleWorldRect(): { x: number; y: number; width: number; height: number } {
-    const { width, height } = this.viewport.get();
-    const topLeft = this.viewport.toWorld({ x: 0, y: 0 });
-    const bottomRight = this.viewport.toWorld({ x: width, y: height });
+    const rect = this.viewport.visibleRect();
+    const topLeft = this.viewport.toWorld({ x: rect.x, y: rect.y });
+    const bottomRight = this.viewport.toWorld({ x: rect.x + rect.width, y: rect.y + rect.height });
     return {
       x: topLeft.x,
       y: topLeft.y,
@@ -1249,20 +1345,32 @@ export class GraphEngine {
 
   // ─── Status ──────────────────────────────────────────────────────────────────
 
-  private beginLoading(): void {
+  private beginLoading(scope: LoadScope): void {
     this.inFlight += 1;
-    if (this.inFlight === 1) {
-      this.status = { ...this.status, loading: true };
-      this.notify('status');
-    }
+    if (scope === 'reload') this.reloadsInFlight += 1;
+    this.syncLoading();
   }
 
-  private endLoading(): void {
+  private endLoading(scope: LoadScope): void {
     this.inFlight = Math.max(0, this.inFlight - 1);
-    if (this.inFlight === 0) {
-      this.status = { ...this.status, loading: false };
-      this.notify('status');
-    }
+    if (scope === 'reload') this.reloadsInFlight = Math.max(0, this.reloadsInFlight - 1);
+    this.syncLoading();
+  }
+
+  /**
+   * Publish both flags from the counters, rather than each call site deciding.
+   *
+   * A reload holds two counts at once — its own, and the seed load nested inside it — so "is anything
+   * in flight" is a question about the counters and never about which call arrived last. Derived
+   * together and compared before notifying, so the phases of a reload (seeds, then auto-expansion)
+   * cannot flicker `loading` off and on between them and hand the renderer a spurious settled frame.
+   */
+  private syncLoading(): void {
+    const loading = this.inFlight > 0;
+    const reloading = this.reloadsInFlight > 0;
+    if (loading === this.status.loading && reloading === this.status.reloading) return;
+    this.status = { ...this.status, loading, reloading };
+    this.notify('status');
   }
 
   /**

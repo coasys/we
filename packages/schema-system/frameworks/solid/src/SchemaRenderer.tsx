@@ -1,9 +1,8 @@
-import type { FlatQuery, ModelClass, QueryAdapter, RendererStores } from '@we/backend-shared';
+import type { EntityClass, FlatQuery, QueryAdapter, RendererStores } from '@we/backend-shared';
 import { compileQuery } from '@we/backend-shared';
 import type {
   LocalFieldMeta,
   LocalStateField,
-  MapProp,
   QueryDescriptor,
   QueryStateField,
   ValidationRule,
@@ -26,7 +25,6 @@ import { Dynamic } from 'solid-js/web';
 
 import { AnimateRenderer } from './AnimateRenderer';
 import { ConditionalRenderer } from './ConditionalRenderer';
-import { hoistQueryItems } from './queryHoist';
 import { SurfaceRenderer } from './SurfaceRenderer';
 import type { RendererOutput, RenderProps, SchemaNode } from './types';
 import { useVisualEditor } from './VisualEditorContext';
@@ -37,7 +35,7 @@ function isEventProp(key: string): boolean {
 }
 
 /**
- * Deep-walk query params and evaluate any $store/$local tokens to their current values.
+ * Deep-walk query params and evaluate any expression tokens to their current values.
  * Scoped to descriptor.params only — never touches the broader schema tree.
  * Must be called inside a Solid createEffect so that signal reads register as
  * reactive dependencies automatically, triggering re-runs when store values change.
@@ -47,16 +45,7 @@ function deepResolveTokens(
   stores: Record<string, unknown>,
   context: Record<string, unknown>,
 ): unknown {
-  if (params === null || params === undefined) return params;
-  if (typeof params !== 'object') {
-    // Bare context-ref strings (e.g. "$item.id") aren't objects, so the $-token branch
-    // below never sees them. resolveProp already knows how to resolve these — delegate
-    // instead of returning the raw, unresolved "$..." string (e.g. into a $query.parent.id).
-    if (typeof params === 'string' && params.startsWith('$') && params.length > 1) {
-      return deepUnwrap(resolveProp(params, stores, context));
-    }
-    return params;
-  }
+  if (params === null || params === undefined || typeof params !== 'object') return params;
   if (Array.isArray(params)) return params.map((item) => deepResolveTokens(item, stores, context));
 
   const obj = params as Record<string, unknown>;
@@ -64,9 +53,7 @@ function deepResolveTokens(
   if (hasTokenKey) {
     const resolved = resolveProp(obj, stores, context);
     // Unwrap reactive accessors — calling them here registers deps in the enclosing createEffect.
-    // Must be a deep unwrap: resolvers like $if delegate their branch to the generic dispatcher,
-    // which embeds unwrapped accessor functions at arbitrary nesting depth (e.g. a $local inside
-    // a $if's `then` branch), not just at the top level.
+    // Deep, because a handler token resolved here may embed accessors below its top level.
     return deepUnwrap(resolved);
   }
 
@@ -76,6 +63,27 @@ function deepResolveTokens(
     result[k] = deepResolveTokens(v, stores, context);
   }
   return result;
+}
+
+/**
+ * The entity a query names, resolving an expression against the stores and the row's bindings.
+ *
+ * A plain name is the overwhelming case and goes through untouched. An expression is what lets a
+ * template list records of a type it was not written for — a feed inside `$each` over a store's
+ * list of model names, where `entity: { $: 'target' }` reads the row it is on. That is the same
+ * arrangement `where` and `order` have always had; `entity` was the one part of a query a template
+ * had to know before it ran.
+ *
+ * Answers `''` for anything that does not resolve to a name, which callers must treat as **not
+ * yet** rather than as an error: a store read is empty for the first frames after a mount and
+ * permanently on a host that does not carry it, exactly as with an unresolved `where` operand.
+ *
+ * Call it inside the effect, so the read is tracked and the query re-runs when the name changes.
+ */
+function resolveEntityName(entity: unknown, stores: RendererStores, context: Record<string, unknown>): string {
+  if (typeof entity === 'string') return entity;
+  const resolved = deepResolveTokens(entity, stores, context);
+  return typeof resolved === 'string' ? resolved : '';
 }
 
 /**
@@ -203,9 +211,9 @@ function createQuerySignal(
     // mounted before the backend connects (a reload straight into a data route)
     // re-runs and subscribes when the bindings land — previously it was stranded
     // with an empty result until a route change happened to remount it.
-    const getModel = stores.$getModel;
-    const getModelForPerspective = stores.$getModelForPerspective;
-    if (!getModel) {
+    const getEntity = stores.$getEntity;
+    const getEntitiesForPerspective = stores.$getEntitiesForPerspective;
+    if (!getEntity) {
       setItems(reconcile([]));
       return;
     }
@@ -230,17 +238,25 @@ function createQuerySignal(
       return;
     }
 
+    // Read inside the effect, so a name that comes from an expression re-runs the query when it
+    // changes — and so a name that is not there yet is a frame to wait through, not a failure.
+    const entity = resolveEntityName(descriptor.entity, stores, context);
+    if (!entity) {
+      setItems(reconcile([]));
+      return;
+    }
+
     // Dataset-scoped model lookup: prefer a dataset-specific dynamic model, fall back to the global
     // registry.
     // The dataset stays opaque here: the host derives whatever key its per-dataset model registry
     // needs, since only it knows the concrete handle type.
-    const dynamicCls = getModelForPerspective ? getModelForPerspective(descriptor.entity, p) : undefined;
-    let Model: ModelClass;
+    const dynamicCls = getEntitiesForPerspective ? getEntitiesForPerspective(entity, p) : undefined;
+    let Model: EntityClass;
     try {
-      Model = dynamicCls ?? getModel(descriptor.entity);
+      Model = dynamicCls ?? getEntity(entity);
     } catch {
       const onError = stores.$onError;
-      onError?.(`Model "${descriptor.entity}" is not available in this perspective`);
+      onError?.(`Model "${entity}" is not available in this perspective`);
       setItems(reconcile([]));
       return;
     }
@@ -270,7 +286,7 @@ function createQuerySignal(
     if (useQueryIR && queryAdapter) {
       // Fail loud: an IR/adapter gap renders nothing and reports, rather than silently reverting to the
       // raw backend path (which only ever worked because AD4M is both the dialect and the backend).
-      const lowered = routeQueryThroughIR(descriptor.entity, queryOptions, queryAdapter, irErrorReporter(stores));
+      const lowered = routeQueryThroughIR(entity, queryOptions, queryAdapter, irErrorReporter(stores));
       if (lowered === null) {
         setItems(reconcile([]));
         return;
@@ -305,7 +321,7 @@ function createQuerySignal(
         .catch((err) => {
           setItems(reconcile([]));
           setLoaded(true);
-          reportQueryError(stores, descriptor.entity, err);
+          reportQueryError(stores, entity, err);
         });
       onCleanup(() => builder.dispose());
     } else {
@@ -333,7 +349,7 @@ function createQuerySignal(
           if (isAbort(err)) return;
           setItems(reconcile([]));
           setLoaded(true);
-          reportQueryError(stores, descriptor.entity, err);
+          reportQueryError(stores, entity, err);
         });
     }
   });
@@ -355,7 +371,6 @@ function createQuerySignal(
 /** Detect values with no schema tokens — can be passed through without reactive tracking. */
 function isStaticValue(value: unknown): boolean {
   if (value === null || value === undefined) return true;
-  if (typeof value === 'string') return !value.startsWith('$') || value.length <= 1;
   if (typeof value !== 'object') return true;
   if (Array.isArray(value)) return value.every(isStaticValue);
   return !Object.keys(value).some((k) => k.startsWith('$')) && Object.values(value).every(isStaticValue);
@@ -378,10 +393,15 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     // stores + parent context. Otherwise use it as a literal. Called both at mount and inside
     // reset() so that reset re-reads the current store value.
     //
-    // Expression means either an object token (`{ $store: … }`) or a `$`-prefixed **string** — a
-    // context reference like `'$space.name'`, which every other position in a schema accepts. Only
-    // objects were resolved here, so a form seeded from a `$each` item silently rendered the string
-    // `$space.name` in its input: no error, and the field looked filled in.
+    // Expression means either a token object (`{ $: … }`, `{ $query: … }`) or a `$`-prefixed
+    // **string** — the old context reference, `'$space.name'`. Only objects were resolved here, so a
+    // form seeded from a `$each` item silently rendered the string `$space.name` in its input: no
+    // error, and the field looked filled in.
+    //
+    // **This is the last place a `$`-string evaluates.** Every other position treats one as literal
+    // text and the validator rejects it, which is the contract as of #169 — an `initial` is the one
+    // exception, kept so a template written before that still seeds its fields rather than putting
+    // the ten characters into them. Do not read this as the spelling being alive.
     //
     // A `$`-string that matches no context key or store global comes back unchanged (the
     // dispatcher's final pass-through), so a literal that merely starts with `$` is unaffected.
@@ -549,7 +569,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
   if (node.$queries) {
     // Always created, even before the backend's data bindings land (a reload
     // straight into a data route, or a presentation-only host): the accessor
-    // reads $getModel reactively inside its own effect and starts the real
+    // reads $getEntity reactively inside its own effect and starts the real
     // subscription the moment the bindings arrive. Each entry also exposes
     // `<name>Loaded` — false until the first result set (or error) — so a
     // template can hold a skeleton instead of flashing its empty state.
@@ -583,30 +603,10 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     return (
       <For each={nodes} fallback={null}>
         {(child) => {
-          // If the child is a string, check for $-prefixed context references
-          if (typeof child === 'string') {
-            if (child.startsWith('$') && child.length > 1) {
-              return (
-                <>
-                  {() => {
-                    // Call resolveProp INSIDE the reactive expression so that plain
-                    // context property reads (e.g. '$profile.bio' → item.bio on a
-                    // Solid store proxy) are tracked as fine-grained dependencies.
-                    const resolved = resolveProp(child, stores, effectiveContext, createMemo);
-                    const v =
-                      typeof resolved === 'function' && REACTIVE_ACCESSOR in resolved
-                        ? (resolved as unknown as () => unknown)()
-                        : resolved;
-                    return v != null ? String(v) : '';
-                  }}
-                </>
-              );
-            }
-            return child;
-          }
-          // Resolve operator tokens ($concat, $store, etc.) placed directly in children.
-          // Schema nodes (have `type` or `children`) are NOT operator tokens even when
-          // they carry $-prefixed keys like $localState.
+          // A string child is text.
+          if (typeof child === 'string') return child;
+          // An expression placed directly in children renders as text. Schema nodes (have `type`
+          // or `children`) are not tokens even when they carry $-prefixed keys like $localState.
           if (
             child &&
             typeof child === 'object' &&
@@ -614,40 +614,10 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
             !('children' in child) &&
             Object.keys(child).some((k) => k.startsWith('$'))
           ) {
-            // $if in children with component then/else → use ConditionalRenderer
-            // Only use ConditionalRenderer when then/else are SchemaNode objects;
-            // when they're primitives (strings, numbers), fall through to resolveProp.
-            if ('$if' in child) {
-              const ifSpec = (child as Record<string, unknown>).$if as Record<string, unknown>;
-              const thenVal = ifSpec.then;
-              const elseVal = ifSpec.else;
-              const thenIsNode = thenVal && typeof thenVal === 'object' && 'type' in thenVal;
-              const elseIsNode = elseVal && typeof elseVal === 'object' && 'type' in elseVal;
-              if (thenIsNode || elseIsNode) {
-                const condNode: SchemaNode = { type: '$if', props: ifSpec } as SchemaNode;
-                return (
-                  <ConditionalRenderer
-                    node={condNode}
-                    stores={stores}
-                    context={effectiveContext}
-                    renderNode={renderNode}
-                    createQuerySignal={createQuerySignal}
-                  />
-                );
-              }
-            }
-            /*
-              Deliberately *not* hoisted, unlike a prop.
-
-              Children render inside a memo, and hoisting means creating a subscription — an effect
-              inside a derivation, which is the one thing the hoist must not do. Doing it at setup
-              instead would mean walking the whole child tree, subscribing queries for nodes behind
-              conditions that are false and may never render.
-
-              So a `$query` in a children token resolves to nothing: `$count` reads 0. Put the token
-              in a **prop** instead — `we-text`'s `text`, say — where hoisting is safe and correct.
-              `tests/countOverQuery.test.tsx` pins this as a known limit rather than a bug.
-            */
+            // Resolved inside the reactive expression so the reads it makes are tracked as
+            // fine-grained dependencies. A `$query` cannot be read from here — children render
+            // inside a memo, and a subscription is an effect — so a question for the backend is
+            // hoisted into `$queries` and read back through `local`.
             const resolved = resolveProp(child as unknown, stores, effectiveContext, createMemo);
             return (
               <>
@@ -710,15 +680,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
 
   // Handle conditional rendering
   if (node.type === '$if') {
-    return (
-      <ConditionalRenderer
-        node={node}
-        stores={stores}
-        context={effectiveContext}
-        renderNode={renderNode}
-        createQuerySignal={createQuerySignal}
-      />
-    );
+    return <ConditionalRenderer node={node} stores={stores} context={effectiveContext} renderNode={renderNode} />;
   }
 
   /*
@@ -749,7 +711,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     const rawItems = node.props?.items;
     if (hasToken(rawItems, '$query', 'object')) {
       const descriptor = resolveQueryProp(rawItems);
-      // The accessor reads $getModel reactively inside its own effect — empty
+      // The accessor reads $getEntity reactively inside its own effect — empty
       // until the backend bindings land, live from then on.
       itemsArray = createQuerySignal(descriptor, stores, effectiveContext);
     } else {
@@ -808,9 +770,9 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
         createEffect(() => {
           // Read inside the effect — reactive, so a mount before the backend
           // connects self-heals when the bindings land (see createQuerySignal).
-          const getModelFn = stores.$getModel;
-          const getModelForPerspective = stores.$getModelForPerspective;
-          if (!getModelFn) {
+          const getEntityFn = stores.$getEntity;
+          const getEntitiesForPerspective = stores.$getEntitiesForPerspective;
+          if (!getEntityFn) {
             setHasItem(false);
             return;
           }
@@ -831,13 +793,21 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
             return;
           }
 
-          const dynamicCls = getModelForPerspective ? getModelForPerspective(descriptor.entity, p) : undefined;
-          let Model: ModelClass;
+          // Same as `createQuerySignal`: read inside the effect so an expression re-runs the query,
+          // and treat a name that has not resolved yet as a frame to wait through.
+          const entity = resolveEntityName(descriptor.entity, stores, effectiveContext);
+          if (!entity) {
+            setHasItem(false);
+            return;
+          }
+
+          const dynamicCls = getEntitiesForPerspective ? getEntitiesForPerspective(entity, p) : undefined;
+          let Model: EntityClass;
           try {
-            Model = dynamicCls ?? getModelFn(descriptor.entity);
+            Model = dynamicCls ?? getEntityFn(entity);
           } catch {
             const onError = stores.$onError;
-            onError?.(`Model "${descriptor.entity}" is not available in this perspective`);
+            onError?.(`Model "${entity}" is not available in this perspective`);
             setHasItem(false);
             return;
           }
@@ -870,7 +840,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
           const useQueryIR = typeof irFlag === 'function' ? (irFlag as () => unknown)() === true : irFlag === true;
           const queryAdapter = stores.$queryAdapter;
           if (useQueryIR && queryAdapter) {
-            const lowered = routeQueryThroughIR(descriptor.entity, queryOptions, queryAdapter, irErrorReporter(stores));
+            const lowered = routeQueryThroughIR(entity, queryOptions, queryAdapter, irErrorReporter(stores));
             if (lowered === null) {
               setHasItem(false);
               return;
@@ -902,7 +872,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
               .then(handleResults)
               .catch((err: unknown) => {
                 setHasItem(false);
-                reportQueryError(stores, descriptor.entity, err);
+                reportQueryError(stores, entity, err);
               });
             onCleanup(() => builder.dispose());
           } else {
@@ -920,7 +890,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
               .catch((err) => {
                 if (isAbort(err)) return;
                 setHasItem(false);
-                reportQueryError(stores, descriptor.entity, err);
+                reportQueryError(stores, entity, err);
               });
           }
         });
@@ -1052,8 +1022,8 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
   // retry without a materially different approach — resolving static props at template-install time
   // (a schema pre-compilation step) is the direction that has not been tried.
   // See docs/architecture/performance.md for how these costs were measured.
-  // resolveProp is called INSIDE the memo so that plain-value resolvers
-  // ($not, $eq, $ne, $and, $or) correctly track signal dependencies.
+  // resolveProp is called INSIDE the memo so that an expression's reads
+  // are tracked as the memo's signal dependencies.
   const propMemos: Record<string, () => unknown> = {};
   for (const [key, rawValue] of Object.entries(node.props ?? {})) {
     if (isStaticValue(rawValue)) {
@@ -1073,22 +1043,10 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
       // instead of createMemo — subscriptions are side effects, not derivations.
       const descriptor = resolveQueryProp(rawValue);
       propMemos[key] = createQuerySignal(descriptor, stores, effectiveContext);
-    } else if (
-      hasToken(rawValue, '$map', 'object') &&
-      hasToken((rawValue as { $map: MapProp }).$map.items, '$query', 'object')
-    ) {
-      // $map with $query items: wire a reactive subscription for the items source,
-      // then pass the live signal into resolveMapProp so it re-maps on every update.
-      const mapSpec = (rawValue as { $map: MapProp }).$map;
-      const descriptor = resolveQueryProp(mapSpec.items);
-      const itemsSignal = createQuerySignal(descriptor, stores, effectiveContext);
-      propMemos[key] = createMemo(() =>
-        deepUnwrap(resolveProp({ $map: { ...mapSpec, items: itemsSignal } }, stores, effectiveContext, createMemo)),
-      );
     } else if (isEventProp(key) && Array.isArray(rawValue)) {
       // Event handler arrays: resolve each item lazily at call time so that
-      // $if conditions with $event.* references (e.g. '$event.detail') resolve
-      // against the actual event rather than the render-time context.
+      // `$if` conditions and expressions reading `event` resolve against the
+      // actual event rather than the render-time context.
       const items = rawValue as unknown[];
       propMemos[key] =
         () =>
@@ -1107,9 +1065,8 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
           }
         };
     } else {
-      const raw = hoistQueryItems(rawValue, stores, effectiveContext, createQuerySignal);
       propMemos[key] = createMemo(() => {
-        const resolved = resolveProp(raw, stores, effectiveContext, createMemo);
+        const resolved = resolveProp(rawValue, stores, effectiveContext, createMemo);
         return deepUnwrap(resolved);
       });
     }

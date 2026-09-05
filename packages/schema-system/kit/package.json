@@ -4,7 +4,8 @@
   "description": "Portable schema fragments — shapes that expand to plain nodes, for templates and modules alike",
   "type": "module",
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "exports": {
     ".": {
@@ -13,10 +14,11 @@
     }
   },
   "dependencies": {
-    "@we/schema-shared": "workspace:*"
+    "@we/schema-shared": "workspace:*",
+    "@we/tokens": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^26.3.0",
+    "@types/node": "^26.4.0",
     "vitest": "^4.1.11"
   }
 }

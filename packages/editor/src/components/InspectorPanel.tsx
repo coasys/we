@@ -491,7 +491,7 @@ export function InspectorPanel() {
         No background of its own: the dock frame paints the panel's surface.
 
         The same correction the code and theme panels already carry. Every dock is wrapped in a frame
-        that sets `surface-sunken`, precisely so a docked panel does not have to decide what it is
+        that sets `page`, precisely so a docked panel does not have to decide what it is
         made of — see the note in dockRegistry.ts. This one still painted `surface` over the top, so
         it sat lighter than every other panel docked at the same edge and read as a different
         material. It was the last of the three.
@@ -831,7 +831,7 @@ function NodeProperties(props: {
         </Show>
 
         {/* Spacing — always-visible box model for padding + margin */}
-        <BoxModel meta={meta()} currentProps={currentProps()} onPropChange={props.onPropChange} />
+        <BoxRecord meta={meta()} currentProps={currentProps()} onPropChange={props.onPropChange} />
 
         {/* Used props — always visible */}
         <Show when={usedProps().size > 0}>
@@ -1876,7 +1876,7 @@ function BgImagePicker(props: {
 }
 
 // -----------------------------------------------------------------------
-// BoxModel — Chrome DevTools-style nested rectangle spacing diagram
+// BoxRecord — Chrome DevTools-style nested rectangle spacing diagram
 // -----------------------------------------------------------------------
 
 const BOX_MARGIN = {
@@ -1901,7 +1901,7 @@ const BOX_ELEMENT = {
   text: 'var(--we-color-primary-800)',
 };
 
-function BoxModel(props: {
+function BoxRecord(props: {
   meta: ComponentMeta | null;
   currentProps: Record<string, unknown>;
   onPropChange: (key: string, value: unknown) => void;

@@ -39,6 +39,7 @@ const CATALOGUE = {
   youtube: { module: '@we/template-showcase', export: 'youtubeTemplate' },
   kanban: { module: '@we/template-showcase', export: 'kanbanTemplate' },
   events: { module: '@we/template-showcase', export: 'eventsTemplate' },
+  workshop: { module: '@we/template-showcase', export: 'workshopTemplate' },
 };
 
 const seed = JSON.parse(await readFile(resolve(repoRoot, 'we-seed.json'), 'utf8'));

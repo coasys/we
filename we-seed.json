@@ -8,8 +8,8 @@
   "features": {
     "useQueryIR": true
   },
-  "modules": ["globe", "graph", "notes", "call", "transcribe"],
-  "templates": ["default", "discord", "twitter", "instagram", "youtube", "kanban", "events"],
+  "modules": ["call", "transcribe", "pocket", "notes", "globe", "graph"],
+  "templates": ["default", "workshop", "discord", "twitter", "instagram", "youtube", "kanban", "events"],
   "views": ["about", "cards", "graph", "globe", "tasks", "calendar"],
   "ad4m": {
     "dataPath": "~/.ad4m",
@@ -22,23 +22,5 @@
     "appDistPath": "dist",
     "basePort": 8080
   },
-  "apps": [
-    {
-      "id": "flux",
-      "name": "Flux",
-      "icon": "camera",
-      "image": "https://app.fluxsocial.io/icon.png",
-      "description": "Social web3 toolkit for communities",
-      "capabilities": ["perspectives", "languages", "agents"],
-      "paths": {
-        "projectRoot": "../flux/app",
-        "dist": "../flux/app/dist",
-        "webUrl": "https://fluxsocial-dev.netlify.app",
-        "devServer": {
-          "port": 3030,
-          "host": "localhost"
-        }
-      }
-    }
-  ]
+  "apps": []
 }

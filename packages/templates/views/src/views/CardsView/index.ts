@@ -1,4 +1,5 @@
 import type { TemplateSchema } from '@we/schema-shared';
+import { expr } from '@we/schema-shared';
 import { pageShell } from '@we/template-kit';
 
 import { blocksList } from './BlocksList.ts';
@@ -52,55 +53,79 @@ export const cardsView: TemplateSchema = {
     sortField: { type: 'string', initial: 'date', syncParam: 'sort' },
     displayMode: { type: 'string', initial: 'expanded', persist: 'cards.displayMode' },
     searchText: { type: 'string', initial: '', syncParam: 'q' },
+    /*
+      Whether the Calls list shows calls nobody said anything in.
+
+      A call's record is now created when the call *starts* rather than when somebody first speaks,
+      which is what gives a live call an identity to hang its settings and its roster on — and the
+      cost is that a call somebody opened and closed leaves a record behind. Nothing deletes it: the
+      only agent who could judge an empty call discardable is one who can see the whole call, and
+      under a partition that is nobody, so a delete would eventually eat a transcript that existed
+      on the other side of the split.
+
+      So it is folded rather than removed, which is a display decision and reversible. Persisted
+      rather than synced: it is a preference about how much noise you want, not something a shared
+      link should impose.
+    */
+    showEmptyCalls: { type: 'boolean', initial: false, persist: 'cards.showEmptyCalls' },
   },
   ...pageShell({
     gap: '400',
     px: '600',
     py: '400',
-    // Holds the grid open on a space with little content — the viewport, less the nav bar.
-    minHeight: 'calc(100dvh - 70px)',
+    /*
+      Holds the grid open on a space with little content.
+
+      `100%` of the box the shell handed us, not `calc(100dvh - 70px)`. A view renders inside
+      whatever shell a space is running, and only that shell knows how tall its chrome is — this
+      one was carrying the default template's nav-bar height as a literal, which was three pixels
+      short of the real one and simply wrong under any other shell. Where a shell gives its outlet
+      no definite height the percentage resolves to `auto` and this does nothing, which is the
+      right way for a guess like that to fail.
+    */
+    minHeight: '100%',
     children: [
       cardsHeader,
 
       // Gates itself on `createPostOpen` — see `composerModal`.
       createPostModal,
 
-      { type: '$if', props: { condition: { $eq: [{ $local: 'contentType' }, 'posts'] }, then: postsList } },
+      { type: '$if', props: { condition: { $: "local.contentType == 'posts'" }, then: postsList } },
       callsList,
-      { type: '$if', props: { condition: { $eq: [{ $local: 'contentType' }, 'users'] }, then: usersList } },
-      { type: '$if', props: { condition: { $eq: [{ $local: 'contentType' }, 'spaces'] }, then: spacesList } },
-      { type: '$if', props: { condition: { $eq: [{ $local: 'contentType' }, 'templates'] }, then: templatesList } },
-      { type: '$if', props: { condition: { $eq: [{ $local: 'contentType' }, 'themes'] }, then: themesList } },
+      { type: '$if', props: { condition: { $: "local.contentType == 'users'" }, then: usersList } },
+      { type: '$if', props: { condition: { $: "local.contentType == 'spaces'" }, then: spacesList } },
+      { type: '$if', props: { condition: { $: "local.contentType == 'templates'" }, then: templatesList } },
+      { type: '$if', props: { condition: { $: "local.contentType == 'themes'" }, then: themesList } },
       {
         type: '$if',
-        props: { condition: { $eq: [{ $local: 'contentType' }, 'flux-channels'] }, then: fluxChannelsList },
+        props: { condition: { $: "local.contentType == 'flux-channels'" }, then: fluxChannelsList },
       },
       {
         type: '$if',
-        props: { condition: { $eq: [{ $local: 'contentType' }, 'flux-conversations'] }, then: fluxConversationsList },
+        props: { condition: { $: "local.contentType == 'flux-conversations'" }, then: fluxConversationsList },
       },
       {
         type: '$if',
         props: {
-          condition: { $eq: [{ $local: 'contentType' }, 'flux-conversations-nested'] },
+          condition: { $: "local.contentType == 'flux-conversations-nested'" },
           then: fluxConversationsNestedList,
         },
       },
       {
         type: '$if',
         props: {
-          condition: { $eq: [{ $local: 'contentType' }, 'flux-conversation-subgroups'] },
+          condition: { $: "local.contentType == 'flux-conversation-subgroups'" },
           then: fluxConversationSubgroupsList,
         },
       },
       {
         type: '$if',
-        props: { condition: { $eq: [{ $local: 'contentType' }, 'flux-messages'] }, then: fluxMessagesList },
+        props: { condition: { $: "local.contentType == 'flux-messages'" }, then: fluxMessagesList },
       },
       {
         type: '$if',
         props: {
-          condition: { $not: { $in: [{ $local: 'contentType' }, NON_BLOCK_CONTENT_TYPES] } },
+          condition: expr`!(local.contentType in ${NON_BLOCK_CONTENT_TYPES})`,
           then: blocksList,
         },
       },

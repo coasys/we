@@ -8,6 +8,7 @@
 import type { ModuleDefinition } from '@we/module-shared';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { resolveParts } from '../src/shared/registries/moduleParts';
 import { moduleRegistry, moduleStores } from '../src/shared/registries/moduleRegistry';
 import { registerCoreSlots, slotRegistry } from '../src/shared/registries/slotRegistry';
 
@@ -64,6 +65,9 @@ describe('slotRegistry — faithful generalisation of shellRegistry', () => {
       'core:consentSecret',
       'core:removeAccount',
       'core:createSpace',
+      'core:namePrompt',
+      'core:installPrompt',
+      'core:destructivePrompt',
       'core:sidebar',
       'core:templateEditor',
       'core:chromeRail',
@@ -73,6 +77,7 @@ describe('slotRegistry — faithful generalisation of shellRegistry', () => {
       'dock:editor:code',
       'dock:editor:ai',
       'dock:editor:theme',
+      'dock:shell:space-settings',
       'call',
     ]);
   });
@@ -185,9 +190,23 @@ describe('moduleRegistry', () => {
     moduleRegistry.register(mod({ id: 'a', schemas: { panel: { type: 'Column' } } }), host);
     moduleRegistry.register(mod({ id: 'b', schemas: { panel: { type: 'Row' } } }), host);
 
+    // Normalised on the way out: a part written as a bare node comes back as one with no subject,
+    // so a placer has one shape to handle rather than two.
     expect(moduleRegistry.schemas()).toEqual({
-      'a.panel': { type: 'Column' },
-      'b.panel': { type: 'Row' },
+      'a.panel': { node: { type: 'Column' } },
+      'b.panel': { node: { type: 'Row' } },
+    });
+  });
+
+  it('keeps the subject a part names, which is what lets a placer repoint it', () => {
+    moduleRegistry.register(
+      mod({ id: 'a', schemas: { feed: { node: { type: 'Column' }, subject: 'modules.a.collectionId' } } }),
+      host,
+    );
+
+    expect(moduleRegistry.schemas()['a.feed']).toEqual({
+      node: { type: 'Column' },
+      subject: 'modules.a.collectionId',
     });
   });
 
@@ -438,20 +457,16 @@ describe('a module that is holding something live', () => {
   it('is gated on the space alone when it holds nothing', () => {
     moduleRegistry.register(mod({ id: 'plain', slots: [chrome] }), host);
 
-    // Unchanged for every module that does not opt in — no `$or`, just the space's decision.
-    expect(gateOf('plain')).toHaveProperty('$in');
-    expect(gateOf('plain')).not.toHaveProperty('$or');
+    // Unchanged for every module that does not opt in — no disjunct, just the space's decision.
+    expect(gateOf('plain')).toEqual({ $: "'plain' in spaceStore.activeModules" });
   });
 
   it('also renders wherever its own key says it is holding something', () => {
     moduleRegistry.register(mod({ id: 'held', slots: [chrome], holdsWhen: 'modules.held.active' }), host);
 
-    const or = gateOf('held').$or as unknown[];
-    expect(or).toHaveLength(2);
     // Still hidden by neither condition alone — the space's decision keeps working where the module
     // is holding nothing, which is the ordinary case even for a module that can hold something.
-    expect(or[0]).toHaveProperty('$in');
-    expect(or[1]).toEqual({ $store: 'modules.held.active' });
+    expect(gateOf('held')).toEqual({ $: "'held' in spaceStore.activeModules || modules.held.active" });
   });
 
   it('gates a dock the same way as a slot', () => {
@@ -462,6 +477,189 @@ describe('a module that is holding something live', () => {
       host,
     );
 
-    expect(gateOf('docked')).toHaveProperty('$or');
+    expect(gateOf('docked').$).toContain('|| modules.docked.active');
+  });
+});
+
+describe('agent-scoped modules', () => {
+  /**
+   * A fake schema port that records what it was asked to compile, and hands back one class per
+   * entity name. Compiling for real needs a backend; what is under test is the routing.
+   */
+  function recordingPort() {
+    const compiled: string[] = [];
+    const port = {
+      declare: (manifest: { entities: Record<string, unknown> }) => {
+        const names = Object.keys(manifest.entities);
+        compiled.push(...names);
+        return Object.fromEntries(names.map((name) => [name, { className: name }]));
+      },
+    };
+    return { port, compiled };
+  }
+
+  const manifest = (name: string) =>
+    ({
+      version: '1.0.0',
+      entities: { [name]: { base: 'Ad4mModel', properties: {}, relations: {} } },
+    }) as never;
+
+  it('routes an agent-scoped manifest to the root dataset and nowhere else', () => {
+    // The failure this prevents is not abstract: an agent-scoped entity installed into a shared
+    // space would sync one person's private records to a whole community.
+    moduleRegistry.register(
+      mod({ id: 'pocket', entities: { manifest: manifest('PocketItem'), scope: 'agent' } }),
+      host,
+    );
+    const { port, compiled } = recordingPort();
+
+    expect(moduleRegistry.moduleSchemas(port as never)).toEqual([]);
+    expect(moduleRegistry.agentSchemas(port as never)).toEqual([{ className: 'PocketItem' }]);
+    expect(compiled).toEqual(['PocketItem']);
+  });
+
+  it('leaves a module that says nothing about scope in the space, as before', () => {
+    moduleRegistry.register(mod({ id: 'notes', entities: { manifest: manifest('Note') } }), host);
+    const { port } = recordingPort();
+
+    expect(moduleRegistry.moduleSchemas(port as never)).toEqual([{ className: 'Note' }]);
+    expect(moduleRegistry.agentSchemas(port as never)).toEqual([]);
+  });
+
+  it('compiles each module once, however many datasets it is installed into', () => {
+    // Install runs on every dataset switch, and fresh classes each time would churn the model
+    // registry underneath live queries.
+    moduleRegistry.register(
+      mod({ id: 'pocket', entities: { manifest: manifest('PocketItem'), scope: 'agent' } }),
+      host,
+    );
+    const { port, compiled } = recordingPort();
+
+    moduleRegistry.agentSchemas(port as never);
+    moduleRegistry.agentSchemas(port as never);
+
+    expect(compiled).toEqual(['PocketItem']);
+  });
+});
+
+/**
+ * A module's panel contents, replaced by the interface that declared the panel.
+ *
+ * The gate is keyed by **dock id** though the template's declaration names a module, and the two
+ * only diverge for a module contributing more than one panel — where keying by module would have
+ * put one supplied body inside every one of them. None does today, which is the reason to pin it:
+ * the day one does, the failure is a panel quietly showing the wrong contents.
+ */
+describe('supplying a module panel’s contents', () => {
+  beforeEach(reset);
+
+  const twoDocks = {
+    id: 'twin',
+    name: 'Twin',
+    docks: [
+      { edge: 'edgeA', node: { type: 'we-text', children: ['first'] } },
+      { edge: 'edgeB', node: { type: 'we-text', children: ['second'] } },
+    ],
+    createStore: () => ({}),
+  } as unknown as ModuleDefinition;
+
+  it('gates each dock on its own id, not on the module’s', () => {
+    moduleRegistry.register(twoDocks, host);
+
+    const frames = slotRegistry.all().filter((entry) => entry.id.startsWith('dock:twin'));
+    const json = frames.map((entry) => JSON.stringify(entry.node));
+
+    expect(frames).toHaveLength(2);
+    expect(json[0]).toContain("shellStore.panelSupplied['twin:0']");
+    expect(json[1]).toContain("shellStore.panelSupplied['twin:1']");
+    // Neither asks about the bare module name — that is the key that would answer for both at once.
+    for (const entry of json) expect(entry).not.toContain("panelSupplied['twin']");
+  });
+
+  it('names each dock, so a placement survives a second panel being added', () => {
+    /*
+      The id was `<moduleId>:<index>`, which is stable only while nothing is inserted before it. A
+      placement is remembered against that id, so adding a panel at the top of the list renumbered
+      every one below it and threw away wherever anybody had dragged them.
+    */
+    const named = {
+      id: 'twin',
+      name: 'Twin',
+      docks: [
+        { edge: 'edgeA', name: 'transcript', node: { type: 'we-text' } },
+        { edge: 'edgeB', name: 'extraction', node: { type: 'we-text' } },
+      ],
+      createStore: () => ({}),
+    } as unknown as ModuleDefinition;
+    moduleRegistry.register(named, host);
+
+    const ids = slotRegistry
+      .all()
+      .filter((entry) => entry.id.startsWith('dock:twin'))
+      .map((entry) => entry.id);
+
+    expect(ids).toEqual(['dock:twin:transcript', 'dock:twin:extraction']);
+  });
+
+  it('tells a supplied body which dock it is for', () => {
+    // Two frames ask, and a body matched on the module alone would land in whichever asked first —
+    // the transcript inside the extraction panel, silently.
+    const named = {
+      id: 'twin',
+      name: 'Twin',
+      docks: [
+        { edge: 'edgeA', name: 'transcript', node: { type: 'we-text' } },
+        { edge: 'edgeB', name: 'extraction', node: { type: 'we-text' } },
+      ],
+      createStore: () => ({}),
+    } as unknown as ModuleDefinition;
+    moduleRegistry.register(named, host);
+
+    expect(JSON.stringify(slotRegistry.get('dock:twin:extraction')?.node)).toContain('"dock":"extraction"');
+  });
+
+  it('composes its own chrome out of its own parts, expanded before it renders', () => {
+    /*
+      A module building its panel from its own published fragments is ordinary — the transcript panel
+      builds its feed from `transcriptLines`. Only a *template* placing a part expanded one, so a
+      module's own chrome reached the renderer with the marker intact and drew "Unknown component
+      $part" in a red box where each fragment should have been. Invisible in an interface that
+      supplies the body, which is why it showed up in the default template and not the workshop.
+    */
+    const withPart = {
+      id: 'twin',
+      name: 'Twin',
+      schemas: { row: { type: 'we-text', children: ['from the part'] } },
+      docks: [
+        {
+          edge: 'edgeA',
+          name: 'transcript',
+          node: { type: 'Column', children: [{ type: '$part', props: { id: 'twin.row' } }] },
+        },
+      ],
+      createStore: () => ({}),
+    } as unknown as ModuleDefinition;
+    moduleRegistry.register(withPart, host);
+
+    const rendered = JSON.stringify(
+      slotRegistry.nodes().map((node) => {
+        const expanded = resolveParts(node);
+        return Array.isArray(expanded) ? expanded : [expanded];
+      }),
+    );
+
+    expect(rendered).toContain('from the part');
+    expect(rendered).not.toContain('$part');
+  });
+
+  it('still renders the module’s own contents on the other side of the gate', () => {
+    // The override is a branch, not a replacement: a module whose panel nobody supplies is
+    // unaffected, which is what makes this safe to key on something no template writes directly.
+    moduleRegistry.register(twoDocks, host);
+
+    const first = JSON.stringify(slotRegistry.get('dock:twin:0')?.node);
+
+    expect(first).toContain('first');
+    expect(first).toContain('TemplatePanelBody');
   });
 });

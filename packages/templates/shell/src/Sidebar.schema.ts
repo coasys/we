@@ -1,5 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { railGroup, railItem, railShell } from '@we/template-kit';
+import { confirmModal, railGroup, railItem, railShell } from '@we/template-kit';
 
 /**
  * Shell Sidebar
@@ -25,6 +25,9 @@ const COLLAPSED_WIDTH = '80px';
 
 const rail: SchemaNode = railShell({
   collapsedWidth: COLLAPSED_WIDTH,
+  // Declared here because the *button* that sets it is a rail item, and a flag declared only above
+  // the dialog would leave that button clicking into nothing. See the logout control below.
+  localState: { confirmGuestLogout: { type: 'boolean', initial: false } },
   position: 'fixed',
   /*
     Above a docked module panel, which is what `chrome` means — see the z-index tokens.
@@ -72,19 +75,65 @@ const rail: SchemaNode = railShell({
     type: 'Column',
     props: { width: '100%', gap: '200' },
     children: [
-      railItem({
-        icon: 'flask',
-        label: 'Schema Tests',
-        active: { $eq: [{ $store: 'shellStore.activeShellView' }, 'schema-tests'] },
-        onClick: [
-          { $action: 'appStore.deactivateApp' },
-          { $action: 'shellStore.openShellView', args: ['schema-tests'] },
-        ],
-      }),
+      /*
+        A developer's page, so it is in the rail only where developer affordances are.
+
+        `sessionStore.devTools` rather than `isDevelopment`: the first is "should this be visible",
+        which a developer may turn off to see what a user sees, and the second is a fact about the
+        build that nothing should be able to contradict. See `devToolsEnabled`.
+
+        `$if` rather than a hidden row, because a hidden one is still in the accessibility tree and
+        still found by find-in-page — and the rail is chrome, so an invisible entry in it is a
+        control somebody can reach by keyboard and cannot see.
+      */
+      {
+        type: '$if',
+        props: {
+          condition: { $: 'sessionStore.devTools' },
+          then: railItem({
+            icon: 'flask',
+            label: 'Schema Tests',
+            active: { $: "shellStore.activeShellView == 'schema-tests'" },
+            onClick: [
+              { $action: 'appStore.deactivateApp' },
+              { $action: 'shellStore.openShellView', args: ['schema-tests'] },
+            ],
+          }),
+        },
+      },
+      /*
+        Logging out is one-way for a guest, so a guest is told before it happens.
+
+        A guest identity was minted by the link they clicked and exists on the inviter's node with
+        credentials this app holds and shows nowhere. `logout` forgets them; the reload lands on a
+        connect screen pointing at that host, and there is no password, no recovery phrase and no
+        second device to get back in with — the account and everything posted from it are simply
+        gone. For an ordinary member the same button is "sign in again", which is why the control
+        carried no warning: it is the right control with two very different consequences.
+
+        Not hidden. A guest may genuinely want to leave, and a missing exit is its own trap; what
+        was missing is the sentence saying what leaving costs.
+      */
       railItem({
         icon: 'sign-out',
         label: 'Logout',
-        onClick: { $action: 'sessionStore.logout' },
+        onClick: {
+          $if: {
+            condition: { $: 'sessionStore.isGuest' },
+            then: { $setLocal: 'confirmGuestLogout', value: true },
+            else: { $action: 'sessionStore.logout' },
+          },
+        },
+      }),
+      confirmModal({
+        open: { $: 'local.confirmGuestLogout' },
+        close: { $setLocal: 'confirmGuestLogout', value: false },
+        title: 'Sign out of this guest account?',
+        body: 'This identity was created by the invite link you followed. It has no password and no other way back in, so signing out ends it for good — along with anything you have posted from it.',
+        detail: 'To keep it, stay signed in on this browser.',
+        confirmLabel: 'Sign out anyway',
+        cancelLabel: 'Stay signed in',
+        confirm: { $action: 'sessionStore.logout' },
       }),
     ],
   },
@@ -92,19 +141,19 @@ const rail: SchemaNode = railShell({
     railItem({
       icon: 'user',
       label: 'Profile',
-      active: { $eq: [{ $store: 'shellStore.activeShellView' }, 'profile'] },
+      active: { $: "shellStore.activeShellView == 'profile'" },
       onClick: [{ $action: 'appStore.deactivateApp' }, { $action: 'shellStore.openShellView', args: ['profile'] }],
     }),
     railItem({
       icon: 'gear',
       label: 'Settings',
-      active: { $eq: [{ $store: 'shellStore.activeShellView' }, 'settings'] },
+      active: { $: "shellStore.activeShellView == 'settings'" },
       onClick: [{ $action: 'appStore.deactivateApp' }, { $action: 'shellStore.openShellView', args: ['settings'] }],
     }),
     railItem({
       icon: 'storefront',
       label: 'Marketplace',
-      active: { $eq: [{ $store: 'shellStore.activeShellView' }, 'marketplace'] },
+      active: { $: "shellStore.activeShellView == 'marketplace'" },
       onClick: [{ $action: 'appStore.deactivateApp' }, { $action: 'shellStore.openShellView', args: ['marketplace'] }],
     }),
 
@@ -114,7 +163,7 @@ const rail: SchemaNode = railShell({
       reorderable: true,
       // `$arg.detail` is where we-sortable puts the reordered ids. The event is `reorder`, which
       // Solid reaches from `onReorder` by lowercasing — a listener named `we-reorder` never fires.
-      onReorder: { $action: 'datasetStore.reorderDatasets', args: ['$arg.detail'] },
+      onReorder: { $action: 'datasetStore.reorderDatasets', args: [{ $: 'arg.detail' }] },
       // Creating a space used to mean going to Settings first, which is a long way round for the
       // thing this group is a list of. The modal is shell chrome, so opening it from here and from
       // Settings reaches the same one.
@@ -126,14 +175,16 @@ const rail: SchemaNode = railShell({
       children: [
         {
           type: '$each',
-          props: { items: { $store: 'spaceStore.orderedSidebarItems' }, as: 'space' },
+          props: { items: { $: 'spaceStore.orderedSidebarItems' }, as: 'space' },
           children: [
             railItem({
-              id: '$space.uuid',
-              avatar: { src: '$space.avatar', name: '$space.name' },
-              label: '$space.name',
-              active: { $eq: ['$space.spaceId', { $store: 'routeStore.segments.1' }] },
-              onClick: { $action: 'spaceStore.navigateToSpace', args: ['$space.spaceId'] },
+              id: { $: 'space.uuid' },
+              // Seeded by uuid, not name: the generated colour is this space's identity, so it
+              // must not change when somebody renames it.
+              avatar: { src: { $: 'space.avatar' }, name: { $: 'space.name' }, hash: { $: 'space.uuid' } },
+              label: { $: 'space.name' },
+              active: { $: 'space.spaceId == routeStore.segments[1]' },
+              onClick: { $action: 'spaceStore.navigateToSpace', args: [{ $: 'space.spaceId' }] },
               /*
                 Which space the call is in — now that a call outlives leaving its space, that is a
                 question the rail has to be able to answer.
@@ -148,17 +199,7 @@ const rail: SchemaNode = railShell({
                 nothing when the module is not installed, so the ring simply never appears.
               */
               live: {
-                when: {
-                  $and: [
-                    { $store: 'modules.call.active' },
-                    {
-                      $eq: [
-                        { $concat: ['neighbourhood://', '$space.spaceId'] },
-                        { $store: 'modules.call.callSpace.uri' },
-                      ],
-                    },
-                  ],
-                },
+                when: { $: 'modules.call.active && `neighbourhood://${space.spaceId}` == modules.call.callSpace.uri' },
                 icon: 'phone-call',
               },
             }),
@@ -167,47 +208,72 @@ const rail: SchemaNode = railShell({
       ],
     }),
 
-    // Apps — WE is the first entry (sentinel from appStore.appsWithWe), followed by external apps.
-    railGroup({
-      id: 'apps',
-      label: 'Apps',
-      children: [
-        {
-          type: '$each',
-          props: { items: { $store: 'appStore.appsWithWe' }, as: 'app' },
+    /*
+      Apps — embedded external apps, with WE itself as the first entry.
+
+      ## Why the guard counts `apps` while the list iterates `appsWithWe`
+
+      Not a slip. `appsWithWe` prepends a `WE` sentinel whose row means *get back out of an app* —
+      which is meaningless when there is no app to be in. So whether the group exists at all is a
+      question about the **external** apps, and only the rows inside it include WE.
+
+      Written the obvious way — counting the same list it iterates — the condition would be true in
+      every deployment, since the sentinel is always there. That was the actual behaviour until now:
+      a deployment configuring no apps still got an "Apps" group containing a lone "WE" row, which
+      is a heading over a control that does nothing.
+
+      ## Why this is a condition rather than a deletion
+
+      WE's own seed no longer lists any apps, so this renders nothing here today. That is a
+      *deployment* decision and it belongs in the seed, which is the thing that describes a
+      deployment — this template is shared by all of them, and deleting the group outright would
+      take the capability away from a deployment that wants it rather than from ours that does not.
+
+      Removing the entry from the seed also stops the app being *fetched*: `PersistentAppFrames`
+      mounts an iframe per registered app eagerly, and a `display: none` ancestor does not stop an
+      iframe loading its `src` — so hiding this group alone would have left a remote request at
+      every boot for something nobody could reach.
+    */
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'count(appStore.apps)' },
+        then: railGroup({
+          id: 'apps',
+          label: 'Apps',
           children: [
-            railItem({
-              avatar: { src: '$app.image', name: '$app.name' },
-              label: '$app.name',
-              active: {
-                $if: {
-                  condition: { $eq: ['$app.id', 'we'] },
-                  then: { $not: { $store: 'appStore.activeAppId' } },
-                  else: { $eq: ['$app.id', { $store: 'appStore.activeAppId' }] },
-                },
-              },
-              onClick: {
-                $if: {
-                  condition: { $eq: ['$app.id', 'we'] },
-                  then: [{ $action: 'appStore.deactivateApp' }, { $action: 'shellStore.closeShellView' }],
-                  else: [
-                    { $action: 'shellStore.closeShellView' },
-                    { $action: 'appStore.activateApp', args: ['$app.id'] },
-                  ],
-                },
-              },
-            }),
+            {
+              type: '$each',
+              props: { items: { $: 'appStore.appsWithWe' }, as: 'app' },
+              children: [
+                railItem({
+                  avatar: { src: { $: 'app.image' }, name: { $: 'app.name' }, hash: { $: 'app.id' } },
+                  label: { $: 'app.name' },
+                  active: { $: "app.id == 'we' ? !appStore.activeAppId : app.id == appStore.activeAppId" },
+                  onClick: {
+                    $if: {
+                      condition: { $: "app.id == 'we'" },
+                      then: [{ $action: 'appStore.deactivateApp' }, { $action: 'shellStore.closeShellView' }],
+                      else: [
+                        { $action: 'shellStore.closeShellView' },
+                        { $action: 'appStore.activateApp', args: [{ $: 'app.id' }] },
+                      ],
+                    },
+                  },
+                }),
+              ],
+            },
           ],
-        },
-      ],
-    }),
+        }),
+      },
+    },
   ],
 });
 
 export const sidebar: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'ready'] },
+    condition: { $: "sessionStore.bootState == 'ready'" },
     /*
       Wrapped, so full screen can take the sidebar out of the layout without unmounting it.
 
@@ -223,12 +289,7 @@ export const sidebar: SchemaNode = {
     then: {
       type: 'Column',
       props: {
-        styles: {
-          $if: {
-            condition: { $store: 'shellStore.panelMaximised' },
-            then: { display: 'none' },
-          },
-        },
+        styles: { $: "shellStore.panelMaximised ? { display: 'none' } : null" },
       },
       children: [rail],
     },

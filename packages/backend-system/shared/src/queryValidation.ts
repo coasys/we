@@ -1,13 +1,13 @@
 /**
  * Manifest-aware validation of a query IR: cross-check every entity / property / relation / aggregate
- * name the query references against a `ModelManifest`. This is what makes a bad query fail *loudly*
+ * name the query references against a `EntityManifest`. This is what makes a bad query fail *loudly*
  * at author time ("`Post` has no property `titel`"; "`author` is not a relation") instead of
  * silently returning nothing at runtime.
  *
  * Assumes the manifest itself is already valid (see `validateManifest`); this validates the *query*
  * against it. Structural IR validity (shape/operators) is `validateQueryIR` — run that first.
  */
-import type { EntitySchema, ModelManifest } from './manifest';
+import type { EntityManifest, EntitySchema } from './manifest';
 import type { Aggregation, Filter, IncludeMap, IRError, QueryIR, Scope, SortKey } from './queryIR';
 
 function propExists(entity: EntitySchema, name: string): boolean {
@@ -18,7 +18,7 @@ function propExists(entity: EntitySchema, name: string): boolean {
 function sortTargetResolves(
   by: string,
   entityName: string,
-  manifest: ModelManifest,
+  manifest: EntityManifest,
   aggregateAliases: Set<string>,
 ): boolean {
   if (aggregateAliases.has(by) || by === 'id') return true;
@@ -42,7 +42,7 @@ function sortTargetResolves(
 function validateFilter(
   filter: Filter,
   entityName: string,
-  manifest: ModelManifest,
+  manifest: EntityManifest,
   path: string,
   errors: IRError[],
 ): void {
@@ -71,7 +71,7 @@ function validateFilter(
 function validateSort(
   sort: SortKey[],
   entityName: string,
-  manifest: ModelManifest,
+  manifest: EntityManifest,
   aggregateAliases: Set<string>,
   path: string,
   errors: IRError[],
@@ -89,7 +89,7 @@ function validateSort(
 function validateSelect(
   select: string[],
   entityName: string,
-  manifest: ModelManifest,
+  manifest: EntityManifest,
   path: string,
   errors: IRError[],
 ): void {
@@ -105,7 +105,7 @@ function validateSelect(
 function validateInclude(
   include: IncludeMap,
   entityName: string,
-  manifest: ModelManifest,
+  manifest: EntityManifest,
   path: string,
   errors: IRError[],
 ): void {
@@ -143,7 +143,7 @@ function validateInclude(
 function validateScope(
   scope: Scope,
   entityName: string,
-  manifest: ModelManifest,
+  manifest: EntityManifest,
   path: string,
   errors: IRError[],
 ): void {
@@ -170,7 +170,7 @@ function validateAggregate(
   agg: Aggregation,
   entityName: string,
   entity: EntitySchema,
-  manifest: ModelManifest,
+  manifest: EntityManifest,
   path: string,
   errors: IRError[],
 ): void {
@@ -197,7 +197,7 @@ function validateAggregate(
 /** Validate a query IR against a manifest. Run after `validateQueryIR` (structure) + `validateManifest`. */
 export function validateQueryAgainstManifest(
   query: QueryIR,
-  manifest: ModelManifest,
+  manifest: EntityManifest,
 ): { valid: true } | { valid: false; errors: IRError[] } {
   const root = manifest.entities[query.entity];
   if (!root) {

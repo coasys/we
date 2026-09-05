@@ -114,6 +114,23 @@ export const role = {
   /** Emphasised border (focus-adjacent, strong separation). */
   borderStrong: 'var(--we-color-neutral-500)',
   /**
+   * The edge of an interactive box under the pointer.
+   *
+   * `border` and `borderStrong` are three steps apart on the ramp — 200 to 500 — because they answer
+   * different questions: one is "where does this box end", the other is "these two regions are
+   * genuinely separate". Neither is "the pointer is here", and borrowing the second for it made a
+   * field's outline jump on hover, loud enough to read as a state change rather than as
+   * acknowledgement.
+   *
+   * Between the two rather than a step from either, for the reason `surfaceSunkenHover` is: it
+   * cannot overshoot `borderStrong`, whichever direction the ramp runs, and it needs no signed
+   * direction to stay right when the polarity flips.
+   *
+   * `borderStrong` keeps its own meaning and its own users — the scrollbar thumb, the checkbox, the
+   * menu-group dividers — which is why this is a new role rather than a change to that one.
+   */
+  borderHover: 'color-mix(in oklab, var(--we-role-border) 60%, var(--we-role-border-strong))',
+  /**
    * The accent (interactive emphasis) — a filled button, a selected disc.
    *
    * ## Off the ramp entirely, because a fill is a colour and not a position
@@ -225,6 +242,33 @@ export const role = {
   surfaceHover: 'var(--we-color-neutral-100)',
   /** Pressed tint on a surface. */
   surfaceActive: 'var(--we-color-neutral-200)',
+
+  /**
+   * The lifted state of a *well* — an input, a textarea, a select trigger.
+   *
+   * One state, not the hover/pressed pair every other role here comes in, because a field is not
+   * pressed. A button is: you push it, it responds, it springs back. A field is clicked *into* and
+   * then focused, and the focus is what persists — so a distinct pressed fill is a flash on
+   * mousedown that snaps back on release, which reads as the control losing its place rather than
+   * as feedback. Hover, press and focus therefore all resolve here, and the ring is what says
+   * "focused". Material, Fluent, Carbon and Primer all draw text fields this way.
+   *
+   * `surfaceHover` is measured for something sitting ON a surface: a menu item, a list row, a ghost
+   * button. Applied to a well it lands at about surface level, so hovering a field made it the same
+   * colour as the sheet behind it and the recess vanished under the pointer — the one moment the
+   * control should be most clearly a place you put something.
+   *
+   * Expressed as a mix *toward* `surface` rather than as a signed lightness step, which is what
+   * makes it right in both polarities without being told which it is. `STATE_STEPS` is negative in
+   * light and dark alike, so `calc(l + step)` darkens either way — correct for a row on a surface,
+   * and backwards for a well, where hovering should lift it toward the sheet rather than deepen it.
+   * Defining the value in terms of the two things it must sit between makes that structural: it
+   * cannot land past `surface`, whichever direction the ramp runs.
+   *
+   * The same argument the `color-mix` note in `design-utils/isRawCSSValue` makes for control states,
+   * and the same one `accentHover` makes for stepping from the role instead of from the scale.
+   */
+  surfaceSunkenHover: 'color-mix(in oklab, var(--we-role-surface-sunken) 65%, var(--we-role-surface))',
 
   /**
    * The filled neutral of a *control* — a slider track, a switch track, a progress trough, a

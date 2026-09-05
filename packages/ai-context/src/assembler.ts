@@ -1,7 +1,7 @@
 import type {
   AssembledContext,
   ComponentEntry,
-  ModelEntry,
+  EntityEntry,
   PluginCatalog,
   PrimitiveEntry,
   TokenCategory,
@@ -38,7 +38,7 @@ export function assembleReference(ctx: AssembledContext): string {
 
   // Models
   if (context.models.length > 0) {
-    sections.push(formatModels(context.models));
+    sections.push(formatEntities(context.models));
   }
 
   // Stores
@@ -55,10 +55,31 @@ export function assembleReference(ctx: AssembledContext): string {
   // Routing
   sections.push(context.fragments.routing.trim());
 
+  // Panels. After routing, because a section's own layout is read against the routes it renders at,
+  // and before the rules — the panel-versus-flow test is guidance rather than a prohibition.
+  sections.push(context.fragments.panels.trim());
+
   // Rules
   sections.push(context.fragments.rules.trim());
 
   return sections.join('\n\n---\n\n');
+}
+
+/**
+ * A docblock as a registry entry's description — its own headings demoted out of the way.
+ *
+ * A primitive's docblock is prose written for whoever opens the file, and several of them use `##`
+ * to organise a long explanation. Emitted verbatim into this reference those become **top-level
+ * headings of the reference itself**: `we-draggable` and `we-drop-zone` alone contributed fifteen,
+ * so `AGENTS.md` claimed sections called "Keyboard", "One element, not two" and "It emits intent,
+ * it never mutates" between "Component Registry" and "Design System Props". Anything reading the
+ * document by heading — a person scanning it, a tool chunking it — reads that as structure.
+ *
+ * Demoted rather than stripped: the prose is worth keeping and its shape is part of the meaning.
+ * Two levels down puts a component's own sections below the registry entry they belong to.
+ */
+function demoteHeadings(text: string): string {
+  return text.replace(/^(#{1,4}) /gm, (_match, hashes: string) => `${'#'.repeat(Math.min(hashes.length + 2, 6))} `);
 }
 
 function formatComponentRegistry(primitives: PrimitiveEntry[], components: ComponentEntry[]): string {
@@ -79,7 +100,7 @@ function formatComponentRegistry(primitives: PrimitiveEntry[], components: Compo
         return `${p.name}${opt}: ${p.type}${def}`;
       });
       const superHint = prim.superclass ? ` (${prim.superclass})` : '';
-      const desc = prim.description ? ` — ${prim.description}` : '';
+      const desc = prim.description ? ` — ${demoteHeadings(prim.description)}` : '';
       lines.push(`- ${prim.tagName}${superHint}${desc}`);
       if (propList.length > 0) {
         lines.push(`  Props: ${propList.join(', ')}`);
@@ -93,7 +114,7 @@ function formatComponentRegistry(primitives: PrimitiveEntry[], components: Compo
     lines.push('');
     lines.push('@we/components:');
     for (const comp of comps) {
-      const desc = comp.description ? ` — ${comp.description}` : '';
+      const desc = comp.description ? ` — ${demoteHeadings(comp.description)}` : '';
       const superHint = comp.superclass ? ` (${comp.superclass})` : '';
       lines.push(`- ${comp.name}${superHint}${desc}`);
       if (comp.props.length > 0) {
@@ -112,7 +133,7 @@ function formatComponentRegistry(primitives: PrimitiveEntry[], components: Compo
     lines.push('');
     lines.push('@we/widgets:');
     for (const w of widgets) {
-      const desc = w.description ? ` — ${w.description}` : '';
+      const desc = w.description ? ` — ${demoteHeadings(w.description)}` : '';
       const superHint = w.superclass ? ` (${w.superclass})` : '';
       lines.push(`- ${w.name}${superHint}${desc}`);
       if (w.props.length > 0) {
@@ -180,8 +201,29 @@ function formatTokens(tokens: TokenCategory[]): string {
   return lines.join('\n');
 }
 
-function formatModels(models: ModelEntry[]): string {
-  const lines: string[] = ['## Block & Entity Models', '', 'Available data models for $query and store data:'];
+function formatEntities(models: EntityEntry[]): string {
+  const lines: string[] = [
+    '## Block & Entity Models',
+    '',
+    'Available data models for $query and store data:',
+    '',
+    /*
+      One field needs a sentence the listing cannot carry.
+
+      The listing emits names, types and predicates — the manifest's own docblocks are prose in the
+      source and never reach here — which is fine for `title: string` and leaves `marks: json`
+      meaning nothing. It is the field a text block's entire inline structure lives in, so a schema
+      author reading this had a name, a type of `json`, and no way to find out what is in it.
+    */
+    'A `json` field is a stored blob rather than a queryable value. `TextBlock.marks` is the one worth',
+    'knowing: it holds inline structure over `text` as standoff annotations — a JSON array of',
+    '`{ start, end, type, ...data }` ranges, offsets in Unicode **code points** — with types `strong`,',
+    '`em`, `underline`, `strike`, `code`, `link` (`href`), `nodeLink` and `mention` (`did`). A block',
+    'with `text` and no `marks` is one unmarked span, which is why a transcriber can write a',
+    'well-formed block without knowing marks exist. Render from it; never filter on it — anything',
+    'queryable is written beside it as a relation (a mention is also a `we://mention` link on the root,',
+    'which is where "who is named in this post" is answered).',
+  ];
 
   for (const model of models) {
     const ext = model.extends ? ` extends ${model.extends}` : '';

@@ -2,10 +2,13 @@
  * Generate the AD4M-decorated classes from the authored manifest.
  *
  * The manifest under `src/manifest/` is the source of truth for the core vocabulary; the class
- * files under `src/entities/` and `src/blocks/` are its artifact — same paths and export names
- * they had when hand-written, so nothing that imports them notices the flip. Doc comments are
- * lifted from the manifest modules, where they are edited, into the emitted classes, where IDE
- * hovers read them.
+ * files under `src/entities/` are its artifact. Doc comments are lifted from the manifest modules,
+ * where they are edited, into the emitted classes, where IDE hovers read them.
+ *
+ * Both sides are one flat directory. They used to be split `entities/` beside `blocks/`, which read
+ * as two kinds of declaration when the manifest has only ever had one map — and which made
+ * blockness a fact about a file's location that nothing could check. It is now
+ * `EntitySchema.blockable`, and `validateManifest` enforces the `version` rule that goes with it.
  *
  *   node scripts/generateClasses.mjs   # then `pnpm exec prettier --write` runs on the output
  *
@@ -24,25 +27,15 @@ import { fileURLToPath } from 'node:url';
 
 // Run via tsx (`pnpm generate:classes`), which resolves the manifest's TS modules directly.
 const here = dirname(fileURLToPath(import.meta.url));
-const { CORE_DEFS } = await import(resolve(here, '../../../models/src/manifest/index.ts'));
+const { CORE_DEFS } = await import(resolve(here, '../../../entities/src/manifest/index.ts'));
 
-const ENTITY_DIR = resolve(here, '../src/models/entities');
-const BLOCK_DIR = resolve(here, '../src/models/blocks');
-const MANIFEST_DIR = resolve(here, '../../../models/src/manifest');
-
-const isBlockModule = (name) => {
-  try {
-    readFileSync(resolve(MANIFEST_DIR, 'blocks', `${name}.ts`));
-    return true;
-  } catch {
-    return false;
-  }
-};
+const ENTITY_DIR = resolve(here, '../src/entities');
+const MANIFEST_DIR = resolve(here, '../../../entities/src/manifest');
 
 // ── Comments, lifted from the manifest module the definition was authored in ──────────────────
 
-function extractDocs(name, kind) {
-  const src = readFileSync(resolve(MANIFEST_DIR, kind, `${name}.ts`), 'utf8');
+function extractDocs(name) {
+  const src = readFileSync(resolve(MANIFEST_DIR, `${name}.ts`), 'utf8');
   const comment = /\/\*\*(?:[^*]|\*(?!\/))*\*\//y;
   const classDoc = src.match(new RegExp(String.raw`(\/\*\*(?:[^*]|\*(?!\/))*\*\/)\s*\nexport const ${name}`));
   const memberDocs = {};
@@ -98,8 +91,7 @@ function fieldLine(name, spec, def) {
 const pascal = (s) => s[0].toUpperCase() + s.slice(1);
 
 function emitEntity(name, def) {
-  const kind = isBlockModule(name) ? 'blocks' : 'entities';
-  const { classDoc, memberDocs } = extractDocs(name, kind);
+  const { classDoc, memberDocs } = extractDocs(name);
   const e = def.entity;
 
   const ad4mImports = new Set(['Model']);
@@ -109,11 +101,12 @@ function emitEntity(name, def) {
     relativeImports.get(path).add(what);
   };
 
-  if (def.base === 'WeNode') addRelative('../WeNode', 'WeNode');
+  if (def.base === 'WeNode') addRelative('./WeNode', 'WeNode');
   else ad4mImports.add('Ad4mModel');
   if (e.flag) ad4mImports.add('Flag');
   if (Object.keys(e.properties).length) ad4mImports.add('Property');
-  if (Object.values(e.properties).some((p) => p.format === 'file')) addRelative('@we/models', 'FILE_STORAGE_LANGUAGE');
+  if (Object.values(e.properties).some((p) => p.format === 'file'))
+    addRelative('@we/entities', 'FILE_STORAGE_LANGUAGE');
   if (Object.values(e.properties).some((p) => p.readAs === 'dataUri')) ad4mImports.add('fileToDataUri');
 
   const relations = Object.entries(e.relations);
@@ -122,18 +115,14 @@ function emitEntity(name, def) {
   const manyMethods = (def.methodRelations ?? []).filter((r) => e.relations[r]?.cardinality === 'many');
   if (manyMethods.length) ad4mImports.add('HasManyMethods');
 
-  const targetPath = (target) => {
-    const targetKind = isBlockModule(target) ? 'blocks' : 'entities';
-    return targetKind === kind ? `./${target}` : `../${targetKind}/${target}`;
-  };
-  for (const [, r] of relations) if (r.target) addRelative(targetPath(r.target), r.target);
+  for (const [, r] of relations) if (r.target) addRelative(`./${r.target}`, r.target);
 
   const L = [];
   L.push('/**');
-  L.push(` * GENERATED from src/manifest/${kind}/${name}.ts — do not edit here.`);
+  L.push(` * GENERATED from src/manifest/${name}.ts — do not edit here.`);
   L.push(' *');
   L.push(' * The manifest module is the source of truth: its schema, hints and prose. Rebuild with');
-  L.push(' * `pnpm --filter @we/models generate:classes` after changing it.');
+  L.push(' * `pnpm --filter @we/entities generate:classes` after changing it.');
   L.push(' */');
   // One package-import group (the sorter keeps @coasys and @we lines adjacent), a blank line,
   // then the relative imports — so the file lints clean exactly as generated.
@@ -215,9 +204,8 @@ function emitEntity(name, def) {
 
   L.push('');
 
-  const outDir = kind === 'blocks' ? BLOCK_DIR : ENTITY_DIR;
-  writeFileSync(resolve(outDir, `${name}.ts`), L.join('\n'));
-  return `${kind}/${name}.ts`;
+  writeFileSync(resolve(ENTITY_DIR, `${name}.ts`), L.join('\n'));
+  return `entities/${name}.ts`;
 }
 
 function emitConformance(defs) {
@@ -232,7 +220,7 @@ function emitConformance(defs) {
   L.push(' */');
   // One import group, no blank line — matching the repo's import sorter so the file lints clean
   // exactly as generated.
-  L.push("import type * as M from '@we/models/manifest';");
+  L.push("import type * as M from '@we/entities/manifest';");
   L.push('');
   L.push("import type * as C from './index';");
   L.push('');
@@ -241,12 +229,12 @@ function emitConformance(defs) {
   L.push('/** One entry per entity; the tuple exists so every assertion is referenced. */');
   L.push('export type AssertClassesSatisfyContract = [');
   for (const name of Object.keys(defs)) {
-    L.push(`  Satisfies<InstanceType<typeof C.${name}>, M.${name}Model>,`);
+    L.push(`  Satisfies<InstanceType<typeof C.${name}>, M.${name}Record>,`);
   }
   L.push('];');
   L.push('');
   L.push('/*');
-  L.push(' * The STATIC surface (ModelStatic, what the entity proxies are typed as) is deliberately not');
+  L.push(' * The STATIC surface (EntityStatic, what the entity proxies are typed as) is deliberately not');
   L.push(' * asserted here: the AD4M statics are `this`-polymorphic generics — `this: typeof Ad4mModel &');
   L.push(' * (new (…) => T)` — and a detached method carrying that constraint satisfies no interface');
   L.push(' * member, however compatible the call actually is. The guarantee is held at runtime instead:');
@@ -254,27 +242,57 @@ function emitConformance(defs) {
   L.push(' * statics through the same proxies production uses.');
   L.push(' */');
   L.push('');
-  writeFileSync(resolve(here, '../src/models/conformance.ts'), L.join('\n'));
+  writeFileSync(resolve(here, '../src/entities/conformance.ts'), L.join('\n'));
+}
+
+/**
+ * The barrel, which was the one hand-maintained file in a generated set.
+ *
+ * `generate:classes` wrote the class and updated `conformance.ts`, and left this alone — so adding
+ * an entity produced a conformance assertion referencing an export that did not exist, and the only
+ * symptom was a DTS build failing several steps later on a name nobody had typed. The file's own
+ * docblock says it is generated from the manifest, which is exactly what makes the omission easy to
+ * make and hard to see.
+ *
+ * `WeNode` and the conformance re-export are fixed rather than derived: the first is the base every
+ * entity extends and is not itself a manifest entry, and the second is what places the type-level
+ * assertions in the build graph — an unimported assertion checks nothing.
+ */
+function emitIndex(defs) {
+  const L = [];
+  L.push('/**');
+  L.push(" * GENERATED — the AD4M lane's entity implementations, from `@we/entities`' manifest, living where");
+  L.push(' * they belong: in the adapter that registers them. Everything else in the application reaches');
+  L.push(' * these only through the entity proxies on `@we/entities`, which resolve to whatever this adapter');
+  L.push(" * registered at connect time; importing from here is asking for one specific backend's");
+  L.push(" * implementation by name, which only this package's own wiring and SDNA install have any");
+  L.push(' * business doing.');
+  L.push(' */');
+  for (const name of Object.keys(defs).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))) {
+    L.push(`export * from './${name}';`);
+  }
+  // The base class every entity extends, and not a manifest entry of its own.
+  L.push("export { WeNode } from './WeNode';");
+  L.push('');
+  L.push('// Type-only, and load-bearing: importing the conformance assertions is what places them in every');
+  L.push('// build graph that includes this barrel, so a class drifting from its neutral interface fails the');
+  L.push('// build rather than waiting to be noticed.');
+  L.push("export type { AssertClassesSatisfyContract } from './conformance';");
+  L.push('');
+  writeFileSync(resolve(ENTITY_DIR, 'index.ts'), L.join('\n'));
 }
 
 const written = Object.entries(CORE_DEFS).map(([name, def]) => emitEntity(name, def));
 emitConformance(CORE_DEFS);
-written.push('models/conformance.ts');
-console.log(`generated ${written.length - 2} classes + the neutral type surface`);
+emitIndex(CORE_DEFS);
+written.push('entities/conformance.ts');
+written.push('entities/index.ts');
+console.log(`generated ${written.length - 3} classes + the neutral type surface`);
 try {
-  execFileSync(
-    'pnpm',
-    [
-      'exec',
-      'prettier',
-      '--write',
-      ...written.map((f) => resolve(here, '../src', f.startsWith('models/') ? f : `models/${f}`)),
-    ],
-    {
-      cwd: resolve(here, '..'),
-      stdio: 'inherit',
-    },
-  );
+  execFileSync('pnpm', ['exec', 'prettier', '--write', ...written.map((f) => resolve(here, '../src', f))], {
+    cwd: resolve(here, '..'),
+    stdio: 'inherit',
+  });
 } catch {
   console.warn('prettier not available — emitted unformatted');
 }

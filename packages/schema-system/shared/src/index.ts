@@ -5,6 +5,7 @@ export type {
   SchemaNode,
   SchemaProp,
   TemplateMeta,
+  TemplatePanel,
   TemplateSchema,
   RouteParamsBinding,
   ThemeOverrides,
@@ -12,30 +13,15 @@ export type {
   RouteSchema,
   TransitionConfig,
   TransitionEffect,
-  StoreToken,
-  ConcatToken,
+  ExpressionToken,
   ActionToken,
   IfToken,
-  MapToken,
-  PickToken,
-  EqToken,
-  NeToken,
-  LtToken,
-  GtToken,
-  NotToken,
-  AndToken,
-  OrToken,
   QueryToken,
   QueryDescriptor,
   OperatorToken,
   LocalStateField,
   QueryStateField,
-  LocalToken,
   SetLocalToken,
-  ErrorToken,
-  ValidToken,
-  TouchedToken,
-  FormValidToken,
   TouchToken,
   ResetLocalToken,
   ToggleLocalToken,
@@ -55,14 +41,15 @@ export type {
   PrimitiveEntry,
   ComponentEntry,
   PropEntry,
-  ModelEntry,
-  ModelFieldEntry,
-  ModelRelationEntry,
+  EntityEntry,
+  EntityFieldEntry,
+  EntityRelationEntry,
   StoreEntry,
   StateMemberMeta,
   TokenCategory,
   PluginCatalog,
   PluginEntry,
+  SourceEntry,
 } from './contextTypes';
 
 export { validateSchema, validateSemantic, buildValidationContext } from './semanticValidation';
@@ -83,7 +70,9 @@ export {
   noMemo,
   setLocalWarningSink,
 } from './propResolvers';
-export type { LocalFieldMeta, LocalMetaMap, MapProp } from './propResolvers';
+export type { LocalFieldMeta, LocalMetaMap } from './propResolvers';
+export { DEFERRED_ARG, isDeferredArg, setExpressionWarningSink } from './propResolvers/expression';
+export * from './expressions';
 export { hasToken } from './predicates';
 export { isPropsSchemaNode, isSchemaChild, replaceNodeInTree } from './treeUtils';
 export {
@@ -116,7 +105,15 @@ export {
 } from './indexer';
 export type { SectionEntry, StoredTemplate, FindNodeResult, PatchError } from './indexer';
 export { createStoredTemplate, listSections, getSection, updateSection } from './sections';
-export { expandViewRoutes, hasViewsMarker, VIEWS_MARKER } from './viewRoutes';
+export {
+  expandViewRoutes,
+  hasViewsMarker,
+  SPACE_ROUTE_DEPTH,
+  SPACE_ROUTE_PATH,
+  VIEW_BOUNDARY_ATTR,
+  VIEW_BOUNDARY_NAME_ATTR,
+  VIEWS_MARKER,
+} from './viewRoutes';
 export type { ResolvedView, ViewGate } from './viewRoutes';
 /*
   Surface vocabulary, re-exported from the design system.

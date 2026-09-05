@@ -5,6 +5,7 @@
  */
 
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
+import { expr } from '@we/schema-shared';
 
 import { accountSettings } from './AccountSettings.schema.ts';
 import { aiSection } from './AiSettings.schema.ts';
@@ -55,8 +56,8 @@ const accountSection: SchemaNode = {
             },
             {
               type: 'we-text',
-              props: { variant: 'body', styles: { 'word-break': 'break-all' } },
-              children: ['$me.did'],
+              props: { variant: 'body' },
+              children: [{ $: 'me.did' }],
             },
           ],
         },
@@ -77,7 +78,7 @@ const templatesSection: SchemaNode = {
       children: [
         {
           type: '$each',
-          props: { items: { $store: 'templateStore.templateManagementList' }, as: 'template' },
+          props: { items: { $: 'templateStore.templateManagementList' }, as: 'template' },
           children: [
             {
               type: 'Row',
@@ -86,13 +87,7 @@ const templatesSection: SchemaNode = {
                 ay: 'center',
                 p: '300',
                 r: '200',
-                bg: {
-                  $if: {
-                    condition: '$template.isDefault',
-                    then: 'surface-sunken',
-                    else: 'transparent',
-                  },
-                },
+                bg: { $: "template.isDefault ? 'surface-sunken' : 'transparent'" },
               },
               children: [
                 // Template icon + name
@@ -100,7 +95,7 @@ const templatesSection: SchemaNode = {
                   type: 'Row',
                   props: { gap: '300', ay: 'center', styles: { flex: '1', 'min-width': '0' } },
                   children: [
-                    { type: 'we-icon', props: { name: '$template.icon', size: '20px' } },
+                    { type: 'we-icon', props: { name: { $: 'template.icon' }, size: '20px' } },
                     {
                       type: 'Column',
                       props: { gap: '50' },
@@ -108,16 +103,16 @@ const templatesSection: SchemaNode = {
                         {
                           type: 'we-text',
                           props: { variant: 'body', fontWeight: 'medium' },
-                          children: ['$template.name'],
+                          children: [{ $: 'template.name' }],
                         },
                         {
                           type: '$if',
                           props: {
-                            condition: '$template.description',
+                            condition: { $: 'template.description' },
                             then: {
                               type: 'we-text',
                               props: { variant: 'label' },
-                              children: ['$template.description'],
+                              children: [{ $: 'template.description' }],
                             },
                           },
                         },
@@ -130,7 +125,7 @@ const templatesSection: SchemaNode = {
                 {
                   type: '$if',
                   props: {
-                    condition: '$template.isBuiltIn',
+                    condition: { $: 'template.isBuiltIn' },
                     then: {
                       type: 'we-tag',
                       props: { variant: 'neutral' },
@@ -143,7 +138,7 @@ const templatesSection: SchemaNode = {
                 {
                   type: '$if',
                   props: {
-                    condition: { $not: '$template.isBuiltIn' },
+                    condition: { $: '!template.isBuiltIn' },
                     then: {
                       type: 'Row',
                       props: { gap: '200', ay: 'center' },
@@ -156,11 +151,11 @@ const templatesSection: SchemaNode = {
                         {
                           type: 'we-switch',
                           props: {
-                            checked: '$template.isInstalled',
+                            checked: { $: 'template.isInstalled' },
                             size: 'sm',
                             onChange: {
                               $action: 'templateStore.toggleInstalled',
-                              args: ['$template.id'],
+                              args: [{ $: 'template.id' }],
                             },
                           },
                         },
@@ -173,7 +168,7 @@ const templatesSection: SchemaNode = {
                 {
                   type: '$if',
                   props: {
-                    condition: '$template.isInstalled',
+                    condition: { $: 'template.isInstalled' },
                     then: {
                       type: 'Row',
                       props: { gap: '200', ay: 'center' },
@@ -186,12 +181,12 @@ const templatesSection: SchemaNode = {
                         {
                           type: 'we-radio',
                           props: {
-                            checked: '$template.isDefault',
+                            checked: { $: 'template.isDefault' },
                             name: 'default-template',
-                            value: '$template.id',
+                            value: { $: 'template.id' },
                             onChange: {
                               $action: 'templateStore.setDefaultTemplate',
-                              args: ['$template.id'],
+                              args: [{ $: 'template.id' }],
                             },
                           },
                         },
@@ -204,7 +199,7 @@ const templatesSection: SchemaNode = {
                 {
                   type: '$if',
                   props: {
-                    condition: { $not: '$template.isBuiltIn' },
+                    condition: { $: '!template.isBuiltIn' },
                     then: {
                       type: 'we-button',
                       props: {
@@ -212,7 +207,7 @@ const templatesSection: SchemaNode = {
                         size: 'sm',
                         onClick: {
                           $action: 'templateStore.deleteTemplate',
-                          args: ['$template.id'],
+                          args: [{ $: 'template.id' }],
                         },
                       },
                       children: [
@@ -276,7 +271,7 @@ const themeScopeSection: SchemaNode = {
             {
               type: '$if',
               props: {
-                condition: { $store: 'themeStore.themeScopePreviewing' },
+                condition: { $: 'themeStore.themeScopePreviewing' },
                 then: {
                   type: 'we-text',
                   props: { variant: 'footnote', color: 'warning-text' },
@@ -289,8 +284,8 @@ const themeScopeSection: SchemaNode = {
         {
           type: 'we-switch',
           props: {
-            checked: { $store: 'themeStore.themeScopeGlobal' },
-            onChange: { $action: 'themeStore.setThemeScopeGlobal', args: ['$event.detail'] },
+            checked: { $: 'themeStore.themeScopeGlobal' },
+            onChange: { $action: 'themeStore.setThemeScopeGlobal', args: [{ $: 'event.detail' }] },
           },
         },
       ],
@@ -324,8 +319,8 @@ const themeScopeSection: SchemaNode = {
         {
           type: 'we-switch',
           props: {
-            checked: { $store: 'themeStore.useTemplateTheme' },
-            onChange: { $action: 'themeStore.setUseTemplateTheme', args: ['$event.detail'] },
+            checked: { $: 'themeStore.useTemplateTheme' },
+            onChange: { $action: 'themeStore.setUseTemplateTheme', args: [{ $: 'event.detail' }] },
           },
         },
       ],
@@ -344,7 +339,7 @@ const themesSection: SchemaNode = {
       children: [
         {
           type: '$each',
-          props: { items: { $store: 'themeStore.themeManagementList' }, as: 'theme' },
+          props: { items: { $: 'themeStore.themeManagementList' }, as: 'theme' },
           children: [
             {
               type: 'Row',
@@ -353,13 +348,7 @@ const themesSection: SchemaNode = {
                 ay: 'center',
                 p: '300',
                 r: '200',
-                bg: {
-                  $if: {
-                    condition: '$theme.isDefault',
-                    then: 'surface-sunken',
-                    else: 'transparent',
-                  },
-                },
+                bg: { $: "theme.isDefault ? 'surface-sunken' : 'transparent'" },
               },
               children: [
                 // Theme icon + name
@@ -367,11 +356,11 @@ const themesSection: SchemaNode = {
                   type: 'Row',
                   props: { gap: '300', ay: 'center', styles: { flex: '1', 'min-width': '0' } },
                   children: [
-                    { type: 'we-icon', props: { name: '$theme.icon', size: '20px' } },
+                    { type: 'we-icon', props: { name: { $: 'theme.icon' }, size: '20px' } },
                     {
                       type: 'we-text',
                       props: { variant: 'body', fontWeight: 'medium' },
-                      children: ['$theme.name'],
+                      children: [{ $: 'theme.name' }],
                     },
                   ],
                 },
@@ -380,7 +369,7 @@ const themesSection: SchemaNode = {
                 {
                   type: '$if',
                   props: {
-                    condition: '$theme.isBuiltIn',
+                    condition: { $: 'theme.isBuiltIn' },
                     then: {
                       type: 'we-tag',
                       props: { variant: 'neutral' },
@@ -393,7 +382,7 @@ const themesSection: SchemaNode = {
                 {
                   type: '$if',
                   props: {
-                    condition: { $not: '$theme.isBuiltIn' },
+                    condition: { $: '!theme.isBuiltIn' },
                     then: {
                       type: 'Row',
                       props: { gap: '200', ay: 'center' },
@@ -406,11 +395,11 @@ const themesSection: SchemaNode = {
                         {
                           type: 'we-switch',
                           props: {
-                            checked: '$theme.isInstalled',
+                            checked: { $: 'theme.isInstalled' },
                             size: 'sm',
                             onChange: {
                               $action: 'themeStore.setThemeInstalled',
-                              args: ['$theme.id', '$event.detail'],
+                              args: [{ $: 'theme.id' }, { $: 'event.detail' }],
                             },
                           },
                         },
@@ -423,7 +412,7 @@ const themesSection: SchemaNode = {
                 {
                   type: '$if',
                   props: {
-                    condition: '$theme.isInstalled',
+                    condition: { $: 'theme.isInstalled' },
                     then: {
                       type: 'Row',
                       props: { gap: '200', ay: 'center' },
@@ -436,12 +425,12 @@ const themesSection: SchemaNode = {
                         {
                           type: 'we-radio',
                           props: {
-                            checked: '$theme.isDefault',
+                            checked: { $: 'theme.isDefault' },
                             name: 'default-theme',
-                            value: '$theme.id',
+                            value: { $: 'theme.id' },
                             onChange: {
                               $action: 'themeStore.setDefaultTheme',
-                              args: ['$theme.id'],
+                              args: [{ $: 'theme.id' }],
                             },
                           },
                         },
@@ -454,7 +443,7 @@ const themesSection: SchemaNode = {
                 {
                   type: '$if',
                   props: {
-                    condition: { $not: '$theme.isBuiltIn' },
+                    condition: { $: '!theme.isBuiltIn' },
                     then: {
                       type: 'we-button',
                       props: {
@@ -462,7 +451,7 @@ const themesSection: SchemaNode = {
                         size: 'sm',
                         onClick: {
                           $action: 'themeStore.deleteTheme',
-                          args: ['$theme.id'],
+                          args: [{ $: 'theme.id' }],
                         },
                       },
                       children: [
@@ -501,16 +490,16 @@ function moduleRow(control: SchemaNode): SchemaNode {
         type: 'Row',
         props: { gap: '300', ay: 'center' },
         children: [
-          { type: 'we-icon', props: { name: '$mod.icon', size: '20px' } },
+          { type: 'we-icon', props: { name: { $: 'mod.icon' }, size: '20px' } },
           {
             type: 'Column',
             props: { gap: '100' },
             children: [
-              { type: 'we-text', props: { variant: 'label' }, children: ['$mod.name'] },
+              { type: 'we-text', props: { variant: 'label' }, children: [{ $: 'mod.name' }] },
               {
                 type: 'we-text',
                 props: { variant: 'footnote', color: 'text-faint' },
-                children: ['$mod.description'],
+                children: [{ $: 'mod.description' }],
               },
             ],
           },
@@ -520,6 +509,158 @@ function moduleRow(control: SchemaNode): SchemaNode {
     ],
   };
 }
+
+/**
+ * What each capability lets *you* decide, everywhere.
+ *
+ * The personal half of the settings a module declares — the community's half is the same rows in
+ * space settings, and this one is written to the root dataset so no other member sees it. Rendered
+ * from the declarations rather than written out, so a module that adds a setting appears here with
+ * nothing to register; a deployment whose modules declare none renders no section at all.
+ *
+ * One control per row rather than the pair space settings shows, because there is no second audience
+ * here: this is what you want everywhere, and a community's answer about its own space does not
+ * overrule it — see `BINDING` in `moduleSettings.ts`. The only thing that can take the decision away
+ * is the deployment, which is what the disabled control says. Explaining that is the whole job of the
+ * sentence under the label: a switch that takes a press and springs back reads as broken.
+ */
+const agentModuleSettingsSection: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'count(spaceStore.agentModuleSettings)' },
+    then: {
+      type: 'Column',
+      props: { gap: '300', width: '100%' },
+      children: [
+        {
+          type: 'Column',
+          props: { gap: '100' },
+          children: [
+            { type: 'we-text', props: { variant: 'heading-sm' }, children: ['What these modules do'] },
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-faint' },
+              children: [
+                'Your own answers, in every space. A community can decide differently for its own space, and where the two disagree the more cautious one stands.',
+              ],
+            },
+          ],
+        },
+        {
+          type: '$each',
+          props: { items: { $: 'spaceStore.agentModuleSettings' }, as: 'setting' },
+          children: [
+            {
+              type: 'Row',
+              props: {
+                width: '100%',
+                gap: '400',
+                ay: 'center',
+                p: '400',
+                bg: 'surface-sunken',
+                r: '300',
+                border: '1px solid border',
+              },
+              children: [
+                {
+                  type: 'Column',
+                  props: { gap: '100', flex: '1', minWidth: '0' },
+                  children: [
+                    {
+                      type: 'Row',
+                      props: { gap: '200', ay: 'center', wrap: true },
+                      children: [
+                        { type: 'we-text', props: { variant: 'label' }, children: [{ $: 'setting.label' }] },
+                        { type: 'we-badge', props: { size: 'xs' }, children: [{ $: 'setting.groupLabel' }] },
+                      ],
+                    },
+                    {
+                      type: 'we-text',
+                      props: { variant: 'footnote', color: 'text-faint' },
+                      children: [
+                        {
+                          $: "setting.locked ? 'Set by this deployment, so it cannot be changed here.' : (setting.description ?? '')",
+                        },
+                      ],
+                    },
+                  ],
+                },
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: 'setting.set' },
+                    then: {
+                      type: 'we-button',
+                      props: {
+                        variant: 'ghost',
+                        size: 'xs',
+                        title: 'Stop deciding this',
+                        onClick: {
+                          $action: 'spaceStore.setAgentModuleSetting',
+                          args: [{ $: 'setting.group' }, { $: 'setting.key' }],
+                        },
+                      },
+                      children: ['Use default'],
+                    },
+                  },
+                },
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: "setting.type == 'boolean'" },
+                    then: {
+                      type: 'we-switch',
+                      props: {
+                        size: 'sm',
+                        checked: { $: 'setting.value' },
+                        disabled: { $: 'setting.locked' },
+                        onChange: {
+                          $action: 'spaceStore.setAgentModuleSetting',
+                          args: [{ $: 'setting.group' }, { $: 'setting.key' }, { $: 'event.detail' }],
+                        },
+                      },
+                    },
+                    else: {
+                      type: '$if',
+                      props: {
+                        condition: { $: "setting.type == 'enum'" },
+                        then: {
+                          type: 'we-select',
+                          props: {
+                            size: 'sm',
+                            options: { $: 'setting.options' },
+                            value: { $: 'setting.value' },
+                            disabled: { $: 'setting.locked' },
+                            onChange: {
+                              $action: 'spaceStore.setAgentModuleSetting',
+                              args: [{ $: 'setting.group' }, { $: 'setting.key' }, { $: 'event.detail' }],
+                            },
+                          },
+                        },
+                        else: {
+                          type: 'we-input',
+                          props: {
+                            size: 'sm',
+                            value: { $: 'setting.value' },
+                            disabled: { $: 'setting.locked' },
+                            onInput: {
+                              $action: 'spaceStore.setAgentModuleSetting',
+                              args: [{ $: 'setting.group' }, { $: 'setting.key' }, { $: 'event.detail' }],
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
 
 /**
  * The modules of one surface, under their own heading.
@@ -533,13 +674,13 @@ function moduleRow(control: SchemaNode): SchemaNode {
  * module lands in the right group without declaring one, and without this file changing.
  */
 function moduleGroup(title: string, blurb: string, surface: string, control: SchemaNode): SchemaNode {
-  const items = { $filter: { items: { $store: 'spaceStore.moduleInstallSettings' }, where: { surface } } };
+  const items = expr`filter(spaceStore.moduleInstallSettings, { surface: ${surface} })`;
   return {
     type: '$if',
     props: {
       // A deployment need not ship all three kinds — a seed declaring no embedded apps would
       // otherwise render a heading and a paragraph over nothing.
-      condition: { $count: { items } },
+      condition: expr`count(${items})`,
       then: {
         type: 'Column',
         props: { gap: '200' },
@@ -560,8 +701,8 @@ function moduleGroup(title: string, blurb: string, surface: string, control: Sch
 const moduleSwitch: SchemaNode = {
   type: 'we-switch',
   props: {
-    checked: '$mod.installed',
-    onChange: { $action: 'spaceStore.setModuleInstalled', args: ['$mod.id', '$event.detail'] },
+    checked: { $: 'mod.installed' },
+    onChange: { $action: 'spaceStore.setModuleInstalled', args: [{ $: 'mod.id' }, { $: 'event.detail' }] },
   },
 };
 
@@ -615,6 +756,8 @@ const modulesSection: SchemaNode = {
       'capability',
       { type: 'we-tag', props: { variant: 'neutral' }, children: ['Always on'] },
     ),
+
+    agentModuleSettingsSection,
   ],
 };
 
@@ -650,10 +793,10 @@ const joinSpaceByLink: SchemaNode = {
           type: 'we-input',
           props: {
             flex: '1',
-            value: { $local: 'joinLink' },
+            value: { $: 'local.joinLink' },
             placeholder: 'Paste a space link or neighbourhood:// address',
-            disabled: { $local: 'joining' },
-            onInput: { $setLocal: 'joinLink', from: '$event.detail' },
+            disabled: { $: 'local.joining' },
+            onInput: { $setLocal: 'joinLink', value: { $: 'event.detail' } },
           },
         },
         {
@@ -662,13 +805,13 @@ const joinSpaceByLink: SchemaNode = {
             variant: 'secondary',
             // Gated on having typed something rather than on validation: whether an address
             // resolves is only knowable by trying it, so the button asks rather than predicts.
-            disabled: { $or: [{ $not: { $local: 'joinLink' } }, { $local: 'joining' }] },
-            loading: { $local: 'joining' },
+            disabled: { $: '!local.joinLink || local.joining' },
+            loading: { $: 'local.joining' },
             onClick: [
               { $setLocal: 'joining', value: true },
               {
                 $action: 'spaceStore.joinSpace',
-                args: [{ $local: 'joinLink' }],
+                args: [{ $: 'local.joinLink' }],
                 onSuccess: [{ $setLocal: 'joinLink', value: '' }],
                 onFinally: [{ $setLocal: 'joining', value: false }],
               },
@@ -692,13 +835,11 @@ function navItem(label: string, icon: string, path: string): SchemaNode {
   // entry lit — `/spaces/<uuid>` is still Spaces & data. Exact equality left the nav with nothing
   // selected there, which reads as having navigated out of settings altogether.
   const selected =
-    path === '/'
-      ? { $eq: [{ $store: 'routeStore.currentPath' }, '/'] }
-      : { $eq: [{ $store: 'routeStore.segments.0' }, path.slice(1)] };
+    path === '/' ? { $: "routeStore.currentPath == '/'" } : expr`routeStore.segments[0] == ${path.slice(1)}`;
   return {
     type: 'we-button',
     props: {
-      variant: { $if: { condition: selected, then: 'secondary', else: 'ghost' } },
+      variant: expr`${selected} ? 'secondary' : 'ghost'`,
       width: '100%',
       ax: 'start',
       onClick: { $action: 'routeStore.navigate', args: [path] },
@@ -709,6 +850,71 @@ function navItem(label: string, icon: string, path: string): SchemaNode {
     ],
   };
 }
+
+/**
+ * The one switch every developer affordance is gated on.
+ *
+ * ## Why this page gates on `isDevelopment` and the switch reads `devTools`
+ *
+ * They are deliberately different stores' worth of question, and using one for both breaks the
+ * page: gate the nav entry on `devTools` and turning the switch off removes the page holding the
+ * switch, so there is no way back short of clearing site data. The *build* decides whether this
+ * page exists; the *switch* decides what the rest of the app shows. That asymmetry is the whole
+ * design — see `devToolsEnabled`, where the build flag is the ceiling.
+ *
+ * A switch rather than a console incantation because the loop this supports is look-compare-restore,
+ * and a step that needs a remembered `localStorage` key is one people do once and then leave in
+ * whichever position they left it.
+ */
+const developerSection: SchemaNode = {
+  type: 'Column',
+  props: { gap: '300' },
+  children: [
+    { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Developer'] },
+    {
+      type: 'Row',
+      props: {
+        ay: 'center',
+        ax: 'between',
+        gap: '300',
+        p: '300',
+        bg: 'surface-sunken',
+        r: '300',
+        border: '1px solid border',
+      },
+      children: [
+        {
+          type: 'Column',
+          props: { gap: '100', flex: '1' },
+          children: [
+            { type: 'we-text', props: { variant: 'label' }, children: ['Show developer tools'] },
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-faint' },
+              children: [
+                'On, this build shows its developer affordances — the schema test pages, the fake-participant controls in a call, render logging. Off, it looks like a shipped app, which is the point: it is how you check what a user actually sees without building for production.',
+              ],
+            },
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-faint' },
+              children: ['This page is only ever here in a development build. A shipped app has none of it.'],
+            },
+          ],
+        },
+        {
+          type: 'we-switch',
+          props: {
+            checked: { $: 'sessionStore.devTools' },
+            // Positive-phrased, so the switch's own value passes straight through — `$not` around it
+            // would resolve at render time and send a constant.
+            onChange: { $action: 'sessionStore.setDevTools', args: [{ $: 'event.detail' }] },
+          },
+        },
+      ],
+    },
+  ],
+};
 
 /** A page's own column. Every route renders one, so they share spacing without repeating it. */
 function page(children: SchemaNode[]): SchemaNode {
@@ -765,6 +971,10 @@ export const settingsTemplate: TemplateSchema = {
       ...page([runtimeError, trustedAgents, peerNetwork, logging]),
     },
     { path: '/connections', ...page([runtimeError, hostSection, connectedApps, mcpServer]) },
+    // No `$if` on the route itself: its nav entry is already gated, and a production build resolves
+    // the switch to false whatever it is set to, so the page is inert rather than dangerous if
+    // somebody navigates to it directly.
+    { path: '/developer', ...page([developerSection]) },
     // Anything else lands on Account rather than an empty frame.
     { path: '*', ...page([accountSection]) },
   ],
@@ -791,28 +1001,21 @@ export const settingsTemplate: TemplateSchema = {
                 {
                   type: '$if',
                   props: {
-                    condition: { $store: 'runtimeStore.canManageAi' },
+                    condition: { $: 'runtimeStore.canManageAi' },
                     then: navItem('AI', 'sparkle', '/ai'),
                   },
                 },
                 {
                   type: '$if',
                   props: {
-                    condition: { $store: 'runtimeStore.canManageLanguages' },
+                    condition: { $: 'runtimeStore.canManageLanguages' },
                     then: navItem('Languages', 'code', '/languages'),
                   },
                 },
                 {
                   type: '$if',
                   props: {
-                    condition: {
-                      $or: [
-                        { $store: 'runtimeStore.canManageNetwork' },
-                        // Logging is a host setting, so this page has something to show even where
-                        // the backend administers no networking.
-                        { $store: 'runtimeStore.canConfigureExecutor' },
-                      ],
-                    },
+                    condition: { $: 'runtimeStore.canManageNetwork || runtimeStore.canConfigureExecutor' },
                     then: navItem('Network', 'globe', '/network'),
                   },
                 },
@@ -824,13 +1027,18 @@ export const settingsTemplate: TemplateSchema = {
                     // that says which node holds your data would be unreachable on exactly the
                     // hosts where that question matters.
                     condition: {
-                      $or: [
-                        { $store: 'sessionStore.host' },
-                        { $store: 'runtimeStore.canManageApps' },
-                        { $store: 'runtimeStore.canConfigureExecutor' },
-                      ],
+                      $: 'sessionStore.host || runtimeStore.canManageApps || runtimeStore.canConfigureExecutor',
                     },
                     then: navItem('Connections', 'plugs', '/connections'),
+                  },
+                },
+                {
+                  type: '$if',
+                  props: {
+                    // `isDevelopment`, NOT `devTools` — see `developerSection`. Gating the way to
+                    // the switch on the switch would make turning it off a one-way door.
+                    condition: { $: 'sessionStore.isDevelopment' },
+                    then: navItem('Developer', 'flask', '/developer'),
                   },
                 },
               ],

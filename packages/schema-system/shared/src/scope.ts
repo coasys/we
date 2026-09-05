@@ -12,7 +12,9 @@
  * the same question and could be rebased on this later.
  */
 
-import type { ModelEntry, StateMemberMeta, StoreEntry } from './contextTypes';
+import type { EntityEntry, StateMemberMeta, StoreEntry } from './contextTypes';
+import type { Expr } from './expressions';
+import { isExpressionToken, parseExpression } from './expressions';
 import { isPropsSchemaNode, isSchemaChild } from './treeUtils';
 import type { SchemaNode } from './types';
 
@@ -28,8 +30,9 @@ export interface ScopeRef {
   id: string;
   kind: ScopeRefKind;
   /**
-   * The path as it appears inside the emitted token:
-   * store → `sessionStore.me.did`, local → `searchText`, item/context → `$post.name`.
+   * The path as it appears inside the emitted expression:
+   * store → `sessionStore.me.did`, local → `searchText` (emitted as `local.searchText`),
+   * item/context → `post.name`.
    */
   path: string;
   /** Display label, relative to its group (e.g. `me.did` inside the `sessionStore` group). */
@@ -50,27 +53,27 @@ export interface ScopeGroup {
 export interface ScopeOptions {
   storeEntries?: StoreEntry[];
   /** Model registry — used to infer item fields for `$each` over a `$query`. */
-  models?: ModelEntry[];
+  models?: EntityEntry[];
 }
 
 // ── Context refs (backend-neutral, always in scope) ──────────────────────────
 
 const CONTEXT_REFS: ScopeRef[] = [
   {
-    id: 'context:$me.did',
+    id: 'context:me.did',
     kind: 'context',
-    path: '$me.did',
-    label: '$me.did',
+    path: 'me.did',
+    label: 'me.did',
     valueType: 'string',
     hint: 'current agent identity',
   },
-  { id: 'context:$me.handle', kind: 'context', path: '$me.handle', label: '$me.handle', valueType: 'string' },
-  { id: 'context:$me.avatar', kind: 'context', path: '$me.avatar', label: '$me.avatar', valueType: 'string' },
+  { id: 'context:me.handle', kind: 'context', path: 'me.handle', label: 'me.handle', valueType: 'string' },
+  { id: 'context:me.avatar', kind: 'context', path: 'me.avatar', label: 'me.avatar', valueType: 'string' },
   {
-    id: 'context:$currentDataset',
+    id: 'context:currentDataset',
     kind: 'context',
-    path: '$currentDataset',
-    label: '$currentDataset',
+    path: 'currentDataset',
+    label: 'currentDataset',
     valueType: 'object',
     hint: 'the active dataset',
   },
@@ -138,7 +141,7 @@ export function findNodeChain(root: SchemaNode, nodeId: string): SchemaNode[] | 
  */
 const MODEL_BASE_FIELDS = ['id', 'author', 'createdAt', 'updatedAt'];
 
-function modelProperties(models: ModelEntry[] | undefined, entity: string): string[] | undefined {
+function modelProperties(models: EntityEntry[] | undefined, entity: string): string[] | undefined {
   const model = models?.find((m) => m.name === entity || m.className === entity);
   if (!model) return undefined;
   return [...MODEL_BASE_FIELDS, ...model.fields.map((f) => f.name), ...model.relations.map((r) => r.name)];
@@ -149,11 +152,11 @@ function modelProperties(models: ModelEntry[] | undefined, entity: string): stri
  * instances, unioned with any explicitly declared ones (a store may expose computed
  * fields the model doesn't have).
  */
-function memberProperties(meta: StateMemberMeta, models: ModelEntry[] | undefined): string[] | undefined {
-  const fromModel = meta.model ? modelProperties(models, meta.model) : undefined;
-  if (!fromModel) return meta.properties;
-  if (!meta.properties) return fromModel;
-  return [...new Set([...fromModel, ...meta.properties])];
+function memberProperties(meta: StateMemberMeta, models: EntityEntry[] | undefined): string[] | undefined {
+  const fromRecord = meta.model ? modelProperties(models, meta.model) : undefined;
+  if (!fromRecord) return meta.properties;
+  if (!meta.properties) return fromRecord;
+  return [...new Set([...fromRecord, ...meta.properties])];
 }
 
 function storeMemberMeta(
@@ -193,23 +196,57 @@ function inferItemProperties(
     }
     return {};
   }
-  if (typeof token.$store === 'string') {
-    const found = storeMemberMeta(options.storeEntries, token.$store);
-    return { properties: found && memberProperties(found.meta, options.models), hint: token.$store };
-  }
-  if (typeof token.$local === 'string') {
-    const ref = localRefs.get(token.$local);
-    return { properties: ref?.properties, hint: `$local.${token.$local}` };
-  }
-  // Array operators pass their source's item shape through unchanged.
-  if (token.$filter && typeof token.$filter === 'object') {
-    return inferItemProperties((token.$filter as Record<string, unknown>).items, options, localRefs);
-  }
-  if (token.$map && typeof token.$map === 'object') {
-    const select = (token.$map as Record<string, unknown>).select;
-    if (select && typeof select === 'object') return { properties: Object.keys(select), hint: '$map projection' };
+  if (isExpressionToken(token)) {
+    let expr: Expr;
+    try {
+      expr = parseExpression(token.$);
+    } catch {
+      return {};
+    }
+    return inferFromExpr(expr, options, localRefs);
   }
   return {};
+}
+
+/**
+ * The item shape an expression yields, for the ones the picker can read: a store member, a local,
+ * `filter(…)`/`.filter(x, …)` over either (the shape passes through), and `.map(x, { … })`, whose
+ * object literal is the shape.
+ */
+function inferFromExpr(
+  expr: Expr,
+  options: ScopeOptions,
+  localRefs: Map<string, ScopeRef>,
+): { properties?: string[]; hint?: string } {
+  const chain = chainOf(expr);
+  if (chain) {
+    const [root, ...rest] = chain;
+    if (root === 'local' && rest.length === 1) {
+      const ref = localRefs.get(rest[0]);
+      return { properties: ref?.properties, hint: `local.${rest[0]}` };
+    }
+    const path = chain.join('.');
+    const found = storeMemberMeta(options.storeEntries, path);
+    return { properties: found && memberProperties(found.meta, options.models), hint: path };
+  }
+  if (expr.kind === 'call' && expr.callee === 'filter') {
+    const source = expr.receiver ?? expr.args[0];
+    return source ? inferFromExpr(source, options, localRefs) : {};
+  }
+  if (expr.kind === 'macro' && expr.name === 'filter') return inferFromExpr(expr.receiver, options, localRefs);
+  if (expr.kind === 'macro' && expr.name === 'map' && expr.body.kind === 'object') {
+    return { properties: expr.body.entries.map((entry) => entry.key), hint: 'map projection' };
+  }
+  return {};
+}
+
+function chainOf(expr: Expr): string[] | null {
+  if (expr.kind === 'ident') return [expr.name];
+  if (expr.kind === 'member') {
+    const inner = chainOf(expr.object);
+    return inner ? [...inner, expr.property] : null;
+  }
+  return null;
 }
 
 // ── Scope assembly ──────────────────────────────────────────────────────────
@@ -273,31 +310,31 @@ export function getScopeAtNode(root: SchemaNode, nodeId: string, options: ScopeO
       }
     }
 
-    // $each / $single — iteration variables, addressed as context reference strings.
+    // $each / $single — iteration variables, the names an expression reads directly.
     if (node.type === '$each' || node.type === '$single') {
       const asKey = typeof node.props?.as === 'string' ? node.props.as : 'item';
       const source = node.type === '$each' ? node.props?.items : node.props?.item;
       const { properties, hint } = inferItemProperties(source, options, localRefs);
       const refs: ScopeRef[] = [
         {
-          id: `item:$${asKey}`,
+          id: `item:${asKey}`,
           kind: 'item',
-          path: `$${asKey}`,
-          label: `$${asKey}`,
+          path: asKey,
+          label: asKey,
           valueType: 'object',
           properties,
           hint,
         },
         ...(properties ?? []).map<ScopeRef>((prop) => ({
-          id: `item:$${asKey}.${prop}`,
+          id: `item:${asKey}.${prop}`,
           kind: 'item',
-          path: `$${asKey}.${prop}`,
-          label: `$${asKey}.${prop}`,
+          path: `${asKey}.${prop}`,
+          label: `${asKey}.${prop}`,
           valueType: 'unknown',
         })),
       ];
       // A nested $each reusing an outer `as` name shadows it — drop the outer group.
-      const shadowed = itemGroups.findIndex((g) => g.refs[0]?.path === `$${asKey}`);
+      const shadowed = itemGroups.findIndex((g) => g.refs[0]?.path === asKey);
       if (shadowed !== -1) itemGroups.splice(shadowed, 1);
       itemGroups.push({ label: hint ? `${asKey} — ${hint}` : asKey, kind: 'item', refs });
     }
@@ -346,17 +383,9 @@ export function getScopeAtNode(root: SchemaNode, nodeId: string, options: ScopeO
 
 // ── Token conversion ────────────────────────────────────────────────────────
 
-/** Build the schema token that reads a scope reference. */
-export function scopeRefToToken(ref: Pick<ScopeRef, 'kind' | 'path'>): unknown {
-  switch (ref.kind) {
-    case 'store':
-      return { $store: ref.path };
-    case 'local':
-      return { $local: ref.path };
-    case 'item':
-    case 'context':
-      return ref.path;
-  }
+/** Build the expression token that reads a scope reference. */
+export function scopeRefToToken(ref: Pick<ScopeRef, 'kind' | 'path'>): { $: string } {
+  return { $: ref.kind === 'local' ? `local.${ref.path}` : ref.path };
 }
 
 /**
@@ -370,41 +399,39 @@ export function scopeRefToToken(ref: Pick<ScopeRef, 'kind' | 'path'>): unknown {
 export function inferRefKind(path: string, groups: ScopeGroup[]): ScopeRefKind | null {
   const trimmed = path.trim();
   if (!trimmed) return null;
-  // Context refs and iteration variables are both `$`-prefixed strings at the token level.
-  if (trimmed.startsWith('$')) return 'context';
 
   const [head] = trimmed.split('.');
+  if (head === 'local') return 'local';
   for (const group of groups) {
     if (group.kind === 'store' && group.label === head) return 'store';
     if (group.kind === 'local' && group.refs.some((r) => r.path === head)) return 'local';
+    if ((group.kind === 'item' || group.kind === 'context') && group.refs.some((r) => r.path.split('.')[0] === head))
+      return group.kind;
   }
   return null;
 }
 
 /** Find the scope ref a token reads, or null if it isn't a plain reference. */
 export function findScopeRef(groups: ScopeGroup[], token: unknown): ScopeRef | null {
-  let kind: ScopeRefKind | null = null;
-  let path: string | null = null;
-
-  if (typeof token === 'string' && token.startsWith('$')) {
-    path = token;
-  } else if (typeof token === 'object' && token !== null) {
-    const obj = token as Record<string, unknown>;
-    if (typeof obj.$store === 'string') {
-      kind = 'store';
-      path = obj.$store;
-    } else if (typeof obj.$local === 'string') {
-      kind = 'local';
-      path = obj.$local;
-    }
+  if (!isExpressionToken(token)) return null;
+  let expr: Expr;
+  try {
+    expr = parseExpression(token.$);
+  } catch {
+    return null;
   }
-  if (path === null) return null;
+  const chain = chainOf(expr);
+  if (!chain) return null;
+
+  const [root, ...rest] = chain;
+  const kind: ScopeRefKind | null = root === 'local' ? 'local' : null;
+  const path = kind === 'local' ? rest.join('.') : chain.join('.');
 
   for (const group of groups) {
     for (const ref of group.refs) {
       if (ref.path !== path) continue;
       if (kind && ref.kind !== kind) continue;
-      if (!kind && ref.kind !== 'item' && ref.kind !== 'context') continue;
+      if (!kind && ref.kind === 'local') continue;
       return ref;
     }
   }

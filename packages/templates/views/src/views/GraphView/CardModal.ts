@@ -38,17 +38,11 @@ export const openCardModal: SchemaNode = {
       the node that is selected and cannot drift from it. Guarded on the type as well, since only a
       composed document has an `editorState` to render.
     */
-    condition: {
-      $and: [
-        { $local: 'cardOpen' },
-        { $local: 'selected.recordId' },
-        { $eq: [{ $local: 'selected.type' }, 'CollectionBlock'] },
-      ],
-    },
+    condition: { $: "local.cardOpen && local.selected.recordId && local.selected.type == 'CollectionBlock'" },
     then: {
       type: '$single',
       props: {
-        item: { $query: { entity: 'CollectionBlock', where: { id: { $local: 'selected.recordId' } } } },
+        item: { $query: { entity: 'CollectionBlock', where: { id: { $: 'local.selected.recordId' } } } },
         as: 'card',
       },
       children: [
@@ -56,10 +50,10 @@ export const openCardModal: SchemaNode = {
           openLocal: 'cardOpen',
           title: 'Card',
           saveLabel: 'Save',
-          editorState: '$card.editorState',
+          editorState: { $: 'card.editorState' },
           // `'$arg'` goes second: `updatePost(postId, json)`.
-          saveAction: { $action: 'spaceStore.updatePost', args: ['$card.id', '$arg'] },
-          onSaved: [{ $setLocal: 'revision', by: 1 }],
+          saveAction: { $action: 'spaceStore.updatePost', args: [{ $: 'card.id' }, { $: 'arg' }] },
+          onSaved: [{ $setLocal: 'revision', value: { $: 'local.revision + 1' } }],
         }),
       ],
     },

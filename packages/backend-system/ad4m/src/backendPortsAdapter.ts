@@ -10,44 +10,45 @@ import type {
   BackendPortsContext,
   DataBindingDeps,
   DatasetHandle,
-  ModelManifest,
-  ModelManifestEntry,
+  EntityManifest,
+  EntityManifestEntry,
   ProfileDirectoryPort,
   SchemaPort,
 } from '@we/backend-shared';
-import { FILE_STORAGE_LANGUAGE } from '@we/models';
+import { FILE_STORAGE_LANGUAGE } from '@we/entities';
 import {
-  getModelForPerspective,
-  mergeDynamicModels,
-  type ModelClass,
-  registerDynamicModels,
+  type EntityClass,
+  getEntitiesForPerspective,
+  mergeDynamicEntities,
+  registerDynamicEntities,
+  registerEntity,
   registerFileStore,
-  registerModel,
   registerTransactionRunner,
-} from '@we/models';
+} from '@we/entities';
 
 import { createAd4mDataBindings } from './ad4mAdapter';
 import { createAd4mEphemeralPort } from './ad4mEphemeralAdapter';
 import { createFileExpression, getProfile, publishProfileToPublicPerspective } from './agentHelpers';
+import { installClearOnEmpty } from './clearOnEmpty';
+import { Space } from './entities';
 import { createAd4mInterpretationPort } from './interpretationAdapter';
 import { readInterpretationHints, resetInterpretationHints, writeInterpretationHints } from './interpretationHints';
 import { createAd4mLanguageModelPort } from './languageModelPort';
 import { createAd4mAgentSession, createAd4mDatasetLifecycle } from './lifecycleAdapter';
-import { compileManifest } from './manifestCompiler';
-import { Space } from './models';
-import { buildModelClasses, buildModelManifest, getForeignShacl } from './perspectiveHelpers';
+import { compileManifest, manifestToEntries } from './manifestCompiler';
+import { buildEntityClasses, buildEntityManifest, getForeignShacl } from './perspectiveHelpers';
 import { type Ad4mRuntimeOptions, createAd4mRuntimeAdmin } from './runtimeAdminAdapter';
 import {
   deduplicateSpaceSdna,
-  ensureModelRegistered,
+  ensureEntityRegistered,
   installModuleSdna,
   installRootSdna,
   installSpaceSdna,
-  isModelRegistered,
+  isEntityRegistered,
   refreshSpaceSdna,
   ROOT_MODELS,
   SPACE_MODELS,
-} from './sdnaModels';
+} from './sdnaEntities';
 import { getFluxSubgroupMessages } from './syncHelpers';
 import { createAd4mTranscriptionPort } from './transcriptionAdapter';
 
@@ -58,37 +59,41 @@ export function createAd4mSchemaPort(backendClient: unknown): SchemaPort {
   void client; // schema install operates on dataset handles; the client stays for future needs
 
   return {
-    installRoot: (dataset) => installRootSdna(proxy(dataset)),
+    installRoot: (dataset, moduleSchemas) => installRootSdna(proxy(dataset), moduleSchemas),
     installSpace: (dataset, moduleSchemas) => installSpaceSdna(proxy(dataset), moduleSchemas),
     installModules: (dataset, moduleSchemas) => installModuleSdna(proxy(dataset), moduleSchemas),
     refreshSpace: (dataset) => refreshSpaceSdna(proxy(dataset)),
-    ensure: (dataset, schema) => ensureModelRegistered(proxy(dataset), schema as never),
-    hasCoreSchema: (dataset) => isModelRegistered(proxy(dataset), Space as never),
+    ensure: (dataset, schema) => ensureEntityRegistered(proxy(dataset), schema as never),
+    hasCoreSchema: (dataset) => isEntityRegistered(proxy(dataset), Space as never),
     hasAnySchema: async (dataset) => (await proxy(dataset).getShaclNames()).length > 0,
 
-    async foreignSchemas(dataset): Promise<ModelManifestEntry[]> {
+    async foreignSchemas(dataset): Promise<EntityManifestEntry[]> {
       const shapes = await getForeignShacl(proxy(dataset));
-      registerDynamicModels(proxy(dataset).uuid, buildModelClasses(shapes));
-      return buildModelManifest(shapes);
+      registerDynamicEntities(proxy(dataset).uuid, buildEntityClasses(shapes));
+      return buildEntityManifest(shapes);
     },
 
-    declare(manifest: ModelManifest, opts) {
+    declare(manifest: EntityManifest, opts) {
       const classes = compileManifest(manifest, opts as Parameters<typeof compileManifest>[1]);
-      for (const [name, cls] of Object.entries(classes)) registerModel(name, cls as ModelClass);
+      for (const [name, cls] of Object.entries(classes)) registerEntity(name, cls as EntityClass);
       return classes;
     },
 
-    declareInDataset(dataset, manifest: ModelManifest, opts) {
+    // The read half of `declare`, through the very function `compileManifest` builds its classes
+    // from — so the predicate a `scope` resolves against and the one the class writes cannot differ.
+    entries: (manifest: EntityManifest, opts) => manifestToEntries(manifest, opts as never),
+
+    declareInDataset(dataset, manifest: EntityManifest, opts) {
       const classes = compileManifest(manifest, {
         ...opts,
         // Core vocabulary and the dataset's other dynamic entities are legitimate relation
-        // targets; getModelForPerspective already prefers native classes, so a shape cannot
+        // targets; getEntitiesForPerspective already prefers native classes, so a shape cannot
         // resolve a target to a shadowed core name.
         // The registry hands back the neutral class handle; this compiler is AD4M's own, so the
         // narrowing is definitionally sound here — everything registered on this backend IS one.
-        resolveExternal: (name) => getModelForPerspective(name, dataset) as typeof Ad4mModel | undefined,
+        resolveExternal: (name) => getEntitiesForPerspective(name, dataset) as typeof Ad4mModel | undefined,
       });
-      mergeDynamicModels(proxy(dataset).uuid, classes as Record<string, ModelClass>);
+      mergeDynamicEntities(proxy(dataset).uuid, classes as Record<string, EntityClass>);
       return classes;
     },
 
@@ -115,13 +120,17 @@ export function createAd4mBackendPorts(
   // runtime administration cares so far — see `Ad4mRuntimeOptions.administersNode`.
   options: Ad4mRuntimeOptions = {},
 ): BackendPorts {
+  // `''` clears a property, which is what four separate call sites in WE already assumed and none
+  // of them got. Installed before any model is registered so every class inherits it — generated,
+  // manifest-compiled or built from foreign SHACL. See `clearOnEmpty.ts` for what it repairs.
+  installClearOnEmpty(Ad4mModel);
   // Register the native model classes for name-based $query resolution. Previously a module-load
   // side effect in the shell; it belongs to the backend choice. Use .className (set by @Model)
   // rather than .name — bundlers mangle the native .name in production builds.
   for (const M of [...ROOT_MODELS, ...SPACE_MODELS]) {
-    registerModel((M as { className?: string }).className ?? M.name, M as unknown as ModelClass);
+    registerEntity((M as { className?: string }).className ?? M.name, M as unknown as EntityClass);
   }
-  // Batching, registered beside the models it batches: the neutral runModelTransaction resolves
+  // Batching, registered beside the models it batches: the neutral runEntityTransaction resolves
   // to AD4M's own transaction here, and to individual writes on a backend without one.
   registerTransactionRunner((dataset, run) =>
     Ad4mModel.transaction(dataset as PerspectiveProxy, (tx) => run({ batchId: tx.batchId })),
@@ -155,7 +164,7 @@ export function createAd4mBackendPorts(
     dataBindings: (deps: DataBindingDeps) =>
       createAd4mDataBindings({
         currentPerspective: () => (deps.currentDataset() as PerspectiveProxy | null) ?? null,
-        currentPerspectiveModels: deps.currentDatasetModels,
+        currentPerspectiveEntities: deps.currentDatasetEntities,
         agents: deps.profiles,
         fetchAgent: deps.fetchProfile,
         ephemeralPort: deps.ephemeral,

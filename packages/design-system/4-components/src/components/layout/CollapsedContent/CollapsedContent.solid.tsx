@@ -5,7 +5,12 @@ import type { CollapsedContentProps } from './CollapsedContent.types';
 
 export function CollapsedContent(props: CollapsedContentProps) {
   const maxH = () => props.maxHeight ?? '280px';
-  const fadeColor = () => props.fadeColor ?? 'var(--we-color-neutral-100)';
+  /*
+    What the fade fades *into* is whatever is behind the content, so it is a role: `surface`, since
+    collapsed content sits on a card or a panel. A scale position pinned it to one theme's idea of a
+    near-white, which inverts with the ramp and so was a light band across a dark card.
+  */
+  const fadeColor = () => props.fadeColor ?? 'var(--we-role-surface)';
 
   let innerRef: HTMLDivElement | undefined;
   const [overflow, setOverflow] = createSignal(false);

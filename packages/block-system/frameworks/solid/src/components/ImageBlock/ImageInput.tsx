@@ -1,7 +1,7 @@
 import type { ImageCropRef } from '@we/components/solid';
 import { Column, ImageCrop, Row } from '@we/components/solid';
-import type { FileData } from '@we/models';
-import { compressImageToFileData } from '@we/models';
+import type { FileData } from '@we/entities';
+import { compressImageToFileData } from '@we/entities';
 import { createSignal, For, Show } from 'solid-js';
 import { Portal } from 'solid-js/web';
 
@@ -26,7 +26,7 @@ const WIDTH_PRESETS = [
 
 /**
  * Input component for ImageBlock.
- * Pure SolidJS — no Lexical imports. Receives onChange from the factory.
+ * Pure SolidJS — no editor imports. Receives onChange from the factory.
  *
  * Empty state: BlockPlaceholder (dashed zone, icon, label).
  *   - Drop a file directly → goes straight to crop modal.
@@ -147,13 +147,11 @@ export function ImageInput(props: ImageInputProps) {
         </Show>
       </Show>
 
-      {/* Add-image modal — portalled to escape the Lexical contenteditable context. */}
+      {/* Add-image modal — portalled to escape the editor's contenteditable context. */}
       <Show when={showAddModal()}>
         <Portal>
-          <we-modal close={() => setShowAddModal(false)}>
-            <we-text fontWeight="bold" fontSize="600" textAlign="center">
-              Add Image
-            </we-text>
+          <we-modal close={() => setShowAddModal(false)} size="sm">
+            <we-text variant="heading-md">Add Image</we-text>
 
             <we-file-upload accept="image/*" on:change={handleModalFileChange} width="100%">
               <we-icon name="image" color="text-muted" size="lg" />
@@ -186,13 +184,11 @@ export function ImageInput(props: ImageInputProps) {
         </Portal>
       </Show>
 
-      {/* Crop modal — portalled to escape the Lexical contenteditable context. */}
+      {/* Crop modal — portalled to escape the editor's contenteditable context. */}
       <Show when={rawUrl()}>
         <Portal>
-          <we-modal close={handleCropBack}>
-            <we-text fontSize="700" fontWeight="bold" textAlign="center">
-              Crop Image
-            </we-text>
+          <we-modal close={handleCropBack} size="md">
+            <we-text variant="heading-md">Crop Image</we-text>
             <ImageCrop
               src={rawUrl()!}
               fileName={pendingFile()?.name}

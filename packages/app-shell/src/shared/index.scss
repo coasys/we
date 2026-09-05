@@ -45,16 +45,26 @@ body,
   background-color: var(--we-role-surface);
 }
 
-// Global scrollbar styling — uses design-system tokens, themed via CSS variables
-// Webkit properties (Chrome, Edge, Safari, Electron)
+/*
+  Global scrollbar styling.
+
+  These declarations are `scrollbarRules()` from `@we/tokens`, which is where they are decided —
+  the same block the primitives' shared stylesheet adopts and `we-scroll-area` uses for its own
+  part. Restated here because Sass cannot import a TypeScript string, and pinned by
+  `scrollbarConsistency.test.ts`, which fails if the two fall out of step. They already had: this
+  copy hid the scrollbar buttons and the shared one did not.
+
+  Do NOT add `scrollbar-color` or `scrollbar-width` beside these. Chromium reads either as "use the
+  platform scrollbar" and ignores every rule below — see the note on `scrollbarRules`.
+*/
 ::-webkit-scrollbar {
   width: var(--we-scrollbar-width);
   height: var(--we-scrollbar-width);
 }
 
 ::-webkit-scrollbar-track {
-  background-image: var(--we-scrollbar-background-image);
   background: var(--we-scrollbar-background);
+  background-image: var(--we-scrollbar-background-image);
 }
 
 ::-webkit-scrollbar-corner {

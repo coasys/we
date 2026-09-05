@@ -45,14 +45,16 @@ describe('zodSchemas', () => {
     expect(() => zSchemaProp.parse(42)).not.toThrow(); // number
     expect(() => zSchemaProp.parse(true)).not.toThrow(); // boolean
     expect(() => zSchemaProp.parse(undefined)).not.toThrow(); // undefined
-    expect(() => zSchemaProp.parse({ $store: 'x.y' })).not.toThrow(); // record
+    expect(() => zSchemaProp.parse({ $: 'x.y' })).not.toThrow(); // expression
     expect(() => zSchemaProp.parse(['a', 1, true])).not.toThrow(); // array
   });
 
   it('accepts token objects as SchemaProp records', () => {
-    expect(() => zSchemaProp.parse({ $store: 'userStore.name' })).not.toThrow();
+    expect(() => zSchemaProp.parse({ $: 'userStore.name' })).not.toThrow();
     expect(() => zSchemaProp.parse({ $action: 'routeStore.navigate', args: ['/'] })).not.toThrow();
-    expect(() => zSchemaProp.parse({ $if: { condition: true, then: 'a', else: 'b' } })).not.toThrow();
+    expect(() =>
+      zSchemaProp.parse({ $if: { condition: { $: 'local.ok' }, then: { $action: 'a.b' }, else: { $action: 'c.d' } } }),
+    ).not.toThrow();
   });
 
   // --- TemplateMeta ---
@@ -115,29 +117,25 @@ describe('zodSchemas', () => {
     expect(() => zRouteSchema.parse({ type: 'Page', path: '/', extra: 1 })).toThrow();
   });
 
-  // --- $local / $setLocal tokens ---
-  it('accepts $local token as SchemaProp', () => {
-    expect(() => zSchemaProp.parse({ $local: 'name' })).not.toThrow();
+  // --- local reads / $setLocal tokens ---
+  it('reads a local through an expression', () => {
+    expect(() => zSchemaProp.parse({ $: 'local.name' })).not.toThrow();
   });
 
-  it('rejects $local with empty string', () => {
-    expect(() => zSchemaProp.parse({ $local: '' })).toThrow();
+  it('accepts $setLocal with an expression value', () => {
+    expect(() => zSchemaProp.parse({ $setLocal: 'name', value: { $: 'event.target.value' } })).not.toThrow();
   });
 
-  it('rejects $local with extra keys (strict)', () => {
-    expect(() => zSchemaProp.parse({ $local: 'name', extra: true })).toThrow();
-  });
-
-  it('accepts $setLocal token as SchemaProp', () => {
-    expect(() => zSchemaProp.parse({ $setLocal: 'name', from: '$event.target.value' })).not.toThrow();
-  });
-
-  it('accepts $setLocal with value instead of from', () => {
+  it('accepts $setLocal with a literal value', () => {
     expect(() => zSchemaProp.parse({ $setLocal: 'name', value: 'hello' })).not.toThrow();
   });
 
-  it('rejects $setLocal with empty from', () => {
-    expect(() => zSchemaProp.parse({ $setLocal: 'name', from: '' })).toThrow();
+  it('accepts $setLocal with merge', () => {
+    expect(() => zSchemaProp.parse({ $setLocal: 'location', merge: { city: { $: 'event.detail' } } })).not.toThrow();
+  });
+
+  it('rejects $setLocal with neither value nor merge', () => {
+    expect(() => zSchemaProp.parse({ $setLocal: 'name' })).toThrow();
   });
 
   // --- $toggleLocal ---
@@ -194,36 +192,9 @@ describe('zodSchemas', () => {
 
   // --- Validation tokens ---
 
-  it('accepts $error token', () => {
-    expect(() => zSchemaProp.parse({ $error: 'name' })).not.toThrow();
-  });
-
-  it('rejects $error with empty string', () => {
-    expect(() => zSchemaProp.parse({ $error: '' })).toThrow();
-  });
-
-  it('rejects $error with extra keys', () => {
-    expect(() => zSchemaProp.parse({ $error: 'name', extra: true })).toThrow();
-  });
-
-  it('accepts $valid token', () => {
-    expect(() => zSchemaProp.parse({ $valid: 'name' })).not.toThrow();
-  });
-
-  it('rejects $valid with empty string', () => {
-    expect(() => zSchemaProp.parse({ $valid: '' })).toThrow();
-  });
-
-  it('accepts $touched token', () => {
-    expect(() => zSchemaProp.parse({ $touched: 'name' })).not.toThrow();
-  });
-
-  it('accepts $formValid token', () => {
-    expect(() => zSchemaProp.parse({ $formValid: '$scope' })).not.toThrow();
-  });
-
-  it('rejects $formValid with empty string', () => {
-    expect(() => zSchemaProp.parse({ $formValid: '' })).toThrow();
+  it('reads validation state through the expression functions', () => {
+    expect(() => zSchemaProp.parse({ $: "error('name')" })).not.toThrow();
+    expect(() => zSchemaProp.parse({ $: 'formValid()' })).not.toThrow();
   });
 
   it('accepts $touch token with field name', () => {

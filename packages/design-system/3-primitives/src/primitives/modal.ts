@@ -1,9 +1,11 @@
 import type { DesignSystemProps } from '@we/design-types';
+import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
 import { css, html } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 
 import { OverlayElement } from '../shared/overlay-element';
 import sharedStyles from '../shared/styles';
+import type { ModalSize } from '../types';
 
 /*
   `surface`, not `surfaceRaised`. A raised surface is one floating above the page with nothing
@@ -15,7 +17,18 @@ import sharedStyles from '../shared/styles';
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   bg: 'var(--we-role-surface)',
   r: '600',
-  p: '900',
+  /*
+    The floor, for a modal with no size — 40px. What each size actually uses is below, at
+    `--we-modal-size-padding`.
+
+    This figure has swung twice for one reason: it was being asked to be right for a 420px
+    confirmation *and* a 900px workspace, and there is no such number. 64px was the padding of a
+    full page section, and around a two-line confirmation it was most of the dialog. 32px fixed that
+    and overshot — only 8px more than the 24px a card gets, so a sheet floating over the page was
+    barely more generous than a card sitting in it. Both readings were correct about the sheet in
+    front of whoever made the change.
+  */
+  p: '700',
   ax: 'stretch',
   /*
     Start, not centre. The base grows with its content, so centring on the main axis does nothing
@@ -42,10 +55,78 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   overflow: 'hidden',
 };
 
+/*
+  The room a modal keeps between itself and the edge of the screen.
+
+  Folded into `max-width` rather than left to the host's own alignment, because every call site
+  that sized itself wrote `width: '100%'` beside its `maxWidth` — and `100%` of a viewport-wide
+  host is the viewport, so on a phone all of them ran edge to edge with the sheet's corners under
+  the bezel. The two call sites that noticed spelled the fix `min(850px, 92vw)`, which is this
+  with the gutter expressed as a percentage of the screen — so it is 30px on a phone and 100px on
+  a desktop, exactly backwards from where the room is needed.
+*/
+const GUTTER = 'var(--we-space-500)';
+const measure = (token: string) => `min(var(--we-layout-${token}), calc(100dvw - ${GUTTER} * 2))`;
+
+/*
+  Width is the one thing a modal cannot work out for itself, and the one thing nothing was telling
+  it. `[part='base']` is a shrink-to-fit flex column, so with no width set its size is whatever its
+  widest line of text happens to imply — which makes a short confirmation too narrow and a wordy
+  one too wide, from the same rule. Both were being patched at call sites, differently each time.
+
+  The scale is the layout tokens, which already exist for this and are already commented as
+  "narrow modals" and "standard modals" — the modal's own names for them differ because a modal's
+  size is not a measure: `sm` is the smallest *sheet*, and it happens to hold the narrowest measure.
+*/
+const SIZE_DEFAULTS: Record<ModalSize, Partial<DesignSystemProps>> = {
+  sm: { width: '100%', maxWidth: measure('xs') },
+  md: { width: '100%', maxWidth: measure('sm') },
+  lg: { width: '100%', maxWidth: measure('md') },
+  // No measure at all: the content is the size, and the sheet only stays clear of the edges.
+  fullscreen: { width: `calc(100dvw - ${GUTTER} * 2)`, maxWidth: 'none' },
+};
+
 const CSS_STYLES = css`
   :host {
     align-items: center;
     justify-content: center;
+  }
+
+  /*
+    Padding grows with the sheet, because one figure cannot serve both ends of the scale: the same
+    40px that frames a 420px confirmation generously leaves a 640px form looking crowded against the
+    edge, and a 900px workspace more so. As a fraction of the sheet these run 9.5%, 7.5% and 7.1% —
+    close enough to read as one decision rather than three.
+
+    A size-aware default inside the cascade chain, exactly as we-button does its radius, and NOT a
+    per-size entry in SIZE_DEFAULTS. Those are applied as instance props, which sit above the theme
+    in the chain — so spelling it there would take modals out of --we-theme-surface-padding's reach
+    and quietly remove a theme's ability to set their padding at all. Here it is the last resort
+    instead: an explicit prop wins, then the theme, then this.
+
+    Fullscreen is deliberately not the widest of these. The content is the size — it is a lightbox —
+    so padding there is room taken from the thing somebody opened it to look at.
+  */
+  :host([size='sm']) {
+    --we-modal-size-padding: var(--we-space-700);
+  }
+  :host([size='md']) {
+    --we-modal-size-padding: var(--we-space-800);
+  }
+  /*
+    lg holds at 48px rather than stepping up again.
+
+    It was 64px, extrapolated from the sm → md step on the reasoning that padding should stay a
+    constant fraction of the sheet. The arithmetic was fine and the result was not: a composer at
+    64px reads as a lot of empty sheet, and 64px is the figure this file already calls the padding
+    of a full page section. The step that matters is confirmation → form; a workspace is already
+    260px wider than a form, so it does not need a second one.
+  */
+  :host([size='lg']) {
+    --we-modal-size-padding: var(--we-space-800);
+  }
+  :host([size='fullscreen']) {
+    --we-modal-size-padding: var(--we-space-800);
   }
 
   [part='backdrop'] {
@@ -119,12 +200,28 @@ const CSS_STYLES = css`
 export default class Modal extends OverlayElement {
   static styles = [sharedStyles, CSS_STYLES];
 
+  @property({ type: String, reflect: true }) size: ModalSize = 'md';
   @property({ type: Boolean }) hideclosebutton = false;
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
   @property({ attribute: false }) close: () => void = () => {};
 
   static getDefaultProps() {
     return DEFAULT_PROPS;
+  }
+
+  /*
+    Explicit props > size > component defaults, the house merge chain.
+
+    An explicit `width`/`maxWidth` still wins, so the escape hatch survives for the modal that
+    genuinely needs a number nobody else needs — but it is now the exception it should be, rather
+    than the only way to have a width at all.
+  */
+  override getInstanceProps() {
+    const ctor = this.constructor as typeof Modal & { __dsLayers: readonly DSLayer[] };
+    const activeKeys = getKeysForLayers([...ctor.__dsLayers]);
+    const usedProps = filterProps(this as unknown as Record<string, unknown>, activeKeys);
+    const sizeDefaults = SIZE_DEFAULTS[this.size] ?? SIZE_DEFAULTS.md;
+    return mergeProps(usedProps, mergeProps(sizeDefaults, DEFAULT_PROPS)) as Partial<DesignSystemProps>;
   }
 
   connectedCallback() {
@@ -139,35 +236,43 @@ export default class Modal extends OverlayElement {
   }
 
   private _onKeyDown(e: KeyboardEvent) {
+    // Only the overlay on top answers the keyboard. A modal that raises a confirmation over itself
+    // is still mounted and still listening, so without this one Escape reached both: it dismissed
+    // the question and re-ran the close that had asked it.
+    if (!this.isTopmostOverlay()) return;
     if (e.key === 'Escape') {
       this.close();
     } else if (e.key === 'Tab') {
-      this._trapFocus(e);
+      // The base class's, which walks the composed tree. The one that lived here queried
+      // `[part=base]`'s shadow subtree — where a modal's slotted content is not — so it found
+      // nothing and returned on every keypress. See `OverlayElement.trapFocus`.
+      this.trapFocus(e);
     }
   }
 
-  private _trapFocus(e: KeyboardEvent) {
-    const base = this.renderRoot.querySelector('[part="base"]');
-    if (!base) return;
-    const focusable = base.querySelectorAll<HTMLElement>(
-      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-    );
-    if (focusable.length === 0) return;
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first.focus();
-    }
+  /**
+   * Move focus into the dialog once its content exists.
+   *
+   * `firstUpdated` rather than `connectedCallback`: the slots are empty until the first render, so
+   * capturing earlier finds nothing to focus and leaves focus behind the scrim — which is the state
+   * this whole trap exists to prevent, arrived at from the other end.
+   */
+  firstUpdated() {
+    this.captureFocus();
   }
 
   render() {
     return html`
       <div part="backdrop" @click=${this.close}></div>
-      <div part="base" role="dialog" aria-modal="true">
+      <!--
+        Named by its own header.
+
+        \`aria-modal="true"\` says "this is a dialog and focus is inside it"; without a name, a screen
+        reader announces "dialog" and stops, which tells somebody they are trapped and not what in.
+        The header slot is where every consumer already puts the title, so pointing at it costs a
+        caller nothing — and \`aria-labelledby\` on a shadow id resolves, since it is same-root.
+      -->
+      <div part="base" role="dialog" aria-modal="true" aria-labelledby="modal-title">
         ${
           !this.hideclosebutton
             ? html`
@@ -181,7 +286,7 @@ export default class Modal extends OverlayElement {
               `
             : null
         }
-        <slot name="header"></slot>
+        <slot name="header" id="modal-title"></slot>
         <div part="content"><slot></slot></div>
         <slot name="footer"></slot>
       </div>

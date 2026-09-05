@@ -8,20 +8,20 @@ which a space enables and which an agent installs layer on top
 
 ## Packages
 
-| Package                | Role                                                                                             |
-| ---------------------- | ------------------------------------------------------------------------------------------------ |
-| `@we/module-shared`    | The contract (`src/module.ts`) — what a module author implements: store, components, launchers, anchors, models, settings |
-| `@we/module-call`      | WebRTC calls: tiles, presence, the call dock                                                     |
-| `@we/module-notes`     | Collaborative notes over collection blocks                                                       |
-| `@we/module-transcribe`| Speech-to-text over the backend's transcription port                                             |
-| `@we/module-graph`     | The graph feature module — placeable fragments + plugin catalog over `packages/graph-system/`    |
-| globe family           | `globe/module` (`@we/module-globe`) · `globe/protocol` · `globe/layers` · `globe/widget` — the Cesium globe as module + layer plugin system |
+| Package                 | Role                                                                                                                                        |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@we/module-shared`     | The contract (`src/module.ts`) — what a module author implements: store, components, launchers, anchors, models, settings                   |
+| `@we/module-call`       | WebRTC calls: tiles, presence, the call dock                                                                                                |
+| `@we/module-notes`      | Collaborative notes over collection blocks                                                                                                  |
+| `@we/module-transcribe` | Speech-to-text over the backend's transcription port                                                                                        |
+| `@we/module-graph`      | The graph feature module — placeable fragments + plugin catalog over `packages/graph-system/`                                               |
+| globe family            | `globe/module` (`@we/module-globe`) · `globe/protocol` · `globe/layers` · `globe/widget` — the Cesium globe as module + layer plugin system |
 
 ## The contract in one paragraph
 
 A module declares what it contributes and the shell decides where it renders:
 components register into the component registry (usable from any template),
-stores publish under `modules.<id>.*` (`$store`/`$action` reach them without
+stores publish under `modules.<id>.*` (expressions and `$action` reach them without
 the shell knowing the member list), launchers appear in the module rail of
 spaces that enable the module, and anchors + `$slot` let one module's chrome
 host another's contributions. A module never imports the shell; the shell

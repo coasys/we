@@ -11,6 +11,7 @@
  * other two.
  */
 
+export { DEV_TOOLS_KEY, devToolsEnabled, setDevToolsMuted } from './devTools';
 export {
   checkModuleCompatibility,
   defineModule,
@@ -21,11 +22,15 @@ export {
 export type {
   ChromeReserve,
   CreateEntityOptions,
+  DatasetTarget,
   DockContribution,
   DockAspect,
   DockEdge,
+  DockMin,
   DockSize,
+  AgentDataAccess,
   ModuleCapability,
+  ModuleScope,
   ModuleCompatibility,
   ModuleDefinition,
   ModuleEmbed,
@@ -36,7 +41,10 @@ export type {
   ModuleIdentityAccess,
   ModuleLauncher,
   ModulePresenceAccess,
+  ModuleSetting,
   ModuleStoreDeps,
+  SettingLevel,
+  SettingResolution,
   CoreSlotAnchor,
   SlotAnchor,
   SlotContribution,

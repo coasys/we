@@ -1,15 +1,19 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { bundledModules } from '../src/shared/registries/bundledModules';
 import {
   dockRegistry,
+  hostChromeReserves,
   hostDockStores,
   onDockRegistryChanged,
+  registerHostChromeReserve,
   registerHostDockStore,
   unregisterHostDockStore,
 } from '../src/shared/registries/dockRegistry';
-import { registerEditorDocks } from '../src/shared/registries/editorDocks';
+import { EDITOR_STORE_ID, registerEditorDocks } from '../src/shared/registries/editorDocks';
 import { moduleRegistry, moduleStores } from '../src/shared/registries/moduleRegistry';
+import { registerShellDocks, SHELL_DOCK_STORE_ID } from '../src/shared/registries/shellDocks';
+import { onSlotRegistryChanged, slotRegistry } from '../src/shared/registries/slotRegistry';
 import { TEMPLATE_SURFACE } from '../src/shared/registries/templateSurface';
 
 /**
@@ -125,6 +129,30 @@ describe('a panel declares how it closes', () => {
     }
   });
 
+  it('registers host chrome under a store id that is not a module id', () => {
+    /*
+      The invariant the space gate depends on, and the one that broke the settings panel.
+
+      `ShellStore.dockRequests` filters every dock through `moduleGate` — "is this module enabled in
+      this space?" — which `SpaceStore` answers from `activeModules`. Host chrome registers docks
+      too, under a `hostDockStores` key rather than a module id: `shell` for the space-settings
+      panel, `editor` for the AI, code, theme and inspector panels. Asked about those, the gate said
+      no, so they had no edge, no geometry, and the button that opens them did nothing.
+
+      The fix is that only docks belonging to a *registered module* are gated, and this pins the
+      premise it rests on: these ids are not modules, and are not expected to become modules. If one
+      ever does, the gate starts applying to it and the panel disappears — which is the failure this
+      test exists to make loud rather than mysterious.
+    */
+    registerShellDocks();
+    registerEditorDocks();
+
+    for (const storeId of [SHELL_DOCK_STORE_ID, EDITOR_STORE_ID]) {
+      expect(dockRegistry.ordered().some((entry) => entry.moduleId === storeId)).toBe(true);
+      expect(moduleRegistry.get(storeId), `"${storeId}" is host chrome, not a module`).toBeUndefined();
+    }
+  });
+
   it("reaches the editor's panels through a store the schema can name", () => {
     /*
       The editor is not a module, so its panels' actions are not under `modules.<id>` — they are
@@ -140,5 +168,125 @@ describe('a panel declares how it closes', () => {
       expect(entry.close, `${entry.id} has no close`).toBeTruthy();
       expect(TEMPLATE_SURFACE.editorStore?.[entry.close!], `editorStore.${entry.close}`).toBeDefined();
     }
+  });
+});
+
+/**
+ * Chrome the host or a template paints, which floating panels have to clear.
+ *
+ * The sibling of `hostDockStores`: `moduleChrome` sums `chromeReserve` off every module store, and
+ * a shell template pinning a nav strip has the same problem the call bar has and no store to
+ * publish from.
+ */
+describe('chrome that is not a module’s', () => {
+  beforeEach(() => {
+    for (const key of Object.keys(hostChromeReserves)) delete hostChromeReserves[key];
+  });
+
+  it('publishes a reserve under its own key', () => {
+    registerHostChromeReserve('template', { top: 48, width: 300 });
+
+    expect(hostChromeReserves.template).toEqual({ top: 48, width: 300 });
+  });
+
+  it('replaces rather than accumulates when the same source re-registers', () => {
+    registerHostChromeReserve('template', { top: 48 });
+    registerHostChromeReserve('template', { top: 72 });
+
+    // A template re-rendering must not reserve its band twice.
+    expect(Object.keys(hostChromeReserves)).toHaveLength(1);
+    expect(hostChromeReserves.template).toEqual({ top: 72 });
+  });
+
+  it('withdraws on undefined', () => {
+    registerHostChromeReserve('template', { top: 48 });
+    registerHostChromeReserve('template', undefined);
+
+    // A shell that stops declaring a bar must stop reserving the band, or every panel keeps dodging
+    // chrome that is not there any more.
+    expect(hostChromeReserves.template).toBeUndefined();
+  });
+
+  it('announces, so the geometry memo re-runs', () => {
+    let announced = 0;
+    const stop = onDockRegistryChanged(() => (announced += 1));
+
+    registerHostChromeReserve('template', { top: 48 });
+    registerHostChromeReserve('template', undefined);
+    stop();
+
+    // Same reason registration is observable at all: a plain object cannot be depended on, and a
+    // memo that never read the value has nothing to re-run for.
+    expect(announced).toBe(2);
+  });
+});
+
+/**
+ * Chrome that arrives after the shell has been built.
+ *
+ * Contributions used to all register at boot, so the shell reading `nodes()` once was enough. A
+ * template declaring panels registers its frames reactively, long after — and without a channel to
+ * say so they landed in a list nobody read again, which looks exactly like the panel being broken
+ * rather than absent.
+ */
+describe('a slot contributed after the first render', () => {
+  const node = { type: 'Column' };
+
+  it('announces on register', () => {
+    const listener = vi.fn();
+    const stop = onSlotRegistryChanged(listener);
+    slotRegistry.register({ anchor: 'dock-right', id: 'late:1', node });
+    stop();
+    slotRegistry.remove('late:1');
+
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('announces on remove, so a withdrawn panel stops rendering', () => {
+    slotRegistry.register({ anchor: 'dock-right', id: 'late:2', node });
+
+    const listener = vi.fn();
+    const stop = onSlotRegistryChanged(listener);
+    slotRegistry.remove('late:2');
+    stop();
+
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('stays quiet removing something that was never there', () => {
+    const listener = vi.fn();
+    const stop = onSlotRegistryChanged(listener);
+    slotRegistry.remove('never-registered');
+    stop();
+
+    expect(listener).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Registering a host dock store announces to the dock registry.
+ *
+ * Which is correct — the geometry has to re-resolve when the keys behind it change — and it is a
+ * loaded gun for anything that *reads* the registry from inside the effect that registers. That is
+ * exactly what happened: a memo resolving "which dock does this declaration mean" started consulting
+ * the registry, the effect that registers an interface's own panels read that memo, and each run
+ * invalidated itself. It ran until the stack gave out, froze the app for five seconds on entering
+ * the interface, and left the docks half-built — no dragging, no geometry, nothing following the
+ * window.
+ *
+ * The rule this pins is the one that keeps it fixed: the announcement is real, so a reader inside a
+ * registering effect must resolve from somewhere that cannot move.
+ */
+describe('registering a host dock store', () => {
+  it('announces, so anything reading the registry inside a registering effect will re-run', () => {
+    const seen: number[] = [];
+    const off = onDockRegistryChanged(() => seen.push(1));
+
+    registerHostDockStore('test:panels', { 'edge:a': () => 'left' });
+    registerHostDockStore('test:panels', { 'edge:a': () => 'right' });
+
+    expect(seen.length).toBe(2);
+    off();
+    unregisterHostDockStore('test:panels');
   });
 });

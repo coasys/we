@@ -1,0 +1,13 @@
+{
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    // `@we/schema-kit` is exported as source, like every in-repo package a bundler compiles rather
+    // than links, so typechecking this module also typechecks the kit's own `./x.ts` imports. The
+    // call module and app-shell already carry this pair for the same reason.
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  },
+  "include": ["src/**/*"]
+}

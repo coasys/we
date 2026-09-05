@@ -1,4 +1,6 @@
+import { discardGuard } from '@we/schema-kit';
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
+import { expr } from '@we/schema-shared';
 
 /**
  * The form for creating one record, over whatever model was chosen.
@@ -34,14 +36,14 @@ interface ControlSpec {
 }
 
 /** Passed only to controls that have one — a switch and a colour swatch have nothing to hint at. */
-const PLACEHOLDER = { placeholder: '$field.placeholder' };
+const PLACEHOLDER = { placeholder: { $: 'field.placeholder' } };
 
 const CONTROLS: Record<string, ControlSpec> = {
   text: { tag: 'we-input', event: 'onInput', props: PLACEHOLDER },
   textarea: { tag: 'we-textarea', event: 'onInput', props: { rows: 3, ...PLACEHOLDER } },
   number: { tag: 'we-number-input', event: 'onChange', props: PLACEHOLDER },
   switch: { tag: 'we-switch', event: 'onChange', valueProp: 'checked' },
-  select: { tag: 'we-select', event: 'onChange', props: { options: '$field.options' } },
+  select: { tag: 'we-select', event: 'onChange', props: { options: { $: 'field.options' } } },
   date: { tag: 'we-date-picker', event: 'onChange', props: PLACEHOLDER },
   datetime: { tag: 'we-date-picker', event: 'onChange', props: { showTime: true, ...PLACEHOLDER } },
   color: { tag: 'we-color-picker', event: 'onChange' },
@@ -52,21 +54,21 @@ function controlRow(control: string, spec: ControlSpec): SchemaNode {
   return {
     type: '$if',
     props: {
-      condition: { $eq: ['$field.control', control] },
+      condition: expr`field.control == ${control}`,
       then: {
         type: 'we-form-field',
-        props: { label: '$field.label', required: '$field.required', width: '100%' },
+        props: { label: { $: 'field.label' }, required: { $: 'field.required' }, width: '100%' },
         children: [
           {
             type: spec.tag,
             props: {
-              [spec.valueProp ?? 'value']: '$field.value',
+              [spec.valueProp ?? 'value']: { $: 'field.value' },
               width: '100%',
               // One action for every control, taking the field's name — the only shape that works
               // when the fields are data and no handler can be written per field.
               [spec.event]: {
                 $action: 'recordStore.setRecordField',
-                args: ['$field.name', '$event.detail'],
+                args: [{ $: 'field.name' }, { $: 'event.detail' }],
               },
               ...spec.props,
             },
@@ -95,19 +97,28 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
     ...(opts.onCreated?.length ? { onSuccess: opts.onCreated } : {}),
   };
 
+  /*
+    The guard reads a *store* flag rather than a `$local` expression, uniquely among the forms in
+    the kit. The fields here are derived from whichever model is being created — a shape a community
+    defined this morning has properties no schema was written against — so there is no set of names
+    for an expression to test. `recordStore.recordDraftDirty` is the only thing that can see them.
+  */
+  const guard = discardGuard({
+    dirty: { $: 'recordStore.recordDraftDirty' },
+    close: { $action: 'recordStore.cancelRecordForm' },
+    title: 'Discard this entry?',
+    body: 'What you have filled in will be lost. Nothing has been saved to the space yet.',
+  });
+
   return {
     // Mounted only while a draft exists, which is also what makes the draft's non-nullness the one
     // source of "is the form open" — a separate boolean would be a second answer able to disagree.
     type: '$if',
     props: {
-      condition: { $store: 'recordStore.recordDraft' },
+      condition: { $: 'recordStore.recordDraft' },
       then: {
         type: 'we-modal',
-        props: {
-          close: { $action: 'recordStore.cancelRecordForm' },
-          maxWidth: 'var(--we-layout-sm)',
-          width: '100%',
-        },
+        props: { size: 'md', close: guard.close },
         /*
           The kinds of connection this community has named.
 
@@ -116,17 +127,19 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
           a kind named in another window appears here without a reload.
         */
         $queries: { relationshipKinds: { entity: 'RelationshipType', order: { name: 'asc' } } },
+        // The guard's flag has to live on the modal so it is destroyed with the draft it guards.
+        $localState: guard.localState,
         children: [
           {
             type: 'Row',
             props: { gap: '300', ay: 'center', width: '100%' },
             slot: 'header',
             children: [
-              { type: 'we-icon', props: { name: { $store: 'recordStore.recordDraft.icon' } } },
+              { type: 'we-icon', props: { name: { $: 'recordStore.recordDraft.icon' } } },
               {
                 type: 'we-text',
                 props: { variant: 'heading-md' },
-                children: [opts.title ?? { $concat: ['New ', { $store: 'recordStore.recordDraft.label' }] }],
+                children: [opts.title ?? { $: '`New ${recordStore.recordDraft.label}`' }],
               },
             ],
           },
@@ -142,7 +155,7 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
           {
             type: '$if',
             props: {
-              condition: { $store: 'recordStore.pendingLink' },
+              condition: { $: 'recordStore.pendingLink' },
               then: {
                 type: 'Row',
                 props: {
@@ -159,13 +172,13 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
                   {
                     type: 'we-text',
                     props: { variant: 'label', truncate: true },
-                    children: [{ $store: 'recordStore.pendingLink.sourceLabel' }],
+                    children: [{ $: 'recordStore.pendingLink.sourceLabel' }],
                   },
                   { type: 'we-icon', props: { name: 'arrow-right', size: 'xs', color: 'text-faint' } },
                   {
                     type: 'we-text',
                     props: { variant: 'label', truncate: true },
-                    children: [{ $store: 'recordStore.pendingLink.targetLabel' }],
+                    children: [{ $: 'recordStore.pendingLink.targetLabel' }],
                   },
                 ],
               },
@@ -188,9 +201,7 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
           {
             type: '$if',
             props: {
-              condition: {
-                $and: [{ $store: 'recordStore.pendingLink' }, { $count: { items: { $local: 'relationshipKinds' } } }],
-              },
+              condition: { $: 'recordStore.pendingLink && count(local.relationshipKinds)' },
               then: {
                 type: 'we-form-field',
                 props: { label: 'Kind', width: '100%' },
@@ -201,23 +212,15 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
                       width: '100%',
                       placeholder: 'Unnamed kind',
                       options: {
-                        $concat: [
-                          [{ label: 'Unnamed kind', value: '' }],
-                          {
-                            $map: {
-                              items: { $local: 'relationshipKinds' },
-                              select: { label: '$item.name', value: '$item.id', icon: '$item.icon' },
-                            },
-                          },
-                        ],
+                        $: "`${[{ label: 'Unnamed kind', value: '' }]}${local.relationshipKinds.map(item, { label: item.name, value: item.id, icon: item.icon })}`",
                       },
                       // Not `setRecordField`: `relationshipTypeId` is deliberately absent from the
                       // draft's fields, so writing it through the field setter found nothing and
                       // silently did nothing. The chosen kind is held beside the draft instead.
-                      value: { $store: 'recordStore.relationshipKind' },
+                      value: { $: 'recordStore.relationshipKind' },
                       onChange: {
                         $action: 'recordStore.setRelationshipKind',
-                        args: ['$event.detail'],
+                        args: [{ $: 'event.detail' }],
                       },
                     },
                   },
@@ -235,23 +238,18 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
           {
             type: '$if',
             props: {
-              condition: {
-                $and: [
-                  { $not: { $store: 'recordStore.pendingLink' } },
-                  { $gt: [{ $count: { items: { $store: 'recordStore.creatableEntities' } } }, 1] },
-                ],
-              },
+              condition: { $: '!recordStore.pendingLink && count(recordStore.creatableEntities) > 1' },
               then: {
                 type: 'we-form-field',
-                props: { label: 'Model', width: '100%' },
+                props: { label: 'Entity', width: '100%' },
                 children: [
                   {
                     type: 'we-select',
                     props: {
                       width: '100%',
-                      options: { $store: 'recordStore.creatableEntities' },
-                      value: { $store: 'recordStore.recordDraft.entity' },
-                      onChange: { $action: 'recordStore.setRecordEntity', args: ['$event.detail'] },
+                      options: { $: 'recordStore.creatableEntities' },
+                      value: { $: 'recordStore.recordDraft.entity' },
+                      onChange: { $action: 'recordStore.setRecordEntity', args: [{ $: 'event.detail' }] },
                     },
                   },
                 ],
@@ -261,7 +259,7 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
 
           {
             type: '$each',
-            props: { items: { $store: 'recordStore.recordDraft.fields' }, as: 'field' },
+            props: { items: { $: 'recordStore.recordDraft.fields' }, as: 'field' },
             children: [
               {
                 type: 'Column',
@@ -281,16 +279,20 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
           {
             type: '$if',
             props: {
-              condition: { $count: { items: { $store: 'recordStore.recordErrors' } } },
+              condition: { $: 'count(recordStore.recordErrors)' },
               then: {
                 type: 'Column',
                 props: { gap: '100', width: '100%' },
                 children: [
                   {
                     type: '$each',
-                    props: { items: { $store: 'recordStore.recordErrors' }, as: 'problem' },
+                    props: { items: { $: 'recordStore.recordErrors' }, as: 'problem' },
                     children: [
-                      { type: 'we-text', props: { variant: 'footnote', color: 'danger-text' }, children: ['$problem'] },
+                      {
+                        type: 'we-text',
+                        props: { variant: 'footnote', color: 'danger-text' },
+                        children: [{ $: 'problem' }],
+                      },
                     ],
                   },
                 ],
@@ -305,7 +307,8 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
             children: [
               {
                 type: 'we-button',
-                props: { variant: 'ghost', onClick: { $action: 'recordStore.cancelRecordForm' } },
+                // Guarded like the backdrop — one way out of the modal.
+                props: { variant: 'secondary', onClick: guard.close },
                 children: ['Cancel'],
               },
               {
@@ -315,14 +318,15 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
                   // Disabled only while the write is in flight. Never on "the form is not valid
                   // yet" — that would make the button unclickable in exactly the state where
                   // clicking it is what reveals which field is missing.
-                  loading: { $store: 'recordStore.savingRecord' },
-                  disabled: { $store: 'recordStore.savingRecord' },
+                  loading: { $: 'recordStore.savingRecord' },
+                  disabled: { $: 'recordStore.savingRecord' },
                   onClick: save,
                 },
                 children: ['Create'],
               },
             ],
           },
+          guard.node,
         ],
       },
     },

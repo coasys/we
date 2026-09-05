@@ -1,13 +1,14 @@
 import type { SchemaNode } from '@we/schema-shared';
+import { expr } from '@we/schema-shared';
 import { gatePrompt } from '@we/template-kit';
 
 // The join prompt body differs depending on whether this is the WE global discovery space
 // or just a regular shared space the user hasn't joined yet.
-const isGlobalSpace = { $eq: [{ $store: 'routeStore.segments.1' }, { $store: 'datasetStore.globalSpaceId' }] };
+const isGlobalSpace = { $: 'routeStore.segments[1] == datasetStore.globalSpaceId' };
 
 // Whether the join running right now is this route's. The store holds the id rather than a flag,
 // so this is also what stops a join started elsewhere from spinning the button here.
-const joiningThisSpace = { $eq: [{ $store: 'spaceStore.joiningSpace' }, { $store: 'routeStore.segments.1' }] };
+const joiningThisSpace = { $: 'spaceStore.joiningSpace == routeStore.segments[1]' };
 
 /**
  * The join control, and the two things a join needs to be able to say.
@@ -31,13 +32,13 @@ function joinControls(label: string): SchemaNode[] {
         variant: 'primary',
         loading: joiningThisSpace,
         disabled: joiningThisSpace,
-        onClick: { $action: 'spaceStore.joinSpace', args: [{ $store: 'routeStore.segments.1' }] },
+        onClick: { $action: 'spaceStore.joinSpace', args: [{ $: 'routeStore.segments[1]' }] },
       },
     },
     {
       type: '$if',
       props: {
-        condition: { $and: [joiningThisSpace, { $store: 'spaceStore.joinSlow' }] },
+        condition: expr`${joiningThisSpace} && spaceStore.joinSlow`,
         then: {
           type: 'we-text',
           props: { variant: 'footnote', color: 'text-faint', textAlign: 'center', maxWidth: '400px' },
@@ -49,11 +50,11 @@ function joinControls(label: string): SchemaNode[] {
       type: '$if',
       props: {
         // The failure has to be *this* space's, not merely the most recent one anywhere.
-        condition: { $eq: [{ $store: 'spaceStore.joinError.spaceId' }, { $store: 'routeStore.segments.1' }] },
+        condition: { $: 'spaceStore.joinError.spaceId == routeStore.segments[1]' },
         then: {
           type: 'we-text',
           props: { variant: 'footnote', color: 'danger-text', textAlign: 'center', maxWidth: '400px' },
-          children: [{ $store: 'spaceStore.joinError.message' }],
+          children: [{ $: 'spaceStore.joinError.message' }],
         },
       },
     },
@@ -92,7 +93,7 @@ const notConfiguredPrompt: SchemaNode = gatePrompt({
 export const spaceGate: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $store: 'datasetStore.globalSpaceConfigured' },
+    condition: { $: 'datasetStore.globalSpaceConfigured' },
     then: {
       type: '$if',
       props: {

@@ -141,7 +141,7 @@ describe('transport and device lifetime', () => {
    * unregistering during a call — which a hot reload does — dropped the only reference to the live
    * peer connections and the media stream, leaving the camera on with nothing able to close it.
    */
-  function callable() {
+  function callable(options: { unicast?: string; personal?: boolean } = {}) {
     const signal = <T>(initial: T): [() => T, (next: T) => void] => {
       let value = initial;
       return [() => value, (next: T) => (value = next)];
@@ -149,24 +149,66 @@ describe('transport and device lifetime', () => {
 
     let disposed = 0;
     const scope = {
-      capabilities: { unicast: 'emulated', broadcast: true, coalesce: true, confidential: false },
+      capabilities: {
+        unicast: options.unicast ?? 'emulated',
+        broadcast: true,
+        coalesce: true,
+        confidential: false,
+      },
       channel: () => ({ publish: () => {}, onMessage: () => () => {} }),
       dispose: () => (disposed += 1),
     };
 
     const disposers: Array<() => void> = [];
+    let created = 0;
+    // The host's removal channel — see `ModuleDatasetAccess.onRemoved`. Held so a test can fire it.
+    let notifyRemoved: ((uri: string) => void) | null = null;
+    /*
+      `signal` here is a plain closure with no subscribers, so nothing re-runs on its own. The
+      effects are kept and re-run by hand instead, which is enough for what is being asserted: an
+      effect that reads a value and acts on it does the same thing whether a framework or a test
+      decided it was time to look again.
+    */
+    const effects: Array<() => void> = [];
+    let me: string | null = 'did:test:me';
     const store = createCallStore({
       signal,
+      effect: (fn: () => void) => {
+        effects.push(fn);
+        fn();
+      },
       dataset: () => ({ id: 'ds' }),
       datasetUri: () => 'inmemory://ds',
-      selfId: () => 'did:test:me',
-      ephemeral: () => scope,
+      datasets: {
+        get: () => undefined,
+        open: () => {},
+        openRef: () => {},
+        onRemoved: (cb: (uri: string) => void) => {
+          notifyRemoved = cb;
+          return () => {
+            notifyRemoved = null;
+          };
+        },
+      },
+      selfId: () => me,
+      ephemeral: () => (options.personal ? null : scope),
       presence: { peers: () => [], setActivity: () => {}, clearActivity: () => {} },
       onDispose: (fn: () => void) => disposers.push(fn),
+      createEntity: async () => `rec-${++created}`,
       createPeerConnection: () => ({}) as RTCPeerConnection,
     } as never) as ReturnType<typeof createCallStore> & Record<string, (...args: unknown[]) => unknown>;
 
-    return { store, scopeDisposals: () => disposed, disposers };
+    return {
+      store,
+      scopeDisposals: () => disposed,
+      recordsCreated: () => created,
+      disposers,
+      removeDataset: (uri: string) => notifyRemoved?.(uri),
+      signOut: () => {
+        me = null;
+        for (const run of effects) run();
+      },
+    };
   }
 
   it('shows the video when the call starts', async () => {
@@ -175,7 +217,7 @@ describe('transport and device lifetime', () => {
     // routes to a visible stage were controls that read as ways to change something already there.
     const { store } = callable();
 
-    store.joinSpaceCall();
+    await store.startCall();
     await Promise.resolve();
 
     expect(store.stageOpen()).toBe(true);
@@ -188,7 +230,7 @@ describe('transport and device lifetime', () => {
     // "This call is showing", not a preference that outlives the call it was made in.
     const { store } = callable();
 
-    store.joinSpaceCall();
+    await store.startCall();
     await Promise.resolve();
     store.leave();
 
@@ -196,10 +238,40 @@ describe('transport and device lifetime', () => {
     expect(store.dockEdge()).toBeNull();
   });
 
+  it('writes no call record when the call cannot run', async () => {
+    /*
+      The record used to be created first and `join` called afterwards, so every refused start left
+      a `CollectionBlock` behind for a call that never happened — one per press, all `kind: 'call'`,
+      all of them appearing wherever calls are listed with no participants, no transcript and
+      nothing to tell them apart from a real call nobody spoke in.
+
+      A personal space is the case that made it constant rather than occasional: a call there can
+      never work, so pressing the button was purely a way to litter the space.
+    */
+    const personal = callable({ personal: true });
+    await personal.store.startCall();
+    await Promise.resolve();
+
+    expect(personal.recordsCreated()).toBe(0);
+    expect(personal.store.callId()).toBeNull();
+    expect(personal.store.problem()).toMatch(/personal/i);
+
+    // And the other refusal, which is a property of the transport rather than of the space: with no
+    // unicast at all every offer reaches everybody, so the call is refused before it is recorded.
+    const broadcastOnly = callable({ unicast: 'none' });
+    await broadcastOnly.store.startCall();
+    await Promise.resolve();
+
+    expect(broadcastOnly.recordsCreated()).toBe(0);
+    expect(broadcastOnly.store.callId()).toBeNull();
+    // And the scope opened to reach that verdict was given back, rather than leaked once per press.
+    expect(broadcastOnly.scopeDisposals()).toBe(1);
+  });
+
   it('gives the transport scope back when the call ends', async () => {
     const { store, scopeDisposals } = callable();
 
-    store.joinSpaceCall();
+    await store.startCall();
     await Promise.resolve();
     expect(scopeDisposals()).toBe(0);
 
@@ -210,7 +282,7 @@ describe('transport and device lifetime', () => {
   it('does not accumulate scopes across repeated joins', async () => {
     const { store, scopeDisposals } = callable();
 
-    store.joinSpaceCall();
+    await store.startCall();
     store.joinAnchoredCall('node-a');
     store.joinAnchoredCall('node-b');
     await Promise.resolve();
@@ -224,15 +296,58 @@ describe('transport and device lifetime', () => {
   it('tears the call down when the module is disposed', async () => {
     const { store, scopeDisposals, disposers } = callable();
 
-    store.joinSpaceCall();
+    await store.startCall();
     await Promise.resolve();
-    expect(disposers).toHaveLength(1);
+    expect(store.callId()).not.toBeNull();
 
     for (const dispose of disposers) dispose();
 
     // The camera-stays-on case: unregistering during a call must close what the call holds.
     expect(scopeDisposals()).toBe(1);
     expect(store.callId()).toBeNull();
+  });
+
+  it('tears the call down when the space it is in is deleted', async () => {
+    /*
+      Nothing did. `removeDataset` tore the perspective down and left this store holding the media
+      tracks, the peer connections and a presence lease heartbeating into a perspective that no
+      longer existed.
+    */
+    const { store, scopeDisposals, removeDataset } = callable();
+
+    await store.startCall();
+    await Promise.resolve();
+
+    removeDataset('inmemory://ds');
+
+    expect(store.callId()).toBeNull();
+    expect(scopeDisposals()).toBe(1);
+  });
+
+  it('ignores the removal of a space the call is not in', async () => {
+    const { store, scopeDisposals, removeDataset } = callable();
+
+    await store.startCall();
+    await Promise.resolve();
+
+    removeDataset('inmemory://somewhere-else');
+
+    expect(store.callId()).not.toBeNull();
+    expect(scopeDisposals()).toBe(0);
+  });
+
+  it('ends the call when the agent signs out', async () => {
+    // `logout` locks the agent and returns to the sign-in screen without unregistering anything, so
+    // on desktop — which does not reload — the camera light stayed on through the login screen.
+    const { store, scopeDisposals, signOut } = callable();
+
+    await store.startCall();
+    await Promise.resolve();
+
+    signOut();
+
+    expect(store.callId()).toBeNull();
+    expect(scopeDisposals()).toBe(1);
   });
 });
 
@@ -264,6 +379,7 @@ describe('a call and the space it happens in', () => {
       channel: () => ({ publish: () => {}, onMessage: () => () => {} }),
       dispose: () => {},
     };
+    let created = 0;
 
     const store = createCallStore({
       signal,
@@ -278,6 +394,7 @@ describe('a call and the space it happens in', () => {
         clearActivity: () => {},
       },
       onDispose: () => {},
+      createEntity: async () => `rec-${++created}`,
       createPeerConnection: () => ({}) as RTCPeerConnection,
     } as never) as ReturnType<typeof createCallStore> & Record<string, (...args: unknown[]) => unknown>;
 
@@ -298,7 +415,7 @@ describe('a call and the space it happens in', () => {
     // was enough only while a call could exist solely in the space you were standing in.
     const { store, activities } = navigable();
 
-    store.joinSpaceCall();
+    await store.startCall();
     await Promise.resolve();
 
     const call = activities.find((a) => a.type === 'call');
@@ -310,7 +427,7 @@ describe('a call and the space it happens in', () => {
   it('stays in the call after moving to another space', async () => {
     const { store, goTo } = navigable();
 
-    store.joinSpaceCall();
+    await store.startCall();
     await Promise.resolve();
     expect(store.active()).toBe(true);
 
@@ -325,7 +442,7 @@ describe('a call and the space it happens in', () => {
     // spaces as much as it is anything final, so ending a call on it ended calls for no reason.
     const { store, goTo } = navigable();
 
-    store.joinSpaceCall();
+    await store.startCall();
     await Promise.resolve();
 
     goTo(null, null);
@@ -337,7 +454,7 @@ describe('a call and the space it happens in', () => {
     // The other half: nothing above should have made a call harder to leave.
     const { store, goTo } = navigable();
 
-    store.joinSpaceCall();
+    await store.startCall();
     await Promise.resolve();
     goTo({ id: 'elsewhere' }, 'inmemory://elsewhere');
 
@@ -350,7 +467,7 @@ describe('a call and the space it happens in', () => {
     // being one call, and a second live call would be a second space pinned indefinitely.
     const { store } = navigable();
 
-    store.joinSpaceCall();
+    await store.startCall();
     await Promise.resolve();
     const first = store.callId();
 
@@ -359,6 +476,200 @@ describe('a call and the space it happens in', () => {
 
     expect(store.callId()).not.toBe(first);
     expect(store.active()).toBe(true);
+  });
+});
+
+/**
+ * The rail's call button — one promise across every state it can be pressed in.
+ *
+ * It used to be wired straight to a bare join, which made it three different things: a no-op in
+ * the space call (`join` returns early on a matching id), and a silent teardown of any *other* call,
+ * including one running in a space the user had merely navigated away from. A button in permanent
+ * chrome is pressed by accident; neither outcome is one it should be able to produce.
+ *
+ * These pin the three readings down, because all three are invisible from the declaration — the
+ * launcher names a method as a string and the host calls whatever it finds.
+ */
+describe('going to the call', () => {
+  function railable() {
+    const signal = <T>(initial: T): [() => T, (next: T) => void] => {
+      let value = initial;
+      return [() => value, (next: T) => (value = next)];
+    };
+
+    const effects: Array<() => void> = [];
+    let dataset: { id: string } | null = { id: 'ds' };
+    let uri: string | null = 'inmemory://ds';
+    const opened: string[] = [];
+
+    const scope = {
+      capabilities: { unicast: 'emulated', broadcast: true, coalesce: true, confidential: false },
+      channel: () => ({ publish: () => {}, onMessage: () => () => {} }),
+      dispose: () => {},
+    };
+    let created = 0;
+
+    const store = createCallStore({
+      signal,
+      effect: (fn: () => void) => effects.push(fn),
+      dataset: () => dataset,
+      datasetUri: () => uri,
+      selfId: () => 'did:test:me',
+      ephemeral: () => scope,
+      presence: { peers: () => [], setActivity: () => {}, clearActivity: () => {} },
+      datasets: { get: () => undefined, open: (target: string) => opened.push(target) },
+      onDispose: () => {},
+      createEntity: async () => `rec-${++created}`,
+      createPeerConnection: () => ({}) as RTCPeerConnection,
+    } as never) as ReturnType<typeof createCallStore> & Record<string, (...args: unknown[]) => unknown>;
+
+    return {
+      store,
+      opened,
+      goTo(next: { id: string } | null, nextUri: string | null) {
+        dataset = next;
+        uri = nextUri;
+        for (const fn of effects) fn();
+      },
+      recordsCreated: () => created,
+    };
+  }
+
+  /**
+   * Continuing a past call, which is not the same act as going to one.
+   *
+   * `goToCall` is a *direction*, so with nothing running it starts a fresh call — right for a
+   * launcher, wrong for a row naming the meeting it means. Every "continue this call" button was
+   * built out of it, so pressing one wrote a *second* record and joined that: an empty call left in
+   * the space, every surface reading `callRecordId` about it, and the transcript going to the record
+   * the user had actually chosen. Two calls where one was asked for, disagreeing about which meeting
+   * you were in.
+   */
+  describe('continuing a call that already has a record', () => {
+    it('joins the record it is given and writes nothing', async () => {
+      const { store, recordsCreated } = railable();
+
+      store.continueCall('rec-from-last-week');
+      await Promise.resolve();
+
+      expect(store.active()).toBe(true);
+      expect(store.callRecordId()).toBe('rec-from-last-week');
+      // The whole bug in one assertion: continuing is not creating.
+      expect(recordsCreated()).toBe(0);
+    });
+
+    it('lands two people who continue the same record in the same call', async () => {
+      // A call *is* its record, so the id is derived rather than minted — which is what makes this
+      // safe to press twice, and what makes a second person picking the same meeting up join the
+      // first rather than start a parallel one beside it.
+      const first = railable();
+      const second = railable();
+
+      first.store.continueCall('rec-shared');
+      second.store.continueCall('rec-shared');
+      await Promise.resolve();
+
+      expect(first.store.callId()).toBe(second.store.callId());
+    });
+
+    it('does nothing without a record, rather than starting a call', async () => {
+      // The empty-string case a template reaches on a row whose id has not arrived. Starting a fresh
+      // call there would be the exact failure this replaced.
+      const { store, recordsCreated } = railable();
+
+      store.continueCall('');
+      await Promise.resolve();
+
+      expect(store.active()).toBe(false);
+      expect(recordsCreated()).toBe(0);
+    });
+  });
+
+  it('starts the space call when there is not one', async () => {
+    const { store } = railable();
+
+    store.goToCall();
+    await Promise.resolve();
+
+    expect(store.active()).toBe(true);
+    // Getting to a call you have just started means seeing it, and `join` already opens the stage.
+    expect(store.stageOpen()).toBe(true);
+  });
+
+  it('shows the video once you are in the call, and never hides it', async () => {
+    /*
+      This toggled once, on the reasoning that a rail button is a tab. It made a liar of every
+      control that calls it — the button says *go to the call*, and putting the video away is the
+      opposite of going to it. Reported from a calls list, where a phone icon beside a finished
+      meeting hid the call the user was in.
+
+      Idempotent instead, the way navigation is: pressing Home while on Home does nothing. Hiding
+      the video has two controls of its own, neither named after going somewhere.
+    */
+    const { store } = railable();
+
+    store.goToCall();
+    await Promise.resolve();
+    expect(store.stageOpen()).toBe(true);
+
+    store.goToCall();
+    expect(store.stageOpen()).toBe(true);
+    // The controls that *are* for putting it away still do.
+    store.closeStage();
+    expect(store.stageOpen()).toBe(false);
+    // And going back to it brings it up rather than flipping it away again.
+    store.goToCall();
+    expect(store.stageOpen()).toBe(true);
+    // None of it at the cost of the call itself.
+    expect(store.active()).toBe(true);
+  });
+
+  it('takes you back to a call happening in another space, rather than starting a second one', async () => {
+    /*
+      The worst of the three old readings. Navigating out of a call's space and pressing the rail
+      button tore that call down and started a fresh one where you were standing — every connection
+      closed, everyone dropped, no confirmation, from a button whose icon says "call".
+    */
+    const { store, opened, goTo } = railable();
+
+    store.goToCall();
+    await Promise.resolve();
+    const original = store.callId();
+    store.closeStage();
+
+    goTo({ id: 'elsewhere' }, 'inmemory://elsewhere');
+    store.goToCall();
+    await Promise.resolve();
+
+    expect(store.callId()).toBe(original);
+    expect(opened).toEqual(['inmemory://ds']);
+    // Landing in the call's space with only the bar up is arriving at the door. The stage comes back.
+    expect(store.stageOpen()).toBe(true);
+  });
+
+  it('leaves an anchored call alone', async () => {
+    // The same hazard without the navigation: a call *about* a post has a different id from the
+    // space call, so the old wiring read the rail's button as "replace it".
+    const { store } = railable();
+
+    store.joinAnchoredCall('node-1');
+    await Promise.resolve();
+    const anchored = store.callId();
+
+    store.goToCall();
+    await Promise.resolve();
+
+    expect(store.callId()).toBe(anchored);
+    expect(store.active()).toBe(true);
+  });
+
+  it('says why rather than throwing when there is no space to call in', async () => {
+    const { store, goTo } = railable();
+    goTo(null, null);
+
+    expect(() => store.goToCall()).not.toThrow();
+    expect(store.problem()).toBeTruthy();
+    expect(store.active()).toBe(false);
   });
 });
 
@@ -466,5 +777,92 @@ describe('the spotlight', () => {
     const store = makeStore();
     store.toggleSolo();
     expect(store.solo()).toBe(false);
+  });
+});
+
+/**
+ * Which call this is, published so a surface can follow it.
+ *
+ * The record is written by `startCall` before anyone joins and republished on every participant's
+ * activity, so "which call is this" is answerable from the first second. It was held in a plain
+ * `let`, though — a closure over it returns the right value whenever it is *called*, and tells the
+ * reactive graph nothing. So anything binding to `callRecordId` was evaluated once, against the
+ * frame before the call existed, and never re-evaluated: a board, a transcript feed and an
+ * extraction readout sat empty beside a call that was plainly running.
+ *
+ * Pinned against a **tracking** primitive rather than the closure the harness above injects,
+ * because a plain `let` passes every assertion a non-tracking signal can make — which is the whole
+ * bug. Written out here rather than imported: a module depends on no framework, so the test that
+ * proves it uses the host's reactivity cannot reach for one either.
+ */
+describe('the call record a surface follows', () => {
+  /** The smallest thing that is actually reactive: a read inside an effect re-runs on a write. */
+  function tracking() {
+    let listener: (() => void) | null = null;
+    return {
+      signal: <T>(initial: T): [() => T, (next: T) => void] => {
+        let value = initial;
+        const readers = new Set<() => void>();
+        return [
+          () => {
+            if (listener) readers.add(listener);
+            return value;
+          },
+          (next: T) => {
+            value = next;
+            for (const run of [...readers]) run();
+          },
+        ];
+      },
+      effect: (fn: () => void) => {
+        const run = () => {
+          const outer = listener;
+          listener = run;
+          try {
+            fn();
+          } finally {
+            listener = outer;
+          }
+        };
+        run();
+      },
+    };
+  }
+
+  it('notifies a reader when the call gets its record', async () => {
+    let created = 0;
+    const scope = {
+      capabilities: { unicast: 'emulated', broadcast: true, coalesce: true, confidential: false },
+      channel: () => ({ publish: () => {}, onMessage: () => () => {} }),
+      dispose: () => {},
+    };
+
+    const { signal, effect } = tracking();
+    const store = createCallStore({
+      signal,
+      effect,
+      dataset: () => ({ id: 'ds' }),
+      datasetUri: () => 'inmemory://ds',
+      datasets: { get: () => undefined, open: () => {}, openRef: () => {}, onRemoved: () => () => {} },
+      selfId: () => 'did:test:me',
+      ephemeral: () => scope,
+      presence: { peers: () => [], setActivity: () => {}, clearActivity: () => {} },
+      onDispose: () => {},
+      createEntity: async () => `rec-${++created}`,
+      createPeerConnection: () => ({}) as RTCPeerConnection,
+    } as never) as ReturnType<typeof createCallStore>;
+
+    const seen: string[] = [];
+    effect(() => seen.push(store.callRecordId()));
+
+    // Nothing to follow yet, and the reader has run once against that.
+    expect(seen).toEqual(['']);
+
+    await store.startCall();
+    await Promise.resolve();
+
+    expect(store.callRecordId()).toBe('rec-1');
+    // The half a plain `let` fails: the reader heard about it.
+    expect(seen).toContain('rec-1');
   });
 });

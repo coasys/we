@@ -4,6 +4,26 @@
  * Provides an isolated RouteStore for the shell overlay (profile, settings, schema-tests,
  * landing-page). Uses a <MemoryRouter> so shell navigation never touches the browser URL.
  *
+ * ## Why a separate router at all — a trust boundary, not a convenience
+ *
+ * Templates declare their own route tables, and templates install from strangers. `templateAcceptance`
+ * vets structure and the store members a template may name; it does not inspect paths. So a template
+ * sharing the browser Router's coordinate space could declare `/settings` and render whatever it
+ * liked there. Out here that is not expressible.
+ *
+ * The quieter version of the same point: a surface you use to *fix* a bad template must not be
+ * rendered by that template's route table. Settings has to look the same whichever template is
+ * loaded, including a broken one, including one mid-install.
+ *
+ * Keeping the space mounted underneath is the other reason and the one usually given first, but it
+ * is the weaker of the two — a cost people talk themselves out of, where a boundary is not. Both are
+ * real: the overlay paints over a template that stays mounted, so a running call, a scroll position
+ * and a half-typed draft all survive somebody opening their settings.
+ *
+ * The costs are accepted rather than overlooked: Back does not close an overlay and a reload does
+ * not reopen it. See `docs/architecture/routing-and-view-state.md` for the shape a shareable
+ * settings link would take if one is ever wanted — it is not a URL for this state.
+ *
  * Mirrors the pattern of RouteStoreProvider + <Router> used by the main template system:
  * - ShellRouteStoreProvider creates the store signals and context
  * - ShellRouterRoot is mounted as the <MemoryRouter> root prop and calls
@@ -16,7 +36,17 @@
  *   // pass shellRouteStore as routeStore in shellStores bag
  */
 import { useLocation, useNavigate } from '@solidjs/router';
-import { createContext, createEffect, createMemo, createSignal, JSX, onMount, ParentProps, useContext } from 'solid-js';
+import {
+  createContext,
+  createEffect,
+  createMemo,
+  createSignal,
+  JSX,
+  onCleanup,
+  onMount,
+  ParentProps,
+  useContext,
+} from 'solid-js';
 
 import type { RouteStore } from './RouteStore';
 import { useShellStore } from './ShellStore';
@@ -43,12 +73,20 @@ export function ShellRouteStoreProvider(props: ParentProps) {
   const [currentPath, setCurrentPath] = createSignal('/');
   const [search, setSearch] = createSignal('');
   const [navigateFunction, setNavigateFunction] = createSignal<ReturnType<typeof useNavigate> | null>(null);
+
+  /** Lend the overlay router's `navigate`, and take it back — see `RouteStore.setNavigateFunction`. */
+  function provideNavigate(navigate: ReturnType<typeof useNavigate>): () => void {
+    setNavigateFunction(() => navigate);
+    return () => setNavigateFunction((current) => (current === navigate ? null : current));
+  }
   const segments = createMemo(() => currentPath().split('/').filter(Boolean));
   const params = createMemo(() => Object.fromEntries(new URLSearchParams(search())));
 
-  function navigate(to: string, options?: Record<string, unknown>) {
+  // `number` as well as a path: the router takes a delta for history movement, which is what `back`
+  // needs and what the store's public `navigate` deliberately does not offer.
+  function navigate(to: string | number, options?: Record<string, unknown>) {
     const nav = navigateFunction();
-    if (nav) nav(to, options);
+    if (nav) nav(to as string, options);
     else console.warn('ShellRouteStore: navigate called before router was ready');
   }
 
@@ -72,12 +110,27 @@ export function ShellRouteStoreProvider(props: ParentProps) {
   const store: ShellRouteStore = {
     currentPath,
     segments,
+    /*
+      The same thing as `segments` here, because the overlay has no space prefix to sit below — its
+      paths are its own from the first segment. Present so an overlay schema and a template schema
+      can be written the same way, rather than because there is anything to strip.
+    */
+    templateSegments: segments,
     params,
-    setNavigateFunction,
+    setNavigateFunction: provideNavigate,
     setCurrentPath,
     setSearch,
     navigate,
     setParam,
+    /*
+      The overlay's own history, not the browser's.
+
+      `history.back()` would take the *page behind the overlay* back a step, which is the wrong
+      stack entirely — an overlay is a memory router, so going back inside it means navigating this
+      router. `navigate(-1)` is how a memory router expresses that, and at the start of its history
+      it does nothing, which matches what the browser does.
+    */
+    back: () => navigate(-1),
   };
 
   return <ShellRouteContext.Provider value={store}>{props.children}</ShellRouteContext.Provider>;
@@ -104,7 +157,9 @@ export function ShellRouterRoot(props: ParentProps): JSX.Element {
   */
   const restoreTo = shell.takePendingPath();
 
-  createEffect(() => store.setNavigateFunction(() => navigate));
+  // The overlay's own router, taken back when the overlay closes — see `RouteStore`, which had the
+  // same slot and the same missing half.
+  onCleanup(store.setNavigateFunction(navigate));
   createEffect(() => {
     store.setCurrentPath(location.pathname);
     // Reported upwards on every move, because this store does not outlive the overlay and the

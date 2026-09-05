@@ -1,4 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
+import { expr } from '@we/schema-shared';
 
 import type { Content } from '../types.ts';
 
@@ -8,7 +9,7 @@ export interface EmptyStateOptions {
   /** What the list would have held, as a plural noun phrase: `posts`, `Flux channels`. */
   label: string;
   /**
-   * The list filters on `$local: 'searchText'`, so an empty result may only mean the search
+   * The list filters on `local.searchText`, so an empty result may only mean the search
    * excluded everything. Says that instead of asserting the space holds nothing.
    *
    * Only set this where a `searchText` local is actually in scope — reading one that was never
@@ -55,13 +56,7 @@ export function emptyState(opts: EmptyStateOptions): SchemaNode {
   const message: Content =
     opts.message ??
     (opts.searchable
-      ? {
-          $if: {
-            condition: { $local: 'searchText' },
-            then: `No ${opts.label} match your search.`,
-            else: nothingHere,
-          },
-        }
+      ? expr`local.searchText ? ${`No ${opts.label} match your search.`} : ${nothingHere}`
       : nothingHere);
 
   const placeholder: SchemaNode = {

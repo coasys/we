@@ -13,7 +13,7 @@
  *   template synced in with the space.
  * - **A schema reaching past its tier.** `buildTemplateBag` already refuses those references, so
  *   this is not what stops them. What it stops is their *invisibility*: a blocked `$action` renders
- *   a button that takes the click and does nothing, and a blocked `$store` renders an empty list.
+ *   a button that takes the click and does nothing, and a blocked store read renders an empty list.
  *   A template that is quietly half-broken looks exactly like a template that is fine.
  *
  * ## Refuse, or admit and complain
@@ -34,7 +34,7 @@ import type { TemplateSchema } from '@we/schema-shared';
 import { validateStructure } from '@we/schema-shared';
 
 import type { CapabilityGroup, SurfaceReference } from './registries/templateSurface';
-import { inspectTemplateSurface, SPACE_TIER } from './registries/templateSurface';
+import { CAPABILITY_GROUPS, inspectTemplateSurface, SPACE_TIER } from './registries/templateSurface';
 
 export interface TemplateAcceptance {
   /** The template, if it may be used at all. Null means refused — do not add it to the list. */
@@ -43,6 +43,15 @@ export interface TemplateAcceptance {
   refusals: string[];
   /** Admitted, but these references will resolve to nothing. */
   blocked: SurfaceReference[];
+  /**
+   * The capability groups the template actually uses, for an install dialog to show.
+   *
+   * `inspectTemplateSurface` has computed this since it was written and the one production caller
+   * dropped it on the floor, which is why nothing could ever say what a template was asking for.
+   * Carried through here so the answer reaches the only place it matters — the moment somebody
+   * decides whether to install.
+   */
+  groups: CapabilityGroup[];
 }
 
 export interface AcceptTemplateOptions {
@@ -70,11 +79,26 @@ export function acceptTemplate(decoded: unknown, options: AcceptTemplateOptions)
       schema: null,
       refusals: [`Template from ${options.origin} is not a valid schema`, ...detail],
       blocked: [],
+      groups: [],
     };
   }
 
-  const { blocked } = inspectTemplateSurface(decoded, options.grants ?? SPACE_TIER);
-  return { schema: decoded as TemplateSchema, refusals: [], blocked };
+  const { blocked, groups } = inspectTemplateSurface(decoded, options.grants ?? SPACE_TIER);
+  return { schema: decoded as TemplateSchema, refusals: [], blocked, groups };
+}
+
+/**
+ * What a template is asking for, in the words a person reads at install time.
+ *
+ * The group descriptions are already written for a human — that is what `CAPABILITY_GROUPS` is —
+ * so this is only the join. Sorted so two installs of the same template read the same way rather
+ * than in whatever order the walk happened to find them.
+ */
+export function describeCapabilities(groups: readonly CapabilityGroup[]): string[] {
+  return [...groups]
+    .sort()
+    .map((group) => CAPABILITY_GROUPS[group])
+    .filter(Boolean);
 }
 
 /** One line per problem, for the console. Separated so a dialog can render the same facts its way. */

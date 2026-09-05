@@ -26,18 +26,22 @@ export const aboutView: TemplateSchema = {
 
           These fields had two renderings — read-only here and as inputs on a sibling Settings tab —
           which meant one form to keep in step with another and a space's name spelled twice in the
-          UI. Only the settings page writes now, and this leads there: the same pattern as a profile
-          page and its edit screen, and the reason there is exactly one set of inputs.
+          UI. Only the settings surface writes now, and this leads there: the same pattern as a
+          profile page and its edit screen, and the reason there is exactly one set of inputs.
 
-          Shown to everyone rather than gated on `canAdministerSpace`: the page it opens shows what
-          the space is configured as either way, and a control that vanishes for most members makes
-          "where do I see this" depend on who is asking. The page itself decides what is editable.
+          Shown to everyone rather than gated on `canAdministerSpace`: what it opens shows what the
+          space is configured as either way, and a control that vanishes for most members makes
+          "where do I see this" depend on who is asking. The settings themselves decide what is
+          editable.
 
-          The **dataset id**, not the route's space segment. `/space/:spaceId` carries whatever
-          `navigateToSpace` was given, which for a shared space is its neighbourhood CID — while the
-          settings page keys off `spaceList[].uuid`, which is always the dataset id. Passing the
-          segment matched no row and opened an empty page, and only for shared spaces, where the two
-          ids diverge.
+          Opens rather than toggles, unlike the rail's gear. A pencil sitting on the very fields it
+          leads to is a promise to show them, and a second press landing on a closed panel would
+          break that promise for anyone who had the panel open already and came here to find it.
+
+          It no longer passes an id: the panel is always about the open space, and this is only ever
+          rendered inside one. That retires a real trap — `/space/:spaceId` carries a neighbourhood
+          CID for a shared space while the settings page keys off the dataset id, so the obvious
+          spelling opened an empty page, and only for shared spaces.
         */
         aside: {
           type: 'we-button',
@@ -46,10 +50,7 @@ export const aboutView: TemplateSchema = {
             size: 'sm',
             square: true,
             title: 'Space settings',
-            onClick: {
-              $action: 'shellStore.openShellView',
-              args: ['settings', { $concat: ['/spaces/', { $store: 'datasetStore.currentDataset.id' }] }],
-            },
+            onClick: { $action: 'shellStore.openSpaceSettings' },
           },
           children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],
         },
@@ -65,10 +66,10 @@ export const aboutView: TemplateSchema = {
                 props: {
                   variant: 'heading-md',
                   color: 'text',
-                  loading: { $not: { $store: 'spaceStore.currentSpace' } },
+                  loading: { $: '!spaceStore.currentSpace' },
                   loadingWidth: '220px',
                 },
-                children: [{ $store: 'spaceStore.currentSpace.name' }],
+                children: [{ $: 'spaceStore.currentSpace.name' }],
               },
             ],
           },
@@ -85,12 +86,12 @@ export const aboutView: TemplateSchema = {
               {
                 type: '$if',
                 props: {
-                  condition: { $store: 'spaceStore.currentSpace' },
+                  condition: { $: 'spaceStore.currentSpace' },
                   then: {
                     type: '$if',
                     props: {
-                      condition: { $store: 'spaceStore.currentSpace.description' },
-                      then: { type: 'we-text', children: [{ $store: 'spaceStore.currentSpace.description' }] },
+                      condition: { $: 'spaceStore.currentSpace.description' },
+                      then: { type: 'we-text', children: [{ $: 'spaceStore.currentSpace.description' }] },
                       else: {
                         type: 'we-text',
                         props: { italic: true },
@@ -107,32 +108,18 @@ export const aboutView: TemplateSchema = {
           attributeRow({
             icon: 'lock-simple',
             label: 'Access',
-            value: { $if: { condition: { $store: 'spaceStore.currentSpace.url' }, then: 'Shared', else: 'Personal' } },
+            value: { $: "spaceStore.currentSpace.url ? 'Shared' : 'Personal'" },
             description: {
-              $if: {
-                condition: { $store: 'spaceStore.currentSpace.url' },
-                then: 'Joinable by anyone with the link',
-                else: 'Only visible to you',
-              },
+              $: "spaceStore.currentSpace.url ? 'Joinable by anyone with the link' : 'Only visible to you'",
             },
           }),
 
           attributeRow({
             icon: 'globe',
             label: 'Discovery',
-            value: {
-              $if: {
-                condition: { $eq: [{ $store: 'spaceStore.currentSpace.discovery' }, 'listed'] },
-                then: 'Listed',
-                else: 'Hidden',
-              },
-            },
+            value: { $: "spaceStore.currentSpace.discovery == 'listed' ? 'Listed' : 'Hidden'" },
             description: {
-              $if: {
-                condition: { $eq: [{ $store: 'spaceStore.currentSpace.discovery' }, 'listed'] },
-                then: 'Appears on the WE discovery globe',
-                else: 'Not shown in global discovery',
-              },
+              $: "spaceStore.currentSpace.discovery == 'listed' ? 'Appears on the WE discovery globe' : 'Not shown in global discovery'",
             },
           }),
 
@@ -140,17 +127,11 @@ export const aboutView: TemplateSchema = {
           {
             type: '$if',
             props: {
-              condition: { $store: 'spaceStore.currentSpace.location' },
+              condition: { $: 'spaceStore.currentSpace.location' },
               then: attributeRow({
                 icon: 'map-pin',
                 label: 'Location',
-                value: {
-                  $concat: [
-                    { $store: 'spaceStore.currentSpace.location.city' },
-                    ', ',
-                    { $store: 'spaceStore.currentSpace.location.country' },
-                  ],
-                },
+                value: { $: '`${spaceStore.currentSpace.location.city}, ${spaceStore.currentSpace.location.country}`' },
               }),
             },
           },
@@ -160,7 +141,7 @@ export const aboutView: TemplateSchema = {
             label: 'Created',
             value: {
               type: 'we-timestamp',
-              props: { value: { $store: 'spaceStore.currentSpace.createdAt' }, relative: true, fontWeight: 'bold' },
+              props: { value: { $: 'spaceStore.currentSpace.createdAt' }, relative: true, fontWeight: 'bold' },
             },
             description: {
               type: 'Row',
@@ -169,20 +150,20 @@ export const aboutView: TemplateSchema = {
                 { type: 'we-text', props: { variant: 'body' }, children: ['By'] },
                 {
                   type: '$agent',
-                  props: { did: { $store: 'spaceStore.currentSpace.author' }, as: 'agent' },
+                  props: { did: { $: 'spaceStore.currentSpace.author' }, as: 'agent' },
                   children: [
                     {
                       type: 'we-avatar',
                       props: {
-                        image: '$agent.avatar',
-                        hash: { $store: 'spaceStore.currentSpace.author' },
+                        image: { $: 'agent.avatar' },
+                        hash: { $: 'spaceStore.currentSpace.author' },
                         size: 'xs',
                       },
                     },
                     {
                       type: 'we-text',
                       props: { variant: 'body', truncate: true, maxWidth: '160px' },
-                      children: ['$agent.name'],
+                      children: [{ $: 'agent.name' }],
                     },
                   ],
                 },

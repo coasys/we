@@ -18,6 +18,7 @@ import {
   AvatarStack,
   Calendar,
   Card,
+  CodeEditor, // Plainly, though it carries CodeMirror — see the registry entry below.
   CollapsedContent,
   Column,
   Combobox,
@@ -60,17 +61,21 @@ const CesiumGlobeOnDemand = lazy(async () => {
 /** The graph engine, its expanders, layouts and d3-force — loaded when a template first draws one. */
 const GraphViewOnDemand = lazy(() => import('../components/GraphHost'));
 
-/**
- * A read-only code view, and CodeMirror behind it.
- *
- * Registered because the generated component reference already documents `CodeEditor` as available
- * to schemas, and it was not — so a schema reaching for it rendered nothing at all, silently. The
- * docs promised it; this makes the promise true.
- *
- * Lazily, like the editor panels below and for the same reason: CodeMirror is large, and the one
- * schema using it today is a disclosure panel most sessions never open.
- */
-const CodeEditorOnDemand = lazy(() => import('@we/components/solid').then((m) => ({ default: m.CodeEditor })));
+/*
+  The body of a panel an interface declared, rendered with the interface's own grants.
+
+  Registered as a component rather than inlined into the frame because that is what a bag switch
+  needs: `RenderSchema` takes a bag per call site, and a component is the only thing that can make a
+  second call from inside one tree. See `shared/registries/templateBag.ts`.
+*/
+const TemplatePanelBodyOnDemand = lazy(() => import('../components/TemplatePanelBody'));
+
+/*
+  A `$panels` outlet — a lane in the template's own flow. The marker is rewritten to this name by
+  `resolveParts` before the renderer sees it, the way `$part` is expanded, because it has to read the
+  shell's placements and render sections with the template's bag, which only a host component can.
+*/
+const PanelLaneOnDemand = lazy(() => import('../components/PanelLane'));
 
 /** One decorative component, and `three` behind it. */
 const WeCubeOnDemand = lazy(() => import('../components/3d/WeCube'));
@@ -96,6 +101,23 @@ export const componentRegistry: ComponentRegistry = {
   AvatarStack,
   Calendar,
   Card,
+  /*
+    A read-only code view, and CodeMirror behind it.
+
+    Registered because the generated component reference already documents `CodeEditor` as available
+    to schemas, and it was not — so a schema reaching for it rendered nothing at all, silently. The
+    docs promised it; this makes the promise true.
+
+    NOT `lazy()`, though it is the largest thing here. It was, and the wrapper was inert:
+    `@we/components` builds with `splitting: false`, so `@we/components/solid` is a single module —
+    and this file, along with a dozen others in the shell, already imports it statically for `Column`
+    and `Row`. Rollup said so on every app build (INEFFECTIVE_DYNAMIC_IMPORT) and split nothing.
+
+    Nothing moves by dropping it: `CodeEditor` fetches CodeMirror itself, in `onMount`, so the
+    ~270 KB stays out of the eager graph either way. The deferral belongs in the component, which is
+    the only place it survives a consumer that also wants a `Column`.
+  */
+  CodeEditor,
   CollapsedContent,
   Column,
   Combobox,
@@ -120,6 +142,11 @@ export const componentRegistry: ComponentRegistry = {
   // Contributed by @we/module-graph. Registered here for the same reason the globe is: this registry
   // is the single source for what a template may name.
   GraphView: GraphViewOnDemand,
+  // Host-only: a template names panels, never this. It is what a panel's *frame* wraps around the
+  // template's node so the two can be rendered with different grants.
+  TemplatePanelBody: TemplatePanelBodyOnDemand,
+  // Host-only for the same reason: a template writes `$panels`, never this.
+  PanelLane: PanelLaneOnDemand,
   SignalControl,
 
   // @we/block-solid
@@ -139,15 +166,23 @@ export const componentRegistry: ComponentRegistry = {
   VideoDisplay,
 
   // Marketplace
-  CodeEditor: CodeEditorOnDemand,
   TemplateCard,
 
   // Shell
   EditingBar,
 
-  // Testing
-  // A perf debugging tool — logging on every mount is its purpose, which is
-  // exactly why production templates should not be able to reach it.
+  /*
+    Testing.
+
+    A perf debugging tool — logging on every mount is its purpose, which is exactly why production
+    templates should not be able to reach it.
+
+    Build-gated rather than gated on `sessionStore.devTools`, and deliberately not moved onto that
+    switch with the rest of the developer affordances. The switch governs what *chrome* shows; this
+    is a word in the vocabulary a template is rendered against, and the registry is built once. A
+    template naming an unregistered component renders nothing and warns, which is the right answer
+    for a production build and the wrong one for a developer who has merely muted their own tools.
+  */
   ...(import.meta.env.DEV ? { RerenderLog } : {}),
 
   // 3D

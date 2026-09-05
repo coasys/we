@@ -35,7 +35,7 @@ provenance tags, marketplace sharing — is designed in
 
 | Tier      | Package                              | May reference                                                             |
 | --------- | ------------------------------------ | ------------------------------------------------------------------------- |
-| Portable  | `@we/schema-kit` (schema-system/kit) | components, primitives, `$local` contracts it documents                   |
+| Portable  | `@we/schema-kit` (schema-system/kit) | components, primitives, `local` contracts it documents                    |
 | WE-domain | `@we/template-kit` (this one)        | WE's stores (`profileStore`, `datasetStore`, `runtimeStore`) and `$agent` |
 
 The split is the kit's honest dependency declaration. A fragment naming `spaceStore.members` resolves

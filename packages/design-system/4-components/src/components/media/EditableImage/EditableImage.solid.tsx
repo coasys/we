@@ -1,6 +1,6 @@
 import { designSystemKeys, filterProps, mergeProps } from '@we/design-utils';
 import { buildLayoutStyles, getBgImageAttrs, useStateProps } from '@we/design-utils/solid';
-import { createMemo, createSignal, Show, splitProps } from 'solid-js';
+import { createMemo, createSignal, onCleanup, Show, splitProps } from 'solid-js';
 
 export type * from './EditableImage.types';
 import { Column } from '../../layout/Column/Column.solid';
@@ -16,7 +16,19 @@ const DEFAULTS: Partial<EditableImageProps> = {
   overflow: 'hidden',
   cursor: 'pointer',
   bg: 'neutral-200',
+  /*
+    The hover label's size, since the label inherits it (see the overlay below).
+
+    Unset, it inherited the page's 16px, which is body copy — too loud for a caption whose whole job
+    is to name what the icon above it already means. 14px is the label size, which is what this is.
+    Still only a default: a caller with a small tile passes its own, as the avatar in the
+    create-space modal does.
+  */
+  fontSize: '200',
 };
+
+/** The same, for a tile sizing itself by ratio — see `baseStyle`. */
+const { height: _defaultHeight, ...DEFAULTS_BY_RATIO } = DEFAULTS;
 
 const editableImageKeys = [...designSystemKeys, 'children'] as const;
 const editableImageStyleKeys = editableImageKeys.filter((key) => key !== 'children');
@@ -49,23 +61,41 @@ export function EditableImage(allProps: EditableImageProps) {
   /** What the hover overlay says, and what its icon promises. */
   const label = () => (props.src ? (props.editLabel ?? 'Edit image') : (props.uploadLabel ?? 'Upload image'));
 
-  // Derive a sensible modal width from the crop aspect ratio so wide images
-  // get enough horizontal space to show a usable crop zone.
-  const modalMinWidth = createMemo(() => {
-    const a = props.aspect ?? 1;
-    const cropH = Math.max(120, Math.min(340, 680 / Math.max(a, 0.25))) * 0.85;
-    const needed = Math.round(cropH * a + 120);
-    return `${Math.max(520, Math.min(1100, needed))}px`;
-  });
+  /*
+    A wide crop zone needs a wide sheet, so the aspect picks the modal's size.
+
+    This was a `minWidth` on the Column *inside* the modal, solving for a pixel figure between 520
+    and 1100 — which worked only because the modal had no width of its own and grew to whatever it
+    was given. Pushing a sheet wider from the inside has no answer for the viewport: at aspect 3 on
+    a laptop it computed 1100px and simply overflowed. Asking for a size instead means the modal
+    clamps to the screen the way every other modal does.
+  */
+  const modalSize = () => ((props.aspect ?? 1) > 1.5 ? 'lg' : 'md');
 
   // Imperative handle to ImageCrop — set once the crop component reports ready
   let cropRef: ImageCropRef | undefined;
   let fileInput: HTMLInputElement | undefined;
 
+  /*
+    An `aspect` and no height of its own means the tile sizes itself by ratio.
+
+    `aspect` is the shape the crop step enforces, and until now it said nothing about the box the
+    result is shown in — so a caller had to pick a height that happened to match, against a width it
+    could not know. The create-space modal is where that came apart: a 4:1 crop displayed in a box
+    that worked out to 3.4:1, so `fit: cover` re-cropped the sides of what somebody had just framed,
+    and the preview quietly disagreed with the file being saved. Any fixed height is only right at
+    one modal width anyway, and a modal narrows on a phone.
+
+    Only when no height is given, so the full-bleed banners that pass both (the space header at
+    300px, the profile at 200px) are untouched.
+  */
+  const sizedByRatio = () => props.aspect !== undefined && dsProps.height === undefined;
+
   const baseStyle = createMemo(() => {
     const usedProps = filterProps(dsProps, editableImageStyleKeys);
-    const merged = mergeProps(usedProps, DEFAULTS) as EditableImageProps;
-    return { ...buildLayoutStyles(merged, 'column'), 'flex-shrink': '0' };
+    const merged = mergeProps(usedProps, sizedByRatio() ? DEFAULTS_BY_RATIO : DEFAULTS) as EditableImageProps;
+    const ratio = sizedByRatio() ? { 'aspect-ratio': String(props.aspect) } : {};
+    return { ...buildLayoutStyles(merged, 'column'), 'flex-shrink': '0', ...ratio };
   });
 
   // Tiers count as much as states: both route through the same var indirection, and gating on the
@@ -106,6 +136,19 @@ export function EditableImage(allProps: EditableImageProps) {
     // Cleared so choosing the same file twice in a row still fires a change event.
     input.value = '';
   }
+
+  /*
+    The object URL goes with the component, not only with the modal.
+
+    Every path that *closes* the crop step revoked it, and unmounting is not one of them: navigating
+    away, switching the record being edited, or a route change with the crop modal open left the
+    blob alive for the life of the page. An image is megabytes, and the whole point of an object URL
+    is that the browser cannot tell when you are done with it.
+  */
+  onCleanup(() => {
+    const url = rawUrl();
+    if (url) URL.revokeObjectURL(url);
+  });
 
   function closeModal() {
     setModalOpen(false);
@@ -152,6 +195,13 @@ export function EditableImage(allProps: EditableImageProps) {
         ref={checkSurface}
         role="button"
         tabIndex={0}
+        /*
+          A tab stop, but not the one a dialog should open on. Pressing Enter here opens the OS file
+          picker, and the tile is often the first thing in a form (a cover image above the name
+          field), so an overlay taking the first focusable landed every keyboard user in a file
+          dialog over the form they came to fill in. See `skipsInitialFocus` in overlay-element.
+        */
+        data-we-skip-autofocus=""
         aria-label={label()}
         onClick={pickFile}
         onKeyDown={(e) => {
@@ -200,13 +250,25 @@ export function EditableImage(allProps: EditableImageProps) {
         </Show>
 
         {/* Hover overlay */}
-        <Column class="editable-image__overlay" ax="center" ay="center" p="300" gap="200" position="absolute">
-          {/* A pencil over an empty tile promises editing something that does not exist yet. */}
-          <we-icon name={props.src ? 'pencil' : 'upload-simple'} size="24px" color="#fff" />
+        {/*
+          `gap: 100`, not 200. The glyph and the label are one thing said twice, not two items in a
+          list — the wider gap read as a stack of two separate marks rather than as an icon with its
+          caption.
+        */}
+        <Column class="editable-image__overlay" ax="center" ay="center" p="300" gap="100" position="absolute">
+          {/*
+            A pencil over an empty tile promises editing something that does not exist yet.
+
+            28px, not 24px. The glyph is the thing being read here — the label only names what the
+            glyph already says — and at 24px it was *smaller* than the 32px placeholder icon it
+            covers, so hovering an empty tile shrank the symbol under the pointer.
+          */}
+          <we-icon name={props.src ? 'pencil' : 'upload-simple'} size="28px" color="#fff" />
           {/*
             No `fontSize` here on purpose. Unset, the custom property resolves to `inherit` for an
             inherited property, so the label takes its size from this component's own `fontSize` DS
             prop — a small tile can shrink the label without the component growing an API for it.
+            The component's own default sets the resting size; see DEFAULTS.
 
             `textAlign` because the label wraps on a narrow tile, and a wrapped line was left-
             aligned inside a centred box, which reads as a misalignment rather than as wrapping.
@@ -241,8 +303,8 @@ export function EditableImage(allProps: EditableImageProps) {
 
       {/* Crop — the only step left in the modal. */}
       <Show when={modalOpen()}>
-        <we-modal close={closeModal}>
-          <Column minWidth={modalMinWidth()} ax="center" gap="500">
+        <we-modal close={closeModal} size={modalSize()}>
+          <Column width="100%" ax="center" gap="500">
             <we-text variant="heading-md">Crop image</we-text>
             <ImageCrop
               src={rawUrl()!}

@@ -62,7 +62,8 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
 
   const handleAction = (item: DropdownMenuAction) => {
     if (item.disabled) return;
-    item.onAction();
+    item.onAction?.();
+    props.onSelect?.(item);
     closeMenu();
   };
 
@@ -103,46 +104,56 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
 
   const metrics = () => ITEM_SIZES[props.itemSize ?? props.size ?? 'md'];
 
+  /*
+    Every binding reads through the accessor, rather than off a snapshot taken once.
+
+    `const item = getItem()` at the top of a render function runs exactly once — at creation, outside
+    any reactive scope — so a menu built from data was frozen at whatever the data said the first
+    time it was opened. A label bound to a store, an entry that becomes disabled while the menu is
+    up, a variant that turns danger: none of them ever changed on screen. `Index` gives a reactive
+    accessor *per position* precisely so this can work; the snapshot threw that away.
+
+    The handler still closes over the accessor rather than the value, so a click acts on the entry as
+    it is now and not as it was when the menu opened.
+  */
   const renderActionItem = (getItem: () => DropdownMenuAction) => {
-    const item = getItem();
     return (
       <we-menu-item
-        on:select={() => handleAction(item)}
-        variant={item.variant || 'default'}
-        opacity={item.disabled ? 0.5 : 1}
-        cursor={item.disabled ? 'not-allowed' : 'pointer'}
+        on:select={() => handleAction(getItem())}
+        variant={getItem().variant || 'default'}
+        opacity={getItem().disabled ? 0.5 : 1}
+        cursor={getItem().disabled ? 'not-allowed' : 'pointer'}
         px={metrics().px}
         py={metrics().py}
         gap={metrics().gap}
         fontSize={metrics().fontSize}
       >
-        <Show when={item.icon}>
-          <we-icon name={item.icon!} size={metrics().icon} />
+        <Show when={getItem().icon}>
+          <we-icon name={getItem().icon!} size={metrics().icon} />
         </Show>
-        <we-text fontSize={metrics().fontSize}>{item.label}</we-text>
+        <we-text fontSize={metrics().fontSize}>{getItem().label}</we-text>
       </we-menu-item>
     );
   };
 
   const renderToggleItem = (getItem: () => SolidDropdownMenuToggle) => {
-    const item = getItem();
     const checked = createMemo(() => isChecked(getItem()));
 
     return (
       <we-menu-item
-        on:select={() => handleToggle(item)}
+        on:select={() => handleToggle(getItem())}
         selected={checked()}
-        opacity={item.disabled ? 0.5 : 1}
-        cursor={item.disabled ? 'not-allowed' : 'pointer'}
+        opacity={getItem().disabled ? 0.5 : 1}
+        cursor={getItem().disabled ? 'not-allowed' : 'pointer'}
         px={metrics().px}
         py={metrics().py}
         gap={metrics().gap}
         fontSize={metrics().fontSize}
       >
-        <Show when={item.icon}>
-          <we-icon name={item.icon!} size={metrics().icon} />
+        <Show when={getItem().icon}>
+          <we-icon name={getItem().icon!} size={metrics().icon} />
         </Show>
-        <we-text fontSize={metrics().fontSize}>{item.label}</we-text>
+        <we-text fontSize={metrics().fontSize}>{getItem().label}</we-text>
         <Show when={checked()}>
           <we-icon name="check" size="xs" weight="bold" color="accent" />
         </Show>
@@ -151,30 +162,30 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
   };
 
   const renderGroup = (getGroup: () => DropdownMenuGroup & { items: SolidDropdownMenuEntry[] }) => {
-    const group = getGroup();
+    // Through the accessor throughout, for the reason spelled out above `renderActionItem`.
     const collapsed = createMemo(() => isGroupCollapsed(getGroup()));
     const groupItems = createMemo(() => getGroup().items);
 
     return (
       <>
         {/* Collapsible header */}
-        <Show when={group.collapsible !== false}>
+        <Show when={getGroup().collapsible !== false}>
           <we-menu-item
-            on:select={() => !group.disabled && toggleGroup(group.id)}
-            opacity={group.disabled ? 0.5 : 1}
-            cursor={group.disabled ? 'not-allowed' : 'pointer'}
+            on:select={() => !getGroup().disabled && toggleGroup(getGroup().id)}
+            opacity={getGroup().disabled ? 0.5 : 1}
+            cursor={getGroup().disabled ? 'not-allowed' : 'pointer'}
             color="text-faint"
             prop:hoverProps={{ color: 'neutral-500' }}
           >
             <we-icon name={collapsed() ? 'caret-right' : 'caret-down'} size="xs" />
-            <we-text>{group.label}</we-text>
+            <we-text>{getGroup().label}</we-text>
           </we-menu-item>
         </Show>
 
         {/* Non-collapsible header */}
-        <Show when={group.collapsible === false}>
+        <Show when={getGroup().collapsible === false}>
           <we-menu-item color="text-muted" cursor="default" pointerEvents="none">
-            <we-text>{group.label}</we-text>
+            <we-text>{getGroup().label}</we-text>
           </we-menu-item>
         </Show>
 
@@ -190,7 +201,7 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
     return <we-divider />;
   };
 
-  const renderEntry = (getEntry: () => SolidDropdownMenuEntry) => {
+  const renderBody = (getEntry: () => SolidDropdownMenuEntry) => {
     const entry = getEntry();
 
     if (entry.type === 'divider') {
@@ -209,6 +220,89 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
     return renderActionItem(getEntry as () => DropdownMenuAction);
   };
 
+  /**
+   * An entry that is currently nothing renders nothing — and starts rendering when it stops being
+   * nothing.
+   *
+   * This is what makes a *conditional* item expressible from a schema. `items` is a prop, so an
+   * entry can be a `$if`, and a `$if` with no `else` resolves to `undefined` — which arrives here
+   * as a hole in the array. Reading `.type` off it threw, so the only way to vary a menu's contents
+   * was to abandon the component and hand-roll a `we-menu`, which is what the call bar did for its
+   * one conditional toggle.
+   *
+   * The hole is left **in place** rather than filtered out, and the check is a memo rather than the
+   * obvious early `return null`. Both are about `Index`, which keys by position: filtering would
+   * shift every later entry into a row built for a different item, and a snapshot taken once at
+   * creation would never see the condition change, so the entry would be right at mount and frozen
+   * afterwards. A hole holds its index, and the memo re-reads it.
+   *
+   * `hidden` is the same thing said on the entry: a value expression cannot wrap an entry that
+   * carries a handler, so the condition travels on the entry and is read here, by position, exactly
+   * as a hole is.
+   */
+  const renderEntry = (getEntry: () => SolidDropdownMenuEntry) => {
+    const present = createMemo(() => {
+      const entry = getEntry();
+      return Boolean(entry) && !('hidden' in entry && entry.hidden);
+    });
+    return <Show when={present()}>{renderBody(getEntry)}</Show>;
+  };
+
+  /*
+    What is written on the trigger.
+
+    The "Options" fallback applies only where there is no glyph either — a trigger with *nothing* on
+    it is unusable, so something has to be written. Where an icon was given, an absent label means
+    icon-only: it used to mean "icon, followed by the word Options", which is the least informative
+    word available for a menu that always has a subject, and every icon-only caller in the repo was
+    silently rendering it. An explicit '' still reads as icon-only, as it always did.
+  */
+  const label = () => (props.triggerIcon ? (props.triggerLabel ?? '') : (props.triggerLabel ?? 'Options'));
+
+  /**
+   * A glyph and nothing else — so the trigger is a square, not a pill.
+   *
+   * Inferred rather than asked for, because the two always travel together: without `square` the
+   * size's horizontal padding still applies, and an icon-only trigger comes out wider than it is
+   * tall beside every hand-written icon button in the app, all of which pass `square`. There is no
+   * caller who wants one glyph in a rounded rectangle.
+   */
+  const iconOnly = () => Boolean(props.triggerIcon) && !label();
+
+  /*
+    The trigger is `we-button`'s own `secondary` — a filled neutral control — rather than the
+    hardcoded `bg="surface-active" color="text"` this used to carry over the default `primary`.
+
+    Identical at rest: `controlSurface` was added for exactly this family of things (a secondary
+    button, a slider track, a count chip), all of which were borrowing `surfaceActive`, and it was
+    given that same value so nothing moved. What changes is the part the override never reached.
+    `bg` and `color` were overridden; `hoverProps` and `activeProps` were not, so `primary`'s
+    survived the merge and the trigger hovered to the *accent* — beside neighbours going to
+    `surfaceHover`, and in a theme where the accent is loud, alarmingly.
+  */
+  const trigger = (slot: string) => (
+    <we-button
+      /*
+        Required, and `''` rather than omitted where the button is nested inside the tooltip.
+
+        Solid assigns *properties* on a custom element rather than attributes, and `HTMLElement.slot`
+        is a non-nullable DOMString: an optional parameter left off writes the string "undefined",
+        which names a slot nothing declares, and the trigger silently renders nowhere. `''` is the
+        spelling for "the default slot", which is what an omitted `slot` attribute already means.
+      */
+      slot={slot}
+      size={props.size}
+      variant={props.triggerVariant ?? 'secondary'}
+      square={iconOnly()}
+      aria-label={iconOnly() ? (props.triggerTitle ?? 'Options') : undefined}
+    >
+      <Show when={props.triggerIcon}>
+        <we-icon name={props.triggerIcon!} />
+      </Show>
+      {label()}
+    </we-button>
+  );
+
   return (
     <we-popover
       ref={popoverRef}
@@ -217,18 +311,16 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
       placement={props.placement || 'bottom'}
       data-we-menu
     >
-      <we-button slot="trigger" size={props.size} bg="surface-active" color="text">
-        <Show when={props.triggerIcon}>
-          <we-icon name={props.triggerIcon!} />
-        </Show>
-        {/*
-          `??` rather than `||`, so an explicit empty label means "icon only" instead of falling back
-          to the default. It could not be suppressed before: any icon-only trigger silently read
-          "Options", which is the least informative word available for a menu that always has a
-          subject — and callers had no way to say otherwise.
-        */}
-        {props.triggerLabel ?? 'Options'}
-      </we-button>
+      {/*
+        The tooltip takes the trigger slot and the button sits inside it, rather than the other way
+        round: slot assignment considers a shadow host's *direct* children, so whichever element is
+        outermost is the one that has to carry `slot`.
+      */}
+      <Show when={props.triggerTitle} fallback={trigger('trigger')}>
+        <we-tooltip slot="trigger" title={props.triggerTitle!} placement="bottom">
+          {trigger('')}
+        </we-tooltip>
+      </Show>
 
       <we-menu slot="content">
         <Index each={props.items}>{(getEntry) => renderEntry(getEntry)}</Index>

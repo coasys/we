@@ -2,17 +2,19 @@ import type { SchemaNode } from '@we/schema-shared';
 import { sectionCard } from '@we/template-kit';
 
 import { createSignalTypeModal } from './vocabulary/CreateSignalTypeModal.ts';
-import { modelsSection } from './vocabulary/ModelsSection.ts';
+import { modelsSection } from './vocabulary/EntitiesSection.ts';
 import { relationshipTypesSection } from './vocabulary/RelationshipTypesSection.ts';
 import { signalTypeCard } from './vocabulary/SignalTypeCard.ts';
+import { topicsSection } from './vocabulary/TopicsSection.ts';
 
 /**
- * What this community has decided things mean — its reactions, its connections, and its models.
+ * What this community has decided things mean — its reactions, its connections, its subjects, and
+ * its models.
  *
- * The three are one act at different levels: naming what a reaction means, what a connection means,
- * and what a thing *is*. They sat together in the default template's settings route and they stay
- * together here, because a community reasoning about its own vocabulary is reasoning about all three
- * at once.
+ * The four are one act at different levels: naming what a reaction means, what a connection means,
+ * what the conversation is *about*, and what a thing *is*. They sat together in the default
+ * template's settings route and they stay together here, because a community reasoning about its own
+ * vocabulary is reasoning about all of them at once.
  *
  * ## Why this section, alone, needs the space open
  *
@@ -38,7 +40,7 @@ const openSpaceFirst: SchemaNode = {
           type: 'we-text',
           props: { variant: 'footnote', color: 'text-faint' },
           children: [
-            'Signals, relationships and models are read from the space itself, so this one has to be open to edit them.',
+            'Signals, relationships, topics and models are read from the space itself, so this one has to be open to edit them.',
           ],
         },
       ],
@@ -49,7 +51,7 @@ const openSpaceFirst: SchemaNode = {
         variant: 'secondary',
         size: 'sm',
         alignSelf: 'start',
-        onClick: { $action: 'spaceStore.navigateToSpace', args: ['$space.uuid'] },
+        onClick: { $action: 'spaceStore.navigateToSpace', args: [{ $: 'space.uuid' }] },
       },
       children: [
         { type: 'we-text', props: { variant: 'label' }, children: ['Open this space'] },
@@ -65,7 +67,7 @@ const signalTypesSection: SchemaNode = sectionCard({
   aside: {
     type: '$if',
     props: {
-      condition: '$space.canAdminister',
+      condition: { $: 'space.canAdminister' },
       then: {
         type: 'we-button',
         props: { variant: 'secondary', size: 'sm', onClick: { $setLocal: 'createSignalTypeOpen', value: true } },
@@ -82,10 +84,8 @@ const signalTypesSection: SchemaNode = sectionCard({
       props: { items: { $query: { entity: 'SignalType', subscribe: true } }, as: 'signalType' },
       children: [signalTypeCard],
     },
-    {
-      type: '$if',
-      props: { condition: { $local: 'createSignalTypeOpen' }, then: createSignalTypeModal },
-    },
+    // Carries its own `$if` — see `formModal`.
+    createSignalTypeModal,
   ],
 });
 
@@ -94,15 +94,16 @@ export const spaceVocabularySection: SchemaNode = {
   props: {
     // The row being configured is the dataset currently open. Anything else cannot be queried from
     // here — see the docblock.
-    condition: { $eq: ['$space.uuid', { $store: 'datasetStore.currentDataset.id' }] },
+    condition: { $: 'space.uuid == datasetStore.currentDataset.id' },
     then: {
       type: 'Column',
       props: { gap: '400' },
       $localState: {
         createSignalTypeOpen: { type: 'boolean', initial: false },
         createRelationshipTypeOpen: { type: 'boolean', initial: false },
+        createTopicOpen: { type: 'boolean', initial: false },
       },
-      children: [signalTypesSection, relationshipTypesSection, modelsSection],
+      children: [signalTypesSection, relationshipTypesSection, topicsSection, modelsSection],
     },
     else: openSpaceFirst,
   },

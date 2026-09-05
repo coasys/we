@@ -26,6 +26,7 @@
  */
 import type { AnchorId } from '@we/schema-kit';
 import type { SchemaNode } from '@we/schema-shared';
+import { expr, ref } from '@we/schema-shared';
 
 export interface ChannelRailOptions {
   /** Route to navigate to, with `:id` replaced by the channel id. E.g. `'/channel/'`. */
@@ -58,53 +59,25 @@ const channelQuery = (anchorId?: AnchorId) => ({
 
 /** One channel row: name, unread dot, active highlight. */
 function channelRow(opts: ChannelRailOptions, as: string): SchemaNode {
-  /*
-    This agent's marker for this row, looked up with `$find`.
+  /** This agent's marker for this row — `readMarkers` is a list, so it is found, not indexed. */
+  const marker = `find(spaceStore.readMarkers, { nodeId: ${as}.id }).lastReadAt`;
 
-    Not `{ $store: 'spaceStore.readMarkers.<id>' }`: `$store` resolves a *static* dot path, so a
-    context ref inside one is taken literally and resolves to nothing — which would read as "never
-    opened" and leave every channel permanently dotted.
-  */
-  const marker = {
-    $find: {
-      items: { $store: 'spaceStore.readMarkers' },
-      where: { nodeId: `$${as}.id` },
-      select: 'lastReadAt',
-    },
-  };
-
-  const unread = {
-    $and: [
-      `$${as}.$latestChild`,
-      {
-        $or: [
-          // Never opened — everything in it is new.
-          { $not: marker },
-          { $gt: [`$${as}.$latestChild.createdAt`, marker] },
-        ],
-      },
-    ],
-  };
+  // Never opened — everything in it is new — or something newer than the last look.
+  const unread = { $: `${as}.$latestChild && (!${marker} || ${as}.$latestChild.createdAt > ${marker})` };
 
   return {
     type: 'we-button',
     props: {
-      variant: {
-        $if: {
-          condition: { $eq: [{ $store: `routeStore.segments.${opts.activeSegment ?? 1}` }, `$${as}.id`] },
-          then: 'secondary',
-          else: 'ghost',
-        },
-      },
+      variant: { $: `routeStore.segments[${opts.activeSegment ?? 1}] == ${as}.id ? 'secondary' : 'ghost'` },
       size: 'sm',
       width: '100%',
       ax: 'between',
       onClick: [
-        { $action: 'routeStore.navigate', args: [{ $concat: [opts.hrefPrefix, `$${as}.id`] }] },
+        { $action: 'routeStore.navigate', args: [expr`${opts.hrefPrefix} + ${ref(as, 'id')}`] },
         // Opening a channel is what marks it read. Deliberately on the navigation rather than on
         // the feed's mount: a feed that marks on mount also marks on every re-render the router
         // does, and re-reading a channel you are already in would clear a dot you had not seen.
-        { $action: 'spaceStore.markRead', args: [`$${as}.id`] },
+        { $action: 'spaceStore.markRead', args: [{ $: `${as}.id` }] },
       ],
     },
     children: [
@@ -113,7 +86,7 @@ function channelRow(opts: ChannelRailOptions, as: string): SchemaNode {
         props: { gap: '200', ay: 'center', minWidth: '0' },
         children: [
           { type: 'we-icon', props: { name: 'hash', color: 'text-faint' } },
-          { type: 'we-text', props: { truncate: true }, children: [`$${as}.title`] },
+          { type: 'we-text', props: { truncate: true }, children: [{ $: `${as}.title` }] },
         ],
       },
       {
@@ -139,17 +112,17 @@ export function channelRail(opts: ChannelRailOptions): SchemaNode {
       {
         type: '$if',
         props: {
-          condition: { $count: { items: { $local: 'channelRows' } } },
+          condition: { $: 'count(local.channelRows)' },
           then: {
             type: '$each',
-            props: { items: { $local: 'channelRows' }, as: 'channel' },
+            props: { items: { $: 'local.channelRows' }, as: 'channel' },
             children: [channelRow(opts, 'channel')],
           },
           else: {
             // Only when the rail is flat: with categories on, "no channels" is per-category and the
             // rail as a whole may still have plenty.
             type: '$if',
-            props: { condition: { $local: 'channelRowsLoaded' }, then: opts.empty },
+            props: { condition: { $: 'local.channelRowsLoaded' }, then: opts.empty },
           },
         },
       },
@@ -192,25 +165,25 @@ export function channelRail(opts: ChannelRailOptions): SchemaNode {
        */
       {
         type: '$if',
-        props: { condition: { $not: { $count: { items: { $local: 'categoryRows' } } } }, then: flat },
+        props: { condition: { $: '!count(local.categoryRows)' }, then: flat },
       },
       {
         type: '$each',
-        props: { items: { $local: 'categoryRows' }, as: 'category' },
+        props: { items: { $: 'local.categoryRows' }, as: 'category' },
         children: [
           {
             type: 'Column',
             props: { width: '100%', gap: '100' },
-            $queries: { catChannelRows: channelQuery('$category.id') },
+            $queries: { catChannelRows: channelQuery({ $: 'category.id' }) },
             children: [
               {
                 type: 'we-text',
                 props: { variant: 'footnote', uppercase: true, color: 'text-faint', letterSpacing: 'wide' },
-                children: ['$category.title'],
+                children: [{ $: 'category.title' }],
               },
               {
                 type: '$each',
-                props: { items: { $local: 'catChannelRows' }, as: 'catChannel' },
+                props: { items: { $: 'local.catChannelRows' }, as: 'catChannel' },
                 children: [channelRow(opts, 'catChannel')],
               },
             ],

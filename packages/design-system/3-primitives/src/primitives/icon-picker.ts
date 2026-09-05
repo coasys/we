@@ -4,6 +4,7 @@ import { css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
+import { fieldSurface } from '../shared/field-surface';
 import { openFloatingPanel } from '../shared/floating-panel';
 import sharedStyles from '../shared/styles';
 import type { ComponentSize } from '../types';
@@ -126,26 +127,15 @@ const styles = css`
     display: inline-flex;
     align-items: center;
     gap: var(--we-space-200);
-    border: 1px solid var(--we-role-border);
-    border-radius: var(--we-radius-400);
-    background: var(--we-role-surface);
     padding: 0 var(--we-space-300);
     cursor: pointer;
     white-space: nowrap;
-    transition: border-color var(--we-transition-200, 150ms) ease;
     width: 100%;
     box-sizing: border-box;
   }
 
-  [part='trigger']:focus-visible {
-    border-color: var(--we-role-accent);
-    outline: 2px solid var(--we-role-accent-muted);
-    outline-offset: -1px;
-  }
-
-  [part='trigger']:hover:not([disabled]) {
-    border-color: var(--we-role-border-strong);
-  }
+  /* After the reset above, never before it: all:unset clears border, radius and background. */
+  ${fieldSurface("[part='trigger']")}
 
   [part='preview-icon'] {
     display: flex;
@@ -230,20 +220,17 @@ const styles = css`
     display: block;
     width: 100%;
     box-sizing: border-box;
-    border: 1px solid var(--we-role-border);
-    border-radius: var(--we-radius-400);
     padding: var(--we-space-200) var(--we-space-300);
     font-size: var(--we-font-size-300);
-    background: var(--we-role-surface);
     color: var(--we-role-text);
-    transition: border-color var(--we-transition-200, 150ms) ease;
   }
 
-  [part='search']:focus {
-    border-color: var(--we-role-accent);
-    outline: 2px solid var(--we-role-accent-muted);
-    outline-offset: -1px;
-  }
+  /*
+    A well inside the popover's raised panel, which is the same relationship a field has to a card.
+    Focus-within rather than focus-visible, because this is a real text field and the ring has to
+    follow the caret whether it was reached by click or by Tab.
+  */
+  ${fieldSurface("[part='search']", ':focus-within')}
 
   [part='search']::placeholder {
     color: var(--we-role-text-faint);
@@ -354,21 +341,13 @@ const styles = css`
     display: block;
     width: 100%;
     box-sizing: border-box;
-    border: 1px solid var(--we-role-border);
-    border-radius: var(--we-radius-400);
     padding: var(--we-space-200) var(--we-space-300);
     font-size: var(--we-font-size-500);
     text-align: center;
-    background: var(--we-role-surface);
     color: var(--we-role-text);
-    transition: border-color var(--we-transition-200, 150ms) ease;
   }
 
-  [part='emoji-input']:focus {
-    border-color: var(--we-role-accent);
-    outline: 2px solid var(--we-role-accent-muted);
-    outline-offset: -1px;
-  }
+  ${fieldSurface("[part='emoji-input']", ':focus-within')}
 
   :host([disabled]) {
     opacity: 0.5;
@@ -385,6 +364,8 @@ export default class IconPicker extends DesignSystemElement {
   @property({ type: String }) value = '';
   @property({ type: Boolean, reflect: true }) disabled = false;
   @property({ type: String }) name = '';
+  /** What this picker is called, for a reader who cannot see the field label beside it. */
+  @property({ type: String }) label = '';
   // Reflected so the `:host([size=…])` rules above can see it — they are what scales the icons.
   @property({ type: String, reflect: true }) size: ComponentSize = 'md';
   @property({ type: String }) placeholder = 'Pick icon';
@@ -422,8 +403,38 @@ export default class IconPicker extends DesignSystemElement {
   }
 
   private _onDocClick(e: Event) {
-    if (!e.composedPath().includes(this)) this._open = false;
+    if (!e.composedPath().includes(this)) this._close();
   }
+
+  /**
+   * Close, and tear down the floating anchor.
+   *
+   * The two used to be separate, and one of the four ways to close this did not do the second: an
+   * outside click set `_open = false` and left `_closeFloating` unread, so every dismissal by
+   * clicking elsewhere leaked a Floating UI `autoUpdate` — a scroll and resize listener set, per
+   * open, for the life of the page. Opening and dismissing a picker twenty times leaves twenty of
+   * them recomputing a position for a panel that is not there.
+   */
+  private _close() {
+    this._open = false;
+    this._closeFloating?.();
+    this._closeFloating = undefined;
+  }
+
+  /**
+   * Escape closes it, and the trigger is a real button.
+   *
+   * The picker had no Escape at all: a keyboard user who opened it could tab through the grid and
+   * out the other side, with the panel still up and no way to dismiss it. Every other overlay in
+   * the set answers Escape, and being the one that does not is worse than never having opened.
+   */
+  private _onKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Escape' && this._open) {
+      e.stopPropagation();
+      this._close();
+      this.renderRoot.querySelector<HTMLElement>('[part="trigger"]')?.focus();
+    }
+  };
 
   private _open_picker() {
     if (this.disabled) return;
@@ -450,8 +461,7 @@ export default class IconPicker extends DesignSystemElement {
         );
       });
     } else {
-      this._closeFloating?.();
-      this._closeFloating = undefined;
+      this._close();
     }
   }
 
@@ -489,8 +499,10 @@ export default class IconPicker extends DesignSystemElement {
         part="trigger"
         style="height:${h}"
         @click=${this._open_picker}
+        @keydown=${this._onKeyDown}
         aria-haspopup="listbox"
         aria-expanded=${this._open}
+        aria-label=${this.label || nothing}
         ?disabled=${this.disabled}
       >
         ${
@@ -591,7 +603,7 @@ export default class IconPicker extends DesignSystemElement {
       ${
         this._open
           ? html`
-              <div part="popover" role="dialog">
+              <div part="popover" role="dialog" aria-label="Choose an icon" @keydown=${this._onKeyDown}>
                 <div part="tabs" role="tablist">
                   <button
                     part="tab"

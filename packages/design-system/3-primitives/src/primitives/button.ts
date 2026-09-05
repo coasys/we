@@ -1,11 +1,11 @@
 import type { DesignSystemProps } from '@we/design-types';
 import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
-import { css, html } from 'lit';
+import { safeHref } from '@we/design-utils';
+import { css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
-import { safeHref } from '../shared/safe-href';
 import sharedStyles from '../shared/styles';
 import type { ButtonVariant, ComponentSize } from '../types';
 
@@ -76,8 +76,24 @@ const VARIANT_DEFAULTS: Record<ButtonVariant, Partial<DesignSystemProps>> = {
     bg: 'transparent',
     color: 'text',
     border: '1px solid var(--we-role-border)',
-    hoverProps: { bg: 'surface-hover', color: 'text', border: '1px solid var(--we-role-border-strong)' },
-    activeProps: { bg: 'control-surface', color: 'text', border: '1px solid var(--we-role-border-strong)' },
+    hoverProps: { bg: 'surface-hover', color: 'text', border: '1px solid var(--we-role-border-hover)' },
+    activeProps: { bg: 'control-surface', color: 'text', border: '1px solid var(--we-role-border-hover)' },
+    /*
+      The only variant with an outline of its own, and so the only one whose focus ring would
+      otherwise be a second line rather than the same one thickened. It takes `we-input`'s
+      treatment — border recoloured to the ring, one pixel of ring outside it, one 2px perimeter —
+      because a Select trigger and a field sit in the same row and must answer focus the same way.
+      The filled variants keep the shared 2px ring: with no outline to recolour there is nothing to
+      double up on, and both spellings land on 2px of accent.
+
+      The ring is restated rather than inherited: `mergeProps` is a shallow spread, so a variant's
+      `focusProps` *replaces* the one on DEFAULT_PROPS. Omitting it here would not add a border to
+      the shared ring, it would trade the ring for a border.
+    */
+    focusProps: {
+      border: '1px solid var(--we-ring-color)',
+      ring: '0 0 0 1px var(--we-ring-color)',
+    },
   },
   // The appearance-free member of the scale: button semantics, no chrome. For wrapping arbitrary
   // content in a real <button> — the styling then lives on the wrapped Column/Card, which is
@@ -235,6 +251,18 @@ export default class Button extends DesignSystemElement {
   @property({ type: String, reflect: true }) variant: ButtonVariant = 'primary';
   @property({ type: String, reflect: true }) size: ComponentSize = 'md';
   @property({ type: String }) text?: string;
+  /**
+   * What this button is called, for anybody who cannot see what is inside it.
+   *
+   * Every icon-only button in the app was announced as "button": the modal close, the ChromeRail's
+   * launchers, a card's delete, a composer's toolbar. There was no way to fix one, either —
+   * `aria-label` set on the host does not name the inner `<button>` that actually takes focus, and
+   * nothing forwarded it.
+   *
+   * Unnecessary for a button with `text` or with text in its slot: that content is the name, and a
+   * second one here would override what the reader can see. Necessary for every `square` one.
+   */
+  @property({ type: String }) label = '';
   @property({ type: String }) href?: string;
   @property({ type: Boolean, reflect: true }) disabled = false;
   @property({ type: Boolean, reflect: true }) loading = false;
@@ -305,6 +333,8 @@ export default class Button extends DesignSystemElement {
           part="base"
           role="button"
           href=${href}
+          aria-label=${this.label || nothing}
+          aria-busy=${this.loading ? 'true' : nothing}
           aria-disabled=${this.disabled || this.loading ? 'true' : 'false'}
           @click=${this._onClick}
           style=${styleMap(inline)}
@@ -314,8 +344,27 @@ export default class Button extends DesignSystemElement {
       `;
     }
 
+    /*
+      `loading` is `aria-busy`, not `disabled`.
+
+      A native `disabled` removes the element from the tab order, so a button disabled *while its own
+      submit is in flight* takes focus away from the person who just pressed it and drops them at the
+      top of the document — mid-submit, with no announcement, and with nowhere obvious to return to.
+      `aria-busy` says the same thing to a screen reader and keeps the button where it was; the click
+      is still refused, by `_onClick`, which has always been what actually stops a second submit.
+
+      `disabled` itself still disables. That is a statement about whether the action is available at
+      all, which is a different thing from whether it is currently running.
+    */
     return html`
-      <button part="base" ?disabled=${this.disabled || this.loading} @click=${this._onClick} style=${styleMap(inline)}>
+      <button
+        part="base"
+        ?disabled=${this.disabled}
+        aria-label=${this.label || nothing}
+        aria-busy=${this.loading ? 'true' : nothing}
+        @click=${this._onClick}
+        style=${styleMap(inline)}
+      >
         ${this._content()}
       </button>
     `;

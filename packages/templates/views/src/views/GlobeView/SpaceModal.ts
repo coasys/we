@@ -10,18 +10,16 @@
  *   • Signal controls row
  *   • "Join Space" CTA button
  */
+import { OFFERED_SIGNAL_TYPES } from '@we/template-kit';
+
 export const spaceModal = {
   type: 'we-modal',
-  props: {
-    close: { $setLocal: 'selectedPin', value: null },
-    maxWidth: '520px',
-    width: '100%',
-  },
+  props: { size: 'md', close: { $setLocal: 'selectedPin', value: null } },
   children: [
     {
       type: '$single',
       props: {
-        item: { $query: { entity: 'Space', where: { id: { $local: 'selectedPin.id' } }, include: { signals: true } } },
+        item: { $query: { entity: 'Space', where: { id: { $: 'local.selectedPin.id' } }, include: { signals: true } } },
         as: 'space',
       },
       children: [
@@ -33,10 +31,10 @@ export const spaceModal = {
             {
               type: '$if',
               props: {
-                condition: '$space.coverImage',
+                condition: { $: 'space.coverImage' },
                 then: {
                   type: 'we-image',
-                  props: { src: '$space.coverImage', width: '100%', height: '160px', fit: 'cover', r: '300' },
+                  props: { src: { $: 'space.coverImage' }, width: '100%', height: '160px', fit: 'cover', r: '300' },
                 },
               },
             },
@@ -49,10 +47,10 @@ export const spaceModal = {
                 {
                   type: '$if',
                   props: {
-                    condition: '$space.avatar',
+                    condition: { $: 'space.avatar' },
                     then: {
                       type: 'we-image',
-                      props: { src: '$space.avatar', width: '60px', height: '60px', fit: 'cover', r: 'full' },
+                      props: { src: { $: 'space.avatar' }, width: '60px', height: '60px', fit: 'cover', r: 'full' },
                     },
                     else: { type: 'we-icon', props: { name: 'globe', size: 'xl', color: 'text-faint' } },
                   },
@@ -61,15 +59,15 @@ export const spaceModal = {
                   type: 'Column',
                   props: { gap: '100' },
                   children: [
-                    { type: 'we-text', props: { variant: 'heading-md' }, children: ['$space.name'] },
+                    { type: 'we-text', props: { variant: 'heading-md' }, children: [{ $: 'space.name' }] },
                     {
                       type: '$if',
                       props: {
-                        condition: '$space.description',
+                        condition: { $: 'space.description' },
                         then: {
                           type: 'we-text',
                           props: { variant: 'body' },
-                          children: ['$space.description'],
+                          children: [{ $: 'space.description' }],
                         },
                       },
                     },
@@ -80,20 +78,33 @@ export const spaceModal = {
 
             // Signal controls
             {
+              /*
+                Hoisted rather than queried inline, so the list can be filtered.
+
+                A retired type must not be offered. A `where` would serve *this* modal — it never
+                resolves a slug — but every other site shares one subscription between the controls
+                and a `find()`-by-slug count that must still see retired types, so the filter lives
+                at the point of use everywhere rather than in two spellings. `filter()` cannot name
+                an inline `$query`'s results, hence the hoist. See `OFFERED_SIGNAL_TYPES`.
+              */
               type: 'Column',
               props: { gap: '200' },
+              $queries: { signalTypes: { entity: 'SignalType', subscribe: true } },
               children: [
                 {
                   type: '$each',
-                  props: { items: { $query: { entity: 'SignalType', subscribe: true } }, as: 'sig' },
+                  props: { items: { $: OFFERED_SIGNAL_TYPES }, as: 'sig' },
                   children: [
                     {
                       type: 'SignalControl',
                       props: {
-                        signalType: '$sig',
-                        signals: { $filter: { items: '$space.signals', where: { signalTypeId: '$sig.id' } } },
-                        myDid: '$me.did',
-                        onSignal: { $action: 'spaceStore.upsertSignal', args: ['$space.id', '$sig.id', '$arg'] },
+                        signalType: { $: 'sig' },
+                        signals: { $: 'filter(space.signals, { signalTypeId: sig.id })' },
+                        myDid: { $: 'me.did' },
+                        onSignal: {
+                          $action: 'spaceStore.upsertSignal',
+                          args: [{ $: 'space.id' }, { $: 'sig.id' }, { $: 'arg' }],
+                        },
                       },
                     },
                   ],
@@ -106,11 +117,11 @@ export const spaceModal = {
             {
               type: '$if',
               props: {
-                condition: '$space.url',
+                condition: { $: 'space.url' },
                 then: {
                   type: '$if',
                   props: {
-                    condition: { $in: ['$space.url', { $store: 'datasetStore.joinedSpaceCids' }] },
+                    condition: { $: 'space.url in datasetStore.joinedSpaceCids' },
                     then: {
                       type: 'we-button',
                       props: {
@@ -119,7 +130,7 @@ export const spaceModal = {
                         height: '40px',
                         onClick: [
                           { $setLocal: 'selectedPin', value: null },
-                          { $action: 'spaceStore.navigateToSpace', args: ['$space.url'] },
+                          { $action: 'spaceStore.navigateToSpace', args: [{ $: 'space.url' }] },
                         ],
                       },
                     },
@@ -131,10 +142,10 @@ export const spaceModal = {
                         height: '40px',
                         onClick: {
                           $action: 'spaceStore.joinSpace',
-                          args: ['$space.url'],
+                          args: [{ $: 'space.url' }],
                           onSuccess: [
                             { $setLocal: 'selectedPin', value: null },
-                            { $action: 'spaceStore.navigateToSpace', args: ['$space.url'] },
+                            { $action: 'spaceStore.navigateToSpace', args: [{ $: 'space.url' }] },
                           ],
                         },
                       },

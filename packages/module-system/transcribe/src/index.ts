@@ -33,7 +33,30 @@
  * next to authored prose.
  *
  * The record is created on the first thing said, not on the button press, so a call nobody speaks in
- * leaves no trace. See `store.ts` for the convergence rule when several agents record at once.
+ * leaves no trace. See `store.ts` for the convergence rule when several agents record at once, and
+ * `docs/architecture/transcripts.md` for the shape as a contract — four things read it now, and
+ * nothing enforces it.
+ *
+ * ## Who decides that it runs
+ *
+ * Being in a call starts it. Not a press of a button, and not conditional on a peer having pressed
+ * one — those were treated as two questions for a while, and the split made the ordinary case the
+ * unreliable one: whether a meeting was recorded came down to whether whoever arrived first
+ * remembered. A transcript that exists four times out of five is worse than either default, since
+ * nothing separates "we chose not to" from "nobody pressed it".
+ *
+ * Declining is per microphone, which is why it is a button rather than a prompt. An agent who stops
+ * recording is not preventing a record of the call, only removing their own words from one being
+ * made anyway — which looks like a privacy decision, buys almost none, and used to be taken by
+ * accident by everyone who ignored a prompt. What it produced was a five-person meeting recorded
+ * from one microphone, which reads exactly like a transcript of the meeting. See the effect in
+ * `store.ts` for the guards, and `Panel.schema.ts` for the coverage readout that says how much of
+ * the call is actually in the record.
+ *
+ * A community that does not want its calls recorded says so through `settings`, and so does an agent
+ * who does not want their own recorded — see the declaration below. Declared rather than read off
+ * the space: nothing in this module can see a space's decisions, and giving it that view to answer
+ * one question would put the policy in the module and the space's schema in a module's reach.
  *
  * ## What it is not yet
  *
@@ -44,14 +67,33 @@
 import { defineModule, type ModuleStoreDeps } from '@we/module-shared';
 
 import { CALL_CONTROLS_ANCHOR, callControl } from './CallControl.schema';
-import { CALL_STATUS_ANCHOR, extractionStatus } from './ExtractionStatus.schema';
-import { panel } from './Panel.schema';
+import { extractionControl } from './ExtractionStatus.schema';
+import {
+  captureMeter,
+  captureStatus,
+  coverage,
+  extractionPanel,
+  extractionTargets,
+  panel,
+  pendingUtterance,
+  transcriptFeed,
+  transcriptLines,
+} from './Panel.schema';
 import { createTranscribeStore } from './store';
 
 export { CALL_CONTROLS_ANCHOR, callControl } from './CallControl.schema';
-export { CALL_STATUS_ANCHOR, extractionStatus } from './ExtractionStatus.schema';
-export { panel } from './Panel.schema';
-export { CALL_KIND, CALL_PREDICATE, createTranscribeStore, TRANSCRIBE_ACTIVITY, type TranscribeStatus } from './store';
+export { extractionActivity, extractionControl } from './ExtractionStatus.schema';
+export {
+  captureMeter,
+  captureStatus,
+  coverage,
+  extractionTargets,
+  panel,
+  pendingUtterance,
+  transcriptFeed,
+  transcriptLines,
+} from './Panel.schema';
+export { createTranscribeStore, TRANSCRIBE_ACTIVITY, type TranscribeStatus } from './store';
 export { WORKLET_NAME, WORKLET_SOURCE } from './workletSource';
 
 export const transcribeModule = defineModule({
@@ -68,19 +110,92 @@ export const transcribeModule = defineModule({
   // No `backends`: transcription goes through the port, so this runs on any backend that implements
   // one — and degrades to a stated reason on any that does not. No `frameworks`: fragments only.
 
+  /**
+   * Named fragments a template can place itself.
+   *
+   * `transcriptFeed` is the utterances and nothing else — no capture controls, no status notes. A
+   * template that wants a transcript beside a graph, or inside a panel of its own, places this
+   * rather than the whole panel, and gets the live record with speaker attribution for free.
+   *
+   * With its **subject** named, so a placer can point it at a call this module is not recording —
+   * an archive, or a board somebody opened from a link. The feed is written against this module's
+   * own state and stays valid on its own; the host substitutes the expression when somebody asks
+   * for another. Without that a part is welded to the state its module happens to hold, which is
+   * what made these uncomposable while the field sat here unread.
+   *
+   * ## The two that go with it
+   *
+   * The feed alone was not enough, and the reason is worth stating because it is not obvious from
+   * looking at it: a transcript shows what has been *written*, and writing an utterance takes the
+   * speaker stopping, the audio reaching the model and the block landing. For those seconds the
+   * feed is identical to a feed that has stopped working. The module's own panel never had that
+   * problem — the meter and the unsaved line sit above it — but a template placing only the feed
+   * inherited a several-second silence after every sentence and no way to tell it from a dead
+   * microphone.
+   *
+   * So `captureMeter` (is it hearing me) and `pendingUtterance` (here is what it heard, not saved
+   * yet) are named too. Neither takes a `subject`: both are about the microphone this agent is
+   * running right now, which belongs to the session rather than to any call record — a live meter
+   * pointed at last month's meeting would be measuring nothing.
+   *
+   * ## And the two that say why there is nothing
+   *
+   * `captureStatus` and `coverage` are here for a different reason from the first three, and it is
+   * not that an interface ought to show them. Whether to is a design decision, and an interface
+   * that judges its readers better served by less is entitled to make it. What it may not be is
+   * *unable* to: with these trapped inside the default panel, a template arranging the pieces
+   * itself could not have offered "no transcription model is installed" or "2 of 5 transcribing"
+   * even having decided it wanted to.
+   *
+   * That is the line this map draws. A module's presentation is a default rather than a monopoly,
+   * so what belongs here is everything an interface could reasonably want to place — and the
+   * default panel then becomes one arrangement of these rather than the only one.
+   *
+   * The capture controls are the exception that proves it: the record button, the close button and
+   * the header are the *panel's* chrome rather than pieces of what this module knows, and an
+   * interface supplying a body writes its own — the workshop's transcript header is a Record button
+   * and a Continue button that exist nowhere in here.
+   */
+  schemas: {
+    transcriptFeed: { node: transcriptFeed, subject: 'modules.transcribe.collectionId' },
+    transcriptLines: { node: transcriptLines, subject: 'modules.transcribe.collectionId' },
+    // Bare nodes rather than `{ node }`: the wrapper exists to name a subject, and these have none.
+    captureMeter,
+    captureStatus,
+    coverage,
+    extractionTargets,
+    pendingUtterance,
+  },
+
   slots: [
     // Into the call module's own bar. It declares the anchor; we never name the module.
     { anchor: CALL_CONTROLS_ANCHOR, node: callControl, order: 10 },
     /*
-      And under it, where a thing that takes minutes can report on itself.
+      And the way into extraction, beside it.
 
-      A separate anchor rather than a second entry in the bar, because the bar is a row of controls
-      and this is a sentence. Contributed by *this* module rather than by the host: extraction from
-      a call is what this module is for, and the host has no opinion about where a readout of it
-      belongs. A deployment without the call module gets no bar and loses nothing else.
+      This was a readout on a second anchor under the bar — a sentence rather than a control, there
+      because a pass takes minutes and extraction had nowhere of its own to report from. It has a
+      panel now, so what belongs in a row of controls is a control: it opens that panel, and it
+      spins while a pass is running, which is the whole of what the strip said in an object that
+      cannot grow. The call module's `call-status` anchor has nothing left to hold.
     */
-    { anchor: CALL_STATUS_ANCHOR, node: extractionStatus, order: 10 },
+    { anchor: CALL_CONTROLS_ANCHOR, node: extractionControl, order: 20 },
   ],
+
+  /*
+    Hold everything while this module is recording, whatever the space thinks.
+
+    The same argument as the call module's `holdsWhen`, and the same failure without it: a module's
+    chrome is gated on the space having enabled it, which is right for chrome *about* that space and
+    wrong for a module whose work outlives the space it started in. Recording follows the call, and
+    the call survives navigation — so walking into a space that has not enabled transcribe unmounted
+    the controls, the status and the panel while the microphone carried on. There was no way to stop
+    it except leaving the call, and no sign it was still running.
+
+    `enabled` is false the moment recording stops, which is what this has to satisfy: a key that
+    stayed true would make the chrome permanent.
+  */
+  holdsWhen: 'modules.transcribe.enabled',
 
   /**
    * A panel that makes room rather than covering. See `DockContribution`.
@@ -90,7 +205,72 @@ export const transcribeModule = defineModule({
    * outside a notes panel sharing the edge, which is only a tiebreak: the host stacks whatever is
    * there rather than letting two panels land in the same box.
    */
-  docks: [{ edge: 'dockEdge', size: 'dockSize', float: 'dockFloat', close: 'closePanel', node: panel, order: 90 }],
+  /**
+   * Two panels, because they are two things.
+   *
+   * A transcript follows this agent's microphone and is read while somebody talks; extraction
+   * follows a pass that may be a peer's, takes minutes, spends tokens and is read afterwards. In one
+   * column that was a transcript, a meter, a coverage line, four status notes, an extract control, a
+   * chip row and a proposal list — two surfaces wearing one coat, and the reason nobody could find
+   * the half they wanted.
+   *
+   * Named, because a placement is remembered against a dock's id: unnamed they are `transcribe:0`
+   * and `transcribe:1`, and inserting a third at the top would renumber both and throw away wherever
+   * anybody had dragged them. The names are also what a template's `meta.panels` entry says to
+   * supply one body rather than the other.
+   *
+   * Both open on the right, so the host stacks them; an interface that wants them apart moves one
+   * and the host remembers.
+   */
+  docks: [
+    {
+      name: 'transcript',
+      open: 'openPanel',
+      edge: 'dockEdge',
+      size: 'dockSize',
+      float: 'dockFloat',
+      close: 'closePanel',
+      node: panel,
+      order: 90,
+    },
+    {
+      name: 'extraction',
+      open: 'openExtractionPanel',
+      edge: 'extractionDockEdge',
+      size: 'extractionDockSize',
+      float: 'extractionDockFloat',
+      close: 'closeExtractionPanel',
+      node: extractionPanel,
+      order: 91,
+    },
+  ],
+  /**
+   * What a space, and an agent, may decide about recording.
+   *
+   * One setting, and every level may answer it — which is what `restrict` is for. Recording is on
+   * by default because that is what makes a transcript trustworthy: a record that exists four
+   * meetings out of five is worse than either default, since nothing separates "we chose not to"
+   * from "nobody pressed the button". From there a community can switch it off for everyone, and an
+   * agent can switch it off for themselves everywhere or in one space — and none of them can force
+   * it back **on** against somebody else's refusal, which is the only direction a microphone
+   * decision may travel.
+   *
+   * Declared rather than read off the space directly: this module has no view of a space's
+   * decisions, and giving it one to answer a single question would put the policy in the module and
+   * the space's schema in a module's reach. What comes back through `deps.settings` is one boolean.
+   */
+  settings: [
+    {
+      key: 'recordCalls',
+      label: 'Record calls automatically',
+      description:
+        'Transcription starts when a call does, without anyone pressing record. Leaving a recording, or stopping it by hand, still only affects your own microphone for that call.',
+      type: 'boolean',
+      default: true,
+      levels: ['deployment', 'agent', 'space', 'agent-in-space'],
+      resolution: 'restrict',
+    },
+  ],
 
   /**
    * The rail opens the transcript; the call bar records into it.
@@ -99,12 +279,32 @@ export const transcribeModule = defineModule({
    * offering nothing — now it opens a panel that can explain why there is nothing to record, which is
    * strictly more use than an absent button. Recording moved to where the microphone already is.
    */
-  launcher: {
-    icon: 'waveform',
-    label: 'Transcript',
-    action: 'togglePanel',
-    activeWhen: 'open',
-  },
+  /**
+   * Two ways in, one per panel.
+   *
+   * `launcher` was singular on the reasonable reading that a module is one capability and so has one
+   * entry point. Two surfaces with different lifetimes break it: a single rail button cannot open
+   * both, and choosing which one it opens makes the other reachable only by accident.
+   *
+   * The first keeps no `key`, so its rail entry is the plain module id it has always been — nothing
+   * about the transcript button changes. The second names itself, and is addressed as
+   * `transcribe:extraction`.
+   */
+  launchers: [
+    {
+      icon: 'waveform',
+      label: 'Transcript',
+      action: 'togglePanel',
+      activeWhen: 'open',
+    },
+    {
+      key: 'extraction',
+      icon: 'sparkle',
+      label: 'Extraction',
+      action: 'toggleExtractionPanel',
+      activeWhen: 'extractionOpen',
+    },
+  ],
 
   createStore: (deps: ModuleStoreDeps) => createTranscribeStore(deps),
 });

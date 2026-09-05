@@ -1,8 +1,10 @@
 export type * from './AvatarStack.types';
 
+import { tokenVar } from '@we/design-utils';
+import { avatarToneRing } from '@we/tokens';
 import { createMemo, For, Show } from 'solid-js';
 
-import type { AvatarInfo, AvatarStackProps, AvatarTone } from './AvatarStack.types';
+import type { AvatarInfo, AvatarStackProps } from './AvatarStack.types';
 
 /**
  * There is no default ring. A ring reads as a deliberate mark — selection, presence, a tone — so a
@@ -15,22 +17,16 @@ import type { AvatarInfo, AvatarStackProps, AvatarTone } from './AvatarStack.typ
  * make against the surface they know they are on: pass `ring`, or set `overlap: 0`.
  */
 /*
-  A palette, not the UI's semantics — which is why these stay scale positions.
+  The tone → ring map used to live here, as five hand-written box-shadows. It is the token layer's
+  now, because it was never only this component's: the rail draws the same kind of ring around the
+  same kind of face, and the two spellings had already diverged — scale positions here, role names
+  there — so the same word meant two colours depending on which grammar you wrote it in.
 
-  `tone` labels an avatar by a category the caller assigns (available, away, busy, …), and a theme
-  pinning `dangerText` means "make my error text this", not "recolour whoever is marked busy". They
-  still follow the hue and polarity parameters, so a retinted theme carries them along.
+  They are fills now rather than the `-500` steps they started as — why, and why each tone carries
+  a label as well, is argued at `AvatarTone`.
 */
-const TONE_RING: Record<AvatarTone, string> = {
-  success: '0 0 0 2px var(--we-color-success-500)',
-  warning: '0 0 0 2px var(--we-color-warning-500)',
-  danger: '0 0 0 2px var(--we-color-danger-500)',
-  primary: '0 0 0 2px var(--we-color-primary-500)',
-  neutral: '0 0 0 2px var(--we-color-neutral-500)',
-};
-
 function ringFor(avatar: AvatarInfo, fallback?: string): string | undefined {
-  return avatar.tone ? TONE_RING[avatar.tone] : fallback;
+  return avatar.tone ? avatarToneRing(avatar.tone) : fallback;
 }
 
 /**
@@ -119,7 +115,7 @@ export function AvatarStack(props: AvatarStackProps) {
             // The avatar group, not a literal circle: this chip sits in the row *as* one of the
             // faces, so a theme that squares them off has to square this too or the row ends in an
             // odd one out. Safe as a percentage for the same reason the avatars are — it is square.
-            'border-radius': 'var(--we-theme-avatar-radius, 50%)',
+            'border-radius': tokenVar('radius', 'avatar'),
             background: 'var(--we-role-control-surface)',
             color: 'var(--we-role-text)',
             'font-size': 'var(--we-font-size-100)',

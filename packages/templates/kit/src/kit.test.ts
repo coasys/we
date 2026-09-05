@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { buildValidationContext, type SchemaNode, validateSemantic } from '@we/schema-shared';
@@ -10,10 +10,12 @@ import {
   attributeRow,
   cardList,
   cardShell,
+  composerModal,
   confirmModal,
   emptyNote,
   emptyState,
   field,
+  formModal,
   gatePrompt,
   marketplaceList,
   pageShell,
@@ -22,6 +24,7 @@ import {
   railGroup,
   railItem,
   railShell,
+  recordCard,
   sectionCard,
   statChip,
 } from './index.ts';
@@ -61,28 +64,77 @@ const portable: Record<string, SchemaNode> = {
     value: 'Berlin',
     control: { type: 'we-switch' },
   }),
-  statChip: statChip({ icon: 'chat-dots', count: '$channel.$count', label: 'Conversations' }),
+  statChip: statChip({ icon: 'chat-dots', count: { $: 'channel.$count' }, label: 'Conversations' }),
+  recordCard: recordCard({ label: { $: 'item.label' }, icon: 'bookmark-simple' }),
+  'recordCard (thumbnail)': recordCard({
+    label: { $: 'item.label' },
+    icon: 'image',
+    thumbnail: { $: 'item.thumbnail' },
+    byline: { hash: { $: 'item.sourceAuthor' } },
+    source: { $: 'item.sourceName' },
+    date: { $: 'item.gatheredAt' },
+  }),
+  'recordCard (content)': recordCard({
+    label: { $: 'post.textContent' },
+    icon: 'newspaper',
+    content: { type: 'BlockRenderer', props: { editorState: { $: 'post.editorState' } } },
+    ghost: true,
+  }),
   'statChip (value)': statChip({ icon: 'lock-simple', label: 'Access', value: 'Shared' }),
   cardShell: cardShell({ header: [{ type: 'we-text', children: ['h'] }], body: [] }),
   'cardList (query)': cardList({
     query: { entity: 'SignalType', subscribe: true },
     as: 'sig',
     empty: emptyNote('none'),
-    children: [{ type: 'we-text', children: ['$sig.name'] }],
+    children: [{ type: 'we-text', children: [{ $: 'sig.name' }] }],
   }),
   'cardList (items)': cardList({
-    items: { $local: 'rows' },
+    items: { $: 'local.rows' },
     as: 'row',
     empty: emptyNote('none'),
-    children: [{ type: 'we-text', children: ['$row.name'] }],
+    children: [{ type: 'we-text', children: [{ $: 'row.name' }] }],
   }),
   confirmModal: confirmModal({
-    openLocal: 'confirmOpen',
+    open: { $: 'local.confirmOpen' },
+    close: { $setLocal: 'confirmOpen', value: false },
     title: 'Delete?',
     body: 'Gone forever.',
     confirmLabel: 'Delete',
-    confirm: { $action: 'spaceStore.deleteCollection', args: ['$post.id'] },
+    confirm: { $action: 'spaceStore.deleteCollection', args: [{ $: 'post.id' }] },
     busyLocal: 'deleting',
+  }),
+  composerModal: composerModal({
+    openLocal: 'composeOpen',
+    title: 'New post',
+    saveAction: { $action: 'spaceStore.createPost', args: [{ $: 'arg' }] },
+  }),
+  'composerModal (unguarded)': composerModal({
+    openLocal: 'composeOpen',
+    title: 'New post',
+    guardDraft: false,
+    saveAction: { $action: 'spaceStore.createPost', args: [{ $: 'arg' }] },
+  }),
+  'formModal (guarded)': formModal({
+    open: { $: 'local.formOpen' },
+    close: { $setLocal: 'formOpen', value: false },
+    title: 'New thing',
+    localState: { thingName: { type: 'string', initial: '' } },
+    children: [field({ name: 'thingName', label: 'Name' })],
+    discardWhen: { $: 'local.thingName' },
+    submit: { $action: 'record.create', args: ['CollectionBlock', { title: { $: 'local.thingName' } }] },
+  }),
+  formModal: formModal({
+    open: { $: 'local.formOpen' },
+    close: { $setLocal: 'formOpen', value: false },
+    title: 'New thing',
+    localState: {
+      thingName: { type: 'string', initial: '' },
+      creating: { type: 'boolean', initial: false },
+    },
+    children: [field({ name: 'thingName', label: 'Name' })],
+    disabled: { $: '!local.thingName' },
+    busyLocal: 'creating',
+    submit: { $action: 'record.create', args: ['CollectionBlock', { title: { $: 'local.thingName' } }] },
   }),
   field: field({ name: 'name', label: 'Name', validated: true, touchOnBlur: true }),
   'field (select)': field({ name: 'mode', control: 'select', props: { options: [] } }),
@@ -98,10 +150,14 @@ const portable: Record<string, SchemaNode> = {
         label: 'Spaces',
         badge: '3',
         reorderable: true,
-        onReorder: { $action: 'datasetStore.reorderDatasets', args: ['$arg.detail'] },
+        onReorder: { $action: 'datasetStore.reorderDatasets', args: [{ $: 'arg.detail' }] },
         action: { icon: 'plus', label: 'Create a space', onClick: { $action: 'shellStore.setCreateSpaceOpen' } },
         children: [
-          railItem({ id: '$space.uuid', avatar: { src: '$space.avatar', name: '$space.name' }, label: '$space.name' }),
+          railItem({
+            id: { $: 'space.uuid' },
+            avatar: { src: { $: 'space.avatar' }, name: { $: 'space.name' } },
+            label: { $: 'space.name' },
+          }),
         ],
       }),
     ],
@@ -114,19 +170,19 @@ const portable: Record<string, SchemaNode> = {
     `@we/schema-kit` where a module can reach it.
   */
   peopleTooltip: peopleTooltip({
-    items: '$call.participants',
-    image: '$person.avatar',
-    hash: '$person.did',
-    name: '$person.name',
+    items: { $: 'call.participants' },
+    image: { $: 'person.avatar' },
+    hash: { $: 'person.did' },
+    name: { $: 'person.name' },
     children: [{ type: 'we-text', children: ['7'] }],
   }),
 };
 
 const weDomain: Record<string, SchemaNode> = {
-  agentByline: agentByline({ did: '$post.author', timestamp: '$post.createdAt' }),
-  'agentByline (stacked)': agentByline({ did: '$u.author', as: 'speaker', stacked: true }),
-  peopleRow: peopleRow({ items: { $store: 'spaceStore.members' }, noun: 'Member' }),
-  'peopleRow (dids)': peopleRow({ items: '$call.participants', dids: true }),
+  agentByline: agentByline({ did: { $: 'post.author' }, timestamp: { $: 'post.createdAt' } }),
+  'agentByline (stacked)': agentByline({ did: { $: 'u.author' }, as: 'speaker', stacked: true }),
+  peopleRow: peopleRow({ items: { $: 'spaceStore.members' }, noun: 'Member' }),
+  'peopleRow (dids)': peopleRow({ items: { $: 'call.participants' }, dids: true }),
   adminSection: adminSection({ title: 'Models', icon: 'sparkle', refresh: 'runtimeStore.loadAiModels', children: [] }),
   marketplaceList: marketplaceList({
     entity: 'Template',
@@ -155,56 +211,36 @@ function walk(value: unknown, visit: (node: Record<string, unknown>) => void): v
 }
 
 /**
- * The ambient scope `lists/cards.ts` documents as its contract: `displayMode` belongs to the page.
- * Declaring their own `$localState` is what switches the validator's scope checking on for these
- * two fragments, so validating them bare would flag the very reads the contract permits — this
- * shim is that contract made explicit, the same declaration the palette's insert-with-fix will
- * one day add for real.
+ * The ambient scope these fragments document as their contract: `displayMode` belongs to the page
+ * (`lists/cards.ts`), and an overlay's open flag belongs to whatever holds the button that sets it,
+ * which is by definition not the overlay. Declaring their own `$localState` is what switches the
+ * validator's scope checking on for these fragments, so validating them bare would flag the very
+ * reads the contract permits — this shim is that contract made explicit, the same declaration the
+ * palette's insert-with-fix will one day add for real.
  */
 const withAmbientScope = (node: SchemaNode): SchemaNode => ({
   type: 'Column',
-  $localState: { displayMode: { type: 'string', initial: 'expanded' } },
+  $localState: {
+    displayMode: { type: 'string', initial: 'expanded' },
+    formOpen: { type: 'boolean', initial: false },
+    composeOpen: { type: 'boolean', initial: false },
+  },
   children: [node],
 });
 
 describe('every expansion is a valid schema fragment', () => {
-  const needsAmbient = new Set(['cardShell', 'cardList (query)']);
+  const needsAmbient = new Set([
+    'cardShell',
+    'cardList (query)',
+    'formModal',
+    'formModal (guarded)',
+    'composerModal',
+    'composerModal (unguarded)',
+  ]);
   for (const [name, node] of Object.entries({ ...portable, ...weDomain })) {
     it(name, () => {
       const result = validateSemantic(needsAmbient.has(name) ? withAmbientScope(node) : node, context);
       expect(result.errors.filter((e) => e.severity === 'error')).toEqual([]);
-    });
-  }
-});
-
-/**
- * The tier is a package boundary now, so it is checked against the package rather than the fixtures.
- *
- * The walk below tests *expansions*, which only covers fragments a fixture exists for — and when the
- * portable tier moved to `@we/schema-kit`, four collection fragments went with it that filter on
- * `spaceStore.mutedDids`, because none of them had one. They were store-namers sitting in the package
- * whose whole claim is that it names none, and nothing failed.
- *
- * Reading the source catches what no fixture set can promise to. Comments are stripped first: half
- * these files discuss `$store` in prose, and a test that cannot tell an explanation from a dependency
- * would be answered by rewording rather than by moving the fragment.
- */
-describe('@we/schema-kit names no store, as a package', () => {
-  const SRC = resolve(import.meta.dirname, '../../../schema-system/kit/src');
-
-  const sources = (dir: string): string[] =>
-    readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-      const path = resolve(dir, entry.name);
-      return entry.isDirectory() ? sources(path) : entry.name.endsWith('.ts') ? [path] : [];
-    });
-
-  const withoutComments = (code: string) => code.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
-
-  for (const file of sources(SRC)) {
-    it(file.slice(SRC.length + 1), () => {
-      const code = withoutComments(readFileSync(file, 'utf-8'));
-      expect(code).not.toMatch(/\$store\s*:/);
-      expect(code).not.toMatch(/'\$agent'/);
     });
   }
 });
@@ -229,16 +265,17 @@ describe('the portable tier names no store and no agent machinery', () => {
 });
 
 describe('contracts call sites depend on', () => {
-  it('peopleRow in dids mode seeds avatar hashes with a token, never the literal $item', () => {
-    // THE bug this branch was born from: a bare '$item' in a $map select is a literal, so every
-    // generated face came out identical. The fragment must emit a token object.
-    let select: Record<string, unknown> | undefined;
+  it('peopleRow in dids mode seeds avatar hashes from the did itself, never a literal', () => {
+    // THE bug this branch was born from: a literal where the hash belongs gives every generated face
+    // the same colour. The projection must read the comprehension's own variable.
+    let avatars: string | undefined;
     walk(weDomain['peopleRow (dids)'], (n) => {
-      if ('$map' in n) select = (n.$map as { select: Record<string, unknown> }).select;
+      const value = (n.props as { avatars?: { $?: string } } | undefined)?.avatars;
+      if (n.type === 'AvatarStack' && value?.$) avatars = value.$;
     });
-    expect(select).toBeDefined();
-    expect(select!.hash).not.toBe('$item');
-    expect(select!.hash).toEqual({ $concat: ['$item'] });
+    expect(avatars).toBeDefined();
+    expect(avatars).not.toContain("'$item'");
+    expect(avatars).toMatch(/hash: [a-zA-Z]+\b/);
   });
 
   it('field wires the event each control actually emits', () => {
@@ -262,15 +299,87 @@ describe('contracts call sites depend on', () => {
     expect(closes).toBeGreaterThanOrEqual(3);
   });
 
+  it('a guarded form asks on every exit, and only when there is something to lose', () => {
+    const node = portable['formModal (guarded)'];
+    const modal = (node.props as { then: SchemaNode }).then;
+
+    // The modal's own close and the Cancel button are the same guarded expression — two exits that
+    // disagreed about whether the draft mattered is the bug this shape exists to make impossible.
+    const guarded = { $if: { condition: { $: 'local.thingName' }, then: expect.anything(), else: expect.anything() } };
+    expect((modal.props as Record<string, unknown>).close).toMatchObject(guarded);
+    let cancel: unknown;
+    walk(modal, (n) => {
+      if (Array.isArray(n.children) && n.children[0] === 'Cancel') cancel = (n.props as { onClick: unknown }).onClick;
+    });
+    expect(cancel).toMatchObject(guarded);
+
+    // The flag lives on the modal, so it is destroyed with the draft it guards rather than
+    // surviving to greet the next open.
+    expect(modal.$localState).toHaveProperty('confirmDiscardOpen');
+
+    // And Discard runs the *unguarded* close — the one the guard intercepted — rather than looping
+    // back through the condition that raised the question.
+    let discard: unknown;
+    walk(modal, (n) => {
+      if (Array.isArray(n.children) && n.children[0] === 'Discard') discard = (n.props as { onClick: unknown }).onClick;
+    });
+    expect(discard).toEqual([
+      { $setLocal: 'formOpen', value: false },
+      { $setLocal: 'confirmDiscardOpen', value: false },
+    ]);
+  });
+
+  /*
+    The bug this exists for: `composerModal` took the guard's `close` and its `$localState` and never
+    mounted the confirmation. So the backdrop raised a flag nothing read, and "New post" could not be
+    closed at all once anything had been typed — the worst shape a modal can have, reached by
+    forgetting one line. Asserted over every fixture rather than at the one call site, because the
+    three pieces `discardGuard` hands back go in three different places and any of them can be missed.
+  */
+  it('every fragment that raises the discard flag also mounts something that reads it', () => {
+    for (const [name, node] of Object.entries({ ...portable, ...weDomain })) {
+      let writes = 0;
+      let reads = 0;
+      walk(node, (n) => {
+        if (n.$setLocal === 'confirmDiscardOpen') writes += 1;
+        if (typeof n.$ === 'string' && n.$.includes('local.confirmDiscardOpen')) reads += 1;
+      });
+      if (writes === 0 && reads === 0) continue;
+      expect(writes, `${name} reads the discard flag but never raises it`).toBeGreaterThan(0);
+      expect(reads, `${name} raises the discard flag but nothing reads it`).toBeGreaterThan(0);
+    }
+  });
+
+  it('the composer guards its draft by default, and lets a caller turn it off', () => {
+    const flagOf = (node: SchemaNode) => {
+      const modal = (node.props as { then: SchemaNode }).then;
+      return (modal.$localState as Record<string, unknown> | undefined)?.confirmDiscardOpen;
+    };
+    expect(flagOf(portable.composerModal)).toBeDefined();
+    expect(flagOf(portable['composerModal (unguarded)'])).toBeUndefined();
+
+    // Unguarded, the backdrop closes outright rather than through a condition.
+    const bare = (portable['composerModal (unguarded)'].props as { then: SchemaNode }).then;
+    expect((bare.props as Record<string, unknown>).close).toEqual({ $setLocal: 'composeOpen', value: false });
+  });
+
+  it('an unguarded form closes outright — the guard is opt-in, not the default', () => {
+    const modal = (portable.formModal.props as { then: SchemaNode }).then;
+    expect((modal.props as Record<string, unknown>).close).toEqual({ $setLocal: 'formOpen', value: false });
+    expect(modal.$localState).not.toHaveProperty('confirmDiscardOpen');
+  });
+
   it('cardList in query mode hoists under <as>Rows, and both branches read the same items', () => {
     const node = portable['cardList (query)'];
     expect(node.$queries).toHaveProperty('sigRows');
     const readers: unknown[] = [];
     walk(node, (n) => {
-      if ('$count' in n) readers.push((n.$count as { items: unknown }).items);
+      if (n.type === '$if') readers.push((n.props as { condition: unknown }).condition);
       if (n.type === '$each') readers.push((n.props as { items: unknown }).items);
     });
-    expect(readers).toEqual([{ $local: 'sigRows' }, { $local: 'sigRows' }]);
+    expect(readers).toContainEqual({ $: 'count(local.sigRows)' });
+    expect(readers).toContainEqual({ $: 'local.sigRows' });
+    for (const reader of readers) expect((reader as { $: string }).$).toContain('local.sigRows');
   });
 
   it('agentByline uses one interpolation for the profile in both arrangements', () => {
@@ -280,8 +389,8 @@ describe('contracts call sites depend on', () => {
       walk(node, (n) => {
         if (n.type === 'we-avatar') avatarProps = n.props as Record<string, unknown>;
       });
-      expect(avatarProps.image).toBe(`$${as}.avatar`);
-      expect(avatarProps.hash).toBe(`$${as}.did`);
+      expect(avatarProps.image).toEqual({ $: `${as}.avatar` });
+      expect(avatarProps.hash).toEqual({ $: `${as}.did` });
     }
   });
 
@@ -324,5 +433,146 @@ describe('contracts call sites depend on', () => {
   it('emptyState mounts bare when delay is 0, wrapped in $animate otherwise', () => {
     expect(portable['emptyState (no delay)'].type).toBe('Column');
     expect(portable.emptyState.type).toBe('$animate');
+  });
+});
+
+describe('handler arrays are never nested', () => {
+  /*
+    The resolver runs a handler array step by step and does not flatten: an array inside an array
+    is a step that does nothing. `composerModal` with `onClose` hands `discardGuard` a multi-step
+    close, and `discardGuard` hands that to `confirmModal` as its confirm — which once wrapped it
+    in another array, so discarding an edited post silently did nothing while a fresh post (a
+    single-token close) discarded fine.
+  */
+  function nestedHandlerArrays(value: unknown, path: string[] = []): string[] {
+    if (Array.isArray(value)) {
+      const nested = value.some((item) => Array.isArray(item));
+      return [
+        ...(nested ? [path.join('.')] : []),
+        ...value.flatMap((item, i) => nestedHandlerArrays(item, [...path, String(i)])),
+      ];
+    }
+    if (value && typeof value === 'object') {
+      return Object.entries(value as Record<string, unknown>).flatMap(([k, v]) => nestedHandlerArrays(v, [...path, k]));
+    }
+    return [];
+  }
+
+  it('a composer whose close has several steps discards through all of them', () => {
+    const node = composerModal({
+      openLocal: 'editOpen',
+      title: 'Edit',
+      saveAction: { $action: 'spaceStore.updatePost', args: ['x', { $: 'arg' }] },
+      onClose: [{ $action: 'presenceStore.clearActivity', args: ['edit', 'x'] }],
+    });
+    expect(nestedHandlerArrays(node)).toEqual([]);
+  });
+
+  it('a confirm given as a handler array is spliced into the button, not wrapped', () => {
+    const node = confirmModal({
+      open: { $: 'local.flag' },
+      close: { $setLocal: 'flag', value: false },
+      title: 't',
+      body: 'b',
+      confirmLabel: 'Go',
+      confirm: [{ $setLocal: 'a', value: 1 }, { $action: 'x.y' }],
+    });
+    expect(nestedHandlerArrays(node)).toEqual([]);
+  });
+});
+
+/**
+ * The record tile — the square that follows the pointer during a drag, and the one a grid of
+ * gathered things is made of.
+ *
+ * One fragment for both, so what you saw yourself carrying is what you find afterwards. What is
+ * worth pinning is the order it draws in: each source hands it a different one of the three, and
+ * getting the precedence wrong shows an icon over a picture that was right there.
+ */
+describe('recordCard draws what the source had', () => {
+  const types = (node: SchemaNode): string[] => {
+    const found: string[] = [];
+    walk(node, (n) => {
+      if (typeof n.type === 'string') found.push(n.type);
+    });
+    return found;
+  };
+
+  it('shows the picture where there is one, and the fallback where there is not', () => {
+    // `thumbnail` is an expression, so which applies is only knowable at render time — hence a
+    // branch in the output rather than a decision taken here.
+    const node = recordCard({ icon: 'image', thumbnail: { $: 'item.thumbnail' } });
+
+    expect(types(node)).toContain('$if');
+    expect(types(node)).toContain('we-image');
+    expect(types(node)).toContain('we-icon');
+  });
+
+  it('draws the composition itself when given one, in place of the icon', () => {
+    const node = recordCard({
+      icon: 'newspaper',
+      content: { type: 'BlockRenderer', props: { editorState: { $: 'post.editorState' } } },
+    });
+
+    expect(types(node)).toContain('BlockRenderer');
+    // No branch: a node either exists or it does not, so this choice is made at authoring time.
+    expect(types(node)).not.toContain('$if');
+  });
+
+  it('scales the composition down rather than laying it out small', () => {
+    // Rendered into a 100px box, every paragraph re-flows into a column one word wide. Scaling keeps
+    // the shape of the document, which is the only thing legible at this size.
+    const node = recordCard({
+      size: '100px',
+      contentWidth: '320px',
+      content: { type: 'BlockRenderer', props: { editorState: 'x' } },
+    });
+
+    const scaled: Record<string, unknown>[] = [];
+    walk(node, (n) => {
+      const props = n.props as Record<string, unknown> | undefined;
+      if (props && typeof props.transform === 'string') scaled.push(props);
+    });
+
+    expect(scaled).toHaveLength(1);
+    expect(scaled[0].transform).toBe('scale(0.3125)');
+    expect(scaled[0].width).toBe('320px');
+  });
+
+  it('leaves the scale to CSS when the sizes are not plain pixels', () => {
+    const node = recordCard({ size: 'var(--tile)', content: { type: 'we-text', children: ['x'] } });
+
+    const found: string[] = [];
+    walk(node, (n) => {
+      const props = n.props as Record<string, unknown> | undefined;
+      if (props && typeof props.transform === 'string') found.push(props.transform);
+    });
+
+    expect(found).toEqual(['scale(calc(var(--tile) / 320px))']);
+  });
+
+  it('draws an identicon from a DID alone, rather than a blank disc', () => {
+    // A Pocket row keeps the author's DID and cannot resolve it — the panel names no store. Two
+    // unresolved people must not look like the same person.
+    const node = recordCard({ label: 'A post', byline: { hash: { $: 'item.sourceAuthor' } } });
+
+    expect(types(node)).toContain('we-avatar');
+  });
+
+  it('draws no caption at all when there is nothing to say', () => {
+    const node = recordCard({ icon: 'folder' });
+
+    expect(types(node)).not.toContain('we-text');
+    expect(types(node)).not.toContain('we-timestamp');
+  });
+
+  it('cannot take the pointer when it is a ghost', () => {
+    // It sits under the pointer for the whole gesture; a tile that accepted clicks would swallow
+    // the drop.
+    const ghost = recordCard({ label: 'A post', ghost: true }) as { props: Record<string, unknown> };
+    const tile = recordCard({ label: 'A post' }) as { props: Record<string, unknown> };
+
+    expect(ghost.props.pointerEvents).toBe('none');
+    expect(tile.props.pointerEvents).toBeUndefined();
   });
 });

@@ -33,12 +33,17 @@ import {
   consentPrompt,
   consentSecret,
   createSpaceModalMount,
+  destructivePrompt,
+  installPrompt,
+  namePrompt,
   removeAccountModal,
   sidebar,
   templateEditor,
 } from '@we/template-shell';
 
+import { byOrderThenId, createRegistry } from './createRegistry';
 import { registerEditorDocks } from './editorDocks';
+import { registerShellDocks } from './shellDocks';
 
 export interface SlotEntry extends SlotContribution {
   /** Unique. `core:*` for host chrome, otherwise the contributing module's id. */
@@ -55,7 +60,19 @@ const ANCHOR_ORDER: CoreSlotAnchor[] = ['overlay', 'dock-left', 'dock-right', 'd
 
 const isCoreAnchor = (anchor: SlotAnchor): anchor is CoreSlotAnchor => (ANCHOR_ORDER as string[]).includes(anchor);
 
-const entries = new Map<string, SlotEntry>();
+/**
+ * Registration is observable, because chrome no longer all arrives before the first render.
+ *
+ * Modules register at boot, so `nodes()` read once was enough for years. A template declaring panels
+ * does not: its frames are registered reactively when a template says it has them, which is after
+ * the shell has been built. Without a channel to say so they were registered into a list nobody read
+ * again — the dock resolved geometry for a panel that never mounted, which looks exactly like the
+ * panel being broken rather than absent.
+ *
+ * The channel is `createRegistry`'s, shared with every other registry; it was a second hand-rolled
+ * copy of `dockRegistry`'s before that existed.
+ */
+const registry = createRegistry<SlotEntry>();
 
 /**
  * Splice module-declared anchors into a node tree.
@@ -87,7 +104,7 @@ function resolveAnchors(node: SchemaNode): SchemaNode | SchemaNode[] {
   return { ...node, children: nextChildren, props: nextProps, slots: nextSlots } as SchemaNode;
 }
 
-/** Anything node-shaped. Token objects (`{ $store: … }`) have no `type`, so they fall through here. */
+/** Anything node-shaped. Token objects (`{ $: … }`) have no `type`, so they fall through here. */
 const isNode = (value: unknown): value is SchemaNode =>
   !!value && typeof value === 'object' && typeof (value as { type?: unknown }).type === 'string';
 
@@ -156,45 +173,42 @@ function resolveValue(value: unknown): unknown {
   return value;
 }
 
+/** Subscribe to contribution changes. Returns an unsubscribe. */
+export const onSlotRegistryChanged = registry.subscribe;
+
 export const slotRegistry = {
   /** Add a contribution. Replaces any entry with the same id, so re-registration is idempotent. */
-  register(entry: SlotEntry): void {
-    entries.set(entry.id, entry);
-  },
+  register: registry.register,
 
   /**
    * Swap the node of an existing entry, keeping its anchor and order. How a seed white-labels host
    * chrome — the mechanism `initializeIntegrations` already used for `bootScreen`.
    */
   replace(id: string, node: SchemaNode): void {
-    const existing = entries.get(id);
-    if (existing) entries.set(id, { ...existing, node });
+    const existing = registry.get(id);
+    if (!existing) return;
+    registry.register({ ...existing, node });
   },
 
   /** Remove a contribution — a module being disabled. */
   remove(id: string): void {
-    entries.delete(id);
+    registry.remove(id);
   },
 
-  get(id: string): SlotEntry | undefined {
-    return entries.get(id);
-  },
+  get: registry.get,
 
   /**
-   * Every contribution, in render order: by anchor, then by declared `order`, then by **id**.
-   *
-   * The id tiebreak is not cosmetic. Entries come out of a `Map`, so equal-order contributions would
-   * otherwise follow registration order — and chrome would silently rearrange depending on which
-   * module happened to load first.
+   * Every contribution, in render order: by anchor, then by declared `order`, then by id — the
+   * registry's own ordering, with the anchor's rank in front of it.
    */
   ordered(): SlotEntry[] {
-    return [...entries.values()]
+    return registry
+      .ordered()
       .filter((entry) => isCoreAnchor(entry.anchor))
       .sort(
         (a, b) =>
           ANCHOR_ORDER.indexOf(a.anchor as CoreSlotAnchor) - ANCHOR_ORDER.indexOf(b.anchor as CoreSlotAnchor) ||
-          (a.order ?? 0) - (b.order ?? 0) ||
-          a.id.localeCompare(b.id),
+          byOrderThenId(a, b),
       );
   },
 
@@ -206,9 +220,9 @@ export const slotRegistry = {
    * loose, instead of inside the bar it was meant for.
    */
   nodesFor(anchor: string): SchemaNode[] {
-    return [...entries.values()]
+    return registry
+      .ordered()
       .filter((entry) => entry.anchor === anchor)
-      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.id.localeCompare(b.id))
       .map((entry) => entry.node);
   },
 
@@ -218,13 +232,11 @@ export const slotRegistry = {
    * Distinct from {@link ordered}, which is the shell's top level and therefore core anchors only.
    * Anything that needs to see *all* contributions — clearing the registry, auditing it — wants this.
    */
-  all(): SlotEntry[] {
-    return [...entries.values()];
-  },
+  all: registry.all,
 
   /** Every anchor something has been contributed to, for reporting one nobody provides. */
   contributedAnchors(): string[] {
-    return [...new Set([...entries.values()].map((entry) => entry.anchor))].filter((a) => !isCoreAnchor(a));
+    return [...new Set(registry.all().map((entry) => entry.anchor))].filter((a) => !isCoreAnchor(a));
   },
 
   /** Just the nodes, ready to compose into the shell schema, with `$slot` markers filled in. */
@@ -267,10 +279,34 @@ export function registerCoreSlots(): void {
   // Chrome for the same reason, plus one of its own: it is opened from two places — the settings
   // page and the sidebar's spaces group — so it cannot belong to either. See `shellStore.createSpaceOpen`.
   slotRegistry.register({ id: 'core:createSpace', anchor: 'overlay', node: createSpaceModalMount, order: 4 });
+  // Last of the overlays, and deliberately: it is the only one raised by the app rather than by
+  // something the user just did, so anything they *did* ask for belongs in front of it. Its own gate
+  // (`profileStore.needsName`) is false until the app is ready and the profile fetch has answered,
+  // so it cannot appear over the boot screen either. See NamePrompt.schema.ts.
+  slotRegistry.register({ id: 'core:namePrompt', anchor: 'overlay', node: namePrompt, order: 5 });
+  /*
+    What a template you are about to install will be able to do.
+
+    Chrome, and it has to be: the marketplace page it is raised from is itself a template, and a
+    dialog drawn by the thing it is vouching for is worth nothing. Ordered above the name prompt
+    because the user pressed a button to get here and is waiting on an answer, where the name
+    prompt merely became answerable. See InstallPrompt.schema.ts.
+  */
+  slotRegistry.register({ id: 'core:installPrompt', anchor: 'overlay', node: installPrompt, order: 6 });
+  /*
+    The host's own confirmation in front of anything a space template deletes.
+
+    Last, so it is in front of everything: it is the only overlay with an action *waiting* on it —
+    a promise the tier boundary is holding open — and a dialog a person cannot see is a delete that
+    never resolves. See DestructivePrompt.schema.ts.
+  */
+  slotRegistry.register({ id: 'core:destructivePrompt', anchor: 'overlay', node: destructivePrompt, order: 7 });
   slotRegistry.register({ id: 'core:sidebar', anchor: 'dock-left', node: sidebar, order: 0 });
   slotRegistry.register({ id: 'core:templateEditor', anchor: 'dock-right', node: templateEditor, order: 0 });
   // The editor's panels, as docks — see `editorDocks.ts` for why they are not part of the node above.
   registerEditorDocks();
+  // The shell's own — a space's settings, which the chrome rail's gear opens. See `shellDocks.ts`.
+  registerShellDocks();
   // The one place feature modules are opened from. Core rather than a module contribution, because
   // only the host can stop launchers colliding — see ChromeRail.schema.ts.
   slotRegistry.register({ id: 'core:chromeRail', anchor: 'dock-right', node: chromeRail, order: 10 });

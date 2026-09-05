@@ -38,27 +38,36 @@ export const CALL_CONTROLS_ANCHOR = 'call-controls';
 const PROMPT_RADIUS = 'var(--we-theme-control-radius, var(--we-radius-400))';
 
 /**
- * The offer to join a transcript somebody else started.
+ * What the notice says once somebody else is transcribing.
  *
- * A prompt rather than starting on this agent's behalf: what is being turned on is their microphone,
- * feeding durable text into a space other people read, and that is not a decision a peer gets to
- * take for them. So the coverage cost is real and accepted — a call where nobody accepts is a call
- * transcribed from one microphone.
+ * It used to be an offer, and the offer is what changed. Joining a peer's transcript now happens on
+ * its own — see the auto-join effect in `store.ts` for why that is a narrower decision than it
+ * sounds — so this stopped being a question and became the declaration that goes with it. Nobody
+ * should have to work out for themselves that their microphone started feeding a shared record.
  *
- * Named, because "somebody is transcribing" is a notification and "Ana started transcribing" is
- * something you can act on. The DID comes from the store and the name from `$agent`, which is how
- * this module puts a name to an agent without holding any profiles of its own.
+ * Which makes the wording load-bearing rather than cosmetic. "Ana is transcribing · you're in" says
+ * three things in the order somebody needs them: that this call is being recorded, who started it,
+ * and that they are part of it. The `Leave` beside it is the whole of the consent story now — the
+ * same `toggle` the record button calls, which also marks this agent as having decided, so the
+ * effect does not simply switch them back on.
  *
- * Dismissable, and dismissed per peer — see `dismissInvite`. Nothing here starts recording; the only
- * thing the accept button does is the same `toggle` the record button beside it calls.
+ * Named, because "somebody is transcribing" is a notification and "Ana is transcribing" is something
+ * you can act on. The DID comes from the store and the name from `$agent`, which is how this module
+ * puts a name to an agent without holding any profiles of its own.
+ *
+ * Both branches are gated on `invitedBy` as well as their own flag. It empties when no peer is
+ * recording any longer, which is reachable in both: this agent can still be recording after the
+ * person who started it stopped. Without the guard the row renders " is transcribing".
  */
-const joinPrompt: SchemaNode = {
+const peerNotice: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $store: 'modules.transcribe.invited' },
+    condition: {
+      $: 'modules.transcribe.invitedBy && (modules.transcribe.autoJoined && modules.transcribe.enabled || modules.transcribe.invited)',
+    },
     then: {
       type: '$agent',
-      props: { did: { $store: 'modules.transcribe.invitedBy' }, as: 'starter' },
+      props: { did: { $: 'modules.transcribe.invitedBy' }, as: 'starter' },
       children: [
         {
           type: 'Row',
@@ -66,24 +75,22 @@ const joinPrompt: SchemaNode = {
           children: [
             {
               type: 'we-text',
-              props: { fontSize: '200', truncate: true, maxWidth: '180px' },
-              children: [{ $concat: ['$starter.firstName', ' is transcribing'] }],
+              props: { fontSize: '200', truncate: true, maxWidth: '200px' },
+              children: [
+                { $: "`${starter.firstName} is transcribing${modules.transcribe.autoJoined ? ' · you\\'re in' : ''}`" },
+              ],
             },
             {
+              /*
+                One button, and which one it is follows the state rather than the other way round.
+
+                Joined, the only thing left to offer is the way out. Not joined — which now means
+                joining could not happen — it is still an offer, and pressing it is what surfaces the
+                reason in the panel, since auto-join deliberately fails in silence.
+              */
               type: 'we-button',
               props: { size: 'sm', variant: 'secondary', onClick: { $action: 'modules.transcribe.toggle' } },
-              children: ['Join'],
-            },
-            {
-              type: 'we-button',
-              props: {
-                size: 'sm',
-                variant: 'ghost',
-                square: true,
-                title: 'Not now',
-                onClick: { $action: 'modules.transcribe.dismissInvite' },
-              },
-              children: [{ type: 'we-icon', props: { name: 'x' } }],
+              children: [{ $: "modules.transcribe.autoJoined ? 'Leave' : 'Join'" }],
             },
           ],
         },
@@ -97,12 +104,12 @@ export const callControl: SchemaNode = {
   props: {
     // The bar is only drawn during a call, so this needs no call condition of its own — but it does
     // need the audio one: mid-call, before devices are acquired, there is briefly nothing to record.
-    condition: { $store: 'modules.transcribe.available' },
+    condition: { $: 'modules.transcribe.available' },
     then: {
       type: 'Row',
       props: { ay: 'center', gap: '200' },
       children: [
-        joinPrompt,
+        peerNotice,
         {
           /*
             A `we-tooltip`, not the `title` attribute this used to carry.
@@ -115,13 +122,7 @@ export const callControl: SchemaNode = {
           */
           type: 'we-tooltip',
           props: {
-            title: {
-              $if: {
-                condition: { $store: 'modules.transcribe.enabled' },
-                then: 'Stop transcribing',
-                else: 'Transcribe this call',
-              },
-            },
+            title: { $: "modules.transcribe.enabled ? 'Stop transcribing' : 'Transcribe this call'" },
             placement: 'bottom',
           },
           children: [
@@ -134,10 +135,23 @@ export const callControl: SchemaNode = {
                 // own. `square` for the same reason: the bar's icon-only buttons are squares, and a
                 // label's worth of side padding around a lone glyph is what would give this one away.
                 square: true,
-                // Matches how the call's own mute and camera buttons read their state, so the row
-                // behaves as one set of controls rather than one module's chrome next to another's.
+                /*
+                  Three states, not two, and the third is why this is no longer `secondary`.
+
+                  Off is `ghost`, matching how the call's own mute and camera buttons read theirs, so
+                  the row behaves as one set of controls rather than one module's chrome beside
+                  another's. Armed but not yet producing — the seconds while a model loads — is
+                  `secondary`, which is what this button used to be for both of the other states.
+
+                  Actually recording is `danger`, and that is the change recording-by-default
+                  requires. A state somebody chose can afford to be quiet; a state that arrives on
+                  its own has to be legible without being looked for, and a `secondary` square in a
+                  row of `ghost` squares is exactly the difference a person misses. It is also the
+                  off switch, so the loudest thing in the bar is the way out of the thing nobody
+                  switched on. Red is the same colour the icon inside it already used for this.
+                */
                 variant: {
-                  $if: { condition: { $store: 'modules.transcribe.enabled' }, then: 'secondary', else: 'ghost' },
+                  $: "modules.transcribe.listening ? 'danger' : modules.transcribe.enabled ? 'secondary' : 'ghost'",
                 },
                 onClick: { $action: 'modules.transcribe.toggle' },
               },
@@ -150,19 +164,20 @@ export const callControl: SchemaNode = {
                     what comes out; beside a microphone button that already means "capture", it read
                     as a second, redder mute. Text is the thing this module produces.
 
-                    Red while listening carries the live state on its own now. It used to be carried
-                    by `weight: 'fill'` as well, which quietly reached for `record-fill` — and only
-                    the `regular` weight of any icon is bundled, so every other weight is a CDN fetch.
-                    That one fired at the moment recording started, and on a machine that is offline
-                    (which this app is designed to be) the icon vanished as you pressed it.
+                    The colour moved to the button. Red used to be carried here, on the glyph, which
+                    was the whole live signal while the button behind it stayed `secondary` — and it
+                    is now the button's own fill, so the icon simply inherits its foreground and the
+                    two cannot state different things. Left as a colour on the icon it would have
+                    been red on red.
+
+                    Not `weight: 'fill'`, which this also used to carry: that quietly reaches for
+                    `record-fill`, and only the `regular` weight of any icon is bundled, so every
+                    other weight is a CDN fetch. That one fired at the moment recording started, and
+                    on a machine that is offline (which this app is designed to be) the icon vanished
+                    as you pressed it.
                   */
                   type: 'we-icon',
-                  props: {
-                    name: 'text-aa',
-                    color: {
-                      $if: { condition: { $store: 'modules.transcribe.listening' }, then: 'danger-text', else: '' },
-                    },
-                  },
+                  props: { name: 'text-aa' },
                 },
               ],
             },

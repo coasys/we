@@ -15,8 +15,9 @@
  * ## Why it is no longer only about modules
  *
  * It never quite was — it has carried the way into a space's settings for as long as it has existed,
- * because that is where a module gets turned back on. It now also carries the template and theme
- * pickers, which used to be a strip of chips pinned to the top-right corner.
+ * because that is where a module gets turned back on, and those settings are a panel on this edge
+ * like any module's. It now also carries the template and theme pickers, which used to be a strip of
+ * chips pinned to the top-right corner.
  *
  * Those chips were the one piece of persistent chrome no layout calculation knew about: `SIDEBAR_PX`
  * reserves the left edge and `contentInset` moves content out of a docked panel's way, but nothing
@@ -46,7 +47,29 @@
 import type { SchemaNode } from '@we/schema-shared';
 import { railButton } from '@we/template-kit';
 
-import { TEMPLATE_PICKER_OPEN, templatePicker, THEME_PICKER_OPEN, themePicker } from './DesignControls.schema';
+import { TEMPLATE_PICKER_OPEN, templatePicker, THEME_PICKER_OPEN, themePicker } from './DesignControls';
+
+/**
+ * The two questions this rail's contents are gated on, named because its own gate is their
+ * disjunction — the rail renders exactly when at least one of its sections does.
+ *
+ * Written out before, once per section, and nowhere for the container: it rendered whenever the app
+ * was up, so with no space open *and* an overlay covering the template — the landing page, or
+ * Settings — both sections were hidden and the rail was a bordered, shadowed 56px strip holding
+ * nothing. The file already learned this one level down; there is a note below about "an empty rail
+ * with a stray horizontal line in it" from gating the launchers and their divider apart.
+ */
+const IN_SPACE = { $: 'datasetStore.currentDataset' };
+
+/**
+ * Whether a template is on screen for the design pickers to be about.
+ *
+ * Not "am I in a space", deliberately — see the gating note above. The spaces list and a join gate
+ * are both drawn by the current template, so switching template changes what you are looking at in
+ * both; an external app or a shell overlay covers it, so there the pickers would be offering to
+ * change something invisible.
+ */
+const TEMPLATE_ON_SCREEN = { $: '!appStore.activeAppId && !shellStore.activeShellView' };
 
 /**
  * The width every docked module panel should clear. Exported so panels stay in step with the rail.
@@ -59,33 +82,36 @@ export const CHROME_RAIL_WIDTH = '56px';
 /**
  * Settings for the space you are standing in, one click away.
  *
- * The page it opens is the same one the spaces list reaches, addressed by the current dataset — so
- * there is one per-space settings surface rather than two that can drift. The overlay keeps the
- * space loaded underneath, which is what makes opening it from in here feel like a layer rather than
- * an exit.
+ * Opens a **panel**, like every launcher above it. It used to open the global settings overlay and
+ * navigate, inside that overlay's router, to the page for the current space — which meant a button
+ * labelled "Space settings" produced a full-window surface headed "Settings" with an Account /
+ * Appearance / Spaces & data nav down its side, and took the space off the screen while you
+ * configured it. See `SpaceSettingsPanel.schema.ts` for the rest of that argument.
+ *
+ * That also makes this button consistent with the rest of the rail rather than the exception in it:
+ * every other row here toggles a panel and lights up while it is open, and this one now does too.
  *
  * Outside the launcher list on purpose: it renders even when no module does. Gating it on having
  * launchers would remove the way back to the module settings in exactly the state — everything
  * turned off — where someone needs it.
+ *
+ * At the foot of the rail, below the design pickers. It is the "everything else" button, and it was
+ * sitting between the launchers and the pickers — the one place a catch-all does not belong. Its own
+ * gate is unchanged: a space to configure, or nothing.
  */
-const spaceSettingsLauncher: SchemaNode = railButton({
-  icon: 'gear',
-  tooltip: 'Space settings',
-  /*
-    Lit while the settings overlay is up, as every other button in this rail is while its own
-    surface is. It had no active state at all when it was written out by hand here, which made it
-    the one row of a rail-of-tabs that could not tell you it was the one you were looking at.
-
-    The path is not compared, only the overlay: settings reached from the spaces list is the same
-    page, and dimming this while somebody navigates *within* it would be answering a question
-    nobody asked.
-  */
-  active: { $eq: [{ $store: 'shellStore.activeShellView' }, 'settings'] },
-  onClick: {
-    $action: 'shellStore.openShellView',
-    args: ['settings', { $concat: ['/spaces/', { $store: 'datasetStore.currentDataset.id' }] }],
+const spaceSettingsLauncher: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: IN_SPACE,
+    then: railButton({
+      icon: 'gear',
+      tooltip: 'Space settings',
+      // Lit while its panel is up, exactly as a module launcher is — see `activeWhen` on those.
+      active: { $: 'shellStore.spaceSettingsOpen' },
+      onClick: { $action: 'shellStore.toggleSpaceSettings' },
+    }),
   },
-});
+};
 
 /**
  * The launchers, and the way into the settings that turn them on. Only inside a space.
@@ -97,39 +123,57 @@ const spaceSettingsLauncher: SchemaNode = railButton({
 const spaceSection: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $store: 'datasetStore.currentDataset' },
+    condition: IN_SPACE,
     then: {
       type: 'Column',
       props: { gap: '100', ay: 'center', width: '100%' },
       children: [
         {
           type: '$each',
-          props: { items: { $store: 'spaceStore.moduleLaunchers' }, as: 'mod' },
+          // Registration order, which is the seed's `modules` order — so a deployment arranges its
+          // own rail. See `docs/getting-started/seed-system.md`, which now says so.
+          props: { items: { $: 'spaceStore.moduleLaunchers' }, as: 'mod' },
           children: [
             railButton({
-              icon: '$mod.icon',
-              tooltip: '$mod.label',
+              icon: { $: 'mod.icon' },
+              tooltip: { $: 'mod.label' },
               // Highlighted while the module reports itself open, which is what makes the rail read
               // as a set of tabs rather than a row of buttons.
-              active: '$mod.active',
+              active: { $: 'mod.active' },
               // The id is passed rather than a path: `$action` resolves a literal string, so a rail
               // iterating over modules cannot build `modules.<id>.<method>` itself.
-              onClick: { $action: 'spaceStore.launchModule', args: ['$mod.id'] },
+              onClick: { $action: 'spaceStore.launchModule', args: [{ $: 'mod.id' }] },
             }),
           ],
         },
-        // Separated from the launchers only when there are some to separate from.
-        {
-          type: '$if',
-          props: {
-            condition: { $count: { items: { $store: 'spaceStore.moduleLaunchers' } } },
-            then: { type: 'we-divider', props: { width: '100%', my: '100' } },
-          },
-        },
-        spaceSettingsLauncher,
-        { type: 'we-divider', props: { width: '100%', my: '100' } },
       ],
     },
+  },
+};
+
+/**
+ * The dividers, each gated on there being something on *both* sides of it.
+ *
+ * A rule rather than a pair of conditions: a divider separates, so one with nothing above or nothing
+ * below is a stray line. Both were previously implied by the sections' own gates, which worked while
+ * the gear sat inside the space section and stops working now it does not.
+ */
+const dividerAfterLaunchers: SchemaNode = {
+  // Launchers exist only inside a space, and inside a space the gear always follows — so something
+  // is always below this one.
+  type: '$if',
+  props: {
+    condition: { $: 'count(spaceStore.moduleLaunchers)' },
+    then: { type: 'we-divider', props: { width: '100%', my: '100' } },
+  },
+};
+
+const dividerBeforeSettings: SchemaNode = {
+  // Only when the pickers are above it and the gear below.
+  type: '$if',
+  props: {
+    condition: { $: 'datasetStore.currentDataset && !appStore.activeAppId && !shellStore.activeShellView' },
+    then: { type: 'we-divider', props: { width: '100%', my: '100' } },
   },
 };
 
@@ -143,9 +187,7 @@ const spaceSection: SchemaNode = {
 const designSection: SchemaNode = {
   type: '$if',
   props: {
-    condition: {
-      $and: [{ $not: { $store: 'appStore.activeAppId' } }, { $not: { $store: 'shellStore.activeShellView' } }],
-    },
+    condition: TEMPLATE_ON_SCREEN,
     then: {
       type: 'Column',
       props: { gap: '100', ay: 'center', width: '100%' },
@@ -163,8 +205,22 @@ const designSection: SchemaNode = {
 export const chromeRail: SchemaNode = {
   type: '$if',
   props: {
-    // Nothing here means anything before the app is up, and the boot screen owns the whole window.
-    condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'ready'] },
+    /*
+      Up, and holding something.
+
+      Two conditions, and only the first was here. Nothing means anything before the app is ready and
+      the boot screen owns the whole window — but "ready" is not the same as "has contents", and the
+      rail's two sections are gated independently: with no space open *and* an overlay covering the
+      template, both are hidden and this painted a bordered, shadowed 56px strip with nothing in it.
+      The landing page and Settings are both such overlays, so it was reachable on a first run.
+
+      The disjunction is exactly the two section gates, so the rail appears precisely when at least
+      one of them does. Stated here rather than derived, because a schema cannot ask a node whether
+      it rendered — which is the same reason the dividers name what is on both sides of them.
+    */
+    condition: {
+      $: "sessionStore.bootState == 'ready' && (datasetStore.currentDataset || (!appStore.activeAppId && !shellStore.activeShellView))",
+    },
     then: {
       type: 'Column',
       props: {
@@ -230,25 +286,39 @@ export const chromeRail: SchemaNode = {
         rtl: '400',
         rbl: '400',
         shadow: 'md',
-        zIndex: 'sticky',
+        /*
+          The layer above the panels, which is what `chrome` is for — and what the sidebar opposite
+          already asks for.
+
+          This said `sticky` and stayed on top by *document order*: it registers after the panels at
+          the same anchor, and they all sat on one layer, so the last one painted won. Panels stopped
+          sharing a layer the moment they could be raised — each takes its own step above `sticky`
+          now — and a raised panel therefore covered this rail and, worse, the pickers that open out
+          of it over the content. Chrome is how you get out of whatever a panel is showing you, so it
+          cannot depend on being registered last: the ladder has a rung for it and this now asks for
+          it. See `z-index.ts`, where that rung was added for exactly this.
+        */
+        zIndex: 'chrome',
         /*
           Out of the way entirely while a panel is maximised.
 
-          It shares the panels' layer and wins on document order — it is registered after them at the
-          same anchor — so a full-screen panel would otherwise have this printed down its right edge,
-          over the position menu and the un-maximise button that recover it. Hidden rather than
-          dropped below the titlebar, which was the first answer: full screen means the app's own
-          furniture is gone, and the way back is the panel's titlebar and the Escape key.
+          It outranks the panels now rather than tying with them, so a full-screen panel would
+          otherwise have this printed down its right edge, over the position menu and the
+          un-maximise button that recover it. Hidden rather than dropped below the titlebar, which
+          was the first answer: full screen means the app's own furniture is gone, and the way back
+          is the panel's titlebar and the Escape key.
         */
-        styles: {
-          $if: {
-            condition: { $store: 'shellStore.panelMaximised' },
-            then: { display: 'none' },
-          },
-        },
+        styles: { $: "shellStore.panelMaximised ? { display: 'none' } : null" },
         transition: 'right var(--we-chrome-transition, 300ms) ease, top var(--we-chrome-transition, 300ms) ease',
       },
-      children: [spaceSection, designSection],
+      /*
+        Launchers, then the design pickers, then the gear at the foot.
+
+        The order the rail reads in: what this space does, how it looks, and everything else. Module
+        order within the launchers is the seed's, so the top of the rail is a deployment's decision
+        rather than this file's.
+      */
+      children: [spaceSection, dividerAfterLaunchers, designSection, dividerBeforeSettings, spaceSettingsLauncher],
     },
   },
 };

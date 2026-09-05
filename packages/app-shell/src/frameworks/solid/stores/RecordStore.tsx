@@ -25,12 +25,13 @@
 import type { EntitySchema } from '@we/backend-shared';
 import { createBlocks } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
+import { getEntity, Placement, PREDICATES, runEntityTransaction, TypeStyle } from '@we/entities';
+import { CORE_MANIFEST } from '@we/entities/manifest';
 import { PLACEMENT_UNSET } from '@we/graph-expanders';
-import { getModel, Placement, PREDICATES, runModelTransaction, TypeStyle } from '@we/models';
-import { CORE_MANIFEST } from '@we/models/manifest';
 import { Accessor, batch, createContext, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
 import { dropAllPending, dropPending, holdPending, type PendingWrites } from '../../../shared/shapes/pendingWrites';
+import { displayFor, type RecordDisplay } from '../../../shared/shapes/recordDisplay';
 import {
   asEntityName,
   emptyRecordDraft,
@@ -102,6 +103,27 @@ export interface RecordStore {
    * same shape `shapeStore.shapeDraft` uses.
    */
   recordDraft: Accessor<RecordDraft | null>;
+  /**
+   * Whether the open form holds anything worth keeping — what a "discard this?" guard reads.
+   *
+   * Here rather than in the template because the fields come from the *model*: a shape a community
+   * defined this morning has properties no schema was written against, so there is no set of
+   * local names for an expression to test. The store is the only place that can see them.
+   *
+   * A pristine form — opened and not typed in — closes without ceremony. Asking there would train
+   * the answer out of anyone, which costs them the one time it was about something real.
+   */
+  recordDraftDirty: Accessor<boolean>;
+  /**
+   * How to show an instance of each model a person can create here, keyed by entity name — the
+   * read-side counterpart of `recordDraft`, derived from the same declarations.
+   *
+   * What lets a template render a record of a type it was not written for: `displays[type]` says
+   * which property is the title, which the summary, which the picture, and which fields to list
+   * and how. A community shape defined this morning renders in a feed that has never heard of it,
+   * which is the whole point — a content type that is manifest + fragments needs no component.
+   */
+  displays: Accessor<Record<string, RecordDisplay>>;
   /** Validation errors from the last save attempt. */
   recordErrors: Accessor<string[]>;
   savingRecord: Accessor<boolean>;
@@ -322,6 +344,29 @@ export function RecordStoreProvider(props: ParentProps) {
   }
 
   /*
+    One display per creatable model, from the same declarations the forms come from.
+
+    A map rather than a lookup action because a template reads it in a value position — a feed
+    indexes it by each row's type — and `$action` cannot return a value. Recomputed when the
+    space's shapes change, so a model defined a moment ago has a display a moment later.
+  */
+  const displays = createMemo<Record<string, RecordDisplay>>(() => {
+    const out: Record<string, RecordDisplay> = {};
+    for (const entity of creatableEntities()) {
+      const found = schemaFor(entity.value);
+      if (!found) continue;
+      out[entity.value] = displayFor({
+        entity: entity.value,
+        label: entity.label,
+        icon: found.icon,
+        schema: found.schema,
+        authorable: found.authorable,
+      });
+    }
+    return out;
+  });
+
+  /*
     `entity` is typed loosely because of how `$action` calls a store method.
 
     A token with no `args` forwards the handler's own arguments, so
@@ -406,6 +451,35 @@ export function RecordStoreProvider(props: ParentProps) {
     });
   }
 
+  /**
+   * Anything typed into the open form.
+   *
+   * Compared against the field's *empty* value rather than against what it was seeded with, because
+   * this form only ever creates — there is no edit path through it, so "seeded" is the default the
+   * model declares and changing it away from that is the author's doing. A boolean is deliberately
+   * not counted: a checkbox starts false and toggling it back is not work worth a dialog.
+   */
+  const recordDraftDirty = createMemo(() => {
+    const draft = recordDraft();
+    if (!draft) return false;
+    /*
+      Changed from what it started as — not "holds something".
+
+      Every field is seeded: a number to `0`, a select to whatever the model declares
+      (`TaskBlock.status` is `'todo'`). Asking whether a field held anything therefore answered yes
+      for a form nobody had touched, so closing an untouched Task form raised "discard your
+      changes?". `field.initial` is the seed, kept beside the value when the draft is built.
+
+      Strings are trimmed on both sides so typing a space and deleting it is not work; other kinds
+      compare directly, since a boolean or a number is only ever set deliberately.
+    */
+    return draft.fields.some((f) =>
+      typeof f.value === 'string' && typeof f.initial === 'string'
+        ? f.value.trim() !== f.initial.trim()
+        : f.value !== f.initial,
+    );
+  });
+
   function cancelRecordForm(): void {
     batch(() => {
       setRecordDraft(null);
@@ -433,7 +507,7 @@ export function RecordStoreProvider(props: ParentProps) {
    * Compose a card onto a board and place it, in one write group.
    *
    * `createBlocks` transacts internally, so it takes the batch rather than opening its own — see
-   * `runModelTransaction`'s `join`. Everything here lands as a single commit, which is the whole
+   * `runEntityTransaction`'s `join`. Everything here lands as a single commit, which is the whole
    * point: the board never observes a card that exists but is not yet anywhere.
    */
   async function createCardOnBoard(
@@ -445,7 +519,7 @@ export function RecordStoreProvider(props: ParentProps) {
     const parent = { id: options.board, predicate: PREDICATES.CHILDREN };
 
     try {
-      await runModelTransaction(dataset.handle, async (tx) => {
+      await runEntityTransaction(dataset.handle, async (tx) => {
         const root = (await createBlocks(dataset.handle as never, editorState as never, {
           kind: 'card',
           anchor: parent,
@@ -653,7 +727,7 @@ export function RecordStoreProvider(props: ParentProps) {
 
     setSavingRecord(true);
     try {
-      const Model = getModel(draft.entity);
+      const Model = getEntity(draft.entity);
       const link = pendingLink();
       /*
         The endpoint *types* go in with the fields; the endpoints themselves are linked after.
@@ -732,6 +806,8 @@ export function RecordStoreProvider(props: ParentProps) {
   const store: RecordStore = {
     creatableEntities,
     recordDraft,
+    recordDraftDirty,
+    displays,
     recordErrors,
     savingRecord,
     lastCreatedId,

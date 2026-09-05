@@ -1,4 +1,4 @@
-import type { ModelManifestEntry, ModelManifestProperty } from '@we/backend-ad4m';
+import type { EntityManifestEntry, EntityManifestProperty } from '@we/backend-ad4m';
 import { toNeutralManifest } from '@we/backend-ad4m';
 import { type QueryIR, validateManifest, validateQueryAgainstManifest } from '@we/backend-shared';
 import { describe, expect, it } from 'vitest';
@@ -6,9 +6,9 @@ import { describe, expect, it } from 'vitest';
 // Terse builder for an AD4M-side property (only the fields under test vary).
 const prop = (
   name: string,
-  type: ModelManifestProperty['type'],
-  extra: Partial<ModelManifestProperty> = {},
-): ModelManifestProperty => ({
+  type: EntityManifestProperty['type'],
+  extra: Partial<EntityManifestProperty> = {},
+): EntityManifestProperty => ({
   name,
   predicate: `we://${name}`,
   type,
@@ -20,7 +20,7 @@ const prop = (
 
 // A small WE-ish slice: Post (with a to-one author, a to-many signals, an untyped `comments` edge,
 // and an image URL), Agent, Signal.
-const entries: ModelManifestEntry[] = [
+const entries: EntityManifestEntry[] = [
   {
     name: 'Post',
     targetClass: 'we://Post',
@@ -29,15 +29,15 @@ const entries: ModelManifestEntry[] = [
       prop('content', 'string'),
       prop('createdAt', 'string'),
       prop('coverImage', 'uri', { resolveLanguage: 'file-storage' }), // image URL — no sh:class → scalar
-      prop('author', 'uri', { relatedModel: 'Agent' }), // to-one relation
-      prop('signals', 'uri', { isCollection: true, relatedModel: 'Signal' }), // to-many relation
+      prop('author', 'uri', { relatedEntity: 'Agent' }), // to-one relation
+      prop('signals', 'uri', { isCollection: true, relatedEntity: 'Signal' }), // to-many relation
       prop('comments', 'uri', { isCollection: true }), // untyped edge (no sh:class) → scalar
     ],
   },
   {
     name: 'Agent',
     targetClass: 'we://Agent',
-    properties: [prop('name', 'string'), prop('posts', 'uri', { isCollection: true, relatedModel: 'Post' })],
+    properties: [prop('name', 'string'), prop('posts', 'uri', { isCollection: true, relatedEntity: 'Post' })],
   },
   {
     name: 'Signal',
@@ -90,8 +90,8 @@ describe('toNeutralManifest', () => {
   });
 
   it('drops a relation whose target is not among the entities, and reports it', () => {
-    const dangling: ModelManifestEntry[] = [
-      { name: 'Post', targetClass: 'we://Post', properties: [prop('ghost', 'uri', { relatedModel: 'Nope' })] },
+    const dangling: EntityManifestEntry[] = [
+      { name: 'Post', targetClass: 'we://Post', properties: [prop('ghost', 'uri', { relatedEntity: 'Nope' })] },
     ];
     const { manifest, warnings } = toNeutralManifest(dangling);
     expect(manifest.entities.Post.relations).toEqual({}); // dropped
@@ -100,7 +100,7 @@ describe('toNeutralManifest', () => {
   });
 
   it('warns on a duplicate entity name (namespace-blind SHACL) rather than silently colliding', () => {
-    const dupes: ModelManifestEntry[] = [
+    const dupes: EntityManifestEntry[] = [
       { name: 'Template', targetClass: 'we://Template', properties: [prop('a', 'string')] },
       { name: 'Template', targetClass: 'other://Template', properties: [prop('b', 'string')] },
     ];

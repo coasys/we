@@ -1,4 +1,5 @@
 import { useNavigate } from '@solidjs/router';
+import { SPACE_ROUTE_DEPTH } from '@we/schema-shared';
 import { Accessor, createContext, createMemo, createSignal, onCleanup, ParentProps, useContext } from 'solid-js';
 
 type NavigateFunction = ReturnType<typeof useNavigate>;
@@ -8,16 +9,40 @@ export interface RouteStore {
   currentPath: Accessor<string>;
   segments: Accessor<string[]>;
   /**
+   * The segments below the space prefix — a template's own coordinate space.
+   *
+   * `segments` is the whole URL, so anything reading it by index is pinned to where the host happens
+   * to mount things. That was fine while a self-routing template sat at the top level and its
+   * `/photo/:postId` made `segments[1]` the id; once every template moved under `/space/:spaceId`
+   * the same index became the space, and four templates would have silently read the wrong value —
+   * a query for a post whose id is a space.
+   *
+   * Reading positions relative to the template's own root fixes that once rather than per move:
+   * these indices are the same numbers they always were, and the only thing that has to change if
+   * the prefix ever changes again is `SPACE_ROUTE_DEPTH`.
+   *
+   * Outside a space this is the whole path, so a template rendered without one is unaffected.
+   */
+  templateSegments: Accessor<string[]>;
+  /**
    * The URL's query parameters, reactive. Read from schemas as
-   * `{ $store: 'routeStore.params.<name>' }` — view state that belongs in the
+   * `{ $: 'routeStore.params.<name>' }` — view state that belongs in the
    * URL (selected content type, sort, filters) lives here so a link reproduces
    * the view for whoever receives it. See docs/architecture/routing-and-view-state.md.
    */
   params: Accessor<Record<string, string>>;
 
   // Setters
-  setNavigateFunction: (navigate: NavigateFunction) => void;
-  setCurrentPath: (path: string) => void;
+  /**
+   * Lend the router's `navigate`. Returns the disposer — hand it to `onCleanup`.
+   *
+   * Without one, a layout that unmounted (a template switch is exactly that) left this holding the
+   * dead router's function, and every subsequent `routeStore.navigate` went to a router that no
+   * longer renders anything: a link that visibly does nothing, with no warning, because the slot
+   * was full. Clearing it restores the honest "Navigate function not available yet" instead.
+   */
+  setNavigateFunction: (navigate: NavigateFunction) => () => void;
+  setCurrentPath: (path: string, search?: string) => void;
 
   // Actions
   navigate: (to: string, options?: Record<string, unknown>) => void;
@@ -27,20 +52,42 @@ export interface RouteStore {
    * changes that deserve a Back entry (a content-type switch).
    */
   setParam: (name: string, value: string | null, options?: { push?: boolean }) => void;
+  /**
+   * Go back one entry, the browser's own way.
+   *
+   * `history.back()` rather than navigating to a computed parent, because "where did I come from"
+   * is not derivable from a path: a record page is reached from a list, from a search, from a link
+   * somebody sent, and only one of those has a parent worth guessing. A guessed destination is worse
+   * than none — it silently sends people somewhere they have never been.
+   *
+   * Does nothing at the start of the session's history, which is the honest outcome: there is
+   * nowhere back to go, and inventing a destination would be the same guess.
+   */
+  back: () => void;
 }
 
 const RouteContext = createContext<RouteStore>();
 
-function readParams(): Record<string, string> {
-  if (typeof window === 'undefined') return {};
-  return Object.fromEntries(new URLSearchParams(window.location.search));
+function readParams(search?: string): Record<string, string> {
+  if (search === undefined && typeof window === 'undefined') return {};
+  return Object.fromEntries(new URLSearchParams(search ?? window.location.search));
 }
 
 export function RouteStoreProvider(props: ParentProps) {
   const [currentPath, setCurrentPathSignal] = createSignal('');
   const [navigateFunction, setNavigateFunction] = createSignal<NavigateFunction | null>(null);
+
+  /** Lend a `navigate`, and take it back again — but only if it is still the one that was lent. */
+  function provideNavigate(navigate: NavigateFunction): () => void {
+    setNavigateFunction(() => navigate);
+    return () => setNavigateFunction((current) => (current === navigate ? null : current));
+  }
   const [params, setParamsSignal] = createSignal<Record<string, string>>(readParams());
   const segments = createMemo(() => currentPath().split('/').filter(Boolean));
+  const templateSegments = createMemo(() => {
+    const all = segments();
+    return all[0] === 'space' ? all.slice(SPACE_ROUTE_DEPTH) : all;
+  });
 
   /**
    * Last-seen query string per pathname, restored by navigate(). Keep-alive
@@ -62,9 +109,20 @@ export function RouteStoreProvider(props: ParentProps) {
   // the params there keeps them in sync with router-driven navigation, and the
   // popstate listener covers Back/Forward over param-only history entries the
   // router never sees (setParam writes those directly).
-  function setCurrentPath(path: string) {
+  /**
+   * The router reporting where it is. `search` is separate because it is a separate signal there,
+   * and taking it as an argument is what makes the caller's effect depend on it.
+   *
+   * A location change that alters only the query is one the router makes and nothing else here sees
+   * — the popstate listener below covers Back/Forward over `setParam`'s own history entries, which
+   * the router never sees, and the two gaps are not the same one. Missing this leaves
+   * `routeStore.params` describing the page you came from: two record pages differ only by `?id=`,
+   * so following a link from one to another rendered the first record's content under the second
+   * record's URL.
+   */
+  function setCurrentPath(path: string, search?: string) {
     setCurrentPathSignal(path);
-    setParamsSignal(readParams());
+    setParamsSignal(readParams(search));
     rememberCurrentSearch();
   }
 
@@ -108,15 +166,17 @@ export function RouteStoreProvider(props: ParentProps) {
     // State
     currentPath,
     segments,
+    templateSegments,
     params,
 
     // Setters
-    setNavigateFunction,
+    setNavigateFunction: provideNavigate,
     setCurrentPath,
 
     // Actions
     navigate,
     setParam,
+    back: () => window.history.back(),
   };
 
   return <RouteContext.Provider value={store}>{props.children}</RouteContext.Provider>;

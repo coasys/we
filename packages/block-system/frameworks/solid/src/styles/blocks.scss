@@ -1,20 +1,32 @@
 @use 'sass:list';
 
 // Shared block styles used by both BlockComposer and BlockRenderer.
+//
+// One stylesheet for both because both produce the same DOM: the composer through the editor
+// schema's toDOM, the renderer through the same schema's serializer. Everything here is keyed on
+// element names and the data attributes that toDOM emits.
 
 .we-block-content {
-  // Hover highlight (lighter) — attribute set by BlockHandlesPlugin
+  // Hover highlight (lighter) — a node decoration set by the block-chrome plugin
   [data-block-hovered='true'] {
     background-color: var(--we-role-page);
   }
 
-  // Focus highlight (stronger) — block containing the caret
+  // Focus highlight (stronger) — the block containing the caret, or the selected block
   [data-block-focused='true'] {
     background-color: var(--we-color-neutral-75);
   }
 
+  // The block being dragged by its handle — a decoration, not a style written onto the
+  // element, which the editor would read back as an edit (see blockChrome.ts).
+  [data-block-dragging='true'] {
+    opacity: 0.5;
+  }
+
   font-family: var(--we-font-family);
   color: var(--we-role-text);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
 
   .we-block {
     padding: var(--we-space-300);
@@ -29,17 +41,20 @@
   h2,
   h3,
   blockquote,
-  li {
+  .we-list-item {
     @extend .we-block;
+  }
+
+  // Indentation — a paragraph's indent, a list item's nesting
+  @for $i from 1 through 6 {
+    [data-level='#{$i}'] {
+      margin-left: #{$i * 24}px;
+    }
   }
 
   blockquote {
     padding-left: 30px;
     color: var(--we-color-neutral-600);
-
-    &:before {
-      margin-left: 20px;
-    }
 
     &::after {
       content: ' ';
@@ -47,80 +62,157 @@
       top: 10px;
       left: 10px;
       height: calc(100% - 20px);
+      width: 4px;
+      border-radius: 2px;
       background-color: var(--we-role-surface-sunken);
     }
   }
 
-  ul,
-  ol {
-    margin: 0;
-    padding-left: 0;
-  }
+  // ── Lists ─────────────────────────────────────────────────────────────────
+  //
+  // List items are flat siblings carrying their kind and depth as attributes; markers are drawn
+  // by pseudo-elements, and numbering by counters that reset at the start of each run of numbered
+  // items at a given level (a counter set on an element is visible to the siblings after it, so
+  // "reset on the first item of a run" is exactly the scoping a list wants).
 
-  // Apply bullet markers to unordered lists based on their nesting level
-  $bullets: '•', '◦', '▪';
-  $bullet-levels: list.length($bullets);
-
-  ul > li::after {
-    position: absolute;
-    top: 5px;
-    left: 10px;
-    font-size: 22px;
-    content: list.nth($bullets, 1);
-  }
-
-  @for $i from 1 through 20 {
-    $selector: 'ul';
-    @for $j from 1 through $i {
-      $selector: $selector + ' > li > ul';
-    }
-
-    #{$selector} > li::after {
-      content: list.nth($bullets, ($i % $bullet-levels) + 1);
-    }
-  }
-
-  ol {
-    counter-reset: list-item;
-  }
-
-  ol > li {
-    counter-increment: list-item;
-
-    &::after {
-      content: counter(list-item) '.';
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      font-size: 16px;
-    }
-  }
-
-  li {
-    list-style: none;
+  .we-list-item {
     position: relative;
     padding-left: 30px;
 
-    &:has(> ul),
-    &:has(> ol) {
-      padding-bottom: 0;
+    // The marker is a box exactly one line tall, sitting at the top of the item's content — so it
+    // is centred on the item's *first* line whatever the theme's type scale says, rather than at
+    // a hand-measured offset that was right for one font size. It sets no font-size or
+    // line-height of its own, which is what lets `1lh` mean "one line of this item's text".
+    &::before {
+      position: absolute;
+      left: 10px;
+      top: var(--we-space-300); // the padding `.we-block` gives every item
+      height: 1.5em; // fallback where `lh` is unsupported
+      height: 1lh;
+      display: flex;
+      align-items: center;
+      color: var(--we-role-text);
     }
+  }
 
-    &:before {
-      margin-left: 20px;
-    }
+  $bullets: '•', '◦', '▪';
 
-    ul,
-    ol {
-      li {
-        &:first-child {
-          margin-top: 10px;
-        }
+  @for $i from 0 through 6 {
+    .we-list-item[data-list-type='bullet']:not([data-level]),
+    .we-list-item[data-list-type='bullet'][data-level='#{$i}'] {
+      &::before {
+        content: list.nth($bullets, ($i % 3) + 1);
 
-        margin-left: 20px;
+        // Scaled rather than sized: a transform leaves the line box alone, so the dot grows about
+        // its own centre and stays on the line. A `font-size` here would change what `1lh` above
+        // means and put the marker back out of alignment.
+        transform: scale(1.4);
       }
     }
   }
+
+  // Counters: one per level, so a nested run does not disturb its parent's numbering.
+  @for $i from 0 through 6 {
+    $sel: ".we-list-item[data-list-type='number'][data-level='#{$i}']";
+
+    @if $i == 0 {
+      $sel: ".we-list-item[data-list-type='number']:not([data-level])";
+    }
+    #{$sel} {
+      counter-increment: we-list-#{$i};
+
+      &::before {
+        content: counter(we-list-#{$i}) '.';
+      }
+    }
+
+    // A run starts after anything that is not a numbered item at this level.
+    :not(#{$sel}) + #{$sel},
+    #{$sel}:first-child {
+      counter-reset: we-list-#{$i};
+      counter-increment: we-list-#{$i};
+    }
+  }
+
+  .we-list-item[data-list-type='check'] {
+    &::before {
+      content: '';
+
+      // A fixed square, so it centres itself on the line rather than filling it.
+      top: calc(var(--we-space-300) + (1.5em - 16px) / 2); // fallback where `lh` is unsupported
+      top: calc(var(--we-space-300) + (1lh - 16px) / 2);
+      width: 16px;
+      height: 16px;
+      border: 1.5px solid var(--we-role-border-strong);
+      border-radius: var(--we-radius-200);
+      background: var(--we-role-surface);
+      box-sizing: border-box;
+      cursor: pointer;
+    }
+
+    &[data-checked='true'] {
+      color: var(--we-role-text-muted);
+      text-decoration: line-through;
+
+      &::before {
+        background: var(--we-role-accent);
+        border-color: var(--we-role-accent);
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' d='M3.5 8.5l3 3 6-6'/%3E%3C/svg%3E");
+        background-size: 12px;
+        background-repeat: no-repeat;
+        background-position: center;
+      }
+    }
+  }
+
+  // ── Inline ────────────────────────────────────────────────────────────────
+
+  code {
+    font-family: var(--we-font-family-mono, monospace);
+    font-size: 0.9em;
+    background: var(--we-role-surface-sunken);
+    border-radius: var(--we-radius-200);
+    padding: 1px 4px;
+  }
+
+  a {
+    color: var(--we-role-accent-text);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+  }
+
+  .we-mention {
+    display: inline-block;
+    color: var(--we-role-accent-text);
+    background: var(--we-role-accent-muted);
+    border-radius: var(--we-radius-pill);
+    padding: 0 6px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  .we-mention-query {
+    color: var(--we-role-accent-text);
+  }
+
+  .we-unknown-block {
+    padding: var(--we-space-300);
+    border: 1px dashed var(--we-role-border);
+    border-radius: var(--we-radius-300);
+    color: var(--we-role-text-muted);
+    font-size: var(--we-font-size-200);
+  }
+}
+
+// A composition this build cannot decode. The same treatment as an unknown block, because it is
+// the same statement — something is here and we cannot draw it — one level up.
+.we-unreadable-content {
+  padding: var(--we-space-300);
+  border: 1px dashed var(--we-role-border);
+  border-radius: var(--we-radius-300);
+  color: var(--we-role-text-muted);
+  font-size: var(--we-font-size-200);
 }
 
 // Read-only renderer: highlight blocks on hover via pure CSS
@@ -130,16 +222,14 @@
   > h2:hover,
   > h3:hover,
   > blockquote:hover,
-  > ul > li:hover,
-  > ol > li:hover,
+  > .we-list-item:hover,
   > .we-block:hover {
     background-color: var(--we-color-neutral-75);
   }
 }
 
-// Collection block wrapper — provides CSS custom properties to the sub-editor
-// and an outline so the block boundary is visible.
-// Layout modes (applied reactively via data-layout attribute):
+// Collection block wrapper — provides CSS custom properties to the nested content and an outline
+// so the block boundary is visible. Layout modes (applied via data-layout):
 //   row    — cells side-by-side in a single horizontal line, scrolls on overflow
 //   column — cells stacked vertically (single column list)
 //   grid   — cells in a configurable multi-column grid
@@ -151,24 +241,32 @@
   border-radius: 8px;
   padding: 10px;
 
-  &[data-layout='row'] {
-    .we-block-composer-wrapper,
-    .we-block-renderer-wrapper {
-      overflow-x: auto;
+  > .we-collection-toolbar {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+
+    > * {
+      pointer-events: auto;
     }
-    .we-block-composer-editor,
-    .we-block-renderer {
+  }
+
+  &[data-layout='row'] {
+    > .we-collection-content {
       display: flex;
-      flex-direction: row;
-      flex-wrap: nowrap;
-      width: max-content;
+      flex-flow: row nowrap;
+      overflow-x: auto;
       gap: var(--we-gap, 1rem);
+
+      > * {
+        flex: 0 0 auto;
+        min-width: 200px;
+      }
     }
   }
 
   &[data-layout='column'] {
-    .we-block-composer-editor,
-    .we-block-renderer {
+    > .we-collection-content {
       display: flex;
       flex-direction: column;
       gap: var(--we-gap, 1rem);
@@ -176,8 +274,7 @@
   }
 
   &[data-layout='grid'] {
-    .we-block-composer-editor,
-    .we-block-renderer {
+    > .we-collection-content {
       display: grid;
       grid-template-columns: repeat(var(--we-cols, 2), 1fr);
       gap: var(--we-gap, 1rem);

@@ -364,9 +364,9 @@ describe('refreshing keeps the graph the user is looking at', () => {
  * what it read. The engine derives its watches from the reads themselves, so a seed that fabricates
  * nodes without querying — every other seed in this file — is correctly watched for nothing.
  */
-function watchableFixture(entity: string) {
+function watchableFixture(entity: string, read: Record<string, unknown> = {}) {
   const fired: (() => void)[] = [];
-  const watched: { entity: string; dataset?: string }[] = [];
+  const watched: Record<string, unknown>[] = [];
   let stopped = 0;
 
   const context: ExpanderContext = {
@@ -386,7 +386,7 @@ function watchableFixture(entity: string) {
   const seed: SeedSource = {
     id: 'test',
     async seed(_options, ctx) {
-      const rows = await ctx.query({ entity, dataset: 'ds' });
+      const rows = await ctx.query({ entity, dataset: 'ds', ...read });
       return {
         nodes: rows.map((row) => ({
           id: String((row as { id: string }).id),
@@ -414,6 +414,40 @@ describe('following the data', () => {
     await engine.start();
 
     expect(fixture.watched).toEqual([{ entity: 'Post', dataset: 'ds' }]);
+  });
+
+  it('hands over the whole read, not only the type it was of', async () => {
+    /*
+      A host subscribes to what it is given, and a backend that reports "this query's answer
+      changed" can say nothing about a query nobody asked. WE's does exactly that, so the coarse
+      form — entity and dataset — became a one-row probe over the type, silent for every change
+      that left that row alone: a board's second extracted record never appeared while the panel
+      beside it, subscribed to its own narrower question, updated.
+    */
+    const fixture = watchableFixture('TaskBlock', {
+      scope: { anchor: 'CollectionBlock', via: 'children', anchorId: 'call-1' },
+      limit: 200,
+    });
+    const registry = new PluginRegistry({ seeds: [fixture.seed], layouts });
+    const engine = new GraphEngine({
+      spec: { seeds: { source: 'test' }, layout: { type: 'grid' } },
+      registry,
+      context: fixture.context,
+    });
+
+    await engine.start();
+
+    expect(fixture.watched).toEqual([
+      {
+        entity: 'TaskBlock',
+        dataset: 'ds',
+        scope: { anchor: 'CollectionBlock', via: 'children', anchorId: 'call-1' },
+        limit: 200,
+      },
+    ]);
+    // The signal belongs to the load that made the read; a standing watch holding a spent one would
+    // be subscribed on behalf of a fetch that is over.
+    expect(fixture.watched[0]).not.toHaveProperty('signal');
   });
 
   it('re-reads when a watch fires, and coalesces a burst into one pass', async () => {
@@ -547,6 +581,77 @@ describe('warnings', () => {
     engine.relayout();
 
     expect(engine.getStatus().warnings.join(' ')).toContain('backend unavailable');
+  });
+});
+
+describe('how much of the graph a load covers', () => {
+  /** Every status the engine published while `run` was in flight, in order. */
+  async function statusesDuring(engine: GraphEngine, run: () => Promise<void>) {
+    const seen: { loading: boolean; reloading: boolean }[] = [];
+    const stop = engine.subscribe((reason) => {
+      if (reason !== 'status') return;
+      const { loading, reloading } = engine.getStatus();
+      seen.push({ loading, reloading });
+    });
+    await run();
+    stop();
+    return seen;
+  }
+
+  it('reports a start as a reload, and clears both flags when it settles', async () => {
+    const registry = new PluginRegistry({ seeds: [seedOf(1)], expanders: [fanoutExpander(2)], layouts });
+    const engine = engineWith(
+      { seeds: { source: 'test' }, layout: { type: 'grid' }, expansion: { defaultDepth: 1 } },
+      registry,
+    );
+
+    const seen = await statusesDuring(engine, () => engine.start());
+
+    expect(seen.some((s) => s.reloading)).toBe(true);
+    expect(engine.getStatus()).toMatchObject({ loading: false, reloading: false });
+  });
+
+  it('holds the reload flag across the whole start, not just the seed load', async () => {
+    // The gap this pins: seeds and auto-expansion are two loads, and the count released between them
+    // published a settled frame in the middle of a start. A renderer reading that puts its "nothing
+    // to show" state up over a graph that is still arriving.
+    const registry = new PluginRegistry({ seeds: [seedOf(1)], expanders: [fanoutExpander(2)], layouts });
+    const engine = engineWith(
+      { seeds: { source: 'test' }, layout: { type: 'grid' }, expansion: { defaultDepth: 2 } },
+      registry,
+    );
+
+    const seen = await statusesDuring(engine, () => engine.start());
+
+    // Settling happens once, at the end — nowhere in the middle.
+    expect(seen.filter((s) => !s.loading)).toHaveLength(1);
+    expect(seen.at(-1)).toEqual({ loading: false, reloading: false });
+  });
+
+  it('reports an expansion as loading but not as a reload', async () => {
+    // An expansion lands beside a graph that stays on screen and stays usable, which is the whole
+    // distinction: nothing already drawn is being replaced, so it must not read as a reload.
+    const registry = new PluginRegistry({ seeds: [seedOf(1)], expanders: [fanoutExpander(2)], layouts });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+    await engine.start();
+
+    const seen = await statusesDuring(engine, () => engine.expand('seed-0'));
+
+    expect(seen.some((s) => s.loading)).toBe(true);
+    expect(seen.some((s) => s.reloading)).toBe(false);
+  });
+
+  it('reports a refresh as loading but not as a reload', async () => {
+    // Same reasoning, and it matters more here: a refresh can arrive from a subscription while
+    // somebody is reading, and treating that as a reload would dim the graph under them.
+    const registry = new PluginRegistry({ seeds: [seedOf(2)], layouts });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+    await engine.start();
+
+    const seen = await statusesDuring(engine, () => engine.refresh());
+
+    expect(seen.some((s) => s.loading)).toBe(true);
+    expect(seen.some((s) => s.reloading)).toBe(false);
   });
 });
 

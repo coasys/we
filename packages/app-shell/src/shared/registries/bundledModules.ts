@@ -13,6 +13,7 @@ import { callModule } from '@we/module-call';
 import { createGlobeModule } from '@we/module-globe';
 import { createGraphModule } from '@we/module-graph';
 import { notesModule } from '@we/module-notes';
+import { pocketModule } from '@we/module-pocket';
 import type { ModuleDefinition, ModuleStoreDeps } from '@we/module-shared';
 import { transcribeModule } from '@we/module-transcribe';
 
@@ -41,6 +42,9 @@ export const bundledModules: Record<string, BundledModuleFactory> = {
   // Takes nothing from the host: every piece of its UI is a schema fragment, so it imports no
   // framework at all.
   notes: () => notesModule,
+  // The first module whose subject is the agent rather than a space — see `ModuleDefinition.scope`.
+  // Fragments only, like notes, and its entities install into the root dataset instead of a space.
+  pocket: () => pocketModule,
   // Nor does the call module, which is the more surprising of the two — live video needs `srcObject`
   // assigned imperatively, but that belongs to the `we-video` primitive, so the module stays data.
   call: () => callModule,

@@ -5,21 +5,21 @@
  * Both are load-bearing rather than tidy. A screenshot script navigates straight to
  * `/channel/discord-general` on first load, which is only possible because that id is derived rather
  * than minted — the backend is in memory, so anything minted is different on the next load. And an
- * editor state in the wrong shape renders as a silently empty message body with a Lexical error
+ * editor state in the wrong shape renders as a silently empty message body with a decode error
  * several frames from the cause.
  */
 import { describe, expect, it } from 'vitest';
 
 import { applyFixture, datasetIdFor, pathFor } from '../src/apply';
 import { discordFixture } from '../src/discord';
-import { editorState, editorStateNode } from '../src/editorState';
+import { editorState, editorStateBlocks, textBlockId } from '../src/editorState';
 import type { Fixture } from '../src/types';
 
 /** A model layer that records rather than stores — enough to see what a fixture writes. */
 function recorder() {
   const writes: Array<{ model: string; data: Record<string, unknown> }> = [];
   const links: Array<[string, string]> = [];
-  const getModel = (model: string) => ({
+  const getEntity = (model: string) => ({
     async create(_handle: unknown, data: Record<string, unknown>) {
       writes.push({ model, data });
       const id = (data.id as string) ?? `minted-${writes.length}`;
@@ -32,13 +32,13 @@ function recorder() {
       };
     },
   });
-  return { writes, links, getModel };
+  return { writes, links, getEntity };
 }
 
 const apply = async (fixture: Fixture) => {
-  const { writes, links, getModel } = recorder();
+  const { writes, links, getEntity } = recorder();
   const result = await applyFixture(
-    { getModel, dataset: {}, datasetId: datasetIdFor(fixture), sharedId: datasetIdFor(fixture) },
+    { getEntity, dataset: {}, datasetId: datasetIdFor(fixture), sharedId: datasetIdFor(fixture) },
     fixture,
   );
   return { writes, links, result };
@@ -103,31 +103,27 @@ describe('what it writes', () => {
 });
 
 describe('editor state', () => {
-  it('is a data URL the renderer can decode, in Lexical shape', () => {
-    const url = editorState(['One.', 'Two.']);
+  it('is a data URL the renderer can decode, in Portable Text shape', () => {
+    const url = editorState(['One.', 'Two.'], 'post-1');
     expect(url.startsWith('data:application/json;base64,')).toBe(true);
 
     const decoded = JSON.parse(atob(url.split(';base64,')[1]));
-    expect(decoded).toEqual(editorStateNode(['One.', 'Two.']));
-    expect(decoded.type).toBe('root');
-    // Lexical throws without it, which surfaces as an empty body and a console error elsewhere.
-    expect(decoded.version).toBe(1);
-    expect(decoded.children).toHaveLength(2);
-    expect(decoded.children[0].children[0].text).toBe('One.');
+    expect(decoded).toEqual(editorStateBlocks(['One.', 'Two.'], 'post-1'));
+    expect(Array.isArray(decoded)).toBe(true);
+    expect(decoded).toHaveLength(2);
+    // Canonical text beside the derived span, and keys that match the TextBlock models written.
+    expect(decoded[0]._type).toBe('block');
+    expect(decoded[0].text).toBe('One.');
+    expect(decoded[0].children[0].text).toBe('One.');
+    expect(decoded[0]._key).toBe(textBlockId('post-1', 0));
   });
 
-  it('encodes UTF-8 the way the app does — which the app then decodes wrongly', () => {
-    // Documenting a pre-existing bug rather than asserting correctness. `createBlocks` encodes with
-    // `btoa(unescape(encodeURIComponent(json)))` — UTF-8 bytes, which this matches byte for byte —
-    // but `decodeEditorState` reads it back with a bare `atob`, whose output is a Latin-1 string.
-    // The pair is only lossless for ASCII, so any post containing a non-ASCII character renders
-    // mojibake in the running app. Nothing to do with fixtures; it is why fixture *bodies* are kept
-    // ASCII, while profile names (a separate field, not editor state) can carry accents safely.
+  it('encodes UTF-8 the way the app does, and the app decodes it back exactly', () => {
+    // `createBlocks` writes base64 of the UTF-8 bytes; `decodeEditorState` reads it with a
+    // TextDecoder. A bare `atob` — what the app used to do — yields Latin-1 mojibake, which is why
+    // fixture bodies were kept ASCII for a while. They need not be any more.
     const bytes = atob(editorState(['Sørensen']).split(';base64,')[1]);
-    expect(JSON.parse(bytes).children[0].children[0].text).toBe('SÃ¸rensen');
-
-    // The UTF-8-aware decode the app should be doing recovers it exactly.
     const utf8 = new TextDecoder().decode(Uint8Array.from(bytes, (c) => c.charCodeAt(0)));
-    expect(JSON.parse(utf8).children[0].children[0].text).toBe('Sørensen');
+    expect(JSON.parse(utf8)[0].text).toBe('Sørensen');
   });
 });

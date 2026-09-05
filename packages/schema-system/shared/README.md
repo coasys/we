@@ -8,10 +8,10 @@ framework's reactivity primitive rather than importing one.
 **Anything the renderer needs to turn a template into DOM.**
 
 - `SchemaNode` and the token types
-- `propResolvers/` — `$store`, `$if`, `$query`, `$local`, `$action`, …
+- `propResolvers/` — `{ $ }` expressions, `$action`, `$setLocal`, the handler `$if`, `$query`, …
 - validation — structural, semantic, field-level
 - `indexer` / `sections` — addressing and patching a stored template
-- `componentMeta`, `scope`, `conditionModel`, `themeStyles`
+- `componentMeta`, `scope`, `conditionRecord`, `themeStyles`
 
 ## What doesn't
 

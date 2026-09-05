@@ -4,7 +4,7 @@ import { VIEWS_MARKER } from '@we/schema-shared';
 import { initializeSpaceGate } from '../InitializeSpaceGate.ts';
 import { homeRoute } from '../routes/HomeRoute/index.ts';
 import { spaceGate } from '../SpaceGate.ts';
-import { spaceHeader, spaceNavBar } from './SpaceHeader.ts';
+import { NAV_BAR_HEIGHT, spaceHeader, spaceNavBar } from './SpaceHeader.ts';
 
 export const headerLayout: TemplateSchema = {
   meta: {
@@ -33,19 +33,30 @@ export const headerLayout: TemplateSchema = {
           // isn't a WE space yet, so it gets the "Initialize as WE space" gate instead.
           type: '$if',
           props: {
-            condition: { $store: 'datasetStore.currentDataset' },
+            condition: { $: 'datasetStore.currentDataset' },
             then: {
               type: '$if',
               props: {
-                condition: { $store: 'datasetStore.isWeSpace' },
+                condition: { $: 'datasetStore.isWeSpace' },
                 then: {
                   type: 'Column',
                   children: [
                     spaceHeader,
                     spaceNavBar,
+                    /*
+                      The route fills the viewport below the sticky bar, so that once the header
+                      has scrolled away the section on screen is exactly a screenful.
+
+                      The subtrahend comes from the bar itself rather than being restated here. It
+                      was a literal `70px` against a bar that measures 73 — the button height, its
+                      padding and the border, none of which this file can see — and a theme raising
+                      control heights moved the real one without moving this. There is no CSS way
+                      to say "the viewport minus that sibling", so the bar sets the height and this
+                      subtracts the same expression.
+                    */
                     {
                       type: 'Column',
-                      props: { width: '100%', height: 'calc(100dvh - 70px)' },
+                      props: { width: '100%', height: `calc(100dvh - (${NAV_BAR_HEIGHT}))` },
                       children: [{ type: '$routes' }],
                     },
                   ],
@@ -60,7 +71,7 @@ export const headerLayout: TemplateSchema = {
             // renders in the meantime rather than a guess.
             else: {
               type: '$if',
-              props: { condition: { $store: 'spaceStore.routeSpaceUnjoined' }, then: spaceGate },
+              props: { condition: { $: 'spaceStore.routeSpaceUnjoined' }, then: spaceGate },
             },
           },
         },

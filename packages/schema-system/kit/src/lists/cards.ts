@@ -4,7 +4,7 @@
  * ## What these require from the surrounding template
  *
  * These are the kit's most scope-dependent fragments, so the contract is written down rather than
- * discovered: `cardShell` and `gridWrapper` read **`$local: 'displayMode'`** (`'compact' | 'expanded'
+ * discovered: `cardShell` and `gridWrapper` read **`local.displayMode`** (`'compact' | 'expanded'
  * | 'grid'`) from an ancestor, and `cardList` *writes* its query results into `$local` under
  * `<as>Rows`. A template using them must declare `displayMode` somewhere above, and must not use
  * that derived name for anything else.
@@ -15,6 +15,7 @@
  * become insertable.
  */
 import type { LocalStateField, QueryStateField, SchemaNode, SchemaProp } from '@we/schema-shared';
+import { expr } from '@we/schema-shared';
 
 import { skeletonList } from '../states/skeletonList.ts';
 
@@ -40,15 +41,46 @@ export interface CardShellOptions {
    * controls were in exactly that state.
    */
   localState?: Record<string, LocalStateField>;
+  /**
+   * Subscriptions the card holds — a call's transcript, what extraction wrote onto it. Declared on
+   * the card so they can name the row (`call.id`), which nothing above the `$each` can.
+   */
+  queries?: Record<string, QueryStateField>;
+  /**
+   * What this card *is*, so it can be picked up and carried somewhere else.
+   *
+   * Given, never derived: this fragment is called from inside a `$each` and never sees the row's
+   * name, so only the list knows whether a row is a `CollectionBlock` or a `Space` and which field
+   * holds its id. One line per list, and every card in the route becomes a drag source.
+   *
+   * Leave `datasetKey` alone for anything in the space on screen — the receiver stamps it. See
+   * `we-draggable`.
+   */
+  drag?: {
+    entity: SchemaProp;
+    id: SchemaProp;
+    label?: SchemaProp;
+    icon?: SchemaProp;
+    /** Only where the row is not in the dataset being looked at — a space listed in a directory. */
+    datasetKey?: SchemaProp;
+    /**
+     * What this row was drawn with, so the ghost can draw the same card and a receiver can keep it.
+     *
+     * Every field is a property the list **already selected** — `post.editorState` is the same
+     * string the card body renders — so filling this costs a property assignment, not a query. Give
+     * what the row has and omit the rest: a picture where there is one, the composed document where
+     * the content itself is the picture.
+     */
+    preview?: {
+      thumbnail?: SchemaProp;
+      content?: SchemaProp;
+      author?: SchemaProp;
+      date?: SchemaProp;
+    };
+  };
 }
 
-const defaultMaxHeight = {
-  $if: {
-    condition: { $eq: [{ $local: 'displayMode' }, 'grid'] },
-    then: '250px',
-    else: '100px',
-  },
-};
+const defaultMaxHeight = { $: "local.displayMode == 'grid' ? '250px' : '100px'" };
 
 /**
  * Generates a card node with per-item expand/modal state for use inside $each.
@@ -61,10 +93,33 @@ const defaultMaxHeight = {
  * $localState (displayMode, sortDirection, etc.) remains accessible.
  */
 export function cardShell(opts: CardShellOptions): SchemaNode {
+  const card = buildCard(opts);
+  if (!opts.drag) return card;
+  /*
+    Wrapped rather than given props of its own, because `we-draggable` is `display: contents`: it
+    adds no box, so the card is still the grid item its parent lays out, and the card is what the
+    ghost and the geometry are measured from.
+  */
+  return {
+    type: 'we-draggable',
+    props: {
+      entity: opts.drag.entity,
+      recordId: opts.drag.id,
+      ...(opts.drag.label !== undefined && { label: opts.drag.label }),
+      ...(opts.drag.icon !== undefined && { icon: opts.drag.icon }),
+      ...(opts.drag.datasetKey !== undefined && { datasetKey: opts.drag.datasetKey }),
+      ...(opts.drag.preview && { preview: opts.drag.preview }),
+    },
+    children: [card],
+  };
+}
+
+function buildCard(opts: CardShellOptions): SchemaNode {
   const { header, body, modalContent } = opts;
   const maxHeight = opts.maxHeight ?? defaultMaxHeight;
 
   return {
+    ...(opts.queries && { $queries: opts.queries }),
     $localState: {
       expanded: { type: 'boolean', initial: false },
       modalOpen: { type: 'boolean', initial: false },
@@ -84,7 +139,7 @@ export function cardShell(opts: CardShellOptions): SchemaNode {
       {
         type: '$if',
         props: {
-          condition: { $eq: [{ $local: 'displayMode' }, 'expanded'] },
+          condition: { $: "local.displayMode == 'expanded'" },
           then: {
             type: 'Column',
             props: { gap: '300' },
@@ -94,17 +149,11 @@ export function cardShell(opts: CardShellOptions): SchemaNode {
             type: 'CollapsedContent',
             props: {
               maxHeight,
-              collapsed: { $not: { $local: 'expanded' } },
-              icon: {
-                $if: {
-                  condition: { $eq: [{ $local: 'displayMode' }, 'grid'] },
-                  then: 'arrows-out',
-                  else: null,
-                },
-              },
+              collapsed: { $: '!local.expanded' },
+              icon: { $: "local.displayMode == 'grid' ? 'arrows-out' : null" },
               onExpandClick: {
                 $if: {
-                  condition: { $eq: [{ $local: 'displayMode' }, 'grid'] },
+                  condition: { $: "local.displayMode == 'grid'" },
                   then: { $setLocal: 'modalOpen', value: true },
                   else: { $toggleLocal: 'expanded' },
                 },
@@ -119,14 +168,17 @@ export function cardShell(opts: CardShellOptions): SchemaNode {
       {
         type: '$if',
         props: {
-          condition: { $local: 'modalOpen' },
+          condition: { $: 'local.modalOpen' },
           then: {
             type: 'we-modal',
-            props: { close: { $setLocal: 'modalOpen', value: false } },
+            // `lg`: this is a card opened out to be read, so it wants the measure a page of content
+            // wants. With no size at all it was as wide as its longest line — which for a grid card
+            // holding a paragraph meant the expanded view could come out narrower than the tile.
+            props: { size: 'lg', close: { $setLocal: 'modalOpen', value: false } },
             children: [
               {
                 type: 'Column',
-                props: { gap: '400', p: '400' },
+                props: { gap: '400' },
                 children: modalContent ?? body,
               },
             ],
@@ -147,13 +199,7 @@ const gridWrapper = (children: SchemaNode[]): SchemaNode => ({
   props: {
     gap: '400',
     width: '100%',
-    columns: {
-      $if: {
-        condition: { $eq: [{ $local: 'displayMode' }, 'grid'] },
-        then: 3,
-        else: 1,
-      },
-    },
+    columns: { $: "local.displayMode == 'grid' ? 3 : 1" },
   },
   children,
 });
@@ -189,12 +235,12 @@ export interface CardListOptions {
  */
 export function cardList(opts: CardListOptions): SchemaNode {
   const key = `${opts.as}Rows`;
-  const items = opts.query ? { $local: key } : opts.items;
+  const items = opts.query ? { $: `local.${key}` } : opts.items;
 
   const list: SchemaNode = {
     type: '$if',
     props: {
-      condition: { $count: { items } },
+      condition: expr`count(${items})`,
       then: gridWrapper([{ type: '$each', props: { items, as: opts.as }, children: opts.children }]),
       else: opts.empty,
     },
@@ -211,7 +257,7 @@ export function cardList(opts: CardListOptions): SchemaNode {
     children: [
       {
         type: '$if',
-        props: { condition: { $local: `${key}Loaded` }, then: list, else: skeletonList() },
+        props: { condition: { $: `local.${key}Loaded` }, then: list, else: skeletonList() },
       },
     ],
   };

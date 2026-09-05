@@ -13,11 +13,11 @@ export const initializeSpaceGate: SchemaNode = gatePrompt({
   localState: {
     name: {
       type: 'string',
-      initial: { $store: 'spaceStore.foreignSpacePrefill.name' },
+      initial: { $: 'spaceStore.foreignSpacePrefill.name' },
       validate: [{ rule: 'required', message: 'Name is required' }],
     },
-    description: { type: 'string', initial: { $store: 'spaceStore.foreignSpacePrefill.description' } },
-    avatar: { type: 'file', initial: { $store: 'spaceStore.foreignSpacePrefill.avatar' } },
+    description: { type: 'string', initial: { $: 'spaceStore.foreignSpacePrefill.description' } },
+    avatar: { type: 'file', initial: { $: 'spaceStore.foreignSpacePrefill.avatar' } },
     submitting: { type: 'boolean', initial: false },
   },
   children: [
@@ -32,7 +32,7 @@ export const initializeSpaceGate: SchemaNode = gatePrompt({
             {
               type: 'EditableImage',
               props: {
-                src: { $local: 'avatar' },
+                src: { $: 'local.avatar' },
                 alt: 'Space avatar',
                 fit: 'cover',
                 width: '150px',
@@ -43,29 +43,43 @@ export const initializeSpaceGate: SchemaNode = gatePrompt({
                 uploadLabel: 'Add image',
                 editLabel: 'Change image',
                 fontSize: '200',
-                onImageChange: { $setLocal: 'avatar', from: '$event' },
+                onImageChange: { $setLocal: 'avatar', value: { $: 'event' } },
               },
             },
           ],
         },
-        field({ name: 'name', label: 'Name', placeholder: 'Space name...', validated: true, touchOnBlur: true }),
-        field({ name: 'description', label: 'Description', placeholder: 'Description (optional)' }),
+        // Judged on submit, not on blur — the guard below touches everything, so the error arrives
+        // on the click that was refused rather than at somebody who clicked through an empty field.
+        field({ name: 'name', label: 'Name', placeholder: 'Space name...', validated: true }),
+        /*
+        A textarea, at two rows. A description is prose and an input is one line, so anything past a
+        short phrase scrolled sideways inside a field with no sign there was more of it. Two rows
+        rather than the default three: enough to show that it wraps, without a box that looks like it
+        is asking for a paragraph.
+        */
+        field({
+          name: 'description',
+          label: 'Description',
+          placeholder: 'Description (optional)',
+          control: 'textarea',
+          props: { rows: 2 },
+        }),
         {
           type: 'we-button',
           props: {
             text: 'Initialize as WE Space',
             variant: 'primary',
-            loading: { $local: 'submitting' },
-            disabled: { $local: 'submitting' },
+            loading: { $: 'local.submitting' },
+            disabled: { $: 'local.submitting' },
             onClick: [
               { $touch: '$all' },
               { $setLocal: 'submitting', value: true },
               {
                 $if: {
-                  condition: { $formValid: '$scope' },
+                  condition: { $: 'formValid()' },
                   then: {
                     $action: 'spaceStore.initializeAsWeSpace',
-                    args: [{ $local: 'name' }, { $local: 'description' }, { $local: 'avatar' }],
+                    args: [{ $: 'local.name' }, { $: 'local.description' }, { $: 'local.avatar' }],
                     onFinally: [{ $setLocal: 'submitting', value: false }],
                   },
                   else: { $setLocal: 'submitting', value: false },

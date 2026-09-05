@@ -15,13 +15,45 @@ Most @we/primitives inherit **all** layers below. Props use design token values 
 |---|---|
 | SpaceValue | "0", "100", "200", "300", "400", "500", "600", "700", "800", "900", "1000" (or CSS length e.g. "16px") |
 | ColorValue | A **role** — see the table below — or a scale position "{hue}-{shade}" where hue = neutral, primary, success, warning, danger and shade = 0, 25, 50, 75, 100, 200–900, 1000. Also "white", "black". (or CSS color). **Prefer a role.** |
-| RadiusValue | "0", "100", "200", "300", "400", "500", "600", "700", "800", "900", "pill", "full" (or CSS length). Also two *semantic* values that follow the theme instead of naming a size: "avatar" (circular by default; use for anything square that reads as a profile picture) and "media" (square by default; images, video, embeds). Prefer these on an \`EditableImage\` or a raw element standing in for one — a pinned "full" or "pill" cannot follow a theme's shape settings. Note "full" is 50%, so it is an ellipse on any box that is not square; reach for "pill" on wide boxes. |
+| RadiusValue | "0", "100", "200", "300", "400", "500", "600", "700", "800", "900", "pill", "full" (or CSS length). Also five *theme-family* names that follow the theme instead of naming a size — see "Theme families" below. Prefer them on an \`EditableImage\`, a \`Card\`, or a raw element standing in for one: a pinned "full" or "pill" cannot follow a theme's shape settings. Note "full" is 50%, so it is an ellipse on any box that is not square; reach for "pill" on wide boxes. |
 | ShadowValue | "sm", "md", "lg", "xl" |
 | FontSizeValue | "base", "100", "200", "300", "400", "500", "600", "700", "800", "900", "1000" (or CSS length) |
 | FontFamilyValue | "base" (or CSS font-family) |
 | LineHeightValue | "none", "tight", "snug", "normal", "relaxed", "loose" (or CSS value) |
 | LetterSpacingValue | "tighter", "tight", "normal", "wide", "wider", "widest" (or CSS value) |
 | FontWeightValue | Named tokens: "regular" (400), "medium" (500), "semibold" (600), "bold" (700). Numeric: "100"–"900". CSS pass-through: "light", "normal", "bolder". |
+
+### Theme families — for \`r\`, \`p\` and \`gap\`, the counterpart of a colour role
+
+A colour role says what a colour is *for*. A **family** says what kind of thing a box *is*, so the
+theme can decide its shape and density: buttons are rounded like this, sheets like that. Naming one
+is how a box follows a theme's \`surfaceRadius\` or \`surfacePadding\` instead of pinning a number.
+
+| Name | \`r\` | \`p\` | \`gap\` | For |
+|---|---|---|---|---|
+| \`control\` | ✓ | | ✓ | Buttons, badges, tags — anything pressed. |
+| \`surface\` | ✓ | ✓ | ✓ | Cards, modals, sheets — **and anything inset inside one**. |
+| \`input\` | ✓ | | | Fields, selects, pickers. |
+| \`avatar\` | ✓ | | | Anything square that reads as a profile picture. |
+| \`media\` | ✓ | | | A **full-bleed** banner, video or embed spanning an edge. |
+
+\`surface\` and \`media\` read the same theme variable and differ only in what they fall back to when a
+theme sets nothing: \`surface\` is rounded like a card, \`media\` is **square**. Pick by whether the box
+is inset in something rounded or spans the edge — a cover image inside a modal is \`surface\`, the
+same image as a page-width header is \`media\`.
+
+\`\`\`json
+{ "type": "Column", "props": { "bg": "surface", "r": "surface", "p": "surface", "gap": "surface" } }
+\`\`\`
+
+**The blanks are constraints, not gaps.** A family only takes \`p\` when its theme value is a single
+length: \`control\`'s padding is horizontal-only (the vertical comes from the control's height, per
+size) and \`input\`'s is a full shorthand, and padding is assembled as four values in one declaration,
+so either would produce an invalid rule.
+
+**Only these props.** A family is meaningless on a margin or an offset — it says how much room a box
+puts *inside* itself, which answers nothing about the space between it and its neighbour. \`m:
+"surface"\` resolves to nothing and warns.
 
 ### Semantic Colour Roles — reach for these before a scale position
 
@@ -47,7 +79,8 @@ a user-chosen swatch.
 | \`surface\` | A card, panel or sheet sitting on the page. |
 | \`surface-raised\` | Something floating above the page — a popover, a floating bar, a docked rail with a shadow. |
 | \`surface-sunken\` | A well recessed into a surface — an inset box, a code block, an input trough. |
-| \`surface-hover\` / \`surface-active\` | Row and item feedback. Use inside \`hoverProps\` / \`activeProps\`. |
+| \`surface-hover\` / \`surface-active\` | Row and item feedback — something sitting **on** a surface. Use inside \`hoverProps\` / \`activeProps\`. |
+| \`surface-sunken-hover\` | A **well** lifted — an input, a textarea, a picker trigger. Hovering one with \`surface-hover\` lands it at about surface level and it stops looking recessed, so use this wherever the resting fill is \`surface-sunken\`. One state, not a hover/pressed pair: a field is clicked *into* rather than pushed, so hover, press and focus all resolve here and the ring is what says "focused". |
 | \`control-surface\` | The filled neutral of a *control* — a slider or switch track, a progress trough, a scrollbar thumb, a secondary button, a count chip. Not a surface and not a state. |
 | \`text\` | Primary body and heading text. |
 | \`text-muted\` | Secondary text — captions, labels, metadata. |
@@ -55,7 +88,8 @@ a user-chosen swatch.
 | \`surface-inverse\` | A surface deliberately opposite to the page — a tooltip. Holds a fixed lightness, so it does *not* flip with the theme. |
 | \`on-inverse\` | Text or an icon **on top of** \`surface-inverse\` — a tooltip's own text. **Not** for text on the accent, which is \`on-accent\`. |
 | \`border\` | Default borders and dividers. |
-| \`border-strong\` | Emphasised separation. |
+| \`border-strong\` | Emphasised separation — two regions that are genuinely apart. Not a hover state. |
+| \`border-hover\` | The edge of an interactive box under the pointer. Sits between \`border\` and \`border-strong\`, which are three ramp steps apart; borrowing the latter for hover makes an outline jump rather than acknowledge. |
 | \`accent\` | An accent *fill* — a primary button, a selected disc. |
 | \`accent-hover\` / \`accent-active\` | Hover and pressed states of an accent fill. |
 | \`on-accent\` | Text or an icon **on top of** an accent fill. |
@@ -76,7 +110,13 @@ a user-chosen swatch.
 \`\`\`
 
 Roles work anywhere a colour token does, including inside a border shorthand
-(\`"1px solid border"\`) and behind \`$if\` (\`{ "$if": { "condition": …, "then": "accent-muted", "else": "surface-sunken" } }\`).
+(\`"1px solid border"\`) and behind a ternary
+(\`{ "$": "row.selected ? 'accent-muted' : 'surface-sunken'" }\`).
+
+**Not \`$if\` in a prop.** \`$if\` is a *node* type and, in a value position, resolves to a handler —
+so the colour resolver is handed a function, paints nothing, and warns about nothing. The validator
+does not catch it either. A condition that chooses a value is a ternary, which is what the
+expression language has one for.
 
 **Always kebab-case: \`"surface-sunken"\`, never \`"surfaceSunken"\`.** The camelCase spelling is the
 TypeScript key of a \`ThemeRole\`; a schema writes the CSS spelling. Getting it wrong fails silently —
@@ -104,8 +144,13 @@ we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
 | zIndex | number | Stack order |
 | display | "flex" \\| "block" \\| "inline" \\| "inline-block" \\| "grid" \\| "inline-flex" | Display mode |
 | flex | string | Flex shorthand (e.g. "1", "0 0 auto", "none") — controls grow/shrink/basis |
+| flexShrink | number \\| string | \`flex-shrink\` alone, for the common "just don't let it shrink" case (\`0\`) without committing to a grow and a basis |
 | alignSelf | string | Override parent cross-axis alignment for this child |
-| overflow | "hidden" \\| "auto" | Overflow behavior |
+| overflow | "hidden" \\| "auto" \\| "overlay" | Overflow behavior, both axes |
+| overflowX | "hidden" \\| "auto" \\| "overlay" | Horizontal overflow alone — a nav strip or tab bar that scrolls sideways instead of pushing the page wide |
+| overflowY | "hidden" \\| "auto" \\| "overlay" | Vertical overflow alone |
+| scrollbarWidth | "auto" \\| "thin" \\| "none" | How much room the scrollbar takes. \`none\` for a strip in fixed-height chrome, where a gutter would not fit. **Use \`none\` or leave it unset — never \`thin\` or \`auto\`:** Chromium reads this property as "use the platform scrollbar" and drops the app's own styling for that element, so it becomes the one scroll region that does not match the rest (a different colour, square corners, and stepper arrows on Linux). \`none\` is safe because a hidden bar has nothing to style. |
+| scrollbarGutter | "auto" \\| "stable" \\| "stable both-edges" | Reserve the gutter whether or not it scrolls, so content does not shift when a scrollbar appears |
 | m | SpaceValue | Margin (all sides) |
 | mx | SpaceValue | Margin left + right |
 | my | SpaceValue | Margin top + bottom |
@@ -113,6 +158,27 @@ we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
 | mr | SpaceValue | Margin right |
 | mb | SpaceValue | Margin bottom |
 | ml | SpaceValue | Margin left |
+
+**A row that overflows is a row where nobody said who gives up space.** Inside a \`Row\`, a child's
+\`maxWidth\` is not a promise: a flex item's automatic minimum size is its *content*, so an item whose
+content cannot narrow — a strip of \`we-button\`s, which set \`white-space: nowrap\` — refuses every
+request to compress. Flexbox then takes the whole deficit out of whichever sibling *can* shrink
+(usually a run of text, which folds onto two lines) and pushes the rest past the container. Where a
+template is mounted in a scrolling box, that reads as the entire page sliding sideways.
+
+Say who does what, and the row cannot overflow:
+
+\`\`\`json
+{ "type": "Row", "props": { "ay": "center" }, "children": [
+  { "type": "Row", "props": { "flex": "1 1 auto", "minWidth": "0", "overflowX": "auto", "scrollbarWidth": "none" },
+    "children": ["…the strip that gives up space and scrolls instead…"] },
+  { "type": "Row", "props": { "flex": "0 0 auto" },
+    "children": ["…the ornament that never absorbs somebody else's overflow…"] }
+]}
+\`\`\`
+
+\`minWidth: '0'\` is the half that gets forgotten. Without it \`overflowX\` has nothing to do, because
+the item is never asked to be narrower than its content in the first place.
 
 ### Visual
 
@@ -137,7 +203,7 @@ we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
 | cursor | "pointer" \\| "default" \\| "text" \\| "not-allowed" | Cursor style |
 | pointerEvents | "none" \\| "auto" | Pointer events |
 | transform | string | CSS transform |
-| transition | string | CSS transition. Durations may be animation tokens (\`'0'\`–\`'500'\`): \`'width 300 ease-in-out'\`. Prefer the token — a theme's animationSpeed preset overrides those, so \`300\` respects a reduced-motion setting where \`300ms\` overrides it. Use for a property whose *value* changes in place (a width bound to \`$local\`); for something appearing and disappearing use \`$if\`/\`$animate\` transitions instead |
+| transition | string | CSS transition. Durations may be animation tokens (\`'0'\`–\`'500'\`): \`'width 300 ease-in-out'\`. Prefer the token — a theme's animationSpeed preset overrides those, so \`300\` respects a reduced-motion setting where \`300ms\` overrides it. Use for a property whose *value* changes in place (a width bound to a local); for something appearing and disappearing use \`$if\`/\`$animate\` transitions instead |
 | r | RadiusValue | Border radius (all corners) |
 | rt | RadiusValue | Border radius top |
 | rb | RadiusValue | Border radius bottom |
@@ -177,6 +243,18 @@ we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
 | letterSpacing | "tighter" \\| "tight" \\| "normal" \\| "wide" \\| "wider" \\| "widest" | Letter spacing token |
 | textDecoration | "underline" \\| "line-through" \\| "overline" \\| "none" | Text decoration |
 | textTransform | "uppercase" \\| "lowercase" \\| "capitalize" \\| "none" | Text transform |
+| whiteSpace | "normal" \\| "nowrap" \\| "pre" \\| "pre-wrap" \\| "pre-line" \\| "break-spaces" | How whitespace and line breaks in the source text are treated |
+| overflowWrap | "normal" \\| "break-word" \\| "anywhere" | Where a line may break inside a word too long to fit. **Defaults to \`anywhere\`** — see below |
+
+**Text that cannot break is text that breaks the page.** \`overflowWrap\` defaults to \`anywhere\` on
+every typography component and on \`Column\`/\`Row\`/\`Grid\`/\`Card\`, so a URL, a DID, or a transcriber's
+run-together output wraps instead of stretching its card off the screen. **Do not set it, and do not
+reach for \`styles: { 'word-break': ... }\` — that is the patch this default replaced.**
+
+Set \`overflowWrap: 'normal'\` only to deliberately opt a box *out* of breaking. Note \`'break-word'\` is
+the value that looks right and is not: it breaks in the same places as \`anywhere\` but does not
+reduce the element's min-content width, and a flex item and a \`1fr\` grid track are both sized by
+min-content — so under it the long string still pushes its container wider than the viewport.
 
 **Typography defaults:** fontSize and fontWeight have **no built-in defaults** — omitting them inherits from parent elements (browser default is ~16px / normal weight). Do not set fontSize or fontWeight unless you need a non-default value. For example, \`fontSize: '300'\` (16px) and \`fontWeight: '500'\` (normal) are the inherited defaults — omit them.
 
@@ -229,7 +307,7 @@ Three ways to respond to size, and they are not interchangeable:
 | Need | Use | Why |
 |---|---|---|
 | Different **values** — padding, gap, width, font size | \`*UpProps\` | Pure CSS. Nothing remounts. |
-| A different **tree** — a pane becomes a drawer, two panes become one | \`$surface\` + \`$if\` on \`$surface.tier\` | Only a branch can swap DOM. |
+| A different **tree** — a pane becomes a drawer, two panes become one | \`$surface\` + \`$if\` on \`surface.tier\` | Only a branch can swap DOM. |
 | Same-shaped things **filling a box** — video tiles, a photo wall | \`Grid\` with \`childAspect\` | Needs both axes and an argmax; CSS cannot express it. |
 
 **Prefer \`*UpProps\` for anything that is a value.** \`$if\` on the tier works and is tempting, because

@@ -11,10 +11,10 @@
     "prepare": "pnpm --filter @we/cli run bootstrap && husky",
     "clean": "find . -name 'node_modules' -type d -prune -exec rm -rf '{}' + && find . -name 'dist' -type d -prune -exec rm -rf '{}' + && pnpm store prune",
     "build": "pnpm -r --workspace-concurrency=1 run build",
-    "build:web": "pnpm --filter @we/app-web build",
-    "build:electron": "pnpm --filter @we/app-electron electron:build",
-    "build:tauri": "pnpm --filter @we/app-tauri tauri:build",
-    "build:all": "pnpm build:web && pnpm build:electron && pnpm build:tauri",
+    "build:web": "pnpm --filter '@we/app-web...' --workspace-concurrency=1 run build",
+    "build:electron": "pnpm --filter '@we/app-electron^...' --workspace-concurrency=1 run build && pnpm --filter @we/app-electron electron:build",
+    "build:tauri": "pnpm --filter '@we/app-tauri^...' --workspace-concurrency=1 run build && pnpm --filter @we/app-tauri tauri:build",
+    "build:all": "pnpm build && pnpm --filter @we/app-electron electron:build && pnpm --filter @we/app-tauri tauri:build",
     "dev": "pnpm dev:web",
     "dev:web": "pnpm --filter @we/app-web dev",
     "dev:electron": "pnpm --filter @we/app-electron electron:dev",
@@ -25,7 +25,8 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "clean:deep": "pnpm clean && rm -rf apps/we-tauri/src-tauri/target apps/we-electron/dist-electron",
-    "lint:css": "stylelint 'packages/**/src/**/*.css' 'apps/*/src/**/*.css'"
+    "lint:css": "stylelint 'packages/**/src/**/*.css' 'apps/*/src/**/*.css' 'packages/**/src/**/*.scss'",
+    "test:coverage": "pnpm -r --no-bail run test -- --coverage"
   },
   "packageManager": "pnpm@10.18.3",
   "devDependencies": {
@@ -37,11 +38,13 @@
     "eslint-plugin-prettier": "^5.2.1",
     "eslint-plugin-simple-import-sort": "^14.0.0",
     "husky": "^9.1.7",
-    "lint-staged": "^17.3.0",
+    "lint-staged": "^17.4.1",
+    "postcss-scss": "^4.0.9",
     "prettier": "3.9.6",
     "prettier-plugin-sort-package-json": "^1.1.0",
     "stylelint": "^17.14.1",
     "stylelint-config-standard": "^40.0.0",
+    "stylelint-config-standard-scss": "^17.0.0",
     "typescript": "^5.7.2"
   },
   "pnpm": {

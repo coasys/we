@@ -1,7 +1,7 @@
 import { AudioVisualiser } from '@we/components/solid';
 import { Column, Row } from '@we/components/solid';
-import type { FileData } from '@we/models';
-import { readFileAsFileData } from '@we/models';
+import type { FileData } from '@we/entities';
+import { readFileAsFileData } from '@we/entities';
 import { createSignal, Show } from 'solid-js';
 import { Portal } from 'solid-js/web';
 
@@ -135,13 +135,11 @@ export function AudioInput(props: AudioInputProps) {
         </Show>
       </Show>
 
-      {/* Add-audio modal — portalled to escape the Lexical contenteditable context. */}
+      {/* Add-audio modal — portalled to escape the editor's contenteditable context. */}
       <Show when={showModal()}>
         <Portal>
-          <we-modal close={closeModal} ax="center" minWidth="400px">
-            <we-text fontWeight="bold" fontSize="600" textAlign="center">
-              Add Audio
-            </we-text>
+          <we-modal close={closeModal} size="sm">
+            <we-text variant="heading-md">Add Audio</we-text>
 
             <Show
               when={pendingPreviewUrl()}

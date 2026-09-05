@@ -17,3 +17,5 @@ target/
 
 # Dependencies
 node_modules/
+public/we-text.svg
+public/favicon.ico

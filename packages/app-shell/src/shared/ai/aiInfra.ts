@@ -9,7 +9,7 @@
  * are unaffected. Keep it free of Solid and store imports so that boundary stays real.
  */
 import { chatSystemPreamble } from '@shared/prompts/chatSystemPrompt';
-import type { ModelManifestEntry } from '@we/backend-shared';
+import type { EntityManifestEntry } from '@we/backend-shared';
 
 /**
  * The full system prompt for schema-editing chat.
@@ -98,7 +98,7 @@ export const updateSchemaTool = {
  * external models need full property descriptions because the AI has no other
  * knowledge of their structure.
  */
-export function formatExternalManifestForPrompt(manifest: ModelManifestEntry[]): string {
+export function formatExternalManifestForPrompt(manifest: EntityManifestEntry[]): string {
   if (!manifest.length) return '';
   const lines: string[] = ['## External Perspective Models', ''];
   for (const entry of manifest) {
@@ -116,8 +116,8 @@ export function formatExternalManifestForPrompt(manifest: ModelManifestEntry[]):
     if (relations.length > 0) {
       lines.push('HasMany relations — typed (→ Model) support both include and parent; untyped support parent only:');
       for (const rel of relations) {
-        if (rel.relatedModel) {
-          lines.push(`- ${rel.name} → ${rel.relatedModel} (include or parent)`);
+        if (rel.relatedEntity) {
+          lines.push(`- ${rel.name} → ${rel.relatedEntity} (include or parent)`);
         } else {
           lines.push(`- ${rel.name} (untyped — parent query only, do NOT use with include)`);
         }

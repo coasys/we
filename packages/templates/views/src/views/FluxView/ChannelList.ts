@@ -5,7 +5,7 @@ const messageCard: SchemaNode = {
   props: { ay: 'start', gap: '300', p: '300', r: '300', bg: 'surface-raised' },
   children: [
     // Identicon avatar from author DID
-    { type: 'we-avatar', props: { hash: '$message.author', size: 'sm' } },
+    { type: 'we-avatar', props: { hash: { $: 'message.author' }, size: 'sm' } },
     // Message content
     {
       type: 'Column',
@@ -27,16 +27,16 @@ const messageCard: SchemaNode = {
                 overflow: 'hidden',
                 styles: { 'text-overflow': 'ellipsis', 'white-space': 'nowrap' },
               },
-              children: ['$message.author'],
+              children: [{ $: 'message.author' }],
             },
             {
               type: 'we-timestamp',
-              props: { value: '$message.timestamp', dateStyle: 'short', timeStyle: 'short' },
+              props: { value: { $: 'message.timestamp' }, dateStyle: 'short', timeStyle: 'short' },
             },
           ],
         },
         // HTML body
-        { type: 'we-html', props: { content: '$message.body' } },
+        { type: 'we-html', props: { content: { $: 'message.body' } } },
       ],
     },
   ],
@@ -101,7 +101,7 @@ export const channelList: SchemaNode = {
                   children: [
                     {
                       type: 'we-html',
-                      props: { content: '$message.body' },
+                      props: { content: { $: 'message.body' } },
                     },
                   ],
                 },
@@ -165,16 +165,16 @@ export const channelList: SchemaNode = {
                             {
                               type: 'we-text',
                               props: { variant: 'body', fontWeight: 'bold' },
-                              children: ['$channel.conversations[0].conversationName'],
+                              children: [{ $: 'channel.conversations[0].conversationName' }],
                             },
                             {
                               type: '$if',
                               props: {
-                                condition: '$channel.description',
+                                condition: { $: 'channel.description' },
                                 then: {
                                   type: 'we-text',
                                   props: { variant: 'footnote', color: 'text-faint' },
-                                  children: ['$channel.description'],
+                                  children: [{ $: 'channel.description' }],
                                 },
                               },
                             },
@@ -189,7 +189,7 @@ export const channelList: SchemaNode = {
                       children: [
                         {
                           type: '$each',
-                          props: { items: '$channel.messages', as: 'message' },
+                          props: { items: { $: 'channel.messages' }, as: 'message' },
                           children: [messageCard],
                         },
                       ],
