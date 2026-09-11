@@ -47,7 +47,7 @@
  *   the module now and this places it. A body is for an arrangement the module genuinely cannot
  *   express, not for a difference it should have absorbed.
  * - **no `route` on any of them.** The key exists for a shell that routes itself and wants a panel on
- *   one page only — but scoping these to the canvas meant crossing to the tasks list *unregistered*
+ *   one page only — but scoping these to the canvas meant crossing to the kanban *unregistered*
  *   them, throwing away their scroll position, their subscriptions and wherever they had been
  *   dragged. A column of context on a page that did not strictly need it is the cheaper of the two.
  * - **`open: false`** on the call, because the call module's launcher action is `goToCall`, which
@@ -120,7 +120,7 @@ const EXTRACTED = { $: `modules.transcribe.extractionFor[${CALL_EXPR}].targets.m
  * The page on screen, as a segment — or the canvas, before the redirect has landed on one.
  *
  * Changing which call you are looking at is not a reason to change the page. Both of these used to
- * name `canvas` outright, so choosing a call from the tasks list threw you onto the canvas, and the
+ * name `canvas` outright, so choosing a call from the kanban threw you onto the canvas, and the
  * only way back was the switcher.
  */
 const PAGE_EXPR = "routeStore.templateSegments[0] ? routeStore.templateSegments[0] : 'canvas'";
@@ -159,7 +159,7 @@ const openCall = (idExpr: string): SchemaProp => pageWithCall(idExpr);
  * Back to the call being recorded — the same one navigation, naming no call.
  *
  * An empty value rather than a bare path. `navigate` restores the query a path was last left with —
- * which is what makes leaving for the tasks list and coming back keep the call you were on — so the
+ * which is what makes leaving for the kanban and coming back keep the call you were on — so the
  * path alone would bring the old parameter straight back. An explicit `?` always wins, and an empty
  * parameter reads as absent everywhere it is tested.
  */
@@ -174,12 +174,37 @@ const openLiveCall: SchemaProp = pageWithCall("''");
  * segment it freed goes to the other half of what a conversation produces: tasks have no date and
  * events do, and a list is the wrong shape for the second.
  */
-const ROUTE = { canvas: 'canvas', tasks: 'tasks', events: 'events' } as const;
+/**
+ * The three pages, named for the arrangement rather than for what happens to be in them.
+ *
+ * They were `canvas`, `tasks` and `events` — one named for its form and two for a content type,
+ * which reads as three different subjects when it is three readings of one. What a call produces is
+ * not a fixed pair either: `EXTRACTED` asks the call what it is extracting, so a community that
+ * defines a `Sighting` gets Sightings on the canvas, and two tabs named after two members of an open
+ * set stop describing it the moment somebody adds a third. A form-name stays true — a calendar is
+ * still a calendar, and a record with no date is self-evidently not on it.
+ *
+ * ## Kanban, where the rest of WE says Boards
+ *
+ * A **board** is the record: a `CollectionBlock` holding columns, which is what `createBoard` makes
+ * and `arrangedBoard` arranges. **Kanban** is the arrangement — cards in columns standing for
+ * states. `KIND.board` already says so, calling it "a kanban board holding columns": kanban is the
+ * adjective, board is the noun, and they are not two words for one thing.
+ *
+ * So the code goes on saying board everywhere, and this strip says Kanban — because it is the one
+ * surface in WE where the two arrangements are *adjacent tabs*. Miro, Trello and Jira all call their
+ * canvas or their columns a board, so "Canvas | Board" asks a reader to tell apart two things the
+ * word covers equally well. `BoardsView` keeps its name: it lists board records, has a picker, and
+ * has no canvas beside it. See `docs/architecture/boards.md`.
+ */
+const ROUTE = { canvas: 'canvas', kanban: 'kanban', calendar: 'calendar' } as const;
 
 const NAV = [
   { segment: ROUTE.canvas, icon: 'graph', label: 'Canvas' },
-  { segment: ROUTE.tasks, icon: 'check-square', label: 'Tasks' },
-  { segment: ROUTE.events, icon: 'calendar', label: 'Events' },
+  // `kanban`, not `check-square`: the icon named a content type while the page's own placeholder
+  // already used this one, so the strip and the page it led to disagreed about what was there.
+  { segment: ROUTE.kanban, icon: 'kanban', label: 'Kanban' },
+  { segment: ROUTE.calendar, icon: 'calendar', label: 'Calendar' },
 ];
 
 /**
@@ -215,7 +240,7 @@ const navPath = { $: "`${spaceStore.spacePath}/${nav.segment}?call=${routeStore.
  * ## Its own pill, beside the switcher rather than inside it
  *
  * The obvious home is the bar the route buttons live in, and it is the wrong one: that pill is
- * content-sized and centred, so a title in it moves Canvas, Tasks and Events sideways every time
+ * content-sized and centred, so a title in it moves Canvas, Kanban and Calendar sideways every time
  * somebody renames a call or opens one with a longer name. Nav you cannot build muscle memory for
  * is worse than nav you have to look at. Two pills of the same family, each sized by its own
  * contents, and neither disturbs the other.
@@ -865,7 +890,7 @@ const inspectorPanel: SchemaNode = {
  * The same list the `/calls` route draws, without the transcripts: choosing is a two-second act and
  * a panel that made you scroll past a meeting to reach the one below it would not be a switcher.
  *
- * Declared with no `route`, so it is reachable from the tasks list as well. Selection is a
+ * Declared with no `route`, so it is reachable from the kanban as well. Selection is a
  * *navigation* — `./canvas/<id>` — which is what makes it survive a reload and paste into a message.
  */
 const callsPanel: SchemaNode = {
@@ -1476,7 +1501,7 @@ const canvasRoute: RouteSchema = { path: '/canvas', ...canvasBody };
  *
  * Distinct from `emptyState`, which is the answer to "this list is empty": that sentence is about
  * content, this one is about the *address*, and a page with no subject has not asked a question yet.
- * Both routes that hang off a call need it — the tasks list, and now the calendar — so the icon is a
+ * Both routes that hang off a call need it — the kanban, and now the calendar — so the icon is a
  * parameter and the shape is shared. Kept local to this template rather than lifted into the kit: it
  * has two callers in one file, and the extraction threshold is three.
  */
@@ -1507,7 +1532,7 @@ function callGate(icon: string, message: string, action?: SchemaNode): SchemaNod
  * midpoint down by half the difference between the two — 16px, against a canvas whose placeholder
  * centres in the whole route because the canvas has no padding to speak of. Small enough to look
  * like nothing in a screenshot and exactly big enough to read as a jump when somebody clicks
- * between Canvas, Tasks and Events.
+ * between Canvas, Kanban and Calendar.
  *
  * Horizontal padding stays on the route, where it applies to both branches: it shifts nothing
  * vertically, and outside the measure column is where it belongs, so the content is the full
@@ -1515,8 +1540,8 @@ function callGate(icon: string, message: string, action?: SchemaNode): SchemaNod
  */
 const ROUTE_BAND = { pt: '900', pb: '600' } as const;
 
-const tasksRoute: RouteSchema = {
-  path: '/tasks',
+const kanbanRoute: RouteSchema = {
+  path: '/kanban',
   type: 'Column',
   props: { width: '100%', minHeight: '100%', ax: 'center', px: '400' },
   children: [
@@ -1750,13 +1775,13 @@ const eventList: SchemaNode = {
 /**
  * The events, as a month.
  *
- * The counterpart to the tasks list, and the same argument: a conversation produces two kinds of
+ * The counterpart to the kanban, and the same argument: a conversation produces two kinds of
  * commitment, one with a date on it and one without, and neither stops mattering because the meeting
  * ended. So this is one call's events, scoped and gated exactly as the board is — the whole point of
  * this template being that every surface answers about the call the address names.
  *
  * This paragraph used to argue the opposite, that a calendar asks "what is coming" and so belongs to
- * the community rather than to a recording. That reading is a good one and it has a home: the Events
+ * the community rather than to a recording. That reading is a good one and it has a home: the Calendar
  * section, which is unscoped and a click away. What it cannot be is *this* page, sharing a nav strip
  * and a `?call=` with three surfaces that mean something narrower — the argument survived the
  * scoping and outlived it by long enough to make an ungated month look deliberate.
@@ -1779,21 +1804,21 @@ const eventList: SchemaNode = {
  * but position 0. It is a `filter()` over the month's own hoisted query rather than a `$query` per
  * cell: one subscription sifted 42 times, against 42 subscriptions for rows already in hand.
  */
-const eventsRoute: RouteSchema = {
-  path: '/events',
+const calendarRoute: RouteSchema = {
+  path: '/calendar',
   type: 'Column',
   props: { width: '100%', minHeight: '100%', ax: 'center', px: '400' },
   children: [
     {
       type: 'Column',
-      // `flex: '1'` for the same reason it is on the tasks route's measure column — see there.
+      // `flex: '1'` for the same reason it is on the kanban route's measure column — see there.
       props: { width: '100%', maxWidth: 'var(--we-layout-lg)', flex: '1', gap: '400' },
       children: [
         {
           type: '$if',
           props: {
             /*
-              No call, no calendar — the same gate the tasks list keeps, and it was missing here.
+              No call, no calendar — the same gate the kanban keeps, and it was missing here.
 
               A scope whose anchor does not resolve is DROPPED rather than refused, and pruning
               WIDENS: with nothing selected this route quietly asked for every `EventBlock` in the
@@ -1802,7 +1827,7 @@ const eventsRoute: RouteSchema = {
               of somebody else's meetings looks exactly like a month full of this call's.
 
               The gate is outside the node that declares the query, so the question is never asked
-              rather than asked and discarded. The space-wide reading is not lost: it is the Events
+              rather than asked and discarded. The space-wide reading is not lost: it is the Calendar
               section, a click away and unscoped, exactly as the space-wide board is.
             */
             condition: CALL,
@@ -1818,7 +1843,7 @@ const eventsRoute: RouteSchema = {
               },
               $queries: {
                 /*
-                  Scoped to the call this workshop is about, exactly as the tasks list is — and for the
+                  Scoped to the call this workshop is about, exactly as the kanban is — and for the
                   reason given there: every other surface of this template answers about the call the
                   address names, so a list that quietly widened to the whole space was the odd one out.
                   The `$if` above is what makes the scope trustworthy: an anchor that does not resolve is
@@ -2103,7 +2128,7 @@ export const workshopTemplate: TemplateSchema = {
 
       It was: the transcript and the readout were declared `route: 'canvas'`, on the argument that a
       task list does not need a transcript beside it. True, and beside the point — crossing to the
-      tasks list *unregistered* both panels, so their scroll position, their subscriptions and
+      kanban *unregistered* both panels, so their scroll position, their subscriptions and
       wherever they had been dragged were destroyed and rebuilt on the way back. Panels that survive
       navigation is the whole difference between a panel and a region of a page; scoping them by
       route gave that up to save a column of context nobody minded.
@@ -2244,8 +2269,8 @@ export const workshopTemplate: TemplateSchema = {
     */
     { path: '/', redirect: './canvas' },
     canvasRoute,
-    tasksRoute,
-    eventsRoute,
+    kanbanRoute,
+    calendarRoute,
     {
       path: '*',
       type: 'Column',

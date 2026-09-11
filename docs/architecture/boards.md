@@ -21,6 +21,35 @@ second board exists.
 
 Everything below follows from that one sentence.
 
+## Board and kanban are not two words for one thing
+
+> **A board is the record. Kanban is the arrangement.**
+
+A board is a `CollectionBlock` holding columns — the thing `spaceStore.createBoard` makes,
+`openBoardFor` finds, `addBoardColumn` adds to and `arrangedBoard` works out. Kanban is one way of
+_reading_ one: cards in columns standing for states, moved across as the work moves. `KIND.board`
+has said so all along, calling it "a kanban board holding columns" — kanban is the adjective and
+board is the noun.
+
+So the code says **board**, everywhere and without exception: the predicate `we://board`, the stored
+`kind`, every store action, the `taskBoard` fragment, the `boards` view id. Those are records, API
+and stored values; renaming any of them is a migration or a silent breakage, and there is nothing to
+gain from it, because the two words were never competing.
+
+What readers see is a separate question, answered per surface:
+
+- **The `Boards` view says "Boards".** It lists board _records_ and has a picker, which is what the
+  plural noun is for — and nothing sits beside it that the word could be confused with.
+- **The Workshop template's tab says "Kanban".** It is the one surface in WE where the freeform
+  spatial arrangement and the column-per-state arrangement are _adjacent tabs_, and Miro, Trello and
+  Jira all call one or the other a board. "Canvas | Board" asks somebody to tell apart two things
+  the word covers equally well; "Canvas | Kanban" does not.
+
+**This is a distinction, not drift — do not "fix" it in either direction.** Renaming the code to
+kanban discards a useful noun and costs a data migration; renaming the Workshop's tab to Board
+reintroduces the ambiguity it was changed to remove. If a space's sections ever grow a canvas
+beside the `Boards` view, that view faces the same question this template already answered.
+
 ## The structure
 
 ```

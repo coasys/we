@@ -920,7 +920,7 @@ function addColumnModal(opts: TaskBoardOptions): SchemaNode {
  * not jump when it arrives.
  *
  * Exported so a surface that gates on *whether there is a board* can show the same thing while that
- * question is still open. The Workshop's tasks route showed "this call has no board yet" for the
+ * question is still open. The Workshop's kanban route showed "this call has no board yet" for the
  * frames before the call record had answered, then this spinner, then the board: two loading states
  * that looked like three, one of them asserting something false. Sharing the node makes the handoff
  * invisible — same spinner, same place, until the board is there.

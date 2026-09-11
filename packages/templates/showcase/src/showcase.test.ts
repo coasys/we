@@ -280,7 +280,7 @@ describe('the workshop template’s call selection', () => {
     // The corner still names the call, which is all it is for now.
     expect(corner).toContain('local.callRecord');
 
-    for (const path of ['/tasks', '/events']) {
+    for (const path of ['/kanban', '/calendar']) {
       const route = JSON.stringify((workshop.routes ?? []).find((entry) => entry.path === path));
       expect(route, path).toContain('modules.call.startCall');
     }
@@ -344,7 +344,7 @@ describe('the workshop template’s call selection', () => {
     // produces and a list cannot show is the half with dates on it.
     const paths = (workshop.routes ?? []).map((route) => route.path);
 
-    expect(paths).toContain('/events');
+    expect(paths).toContain('/calendar');
     expect(paths).not.toContain('/calls');
   });
 
@@ -373,7 +373,7 @@ describe('the workshop template’s call selection', () => {
       `$if`, so it is never asked instead of asked and thrown away. The string spelling of this
       passed while the query still hung off the route root.
     */
-    const events = (workshop.routes ?? []).find((route) => route.path === '/events');
+    const events = (workshop.routes ?? []).find((route) => route.path === '/calendar');
     const gate = ancestorsOf(events, (node) => Boolean((node as QueryNode).$queries?.events)).find(
       (node) => (node as GateNode).type === '$if',
     ) as GateNode | undefined;
@@ -390,7 +390,7 @@ describe('the workshop template’s call selection', () => {
       on it shows — so a call with a full month in it announced that the space held no events
       because somebody clicked a quiet Tuesday.
     */
-    const events = JSON.stringify((workshop.routes ?? []).find((route) => route.path === '/events'));
+    const events = JSON.stringify((workshop.routes ?? []).find((route) => route.path === '/calendar'));
 
     expect(events).not.toContain("This space doesn't have any events");
     expect(events).toContain('Nothing on this day.');
@@ -707,7 +707,7 @@ describe('the workshop template’s three placeholders', () => {
       rather than by measuring anything: nothing between the route and the gate may carry vertical
       padding, and the content branch must still have it.
     */
-    for (const path of ['/tasks', '/events']) {
+    for (const path of ['/kanban', '/calendar']) {
       const route = (workshop.routes ?? []).find((entry) => entry.path === path) as unknown as SchemaNode;
       const measure = (route.children as SchemaNode[])[0];
       const gate = (measure.children as SchemaNode[])[0];
