@@ -1710,10 +1710,38 @@ export function validateSemantic(schema: unknown, context: ValidationContext): V
     `$localState`, nothing of the route it happens to render in — and marked so that a `$panels`
     outlet inside one is refused. That is the one rule that keeps the arrangement model flat.
   */
-  const panels = (schema as { meta?: { panels?: { id?: unknown; node?: unknown }[] } })?.meta?.panels;
+  const panels = (schema as { meta?: { panels?: { id?: unknown; node?: unknown; open?: unknown }[] } })?.meta?.panels;
   if (Array.isArray(panels)) {
     panels.forEach((panel, index) => {
-      if (!panel || typeof panel !== 'object' || !panel.node || typeof panel.node !== 'object') return;
+      if (!panel || typeof panel !== 'object') return;
+
+      /*
+        `open` is a module's word, and on anything else it is a declaration that does nothing.
+
+        Opening a MODULE's panel means invoking the action its launcher declares, and that action is
+        not always "open a panel" — the call module's is `goToCall`, which joins a call when there is
+        not one — so `open: false` exists to place such a panel without invoking it. An authored
+        panel has no launcher to suppress: the host places it and it is up, and nothing anywhere
+        reads the flag for it.
+
+        Which made it the failure this codebase keeps naming. It typechecks (the entry is one flat
+        type, and `node`/`module` being mutually exclusive is a comment rather than a constraint), it
+        validates, it reads exactly as intended, and the panel opens anyway — with no diagnostic. The
+        one entry in this repo that wrote it has been documenting a behaviour it does not have.
+
+        A warning rather than an error: the panel it is on works, and refusing a whole interface over
+        a field with no effect would be the worse trade for a template arriving from a stranger.
+      */
+      if (panel.node && panel.open !== undefined) {
+        errors.push({
+          path: `meta.panels[${index}].open`,
+          message:
+            '"open" only applies to a panel placed with "module": a panel supplied with "node" has no launcher to invoke and is always placed open',
+          severity: 'warning',
+        });
+      }
+
+      if (!panel.node || typeof panel.node !== 'object') return;
       walkNode(panel.node, `meta.panels[${index}].node`, context, { ...state, insidePanel: true }, errors);
     });
   }

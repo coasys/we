@@ -311,3 +311,49 @@ describe('breakpoint tiers', () => {
     expect(warnings[0]).toContain('did you mean "mdUpProps"');
   });
 });
+
+describe('"open" on a panel that supplies its own node', () => {
+  /*
+    The failure class this validator exists for, in its purest form: a field that typechecks,
+    validates, reads exactly as intended and is never consulted.
+
+    `open` suppresses a MODULE launcher — the call module's is `goToCall`, which joins a call when
+    there is not one, so `open: false` is what lets an interface place the call window without
+    starting a call for whoever walks in. An authored panel has no launcher to suppress: the host
+    places it and it is up. The shell reads the flag under a `panel.module &&` guard and there is no
+    second read site, so on a `node` entry it does nothing at all.
+
+    It shipped that way in the workshop template, which declared its calls list `open: false` and
+    got a panel that was always open — and was never wrong on screen, which is exactly why nobody
+    noticed for as long as they did.
+  */
+  const shell = (panel: Record<string, unknown>): SchemaNode =>
+    ({
+      meta: { name: 'T', description: 'D', icon: 'i', panels: [panel] },
+      type: 'Column',
+      props: { bg: 'page' },
+    }) as unknown as SchemaNode;
+
+  it('warns when an authored panel declares it', () => {
+    const warnings = messages(shell({ id: 'notes', node: { type: 'Column' }, open: false }), 'warning');
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('"module"');
+  });
+
+  it('warns on `open: true` as well — it is equally unread, not merely redundant', () => {
+    expect(messages(shell({ id: 'notes', node: { type: 'Column' }, open: true }), 'warning')).toHaveLength(1);
+  });
+
+  it('says nothing about a module panel, which is what the field is for', () => {
+    expect(messages(shell({ id: 'call', module: 'call', open: false }), 'warning')).toEqual([]);
+  });
+
+  it('says nothing about an authored panel that leaves it alone', () => {
+    expect(messages(shell({ id: 'notes', node: { type: 'Column' } }), 'warning')).toEqual([]);
+  });
+
+  it('warns rather than refuses, so a stranger’s template still installs', () => {
+    const result = check(shell({ id: 'notes', node: { type: 'Column' }, open: false }));
+    expect(result.valid).toBe(true);
+  });
+});
