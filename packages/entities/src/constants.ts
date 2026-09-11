@@ -21,6 +21,11 @@ export const PREDICATES = {
    * rather than a substring scan of `textContent`.
    */
   MENTION: 'we://mention',
+  /**
+   * `Space.typeStyles` — the colour a community draws each kind of thing in. A key's fallback,
+   * behind whatever a single canvas decides for itself through its own children.
+   */
+  TYPE_STYLE: 'we://type_style',
 } as const;
 
 /**

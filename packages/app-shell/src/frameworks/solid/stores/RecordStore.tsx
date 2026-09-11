@@ -297,6 +297,20 @@ export interface RecordStore {
    */
   setTypeColor: (canvas: string, nodeType: string, color: unknown) => Promise<void>;
   /**
+   * Set the colour every card of one type is drawn in, everywhere in this space.
+   *
+   * The space's key — `Space.typeStyles` — which is what a canvas falls back to where it has no
+   * opinion of its own. `setTypeColor` answers for one board; this answers for the community, and it
+   * is the one the workshop's key writes, since a call's canvas is not a board anybody wants to
+   * recolour every meeting.
+   *
+   * Takes the space's record id rather than reading it, for the reason every canvas action takes a
+   * canvas: this store knows datasets, not spaces, and a template has `spaceStore.currentSpace.id` to
+   * hand. An empty colour *deletes* the record rather than writing the unset sentinel, so the list a
+   * key reads back never carries a row that means nothing.
+   */
+  setSpaceTypeColor: (spaceId: string, nodeType: string, color: unknown) => Promise<void>;
+  /**
    * Open the create form, and place whatever it makes onto this canvas.
    *
    * The counterpart to `connectNodes`: the same form and the same save path, with an intent held
@@ -939,6 +953,42 @@ export function RecordStoreProvider(props: ParentProps) {
     }
   }
 
+  async function setSpaceTypeColor(spaceId: string, nodeType: string, color: unknown): Promise<void> {
+    const dataset = datasetStore.currentDataset();
+    if (!dataset || !spaceId || !nodeType) return;
+    const raw =
+      color !== null && typeof color === 'object' && 'detail' in color ? (color as { detail: unknown }).detail : color;
+    const value = typeof raw === 'string' ? raw : '';
+    // The relation's own predicate, not `children`: a space is not a container and a key is not one
+    // of its contents. It is what `Space.typeStyles` reads through.
+    const parent = { id: spaceId, predicate: PREDICATES.TYPE_STYLE };
+
+    try {
+      const existing = (await TypeStyle.findAll(dataset.handle, { parent } as Record<string, unknown>)) as {
+        id: string;
+        nodeType?: string;
+      }[];
+      const rows = existing.filter((row) => row.nodeType === nodeType);
+      if (!value) {
+        // Clearing deletes. `''` cannot be stored — the ORM's update skips it — and the canvas
+        // sentinel would leave a row every reader has to know to ignore.
+        for (const row of rows) await TypeStyle.delete(dataset.handle, row.id);
+        return;
+      }
+      const [already, ...duplicates] = rows;
+      // Two people colouring the same kind at once can leave two rows; the second write settles it.
+      for (const row of duplicates) await TypeStyle.delete(dataset.handle, row.id);
+      if (already) {
+        await TypeStyle.update(dataset.handle, already.id, { color: value });
+        return;
+      }
+      await TypeStyle.create(dataset.handle as never, { nodeType, color: value } as never, { parent } as never);
+    } catch (error) {
+      console.error("RecordStore: colouring a type in the space's key failed", error);
+      toastService.error('Could not save that colour.');
+    }
+  }
+
   async function removeFromCanvas(canvas: string, nodeId: string): Promise<void> {
     const dataset = datasetStore.currentDataset();
     if (!dataset || !canvas || !nodeId) return;
@@ -1071,6 +1121,7 @@ export function RecordStoreProvider(props: ParentProps) {
     retargetOnCanvas,
     setCardStyle,
     setTypeColor,
+    setSpaceTypeColor,
     setRecordEntity,
     setRecordField,
     relationshipKind,

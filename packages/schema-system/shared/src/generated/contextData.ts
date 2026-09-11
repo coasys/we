@@ -1857,6 +1857,7 @@ export const contextData: ContextData = {
         { name: 'location', kind: 'HasOne', predicate: 'we://location', target: 'LocationBlock' },
         { name: 'board', kind: 'HasOne', predicate: 'we://board', target: 'CollectionBlock' },
         { name: 'taskStates', kind: 'HasMany', predicate: 'we://task_state_order', target: 'TaskState' },
+        { name: 'typeStyles', kind: 'HasMany', predicate: 'we://type_style', target: 'TypeStyle' },
       ],
     },
     {
@@ -2467,6 +2468,7 @@ export const contextData: ContextData = {
         'setCardStyle',
         'previewCardStyle',
         'setTypeColor',
+        'setSpaceTypeColor',
         'createOnCanvas',
         'createCardOnCanvas',
       ],

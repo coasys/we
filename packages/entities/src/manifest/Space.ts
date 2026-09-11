@@ -180,6 +180,19 @@ export const Space: CoreEntityDef = {
         predicate: 'we://task_state_order',
         ordered: true,
       },
+      /**
+       * The colour this community draws each kind of thing in — its key.
+       *
+       * `TypeStyle` was written for one board, on the argument that two boards legitimately
+       * disagree about what a task looks like. True, and it left the more common question with no
+       * home: "tasks are blue *here*", meaning in this space, so that a canvas made tomorrow starts
+       * out coloured the way every other one is. A canvas can still carry its own records in front
+       * of these; this is what they fall back to. The same shape as `taskStates` — a vocabulary
+       * decision, one record per fact, so two people colouring two kinds at once are two writes.
+       *
+       * The predicate is the record's own flag value, as `we://signal` is for a node's signals.
+       */
+      typeStyles: { target: 'TypeStyle', cardinality: 'many', predicate: 'we://type_style' },
     },
   },
 };

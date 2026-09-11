@@ -286,6 +286,7 @@ export interface SpaceRecord extends WeNodeRecord {
   location?: LocationBlockRecord;
   board?: CollectionBlockRecord;
   taskStates: string[];
+  typeStyles: string[];
   setLocation(value: LocationBlockRecord): Promise<unknown>;
   setBoard(value: CollectionBlockRecord): Promise<unknown>;
   addTaskStates(value: string | { id: string }, batch?: string): Promise<unknown>;

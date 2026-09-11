@@ -5183,6 +5183,12 @@
           "kind": "HasMany",
           "predicate": "we://task_state_order",
           "target": "TaskState"
+        },
+        {
+          "name": "typeStyles",
+          "kind": "HasMany",
+          "predicate": "we://type_style",
+          "target": "TypeStyle"
         }
       ]
     },
@@ -6464,6 +6470,7 @@
         "setCardStyle",
         "previewCardStyle",
         "setTypeColor",
+        "setSpaceTypeColor",
         "createOnCanvas",
         "createCardOnCanvas"
       ]

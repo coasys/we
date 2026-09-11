@@ -2294,6 +2294,7 @@ Space extends WeNode:
   - location: HasOne → LocationBlock [we://location]
   - board: HasOne → CollectionBlock [we://board]
   - taskStates: HasMany → TaskState [we://task_state_order]
+  - typeStyles: HasMany → TypeStyle [we://type_style]
 
 SpacePreference extends WeNode:
   Fields:
@@ -2617,6 +2618,7 @@ RecordStore:
   - setCardStyle(canvas: string, nodeId: string, field: string, value): sets one presentation property of one card on one canvas — 'color', 'cardShape', 'contentScale', 'rotation' (degrees clockwise) and 'z' (stacking order). Takes the field name so one action serves a swatch, a picker and a slider. 0 is unset for the numbers, so a card is un-rotated by writing 0. Undone by taking the card off the canvas
   - previewCardStyle(nodeId: string, field: string, value): shows a presentation change without writing it — for a slider that reports while it moves. Pair with setCardStyle on release; both go through the same pending map so the card never jumps
   - setTypeColor(canvas: string, nodeType: string, color): sets the colour every card of one type is drawn in, on one canvas — the canvas's key, made writable. An empty colour clears it
+  - setSpaceTypeColor(spaceId: string, nodeType: string, color): sets the colour every card of one type is drawn in across the whole space — the community's key, which a canvas falls back to where it has no colour of its own for that type. Pass spaceStore.currentSpace.id. Read the result back with a TypeStyle query scoped { anchor: 'Space', via: 'typeStyles', anchorId: spaceStore.currentSpace.id }. An empty colour clears it
   - createOnCanvas(canvas: string, x?: number, y?: number): opens the create form and places whatever it makes onto that canvas, at the point given. Pair with the graph’s onCanvasDoubleClick
   - createCardOnCanvas(editorState, { canvas, at? }): composes a card onto a canvas and records where it sits, as one write. Without `at` the card lands in the canvas's tray. The composer's counterpart to createOnCanvas
 

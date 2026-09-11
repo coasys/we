@@ -10,6 +10,7 @@ import { FILE_STORAGE_LANGUAGE } from '@we/entities';
 import { CollectionBlock } from './CollectionBlock';
 import { LocationBlock } from './LocationBlock';
 import { TaskState } from './TaskState';
+import { TypeStyle } from './TypeStyle';
 import { WeNode } from './WeNode';
 
 @Model({ name: 'Space' })
@@ -201,6 +202,21 @@ export class Space extends WeNode {
    */
   @HasMany(() => TaskState, { through: 'we://task_state_order', ordering: { strategy: 'linkedList' } })
   taskStates: string[] = [];
+
+  /**
+   * The colour this community draws each kind of thing in — its key.
+   *
+   * `TypeStyle` was written for one board, on the argument that two boards legitimately
+   * disagree about what a task looks like. True, and it left the more common question with no
+   * home: "tasks are blue *here*", meaning in this space, so that a canvas made tomorrow starts
+   * out coloured the way every other one is. A canvas can still carry its own records in front
+   * of these; this is what they fall back to. The same shape as `taskStates` — a vocabulary
+   * decision, one record per fact, so two people colouring two kinds at once are two writes.
+   *
+   * The predicate is the record's own flag value, as `we://signal` is for a node's signals.
+   */
+  @HasMany(() => TypeStyle, { through: 'we://type_style' })
+  typeStyles: string[] = [];
 }
 
 export interface Space extends HasManyMethods<'taskStates'> {
