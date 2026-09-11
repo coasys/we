@@ -1915,16 +1915,43 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
     // If no dataset found, route change alone will show the join gate
 
+    /*
+      The section being read, if that is what the segment on screen is.
+
+      Carrying it across is what keeps somebody on About as they walk from space to space, and it
+      has to ask whether the segment names a section at all. Two things live at that depth and are
+      not sections: a host route (`record`), and a self-routing template's own screen (Workshop's
+      `canvas`, Discord's `channel`). Both were carried, and both name a section no space has.
+
+      Against `routableViews` rather than this space's enabled list — the destination decides what
+      it has, and gating on the *source's* switches would refuse to carry a section the reader is
+      looking at merely because they had hidden it somewhere else.
+    */
     const segs = routeStore.segments();
-    const currentView = view ?? (segs[0] === 'space' && segs[2] ? segs[2] : 'about');
+    const here = segs[0] === 'space' ? (segs[2] ?? '') : '';
+    const carried = routableViews().some((v) => v.segment === here) ? here : '';
     /*
       The canonical segment, not the one the caller happened to hold. `spaceId` here may be either
       form — a sidebar row passes the local id, a share link the shared one — and both resolve, so
       without this one space ended up with two addresses depending on how you reached it.
     */
-    const targetPath = '/space/' + (ds ? canonicalSpaceId(ds) : spaceId) + '/' + currentView;
+    const base = '/space/' + (ds ? canonicalSpaceId(ds) : spaceId);
+    /*
+      A section only where the destination HAS sections, and otherwise the space itself — whose own
+      index decides, exactly as `switchTemplate` leaves it.
+
+      This said `'about'`, which assumed the space shape of every template. A space whose default is
+      a self-routing one — Workshop, Discord — has no `about` route, so entering it from the sidebar
+      landed on its catch-all and said "No such page" until you pressed a nav button. It is also the
+      last of the four places that spelled a space path by hand; the rest went when `SPACE_ROUTE_PATH`
+      became one literal.
+
+      A named `view` is always taken: a caller that asked for one knows what it is asking for, and
+      `openRecordRef`'s is a host route rather than a section.
+    */
+    const section = view ?? (ds && !usesSectionsFor(ds.id) ? '' : carried);
     shellStore.closeShellView();
-    routeStore.navigate(targetPath);
+    routeStore.navigate(section ? `${base}/${section}` : base);
     // Notify embedded app iframes (e.g. Flux) after the dataset has switched
     broadcastPerspectiveNavigation(spaceId);
   }
