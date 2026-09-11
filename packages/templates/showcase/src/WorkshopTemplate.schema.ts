@@ -62,6 +62,7 @@ import {
   field,
   formModal,
   panelHeader,
+  panelScroll,
   peopleRow,
   recordFormModal,
   taskBoard,
@@ -737,9 +738,7 @@ const inspectorPanel: SchemaNode = {
       type: '$if',
       props: {
         condition: { $: 'count(local.card)' },
-        then: {
-          type: 'we-scroll-area',
-          props: { flex: '1', minHeight: '0' },
+        then: panelScroll({
           children: [
             {
               type: '$each',
@@ -948,7 +947,7 @@ const inspectorPanel: SchemaNode = {
               ],
             },
           ],
-        },
+        }),
         /*
           A sentence, because `label` alone builds the wrong one.
 
@@ -1003,9 +1002,7 @@ const callsPanel: SchemaNode = {
       type: '$if',
       props: {
         condition: { $: 'count(local.calls)' },
-        then: {
-          type: 'we-scroll-area',
-          props: { flex: '1', minHeight: '0' },
+        then: panelScroll({
           children: [
             {
               type: 'Column',
@@ -1144,7 +1141,7 @@ const callsPanel: SchemaNode = {
               ],
             },
           ],
-        },
+        }),
         else: emptyState({ icon: 'archive', label: 'recorded calls' }),
       },
     },

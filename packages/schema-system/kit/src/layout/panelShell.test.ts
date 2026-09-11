@@ -12,7 +12,14 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { PANEL_TITLE_PROPS, panelHeader, panelShell, SECTION_LABEL_PROPS, sectionLabel } from './panelShell.ts';
+import {
+  PANEL_TITLE_PROPS,
+  panelHeader,
+  panelScroll,
+  panelShell,
+  SECTION_LABEL_PROPS,
+  sectionLabel,
+} from './panelShell.ts';
 
 describe('a panel header', () => {
   it('is the muted capitalised label, whatever the caller passes', () => {
@@ -129,5 +136,66 @@ describe('a panel shell', () => {
 
     expect(shell.props?.p).toBe('300');
     expect(shell.props?.gap).toBe('300');
+  });
+});
+
+describe('a panel scroll region', () => {
+  const props = (opts: Parameters<typeof panelScroll>[0] = { children: [] }) =>
+    panelScroll(opts).props as Record<string, string>;
+
+  it('pulls out through the panel padding, and puts it back inside', () => {
+    /*
+      The pair is the whole fragment, and either alone is wrong. The negative margin is what takes
+      the scroller — and so its bar — out to the panel's real edge; the padding is what keeps the
+      content where it was. Written apart they drift: a panel that bleeds and does not re-pad runs
+      its text under the bar.
+    */
+    const p = props();
+
+    expect(p.mr).toBe('calc(var(--we-space-300) * -1)');
+    expect(p.pr).toContain('var(--we-space-300)');
+  });
+
+  it('measures the inner padding against the bar, so the four sides come out equal', () => {
+    /*
+      A scroll container puts its bar at its own edge and its `padding-right` between the content
+      and the bar — so the content's distance from the panel edge is the reserved gutter *plus* that
+      padding, and the padding it wants is the panel's inset less the bar's width. Both are
+      variables: a theme that widens the bar would otherwise push every panel's text off-centre,
+      silently, and only on the side with a bar.
+    */
+    expect(props().pr).toBe('max(0px, calc(var(--we-space-300) - var(--we-scrollbar-width)))');
+  });
+
+  it('reserves the bar whether or not one is showing', () => {
+    // Nothing can ask an element whether it is currently overflowing, so this is the only way to
+    // hold content still — and it is what makes the padding above a constant rather than a figure
+    // that depends on the length of a list.
+    expect(props().scrollbarGutter).toBe('stable');
+  });
+
+  it('never sets a width, which would defeat the bleed', () => {
+    /*
+      It widens by being stretched: an auto-width flex item takes its container's width plus the
+      negative margin. `width: '100%'` resolves against the container's content box instead, so the
+      element keeps its old width and only its margin edge moves — the bar stays where it was, and
+      nothing on screen says why.
+    */
+    expect(props().width).toBeUndefined();
+  });
+
+  it('follows the panel it is in when that panel pads itself differently', () => {
+    const p = props({ children: [], inset: '400' });
+
+    expect(p.mr).toBe('calc(var(--we-space-400) * -1)');
+    expect(p.pr).toBe('max(0px, calc(var(--we-space-400) - var(--we-scrollbar-width)))');
+  });
+
+  it('carries the scroller options a panel actually uses, and no others', () => {
+    // `pin`/`jump` are the transcript's: it follows a live tail and needs a way back down. A panel
+    // that asks for neither should not carry the attributes at all.
+    expect(props({ children: [], pin: 'end', jump: 'both' })).toMatchObject({ pin: 'end', jump: 'both' });
+    expect(props()).not.toHaveProperty('pin');
+    expect(props()).not.toHaveProperty('jump');
   });
 });

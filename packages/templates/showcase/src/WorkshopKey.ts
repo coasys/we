@@ -34,7 +34,7 @@
  * task card's fill on the board. One policy, two spellings, kept here so they cannot disagree.
  */
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
-import { anchorScope, panelHeader, sectionLabel } from '@we/template-kit';
+import { anchorScope, panelHeader, panelScroll, sectionLabel } from '@we/template-kit';
 
 /** The query parameter the lenses ride in — `kind`, `state`, `kind,state` or `none`. */
 export const LENS_PARAM = 'colour';
@@ -377,9 +377,7 @@ export const keyPanel: SchemaNode = {
         children: [lensButton('kind', 'Kind', 'cube'), lensButton('state', 'State', 'circle-half')],
       },
     }),
-    {
-      type: 'we-scroll-area',
-      props: { flex: '1', minHeight: '0', width: '100%' },
+    panelScroll({
       children: [
         {
           type: 'Column',
@@ -449,6 +447,6 @@ export const keyPanel: SchemaNode = {
           ],
         },
       ],
-    },
+    }),
   ],
 };

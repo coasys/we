@@ -15,7 +15,7 @@
  * rendering. The other three modules still declare their fragments inline; this is the shape they
  * should move to.
  */
-import { emptyState, panelShell, sectionLabel } from '@we/schema-kit';
+import { emptyState, panelScroll, panelShell, sectionLabel } from '@we/schema-kit';
 import { type SchemaNode, type SchemaProp } from '@we/schema-shared';
 import { expr } from '@we/schema-shared';
 
@@ -3382,12 +3382,12 @@ export const transcriptComposer: SchemaNode = {
  * is resolved. So pointing this feed at another call points its rows at that call too, and there is
  * one query in the codebase rather than two that have to agree.
  */
-export const transcriptFeed: SchemaNode = {
-  type: 'we-scroll-area',
+export const transcriptFeed: SchemaNode = panelScroll({
   // Follows the tail while somebody is at the tail, and holds still while they read further
   // up. A live transcript is the case this exists for — and the case that most needs a way back
   // down again, since holding still is otherwise a decision nothing offers to undo.
-  props: { pin: 'end', jump: 'both', flex: '1', minHeight: '0' },
+  pin: 'end',
+  jump: 'both',
   children: [
     {
       type: 'Column',
@@ -3401,7 +3401,7 @@ export const transcriptFeed: SchemaNode = {
       ],
     },
   ],
-};
+});
 
 /**
  * Extraction, as a surface of its own.
@@ -3476,7 +3476,7 @@ export const extractionPanel: SchemaNode = {
       */
         props: {
           condition: { $: 'modules.transcribe.extractable' },
-          then: {
+          then: panelScroll({
             /*
               The panel scrolls as one thing, rather than two lists scrolling inside a fixed frame.
 
@@ -3490,8 +3490,6 @@ export const extractionPanel: SchemaNode = {
               is that a long list pushes the rest below the fold, which is what each heading now
               folds away — see `foldingSectionLabel`.
             */
-            type: 'we-scroll-area',
-            props: { flex: '1', minHeight: '0' },
             children: [
               {
                 type: 'Column',
@@ -3739,7 +3737,7 @@ export const extractionPanel: SchemaNode = {
                 ],
               },
             ],
-          },
+          }),
           // The same fragment, for the same reason — see the placeholder above.
           else: emptyState({
             icon: 'plugs',

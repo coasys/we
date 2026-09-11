@@ -175,3 +175,82 @@ export function panelShell(opts: PanelShellOptions): SchemaNode {
     children: [panelHeader({ title: opts.title, aside: opts.aside, help: opts.help }), ...opts.children],
   };
 }
+
+export interface PanelScrollOptions {
+  /** What scrolls. */
+  children: SchemaNode[];
+  /**
+   * The space token the panel pads itself with — the amount this bleeds back out through.
+   *
+   * A token rather than a length, because the arithmetic below subtracts the scrollbar's width from
+   * it and both have to be variables for a theme to move either. Match it to the panel's own `p`;
+   * `panelShell`'s default is `300`, which is what every panel in the repo uses.
+   */
+  inset?: string;
+  /** Follow the tail while the reader is at it — `we-scroll-area`'s `pin`. */
+  pin?: string;
+  /** Jump-to-end controls — `we-scroll-area`'s `jump`. */
+  jump?: string;
+}
+
+/**
+ * A panel's scrolling region, with its bar at the panel's edge rather than floating in the padding.
+ *
+ * ## The problem
+ *
+ * A panel pads itself and the scroller sits inside that padding, so the bar is inset by the padding
+ * *and* by its own thumb clearance — twelve pixels plus two, on a bar whose painted thumb is six
+ * wide. It reads as misaligned, because it is: the gutter it sits in belongs to the content, not to
+ * it. And the bar takes its width out of the content when it appears, so every list twitches
+ * narrower the moment it overflows.
+ *
+ * ## The fix, which is two independent fixes
+ *
+ * **The bar goes to the edge** by pulling the scroller out through the padding — a negative right
+ * margin of exactly the panel's inset — and putting the inset back *inside* the scroller as padding.
+ * The scroller is then the full width of the panel, which is the ordinary arrangement everywhere
+ * else: the scroll container is the region, and the padding belongs to the content in it. Margin
+ * lands on the element's host and padding on its inner box, which is what makes the two halves
+ * reach the right places.
+ *
+ * **The content stops twitching** with `scrollbarGutter: 'stable'`, which reserves the bar's width
+ * whether or not one is showing. Nothing can ask an element whether it is currently overflowing, so
+ * this is the only way to hold the content still; it is also what makes the arithmetic below
+ * constant rather than dependent on the state of the list.
+ *
+ * ## The arithmetic
+ *
+ * A scroll container puts its bar at its own edge and its `padding-right` *between* the content and
+ * the bar. So the content's distance from the panel edge is the reserved gutter plus that padding,
+ * and `inset - scrollbarWidth` is what makes that total equal the padding on the other three sides:
+ * ten pixels of gutter and two of padding come to the same twelve the panel pads itself with.
+ *
+ * The result is a thumb two pixels off the true edge, content inset equally all round, and neither
+ * moving when a list grows past its box. `max(0px, …)` is for the theme that makes the bar wider
+ * than the panel's padding, where the honest answer is no extra padding rather than negative.
+ *
+ * ## Do not give it a width
+ *
+ * It widens by being stretched — an auto-width flex item takes its container's width *plus* the
+ * negative margin. An explicit `width: '100%'` resolves against the container's content box
+ * instead, so the element stays its old width and only its margin edge moves: the bar does not
+ * reach the edge and nothing says why. For the same reason this needs a parent that stretches its
+ * children, which a `Column` does unless something sets `ay`.
+ */
+export function panelScroll(opts: PanelScrollOptions): SchemaNode {
+  const pad = `var(--we-space-${opts.inset ?? '300'})`;
+
+  return {
+    type: 'we-scroll-area',
+    props: {
+      flex: '1',
+      minHeight: '0',
+      mr: `calc(${pad} * -1)`,
+      pr: `max(0px, calc(${pad} - var(--we-scrollbar-width)))`,
+      scrollbarGutter: 'stable',
+      ...(opts.pin ? { pin: opts.pin } : {}),
+      ...(opts.jump ? { jump: opts.jump } : {}),
+    },
+    children: opts.children,
+  };
+}
