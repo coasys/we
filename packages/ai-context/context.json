@@ -3895,6 +3895,11 @@
           "optional": true
         },
         {
+          "name": "onDrop",
+          "type": "((payload: { entity: string; id: string; dataset?: string; label: string; x: number; y: number; }) => void)",
+          "optional": true
+        },
+        {
           "name": "nodeActions",
           "type": "NodeAction[]",
           "optional": true
@@ -6462,6 +6467,8 @@
         "cancelRecordForm",
         "saveRecord",
         "placeOnCanvas",
+        "dropOnCanvas",
+        "updateRecordField",
         "removeFromCanvas",
         "resizeOnCanvas",
         "anchorOnCanvas",

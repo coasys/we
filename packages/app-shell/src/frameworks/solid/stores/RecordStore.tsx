@@ -22,7 +22,7 @@
  * A surface that offers both should offer the composer for that case and this for the rest — one
  * entry point, two bodies. Folding a document editor into a generated form would serve neither.
  */
-import type { EntitySchema } from '@we/backend-shared';
+import { datasetKey, type EntitySchema, HERE } from '@we/backend-shared';
 import { createBlocks } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
 import { EdgeRoute, getEntity, Placement, PREDICATES, runEntityTransaction, TypeStyle } from '@we/entities';
@@ -197,6 +197,29 @@ export interface RecordStore {
    * its own position, which is the whole reason a coordinate is not a field on the record.
    */
   placeOnCanvas: (canvas: string, nodeId: string, nodeType: string, x: number, y: number) => Promise<void>;
+  /**
+   * Put something dragged in from elsewhere onto a canvas, where it landed.
+   *
+   * Takes the graph's `onDrop` payload as it arrives, the way `resizeOnCanvas` takes `onNodeResize`'s.
+   * A placement is the canvas's membership, so this is `placeOnCanvas` with two refusals in front of
+   * it: a record from another space, which this canvas cannot draw because its seed reads this
+   * dataset; and a thing that is not a record here at all — an agent, a space — which has no card
+   * to be. Both say so rather than placing a coordinate for nothing.
+   */
+  dropOnCanvas: (
+    canvas: string,
+    payload: { entity: string; id: string; dataset?: string; x: number; y: number },
+  ) => Promise<void>;
+  /**
+   * Change one property of one record, from a control bound to it.
+   *
+   * Takes the field name, so one action serves every control the inspector draws — the same shape
+   * `setRecordField` has for the draft. The value is coerced by the kind the model declares for
+   * that field, since a number input hands back a string and a switch a boolean, and a picker's
+   * `{ detail }` is unwrapped. An empty string is not written: the ORM skips it, so clearing a text
+   * field leaves the old value, which is a limit of the store beneath rather than a choice here.
+   */
+  updateRecordField: (entity: string, id: string, field: string, value: unknown) => Promise<void>;
   /**
    * Take a record off a canvas, leaving the record itself alone.
    *
@@ -953,6 +976,46 @@ export function RecordStoreProvider(props: ParentProps) {
     }
   }
 
+  async function dropOnCanvas(
+    canvas: string,
+    payload: { entity: string; id: string; dataset?: string; x: number; y: number },
+  ): Promise<void> {
+    const dataset = datasetStore.currentDataset();
+    if (!dataset || !canvas || !payload?.id || !payload.entity) return;
+    // The same spelling a stored reference uses for this dataset, so a row gathered here and dragged
+    // back out compares equal to the space it came from.
+    const here = datasetKey({ cid: dataset.sharedUri, uuid: dataset.id });
+    const from = payload.dataset ?? '';
+    if (from && from !== HERE && from !== here) {
+      toastService.error('Only things from this space can be put on its canvas.');
+      return;
+    }
+    if (!schemaFor(payload.entity)) {
+      toastService.error('That is not something a canvas can hold.');
+      return;
+    }
+    await placeOnCanvas(canvas, payload.id, payload.entity, payload.x, payload.y);
+  }
+
+  async function updateRecordField(entity: string, id: string, field: string, value: unknown): Promise<void> {
+    const dataset = datasetStore.currentDataset();
+    if (!dataset || !entity || !id || !field) return;
+    const raw =
+      value !== null && typeof value === 'object' && 'detail' in value ? (value as { detail: unknown }).detail : value;
+    const kind = displays()[entity]?.fields.find((row) => row.name === field)?.kind;
+    let next: unknown = raw;
+    if (kind === 'number') next = raw === '' || raw === null || raw === undefined ? undefined : Number(raw);
+    else if (kind === 'boolean') next = Boolean(raw);
+    else if (raw !== null && raw !== undefined && typeof raw !== 'string') next = String(raw);
+    if (next === undefined || (typeof next === 'number' && Number.isNaN(next))) return;
+    try {
+      await getEntity(entity).update(dataset.handle, id, { [field]: next });
+    } catch (error) {
+      console.error('RecordStore: updating a record field failed', error);
+      toastService.error('Could not save that change.');
+    }
+  }
+
   async function setSpaceTypeColor(spaceId: string, nodeType: string, color: unknown): Promise<void> {
     const dataset = datasetStore.currentDataset();
     if (!dataset || !spaceId || !nodeType) return;
@@ -1122,6 +1185,8 @@ export function RecordStoreProvider(props: ParentProps) {
     setCardStyle,
     setTypeColor,
     setSpaceTypeColor,
+    dropOnCanvas,
+    updateRecordField,
     setRecordEntity,
     setRecordField,
     relationshipKind,

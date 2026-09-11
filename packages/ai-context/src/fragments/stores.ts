@@ -1178,6 +1178,10 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(nodeId: string, field: string, value): shows a presentation change without writing it — for a slider that reports while it moves. Pair with setCardStyle on release; both go through the same pending map so the card never jumps',
         setTypeColor:
           "(canvas: string, nodeType: string, color): sets the colour every card of one type is drawn in, on one canvas — the canvas's key, made writable. An empty colour clears it",
+        dropOnCanvas:
+          "(canvas: string, payload): puts something dragged in from elsewhere onto a canvas where it landed. Takes the graph's onDrop payload as it arrives. Refuses, with a toast, a record from another space (this canvas draws only its own dataset) and anything that is not a record here — an agent, a space",
+        updateRecordField:
+          "(entity: string, id: string, field: string, value): changes one property of one record — the inspector's edit mode. Takes the field name so one action serves every control; the value is coerced by the field's declared kind and a control's { detail } is unwrapped. An empty string is not written, so a text field cannot be cleared this way",
         setSpaceTypeColor:
           "(spaceId: string, nodeType: string, color): sets the colour every card of one type is drawn in across the whole space — the community's key, which a canvas falls back to where it has no colour of its own for that type. Pass spaceStore.currentSpace.id. Read the result back with a TypeStyle query scoped { anchor: 'Space', via: 'typeStyles', anchorId: spaceStore.currentSpace.id }. An empty colour clears it",
         createOnCanvas:

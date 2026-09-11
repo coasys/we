@@ -1403,6 +1403,11 @@ export const contextData: ContextData = {
           type: '((payload: { id: string; x: number; y: number; width: number; height: number; recordId?: string; recordType?: string; }) => void)',
           optional: true,
         },
+        {
+          name: 'onDrop',
+          type: '((payload: { entity: string; id: string; dataset?: string; label: string; x: number; y: number; }) => void)',
+          optional: true,
+        },
         { name: 'nodeActions', type: 'NodeAction[]', optional: true },
         {
           name: 'onNodeAction',
@@ -2460,6 +2465,8 @@ export const contextData: ContextData = {
         'cancelRecordForm',
         'saveRecord',
         'placeOnCanvas',
+        'dropOnCanvas',
+        'updateRecordField',
         'removeFromCanvas',
         'resizeOnCanvas',
         'anchorOnCanvas',
