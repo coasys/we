@@ -17,8 +17,9 @@
 
   // The theme's own face, stated here because a card's text is arbitrary host content inside a
   // subtree nothing else styles — without it the browser's default serif came through on every
-  // post-it, which is the one place in the app that looked like a different product.
-  font-family: var(--we-font-family-base);
+  // post-it, which is the one place in the app that looked like a different product. The active
+  // face, not `-base`: a theme overrides the former, which is how a retro theme gets its terminal.
+  font-family: var(--we-font-family);
 
   // The drag session marks the zone a release would land in; a canvas says so with an inset ring
   // rather than the wash a drop zone paints, since a wash over a whole board hides what is on it.
@@ -337,6 +338,19 @@
   // Inherited from the layer, but stated here because this subtree is arbitrary host content and
   // one element in it setting `pointer-events: auto` would put a hole in the canvas.
   pointer-events: none;
+
+  /*
+    The document's ink is the card's — see the card's own `color`.
+
+    A rendered document pins `--we-role-text` on itself and on every block in it, which is right
+    on the page and wrong here: the role is measured against the page, and this content sits on a
+    fill the reader chose. Three classes deep on purpose, so this outranks the block stylesheet's
+    own two whichever order the two sheets load in.
+  */
+  .we-block-content,
+  .we-block-content .we-block {
+    color: inherit;
+  }
 
   &::after {
     content: '';
