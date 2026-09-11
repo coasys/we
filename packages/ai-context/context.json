@@ -3815,6 +3815,16 @@
           "optional": true
         },
         {
+          "name": "emptyGradient",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "emptyAction",
+          "type": "JSX.Element",
+          "optional": true
+        },
+        {
           "name": "showControls",
           "type": "boolean",
           "optional": true

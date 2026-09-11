@@ -2203,14 +2203,46 @@ export function GraphView(props: GraphViewProps) {
           ax="center"
           ay="center"
         >
+          {/*
+            The empty state is sized as a page's placeholder, not as a footnote.
+
+            It stands in the middle of a whole canvas — often the first thing a reader sees of a
+            template — where `lg` and a footnote read as a caption for content that is about to
+            appear. Icon at `xl`, body text and the narrow measure: the same scale every other
+            full-surface placeholder uses, so a route that gates on one thing and a canvas that is
+            empty for another do not look like two different qualities of nothing.
+          */}
           <Show
             when={loadingWholeGraph()}
             fallback={
-              <Column ax="center" ay="center" gap="200" maxWidth="34ch" px="400">
-                <we-icon name={props.emptyIcon ?? 'graph'} size="lg" color="text-faint" />
-                <we-text variant="footnote" color="text-faint" textAlign="center">
+              <Column ax="center" ay="center" gap="400" maxWidth="var(--we-layout-xs)" px="400">
+                <we-icon
+                  name={props.emptyIcon ?? 'graph'}
+                  size="xl"
+                  gradient={props.emptyGradient ?? ''}
+                  color={props.emptyGradient ? '' : 'text-faint'}
+                />
+                <we-text variant="body" color="text-muted" textAlign="center">
                   {props.empty ?? 'Nothing to show yet.'}
                 </we-text>
+                {/*
+                  The one part of this box that takes the pointer back.
+
+                  Everything around it is `pointerEvents: none`, because an empty graph is still one
+                  you can pan and drop things onto — and a transparent sheet over the whole canvas
+                  would swallow both. A control inside that sheet has to opt back in, or it renders,
+                  looks pressable and does nothing.
+
+                  `display: contents`, so the wrapper is not a box. A caller's action is usually a
+                  node that decides for itself whether to draw anything — the canvas passes one
+                  gated on there being no call — so a real element here would be an empty child on
+                  every other reading, and the column's `gap` would put 16px of nothing under the
+                  sentence. Pointer-events inherits through a contents box, which is what makes the
+                  opt-in survive not having one.
+                */}
+                <Show when={props.emptyAction}>
+                  <div style={{ display: 'contents', 'pointer-events': 'auto' }}>{props.emptyAction}</div>
+                </Show>
               </Column>
             }
           >

@@ -1347,6 +1347,8 @@ export const contextData: ContextData = {
         { name: 'showStatus', type: 'boolean', optional: true },
         { name: 'empty', type: 'string', optional: true },
         { name: 'emptyIcon', type: 'string', optional: true },
+        { name: 'emptyGradient', type: 'string', optional: true },
+        { name: 'emptyAction', type: 'JSX.Element', optional: true },
         { name: 'showControls', type: 'boolean', optional: true },
         { name: 'controls', type: 'string[]', optional: true },
         {

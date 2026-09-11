@@ -114,6 +114,35 @@ export interface GraphViewProps {
   empty?: string;
   /** The icon above it. Defaults to `graph`. */
   emptyIcon?: string;
+  /**
+   * Draw that icon in a gradient — a `we-icon` gradient name, `primary` being the one every template
+   * has — rather than flat and faint.
+   *
+   * The distinction the design system draws everywhere else: gradient where there is something to do
+   * about the emptiness, flat where there is not, so an invitation and a dead end read apart before
+   * either sentence is read. A graph with no opinion from its host is a dead end by default, which is
+   * why this is opt-in — but the caller that bothered to write its own `empty` is usually the caller
+   * that has something to invite, and it is the only one that can tell.
+   */
+  emptyGradient?: string;
+  /**
+   * Something to press, under that sentence — the control that resolves the emptiness, where the
+   * caller has one.
+   *
+   * A slot rather than a prop pair (`emptyActionLabel` + `emptyAction`), because what the control
+   * *is* differs: a button, a pair of them, a link, a file drop. The renderer spreads a schema
+   * node's `slots` onto a component's props, so a template writes
+   * `slots: { emptyAction: … }` and the node arrives here already rendered.
+   *
+   * Inside the placeholder rather than beside the graph, which is the whole reason this exists.
+   * A caller that floats its own button over the canvas has to position it against a box whose size
+   * it cannot see — one that changes as panels open — so it drifts out from under the sentence it
+   * belongs to. Here it is laid out by the same column, at every size, for nothing.
+   *
+   * Gate it yourself if the emptiness has more than one cause: the sentence above already varies,
+   * and an action that suits one of them rarely suits the other.
+   */
+  emptyAction?: JSX.Element;
   /** Show the controls. Defaults to true. Superseded by `controls`, which names them individually. */
   showControls?: boolean;
   /**
