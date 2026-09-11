@@ -10,9 +10,9 @@
  *
  * The header is a bar of squares, and a control gets one. What needs more room than a square — a
  * row of shapes, a slider — opens under the bar from a trigger, the way the colour picker's own
- * popover opens from its swatch. `we-graph__control-trigger` and `we-graph__control-popup` are the
- * two classes the graph names for exactly this, so the square and the popup take the bar's own
- * styling and stay in step with the buttons beside them.
+ * popover opens from its swatch. The trigger is the same ghost, square `we-button` the bar's own
+ * buttons are, so nothing here sizes an icon by hand — a small control gives its icon the size a
+ * small control gives; `we-graph__control-popup` is the class the graph names for the rest.
  *
  * The values are the ones `recordStore.setCardStyle` takes, since that is what a template binds
  * `onNodeAction` to: a CSS colour or empty for none, a card shape name, a content scale.
@@ -39,16 +39,17 @@ function Popup(props: { icon: string; title?: string; children: JSX.Element }) {
 
   return (
     <div ref={box} style={{ display: 'contents' }}>
-      <button
-        type="button"
-        class="we-graph__control-trigger"
+      <we-button
+        variant={open() ? 'secondary' : 'ghost'}
+        square
+        size="sm"
+        color={open() ? 'text' : 'text-muted'}
+        label={props.title ?? ''}
         title={props.title}
-        aria-label={props.title}
-        aria-expanded={open() ? 'true' : 'false'}
         onClick={() => setOpen((value) => !value)}
       >
-        <we-icon name={props.icon} size="18px" />
-      </button>
+        <we-icon name={props.icon} />
+      </we-button>
       <Show when={open()}>
         <div class="we-graph__control-popup">{props.children}</div>
       </Show>

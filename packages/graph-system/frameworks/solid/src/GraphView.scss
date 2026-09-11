@@ -649,7 +649,7 @@
     screen pixels above the card's top edge at every zoom. Written the other way round the gap would
     be in world units and drift as the camera moved.
 
-    Everything inside is therefore already in screen pixels: 32px squares, a 2px gap, and no
+    Everything inside is therefore already in screen pixels: small-control squares, a 2px gap, and no
     `/ var(--graph-zoom)` on either. Dividing there as well was the double compensation that made the
     row grow as the board was zoomed out.
 
@@ -661,63 +661,22 @@
   transform-origin: top center;
 }
 
-// A square in the bar — shared by a button and a host control's trigger.
-%we-graph-square {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  color: var(--we-role-text-muted);
-  background: transparent;
-  border: none;
-  border-radius: var(--we-radius-200);
-  cursor: pointer;
-
-  &:hover {
-    color: var(--we-role-text);
-    background: var(--we-role-surface-hover);
-  }
-
-  &:focus-visible {
-    outline: 2px solid var(--we-ring-color);
-    outline-offset: -2px;
-  }
-}
-
-.we-graph__action {
-  @extend %we-graph-square;
-}
-
 /*
   A host control in the header — a colour picker, a shape menu, a scale slider.
 
-  The same square as a button, holding whatever the host draws: a picker's swatch, or a trigger
-  that opens the rest. `.we-graph__control-trigger` is the class a host gives that trigger so it
-  fills the square and takes the hover; `.we-graph__control-popup` is where anything larger than a
-  square goes — anchored under the bar, in screen pixels like everything else in it. Both are the
-  contract a control is written against, so they are named here rather than in the host.
+  The buttons beside it are `we-button`s, ghost and square, so a control's own trigger should be the
+  same primitive and needs nothing from here; this box only anchors what the control opens.
+  `.we-graph__control-popup` is where anything larger than a square goes — under the bar, in screen
+  pixels like everything else in it. Named here rather than in the host, since it is the contract a
+  control is written against.
 */
 .we-graph__control {
-  @extend %we-graph-square;
   position: relative;
-  cursor: default;
-
-  &:hover {
-    background: transparent;
-  }
-}
-
-.we-graph__control-trigger {
-  @extend %we-graph-square;
-  width: 100%;
-  height: 100%;
-
-  &[aria-expanded='true'] {
-    color: var(--we-role-text);
-    background: var(--we-role-surface-hover);
-  }
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--we-component-height-sm);
+  height: var(--we-component-height-sm);
 }
 
 .we-graph__control-popup {
@@ -734,24 +693,6 @@
   border-radius: var(--we-radius-300);
   box-shadow: var(--we-shadow-md);
   white-space: nowrap;
-}
-
-.we-graph__action--positive {
-  color: var(--we-role-success-text);
-
-  &:hover {
-    color: var(--we-role-on-success);
-    background: var(--we-role-success);
-  }
-}
-
-.we-graph__action--danger {
-  color: var(--we-role-danger-text);
-
-  &:hover {
-    color: var(--we-role-on-danger);
-    background: var(--we-role-danger);
-  }
 }
 
 /**
@@ -787,7 +728,7 @@
  * down by the camera instead. Integers at every zoom, one rasterised circle, one centred arrow.
  *
  * `scale` is written FIRST in the list, which means it applies LAST, and that is the whole trick —
- * the same one `.we-graph__actions` above uses for its 24px buttons. A transform list applies right
+ * the same one `.we-graph__actions` above uses for its bar. A transform list applies right
  * to left, so `translate(-50%, -50%)` is measured against the element's own unscaled 30px box and the
  * displacement is then scaled with it. Written the other way round the translate would be 15 *world*
  * pixels and the handle would drift off its anchor by however far the camera is from 1 — which is the

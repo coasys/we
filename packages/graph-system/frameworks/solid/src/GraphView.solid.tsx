@@ -2098,7 +2098,19 @@ export function GraphView(props: GraphViewProps) {
                 </For>
               </Show>
               <Show when={entry.selected && actionsFor(entry.node).length > 0}>
-                <div class="we-graph__actions">
+                {/*
+                  `pointerdown` stopped, as well as the click — on the bar, once, for everything in
+                  it. The canvas hit-tests in world space from a pointer press on the layer beneath,
+                  so a press that reached it would start a drag of the very node the bar sits above:
+                  the button would work and the card would move. A click that reached it would
+                  reselect. Here rather than per button, because a host control is arbitrary DOM
+                  and the press that opens a picker needs stopping just the same.
+                */}
+                <div
+                  class="we-graph__actions"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={(event) => event.stopPropagation()}
+                >
                   <For each={actionsFor(entry.node)}>
                     {(action) => {
                       const report = (extra: { value?: unknown; preview?: boolean } = {}) => {
@@ -2115,45 +2127,44 @@ export function GraphView(props: GraphViewProps) {
                         <Show
                           when={control()}
                           fallback={
-                            <button
-                              type="button"
-                              class="we-graph__action"
-                              classList={{
-                                'we-graph__action--positive': action.tone === 'positive',
-                                'we-graph__action--danger': action.tone === 'danger',
-                              }}
-                              title={action.title ?? action.id}
-                              aria-label={action.title ?? action.id}
-                              /*
-                                `pointerdown`, stopped, as well as the click.
+                            /*
+                              The design system's own button, ghost and square: the bar is chrome
+                              that appears once, for the selected node, so the per-node cost that
+                              keeps the card itself raw does not apply. `sm` is the bar's square,
+                              and the icon inside takes the size a small control gives it.
 
-                                The canvas hit-tests in world space from a pointer press on the layer
-                                beneath, so a press that reached it would start a drag of the very
-                                node this button sits above — the button would work and the card
-                                would move.
-                              */
-                              onPointerDown={(event) => event.stopPropagation()}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                report();
-                              }}
+                              The two answers, coloured — a status foreground at rest, filling on
+                              hover. Said in colour rather than only in the icon: a bin and a tick
+                              the same shade is a pair of buttons you have to read before pressing.
+                            */
+                            <we-button
+                              variant="ghost"
+                              square
+                              size="sm"
+                              label={action.title ?? action.id}
+                              title={action.title ?? action.id}
+                              color={
+                                action.tone === 'positive'
+                                  ? 'success-text'
+                                  : action.tone === 'danger'
+                                    ? 'danger-text'
+                                    : 'text-muted'
+                              }
+                              prop:hoverProps={
+                                action.tone === 'positive'
+                                  ? { bg: 'success', color: 'on-success' }
+                                  : action.tone === 'danger'
+                                    ? { bg: 'danger', color: 'on-danger' }
+                                    : { color: 'text' }
+                              }
+                              onClick={() => report()}
                             >
-                              <we-icon name={action.icon ?? 'dot'} size="18px" />
-                            </button>
+                              <we-icon name={action.icon ?? 'dot'} />
+                            </we-button>
                           }
                         >
                           {(component) => (
-                            /*
-                              A host control in the header — the same press-stopping as a button,
-                              on the box around it, since a control is arbitrary host DOM and the
-                              press that opens a picker would otherwise drag the card underneath.
-                            */
-                            <div
-                              class="we-graph__control"
-                              title={action.title ?? action.id}
-                              onPointerDown={(event) => event.stopPropagation()}
-                              onClick={(event) => event.stopPropagation()}
-                            >
+                            <div class="we-graph__control" title={action.title ?? action.id}>
                               <Dynamic
                                 component={component()}
                                 node={entry.node}
