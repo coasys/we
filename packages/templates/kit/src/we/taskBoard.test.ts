@@ -65,3 +65,22 @@ describe('the task board', () => {
     expect(text).not.toContain('A state everyone shares');
   });
 });
+
+describe('a task card’s fill', () => {
+  it('is plain unless the board has a rule of its own', () => {
+    // Plain by default — and the whole card, both the bound columns and the unplaced one, takes the
+    // caller's rule, so a board that colours by state colours the cards no column claims too.
+    expect(json).toContain('"bg":"surface"');
+    expect(json).not.toContain('recordFill');
+
+    const keyed = taskBoard({
+      boardId: { $: 'local.boardId' },
+      empty: { type: 'Column' },
+      bg: { $: "card.done ? 'success-surface' : 'surface'" },
+    });
+    const text = JSON.stringify(keyed);
+    const rule = '"bg":{"$":"card.done ? \'success-surface\' : \'surface\'"}';
+    // Every card the board draws — one per column kind, and the unplaced column's.
+    expect(text.split(rule).length - 1).toBeGreaterThanOrEqual(2);
+  });
+});

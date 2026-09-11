@@ -64,9 +64,20 @@ import {
   panelHeader,
   peopleRow,
   recordFormModal,
+  swatchRow,
   taskBoard,
   taskBoardLoading,
 } from '@we/template-kit';
+
+import {
+  keyPanel,
+  LENS_QUERY,
+  lensNodeRules,
+  NO_LENS,
+  placementsQuery,
+  recordFill,
+  TYPE_STYLES_QUERY,
+} from './WorkshopKey.ts';
 
 /**
  * The call on screen — **named in the address**, or the one being recorded when it names none.
@@ -147,9 +158,12 @@ const pageWithCall = (callExpr: string): SchemaProp => ({
     The id rides in the query rather than a path segment because it is a URI; see `CALL`. Raw, as the
     host's own record links are (`…/record/<Entity>?id=<id>`): a query value takes the slashes and
     the colon as they are.
+
+    The key's lens comes along — an explicit `?` drops whatever the address held, so a navigation
+    that spelt only the call would turn the lens back to its default on every change of call.
   */
   $action: 'routeStore.navigate',
-  args: [{ $: `\`\${spaceStore.spacePath}/\${${PAGE_EXPR}}?call=\${${callExpr}}\`` }],
+  args: [{ $: `\`\${spaceStore.spacePath}/\${${PAGE_EXPR}}?call=\${${callExpr}}${LENS_QUERY}\`` }],
 });
 
 /** Look at a call, wherever you are. */
@@ -220,8 +234,13 @@ const NAV = [
  *
  * Absolute, from `spacePath`, because it now has a query on it: a relative path with a `?` is where
  * resolution rules and remembered query strings meet, and neither of them is worth relying on.
+ *
+ * The key's lens rides along for the same reason the call does: it is in the address, and a page
+ * switch that spelt its query without it would silently put the colours back to the default.
  */
-const navPath = { $: "`${spaceStore.spacePath}/${nav.segment}?call=${routeStore.params.call ?? ''}`" };
+const navPath = {
+  $: `\`\${spaceStore.spacePath}/\${nav.segment}?call=\${routeStore.params.call ?? ''}${LENS_QUERY}\``,
+};
 
 /**
  * The view switcher, floating over the content.
@@ -706,6 +725,9 @@ const inspectorPanel: SchemaNode = {
       where: { id: { $: 'routeStore.params.card' } },
       limit: 1,
     },
+    // Where this call's cards sit and what colour each was given, for the swatches below. A panel
+    // cannot read the route's copy, so this is its own.
+    placements: placementsQuery(CALL),
   },
   children: [
     panelHeader({ title: 'Inspector' }),
@@ -830,6 +852,58 @@ const inspectorPanel: SchemaNode = {
                           },
                         },
                       ],
+                    },
+                    /*
+                      This card's own colour — the freeform base of the key.
+
+                      On the placement, not the record: a colour somebody gave a card on this call's
+                      canvas is a fact about the pair, and the same task on another canvas is
+                      untouched. The store refuses a card nobody has dragged onto the canvas yet,
+                      with a sentence saying so, since a placement is where the colour is kept.
+
+                      Not for a line: a `Relationship` is drawn from its ends and has no placement.
+
+                      `we:unset` is what taking a colour away writes — the ORM cannot store an empty
+                      string — so it reads as "none" here, and the Default swatch is the one outlined.
+                    */
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $: "routeStore.params.cardType != 'Relationship'" },
+                        then: {
+                          type: 'Column',
+                          props: { gap: '200', py: '100', borderTop: '1px solid border' },
+                          children: [
+                            {
+                              type: 'we-text',
+                              props: { variant: 'footnote', color: 'text-faint' },
+                              children: ['Colour'],
+                            },
+                            swatchRow({
+                              current: {
+                                $: "find(local.placements, { node: routeStore.params.card }).color == 'we:unset' ? '' : find(local.placements, { node: routeStore.params.card }).color ?? ''",
+                              },
+                              pick: (token) => ({
+                                $action: 'recordStore.setCardStyle',
+                                args: [CALL, { $: 'routeStore.params.card' }, 'color', token],
+                              }),
+                            }),
+                            {
+                              // A lens hides this colour, and a swatch that changes nothing on screen
+                              // reads as broken — so say where the colour went.
+                              type: '$if',
+                              props: {
+                                condition: { $: `!(${NO_LENS})` },
+                                then: {
+                                  type: 'we-text',
+                                  props: { variant: 'footnote', color: 'text-faint' },
+                                  children: ['Shown when both of the key’s lenses are off.'],
+                                },
+                              },
+                            },
+                          ],
+                        },
+                      },
                     },
                     /*
                       The full record, for reading it properly.
@@ -1123,16 +1197,17 @@ const canvas: SchemaNode = {
     nodeStyle: [
       {
         /*
-          Roles, not scale positions — which is why these were all but black in a dark theme.
+          Plain, and a role rather than a scale position.
 
           `primary-50` is a step on a ramp, and the ramp flips with the theme's polarity: the pale
           tint it names in a light theme is a near-black in a dark one, and there is no number that
-          is right in both. A role is the thing a theme redefines, and these three are the tinted
-          panels the design system already maintains for exactly this — legible in either polarity,
-          with a foreground that is corrected against them.
+          is right in both. A role is the thing a theme redefines, and the tinted panels the key
+          draws with are the ones the design system already maintains for exactly this — legible in
+          either polarity, with a foreground corrected against them.
 
-          The canvas's own per-type colours and each card's own colour still override these, and both
-          are palettes rather than meanings, so a scale position stays right there.
+          `surface` is what a card is when nothing colours it — which, with both lenses off and no
+          colour of its own, is the honest answer. The per-kind tints that used to sit here are the
+          kind lens's defaults now, in `KIND_DEFAULTS`, so the key can show them beside each name.
         */
         style: {
           shape: 'card',
@@ -1143,15 +1218,18 @@ const canvas: SchemaNode = {
           labelColor: 'text',
         },
       },
-      { when: { type: 'TaskBlock' }, style: { color: 'accent-muted', labelColor: 'text' } },
-      { when: { type: 'EventBlock' }, style: { color: 'warning-surface', labelColor: 'text' } },
-      // The card's own presentation, in front of the rules above — a size and colour somebody chose
-      // is a fact about the card, where the rules are this template's opinion about a kind.
+      /*
+        The key: by kind, by state, or the card's own colour, read from the address and the space —
+        see `WorkshopKey`. Rules built from data, in the place static ones would go, so the graph's
+        cascade is unchanged: what is on contributes, what is off contributes nothing.
+      */
+      ...lensNodeRules(),
+      // The card's own size, always — a box somebody dragged out is a fact about the card whatever
+      // lens is on. Its colour is above, where the lenses decide whether it shows.
       {
         style: {
           width: { from: 'data.canvasWidth' },
           height: { from: 'data.canvasHeight' },
-          color: { from: 'data.canvasColor' },
         },
       },
       /*
@@ -1424,6 +1502,14 @@ const canvasBody: Omit<RouteSchema, 'path'> = {
     inspectingType: { type: 'string', initial: '', syncParam: 'cardType' },
   },
   /*
+    The space's key, which the canvas builds its colour rules from — see `lensNodeRules`.
+
+    On the route rather than the template root: local scope resets at a route boundary, since each
+    route is rendered through its own pass with nothing inherited, so a query hoisted to the root
+    would validate and then resolve to nothing here. Each of the three pages declares its own.
+  */
+  $queries: { typeStyles: TYPE_STYLES_QUERY },
+  /*
     The canvas itself, always — never a placeholder standing in front of it.
 
     There were two, and they swapped. This route gated on `CALL` and drew its own prompt when there
@@ -1588,6 +1674,10 @@ const kanbanRoute: RouteSchema = {
               */
               $queries: {
                 callRow: { entity: 'CollectionBlock', where: { id: CALL }, include: { board: true }, limit: 1 },
+                // The key and the cards' own colours, for `recordFill` on each card — declared per
+                // route, since nothing hoisted to the root reaches past a `$routes` outlet.
+                typeStyles: TYPE_STYLES_QUERY,
+                placements: placementsQuery(CALL),
               },
               children: [
                 {
@@ -1598,6 +1688,15 @@ const kanbanRoute: RouteSchema = {
                       // The call's own board, which gathers from the call — a fact the board carries,
                       // so nothing here has to say so.
                       boardId: { $: 'first(local.callRow).board.id' },
+                      /*
+                        The same colour the canvas would give this card, under the same lenses.
+
+                        Mostly redundant on a board, where the column already says the state — but a
+                        lane and the unplaced column say nothing, and a card somebody coloured on the
+                        canvas should look the same here with the lenses off. What it buys is that
+                        three pages about one call never disagree about what a colour means.
+                      */
+                      bg: recordFill({ kind: 'TaskBlock', id: 'card.id', status: 'card.status' }),
                       // Who ran the pass that wrote it — the provenance question this template is
                       // built around, and the reason its cards carry a byline where a space's board
                       // does not.
@@ -1695,7 +1794,9 @@ const eventList: SchemaNode = {
                     width: '100%',
                     ay: 'center',
                     gap: '300',
-                    bg: 'surface',
+                    // The key's colour for an event — its kind's, or its own from the canvas. An
+                    // event has no state, so the state lens leaves it plain; see the board's card.
+                    bg: recordFill({ kind: 'EventBlock', id: 'event.id' }),
                     r: '400',
                     border: '1px solid border',
                     p: '400',
@@ -1862,6 +1963,9 @@ const calendarRoute: RouteSchema = {
                   limit: 200,
                   include: { location: true },
                 },
+                // For `recordFill` on each row — see the board's route for why these are per route.
+                typeStyles: TYPE_STYLES_QUERY,
+                placements: placementsQuery(CALL),
               },
               children: [
                 // ── The month, with the way through them either side ──────────────────
@@ -2240,7 +2344,17 @@ export const workshopTemplate: TemplateSchema = {
         the archive. A panel carrying the one act nothing else offers should not begin hidden.
       */
       { id: 'calls', node: callsPanel, title: 'Calls', snap: 'right', order: 1, size: 'sm' },
-      { id: 'call', module: 'call', snap: 'right', order: 2, size: 'sm', open: false },
+      /*
+        The key, open and in its own seat.
+
+        Open, for the inspector's reason: a lens somebody has to find before the colours mean
+        anything is a lens nobody turns on. Its own seat rather than a tab behind Calls, because a
+        space template cannot bring a tab forward — `raiseDock` is host layout — so a key stacked
+        behind the calls list would be one nobody could get back to from inside the template. Closed,
+        it comes back with the picker's "Reset layout", like every authored panel.
+      */
+      { id: 'key', node: keyPanel, title: 'Key', snap: 'right', order: 2, size: 'sm', grow: 1 },
+      { id: 'call', module: 'call', snap: 'right', order: 3, size: 'sm', open: false },
     ],
   },
   type: 'Column',

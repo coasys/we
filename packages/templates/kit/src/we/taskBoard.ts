@@ -406,6 +406,8 @@ export interface TaskBoardOptions {
   empty: SchemaNode;
   /** Show the author on each card — see {@link TaskCardOptions.byline}. */
   byline?: boolean;
+  /** Each card's fill, as an expression over `card` — see {@link TaskCardOptions.bg}. */
+  bg?: SchemaProp;
   /**
    * What the board arranges. Defaults to `TaskBlock`, the one record with a `status` a column can
    * bind to. Anything else makes every column a lane — say so with `lanesOnly`.
@@ -541,6 +543,7 @@ function columnCards(opts: TaskBoardOptions): SchemaNode {
     : taskCard({
         actions: moveTaskMenu('col.id'),
         byline: opts.byline,
+        bg: opts.bg,
         showState: `${CELL}.lane`,
         pending: `card.id in (${PENDING})`,
       });
@@ -743,6 +746,7 @@ function unplacedColumn(opts: TaskBoardOptions): SchemaNode {
     : taskCard({
         actions: moveTaskMenu("''"),
         byline: opts.byline,
+        bg: opts.bg,
         showState: 'true',
         pending: `card.id in (${PENDING})`,
       });

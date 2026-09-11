@@ -20,6 +20,7 @@ import type { SchemaNode, TemplatePanel } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
 import * as showcase from './index.ts';
+import { LENS_PARAM, LENS_QUERY, NO_LENS, toggleLens } from './WorkshopKey.ts';
 
 /** The workshop's own name for the call on screen — see `CALL_EXPR` in its schema. */
 const CALL_EXPR = 'routeStore.params.call ? routeStore.params.call : modules.call.callRecordId';
@@ -734,5 +735,119 @@ describe('the workshop template’s three placeholders', () => {
     for (const key of ['p', 'py', 'pt', 'pb']) {
       expect(canvasProps[key], `/canvas.${key}`).toBeUndefined();
     }
+  });
+});
+
+/**
+ * The workshop's key: what the colours mean, and where each layer is decided.
+ *
+ * Three layers — by kind, by state, the card's own colour — and the tests are about the seams
+ * between them rather than the drawing: which record each reads, where the lens lives, and that the
+ * three pages read one policy.
+ */
+describe('the workshop’s key', () => {
+  const workshop = showcase.workshopTemplate as Schema & { meta?: { panels?: TemplatePanel[] } };
+  const json = JSON.stringify(workshop);
+  const route = (path: string) =>
+    JSON.stringify((workshop.routes ?? []).find((entry) => entry.path === path) as unknown as SchemaNode);
+  const panel = (id: string) => JSON.stringify(workshop.meta?.panels?.find((entry) => entry.id === id));
+
+  it('is a panel, open, on the right', () => {
+    /*
+      Closable, surviving the move between three pages, and competing for the right edge with the
+      inspector and the calls list — the three tests the panel contract sets. Open, for the
+      inspector's reason: a lens somebody has to find first is a lens nobody turns on. Its own seat
+      rather than a tab: a space template cannot bring a tab forward.
+    */
+    const key = workshop.meta?.panels?.find((entry) => entry.id === 'key');
+
+    expect(key?.node).toBeDefined();
+    expect(key?.snap).toBe('right');
+    expect(key?.open).toBeUndefined();
+    const seatmates = (workshop.meta?.panels ?? []).filter((p) => p.snap === 'right' && p.order === key?.order);
+    expect(seatmates).toHaveLength(1);
+  });
+
+  it('keeps the lenses in the address, and every navigation carries them', () => {
+    /*
+      A panel and a route cannot share a local, so the lens lives where the inspector's selection
+      does. And every navigation this template makes spells its query in full — an explicit `?`
+      drops what the address held — so each one has to carry it or a page switch resets the colours.
+    */
+    expect(panel('key')).toContain('routeStore.setParam');
+    expect(panel('key')).toContain(`"${LENS_PARAM}"`);
+    // The switcher, and the one navigation the calls panel and the start button share.
+    expect(json).toContain(`?call=\${routeStore.params.call ?? ''}${LENS_QUERY}`);
+    expect(json).toContain(`?call=\${''}${LENS_QUERY}`);
+    // A result equal to the default is written as nothing, so an ordinary link stays clean.
+    expect(JSON.stringify(toggleLens('state'))).toContain("? '' : 'none'");
+    expect(JSON.stringify(toggleLens('kind'))).toContain("? 'kind,state' : ''");
+  });
+
+  it('builds the canvas’s colours from the space’s key, not from the seed', () => {
+    /*
+      The seed could read a canvas's own TypeStyles and stamp them onto each node — and a mapping
+      the seed swallowed would be one only the graph could see. The key is the space's, wanted on
+      the board and the calendar too, so the template queries it and writes the rules itself.
+    */
+    const canvas = route('/canvas');
+
+    expect(canvas).not.toContain('"typeStyles":"TypeStyle"');
+    expect(canvas).toContain('"anchor":"Space","via":"typeStyles"');
+    expect(canvas).toContain('local.typeStyles.map(s, { when: { type: s.nodeType }');
+    expect(canvas).toContain("spaceStore.taskStates.map(s, { when: { 'data.status': s.slug }");
+    // The query waits for the space rather than reading every canvas's key while it settles.
+    expect(canvas).toContain('"when":{"$":"spaceStore.currentSpace.id"}');
+  });
+
+  it('hides a card’s own colour while a lens is on, and never its size', () => {
+    /*
+      A lens that left individually coloured cards in their own colours would be a key that lied
+      about some of them. So the freeform rule is an expression that contributes nothing while
+      either lens is on — where the size a reader dragged out is a fact about the card whatever
+      lens is on, and stays a plain rule.
+    */
+    const canvas = route('/canvas');
+
+    expect(canvas).toContain(`${NO_LENS} ? [{ style: { color: { from: 'data.canvasColor' } } }] : []`);
+    expect(canvas).not.toContain('"color":{"from":"data.canvasColor"}');
+    expect(canvas).toContain('"width":{"from":"data.canvasWidth"},"height":{"from":"data.canvasHeight"}');
+  });
+
+  it('writes a kind’s colour to the space and reads a state’s from the vocabulary', () => {
+    /*
+      Two mappings, one editor each. A kind's colour has no other home, so the key sets it — on the
+      space, since a call's canvas is not a board anybody wants to recolour every meeting. A state's
+      colour already lives in Settings → Vocabulary, so the key shows it and offers the way there.
+    */
+    const key = panel('key');
+
+    expect(key).toContain('recordStore.setSpaceTypeColor');
+    expect(key).toContain('spaceStore.currentSpace.id');
+    expect(key).not.toContain('recordStore.setTypeColor');
+    expect(key).toContain('"$action":"shellStore.openSpaceSettings","args":["vocabulary"]');
+    expect(key).not.toContain('we-color-picker');
+    expect(key).toContain('spaceStore.offeredTaskStates');
+  });
+
+  it('gives the board and the calendar the same colours as the canvas', () => {
+    // One policy in three spellings would drift; one function, three call sites, cannot.
+    expect(route('/kanban')).toContain('find(spaceStore.taskStates, { slug: card.status })');
+    expect(route('/kanban')).toContain("find(local.typeStyles, { nodeType: 'TaskBlock' })");
+    expect(route('/calendar')).toContain("find(local.typeStyles, { nodeType: 'EventBlock' })");
+    // Both declare what they read: a query hoisted to the root does not reach past a `$routes`.
+    for (const path of ['/kanban', '/calendar']) {
+      expect(route(path)).toContain('"anchor":"Space","via":"typeStyles"');
+      expect(route(path)).toContain('"entity":"Placement"');
+    }
+  });
+
+  it('colours one card from the inspector, on its placement, and not a line', () => {
+    const inspector = panel('inspector');
+
+    expect(inspector).toContain('recordStore.setCardStyle');
+    expect(inspector).toContain(`"args":[{"$":"${CALL_EXPR}"},{"$":"routeStore.params.card"},"color"`);
+    expect(inspector).toContain("routeStore.params.cardType != 'Relationship'");
+    expect(inspector).toContain('"entity":"Placement"');
   });
 });
