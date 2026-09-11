@@ -39,17 +39,18 @@ function Popup(props: { icon: string; title?: string; children: JSX.Element }) {
 
   return (
     <div ref={box} style={{ display: 'contents' }}>
-      <we-button
-        variant={open() ? 'secondary' : 'ghost'}
-        square
-        size="sm"
-        color={open() ? 'text' : 'text-muted'}
-        label={props.title ?? ''}
-        title={props.title}
-        onClick={() => setOpen((value) => !value)}
-      >
-        <we-icon name={props.icon} />
-      </we-button>
+      <we-tooltip content={props.title ?? ''}>
+        <we-button
+          variant={open() ? 'secondary' : 'ghost'}
+          square
+          size="md"
+          color={open() ? 'text' : 'text-muted'}
+          label={props.title ?? ''}
+          onClick={() => setOpen((value) => !value)}
+        >
+          <we-icon name={props.icon} />
+        </we-button>
+      </we-tooltip>
       <Show when={open()}>
         <div class="we-graph__control-popup">{props.children}</div>
       </Show>
@@ -59,15 +60,18 @@ function Popup(props: { icon: string; title?: string; children: JSX.Element }) {
 
 /** A card's own colour: the picker's swatch, at the square's size, opening the picker itself. */
 export const ColorControl: NodeControl = (props) => (
-  <we-color-picker
-    tokens
-    clearable
-    // The fill the card is drawn in where it has no colour of its own — so the swatch shows what the
-    // card looks like rather than a blank. Picking Default emits '' and hands the choice back.
-    value={typeof props.value === 'string' && props.value ? props.value : props.fill}
-    styles={{ '--we-color-picker-swatch': '24px' }}
-    on:change={(event: CustomEvent<string>) => props.onChange(event.detail)}
-  />
+  <we-tooltip content={props.title ?? 'Colour'}>
+    <we-color-picker
+      tokens
+      clearable
+      // The fill the card is drawn in where it has no colour of its own — so the swatch shows what
+      // the card looks like rather than a blank. Picking Default emits '' and hands the choice back.
+      value={typeof props.value === 'string' && props.value ? props.value : props.fill}
+      // A disc, at the size a default control's icon is — a circle of colour among square glyphs.
+      styles={{ '--we-color-picker-swatch': '24px', '--we-color-picker-radius': 'var(--we-radius-full)' }}
+      on:change={(event: CustomEvent<string>) => props.onChange(event.detail)}
+    />
+  </we-tooltip>
 );
 
 const SHAPES = [
@@ -102,7 +106,7 @@ export const ShapeControl: NodeControl = (props) => {
 export const ScaleControl: NodeControl = (props) => {
   const current = () => (typeof props.value === 'number' && props.value > 0 ? props.value : 1);
   return (
-    <Popup icon="text-aa" title={props.title}>
+    <Popup icon="resize" title={props.title}>
       <we-slider
         size="sm"
         width="120px"

@@ -2137,34 +2137,35 @@ export function GraphView(props: GraphViewProps) {
                               hover. Said in colour rather than only in the icon: a bin and a tick
                               the same shade is a pair of buttons you have to read before pressing.
                             */
-                            <we-button
-                              variant="ghost"
-                              square
-                              size="sm"
-                              label={action.title ?? action.id}
-                              title={action.title ?? action.id}
-                              color={
-                                action.tone === 'positive'
-                                  ? 'success-text'
-                                  : action.tone === 'danger'
-                                    ? 'danger-text'
-                                    : 'text-muted'
-                              }
-                              prop:hoverProps={
-                                action.tone === 'positive'
-                                  ? { bg: 'success', color: 'on-success' }
-                                  : action.tone === 'danger'
-                                    ? { bg: 'danger', color: 'on-danger' }
-                                    : { color: 'text' }
-                              }
-                              onClick={() => report()}
-                            >
-                              <we-icon name={action.icon ?? 'dot'} />
-                            </we-button>
+                            <we-tooltip content={action.title ?? action.id}>
+                              <we-button
+                                variant="ghost"
+                                square
+                                size="md"
+                                label={action.title ?? action.id}
+                                color={
+                                  action.tone === 'positive'
+                                    ? 'success-text'
+                                    : action.tone === 'danger'
+                                      ? 'danger-text'
+                                      : 'text-muted'
+                                }
+                                prop:hoverProps={
+                                  action.tone === 'positive'
+                                    ? { bg: 'success', color: 'on-success' }
+                                    : action.tone === 'danger'
+                                      ? { bg: 'danger', color: 'on-danger' }
+                                      : { color: 'text' }
+                                }
+                                onClick={() => report()}
+                              >
+                                <we-icon name={action.icon ?? 'dot'} />
+                              </we-button>
+                            </we-tooltip>
                           }
                         >
                           {(component) => (
-                            <div class="we-graph__control" title={action.title ?? action.id}>
+                            <div class="we-graph__control">
                               <Dynamic
                                 component={component()}
                                 node={entry.node}

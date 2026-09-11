@@ -1003,8 +1003,9 @@ const callsPanel: SchemaNode = {
         then: panelScroll({
           children: [
             {
+              // No gap: each row carries its own vertical padding now, so the rows meet flush and
+              // the selected fill reads as a band in a list rather than a chip floating in one.
               type: 'Column',
-              props: { gap: '100' },
               children: [
                 {
                   type: '$each',
@@ -1014,7 +1015,21 @@ const callsPanel: SchemaNode = {
                       // Two verbs, side by side rather than nested: looking at a call and recording
                       // into it are different weights, and a button inside a button is not a thing.
                       type: 'Row',
-                      props: { width: '100%', ay: 'center', gap: '100' },
+                      props: {
+                        width: '100%',
+                        ay: 'center',
+                        gap: '100',
+                        /*
+                          The row knows whether the pointer is on it, so its trash can keep out of
+                          the way until it is wanted. Held by the row rather than the button, for the
+                          reason the transcript's pencil is: `hoverProps` answers for the element it
+                          is on, and there is no way to say "when my parent is hovered" in props.
+                        */
+                        onMouseEnter: { $setLocal: 'pointerOnRow', value: true },
+                        onMouseLeave: { $setLocal: 'pointerOnRow', value: false },
+                      },
+                      // Per row: `$localState` on a node inside `$each` is created per mount.
+                      $localState: { pointerOnRow: { type: 'boolean', initial: false } },
                       children: [
                         {
                           type: 'we-button',
@@ -1023,6 +1038,17 @@ const callsPanel: SchemaNode = {
                             flex: '1',
                             ax: 'start',
                             gap: '200',
+                            /*
+                              Two lines — the name and when — and a button's size pins its height to
+                              the one-line control height, so the selected row's fill was shorter
+                              than its own label and the icon sat on the edge of it. `auto` lets the
+                              content set the height; the vertical padding is what the fill then
+                              keeps clear above and below it. Horizontal matches it: a list row in
+                              a `sm` panel, not a standalone control, and the icon is its own inset.
+                            */
+                            height: 'auto',
+                            py: '200',
+                            px: '200',
                             /*
                               The whole of choosing: the id goes in the address, and every surface
                               follows. Nothing is joined, claimed or written.
@@ -1105,6 +1131,28 @@ const callsPanel: SchemaNode = {
                                 square: true,
                                 color: 'text-faint',
                                 hoverProps: { color: 'danger-text' },
+                                /*
+                                  Out of the way until the row is pointed at, and always there on
+                                  the selected row.
+
+                                  A trash can on every row is furniture on the ordinary case, which
+                                  is choosing a call — and thirty of them in a column read as a
+                                  warning rather than an affordance. Faded rather than unmounted, so
+                                  the row keeps its width as the pointer crosses it and the button
+                                  keeps its place in the tab order.
+
+                                  The selected row keeps its visible because hovering is not a thing
+                                  on a touchscreen: choose a call, then delete it is a path that
+                                  works everywhere, and one trash can beside the row that is lit
+                                  reads as belonging to it rather than as repetition.
+
+                                  `focusProps` is the half that stops this being a mouse-only
+                                  affordance: it fires on `:focus-visible`, so tabbing to the button
+                                  brings it back even though nothing is hovering the row.
+                                */
+                                opacity: { $: `local.pointerOnRow || call.id == (${CALL_EXPR}) ? 1 : 0` },
+                                focusProps: { opacity: 1 },
+                                transition: 'opacity 200 ease-in-out',
                                 /*
                                   No `confirmModal`: the host raises its own in front of every
                                   destructive store action, and a panel is guarded like any other

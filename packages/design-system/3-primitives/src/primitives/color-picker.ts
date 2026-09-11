@@ -100,7 +100,8 @@ const styles = css`
        instead of squeezing the host and getting a rectangle. */
     width: var(--we-color-picker-swatch, 48px);
     height: var(--we-color-picker-swatch, 48px);
-    border-radius: var(--we-radius-400);
+    /* Settable like the size, for a caller wanting a disc rather than a rounded square. */
+    border-radius: var(--we-color-picker-radius, var(--we-radius-400));
     border: 2px solid var(--we-role-border);
     cursor: pointer;
     box-sizing: border-box;
@@ -151,7 +152,7 @@ const styles = css`
     color: var(--we-role-accent-text);
   }
 
-  // The way back to no colour — a quiet full-width row under the swatches, styled as a tab is.
+  /* The way back to no colour — a quiet full-width row under the swatches, styled as a tab is. */
   [part='clear'] {
     all: unset;
     cursor: pointer;
