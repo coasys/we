@@ -143,8 +143,14 @@ export function kindIcon(kind: string): string {
   return `(${kind} == 'CollectionBlock' ? 'note' : recordStore.displays[${kind}].icon)`;
 }
 
-/** The colour every card starts from — and the whole of a card's colour when no lens is on. */
-const PLAIN = role('surface');
+/**
+ * The colour every card starts from — and the whole of a card's colour when no lens is on.
+ *
+ * A step on the neutral ramp rather than the surface role: a card is a thing *on* the surface, and
+ * one drawn in the surface's own colour disappears into a board whose ground is a surface too. The
+ * step follows the theme's polarity, and the card's ink follows the step.
+ */
+const PLAIN = 'var(--we-color-neutral-200)';
 export const PLAIN_FILL = PLAIN;
 
 /** The default fill for a kind, as an expression over `kind`. */

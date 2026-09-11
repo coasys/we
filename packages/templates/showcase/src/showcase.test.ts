@@ -841,7 +841,7 @@ describe('the workshop’s key', () => {
       the picker's own swatch could not show. Roles, in the picker's spelling.
     */
     expect(KIND_DEFAULTS.TaskBlock).toBe('var(--we-role-accent-muted)');
-    expect(PLAIN_FILL).toBe('var(--we-role-surface)');
+    expect(PLAIN_FILL).toBe('var(--we-color-neutral-200)');
     expect(route('/canvas')).toContain("style: { color: 'var(--we-role-warning-surface)' }");
   });
 

@@ -409,15 +409,6 @@ export class GraphEngine {
    * seed set would leave nodes on screen that nothing can account for.
    */
   async start(): Promise<void> {
-    this.store.clear();
-    this.expansion.reset();
-    this.positions = new Map();
-    // A different graph cannot inherit holds on nodes it does not contain.
-    this.pinnedIds.clear();
-    this.selected.clear();
-    this.status = { loading: false, reloading: false, budgetReached: false, warnings: [] };
-    this.layoutWarnings = [];
-
     /*
       Held across the whole method, not just the seed load.
 
@@ -426,9 +417,41 @@ export class GraphEngine {
       frame in the middle of a load. Held here, `reloading` covers the gap and the renderer never sees
       an empty graph claim to be finished.
     */
+    // What the last graph had to say is not about this one, whichever path the load takes below;
+    // what this load says lands after this and is kept.
+    this.status = { ...this.status, warnings: [] };
     this.beginLoading('reload');
     try {
       const fragment = await this.loadSeeds();
+      if (this.disposed) return;
+
+      /*
+        The same graph, asked for again, keeps its arrangement.
+
+        A spec change restarts the graph, and a restart used to reset everything — positions, pins,
+        the selection, the camera — before it had even read the seeds. Right when the spec names a
+        different graph. Wrong, and visibly so, when it names the same one with a detail changed: a
+        canvas whose list of pending suggestions moved as a pass settled restarted every few
+        seconds, every card snapped back to its stored place, the camera refitted, and a card being
+        dragged fell out of the hand holding it. What decides is not the spec but what the seeds
+        return: if any node on screen is among them, this is the graph the reader is looking at with
+        newer data behind it, which is exactly what `refresh` is for — so it takes that path, and
+        every hold survives. No survivors is a different graph, and it starts clean with a fit.
+      */
+      if (fragment.nodes.some((node) => this.store.hasNode(node.id))) {
+        await this.reconcile(fragment);
+        return;
+      }
+
+      this.store.clear();
+      this.expansion.reset();
+      this.positions = new Map();
+      // A different graph cannot inherit holds on nodes it does not contain.
+      this.pinnedIds.clear();
+      this.selected.clear();
+      this.status = { ...this.status, budgetReached: false };
+      this.layoutWarnings = [];
+
       this.store.merge(fragment);
       this.expansion.attribute(
         SEED_OPENER,
@@ -486,7 +509,14 @@ export class GraphEngine {
   private async refreshOnce(): Promise<void> {
     const fragment = await this.loadSeeds();
     if (this.disposed) return;
+    await this.reconcile(fragment);
+  }
 
+  /**
+   * Fold a freshly read fragment into the graph on screen, keeping everything the reader has done to
+   * it. The body of a refresh, and of a restart that turned out to be the same graph — see `start`.
+   */
+  private async reconcile(fragment: { nodes: GraphNode[]; edges: GraphEdge[] }): Promise<void> {
     const nodes = this.trimToBudget(fragment.nodes);
     const seedNodes = new Set(nodes.map((n) => n.id));
     const seedEdges = new Set(fragment.edges.map((e) => e.id));

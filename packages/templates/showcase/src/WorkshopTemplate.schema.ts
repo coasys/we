@@ -84,6 +84,7 @@ import {
   lensNodeRules,
   NO_LENS,
   placementsQuery,
+  PLAIN_FILL,
   recordFill,
   TYPE_STYLES_QUERY,
 } from './WorkshopKey.ts';
@@ -1210,16 +1211,17 @@ const canvas: SchemaNode = {
           draws with are the ones the design system already maintains for exactly this — legible in
           either polarity, with a foreground corrected against them.
 
-          `surface` is what a card is when nothing colours it — which, with both lenses off and no
-          colour of its own, is the honest answer. The per-kind tints that used to sit here are the
-          kind lens's defaults now, in `KIND_DEFAULTS`, so the key can show them beside each name.
+          `PLAIN_FILL` is what a card is when nothing colours it — which, with both lenses off and
+          no colour of its own, is the honest answer; see `WorkshopKey` for why it is a neutral step.
+          The per-kind tints that used to sit here are the kind lens's defaults now, in
+          `KIND_DEFAULTS`, so the key can show them beside each name.
         */
         style: {
           shape: 'card',
           width: 180,
           content: 'block',
           contentMinZoom: 0.5,
-          color: 'surface',
+          color: PLAIN_FILL,
           // No `labelColor`: left unset, the graph inks a card black or white by the lightness of
           // its fill, which is the only answer that survives a post-it in a dark theme.
         },
