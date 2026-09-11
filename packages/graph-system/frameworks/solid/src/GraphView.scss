@@ -354,6 +354,29 @@
     color: inherit;
   }
 
+  /*
+    And the document at the card's scale, not the page's.
+
+    A rendered document inherits the page's body size and gives every block the padding a page
+    wants between paragraphs, so a note read three sizes larger than the task beside it with a
+    gap under every line. The type is the label size every other card draws its text at, on the
+    same line height, and a block keeps a hair of room rather than a page's — which is what makes
+    a card of prose and a card of one line look like the same kind of thing. The list marker's
+    offset follows the padding it was measured against, so a bullet stays on its first line.
+  */
+  .we-block-content {
+    font-size: var(--node-label-size);
+    line-height: 1.4;
+  }
+
+  .we-block-content :is(.we-block, p, h1, h2, h3, h4, h5, h6, blockquote, .we-list-item) {
+    padding: var(--we-space-100) 0;
+  }
+
+  .we-block-content .we-list-item::before {
+    top: var(--we-space-100);
+  }
+
   &::after {
     content: '';
     position: absolute;
