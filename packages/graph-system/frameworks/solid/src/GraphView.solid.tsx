@@ -42,6 +42,7 @@ import {
   nodeVisual,
   PluginRegistry,
   polyline,
+  readField,
   resolveStyle,
   routesAlike,
   splineThrough,
@@ -2059,37 +2060,74 @@ export function GraphView(props: GraphViewProps) {
               <Show when={entry.selected && actionsFor(entry.node).length > 0}>
                 <div class="we-graph__actions">
                   <For each={actionsFor(entry.node)}>
-                    {(action) => (
-                      <button
-                        type="button"
-                        class="we-graph__action"
-                        classList={{
-                          'we-graph__action--positive': action.tone === 'positive',
-                          'we-graph__action--danger': action.tone === 'danger',
-                        }}
-                        title={action.title ?? action.id}
-                        aria-label={action.title ?? action.id}
-                        /*
-                          `pointerdown`, stopped, as well as the click.
+                    {(action) => {
+                      const report = (extra: { value?: unknown; preview?: boolean } = {}) => {
+                        const at = parseAddress(entry.node.id);
+                        props.onNodeAction?.({
+                          action: action.id,
+                          id: entry.node.id,
+                          ...(at?.kind === 'entity' && { recordId: at.id, recordType: at.type }),
+                          ...extra,
+                        });
+                      };
+                      const control = () => (action.control ? props.host?.nodeControls?.[action.control] : undefined);
+                      return (
+                        <Show
+                          when={control()}
+                          fallback={
+                            <button
+                              type="button"
+                              class="we-graph__action"
+                              classList={{
+                                'we-graph__action--positive': action.tone === 'positive',
+                                'we-graph__action--danger': action.tone === 'danger',
+                              }}
+                              title={action.title ?? action.id}
+                              aria-label={action.title ?? action.id}
+                              /*
+                                `pointerdown`, stopped, as well as the click.
 
-                          The canvas hit-tests in world space from a pointer press on the layer
-                          beneath, so a press that reached it would start a drag of the very node
-                          this button sits above — the button would work and the card would move.
-                        */
-                        onPointerDown={(event) => event.stopPropagation()}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          const at = parseAddress(entry.node.id);
-                          props.onNodeAction?.({
-                            action: action.id,
-                            id: entry.node.id,
-                            ...(at?.kind === 'entity' && { recordId: at.id, recordType: at.type }),
-                          });
-                        }}
-                      >
-                        <we-icon name={action.icon} size="14px" />
-                      </button>
-                    )}
+                                The canvas hit-tests in world space from a pointer press on the layer
+                                beneath, so a press that reached it would start a drag of the very
+                                node this button sits above — the button would work and the card
+                                would move.
+                              */
+                              onPointerDown={(event) => event.stopPropagation()}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                report();
+                              }}
+                            >
+                              <we-icon name={action.icon ?? 'dot'} size="14px" />
+                            </button>
+                          }
+                        >
+                          {(component) => (
+                            /*
+                              A host control in the header — the same press-stopping as a button,
+                              on the box around it, since a control is arbitrary host DOM and the
+                              press that opens a picker would otherwise drag the card underneath.
+                            */
+                            <div
+                              class="we-graph__control"
+                              title={action.title ?? action.id}
+                              onPointerDown={(event) => event.stopPropagation()}
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              <Dynamic
+                                component={component()}
+                                node={entry.node}
+                                value={action.value ? readField(entry.node, action.value.from) : undefined}
+                                fill={color(entry.visual.color, 'primary-500')}
+                                title={action.title}
+                                onPreview={(value: unknown) => report({ value, preview: true })}
+                                onChange={(value: unknown) => report({ value })}
+                              />
+                            </div>
+                          )}
+                        </Show>
+                      );
+                    }}
                   </For>
                 </div>
               </Show>

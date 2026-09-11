@@ -857,13 +857,32 @@ describe('the workshop’s key', () => {
     }
   });
 
-  it('colours one card from the inspector, on its placement, and not a line', () => {
+  it('keeps how a card looks in its header, and what it says in the inspector', () => {
+    /*
+      Colour, shape and content scale are facts about this card on this canvas, saved on its
+      placement — so they live in the card's own header with the other things done *to* a card,
+      and the inspector stays about the record. Host controls named by `control`; each reports
+      through one action whose id is the placement field, previewing while it moves.
+    */
     const inspector = panel('inspector');
+    const canvas = route('/canvas');
 
-    expect(inspector).toContain('recordStore.setCardStyle');
-    expect(inspector).toContain(`"args":[{"$":"${CALL_EXPR}"},{"$":"routeStore.params.card"},"color"`);
-    expect(inspector).toContain("routeStore.params.cardType != 'Relationship'");
-    expect(inspector).toContain('"entity":"Placement"');
+    expect(inspector).not.toContain('recordStore.setCardStyle');
+    expect(canvas).toContain('"id":"color","control":"color"');
+    expect(canvas).toContain('"id":"cardShape","control":"shape"');
+    expect(canvas).toContain('"id":"contentScale","control":"scale"');
+    expect(canvas).toContain(
+      `"$action":"recordStore.setCardStyle","args":[{"$":"${CALL_EXPR}"},{"$":"event.recordId"},{"$":"event.action"},{"$":"event.value"}]`,
+    );
+    expect(canvas).toContain('"$action":"recordStore.previewCardStyle"');
+    // Not on a suggestion, which offers the decision and nothing else.
+    expect(canvas).toContain('"value":{"from":"data.canvasColor"},"when":{"data.pending":{"exists":false}}');
+    // Picking a colour turns the lenses off, so the pick is visible.
+    expect(canvas).toContain(`"args":["${LENS_PARAM}","none"]`);
+    // And the shape and scale a card was given show whatever lens is on.
+    expect(canvas).toContain(
+      '"cardShape":{"from":"data.canvasCardShape"},"contentScale":{"from":"data.canvasContentScale"}',
+    );
   });
 });
 

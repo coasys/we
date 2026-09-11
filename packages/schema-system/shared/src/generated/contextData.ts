@@ -123,6 +123,7 @@ export const contextData: ContextData = {
         },
         { name: 'tokens', type: 'boolean', optional: false, default: 'false' },
         { name: 'alpha', type: 'boolean', optional: false, default: 'false' },
+        { name: 'clearable', type: 'boolean', optional: false, default: 'false' },
       ],
     },
     {
@@ -1411,7 +1412,7 @@ export const contextData: ContextData = {
         { name: 'nodeActions', type: 'NodeAction[]', optional: true },
         {
           name: 'onNodeAction',
-          type: '((payload: { action: string; id: string; recordId?: string; recordType?: string; }) => void)',
+          type: '((payload: { action: string; id: string; recordId?: string; recordType?: string; value?: unknown; preview?: boolean; }) => void)',
           optional: true,
         },
         { name: 'host', type: 'GraphHostBindings', optional: true },

@@ -35,7 +35,7 @@ import { normaliseCurve } from './geometry';
 export type MetricValues = ReadonlyMap<string, ReadonlyMap<string, number>>;
 
 /** Read a match key off a node or edge. `data.x` reaches into the data bag; everything else is a field. */
-function readField(subject: GraphNode | GraphEdge, key: string): unknown {
+export function readField(subject: GraphNode | GraphEdge, key: string): unknown {
   if (key.startsWith('data.')) return subject.data?.[key.slice(5)];
   return (subject as unknown as Record<string, unknown>)[key];
 }

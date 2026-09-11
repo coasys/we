@@ -78,14 +78,12 @@ import {
   newThingChooser,
 } from './WorkshopCards.ts';
 import {
-  colorControl,
-  freeformFill,
   keyPanel,
+  LENS_PARAM,
   LENS_QUERY,
   lensNodeRules,
   NO_LENS,
   placementsQuery,
-  PLAIN_FILL,
   recordFill,
   TYPE_STYLES_QUERY,
 } from './WorkshopKey.ts';
@@ -741,9 +739,6 @@ const inspectorPanel: SchemaNode = {
       where: { id: { $: 'routeStore.params.card' } },
       limit: 1,
     },
-    // Where this call's cards sit and what colour each was given, for the swatches below. A panel
-    // cannot read the route's copy, so this is its own.
-    placements: placementsQuery(CALL),
   },
   children: [
     panelHeader({
@@ -912,67 +907,6 @@ const inspectorPanel: SchemaNode = {
                                   },
                                 },
                               ],
-                            },
-                          ],
-                        },
-                      },
-                    },
-                    /*
-                      This card's own colour — the freeform base of the key.
-
-                      On the placement, not the record: a colour somebody gave a card on this call's
-                      canvas is a fact about the pair, and the same task on another canvas is
-                      untouched. The store refuses a card nobody has dragged onto the canvas yet,
-                      with a sentence saying so, since a placement is where the colour is kept.
-
-                      Not for a line: a `Relationship` is drawn from its ends and has no placement.
-
-                      `we:unset` is what taking a colour away writes — the ORM cannot store an empty
-                      string — so it reads as "none" here: the picker shows plain, and the reset goes.
-                    */
-                    {
-                      type: '$if',
-                      props: {
-                        condition: { $: "routeStore.params.cardType != 'Relationship'" },
-                        then: {
-                          type: 'Column',
-                          props: { gap: '200', py: '100', borderTop: '1px solid border' },
-                          children: [
-                            {
-                              type: 'Row',
-                              props: { gap: '300', ay: 'center', width: '100%' },
-                              children: [
-                                colorControl({
-                                  value: { $: freeformFill('routeStore.params.card') },
-                                  chosen: { $: `!(${freeformFill('routeStore.params.card')} == '${PLAIN_FILL}')` },
-                                  pick: {
-                                    $action: 'recordStore.setCardStyle',
-                                    args: [CALL, { $: 'routeStore.params.card' }, 'color', { $: 'event.detail' }],
-                                  },
-                                  clear: {
-                                    $action: 'recordStore.setCardStyle',
-                                    args: [CALL, { $: 'routeStore.params.card' }, 'color', ''],
-                                  },
-                                }),
-                                {
-                                  type: 'we-text',
-                                  props: { variant: 'footnote', color: 'text-muted' },
-                                  children: ['This card’s own colour'],
-                                },
-                              ],
-                            },
-                            {
-                              // A lens hides this colour, and a swatch that changes nothing on screen
-                              // reads as broken — so say where the colour went.
-                              type: '$if',
-                              props: {
-                                condition: { $: `!(${NO_LENS})` },
-                                then: {
-                                  type: 'we-text',
-                                  props: { variant: 'footnote', color: 'text-faint' },
-                                  children: ['Shown when both of the key’s lenses are off.'],
-                                },
-                              },
                             },
                           ],
                         },
@@ -1302,6 +1236,10 @@ const canvas: SchemaNode = {
         style: {
           width: { from: 'data.canvasWidth' },
           height: { from: 'data.canvasHeight' },
+          // The card's own outline and how large its content is drawn — set from its header, kept
+          // on its placement, and shown whatever lens is on: neither is a colour.
+          cardShape: { from: 'data.canvasCardShape' },
+          contentScale: { from: 'data.canvasContentScale' },
         },
       },
       /*
@@ -1500,6 +1438,36 @@ const canvas: SchemaNode = {
     nodeActions: [
       { id: 'accept', icon: 'check', title: 'Keep this', when: { 'data.pending': true }, tone: 'positive' },
       { id: 'reject', icon: 'x', title: 'Discard this', when: { 'data.pending': true }, tone: 'danger' },
+      /*
+        How this card looks, on the card — colour, shape, and how large its content is drawn.
+
+        Presentation per placement, and it lives in the header with the other things you do *to* a
+        card rather than in the inspector, which is about what the record says. Host controls named
+        by `control`, so this stays JSON; each reads its value off the placement's data and reports
+        through `onNodeAction` with a `value`. Not on a suggestion: a card nobody has agreed to
+        offers the decision and nothing else.
+      */
+      {
+        id: 'color',
+        control: 'color',
+        title: 'Colour',
+        value: { from: 'data.canvasColor' },
+        when: { 'data.pending': { exists: false } },
+      },
+      {
+        id: 'cardShape',
+        control: 'shape',
+        title: 'Shape',
+        value: { from: 'data.canvasCardShape' },
+        when: { 'data.pending': { exists: false } },
+      },
+      {
+        id: 'contentScale',
+        control: 'scale',
+        title: 'Content size',
+        value: { from: 'data.canvasContentScale' },
+        when: { 'data.pending': { exists: false } },
+      },
       {
         id: 'delete',
         icon: 'trash',
@@ -1533,6 +1501,42 @@ const canvas: SchemaNode = {
         $if: {
           condition: { $: "event.action == 'delete'" },
           then: { $action: 'record.delete', args: [{ $: 'event.recordType' }, { $: 'event.recordId' }] },
+        },
+      },
+      /*
+        The three presentation controls, through one action that takes the field name — the action's
+        id IS the placement field. A moving control previews without writing, so a slider shows its
+        result before the drag ends and the card never jumps; a settled one writes.
+      */
+      {
+        $if: {
+          condition: { $: "event.action in ['color', 'cardShape', 'contentScale'] && event.preview" },
+          then: {
+            $action: 'recordStore.previewCardStyle',
+            args: [{ $: 'event.recordId' }, { $: 'event.action' }, { $: 'event.value' }],
+          },
+        },
+      },
+      {
+        $if: {
+          condition: { $: "event.action in ['color', 'cardShape', 'contentScale'] && !event.preview" },
+          then: {
+            $action: 'recordStore.setCardStyle',
+            args: [CALL, { $: 'event.recordId' }, { $: 'event.action' }, { $: 'event.value' }],
+          },
+        },
+      },
+      /*
+        Picking a colour turns the lenses off.
+
+        A card's own colour is hidden while a lens is on, so a picker whose result stayed invisible
+        would read as broken. Choosing one is a statement that this card's colour matters more than
+        the reading right now; the key is one click away for whoever wants the reading back.
+      */
+      {
+        $if: {
+          condition: { $: `event.action == 'color' && !event.preview && !(${NO_LENS})` },
+          then: { $action: 'routeStore.setParam', args: [LENS_PARAM, 'none'] },
         },
       },
     ],

@@ -681,6 +681,24 @@
  * A pair, always. A red cross beside a grey tick is one decision that looks real and one that looks
  * unavailable, which is the wrong hint on the half people are usually looking for.
  */
+/*
+  A host control in the header — a colour picker, a shape menu, a scale slider.
+
+  Drawn as one of the raised pills the buttons are, so the row reads as one strip, but sized by
+  what is inside it rather than to a square: a slider is wide and a picker is a disc. The design
+  system's own controls are inside, so they take the theme on their own; this only frames them.
+*/
+.we-graph__control {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 var(--we-space-100);
+  background: var(--we-role-surface-raised);
+  border: 1px solid var(--we-role-border);
+  border-radius: var(--we-radius-full);
+  box-shadow: var(--we-shadow-sm);
+}
+
 .we-graph__action--positive {
   color: var(--we-role-success-text);
 

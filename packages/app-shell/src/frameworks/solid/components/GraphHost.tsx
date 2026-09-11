@@ -35,6 +35,7 @@ import { useProfileStore } from '../stores/ProfileStore';
 import { useRecordStore } from '../stores/RecordStore';
 import { useSessionStore } from '../stores/SessionStore';
 import { useShellStore } from '../stores/ShellStore';
+import { nodeControls } from './graphControls';
 
 /**
  * How many rows a reverse lookup will read before giving up.
@@ -222,6 +223,8 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
 
   const host: GraphViewProps['host'] = {
     nodeContent: { block: BlockCard },
+    // The header controls a template may name — colour, shape, scale. See `graphControls`.
+    nodeControls,
 
     /**
      * The parts of the graph's box the shell's floating panels are sitting over.

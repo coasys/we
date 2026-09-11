@@ -353,7 +353,16 @@ export interface GraphViewProps {
    */
   nodeActions?: NodeAction[];
   /** One of {@link nodeActions} was pressed on a node. */
-  onNodeAction?: (payload: { action: string; id: string; recordId?: string; recordType?: string }) => void;
+  onNodeAction?: (payload: {
+    action: string;
+    id: string;
+    recordId?: string;
+    recordType?: string;
+    /** What a `control` produced. Absent for a button. */
+    value?: unknown;
+    /** The control is still moving — show the value, do not write it yet. */
+    preview?: boolean;
+  }) => void;
   /**
    * Data-layer bindings, injected by the host's component registry rather than written in a template.
    * Templates never supply these.
@@ -363,10 +372,22 @@ export interface GraphViewProps {
 
 /** One control offered above a selected node — see {@link GraphViewProps.nodeActions}. */
 export interface NodeAction {
-  /** Reported back as `action` when it is pressed. */
+  /** Reported back as `action` when it is pressed, or when a control changes. */
   id: string;
-  /** Phosphor icon name. */
-  icon: string;
+  /** Phosphor icon name. Required for a button; ignored for a `control`. */
+  icon?: string;
+  /**
+   * A host-supplied control in the header instead of a button — see
+   * {@link GraphHostBindings.nodeControls}. Named rather than passed, like `content`, so a template
+   * stays JSON: `{ id: 'color', control: 'color', value: { from: 'data.canvasColor' } }`.
+   *
+   * What changes is reported through `onNodeAction` with the action's id and a `value`, and with
+   * `preview: true` while a control is still moving — a slider reports as it goes, and the graph
+   * itself writes nothing either way.
+   */
+  control?: string;
+  /** The field on the node the control shows and edits — `{ from: 'data.canvasColor' }`. */
+  value?: { from: string };
   /** The tooltip, and the accessible name — an icon with neither is a button nobody can identify. */
   title?: string;
   /** Offered only on nodes this matches. Omit for every node. */
@@ -393,6 +414,25 @@ export interface NodeAction {
  */
 export type NodeContent = (props: { node: GraphNode }) => JSX.Element;
 
+/**
+ * A control the host lends a node's action header — see {@link NodeAction.control}.
+ *
+ * Handed the node, the value the action's `value` names on it (undefined where the node carries
+ * none), and the fill the node is currently drawn in as CSS, so a colour control can show what the
+ * card looks like rather than a blank where nothing has been chosen. It answers through the two
+ * callbacks and draws nothing outside its box: the header positions it.
+ */
+export type NodeControl = (props: {
+  node: GraphNode;
+  value: unknown;
+  fill: string;
+  title?: string;
+  /** The control is moving — show this, write nothing. */
+  onPreview: (value: unknown) => void;
+  /** The control settled on this. */
+  onChange: (value: unknown) => void;
+}) => JSX.Element;
+
 /** What the host lends the graph so its expanders can read data without knowing the backend. */
 export interface GraphHostBindings {
   /**
@@ -403,6 +443,12 @@ export interface GraphHostBindings {
    * such component simply has a card that falls back to its label.
    */
   nodeContent?: Record<string, NodeContent>;
+  /**
+   * Controls a node action may name with `control`, keyed by name — a colour picker, a shape menu,
+   * a scale slider. Lent by the host for the reason `nodeContent` is: the primitives are the
+   * host's, and a graph package that named one would stop being portable.
+   */
+  nodeControls?: Record<string, NodeControl>;
   /**
    * Fields to lay over a node's own data, keyed by the record id the node stands for.
    *

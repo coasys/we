@@ -151,6 +151,23 @@ const styles = css`
     color: var(--we-role-accent-text);
   }
 
+  // The way back to no colour — a quiet full-width row under the swatches, styled as a tab is.
+  [part='clear'] {
+    all: unset;
+    cursor: pointer;
+    text-align: center;
+    padding: var(--we-space-100) var(--we-space-200);
+    border-radius: var(--we-radius-300);
+    font-size: var(--we-font-size-200);
+    color: var(--we-role-text-muted);
+    border: 1px dashed var(--we-role-border);
+  }
+
+  [part='clear']:hover {
+    background: var(--we-role-surface-hover);
+    color: var(--we-role-text);
+  }
+
   [part='tokens'] {
     display: grid;
     grid-template-columns: repeat(14, 1fr);
@@ -321,6 +338,16 @@ export default class ColorPicker extends DesignSystemElement {
   @property({ type: Boolean }) tokens = false;
   /** Allow a transparency. Off by default; a role that carries alpha (the scrim) turns it on. */
   @property({ type: Boolean }) alpha = false;
+  /**
+   * Offer a way back to no colour at all — a "Default" at the foot of the popover that emits an
+   * empty value and closes.
+   *
+   * A picker has no notion of none: every swatch is a colour, and a value that means "let the rule
+   * decide" cannot be picked from a grid of them. Where the value is an *override* — a card's own
+   * colour in front of its kind's, a state's in front of its semantic's — the way back belongs in
+   * the same popover the way in is, not as a second control beside the swatch.
+   */
+  @property({ type: Boolean }) clearable = false;
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   @state() private _open = false;
@@ -654,6 +681,19 @@ export default class ColorPicker extends DesignSystemElement {
                           )}
                         </div>
                         ${this._renderCustom()}`
+              }
+              ${
+                this.clearable
+                  ? html`<button
+                      part="clear"
+                      @click=${() => {
+                        this._emit('');
+                        this._open = false;
+                      }}
+                    >
+                      Default
+                    </button>`
+                  : ''
               }
             </div>`
           : ''
