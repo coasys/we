@@ -484,10 +484,14 @@ const A_CALL_IS_RUNNING = 'modules.call.active || count(modules.call.liveCalls)'
 /**
  * Start a call, join the one running here, or go back to your own.
  *
- * Takes its size because it is placed twice at two scales: beside the call's name in the corner,
- * where it stands alone and matches the pill's own controls, and in the calls panel header, where
- * `panelShell` reserves the height of a small control and a default one would make that header
- * taller than every other panel's.
+ * Takes its size because it is placed at two scales. `md` on a page with no call to be about —
+ * under the sentence each of the three routes shows there, which is the template's main way in and
+ * wants the default control height. `sm` in the calls panel header, where `panelShell` reserves the
+ * height of a small control and a default one would make that header taller than every other
+ * panel's.
+ *
+ * It used to sit in the corner beside the pill as well. That placement showed on the same condition
+ * the page gates do and did the same thing, so it was the same door drawn twice — see `callChrome`.
  */
 const startCallButton = (size: 'sm' | 'md'): SchemaNode => ({
   type: '$if',
@@ -498,6 +502,16 @@ const startCallButton = (size: 'sm' | 'md'): SchemaNode => ({
       props: {
         size,
         gap: '200',
+        /*
+          Room above it, in the placement that sits under a sentence.
+
+          `md` is always that one — the gate on each of the three routes — where the placeholder's
+          own `gap` alone reads as too tight: an icon, a line of prose and a button spaced identically
+          make three items in a list rather than a statement and the thing to do about it. `sm` is the
+          calls panel header, where a top margin would push the control out of a band whose height
+          `panelShell` has already reserved.
+        */
+        ...(size === 'md' ? { mt: '400' } : {}),
         // Its words are fixed, so it is the wrong half of the pair to shorten — see `callPill`.
         flexShrink: '0',
         variant: { $: "modules.call.active ? 'secondary' : 'primary'" },
@@ -561,33 +575,34 @@ const startCallButton = (size: 'sm' | 'md'): SchemaNode => ({
 });
 
 /**
- * The corner that is about the conversation, and it is always there.
+ * The corner that says which call every other surface is about.
  *
- * ## Why it stopped coming and going
+ * ## What it is, now that it is one thing
  *
- * The pill alone lived here, so the whole region appeared when a call was named and vanished when
- * one was not — which made the one thing people had learned to look at the one thing that was
- * sometimes missing. Calls had no permanent address on screen at all: the module rail's launcher is
- * the least discoverable control in the app, the calls panel is a section somebody can close, and
- * this flickered. A fixed region makes the conversation a *place*, so starting one, seeing the
- * current one and picking an old one back up all resolve to the same corner.
+ * The call on screen, named — and nothing when there is not one. It held a start button beside the
+ * pill as well, under an argument worth recording because it was right for as long as its premise
+ * held: calls needed a permanent address, since the module rail's launcher is the least discoverable
+ * control in the app and the calls panel is a section somebody can close, so a corner that was
+ * sometimes empty left the whole subject with nowhere to live.
  *
- * ## Two children rather than one that swaps
+ * What changed is that the *page* now offers it. Each of the three routes draws a gate when no call
+ * is named, and each carries the same button — under the sentence explaining why the page is empty,
+ * in the middle of the screen, which is where somebody with no call is already looking. The corner
+ * button showed on exactly that condition and did exactly that thing, so it was not a second way in;
+ * it was the same way in, smaller and at the edge. Three of them on one screen — corner, page, calls
+ * panel — and the loudest was the one nobody's eye was on.
  *
- * The obvious shape is a region that shows the start button *or* the pill. It has a hole, and it is
- * a bug we had already fixed once: reading a finished call is exactly when somebody wants to start a
- * fresh one — that is how the reopen bug got noticed — and swapping would mean deselecting first to
- * reach the button. So both are here, and only one state quietens the button: being *in* a call,
- * where a second one is refused anyway and the pill's own control already says "go to the call".
+ * So the corner narrows to the subject. When there is a call it names it; when there is not, the
+ * page asks the question and the region is empty. Nothing is lost: every state that had the button
+ * here has it in the middle instead, and the calls panel keeps its own for the one state neither
+ * covers — wanting a fresh call while reading a finished one, where the pill holds this corner.
  *
- * ## The pill leads
+ * ## The band keeps its height regardless
  *
- * When there is a call it is the subject, and the subject holds the left edge; the offer of another
- * follows it. Which means the button moves as a title grows, and that is the cheaper thing to move —
- * it is the less-used of the two whenever the pill is there at all.
- *
- * The switcher beside this does not move either way: it is centred on the *content*, computed from
- * the sidebar and dock insets, so a neighbour that changes width is nothing to it.
+ * `minHeight` stands whether or not the pill does, so the switcher pinned to the same `top` has
+ * something to align against. The switcher itself does not move either way: it is centred on the
+ * *content*, computed from the sidebar and dock insets, so a neighbour that changes width — or
+ * disappears — is nothing to it.
  */
 const callChrome: SchemaNode = {
   type: 'Row',
@@ -610,35 +625,16 @@ const callChrome: SchemaNode = {
     /*
       The pill's own height, held whether or not the pill is there.
 
-      Without it the region is as tall as whatever it happens to contain, so with no call the start
-      button sat at the top of the band while the switcher beside it sat centred in the full height —
-      the two pinned to the same `top` and looking misaligned. Stated as the arithmetic the pill
-      arrives at rather than as a number: a control at the default height, plus the padding above and
-      below it, including whatever a theme adds to control heights.
+      Without it the region is as tall as whatever it happens to contain, so with no call it
+      collapsed to nothing while the switcher beside it sat centred in the full height — the two
+      pinned to the same `top` and looking misaligned. Stated as the arithmetic the pill arrives at
+      rather than as a number: a control at the default height, plus the padding above and below it,
+      including whatever a theme adds to control heights.
     */
     minHeight:
       'calc(var(--we-component-height-md) + var(--we-theme-control-height-offset, 0px) + 2 * var(--we-space-200))',
   },
-  children: [
-    callPill,
-    {
-      /*
-        Only where the pill is not — so the corner holds one thing at a time.
-
-        This began as the opposite: both present, on the argument that reading a finished call is
-        exactly when somebody wants to start a fresh one, and a corner that swapped would make that
-        state need a detour. The argument was sound and its premise was not — the calls panel keeps
-        its own start button, and clicking the selected row there deselects it and brings this one
-        straight back. So the detour is a click somebody is already making, and what it buys is a
-        corner that says one thing rather than a button crowding the name of the call beside it.
-
-        `!CALL` rather than `!active`, and it subsumes it: being in a call sets the record `CALL`
-        falls back to, so the pill is there and this is not.
-      */
-      type: '$if',
-      props: { condition: { $: `!(${CALL_EXPR})` }, then: startCallButton('md') },
-    },
-  ],
+  children: [callPill],
 };
 
 /**
@@ -843,7 +839,21 @@ const inspectorPanel: SchemaNode = {
             },
           ],
         },
-        else: emptyState({ icon: 'cursor-click', label: 'a card selected' }),
+        /*
+          A sentence, because `label` alone builds the wrong one.
+
+          `emptyState` composes its default from the label — "This space doesn't have any <label>."
+          — which is right for a plural noun naming what a list would have held, and this is not a
+          list. With `label: 'a card selected'` the panel read "This space doesn't have any a card
+          selected.", in the panel this template opens by default, on the first screen anybody sees
+          of it. The label stays as what a reader of the schema sees the panel is *for*; `message`
+          says the true thing on screen.
+        */
+        else: emptyState({
+          icon: 'cursor-click',
+          label: 'a card selected',
+          message: 'Click a card on the canvas to look inside it.',
+        }),
       },
     },
   ],
@@ -1163,8 +1173,15 @@ const canvas: SchemaNode = {
       there is something to do about it.
     */
     empty: {
-      $: `${CALL_EXPR} ? 'Nothing from this call yet. Tasks and events appear here as the conversation produces them — drag them into an arrangement and join them up.' : 'Start a call. What the conversation produces appears here as cards you can move and join up.'`,
+      $: `${CALL_EXPR} ? 'Nothing from this call yet. Tasks and events appear here as the conversation produces them — drag them into an arrangement and join them up.' : 'Start or choose a call. What it produces appears here as cards you can move and join up.'`,
     },
+    /*
+      And drawn as an invitation, which is what both of those sentences are — the same gradient the
+      other two routes' gates carry, so the three pages of this template answer an empty address in
+      one voice. Neither state is a dead end: one is waiting for a call to be started or chosen, the
+      other for the conversation to produce something.
+    */
+    emptyGradient: 'primary',
     /*
       The graph's own status strip, on.
 
@@ -1322,6 +1339,31 @@ const canvas: SchemaNode = {
       },
     ],
   },
+  /*
+    The way in, under the canvas's own sentence.
+
+    This is the landing route, so it is the screen on which "there is no call yet" is most often
+    read — and until now the only door out of it was a button in the corner and a panel somebody can
+    close. The other two routes put one under their gate; the canvas could not, because its
+    placeholder is drawn by `GraphView` from a string rather than by a node this template owns.
+
+    A slot is how a node hands a component something rendered: the renderer resolves it and spreads
+    it onto the component's props, so the button lands *inside* the graph's own centred box. Which is
+    the point — it stays under the sentence at every size, through every panel opening and closing,
+    with nothing here positioning anything. A button floated over the canvas would have to be lined
+    up against a box it cannot measure, and would be the second thing over the canvas besides.
+
+    Gated, because that box answers two questions. `empty` says one sentence when there is no call
+    and another when a call has produced nothing yet, and only the first is an invitation to start
+    one — offering a new call to somebody already reading one is answering a question they did not
+    ask. The same condition the other two routes gate their gates on, so all three agree.
+  */
+  slots: {
+    emptyAction: {
+      type: '$if',
+      props: { condition: { $: `!(${CALL_EXPR})` }, then: startCallButton('md') },
+    },
+  },
 };
 
 /**
@@ -1418,9 +1460,19 @@ const canvasRoute: RouteSchema = { path: '/canvas', ...canvasBody };
  * What a route shows when it has nothing to be about.
  *
  * Two situations, and they are not the same one: nobody has chosen a call, or this call has not been
- * given whatever the page draws. Each says its own sentence, and only the second offers an action —
- * so the icon is gradient where there is something to do and flat where there is not, since a dead
- * end that looks like an invitation is worse than one that looks like a dead end.
+ * given whatever the page draws. Each says its own sentence, and only the second offers a button.
+ *
+ * Neither is a dead end, which is why the icon is gradient in both. The usual rule — gradient where
+ * there is something to do, flat where there is not — turns on whether the reader can get out of the
+ * state, not on whether this page happens to carry the control: a call is chosen in the calls panel,
+ * from every route, so "choose a call" is an invitation with its affordance one panel away rather
+ * than a wall. Drawn flat it read as a failure, on the one screen every reader of this template sees
+ * first.
+ *
+ * `flex: '1'` is what centres it. The gate is the whole page when it shows, so it takes the height
+ * the route was given and sits in the middle of it — a placeholder pinned under the nav pill with a
+ * screen of nothing below reads as content that failed to load. Every box between here and the root
+ * passes the height down the same way; see the routes.
  *
  * Distinct from `emptyState`, which is the answer to "this list is empty": that sentence is about
  * content, this one is about the *address*, and a page with no subject has not asked a question yet.
@@ -1431,11 +1483,11 @@ const canvasRoute: RouteSchema = { path: '/canvas', ...canvasBody };
 function callGate(icon: string, message: string, action?: SchemaNode): SchemaNode {
   return {
     type: 'Column',
-    props: { width: '100%', ax: 'center', ay: 'center', gap: '400', p: '600' },
+    props: { width: '100%', flex: '1', ax: 'center', ay: 'center', gap: '400', p: '600' },
     children: [
       {
         type: 'we-icon',
-        props: { name: icon, size: 'xl', ...(action ? { gradient: 'primary' } : { color: 'text-faint' }) },
+        props: { name: icon, size: 'xl', gradient: 'primary' },
       },
       {
         type: 'we-text',
@@ -1447,14 +1499,36 @@ function callGate(icon: string, message: string, action?: SchemaNode): SchemaNod
   };
 }
 
+/**
+ * Room for the nav pill above the content, and room to breathe below it.
+ *
+ * On the branch that draws content, and not on the route, which is what makes the three pages line
+ * up. A gate centres itself in the box it is given, so vertical padding on the route moved its
+ * midpoint down by half the difference between the two — 16px, against a canvas whose placeholder
+ * centres in the whole route because the canvas has no padding to speak of. Small enough to look
+ * like nothing in a screenshot and exactly big enough to read as a jump when somebody clicks
+ * between Canvas, Tasks and Events.
+ *
+ * Horizontal padding stays on the route, where it applies to both branches: it shifts nothing
+ * vertically, and outside the measure column is where it belongs, so the content is the full
+ * measure wide rather than the measure less its gutters.
+ */
+const ROUTE_BAND = { pt: '900', pb: '600' } as const;
+
 const tasksRoute: RouteSchema = {
   path: '/tasks',
   type: 'Column',
-  props: { width: '100%', minHeight: '100%', ax: 'center', px: '400', pt: '900', pb: '600' },
+  props: { width: '100%', minHeight: '100%', ax: 'center', px: '400' },
   children: [
     {
       type: 'Column',
-      props: { width: '100%', maxWidth: 'var(--we-layout-lg)', gap: '400' },
+      /*
+        `flex: '1'`, so the measure column is as tall as the route rather than as tall as what is in
+        it. It costs the board nothing — a Column's children stack from the top whatever height the
+        box has — and it is the link that lets `callGate` centre itself, which it cannot do inside a
+        box that shrink-wraps an icon and a sentence.
+      */
+      props: { width: '100%', maxWidth: 'var(--we-layout-lg)', flex: '1', gap: '400' },
       children: [
         {
           type: '$if',
@@ -1479,7 +1553,7 @@ const tasksRoute: RouteSchema = {
             condition: CALL,
             then: {
               type: 'Column',
-              props: { width: '100%', gap: '400' },
+              props: { width: '100%', gap: '400', ...ROUTE_BAND },
               /*
                 Which board this call calls its own, if any — its `board` relation rather than "the
                 first board parented to it". A call may hold several; one of them is the one
@@ -1535,7 +1609,11 @@ const tasksRoute: RouteSchema = {
                 },
               ],
             },
-            else: callGate('kanban', 'Choose a call to see the work it produced.'),
+            else: callGate(
+              'kanban',
+              'Start or choose a call. The work it commits to appears here as cards on a board.',
+              startCallButton('md'),
+            ),
           },
         },
       ],
@@ -1704,11 +1782,12 @@ const eventList: SchemaNode = {
 const eventsRoute: RouteSchema = {
   path: '/events',
   type: 'Column',
-  props: { width: '100%', minHeight: '100%', ax: 'center', px: '400', pt: '900', pb: '600' },
+  props: { width: '100%', minHeight: '100%', ax: 'center', px: '400' },
   children: [
     {
       type: 'Column',
-      props: { width: '100%', maxWidth: 'var(--we-layout-lg)', gap: '400' },
+      // `flex: '1'` for the same reason it is on the tasks route's measure column — see there.
+      props: { width: '100%', maxWidth: 'var(--we-layout-lg)', flex: '1', gap: '400' },
       children: [
         {
           type: '$if',
@@ -1729,7 +1808,7 @@ const eventsRoute: RouteSchema = {
             condition: CALL,
             then: {
               type: 'Column',
-              props: { width: '100%', gap: '400' },
+              props: { width: '100%', gap: '400', ...ROUTE_BAND },
               $localState: {
                 // Paging is arithmetic on an offset, so every source reads the same offset and the template
                 // only ever adds to it.
@@ -1973,7 +2052,11 @@ const eventsRoute: RouteSchema = {
                 eventList,
               ],
             },
-            else: callGate('calendar', 'Choose a call to see the events it produced.'),
+            else: callGate(
+              'calendar',
+              'Start or choose a call. The dates it settles on appear here as a month.',
+              startCallButton('md'),
+            ),
           },
         },
       ],
@@ -2121,7 +2204,17 @@ export const workshopTemplate: TemplateSchema = {
         what it is for.
       */
       { id: 'inspector', node: inspectorPanel, title: 'Inspector', snap: 'right', order: 0, size: 'sm', grow: 1 },
-      { id: 'calls', node: callsPanel, title: 'Calls', snap: 'right', order: 1, size: 'sm', open: false },
+      /*
+        No `open` here, though it stood as `open: false` for a long time and read as "placed, not
+        shown". Nothing has ever honoured that on an authored panel — `open` suppresses a *module*
+        launcher, and this panel has none — so the flag described a behaviour this template did not
+        have, which is why the validator now says so.
+
+        Open is also what it should be. This list is the only way to choose a call that has finished:
+        the corner names the current one and the page gates start a new one, and neither picks from
+        the archive. A panel carrying the one act nothing else offers should not begin hidden.
+      */
+      { id: 'calls', node: callsPanel, title: 'Calls', snap: 'right', order: 1, size: 'sm' },
       { id: 'call', module: 'call', snap: 'right', order: 2, size: 'sm', open: false },
     ],
   },

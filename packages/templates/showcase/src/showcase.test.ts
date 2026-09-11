@@ -264,35 +264,53 @@ describe('the workshop template’s call selection', () => {
     expect(JSON.stringify(region)).toContain('"condition":{"$":"routeStore.params.call ? routeStore.params.call');
   });
 
-  it('offers a new call from the corner only when the corner names no call', () => {
+  it('offers a new call from the page rather than from the corner', () => {
     /*
-      One thing at a time. Both were present for a commit, on the argument that reading a finished
-      call is exactly when somebody wants a fresh one and a corner that swapped would make that state
-      need a detour. The premise was wrong: the calls panel keeps its own start button, and clicking
-      the selected row there deselects it and brings this one straight back — so the detour is a
-      click somebody is already making, and what it buys is a corner that does not crowd the name of
-      the call beside it.
+      The corner held a start button beside the pill, shown on exactly the condition each route now
+      gates its own placeholder on — so it was never a second way in. It was the same one, smaller
+      and at the edge, while somebody with no call was reading the middle of the screen. Three of
+      them at once (corner, page, calls panel) and the loudest was the one nobody's eye was on.
 
-      `!CALL` subsumes "not in a call": being in one sets the record `CALL` falls back to.
+      Asserted in both directions, because removing the corner button is only right if the page
+      gained one. A template that lost both would look tidier in the diff and strand a first-time
+      reader on a screen with no door.
     */
-    const region = JSON.stringify(((workshop as SchemaNode).children as SchemaNode[])[0]);
+    const corner = JSON.stringify(((workshop as SchemaNode).children as SchemaNode[])[0]);
+    expect(corner).not.toContain('modules.call.startCall');
+    // The corner still names the call, which is all it is for now.
+    expect(corner).toContain('local.callRecord');
 
-    expect(region).toContain(
-      '"condition":{"$":"!(routeStore.params.call ? routeStore.params.call : modules.call.callRecordId)"}',
-    );
-    expect(region).toContain('modules.call.startCall');
-    // And the panel's own start button is what makes that trade affordable, so it stays.
+    for (const path of ['/tasks', '/events']) {
+      const route = JSON.stringify((workshop.routes ?? []).find((entry) => entry.path === path));
+      expect(route, path).toContain('modules.call.startCall');
+    }
+
+    // And the panel's own stays: picking up a call that has finished is the one state no page gate
+    // covers, because a page with a call named draws no gate at all.
     expect(JSON.stringify(workshop.meta?.panels?.find((panel) => panel.id === 'calls'))).toContain(
       'modules.call.startCall',
     );
   });
 
-  it('gives the left edge to the call, not to the offer of another', () => {
-    // When there is a call it is the subject, so it holds the position that does not move. The
-    // button follows it and shifts as a title grows, which is the cheaper of the two to move.
-    const region = JSON.stringify(((workshop as SchemaNode).children as SchemaNode[])[0]);
+  it('offers it from the canvas too, which cannot host a gate of its own', () => {
+    /*
+      The canvas is the landing route, so it is where "there is no call yet" is read most often —
+      and its placeholder is drawn by `GraphView` out of a string rather than by a node this
+      template owns, so there is nothing here to hang a button under. A slot is how a node hands a
+      component something already rendered: it lands inside the graph's own centred box and stays
+      under the sentence at every size, through every panel opening and closing.
 
-    expect(region.indexOf('local.callRecord')).toBeLessThan(region.indexOf('modules.call.startCall'));
+      Gated, because that box answers two questions. `empty` says one thing when there is no call
+      and another when a call has produced nothing yet, and only the first is an invitation to start
+      one — the same condition the other two routes gate on, so all three agree.
+    */
+    const canvas = (workshop.routes ?? []).find((entry) => entry.path === '/canvas') as unknown as SchemaNode;
+    const graph = (canvas.children as SchemaNode[]).find((child) => child.type === 'GraphView');
+    const action = (graph?.slots as Record<string, GateNode> | undefined)?.emptyAction;
+
+    expect(action?.type).toBe('$if');
+    expect(action?.props?.condition?.$).toBe(`!(${CALL_EXPR})`);
+    expect(JSON.stringify(action)).toContain('modules.call.startCall');
   });
 
   it('starts a call rather than reopening the one selected in the list', () => {
@@ -362,7 +380,7 @@ describe('the workshop template’s call selection', () => {
 
     expect(gate).toBeDefined();
     expect(gate?.props?.condition?.$).toBe(CALL_EXPR);
-    expect(JSON.stringify(gate?.props?.else)).toContain('Choose a call to see the events');
+    expect(JSON.stringify(gate?.props?.else)).toContain('Start or choose a call');
   });
 
   it('names the call, not the space, when there is nothing on the calendar', () => {
@@ -669,5 +687,52 @@ describe('the workshop’s left-hand lane', () => {
 
   it('gives the transcript a floor, since below it the text is a column of single words', () => {
     expect(left.find((panel) => panel.id === 'transcript')?.min?.width).toBeGreaterThan(0);
+  });
+});
+
+describe('the workshop template’s three placeholders', () => {
+  const workshop = showcase.workshopTemplate as Schema & { meta?: { panels?: TemplatePanel[] } };
+
+  it('centres them all on the same line', () => {
+    /*
+      A gate centres itself in the box it is given, so vertical padding anywhere ABOVE it moves it.
+
+      The tasks and events routes carried `pt: '900'` / `pb: '600'` on the route itself, to clear the
+      fixed nav pill and leave room under a long board — which put their midpoint 16px below the
+      canvas's, whose placeholder centres in the whole route because a canvas has no padding. Too
+      small to see in a screenshot and exactly big enough to read as a jump when somebody clicks
+      between the three.
+
+      So the band belongs to the branch that draws content, not to the route. Asserted as the shape
+      rather than by measuring anything: nothing between the route and the gate may carry vertical
+      padding, and the content branch must still have it.
+    */
+    for (const path of ['/tasks', '/events']) {
+      const route = (workshop.routes ?? []).find((entry) => entry.path === path) as unknown as SchemaNode;
+      const measure = (route.children as SchemaNode[])[0];
+      const gate = (measure.children as SchemaNode[])[0];
+      const content = (gate.props as { then?: SchemaNode })?.then;
+
+      for (const [name, node] of [
+        ['route', route],
+        ['measure', measure],
+      ] as const) {
+        const props = (node.props ?? {}) as Record<string, unknown>;
+        for (const key of ['p', 'py', 'pt', 'pb']) {
+          expect(props[key], `${path} ${name}.${key}`).toBeUndefined();
+        }
+      }
+
+      // And the band is still there, on the half that wants it.
+      expect((content?.props as Record<string, unknown>)?.pt, path).toBe('900');
+      expect((content?.props as Record<string, unknown>)?.pb, path).toBe('600');
+    }
+
+    // The canvas is the one they are lining up against, so it must stay unpadded too.
+    const canvas = (workshop.routes ?? []).find((entry) => entry.path === '/canvas') as unknown as SchemaNode;
+    const canvasProps = (canvas.props ?? {}) as Record<string, unknown>;
+    for (const key of ['p', 'py', 'pt', 'pb']) {
+      expect(canvasProps[key], `/canvas.${key}`).toBeUndefined();
+    }
   });
 });
