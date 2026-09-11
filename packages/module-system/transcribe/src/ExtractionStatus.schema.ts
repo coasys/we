@@ -471,14 +471,15 @@ const activityLocalState = {
   openPrompts: { type: 'array', initial: [] },
   /** Which responses have been closed — see `responsePane` on why this one is inverted. */
   closedResponses: { type: 'array', initial: [] },
-  /**
-   * Whether the finished-passes history is open.
-   *
-   * Starts closed, and stays closed as passes complete. Opening it is a deliberate act — the
-   * bar's job is to report what is happening, and a history that unfolded itself every time
-   * something finished would be the growth this collapse exists to stop.
-   */
-  historyOpen: { type: 'boolean', initial: false },
+  /*
+    There was a `historyOpen` here, folding this readout's own list of finished passes.
+
+    It went with the list. Every pass is written down as an `ExtractionPass` and read back under
+    "Logs" in the panel, so the settled half of this feed was the same rows again a few hundred
+    pixels away; what is left is a pass *while it runs*, which is never a list long enough to fold.
+    The field outlived the thing it opened and nothing read it — declared state that no expression
+    names is invisible, so it sat here through two rewrites of the section it belonged to.
+  */
 };
 
 /**
