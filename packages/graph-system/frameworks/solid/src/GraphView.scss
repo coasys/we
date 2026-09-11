@@ -371,7 +371,9 @@
   */
   .we-block-renderer-wrapper,
   .we-block-renderer {
-    display: contents;
+    // Over the wrapper's own inline `display`, which a design-system component writes on itself;
+    // nothing else in this stylesheet fights an inline style, and nothing else has to.
+    display: contents !important;
   }
 }
 
@@ -532,26 +534,34 @@
 }
 
 /*
-  The same rings on a cut shape, as a drop shadow on the box outside the clip.
+  The same rings on a cut shape, as a second polygon drawn behind the first.
 
   A clip removes everything on its own element outside the polygon — a ring drawn around it
-  included, which is why the first three shapes had one and the rest did not. `filter` on the box
-  *containing* the clipped layer follows the silhouette instead. Four hard-edged shadows, one per
-  direction, make a ring of the given thickness; along a diagonal it is a fraction thinner, which
-  reads as the same line. Only on the hovered and selected cards, so the cost is one filter.
+  included, which is why the first three shapes had one and the rest did not. Shadows were tried
+  next and are wrong twice over: four offset copies never meet at an acute corner, so a diamond's
+  points showed a gap, and an offset that is a fraction of a pixel in the layer's units rasterises
+  to nothing, so the ring thinned and vanished as the board was zoomed in. So the ring is the same
+  shape again, a little larger, in the ring's colour, on a pseudo-element behind the shape layer:
+  every edge is a real edge and every corner is where two of them meet. The enlargement is
+  screen-constant, like the rings on the rounded shapes.
 */
+.we-graph__card--cut::before {
+  content: '';
+  position: absolute;
+  inset: calc(-1 * var(--ring, 0px));
+  clip-path: var(--node-clip);
+  background: var(--ring-color, transparent);
+  pointer-events: none;
+}
+
 .we-graph__node--card.we-graph__node--hovered .we-graph__card--cut {
   --ring: calc(2px / var(--graph-zoom));
   --ring-color: var(--we-color-primary-300);
-  filter: drop-shadow(var(--ring) 0 0 var(--ring-color)) drop-shadow(calc(-1 * var(--ring)) 0 0 var(--ring-color))
-    drop-shadow(0 var(--ring) 0 var(--ring-color)) drop-shadow(0 calc(-1 * var(--ring)) 0 var(--ring-color));
 }
 
 .we-graph__node--card.we-graph__node--selected .we-graph__card--cut {
   --ring: calc(3px / var(--graph-zoom));
   --ring-color: var(--we-color-primary-500);
-  filter: drop-shadow(var(--ring) 0 0 var(--ring-color)) drop-shadow(calc(-1 * var(--ring)) 0 0 var(--ring-color))
-    drop-shadow(0 var(--ring) 0 var(--ring-color)) drop-shadow(0 calc(-1 * var(--ring)) 0 var(--ring-color));
 }
 
 /*
