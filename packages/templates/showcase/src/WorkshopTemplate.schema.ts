@@ -70,6 +70,14 @@ import {
 } from '@we/template-kit';
 
 import {
+  askWhatGoesHere,
+  CARD_LOCALS,
+  editNoteModal,
+  fieldEditor,
+  newNoteModal,
+  newThingChooser,
+} from './WorkshopCards.ts';
+import {
   colorControl,
   freeformFill,
   keyPanel,
@@ -713,6 +721,11 @@ const callChrome: SchemaNode = {
 const inspectorPanel: SchemaNode = {
   type: 'Column',
   props: { width: '100%', height: '100%', p: '300', gap: '300', overflow: 'hidden' },
+  /*
+    Whether the fields are controls or values — the pencil in the header. Ephemeral and per panel:
+    it is a mode of looking, not a fact about the record, and it drops when the panel is rebuilt.
+  */
+  $localState: { editing: { type: 'boolean', initial: false } },
   $queries: {
     /*
       The record itself, by id. `limit: 1` because an id names one thing — the list is the shape a
@@ -733,7 +746,36 @@ const inspectorPanel: SchemaNode = {
     placements: placementsQuery(CALL),
   },
   children: [
-    panelHeader({ title: 'Inspector' }),
+    panelHeader({
+      title: 'Inspector',
+      /*
+        Unlock editing, in the header where a mode belongs. The inspector already shows every value
+        a record has, so it is the surface that edits them; a separate form would show the same
+        fields a second time. Offered only while a record is loaded, and lit while it is on.
+      */
+      aside: {
+        type: '$if',
+        props: {
+          condition: { $: 'count(local.card)' },
+          then: {
+            type: 'we-tooltip',
+            props: { content: { $: "local.editing ? 'Done editing' : 'Edit this record'" } },
+            children: [
+              {
+                type: 'we-button',
+                props: {
+                  size: 'sm',
+                  square: true,
+                  variant: { $: "local.editing ? 'secondary' : 'ghost'" },
+                  onClick: { $toggleLocal: 'editing' },
+                },
+                children: [{ type: 'we-icon', props: { name: { $: "local.editing ? 'check' : 'pencil-simple'" } } }],
+              },
+            ],
+          },
+        },
+      },
+    }),
     {
       type: '$if',
       props: {
@@ -779,23 +821,40 @@ const inspectorPanel: SchemaNode = {
                         },
                       ],
                     },
-                    {
-                      type: 'we-text',
-                      props: { variant: 'heading-sm' },
-                      children: [{ $: 'record[local.display.title]' }],
-                    },
+                    /*
+                      Reading, or editing — the same fields, as values or as controls.
+
+                      Editing draws every field the model declares as a control by its kind and
+                      writes each change as it is committed; see `fieldEditor`. Reading is what was
+                      always here. A `$if` rather than a per-field toggle, so the two modes cannot
+                      be half on.
+                    */
                     {
                       type: '$if',
                       props: {
-                        condition: { $: 'local.display.summary' },
-                        then: {
-                          type: 'we-text',
-                          props: { color: 'text-muted' },
-                          children: [{ $: 'record[local.display.summary]' }],
-                        },
-                      },
-                    },
-                    /*
+                        condition: { $: 'local.editing' },
+                        then: fieldEditor({ $: 'routeStore.params.cardType' }, { $: 'routeStore.params.card' }),
+                        else: {
+                          type: 'Column',
+                          props: { gap: '300' },
+                          children: [
+                            {
+                              type: 'we-text',
+                              props: { variant: 'heading-sm' },
+                              children: [{ $: 'record[local.display.title]' }],
+                            },
+                            {
+                              type: '$if',
+                              props: {
+                                condition: { $: 'local.display.summary' },
+                                then: {
+                                  type: 'we-text',
+                                  props: { color: 'text-muted' },
+                                  children: [{ $: 'record[local.display.summary]' }],
+                                },
+                              },
+                            },
+                            /*
                       Every field the model declares, drawn by its kind.
 
                       The same switch the record page makes, and the same reason: `kind` is resolved
@@ -803,56 +862,60 @@ const inspectorPanel: SchemaNode = {
                       a property is. A date wants a timestamp, a boolean a badge, and everything else
                       reads as text.
                     */
-                    {
-                      type: '$each',
-                      props: { items: { $: 'local.display.fields' }, as: 'field' },
-                      children: [
-                        {
-                          type: '$if',
-                          props: {
-                            // A field with nothing in it is not worth a row: an empty label over
-                            // blank space reads as something failing to load.
-                            condition: { $: 'record[field.name]' },
-                            then: {
-                              type: 'Column',
-                              props: { gap: '050', py: '100', borderTop: '1px solid border' },
+                            {
+                              type: '$each',
+                              props: { items: { $: 'local.display.fields' }, as: 'field' },
                               children: [
-                                {
-                                  type: 'we-text',
-                                  props: { variant: 'footnote', color: 'text-faint' },
-                                  children: [{ $: 'field.label' }],
-                                },
                                 {
                                   type: '$if',
                                   props: {
-                                    condition: { $: "field.kind == 'datetime' || field.kind == 'date'" },
+                                    // A field with nothing in it is not worth a row: an empty label over
+                                    // blank space reads as something failing to load.
+                                    condition: { $: 'record[field.name]' },
                                     then: {
-                                      type: 'we-timestamp',
-                                      props: { value: { $: 'record[field.name]' }, relative: true },
-                                    },
-                                    else: {
-                                      type: '$if',
-                                      props: {
-                                        condition: { $: "field.kind == 'boolean'" },
-                                        then: {
-                                          type: 'we-badge',
-                                          props: { size: 'xs' },
-                                          children: [{ $: "record[field.name] ? 'Yes' : 'No'" }],
-                                        },
-                                        else: {
+                                      type: 'Column',
+                                      props: { gap: '050', py: '100', borderTop: '1px solid border' },
+                                      children: [
+                                        {
                                           type: 'we-text',
-                                          props: { variant: 'footnote' },
-                                          children: [{ $: 'record[field.name]' }],
+                                          props: { variant: 'footnote', color: 'text-faint' },
+                                          children: [{ $: 'field.label' }],
                                         },
-                                      },
+                                        {
+                                          type: '$if',
+                                          props: {
+                                            condition: { $: "field.kind == 'datetime' || field.kind == 'date'" },
+                                            then: {
+                                              type: 'we-timestamp',
+                                              props: { value: { $: 'record[field.name]' }, relative: true },
+                                            },
+                                            else: {
+                                              type: '$if',
+                                              props: {
+                                                condition: { $: "field.kind == 'boolean'" },
+                                                then: {
+                                                  type: 'we-badge',
+                                                  props: { size: 'xs' },
+                                                  children: [{ $: "record[field.name] ? 'Yes' : 'No'" }],
+                                                },
+                                                else: {
+                                                  type: 'we-text',
+                                                  props: { variant: 'footnote' },
+                                                  children: [{ $: 'record[field.name]' }],
+                                                },
+                                              },
+                                            },
+                                          },
+                                        },
+                                      ],
                                     },
                                   },
                                 },
                               ],
                             },
-                          },
+                          ],
                         },
-                      ],
+                      },
                     },
                     /*
                       This card's own colour — the freeform base of the key.
@@ -961,7 +1024,7 @@ const inspectorPanel: SchemaNode = {
         else: emptyState({
           icon: 'cursor-click',
           label: 'a card selected',
-          message: 'Click a card on the canvas to look inside it.',
+          message: 'Click a card on the canvas to look inside it, or double-click the canvas to add one.',
         }),
       },
     },
@@ -1223,7 +1286,8 @@ const canvas: SchemaNode = {
           content: 'block',
           contentMinZoom: 0.5,
           color: 'surface',
-          labelColor: 'text',
+          // No `labelColor`: left unset, the graph inks a card black or white by the lightness of
+          // its fill, which is the only answer that survives a post-it in a dark theme.
         },
       },
       /*
@@ -1266,6 +1330,9 @@ const canvas: SchemaNode = {
       is unchanged.
     */
     behaviours: [
+      // The two halves of a double-click: on a note it opens, on empty canvas it asks what to make.
+      'node-double-click',
+      'canvas-double-click',
       'select',
       { type: 'drag-node', options: { pin: true } },
       // Last, because it is the background fallback — listed earlier it claims the press `select`
@@ -1354,6 +1421,26 @@ const canvas: SchemaNode = {
       { $setLocal: 'inspecting', value: { $: 'event.recordId' } },
       { $setLocal: 'inspectingType', value: { $: 'event.recordType' } },
     ],
+    /*
+      Double-click opens a note in the composer. The first click has already selected it, so the
+      modal reads the selection — see `editNoteModal`. A record that is not a note has no document
+      to compose; its fields are in the inspector, where the pencil unlocks them.
+    */
+    onNodeDoubleClick: {
+      $if: {
+        condition: { $: "event.recordType == 'CollectionBlock'" },
+        then: { $setLocal: 'noteOpen', value: true },
+      },
+    },
+    // Double-click empty canvas to make something there — see `newThingChooser`.
+    onCanvasDoubleClick: askWhatGoesHere,
+    /*
+      Something dragged in from the Pocket, or from anywhere else, lands where it was dropped.
+
+      A placement is the canvas's membership, so the store's one action is enough — and it refuses
+      a record from another space, which this canvas could not draw, with a sentence saying so.
+    */
+    onDrop: { $action: 'recordStore.dropOnCanvas', args: [CALL, { $: 'event' }] },
     /*
       A line is a record here too, so clicking one inspects it.
 
@@ -1508,6 +1595,8 @@ const canvasBody: Omit<RouteSchema, 'path'> = {
   $localState: {
     inspecting: { type: 'string', initial: '', syncParam: 'card' },
     inspectingType: { type: 'string', initial: '', syncParam: 'cardType' },
+    // Making things and opening notes — see `WorkshopCards`.
+    ...CARD_LOCALS,
   },
   /*
     The space's key, which the canvas builds its colour rules from — see `lensNodeRules`.
@@ -1550,6 +1639,10 @@ const canvasBody: Omit<RouteSchema, 'path'> = {
       the entity it draws connections from, so a new `Relationship` arrives on its own.
     */
     recordFormModal(),
+    // What goes here, a new note, and the selected note opened — see `WorkshopCards`.
+    newThingChooser(CALL),
+    newNoteModal(CALL),
+    editNoteModal,
   ],
 };
 
@@ -2361,7 +2454,15 @@ export const workshopTemplate: TemplateSchema = {
         behind the calls list would be one nobody could get back to from inside the template. Closed,
         it comes back with the picker's "Reset layout", like every authored panel.
       */
-      { id: 'key', node: keyPanel, title: 'Key', snap: 'right', order: 2, size: 'sm', grow: 1 },
+      {
+        id: 'key',
+        node: keyPanel({ call: CALL, extracted: EXTRACTED.$ }),
+        title: 'Key',
+        snap: 'right',
+        order: 2,
+        size: 'sm',
+        grow: 1,
+      },
       { id: 'call', module: 'call', snap: 'right', order: 3, size: 'sm', open: false },
     ],
   },

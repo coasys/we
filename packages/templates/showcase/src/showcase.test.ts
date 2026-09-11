@@ -827,9 +827,10 @@ describe('the workshop’s key', () => {
     expect(key).not.toContain('recordStore.setTypeColor');
     expect(key).toContain('"$action":"shellStore.openSpaceSettings","args":["vocabulary"]');
     expect(key).toContain('spaceStore.offeredTaskStates');
-    // The same picker the vocabulary uses, tokens first — one per kind, and none for a state.
+    // The same picker the vocabulary uses, tokens first — on the kind rows (both lists that make
+    // them up), and never on a state's.
     const pickers = key.split('"type":"we-color-picker","props":{"tokens":true').length - 1;
-    expect(pickers).toBe(1);
+    expect(pickers).toBe(2);
     expect(key).not.toContain('createTaskState');
   });
 
@@ -863,5 +864,87 @@ describe('the workshop’s key', () => {
     expect(inspector).toContain(`"args":[{"$":"${CALL_EXPR}"},{"$":"routeStore.params.card"},"color"`);
     expect(inspector).toContain("routeStore.params.cardType != 'Relationship'");
     expect(inspector).toContain('"entity":"Placement"');
+  });
+});
+
+/**
+ * Putting things on the canvas, opening them, and what the key lists as a result.
+ */
+describe('the workshop’s canvas', () => {
+  const workshop = showcase.workshopTemplate as Schema & { meta?: { panels?: TemplatePanel[] } };
+  const canvas = JSON.stringify((workshop.routes ?? []).find((entry) => entry.path === '/canvas'));
+  const panel = (id: string) => JSON.stringify(workshop.meta?.panels?.find((entry) => entry.id === id));
+
+  it('asks what goes here on a double-click, and offers a note or any model the space can make', () => {
+    /*
+      One gesture for every kind. A note goes through the composer, which is how a document is
+      authored; a record goes through the generic form, opened by `createOnCanvas` — which remembers
+      the canvas and the point — and then switched to the chosen model, since the first opens on
+      whichever is offered first. Nothing is written until the form is submitted.
+    */
+    expect(canvas).toContain('"canvas-double-click"');
+    expect(canvas).toContain(
+      '"onCanvasDoubleClick":[{"$setLocal":"newAt","value":{"$":"event"}},{"$setLocal":"chooserOpen","value":true}]',
+    );
+    expect(canvas).toContain('recordStore.creatableEntities');
+    expect(canvas).toContain(
+      `"$action":"recordStore.createOnCanvas","args":[{"$":"${CALL_EXPR}"},{"$":"local.newAt.x"},{"$":"local.newAt.y"}]`,
+    );
+    expect(canvas).toContain('"$action":"recordStore.setRecordEntity","args":[{"$":"kind.value"}]');
+    expect(canvas).toContain('"$action":"recordStore.createCardOnCanvas"');
+    expect(canvas).toContain('"at":{"$":"local.newAt"}');
+  });
+
+  it('opens a note in the composer on a double-click, and only a note', () => {
+    expect(canvas).toContain('"node-double-click"');
+    expect(canvas).toContain(`"onNodeDoubleClick":{"$if":{"condition":{"$":"event.recordType == 'CollectionBlock'"}`);
+    expect(canvas).toContain('"$action":"spaceStore.updatePost","args":[{"$":"note.id"},{"$":"arg"}]');
+    expect(canvas).toContain("local.inspectingType == 'CollectionBlock'");
+  });
+
+  it('takes a drop from the Pocket, through the store’s own refusals', () => {
+    // The graph hands the template a world point; the store refuses another space's record.
+    expect(canvas).toContain(
+      `"onDrop":{"$action":"recordStore.dropOnCanvas","args":[{"$":"${CALL_EXPR}"},{"$":"event"}]}`,
+    );
+  });
+
+  it('lets the graph ink a card by its fill', () => {
+    // No `labelColor` on the base rule: the theme's text role is measured against the page, not
+    // against a post-it, and the graph decides black or white from the fill's own lightness.
+    expect(canvas).not.toContain('"labelColor"');
+  });
+
+  it('edits a record in the inspector, field by field, behind a pencil', () => {
+    /*
+      The inspector already shows every value a record has, so it is the surface that edits them.
+      Each control writes as it commits — no Save button, since a record is shared and a buffered
+      form would be state nobody else could see — through the one action that takes the field name.
+    */
+    const inspector = panel('inspector');
+
+    expect(inspector).toContain('"$toggleLocal":"editing"');
+    expect(inspector).toContain(
+      '"$action":"recordStore.updateRecordField","args":[{"$":"routeStore.params.cardType"},{"$":"routeStore.params.card"},{"$":"field.name"},{"$":"event.detail"}]',
+    );
+    expect(inspector).not.toContain('saveRecord');
+    // Typed controls commit on change, never on input — a keystroke is not a write.
+    expect(inspector).not.toContain('"onInput"');
+    // A closed set of values is a select over what the model declares.
+    expect(inspector).toContain('field.options.map(o, { label: o, value: o })');
+  });
+
+  it('lists in the key only the kinds on this canvas', () => {
+    /*
+      Not every kind the space has: what extraction may write for this call, where a record of it
+      exists, and whatever has been placed — a note, a dropped record, a shape — each once.
+    */
+    const key = panel('key');
+
+    expect(key).not.toContain('shapeStore.extractionCandidates');
+    expect(key).toContain('"found":{"entity":{"$":"kind"}');
+    expect(key).toContain('placement.nodeType != prev.nodeType');
+    expect(key).toContain("'CollectionBlock' ? 'Note'");
+    expect(KIND_DEFAULTS.CollectionBlock).toBe('#ffea9f');
   });
 });

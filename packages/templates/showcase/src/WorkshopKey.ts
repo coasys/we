@@ -100,7 +100,8 @@ export const TYPE_STYLES_QUERY = {
  * not resolved would otherwise read every placement in the space.
  */
 export function placementsQuery(call: Record<string, unknown>) {
-  return { entity: 'Placement', scope: anchorScope(call), limit: 200, when: call };
+  // Ordered by kind, which is what lets the key list each kind once with the `$prev` grouping.
+  return { entity: 'Placement', scope: anchorScope(call), order: { nodeType: 'asc' }, limit: 200, when: call };
 }
 
 /**
@@ -122,7 +123,25 @@ const role = (name: string) => `var(--we-role-${name})`;
 export const KIND_DEFAULTS: Record<string, string> = {
   TaskBlock: role('accent-muted'),
   EventBlock: role('warning-surface'),
+  // The post-it. A hex rather than a role on purpose: a note is yellow in a dark theme too, and
+  // the card's ink follows the fill's lightness rather than the theme's, so it stays readable.
+  CollectionBlock: '#ffea9f',
 };
+
+/**
+ * What a kind is called and drawn with in the key, where the model's own display does not say.
+ *
+ * `recordStore.displays` is derived from what a model declares under `authoring`, and a composed
+ * document declares none — nobody types a note into a field list — so a `CollectionBlock` has no
+ * label there and would read as its class name.
+ */
+export function kindLabel(kind: string): string {
+  return `(${kind} == 'CollectionBlock' ? 'Note' : recordStore.displays[${kind}].label ? recordStore.displays[${kind}].label : ${kind})`;
+}
+
+export function kindIcon(kind: string): string {
+  return `(${kind} == 'CollectionBlock' ? 'note' : recordStore.displays[${kind}].icon)`;
+}
 
 /** The colour every card starts from — and the whole of a card's colour when no lens is on. */
 const PLAIN = role('surface');
@@ -302,40 +321,111 @@ function lensButton(lens: 'kind' | 'state', label: string, icon: string): Schema
   };
 }
 
-/** One kind, with the picker that sets its colour for the whole space. */
-const kindRow: SchemaNode = {
-  type: 'Row',
-  props: { gap: '300', ay: 'center', width: '100%' },
-  children: [
-    colorControl({
-      value: { $: kindFill('kind') },
-      chosen: { $: 'find(local.typeStyles, { nodeType: kind }).color' },
-      pick: {
-        $action: 'recordStore.setSpaceTypeColor',
-        args: [{ $: 'spaceStore.currentSpace.id' }, { $: 'kind' }, { $: 'event.detail' }],
-      },
-      clear: {
-        $action: 'recordStore.setSpaceTypeColor',
-        args: [{ $: 'spaceStore.currentSpace.id' }, { $: 'kind' }, ''],
-      },
-    }),
-    {
-      type: '$if',
-      props: {
-        condition: { $: 'recordStore.displays[kind].icon' },
-        then: {
-          type: 'we-icon',
-          props: { size: 'xs', color: 'text-muted', name: { $: 'recordStore.displays[kind].icon' } },
+/**
+ * One kind, with the picker that sets its colour for the whole space.
+ *
+ * `kind` is an expression naming the kind, because the rows come from two lists bound to different
+ * names — see `kindRows`.
+ */
+function kindRow(kind: string): SchemaNode {
+  return {
+    type: 'Row',
+    props: { gap: '300', ay: 'center', width: '100%' },
+    children: [
+      colorControl({
+        value: { $: kindFill(kind) },
+        chosen: { $: `find(local.typeStyles, { nodeType: ${kind} }).color` },
+        pick: {
+          $action: 'recordStore.setSpaceTypeColor',
+          args: [{ $: 'spaceStore.currentSpace.id' }, { $: kind }, { $: 'event.detail' }],
+        },
+        clear: {
+          $action: 'recordStore.setSpaceTypeColor',
+          args: [{ $: 'spaceStore.currentSpace.id' }, { $: kind }, ''],
+        },
+      }),
+      {
+        type: '$if',
+        props: {
+          condition: { $: kindIcon(kind) },
+          then: { type: 'we-icon', props: { size: 'xs', color: 'text-muted', name: { $: kindIcon(kind) } } },
         },
       },
-    },
-    {
-      type: 'we-text',
-      props: { variant: 'label', truncate: true, flex: '1', minWidth: '0' },
-      children: [{ $: 'recordStore.displays[kind].label ? recordStore.displays[kind].label : kind' }],
-    },
-  ],
-};
+      {
+        type: 'we-text',
+        props: { variant: 'label', truncate: true, flex: '1', minWidth: '0' },
+        children: [{ $: kindLabel(kind) }],
+      },
+    ],
+  };
+}
+
+/**
+ * The kinds on this canvas, each once — not every kind the space has.
+ *
+ * Two lists make up "on the canvas". What extraction may write for this call, kept only where a
+ * record of it exists, since a kind the call is listening for and has never produced is not on
+ * anything. And whatever has been *placed*, which is how a note, a dropped record or a shape this
+ * community defined gets here — listed by the placements' own `nodeType`, ordered so the `$prev`
+ * grouping yields each kind once, and skipping the ones the first list already named.
+ *
+ * The first list asks one small query per kind, with the kind as the entity — the documented shape
+ * for a type the template was not written for. Cheap: `limit: 1`, and there are a handful.
+ */
+function kindRows(opts: { call: Record<string, unknown>; extracted: string }): SchemaNode {
+  return {
+    type: 'Column',
+    props: { gap: '300', width: '100%' },
+    children: [
+      {
+        type: '$each',
+        props: { items: { $: opts.extracted }, as: 'kind' },
+        children: [
+          {
+            type: 'Column',
+            props: { width: '100%' },
+            $queries: { found: { entity: { $: 'kind' }, scope: anchorScope(opts.call), limit: 1 } },
+            children: [
+              {
+                type: '$if',
+                props: {
+                  condition: { $: 'count(local.found) || kind in local.placements.map(p, p.nodeType)' },
+                  then: kindRow('kind'),
+                },
+              },
+            ],
+          },
+        ],
+      },
+      {
+        type: '$each',
+        props: { items: { $: 'local.placements' }, as: 'placement' },
+        children: [
+          {
+            type: '$if',
+            props: {
+              condition: {
+                $: `placement.nodeType != prev.nodeType && !(placement.nodeType in (${opts.extracted}))`,
+              },
+              then: kindRow('placement.nodeType'),
+            },
+          },
+        ],
+      },
+      {
+        type: '$if',
+        props: {
+          condition: { $: `!count(local.placements) && !count(${opts.extracted})` },
+          then: {
+            type: 'we-text',
+            props: { variant: 'footnote', color: 'text-faint' },
+            children: ['Nothing on the canvas yet. Double-click it to add something.'],
+          },
+        },
+      },
+    ],
+  };
+}
 
 /** One state, read-only: its colour is the vocabulary's, and the vocabulary is where it is set. */
 const stateRow: SchemaNode = {
@@ -363,90 +453,73 @@ const stateRow: SchemaNode = {
  * Its own subscription, because a panel cannot read the root's. Cheap: fifty rows at most, and only
  * while the panel is open.
  */
-export const keyPanel: SchemaNode = {
-  type: 'Column',
-  props: { width: '100%', height: '100%', p: '300', gap: '300', overflow: 'hidden' },
-  $queries: { typeStyles: TYPE_STYLES_QUERY },
-  children: [
-    panelHeader({
-      title: 'Key',
-      help: 'What the colours on the cards mean. Turn a lens on to colour every card by its kind or by its state; with both off, each card keeps the colour it was given in the inspector.',
-      aside: {
-        type: 'Row',
-        props: { gap: '100', ay: 'center' },
-        children: [lensButton('kind', 'Kind', 'cube'), lensButton('state', 'State', 'circle-half')],
-      },
-    }),
-    panelScroll({
-      children: [
-        {
-          type: 'Column',
-          props: { gap: '400', width: '100%' },
-          children: [
-            {
-              type: 'Column',
-              props: { gap: '300', width: '100%', opacity: { $: `${BY_KIND} ? 1 : 0.6` } },
-              children: [
-                sectionLabel({ label: 'Kinds' }),
-                {
-                  type: '$if',
-                  props: {
-                    condition: { $: 'count(shapeStore.extractionCandidates)' },
-                    then: {
-                      type: '$each',
-                      // What a call here can produce — every kind that could land on the canvas,
-                      // whether or not this one has yet, since the colour is the space's.
-                      props: { items: { $: 'shapeStore.extractionCandidates' }, as: 'kind' },
-                      children: [kindRow],
-                    },
-                    else: {
-                      type: 'we-text',
-                      props: { variant: 'footnote', color: 'text-faint' },
-                      children: ['Nothing here can be extracted yet.'],
-                    },
-                  },
-                },
-              ],
-            },
-            {
-              type: 'Column',
-              props: { gap: '300', width: '100%', opacity: { $: `${BY_STATE} ? 1 : 0.6` } },
-              children: [
-                sectionLabel({
-                  label: 'States',
-                  // The colours are the vocabulary's, so that is where they change — one editor per
-                  // fact. Offered to whoever can change what every member sees.
-                  aside: {
-                    type: '$if',
-                    props: {
-                      condition: { $: 'spaceStore.canAdministerCurrentSpace' },
-                      then: {
-                        type: 'we-button',
-                        props: {
-                          size: 'xs',
-                          variant: 'ghost',
-                          onClick: { $action: 'shellStore.openSpaceSettings', args: ['vocabulary'] },
+export function keyPanel(opts: { call: Record<string, unknown>; extracted: string }): SchemaNode {
+  return {
+    type: 'Column',
+    props: { width: '100%', height: '100%', p: '300', gap: '300', overflow: 'hidden' },
+    // The key's own subscriptions: what is placed here, for the kinds list — see `kindRows`.
+    $queries: { typeStyles: TYPE_STYLES_QUERY, placements: placementsQuery(opts.call) },
+    children: [
+      panelHeader({
+        title: 'Key',
+        help: 'What the colours on the cards mean. Turn a lens on to colour every card by its kind or by its state; with both off, each card keeps the colour it was given in the inspector.',
+        aside: {
+          type: 'Row',
+          props: { gap: '100', ay: 'center' },
+          children: [lensButton('kind', 'Kind', 'cube'), lensButton('state', 'State', 'circle-half')],
+        },
+      }),
+      panelScroll({
+        children: [
+          {
+            type: 'Column',
+            props: { gap: '400', width: '100%' },
+            children: [
+              {
+                type: 'Column',
+                props: { gap: '300', width: '100%', opacity: { $: `${BY_KIND} ? 1 : 0.6` } },
+                children: [sectionLabel({ label: 'Kinds' }), kindRows(opts)],
+              },
+              {
+                type: 'Column',
+                props: { gap: '300', width: '100%', opacity: { $: `${BY_STATE} ? 1 : 0.6` } },
+                children: [
+                  sectionLabel({
+                    label: 'States',
+                    // The colours are the vocabulary's, so that is where they change — one editor per
+                    // fact. Offered to whoever can change what every member sees.
+                    aside: {
+                      type: '$if',
+                      props: {
+                        condition: { $: 'spaceStore.canAdministerCurrentSpace' },
+                        then: {
+                          type: 'we-button',
+                          props: {
+                            size: 'xs',
+                            variant: 'ghost',
+                            onClick: { $action: 'shellStore.openSpaceSettings', args: ['vocabulary'] },
+                          },
+                          children: ['Edit'],
                         },
-                        children: ['Edit'],
                       },
                     },
+                  }),
+                  {
+                    type: '$each',
+                    props: { items: { $: 'spaceStore.offeredTaskStates' }, as: 'state' },
+                    children: [stateRow],
                   },
-                }),
-                {
-                  type: '$each',
-                  props: { items: { $: 'spaceStore.offeredTaskStates' }, as: 'state' },
-                  children: [stateRow],
-                },
-                {
-                  type: 'we-text',
-                  props: { variant: 'footnote', color: 'text-faint' },
-                  children: ['Anything without a state stays plain.'],
-                },
-              ],
-            },
-          ],
-        },
-      ],
-    }),
-  ],
-};
+                  {
+                    type: 'we-text',
+                    props: { variant: 'footnote', color: 'text-faint' },
+                    children: ['Anything without a state stays plain.'],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    ],
+  };
+}
