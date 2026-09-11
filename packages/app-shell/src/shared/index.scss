@@ -75,6 +75,12 @@ body,
   box-shadow: var(--we-scrollbar-thumb-box-shadow);
   border-radius: var(--we-scrollbar-thumb-border-radius);
   background-color: var(--we-scrollbar-thumb-background);
+  // Holds the thumb off the edges of its own track, so content that scrolls does not end flush
+  // against the bar. The border reserves the room and `content-box` stops the background painting
+  // into it — either alone does nothing. See the `thumbInset` token for why it is here and not a
+  // padding on each scroll region.
+  border: var(--we-scrollbar-thumb-inset) solid transparent;
+  background-clip: content-box;
 }
 
 ::-webkit-scrollbar-button {

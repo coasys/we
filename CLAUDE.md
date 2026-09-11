@@ -1992,7 +1992,7 @@ color.hues: 'neutral', 'primary', 'success', 'warning', 'danger'
 
 color.lightness: '0', '25', '50', '75', '100', '200', '300', '400', '500', '600', '700', '800', '900', '1000'
 
-component.scrollbar: 'width', 'backgroundImage', 'background', 'cornerBackground', 'thumbBoxShadow', 'thumbBorderRadius', 'thumbBackground'
+component.scrollbar: 'width', 'backgroundImage', 'background', 'cornerBackground', 'thumbBoxShadow', 'thumbBorderRadius', 'thumbInset', 'thumbBackground'
 
 componentHeight: 'xs', 'sm', 'md', 'lg', 'xl'
 

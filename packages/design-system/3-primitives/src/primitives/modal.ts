@@ -174,8 +174,8 @@ const CSS_STYLES = css`
       a relayout: expanding one section of a form used to take the bar's width out of the content
       box, and every control in the modal narrowed to make way for it.
 
-      Nearly free here. The gutter is the 6px of --we-component-scrollbar-width, not the ~15px of a
-      native bar, and the track paints transparent — so on a modal short enough never to scroll it
+      Nearly free here. The gutter is the app's own --we-scrollbar-width, a fraction of a native
+      bar's, and the track paints transparent — so on a modal short enough never to scroll it
       reserves a strip with nothing in it to see.
     */
     scrollbar-gutter: stable;

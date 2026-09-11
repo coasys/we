@@ -259,12 +259,13 @@ exports[`token CSS generation > component.css — scrollbar values come from the
 
 :root {
   /* Scrollbar Styles */
-  --we-scrollbar-width: 6px;
+  --we-scrollbar-width: 10px;
   --we-scrollbar-background-image: none;
   --we-scrollbar-background: transparent;
   --we-scrollbar-corner-background: transparent;
   --we-scrollbar-thumb-box-shadow: none;
   --we-scrollbar-thumb-border-radius: var(--we-radius-pill);
+  --we-scrollbar-thumb-inset: 2px;
   --we-scrollbar-thumb-background: var(--we-role-control-surface);
 }"
 `;
