@@ -40,8 +40,17 @@ const rail: SchemaNode = railShell({
     always been meant to; it simply lost to a neighbour that outranked it.
   */
   zIndex: 'chrome',
-  bg: 'page',
-  // Blends into a page that shares this background rather than drawing a seam against it.
+  // The app's own furniture, not the plane a template renders on — see the `chrome` role.
+  bg: 'chrome',
+  /*
+    No border, because the colour is the seam now.
+
+    This said it blended into a page that shared its background, which was true while the rail and
+    the template both painted `page` — a line was the only thing that could have separated them, and
+    drawing one made a join out of two identical planes. `chrome` is a step off the page in either
+    polarity, so the edge is visible without being drawn, and a rule on top of it would be saying the
+    same thing twice.
+  */
   border: '0',
   /*
     Nothing is remembered about whether it is open, because nothing here decides that but the

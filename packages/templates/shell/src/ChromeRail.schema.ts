@@ -285,7 +285,7 @@ export const chromeRail: SchemaNode = {
           step. A genuinely occluding surface — a menu, a select dropdown — still wants
           `surface-raised`, and that is the distinction the two are now on opposite sides of.
         */
-        bg: 'page',
+        bg: 'chrome',
         border: '1px solid border',
         rtl: '400',
         rbl: '400',

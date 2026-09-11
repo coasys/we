@@ -1687,7 +1687,8 @@ a user-chosen swatch.
 
 | Role | Use for |
 |---|---|
-| `page` | The app/route background behind everything. Set it on a template's root node. |
+| `chrome` | The app's ground, and the bottom of the stack: the sidebar, the module rail, a docked panel's frame, and the app's own screens (profile, settings, about, the marketplace). Reach for it when what you are painting belongs to the app rather than to a community — and for a space template meant to blend into the app instead of sitting above it. |
+| `page` | The plane a **space's own content** sits on, a step above the chrome framing it, and what the surfaces below are measured from. Set it on a space template's root node. |
 | `surface` | A card, panel or sheet sitting on the page. |
 | `surface-raised` | Something floating above the page — a popover, a floating bar, a docked rail with a shadow. |
 | `surface-sunken` | A well recessed into a surface — an inset box, a code block, an input trough. |

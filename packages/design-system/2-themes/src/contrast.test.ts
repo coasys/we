@@ -233,16 +233,22 @@ function resolve(value: string, theme: ThemeOverrides): Rgba | null {
 }
 
 /**
- * `oklch(from var(--we-role-x) calc(l ± n) c h)` — the elevation stack's relative form.
+ * `oklch(from var(…) calc(l ± n) c h)` — the elevation stack's relative form.
  *
- * Resolved with the same arithmetic the browser does, so the check stays a unit test: read the role
- * it names, convert to OKLCH, move the lightness, convert back. Without this the resolver returns
- * null for three of the four surfaces and the elevation test asserts on nothing.
+ * Resolved with the same arithmetic the browser does, so the check stays a unit test: read what it
+ * names, convert to OKLCH, move the lightness, convert back. Without this the resolver returns null
+ * for three of the four surfaces and the elevation test asserts on nothing.
+ *
+ * What it steps from is either another **role** or a **scale position**, and both have to be here.
+ * The second is what an anchor role uses — `chrome` has no role beneath it to step from — and
+ * leaving it out is not a quiet gap: `chrome` resolved to null, `page` is measured from `chrome`, and
+ * the stack is measured from `page`, so a single unhandled form took every surface in every theme
+ * down with it.
  */
 // The delta is a literal for the elevation stack and a variable for the interaction states, since
 // which way a state moves depends on polarity and `oklch(from …)` cannot branch on it.
 const RELATIVE =
-  /^oklch\(from\s+var\(--we-role-([a-z-]+)\)\s+calc\(l\s*([+-])\s*(?:([\d.]+)|var\(--we-state-(hover|active)-([a-z]+),\s*var\(--we-state-(?:hover|active)\)\))\)\s+c\s+h\)$/;
+  /^oklch\(from\s+var\((--we-(?:role|color)-[a-z0-9-]+)\)\s+calc\(l\s*([+-])\s*(?:([\d.]+)|var\(--we-state-(hover|active)-([a-z]+),\s*var\(--we-state-(?:hover|active)\)\))\)\s+c\s+h\)$/;
 
 /**
  * Every role a theme resolves to, by running the *actual* derivation over resolved base colours.
@@ -300,8 +306,16 @@ function themeColors(theme: ThemeOverrides): Map<ThemeRole, Rgba> {
     const [, base, sign, amount, stateKey] = relative;
     if (stateKey) return null; // pass 3
     if (seen.has(name)) return null; // a role defined in terms of itself
-    const camel = base.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase()) as ThemeRole;
-    const from = resolveDeclared(camel, new Set([...seen, name]));
+    /*
+      A scale position is resolved directly; another role is followed.
+
+      An anchor steps from the ramp rather than from a role above it, so there is nothing to recurse
+      into and nothing that a theme's pins could redirect — which is the property that makes it an
+      anchor, and the reason it needs no cycle guard of its own.
+    */
+    const from = base.startsWith('--we-color-')
+      ? resolve(`var(${base})`, theme)
+      : resolveDeclared(base.replace(/^--we-role-/, '').replace(/-([a-z])/g, (_, c: string) => c.toUpperCase()) as ThemeRole, new Set([...seen, name])); // prettier-ignore
     if (!from) return null;
     const { l, c, h } = rgbToOklch(from);
     const moved = Math.min(1, Math.max(0, l + (sign === '-' ? -1 : 1) * parseFloat(amount)));

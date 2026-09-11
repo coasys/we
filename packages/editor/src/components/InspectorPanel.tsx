@@ -159,7 +159,7 @@ function isRole(value: string): boolean {
 }
 
 const COLOR_ROLES: { group: string; roles: string[] }[] = [
-  { group: 'Surfaces', roles: ['page', 'surface', 'surface-raised', 'surface-sunken', 'surface-inverse'] },
+  { group: 'Surfaces', roles: ['chrome', 'page', 'surface', 'surface-raised', 'surface-sunken', 'surface-inverse'] },
   { group: 'Text', roles: ['text', 'text-muted', 'text-faint', 'on-inverse'] },
   { group: 'Accent', roles: ['accent', 'accent-text', 'on-accent', 'accent-muted'] },
   { group: 'Lines', roles: ['border', 'border-strong'] },

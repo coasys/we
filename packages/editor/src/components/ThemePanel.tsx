@@ -171,7 +171,18 @@ const ROLE_GROUPS: { label: string; hint: string; roles: { role: ThemeRole; labe
     label: 'Elevation',
     hint: 'How far a thing sits from the page. Ordered here the way they stack.',
     roles: [
-      { role: 'page', label: 'Page', hint: 'The background behind everything, including the window itself.' },
+      // First because it is the bottom of the stack and the one the rest is measured from — the
+      // group is ordered the way things sit, and everything here sits on the app's own ground.
+      {
+        role: 'chrome',
+        label: 'Chrome',
+        hint: "The app's own furniture — the sidebar, the module rail, a docked panel's frame, and the app's own screens. How dark the app is; everything else is measured from it.",
+      },
+      {
+        role: 'page',
+        label: 'Page',
+        hint: "The plane a space's content sits on, a step above the chrome framing it. Set it to the chrome to have them match.",
+      },
       {
         role: 'surfaceSunken',
         label: 'Sunken',

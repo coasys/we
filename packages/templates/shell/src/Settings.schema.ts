@@ -936,7 +936,7 @@ function page(children: SchemaNode[]): SchemaNode {
 export const settingsTemplate: TemplateSchema = {
   meta: { name: 'Settings', description: 'Account settings', icon: 'gear' },
   type: 'Column',
-  props: { width: '100%', minHeight: '100%', bg: 'page', ax: 'center' },
+  props: { width: '100%', minHeight: '100%', bg: 'chrome', ax: 'center' },
   // Every route below declares whatever local state it needs. A route is rendered by `buildRoutes`
   // as its own `RenderSchema` call with a fresh context — so it is not a descendant of this node at
   // render time, whatever the schema tree looks like, and state declared here would never reach it.
