@@ -75,27 +75,33 @@ export const ColorControl: NodeControl = (props) => (
 );
 
 const SHAPES = [
-  { label: 'Note', value: 'note', icon: 'note' },
+  { label: 'Rounded', value: 'note', icon: 'note-blank' },
   { label: 'Square', value: 'square', icon: 'square' },
   { label: 'Round', value: 'round', icon: 'circle' },
+  { label: 'Triangle', value: 'triangle', icon: 'triangle' },
+  { label: 'Diamond', value: 'diamond', icon: 'diamond' },
+  { label: 'Pentagon', value: 'pentagon', icon: 'pentagon' },
+  { label: 'Hexagon', value: 'hexagon', icon: 'hexagon' },
 ];
 
-/** The card's outline: a shapes glyph opening the three to choose from. */
+/** The card's outline: a shapes glyph opening the seven to choose from. */
 export const ShapeControl: NodeControl = (props) => {
   const current = () => (typeof props.value === 'string' && props.value ? props.value : 'note');
   return (
     <Popup icon="shapes" title={props.title}>
       <For each={SHAPES}>
         {(shape) => (
-          <we-button
-            size="sm"
-            square
-            variant={current() === shape.value ? 'secondary' : 'ghost'}
-            label={shape.label}
-            onClick={() => props.onChange(shape.value)}
-          >
-            <we-icon name={shape.icon} />
-          </we-button>
+          <we-tooltip content={shape.label}>
+            <we-button
+              size="sm"
+              square
+              variant={current() === shape.value ? 'secondary' : 'ghost'}
+              label={shape.label}
+              onClick={() => props.onChange(shape.value)}
+            >
+              <we-icon name={shape.icon} />
+            </we-button>
+          </we-tooltip>
         )}
       </For>
     </Popup>

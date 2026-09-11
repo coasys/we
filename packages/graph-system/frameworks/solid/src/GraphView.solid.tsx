@@ -881,7 +881,31 @@ export function GraphView(props: GraphViewProps) {
     if (visual.shape !== 'card') return 'var(--we-radius-300)';
     if (visual.cardShape === 'square') return '0';
     if (visual.cardShape === 'round') return '50%';
-    return 'var(--we-radius-300)';
+    // The note: rounded enough that choosing it over a square is visible on the card itself.
+    return 'var(--we-radius-500)';
+  }
+
+  /**
+   * The polygon a card is cut to, for the shapes a radius cannot make.
+   *
+   * A clip rather than a drawn outline, so the card stays a box for everything else — its content,
+   * its hit area, the edges that meet it — and only its paint changes. What the clip takes with it
+   * is the border and the shadow along the cut edges, which is the trade every clipped shape makes.
+   */
+  function nodeClip(visual: { shape: string; cardShape?: string }): string {
+    if (visual.shape !== 'card') return 'none';
+    switch (visual.cardShape) {
+      case 'triangle':
+        return 'polygon(50% 0, 100% 100%, 0 100%)';
+      case 'diamond':
+        return 'polygon(50% 0, 100% 50%, 50% 100%, 0 50%)';
+      case 'pentagon':
+        return 'polygon(50% 0, 100% 38%, 82% 100%, 18% 100%, 0 38%)';
+      case 'hexagon':
+        return 'polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%)';
+      default:
+        return 'none';
+    }
   }
 
   const cardContent = (visual: { content?: string; contentMinZoom?: number }): NodeContent | undefined => {
@@ -1937,6 +1961,7 @@ export function GraphView(props: GraphViewProps) {
                 '--node-border': color(entry.visual.borderColor, 'transparent'),
                 '--node-border-width': `${entry.visual.borderWidth ?? 0}px`,
                 '--node-radius': nodeRadius(entry.visual),
+                '--node-clip': nodeClip(entry.visual),
                 '--content-scale': String(entry.visual.contentScale ?? 1),
                 /*
                   Only where a rule chose one. Left unset, the stylesheet answers: a caption under a
@@ -2111,76 +2136,88 @@ export function GraphView(props: GraphViewProps) {
                   onPointerDown={(event) => event.stopPropagation()}
                   onClick={(event) => event.stopPropagation()}
                 >
-                  <For each={actionsFor(entry.node)}>
-                    {(action) => {
-                      const report = (extra: { value?: unknown; preview?: boolean } = {}) => {
-                        const at = parseAddress(entry.node.id);
-                        props.onNodeAction?.({
-                          action: action.id,
-                          id: entry.node.id,
-                          ...(at?.kind === 'entity' && { recordId: at.id, recordType: at.type }),
-                          ...extra,
-                        });
-                      };
-                      const control = () => (action.control ? props.host?.nodeControls?.[action.control] : undefined);
-                      return (
-                        <Show
-                          when={control()}
-                          fallback={
-                            /*
+                  {/*
+                    The bar itself is a design-system row, so its padding and gap are spacing
+                    tokens rather than pixels of its own; the box around it only positions it and
+                    takes the presses. One bar, not a row of pills: the buttons used to be raised
+                    discs each with a border and a shadow, and a host control stretched its disc
+                    into whatever ellipse its contents needed.
+                  */}
+                  <Row ay="center" gap="0" p="200" bg="surface-raised" border="1px solid border" r="300" shadow="md">
+                    <For each={actionsFor(entry.node)}>
+                      {(action) => {
+                        const report = (extra: { value?: unknown; preview?: boolean } = {}) => {
+                          const at = parseAddress(entry.node.id);
+                          props.onNodeAction?.({
+                            action: action.id,
+                            id: entry.node.id,
+                            ...(at?.kind === 'entity' && { recordId: at.id, recordType: at.type }),
+                            ...extra,
+                          });
+                        };
+                        const control = () => (action.control ? props.host?.nodeControls?.[action.control] : undefined);
+                        return (
+                          <Show
+                            when={control()}
+                            fallback={
+                              /*
                               The design system's own button, ghost and square: the bar is chrome
                               that appears once, for the selected node, so the per-node cost that
                               keeps the card itself raw does not apply. `sm` is the bar's square,
                               and the icon inside takes the size a small control gives it.
 
-                              The two answers, coloured — a status foreground at rest, filling on
-                              hover. Said in colour rather than only in the icon: a bin and a tick
-                              the same shade is a pair of buttons you have to read before pressing.
+                              The two answers, coloured — a status foreground at rest, the status
+                              fill on hover. Said in colour rather than only in the icon: a bin and
+                              a tick the same shade is a pair of buttons you have to read before
+                              pressing.
                             */
-                            <we-tooltip content={action.title ?? action.id}>
-                              <we-button
-                                variant="ghost"
-                                square
-                                size="md"
-                                label={action.title ?? action.id}
-                                color={
-                                  action.tone === 'positive'
-                                    ? 'success-text'
-                                    : action.tone === 'danger'
-                                      ? 'danger-text'
-                                      : 'text-muted'
-                                }
-                                prop:hoverProps={
-                                  action.tone === 'positive'
-                                    ? { bg: 'success', color: 'on-success' }
-                                    : action.tone === 'danger'
-                                      ? { bg: 'danger', color: 'on-danger' }
-                                      : { color: 'text' }
-                                }
-                                onClick={() => report()}
-                              >
-                                <we-icon name={action.icon ?? 'dot'} />
-                              </we-button>
-                            </we-tooltip>
-                          }
-                        >
-                          {(component) => (
-                            <div class="we-graph__control">
-                              <Dynamic
-                                component={component()}
-                                node={entry.node}
-                                value={action.value ? readField(entry.node, action.value.from) : undefined}
-                                fill={color(entry.visual.color, 'primary-500')}
-                                title={action.title}
-                                onPreview={(value: unknown) => report({ value, preview: true })}
-                                onChange={(value: unknown) => report({ value })}
-                              />
-                            </div>
-                          )}
-                        </Show>
-                      );
-                    }}
-                  </For>
+                              <we-tooltip content={action.title ?? action.id}>
+                                <we-button
+                                  variant="ghost"
+                                  square
+                                  size="md"
+                                  label={action.title ?? action.id}
+                                  color={
+                                    action.tone === 'positive'
+                                      ? 'success-text'
+                                      : action.tone === 'danger'
+                                        ? 'danger-text'
+                                        : 'text-muted'
+                                  }
+                                  // Hover behaves as every other button's does; only the glyph
+                                  // strengthens, from the status text role to the status fill.
+                                  prop:hoverProps={
+                                    action.tone === 'positive'
+                                      ? { color: 'success' }
+                                      : action.tone === 'danger'
+                                        ? { color: 'danger' }
+                                        : { color: 'text' }
+                                  }
+                                  onClick={() => report()}
+                                >
+                                  <we-icon name={action.icon ?? 'dot'} />
+                                </we-button>
+                              </we-tooltip>
+                            }
+                          >
+                            {(component) => (
+                              <div class="we-graph__control">
+                                <Dynamic
+                                  component={component()}
+                                  node={entry.node}
+                                  value={action.value ? readField(entry.node, action.value.from) : undefined}
+                                  fill={color(entry.visual.color, 'primary-500')}
+                                  title={action.title}
+                                  onPreview={(value: unknown) => report({ value, preview: true })}
+                                  onChange={(value: unknown) => report({ value })}
+                                />
+                              </div>
+                            )}
+                          </Show>
+                        );
+                      }}
+                    </For>
+                  </Row>
                 </div>
               </Show>
             </div>

@@ -296,6 +296,8 @@
   height: var(--node-height);
   padding: var(--we-space-300);
   border-radius: var(--node-radius);
+  // For the shapes a radius cannot make — see `nodeClip`. `none` for the rest.
+  clip-path: var(--node-clip, none);
   background: var(--node-color);
   border: var(--node-border-width) solid var(--node-border);
   box-shadow: var(--we-shadow-sm);
@@ -621,22 +623,9 @@
   left: 0;
   top: calc(var(--node-height) / -2);
   display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 2px;
 
-  /*
-    One bar, not a row of pills.
-
-    The buttons used to be raised discs each carrying its own border and shadow, and a host control
-    stretched its disc into whatever ellipse its contents needed — three different ovals in a row
-    over the card. The bar is the raised thing now, once, and everything in it is a flat square: a
-    button, or a control's trigger. What needs more room than a square opens it from there.
-  */
-  background: var(--we-role-surface-raised);
-  border: 1px solid var(--we-role-border);
-  border-radius: var(--we-radius-300);
-  box-shadow: var(--we-shadow-md);
+  // The bar's own look — its padding, gap, surface and shadow — is the design-system row inside
+  // this box, in the renderer. This box only places it and takes the presses.
 
   // The node layer is inert so the canvas can hit-test in world space; these take their own presses.
   pointer-events: auto;

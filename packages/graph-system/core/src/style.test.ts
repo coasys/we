@@ -141,7 +141,8 @@ describe('field references', () => {
   it('refuses a card shape it does not know', () => {
     // This reads a *stored* value, so a canvas written by a newer version of the app must fall back
     // rather than hand the renderer a name it has no drawing for.
-    const visual = nodeVisual(card({ s: 'hexagon' }), { shape: 'card', cardShape: { from: 'data.s' } }, NO_METRICS);
+    // A hexagon is a shape now; a blob is not.
+    const visual = nodeVisual(card({ s: 'blob' }), { shape: 'card', cardShape: { from: 'data.s' } }, NO_METRICS);
     expect(visual.cardShape).toBe('note');
   });
 

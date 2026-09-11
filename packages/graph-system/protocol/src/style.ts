@@ -84,7 +84,7 @@ export type StyleValue<T> = T | MetricRef | FieldRef<T>;
  * values on it: `shape: 'card'` is structural — it decides that the content goes *inside* the box —
  * and a card that stopped being a card the moment somebody rounded it would drop its content.
  */
-export type CardShape = 'note' | 'square' | 'round';
+export type CardShape = 'note' | 'square' | 'round' | 'triangle' | 'diamond' | 'pentagon' | 'hexagon';
 
 export interface NodeStyle {
   /** Radius in world units, or the box's half-height for non-circular shapes. */

@@ -249,7 +249,7 @@ const DEFAULT_CARD = { width: 160, height: 120 };
 /** Below this a card is a speck with no content visible and no corner big enough to grab. */
 const MIN_CARD = 40;
 
-const CARD_SHAPES: readonly CardShape[] = ['note', 'square', 'round'];
+const CARD_SHAPES: readonly CardShape[] = ['note', 'square', 'round', 'triangle', 'diamond', 'pentagon', 'hexagon'];
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
