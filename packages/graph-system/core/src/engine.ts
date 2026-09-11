@@ -1091,8 +1091,15 @@ export class GraphEngine {
    * convenience: on a 45° approach a circle of radius r is r away and a square of half-extent r is
    * r√2, so treating every node as a box would push every diagonal arrow 40% too far out.
    */
-  private clearanceFor(node: GraphNode | undefined): number | EdgeClearance {
-    const gap = 6;
+  /**
+   * How far short of a node's centre an edge stops — its hit area, plus a standoff.
+   *
+   * The standoff is for the end an arrowhead points at: the head lands on the node's edge and the
+   * line stops before it, so the node is pointed *at* rather than run into. At the source there is
+   * no head, so the same standoff was a line starting a few pixels clear of the card it leaves —
+   * a gap that read as the line not being attached. Callers pass `0` for that end.
+   */
+  private clearanceFor(node: GraphNode | undefined, gap = 6): number | EdgeClearance {
     if (!node) return 14 + gap;
     const area = this.hitArea(node);
     if (area.halfWidth === undefined || area.halfHeight === undefined) return area.radius + gap;
@@ -1169,7 +1176,8 @@ export class GraphEngine {
           // A loose end stands off nothing — the point IS the end, so any clearance would leave the
           // line trailing the cursor by a gap that reads as lag.
           looseTo ? 0 : this.clearanceFor(targetNode),
-          looseFrom ? 0 : this.clearanceFor(sourceNode),
+          // No standoff where the line leaves: it should touch the card it comes from.
+          looseFrom ? 0 : this.clearanceFor(sourceNode, 0),
           // A loose end has no side, whatever the fields still say: the end is a point, and pinning
           // it to an axis would send the line off north from wherever the cursor happens to be.
           { source: looseFrom ? undefined : anchors.source, target: looseTo ? undefined : anchors.target },
@@ -1505,7 +1513,8 @@ export class GraphEngine {
       normaliseCurve(style.curve),
       0,
       landing ? this.clearanceFor(this.store.node(target!)) : 0,
-      this.clearanceFor(source),
+      // The gesture's line leaves its card the way a finished edge does — touching it.
+      this.clearanceFor(source, 0),
     );
   }
 

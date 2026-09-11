@@ -84,6 +84,10 @@ export const BLOCK_ICONS: Record<string, string> = {
   ImageBlock: 'image',
   LinkBlock: 'link',
   LocationBlock: 'map-pin',
+  // Not a block, but drawn from this table wherever a core entity needs a glyph — the chooser, the
+  // inspector, the key. Plugs rather than a link, which `LinkBlock` already is: a relationship joins
+  // two records, and a URL is a different kind of pointing.
+  Relationship: 'plugs',
   TagBlock: 'tag',
   TaskBlock: 'check-square',
   TextBlock: 'text-t',
