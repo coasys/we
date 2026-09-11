@@ -226,12 +226,19 @@ export function resolveColor(
   return scale[index];
 }
 
-/** Defaults chosen so a graph with no `nodeStyle` at all still reads clearly. */
-const DEFAULT_NODE: Required<Pick<NodeVisual, 'shape' | 'size' | 'color' | 'labelColor' | 'labelSize'>> = {
+/**
+ * Defaults chosen so a graph with no `nodeStyle` at all still reads clearly.
+ *
+ * No `labelColor`. It was `neutral-800`, and it was the one default here that a renderer could do
+ * better without: a caption under a dot sits on the page and wants the page's ink, and a card's
+ * text sits on the card and wants black or white by the fill's own lightness — both of which the
+ * renderer answers from its stylesheet when nothing is set, and neither of which a fixed step on
+ * the neutral ramp gets right in both polarities. A rule that names one still wins.
+ */
+const DEFAULT_NODE: Required<Pick<NodeVisual, 'shape' | 'size' | 'color' | 'labelSize'>> = {
   shape: 'circle',
   size: 14,
   color: 'primary-500',
-  labelColor: 'neutral-800',
   labelSize: 12,
 };
 
@@ -254,7 +261,8 @@ export function nodeVisual(node: GraphNode, style: NodeStyle, metrics: MetricVal
     size: resolveNumber(style.size, node, metrics, DEFAULT_NODE.size),
     color: resolveColor(style.color, node, metrics, DEFAULT_NODE.color),
     label: node.label ?? node.type,
-    labelColor: style.labelColor ?? DEFAULT_NODE.labelColor,
+    // Only where a rule chose one — see `DEFAULT_NODE`.
+    ...(style.labelColor !== undefined ? { labelColor: style.labelColor } : {}),
     labelSize: style.labelSize ?? DEFAULT_NODE.labelSize,
     // Scaling by default: the intuition people arrive with is a canvas, where zooming magnifies the
     // whole drawing. Constant-size text is the specialist choice, so it is the one you ask for.
