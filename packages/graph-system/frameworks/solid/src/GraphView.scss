@@ -620,7 +620,22 @@
   left: calc(var(--node-width) / -2);
   top: calc(var(--node-height) / -2);
   display: flex;
-  gap: 4px;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+
+  /*
+    One bar, not a row of pills.
+
+    The buttons used to be raised discs each carrying its own border and shadow, and a host control
+    stretched its disc into whatever ellipse its contents needed — three different ovals in a row
+    over the card. The bar is the raised thing now, once, and everything in it is a flat square: a
+    button, or a control's trigger. What needs more room than a square opens it from there.
+  */
+  background: var(--we-role-surface-raised);
+  border: 1px solid var(--we-role-border);
+  border-radius: var(--we-radius-300);
+  box-shadow: var(--we-shadow-md);
 
   // The node layer is inert so the canvas can hit-test in world space; these take their own presses.
   pointer-events: auto;
@@ -628,12 +643,12 @@
   /*
     Scaled last in the list, so the lift is measured before it is scaled.
 
-    A transform list applies right to left: the row is lifted by its own height plus a gap in its own
+    A transform list applies right to left: the bar is lifted by its own height plus a gap in its own
     unscaled units, and the whole displacement is scaled with it — so the strip sits a constant six
     screen pixels above the card's top edge at every zoom. Written the other way round the gap would
     be in world units and drift as the camera moved.
 
-    Everything inside is therefore already in screen pixels: 24px buttons, a 4px gap, and no
+    Everything inside is therefore already in screen pixels: 28px squares, a 2px gap, and no
     `/ var(--graph-zoom)` on either. Dividing there as well was the double compensation that made the
     row grow as the board was zoomed out.
   */
@@ -641,62 +656,79 @@
   transform-origin: top left;
 }
 
-.we-graph__action {
+// A square in the bar — shared by a button and a host control's trigger.
+%we-graph-square {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   color: var(--we-role-text-muted);
-  background: var(--we-role-surface-raised);
-  border: 1px solid var(--we-role-border);
-  border-radius: var(--we-radius-full);
-  box-shadow: var(--we-shadow-sm);
+  background: transparent;
+  border: none;
+  border-radius: var(--we-radius-200);
   cursor: pointer;
 
   &:hover {
     color: var(--we-role-text);
     background: var(--we-role-surface-hover);
-    border-color: var(--we-role-border-hover);
   }
 
   &:focus-visible {
     outline: 2px solid var(--we-ring-color);
-    outline-offset: 1px;
+    outline-offset: -2px;
   }
 }
 
-/*
- * The two answers, coloured — a status foreground at rest, filling on hover.
- *
- * Said in colour rather than only in the icon: a bin and a tick the same shade is a pair of buttons
- * you have to read before pressing, on a control small enough that reading it is most of the work.
- *
- * The foreground role rather than the fill for the resting state, because at 24px the icon *is* the
- * button and it has to stay legible against the raised surface behind it; `dangerText` and
- * `successText` are the two that are corrected for exactly that. The fill takes over on hover,
- * where its own label role answers for the contrast.
- *
- * A pair, always. A red cross beside a grey tick is one decision that looks real and one that looks
- * unavailable, which is the wrong hint on the half people are usually looking for.
- */
+.we-graph__action {
+  @extend %we-graph-square;
+}
+
 /*
   A host control in the header — a colour picker, a shape menu, a scale slider.
 
-  Drawn as one of the raised pills the buttons are, so the row reads as one strip, but sized by
-  what is inside it rather than to a square: a slider is wide and a picker is a disc. The design
-  system's own controls are inside, so they take the theme on their own; this only frames them.
+  The same square as a button, holding whatever the host draws: a picker's swatch, or a trigger
+  that opens the rest. `.we-graph__control-trigger` is the class a host gives that trigger so it
+  fills the square and takes the hover; `.we-graph__control-popup` is where anything larger than a
+  square goes — anchored under the bar, in screen pixels like everything else in it. Both are the
+  contract a control is written against, so they are named here rather than in the host.
 */
 .we-graph__control {
-  display: inline-flex;
+  @extend %we-graph-square;
+  position: relative;
+  cursor: default;
+
+  &:hover {
+    background: transparent;
+  }
+}
+
+.we-graph__control-trigger {
+  @extend %we-graph-square;
+  width: 100%;
+  height: 100%;
+
+  &[aria-expanded='true'] {
+    color: var(--we-role-text);
+    background: var(--we-role-surface-hover);
+  }
+}
+
+.we-graph__control-popup {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 1;
+  display: flex;
   align-items: center;
-  height: 24px;
-  padding: 0 var(--we-space-100);
+  gap: var(--we-space-200);
+  padding: var(--we-space-200);
   background: var(--we-role-surface-raised);
   border: 1px solid var(--we-role-border);
-  border-radius: var(--we-radius-full);
-  box-shadow: var(--we-shadow-sm);
+  border-radius: var(--we-radius-300);
+  box-shadow: var(--we-shadow-md);
+  white-space: nowrap;
 }
 
 .we-graph__action--positive {
@@ -705,7 +737,6 @@
   &:hover {
     color: var(--we-role-on-success);
     background: var(--we-role-success);
-    border-color: var(--we-role-success);
   }
 }
 
@@ -715,7 +746,6 @@
   &:hover {
     color: var(--we-role-on-danger);
     background: var(--we-role-danger);
-    border-color: var(--we-role-danger);
   }
 }
 

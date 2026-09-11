@@ -2098,7 +2098,7 @@ export function GraphView(props: GraphViewProps) {
                                 report();
                               }}
                             >
-                              <we-icon name={action.icon ?? 'dot'} size="14px" />
+                              <we-icon name={action.icon ?? 'dot'} size="16px" />
                             </button>
                           }
                         >
