@@ -64,6 +64,7 @@ import type {
 } from '@we/graph-protocol';
 import { parseAddress } from '@we/graph-protocol';
 import { batch, createEffect, createMemo, createSignal, For, onCleanup, onMount, Show, untrack } from 'solid-js';
+import { createStore, reconcile, type SetStoreFunction } from 'solid-js/store';
 import { Dynamic } from 'solid-js/web';
 
 import type { GraphViewProps, NodeContent } from './GraphView.types';
@@ -638,6 +639,45 @@ export function GraphView(props: GraphViewProps) {
         },
       ];
     });
+  });
+
+  /*
+    One row per node, kept across ticks.
+
+    `nodes()` builds a fresh entry per node every time the engine's version moves — a settle, a
+    reload, a drag frame — and `<For>` keys by reference, so every card's DOM was torn down and
+    rebuilt on each tick. That cost was invisible until something in a card held state of its own:
+    a header control's popup, or the colour picker's, closed by itself a few seconds after opening,
+    on the next watch reload.
+
+    So each node gets a row that lives as long as the node does, holding its entry in a store; a
+    tick reconciles the store rather than replacing the row. The JSX below reads `entry.x` exactly
+    as before and every read is tracked through the proxy, so a changed position or selection still
+    repaints only what it touches — and everything else, controls included, stays mounted.
+
+    Reconciled inside the memo rather than in an effect, because the rows have to be current on the
+    same pass the list is read, or a frame would draw the new list with the old entries.
+  */
+  type NodeEntry = ReturnType<typeof nodes>[number];
+  const rowsById = new Map<string, { entry: NodeEntry; set: SetStoreFunction<NodeEntry> }>();
+  const nodeRows = createMemo(() => {
+    const fresh = nodes();
+    const seen = new Set<string>();
+    const rows = fresh.map((entry) => {
+      const id = entry.node.id;
+      seen.add(id);
+      let row = rowsById.get(id);
+      if (!row) {
+        const [store, set] = createStore(entry);
+        row = { entry: store, set };
+        rowsById.set(id, row);
+      } else {
+        row.set(reconcile(entry));
+      }
+      return row;
+    });
+    for (const id of rowsById.keys()) if (!seen.has(id)) rowsById.delete(id);
+    return rows;
   });
 
   /*
@@ -1872,8 +1912,8 @@ export function GraphView(props: GraphViewProps) {
           )}
         </For>
 
-        <For each={nodes()}>
-          {(entry) => (
+        <For each={nodeRows()}>
+          {({ entry }) => (
             <div
               class="we-graph__node"
               classList={{
@@ -2098,7 +2138,7 @@ export function GraphView(props: GraphViewProps) {
                                 report();
                               }}
                             >
-                              <we-icon name={action.icon ?? 'dot'} size="16px" />
+                              <we-icon name={action.icon ?? 'dot'} size="18px" />
                             </button>
                           }
                         >

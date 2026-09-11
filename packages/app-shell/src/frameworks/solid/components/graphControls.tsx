@@ -47,7 +47,7 @@ function Popup(props: { icon: string; title?: string; children: JSX.Element }) {
         aria-expanded={open() ? 'true' : 'false'}
         onClick={() => setOpen((value) => !value)}
       >
-        <we-icon name={props.icon} size="16px" />
+        <we-icon name={props.icon} size="18px" />
       </button>
       <Show when={open()}>
         <div class="we-graph__control-popup">{props.children}</div>
@@ -64,7 +64,7 @@ export const ColorControl: NodeControl = (props) => (
     // The fill the card is drawn in where it has no colour of its own — so the swatch shows what the
     // card looks like rather than a blank. Picking Default emits '' and hands the choice back.
     value={typeof props.value === 'string' && props.value ? props.value : props.fill}
-    styles={{ '--we-color-picker-swatch': '20px' }}
+    styles={{ '--we-color-picker-swatch': '24px' }}
     on:change={(event: CustomEvent<string>) => props.onChange(event.detail)}
   />
 );

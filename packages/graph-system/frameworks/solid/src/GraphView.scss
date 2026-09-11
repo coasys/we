@@ -617,7 +617,8 @@
  */
 .we-graph__actions {
   position: absolute;
-  left: calc(var(--node-width) / -2);
+  // On the node's own point, which is the card's centre; the transform below centres the bar on it.
+  left: 0;
   top: calc(var(--node-height) / -2);
   display: flex;
   align-items: center;
@@ -648,12 +649,16 @@
     screen pixels above the card's top edge at every zoom. Written the other way round the gap would
     be in world units and drift as the camera moved.
 
-    Everything inside is therefore already in screen pixels: 28px squares, a 2px gap, and no
+    Everything inside is therefore already in screen pixels: 32px squares, a 2px gap, and no
     `/ var(--graph-zoom)` on either. Dividing there as well was the double compensation that made the
     row grow as the board was zoomed out.
+
+    Centred: the bar sits on the card's centre line and is moved left by half its own width, in its
+    own units, before the scale — and the scale is about the top centre, so it stays centred at
+    every zoom. Eleven pixels clear of the card's top edge.
   */
-  transform: scale(calc(1 / var(--graph-zoom))) translateY(calc(-100% - 6px));
-  transform-origin: top left;
+  transform: scale(calc(1 / var(--graph-zoom))) translate(-50%, calc(-100% - 11px));
+  transform-origin: top center;
 }
 
 // A square in the bar — shared by a button and a host control's trigger.
@@ -661,8 +666,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   padding: 0;
   color: var(--we-role-text-muted);
   background: transparent;
