@@ -90,6 +90,8 @@ export type { StatChipOptions } from './layout/statChip.ts';
 // Input.
 export { field } from './input/field.ts';
 export type { FieldOptions } from './input/field.ts';
+export { SWATCHES, swatchRow } from './input/palette.ts';
+export type { SwatchRowOptions } from './input/palette.ts';
 
 // Overlays.
 export { composerModal } from './overlays/composerModal.ts';

@@ -1,7 +1,6 @@
 import type { SchemaNode } from '@we/schema-shared';
 import { expr } from '@we/schema-shared';
-
-import { swatchRow } from './Palette';
+import { swatchRow } from '@we/template-kit';
 
 /**
  * The canvas's key — what kinds of thing are on it, and what colour each one is.

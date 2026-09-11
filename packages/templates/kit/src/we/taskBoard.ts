@@ -110,6 +110,16 @@ export interface TaskCardOptions {
    * cards the same way; see {@link PENDING} for the default.
    */
   pending?: string;
+  /**
+   * The card's fill, as an expression evaluated per row. Defaults to `surface`.
+   *
+   * For a board that colours its cards by some rule of its own — the workshop's key colours a task
+   * by its state or by its kind, and a card the reader has coloured on the canvas keeps that colour
+   * here. A colour is the one thing about a card's look a caller can sensibly have an opinion on
+   * without redrawing the card, so it is an option rather than a reason to supply `card`. The
+   * expression should answer `'surface'` where the rule has nothing to say.
+   */
+  bg?: SchemaProp;
 }
 
 /**
@@ -143,7 +153,7 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
     props: {
       width: '100%',
       gap: '200',
-      bg: 'surface',
+      bg: opts.bg ?? 'surface',
       r: '300',
       p: '300',
       // A suggestion looks like one: dimmed, with a dashed edge, the way the canvas draws it.
