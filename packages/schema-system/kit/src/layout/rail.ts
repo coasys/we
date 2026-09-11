@@ -71,7 +71,7 @@ const revealBlock = [
   { type: 'fade' as const, duration: GROUP_FADE_MS, easing: 'ease-in-out' },
 ];
 
-export interface RailShellOptions {
+interface RailShellBase {
   /** The rail's contents — `railItem`s and `railGroup`s, usually. */
   children: SchemaNode[];
   /** Pinned above the scrolling items — a logo, typically. */
@@ -101,18 +101,6 @@ export interface RailShellOptions {
    * background with whatever sits beside it, where the seam only draws a line nothing else needs.
    */
   border?: string;
-  /**
-   * Open on hover. Defaults to true. With it off, nothing opens the rail by itself — put a control
-   * in the `header` carrying `{ $toggleLocal: 'expanded' }`.
-   */
-  hoverExpand?: boolean;
-  /**
-   * Remember whether it was open, per device, under this localStorage key.
-   *
-   * A preference rather than view state: it is about how somebody likes their own window, and a
-   * shared link has no business imposing it on whoever opens it. Namespace the key.
-   */
-  persistKey?: string;
   /** Start open. Defaults to false. */
   defaultExpanded?: boolean;
   /**
@@ -134,9 +122,48 @@ export interface RailShellOptions {
   initialCollapsedGroups?: SchemaProp[];
 }
 
+/**
+ * A rail is opened by the pointer or by a control, and only the second is worth remembering.
+ *
+ * `expanded` is one flag doing one of two jobs. Under `hoverExpand` it tracks *where the pointer
+ * is*, which is not a preference and must not outlive the session: the only way it becomes true is
+ * somebody's cursor passing over, and the only thing that sets it back is a `mouseleave` — an event
+ * that is simply not delivered if the element is removed while the pointer is over it, or if the
+ * window loses focus there. Persisted, a single missed one is remembered on that device for good,
+ * and the rail comes back open on every reload with nothing to close it but hovering it again.
+ *
+ * With `hoverExpand: false` the flag means what the option says — somebody pressed a control to pin
+ * it open — and remembering that is right. So the two are exclusive by type rather than by a note
+ * somebody reads afterwards. This is written down because it was got wrong: WE's own sidebar
+ * persisted its hover state.
+ */
+export type RailShellOptions = RailShellBase &
+  (
+    | {
+        /** Open on hover. The default. Hover is not a preference, so there is nothing to persist. */
+        hoverExpand?: true;
+        persistKey?: never;
+      }
+    | {
+        /** Nothing opens the rail by itself — put a control in the `header` carrying
+         *  `{ $toggleLocal: 'expanded' }`. */
+        hoverExpand: false;
+        /**
+         * Remember whether it was pinned open, per device, under this localStorage key.
+         *
+         * A preference rather than view state: it is about how somebody likes their own window, and
+         * a shared link has no business imposing it on whoever opens it. Namespace the key.
+         */
+        persistKey?: string;
+      }
+  );
+
 export function railShell(opts: RailShellOptions): SchemaNode {
   const side = opts.side ?? 'left';
   const hoverExpand = opts.hoverExpand ?? true;
+  // Belt as well as braces: the type refuses the pair, and so does this, for a caller reaching the
+  // fragment from untyped JSON.
+  const persistKey = hoverExpand ? undefined : opts.persistKey;
   const border = opts.border ?? '1px solid neutral-200';
 
   return {
@@ -166,7 +193,7 @@ export function railShell(opts: RailShellOptions): SchemaNode {
       expanded: {
         type: 'boolean',
         initial: opts.defaultExpanded ?? false,
-        ...(opts.persistKey && { persist: opts.persistKey }),
+        ...(persistKey && { persist: persistKey }),
       },
       collapsedGroups: { type: 'array', initial: opts.initialCollapsedGroups ?? [] },
       // Last, so a caller's field cannot shadow the two the rail runs on.

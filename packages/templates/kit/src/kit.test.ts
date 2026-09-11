@@ -142,7 +142,6 @@ const portable: Record<string, SchemaNode> = {
   railShell: railShell({
     header: { type: 'we-image', props: { src: '/logo.svg' } },
     footer: railItem({ icon: 'sign-out', label: 'Logout' }),
-    persistKey: 'test.rail',
     children: [
       railItem({ icon: 'user', label: 'Profile', active: true, tooltip: 'Profile' }),
       railGroup({
