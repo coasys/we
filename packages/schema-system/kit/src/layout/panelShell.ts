@@ -253,17 +253,25 @@ export interface PanelScrollOptions {
 /**
  * How far the *painted* thumb sits from the panel's real edge.
  *
- * Taken to the edge and left there, the bar had only the thumb's own two pixels of clearance and
- * read as too near to it — right against the frame rather than inside it. This is the figure to
- * change if it ever reads wrong again; everything else here is derived from it.
+ * **The bar is centred in the inset, and this is the half of it that decides where.** A twelve-pixel
+ * inset holding a six-pixel thumb has six pixels of slack, and every one given to the edge is taken
+ * from the gap between the thumb and the text — so this figure and that one always add to six, and
+ * three is the only value that makes them equal. Both other values were tried and both read as an
+ * error rather than as a choice: two put the bar against the frame, four left it nearer the frame
+ * than the words it belongs to.
  *
  * It is the whole distance, not an addition to the thumb's inset: the track is held off the edge by
  * whatever is left once that inset has been counted, so the gap somebody sees stays this figure
  * under a theme that pulls its thumb in further. The same reason the padding below is measured
  * against the bar's width rather than pinned — a theme should be able to redraw a scrollbar without
  * moving the panel's content or its edges.
+ *
+ * Which also means this is not free to change alone. It is centred against the *panel's* inset and
+ * the bar's own width, so a panel padded differently or a theme with a wider bar keeps the bar
+ * centred only because the arithmetic below re-derives it; a figure pinned here in pixels is a
+ * figure that stops being the middle the moment either of those moves.
  */
-const THUMB_EDGE_GAP = '4px';
+const THUMB_EDGE_GAP = '3px';
 
 export function panelScroll(opts: PanelScrollOptions): SchemaNode {
   const pad = `var(--we-space-${opts.inset ?? '300'})`;

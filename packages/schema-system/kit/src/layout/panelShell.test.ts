@@ -161,8 +161,11 @@ describe('a panel scroll region', () => {
       The thumb is already held off its own track, so taking the track to the edge leaves only that
       clearance — two pixels, which read as too near the frame. The track carries the remainder, so
       what somebody sees is the whole `THUMB_EDGE_GAP` however far a theme pulls its thumb in.
+
+      Three, because the slack either side of the thumb adds to six: a gap at the edge is a gap
+      taken from the text, and only half of it is the middle.
     */
-    expect(props().mr).toBe('calc(max(0px, calc(4px - var(--we-scrollbar-thumb-inset))) - var(--we-space-300))');
+    expect(props().mr).toBe('calc(max(0px, calc(3px - var(--we-scrollbar-thumb-inset))) - var(--we-space-300))');
   });
 
   it('measures the inner padding against the bar and the track, so the four sides come out equal', () => {
@@ -174,7 +177,7 @@ describe('a panel scroll region', () => {
       otherwise push every panel's text off-centre, silently, and only on the side with a bar.
     */
     expect(props().pr).toBe(
-      'max(0px, calc(var(--we-space-300) - max(0px, calc(4px - var(--we-scrollbar-thumb-inset))) - var(--we-scrollbar-width)))',
+      'max(0px, calc(var(--we-space-300) - max(0px, calc(3px - var(--we-scrollbar-thumb-inset))) - var(--we-scrollbar-width)))',
     );
   });
 
