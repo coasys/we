@@ -747,10 +747,24 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     );
   }
 
-  function renderChildren(nodes: SchemaNode['children']): RendererOutput {
-    if (!nodes) return undefined;
+  /**
+   * `nodes` is an accessor, so the list is read inside `<For>` rather than by whoever calls this.
+   *
+   * That is what makes a *change* to the list reconcile instead of rebuild. `For` keys by
+   * reference, so an entry whose node object is unchanged keeps its DOM — which several things
+   * depend on and one of them says so outright: the slot registry preserves a subtree's identity
+   * "so the renderer has no reason to remount it".
+   *
+   * It had a reason anyway. Read here, the list was a dependency of the memo below, so every
+   * change tore down the `<For>` and built a new one — every entry remounted, including the ones
+   * that had not changed. Shell chrome is one node with a reactive children list, so entering a
+   * space (which registers the interface's panels) destroyed and rebuilt the sidebar, the boot
+   * screen and every dock frame. The sidebar is a rail that closes on `mouseleave`, and an element
+   * removed under the pointer is never sent one: it stayed open until it was hovered again.
+   */
+  function renderChildren(nodes: () => SchemaNode['children']): RendererOutput {
     return (
-      <For each={nodes} fallback={null}>
+      <For each={nodes() ?? []} fallback={null}>
         {(child) => {
           // A string child is text.
           if (typeof child === 'string') return child;
@@ -789,7 +803,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
 
   // If no type is provided, render children in a JSX fragment (with optional theme wrapper)
   if (!node.type) {
-    const fragment = <>{renderChildren(node.children)}</>;
+    const fragment = <>{renderChildren(() => node.children)}</>;
     if (node.theme) {
       /*
         Applied, not declared.
@@ -1291,15 +1305,23 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
    * `gridWrapper`'s `<Grid>` has a reactive `columns` prop (`$if` on `displayMode`), so every card
    * list built its children twice and fired two identical queries.
    *
-   * A memo fixes it without costing reactivity: `node.children` is read from the schema store, so a
-   * genuine schema patch (visual editor / `updateSchema`) still invalidates and rebuilds, while an
-   * unrelated prop change now reuses the cached subtree.
+   * A memo fixes it without costing reactivity: an unrelated prop change now reuses the cached
+   * subtree, while the list itself stays live inside `<For>` — see `renderChildren`, which takes an
+   * accessor precisely so this memo does not depend on the list's contents.
+   *
+   * **`hasChildren` is a boolean, and that is the point.** The memo has to know whether there are
+   * children at all, because a node with none must pass `undefined` on rather than an empty list: a
+   * component asking `props.children ? … : …` would otherwise see a truthy `<For>` and take the
+   * wrong branch. Asking it as a boolean means a *changed* list answers the same and stops there,
+   * where reading `node.children` here would invalidate this memo on every change and rebuild the
+   * whole subtree — which is the fault `renderChildren` describes.
    *
    * Declared after the `$if`/`$each`/`$routes` early returns above, and after the memo-creating prop
    * setup — `createMemo` runs eagerly, so declaring it earlier would build children for nodes that
    * never render them.
    */
-  const childrenEl = createMemo(() => renderChildren(node.children));
+  const hasChildren = createMemo(() => !!node.children);
+  const childrenEl = createMemo(() => (hasChildren() ? renderChildren(() => node.children) : undefined));
 
   // Render: web components use per-prop property effects, Solid/HTML use reactive spread
   if (isWebComponent) {
