@@ -315,6 +315,20 @@ export interface GraphViewProps {
     recordId?: string;
     recordType?: string;
   }) => void;
+  /**
+   * Something from elsewhere was dropped onto the graph — a record dragged out of the Pocket, or
+   * from any `we-draggable` — with the world point it landed on.
+   *
+   * Binding this is what makes the graph a drop target at all: it registers with the app's drag
+   * session and converts the pointer to world units through its own camera, which is the one thing
+   * a `we-drop-zone` wrapped around the graph could not do. Fired once per item carried. Writes
+   * nothing — what a drop means is the template's decision, and on a canvas it is usually
+   * `recordStore.dropOnCanvas`, which places the record where it landed.
+   *
+   * `dataset` is the record's home as the drag spelt it, absent for one picked up in the dataset on
+   * screen. A receiver that can only draw its own dataset's records should test it.
+   */
+  onDrop?: (payload: { entity: string; id: string; dataset?: string; label: string; x: number; y: number }) => void;
 
   /**
    * Small controls that appear above a node while it is selected — a tick, a cross, a bin.

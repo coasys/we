@@ -1206,6 +1206,9 @@ importers:
 
   packages/graph-system/frameworks/solid:
     dependencies:
+      '@we/drag':
+        specifier: workspace:*
+        version: link:../../../design-system/drag
       '@we/graph-core':
         specifier: workspace:*
         version: link:../../core

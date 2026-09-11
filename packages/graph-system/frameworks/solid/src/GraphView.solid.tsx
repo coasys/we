@@ -24,6 +24,7 @@
  */
 import { Column, Row } from '@we/components/solid';
 import { ROLE_NAMES } from '@we/design-utils';
+import { dragSession } from '@we/drag';
 import type { EdgeWaypoint } from '@we/graph-core';
 import {
   bendPoints,
@@ -1523,6 +1524,40 @@ export function GraphView(props: GraphViewProps) {
     if (edge !== hoveredEdge()) setHoveredEdge(edge);
   }
 
+  /*
+    The graph as a drop target, for whatever the app's drag session carries.
+
+    Registered here rather than by wrapping the graph in a `we-drop-zone`, because the zone hands
+    its receiver a client point and a canvas needs a world one — and only this component holds the
+    camera. Only while `onDrop` is bound: a graph nobody asked to receive drops should not light up
+    as a target when something is carried past it. The session decides the innermost zone and fires
+    exactly once, so a drop on a card lands on the canvas beneath it at the card's point, which is
+    the right reading — the card was never the destination.
+  */
+  onMount(() => {
+    if (!props.onDrop || !surface) return;
+    const el = surface;
+    const unregister = dragSession.registerZone({
+      el,
+      label: 'the canvas',
+      onDrop: ({ payload, point }) => {
+        const box = el.getBoundingClientRect();
+        const world = engine.viewport.toWorld({ x: point.x - box.left, y: point.y - box.top });
+        for (const item of payload.items) {
+          props.onDrop?.({
+            entity: item.ref.entity,
+            id: item.ref.id,
+            ...(item.ref.dataset ? { dataset: item.ref.dataset } : {}),
+            label: item.label,
+            x: world.x,
+            y: world.y,
+          });
+        }
+      },
+    });
+    onCleanup(unregister);
+  });
+
   return (
     <div
       class="we-graph"
@@ -1862,7 +1897,13 @@ export function GraphView(props: GraphViewProps) {
                 '--node-border-width': `${entry.visual.borderWidth ?? 0}px`,
                 '--node-radius': nodeRadius(entry.visual),
                 '--content-scale': String(entry.visual.contentScale ?? 1),
-                '--node-label-color': color(entry.visual.labelColor, 'neutral-800'),
+                /*
+                  Only where a rule chose one. Left unset, the stylesheet answers: a caption under a
+                  dot in the page's own text colour, and a card's text in black or white by the
+                  lightness of its fill — see `.we-graph__card`. The old fixed default here was
+                  `neutral-800`, which in a dark theme is near-white on a pale post-it.
+                */
+                ...(entry.visual.labelColor ? { '--node-label-color': color(entry.visual.labelColor, '') } : {}),
                 '--node-label-size': `${entry.visual.labelSize ?? 12}px`,
                 '--label-scale': entry.visual.scaleLabelWithZoom ? '1' : 'calc(1 / var(--graph-zoom))',
                 /*

@@ -14,6 +14,17 @@
   overflow: hidden;
   touch-action: none;
   user-select: none;
+
+  // The theme's own face, stated here because a card's text is arbitrary host content inside a
+  // subtree nothing else styles — without it the browser's default serif came through on every
+  // post-it, which is the one place in the app that looked like a different product.
+  font-family: var(--we-font-family-base);
+
+  // The drag session marks the zone a release would land in; a canvas says so with an inset ring
+  // rather than the wash a drop zone paints, since a wash over a whole board hides what is on it.
+  &[data-we-drop-target] {
+    box-shadow: inset 0 0 0 2px var(--we-role-accent);
+  }
 }
 
 // The canvas's own hit target, beneath everything it draws and beneath the chrome.
@@ -239,7 +250,8 @@
 
 .we-graph__label {
   position: absolute;
-  color: var(--node-label-color);
+  // A caption sits on the page, so it reads in the page's ink unless a rule chose otherwise.
+  color: var(--node-label-color, var(--we-role-text));
   font-size: var(--node-label-size);
   left: 0;
 
@@ -290,6 +302,22 @@
 
   // See `.we-graph__dot`: the fade belongs to the card, not to the chrome anchored beside it.
   opacity: var(--node-opacity, 1);
+
+  /*
+    Ink by the lightness of the fill, unless a rule chose a colour.
+
+    A card's fill is anybody's: a token that flips with the theme, a hex somebody picked, a state's
+    colour from the vocabulary. The theme's text role is measured against the page, not against any
+    of those, so it went near-white on a pale post-it in a dark theme and near-black on a dark card
+    in a light one. Relative colour syntax reads the fill's own lightness — whatever a `var()`
+    resolves to, at the moment it resolves — and snaps to black above the threshold and white below
+    it, with no script measuring anything and nothing to re-run when the theme changes.
+
+    The plain line first is the fallback for an engine without relative colours; one that has them
+    takes the second. Set on the card so its content inherits it, the fallback text included.
+  */
+  color: var(--node-label-color, var(--we-role-text));
+  color: var(--node-label-color, oklch(from var(--node-color) calc((0.65 - l) * infinity) 0 0));
 }
 
 /**
@@ -333,7 +361,8 @@
 }
 
 .we-graph__card-text {
-  color: var(--node-label-color);
+  // From the card, which has already decided — see `.we-graph__card`.
+  color: inherit;
 
   // Scaled with the card's content, so the fallback answers the same slider as the real thing —
   // otherwise the setting would appear to do nothing on a card whose content has not arrived.
@@ -351,7 +380,7 @@
   position: absolute;
   right: var(--we-space-200);
   bottom: var(--we-space-200);
-  color: var(--node-label-color);
+  color: inherit;
 }
 
 /*
