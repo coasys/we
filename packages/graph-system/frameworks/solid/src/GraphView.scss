@@ -358,6 +358,40 @@
 .we-graph__card--cut .we-graph__card-scale {
   // The floats need a height to stand in; the scale box already sets one.
   position: relative;
+
+  /*
+    The document's own wrappers step out of the way.
+
+    A float only shapes line boxes in the formatting context it sits in, and the renderer wraps its
+    document in a flex column — which starts a context of its own, so the paragraphs inside never
+    saw the floats beside it and the text ran straight to the cut edges. With the wrappers reduced
+    to their contents the paragraphs are laid out here, beside the floats, and wrap to them. What
+    the wrappers set still reaches the text: the size, the line height and the ink are inherited,
+    and inheritance passes through an element that makes no box.
+  */
+  .we-block-renderer-wrapper,
+  .we-block-renderer {
+    display: contents;
+  }
+}
+
+/*
+  A cut shape is its silhouette and nothing else.
+
+  A border on the shape layer is cut with it, so a hexagon kept its top and bottom edges and lost
+  the four that slope — lines drawn and not meeting. And the note's radius rounded the box's own
+  corners before the clip, so a triangle's base corners came out rounded. Neither belongs on a
+  polygon: the shape layer goes without both, and the box outside the clip carries the shadow that
+  gives the shape its edge, since a shadow there follows the silhouette.
+*/
+.we-graph__card--cut > .we-graph__card-shape {
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.we-graph__card--cut {
+  filter: drop-shadow(0 1px 2px color-mix(in srgb, var(--we-role-shadow-color) 30%, transparent));
 }
 
 // Per shape, the exterior each float carves out — `nodeFlow` in the renderer, beside the clip.

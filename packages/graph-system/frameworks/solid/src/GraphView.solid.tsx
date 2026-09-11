@@ -941,6 +941,26 @@ export function GraphView(props: GraphViewProps) {
   }
 
   /**
+   * Width over height for a shape drawn true — what a resize holds to while the key is down.
+   *
+   * A circle and a square are 1. A regular hexagon with its points left and right, and an
+   * equilateral triangle, are both 2/√3 wide for their height; a regular pentagon is a little
+   * wider than tall. Held to 1 those came out squashed, which is what a square is to a hexagon.
+   */
+  function shapeRatio(visual: { shape: string; cardShape?: string }): number {
+    if (visual.shape !== 'card') return 1;
+    switch (visual.cardShape) {
+      case 'triangle':
+      case 'hexagon':
+        return 2 / Math.sqrt(3);
+      case 'pentagon':
+        return 1.0515;
+      default:
+        return 1;
+    }
+  }
+
+  /**
    * How far in from each side a block that cannot flow — an image, an embed — should sit, so it
    * lands in the largest rectangle the shape holds. Text needs none of this: it wraps to the floats
    * the stylesheet lays along the cut edges.
@@ -1543,7 +1563,11 @@ export function GraphView(props: GraphViewProps) {
 
   function beginResize(
     event: PointerEvent,
-    entry: { node: GraphNode; at: { x: number; y: number }; visual: { width?: number; height?: number } },
+    entry: {
+      node: GraphNode;
+      at: { x: number; y: number };
+      visual: { shape: string; cardShape?: string; width?: number; height?: number };
+    },
     grip: Grip,
   ) {
     // Never reaches the canvas dispatcher, which would read the same press as the start of a drag —
@@ -1562,8 +1586,11 @@ export function GraphView(props: GraphViewProps) {
       // half as far or the card runs away from the pointer.
       const scale = zoom() || 1;
       const delta = { x: (moved.clientX - from.x) / scale, y: (moved.clientY - from.y) / scale };
-      // Held square while the key is down — a circle, a square, a regular polygon.
-      const next = resizeBox({ at: entry.at, width, height }, grip, delta, MIN_CARD, { square: moved.ctrlKey });
+      // Held to the shape's own proportions while the key is down — a circle, a square, a regular
+      // hexagon — see `shapeRatio`.
+      const next = resizeBox({ at: entry.at, width, height }, grip, delta, MIN_CARD, {
+        ...(moved.ctrlKey ? { ratio: shapeRatio(entry.visual) } : {}),
+      });
       setResizing({ id: entry.node.id, x: next.at.x, y: next.at.y, width: next.width, height: next.height });
     };
     const end = (ended: PointerEvent) => {
