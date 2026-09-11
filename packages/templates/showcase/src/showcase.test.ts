@@ -20,7 +20,7 @@ import type { SchemaNode, TemplatePanel } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
 import * as showcase from './index.ts';
-import { LENS_PARAM, LENS_QUERY, NO_LENS, toggleLens } from './WorkshopKey.ts';
+import { KIND_DEFAULTS, LENS_PARAM, LENS_QUERY, NO_LENS, PLAIN_FILL, toggleLens } from './WorkshopKey.ts';
 
 /** The workshop's own name for the call on screen — see `CALL_EXPR` in its schema. */
 const CALL_EXPR = 'routeStore.params.call ? routeStore.params.call : modules.call.callRecordId';
@@ -826,8 +826,22 @@ describe('the workshop’s key', () => {
     expect(key).toContain('spaceStore.currentSpace.id');
     expect(key).not.toContain('recordStore.setTypeColor');
     expect(key).toContain('"$action":"shellStore.openSpaceSettings","args":["vocabulary"]');
-    expect(key).not.toContain('we-color-picker');
     expect(key).toContain('spaceStore.offeredTaskStates');
+    // The same picker the vocabulary uses, tokens first — one per kind, and none for a state.
+    const pickers = key.split('"type":"we-color-picker","props":{"tokens":true').length - 1;
+    expect(pickers).toBe(1);
+    expect(key).not.toContain('createTaskState');
+  });
+
+  it('spells every fill as CSS, the way the picker and the vocabulary do', () => {
+    /*
+      The picker emits `var(--we-color-…)` or a hex, and a state's colour is whatever the picker
+      emitted — so a default written as a bare token name would be the one value in the chain that
+      the picker's own swatch could not show. Roles, in the picker's spelling.
+    */
+    expect(KIND_DEFAULTS.TaskBlock).toBe('var(--we-role-accent-muted)');
+    expect(PLAIN_FILL).toBe('var(--we-role-surface)');
+    expect(route('/canvas')).toContain("style: { color: 'var(--we-role-warning-surface)' }");
   });
 
   it('gives the board and the calendar the same colours as the canvas', () => {

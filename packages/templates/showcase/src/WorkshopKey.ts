@@ -34,7 +34,7 @@
  * task card's fill on the board. One policy, two spellings, kept here so they cannot disagree.
  */
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
-import { anchorScope, panelHeader, sectionLabel, swatchRow } from '@we/template-kit';
+import { anchorScope, panelHeader, sectionLabel } from '@we/template-kit';
 
 /** The query parameter the lenses ride in — `kind`, `state`, `kind,state` or `none`. */
 export const LENS_PARAM = 'colour';
@@ -104,17 +104,29 @@ export function placementsQuery(call: Record<string, unknown>) {
 }
 
 /**
+ * A role, spelt the way a colour picker spells one.
+ *
+ * Every colour the key handles is a CSS value rather than a token name, because the picker emits
+ * CSS — a `var(--we-color-…)` from its token grid, a hex from its custom tab — and the vocabulary
+ * stores what the picker emitted. So the defaults are written in the same form, and one string
+ * reaches a graph rule, a `bg` and the picker's own swatch without anything translating between
+ * them.
+ */
+const role = (name: string) => `var(--we-role-${name})`;
+
+/**
  * What a kind is drawn in before the community says otherwise — the template's own opinion, and the
  * fallback the key shows beside a kind nobody has coloured. Roles, not scale positions: these are
  * the tinted panels the design system keeps legible in either polarity.
  */
 export const KIND_DEFAULTS: Record<string, string> = {
-  TaskBlock: 'accent-muted',
-  EventBlock: 'warning-surface',
+  TaskBlock: role('accent-muted'),
+  EventBlock: role('warning-surface'),
 };
 
 /** The colour every card starts from — and the whole of a card's colour when no lens is on. */
-const PLAIN = 'surface';
+const PLAIN = role('surface');
+export const PLAIN_FILL = PLAIN;
 
 /** The default fill for a kind, as an expression over `kind`. */
 export function kindDefaultFill(kind: string): string {
@@ -141,10 +153,10 @@ export function kindFill(kind: string): string {
 export function stateFill(state: string): string {
   return (
     `(${state}.color ? ${state}.color : ` +
-    `${state}.semantic == 'done' ? 'success-surface' : ` +
-    `${state}.semantic == 'active' ? 'accent-muted' : ` +
-    `${state}.semantic == 'blocked' ? 'warning-surface' : ` +
-    `${state}.semantic == 'cancelled' ? 'surface-sunken' : '${PLAIN}')`
+    `${state}.semantic == 'done' ? '${role('success-surface')}' : ` +
+    `${state}.semantic == 'active' ? '${role('accent-muted')}' : ` +
+    `${state}.semantic == 'blocked' ? '${role('warning-surface')}' : ` +
+    `${state}.semantic == 'cancelled' ? '${role('surface-sunken')}' : '${PLAIN}')`
   );
 }
 
@@ -200,11 +212,69 @@ export function lensNodeRules(): SchemaProp[] {
   ];
 }
 
-/** A coloured disc — the key's mark beside a name. */
+/** A coloured disc — the key's mark beside a name that cannot be changed from here. */
 function disc(bg: SchemaProp): SchemaNode {
   return {
     type: 'Column',
-    props: { width: '16px', height: '16px', r: '100', flexShrink: '0', bg, border: '1px solid border-strong' },
+    props: { width: '24px', height: '24px', r: '100', flexShrink: '0', bg, border: '1px solid border-strong' },
+  };
+}
+
+export interface ColorControlOptions {
+  /** The colour the picker shows — an expression answering a CSS value, never empty. */
+  value: SchemaProp;
+  /** Whether a colour has been chosen at all, so there is something for the reset to take away. */
+  chosen: SchemaProp;
+  /** What picking does. Handed the picker's `event.detail`, a CSS colour. */
+  pick: SchemaProp;
+  /** What the reset does — the same write with an empty colour, usually. */
+  clear: SchemaProp;
+}
+
+/**
+ * The colour picker the rest of the app uses, at the key's scale, with a way back to the default.
+ *
+ * The same primitive the vocabulary picks a state's colour with, and for the same reason it offers
+ * tokens first: a token from the grid keeps following the theme's hue and polarity, where a hex
+ * pinned against a light theme is a hole in a dark one. The custom tab is there for the community
+ * that wants exactly its own colour anyway.
+ *
+ * The reset is a separate control rather than an empty swatch in the grid: a picker has no notion
+ * of "none", and the default it goes back to is a rule's answer rather than a colour of its own.
+ */
+export function colorControl(opts: ColorControlOptions): SchemaNode {
+  return {
+    type: 'Row',
+    props: { gap: '100', ay: 'center', flexShrink: '0' },
+    children: [
+      {
+        type: 'we-color-picker',
+        props: {
+          tokens: true,
+          value: opts.value,
+          onChange: opts.pick,
+          // The picker's own size variable; its default is a form-field swatch, and a row wants a disc.
+          styles: { '--we-color-picker-swatch': '24px' },
+        },
+      },
+      {
+        type: '$if',
+        props: {
+          condition: opts.chosen,
+          then: {
+            type: 'we-tooltip',
+            props: { content: 'Back to the default' },
+            children: [
+              {
+                type: 'we-button',
+                props: { size: 'xs', variant: 'ghost', square: true, color: 'text-faint', onClick: opts.clear },
+                children: [{ type: 'we-icon', props: { name: 'x' } }],
+              },
+            ],
+          },
+        },
+      },
+    ],
   };
 }
 
@@ -232,70 +302,37 @@ function lensButton(lens: 'kind' | 'state', label: string, icon: string): Schema
   };
 }
 
-/**
- * One kind, with its colour — and, opened, the palette that sets it.
- *
- * The rows come from data, so which are open is a set of names rather than a boolean each — the
- * same reason the sidebar holds its collapsed groups that way.
- */
+/** One kind, with the picker that sets its colour for the whole space. */
 const kindRow: SchemaNode = {
-  type: 'Column',
-  props: { gap: '200', width: '100%' },
+  type: 'Row',
+  props: { gap: '300', ay: 'center', width: '100%' },
   children: [
-    {
-      type: 'we-button',
-      props: { variant: 'bare', width: '100%', onClick: { $toggleLocalIn: 'openKinds', value: { $: 'kind' } } },
-      children: [
-        {
-          type: 'Row',
-          props: { gap: '300', ay: 'center', width: '100%' },
-          children: [
-            disc({ $: kindFill('kind') }),
-            {
-              type: '$if',
-              props: {
-                condition: { $: 'recordStore.displays[kind].icon' },
-                then: {
-                  type: 'we-icon',
-                  props: { size: 'xs', color: 'text-muted', name: { $: 'recordStore.displays[kind].icon' } },
-                },
-              },
-            },
-            {
-              type: 'we-text',
-              props: { variant: 'label', truncate: true, flex: '1', minWidth: '0', textAlign: 'left' },
-              children: [{ $: 'recordStore.displays[kind].label ? recordStore.displays[kind].label : kind' }],
-            },
-            {
-              type: 'we-icon',
-              props: {
-                size: 'xs',
-                color: 'text-faint',
-                name: { $: "kind in local.openKinds ? 'caret-down' : 'caret-right'" },
-              },
-            },
-          ],
-        },
-      ],
-    },
+    colorControl({
+      value: { $: kindFill('kind') },
+      chosen: { $: 'find(local.typeStyles, { nodeType: kind }).color' },
+      pick: {
+        $action: 'recordStore.setSpaceTypeColor',
+        args: [{ $: 'spaceStore.currentSpace.id' }, { $: 'kind' }, { $: 'event.detail' }],
+      },
+      clear: {
+        $action: 'recordStore.setSpaceTypeColor',
+        args: [{ $: 'spaceStore.currentSpace.id' }, { $: 'kind' }, ''],
+      },
+    }),
     {
       type: '$if',
       props: {
-        condition: { $: 'kind in local.openKinds' },
-        enterTransition: [
-          { type: 'reveal', duration: 200 },
-          { type: 'fade', duration: 150 },
-        ],
-        then: swatchRow({
-          // `''` rather than nothing, so the Default swatch is the one outlined for a kind nobody has
-          // coloured — a comparison against undefined outlines none of them.
-          current: { $: "find(local.typeStyles, { nodeType: kind }).color ?? ''" },
-          pick: (token) => ({
-            $action: 'recordStore.setSpaceTypeColor',
-            args: [{ $: 'spaceStore.currentSpace.id' }, { $: 'kind' }, token],
-          }),
-        }),
+        condition: { $: 'recordStore.displays[kind].icon' },
+        then: {
+          type: 'we-icon',
+          props: { size: 'xs', color: 'text-muted', name: { $: 'recordStore.displays[kind].icon' } },
+        },
       },
+    },
+    {
+      type: 'we-text',
+      props: { variant: 'label', truncate: true, flex: '1', minWidth: '0' },
+      children: [{ $: 'recordStore.displays[kind].label ? recordStore.displays[kind].label : kind' }],
     },
   ],
 };
@@ -330,7 +367,6 @@ export const keyPanel: SchemaNode = {
   type: 'Column',
   props: { width: '100%', height: '100%', p: '300', gap: '300', overflow: 'hidden' },
   $queries: { typeStyles: TYPE_STYLES_QUERY },
-  $localState: { openKinds: { type: 'array', initial: [] } },
   children: [
     panelHeader({
       title: 'Key',

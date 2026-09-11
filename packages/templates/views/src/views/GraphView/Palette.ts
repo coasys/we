@@ -4,14 +4,9 @@ import { expr } from '@we/schema-shared';
 /**
  * The colours a board can be painted with, and the row that picks one.
  *
- * Shared between a card's own colour and a key's colour-per-type, because they are the same choice
- * made about different things — and a palette that drifted between the two would let somebody colour
- * a card in a shade no type could ever be given, so the key could never account for it. It lived
- * beside the graph section's key until the workshop template needed the same row for its own key
- * and its inspector, which made four call sites in two packages: the extraction threshold, passed.
- *
- * In the portable kit rather than the WE one because it names no store. What picking a swatch
- * *means* is the caller's — `pick` is handed the token and answers with the action.
+ * Shared between the card's own colour and the key's colour-per-type, because they are the same
+ * choice made about different things — and a palette that drifted between the two would let somebody
+ * colour a card in a shade no type could ever be given, so the key could never account for it.
  *
  * ## Why tokens rather than a colour picker
  *
@@ -42,14 +37,7 @@ export const SWATCHES = [
  * `$each` over the palette: the caller says what picking *means* and the loop says which colour it
  * happened to. Both call sites end up writing to a store, one per card and one per type.
  */
-export interface SwatchRowOptions {
-  /** The token currently in force, as an expression — the swatch it matches is outlined. */
-  current: SchemaProp;
-  /** What picking a swatch does. Handed the token as a context reference, not a value. */
-  pick: (token: SchemaProp) => SchemaProp;
-}
-
-export function swatchRow(options: SwatchRowOptions): SchemaNode {
+export function swatchRow(options: { current: SchemaProp; pick: (token: SchemaProp) => SchemaProp }): SchemaNode {
   return {
     type: 'Row',
     props: { gap: '200', ay: 'center', wrap: true, width: '100%' },

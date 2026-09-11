@@ -64,17 +64,19 @@ import {
   panelHeader,
   peopleRow,
   recordFormModal,
-  swatchRow,
   taskBoard,
   taskBoardLoading,
 } from '@we/template-kit';
 
 import {
+  colorControl,
+  freeformFill,
   keyPanel,
   LENS_QUERY,
   lensNodeRules,
   NO_LENS,
   placementsQuery,
+  PLAIN_FILL,
   recordFill,
   TYPE_STYLES_QUERY,
 } from './WorkshopKey.ts';
@@ -864,7 +866,7 @@ const inspectorPanel: SchemaNode = {
                       Not for a line: a `Relationship` is drawn from its ends and has no placement.
 
                       `we:unset` is what taking a colour away writes — the ORM cannot store an empty
-                      string — so it reads as "none" here, and the Default swatch is the one outlined.
+                      string — so it reads as "none" here: the picker shows plain, and the reset goes.
                     */
                     {
                       type: '$if',
@@ -875,19 +877,28 @@ const inspectorPanel: SchemaNode = {
                           props: { gap: '200', py: '100', borderTop: '1px solid border' },
                           children: [
                             {
-                              type: 'we-text',
-                              props: { variant: 'footnote', color: 'text-faint' },
-                              children: ['Colour'],
+                              type: 'Row',
+                              props: { gap: '300', ay: 'center', width: '100%' },
+                              children: [
+                                colorControl({
+                                  value: { $: freeformFill('routeStore.params.card') },
+                                  chosen: { $: `!(${freeformFill('routeStore.params.card')} == '${PLAIN_FILL}')` },
+                                  pick: {
+                                    $action: 'recordStore.setCardStyle',
+                                    args: [CALL, { $: 'routeStore.params.card' }, 'color', { $: 'event.detail' }],
+                                  },
+                                  clear: {
+                                    $action: 'recordStore.setCardStyle',
+                                    args: [CALL, { $: 'routeStore.params.card' }, 'color', ''],
+                                  },
+                                }),
+                                {
+                                  type: 'we-text',
+                                  props: { variant: 'footnote', color: 'text-muted' },
+                                  children: ['This card’s own colour'],
+                                },
+                              ],
                             },
-                            swatchRow({
-                              current: {
-                                $: "find(local.placements, { node: routeStore.params.card }).color == 'we:unset' ? '' : find(local.placements, { node: routeStore.params.card }).color ?? ''",
-                              },
-                              pick: (token) => ({
-                                $action: 'recordStore.setCardStyle',
-                                args: [CALL, { $: 'routeStore.params.card' }, 'color', token],
-                              }),
-                            }),
                             {
                               // A lens hides this colour, and a swatch that changes nothing on screen
                               // reads as broken — so say where the colour went.

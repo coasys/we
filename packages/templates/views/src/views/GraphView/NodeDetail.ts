@@ -1,6 +1,7 @@
 import type { SchemaNode } from '@we/schema-shared';
 import { expr } from '@we/schema-shared';
-import { swatchRow } from '@we/template-kit';
+
+import { swatchRow } from './Palette';
 
 /**
  * The selected node, opened out — a panel over the right edge of the canvas.
