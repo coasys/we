@@ -330,7 +330,8 @@ function lensButton(lens: 'kind' | 'state', label: string, icon: string): Schema
 function kindRow(kind: string): SchemaNode {
   return {
     type: 'Row',
-    props: { gap: '300', ay: 'center', width: '100%' },
+    // Its own room above and below — see `kindRows` for why the list has no gap.
+    props: { gap: '300', ay: 'center', width: '100%', py: '100' },
     children: [
       colorControl({
         value: { $: kindFill(kind) },
@@ -375,7 +376,13 @@ function kindRow(kind: string): SchemaNode {
 function kindRows(opts: { call: Record<string, unknown>; extracted: string }): SchemaNode {
   return {
     type: 'Column',
-    props: { gap: '300', width: '100%' },
+    /*
+      No `gap`. Each kind in the first list is wrapped in a node that holds its query, and that
+      node renders whether or not the row inside it does — so a gap here spaced the empty ones as
+      if they were rows, and every kind the call listens for but has not produced was a blank line.
+      The rows carry their own room instead, and an empty wrapper is zero height and costs nothing.
+    */
+    props: { width: '100%' },
     children: [
       {
         type: '$each',
@@ -418,7 +425,7 @@ function kindRows(opts: { call: Record<string, unknown>; extracted: string }): S
           condition: { $: `!count(local.placements) && !count(${opts.extracted})` },
           then: {
             type: 'we-text',
-            props: { variant: 'footnote', color: 'text-faint' },
+            props: { variant: 'footnote', color: 'text-faint', py: '100' },
             children: ['Nothing on the canvas yet. Double-click it to add something.'],
           },
         },
