@@ -344,11 +344,13 @@
 
     A rendered document pins `--we-role-text` on itself and on every block in it, which is right
     on the page and wrong here: the role is measured against the page, and this content sits on a
-    fill the reader chose. Three classes deep on purpose, so this outranks the block stylesheet's
-    own two whichever order the two sheets load in.
+    fill the reader chose. The block stylesheet `@extend`s its `.we-block` rule onto the elements a
+    document is made of, so those are named here too — a paragraph carries the pin directly, not
+    through a class. `:is()` takes the highest specificity inside it, which with the two classes
+    outside puts this above the block sheet's own rules whichever order the sheets load in.
   */
   .we-block-content,
-  .we-block-content .we-block {
+  .we-block-content :is(.we-block, p, h1, h2, h3, h4, h5, h6, blockquote, .we-list-item) {
     color: inherit;
   }
 
