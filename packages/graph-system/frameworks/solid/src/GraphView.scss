@@ -355,9 +355,32 @@
   }
 }
 
-.we-graph__card--cut .we-graph__card-scale {
+.we-graph__card--flow .we-graph__card-scale {
   // The floats need a height to stand in; the scale box already sets one.
   position: relative;
+
+  /*
+    Whole words. The design system breaks inside a word by default, so a URL cannot push a card
+    wide; beside a float that makes a line squeezed near an apex split a word into its letters. A
+    word that does not fit a line moves down to one it does, which is what a shape wants.
+  */
+  overflow-wrap: normal;
+  word-break: normal;
+
+  .we-block-content {
+    overflow-wrap: normal;
+  }
+
+  /*
+    The fallback label flows too: it was a clamped box, which starts a formatting context of its
+    own and ignores floats, so a task in a diamond ran its name straight to the edges. Beside a
+    float it is ordinary text, and the clip is what bounds it.
+  */
+  .we-graph__card-text {
+    display: block;
+    -webkit-line-clamp: none;
+    overflow: visible;
+  }
 
   /*
     The document's own wrappers step out of the way.
@@ -413,7 +436,7 @@
   text is serialised as plain paragraphs and headings and carries none — are inset to the largest
   rectangle inside the shape instead. `--node-inset` comes from the renderer, per shape.
 */
-.we-graph__card--cut .we-block-content .we-block[data-block-type] {
+.we-graph__card--flow .we-block-content .we-block[data-block-type] {
   margin-inline: var(--node-inset, 0);
   clear: both;
 }
@@ -500,9 +523,8 @@
   // From the card, which has already decided — see `.we-graph__card`.
   color: inherit;
 
-  // Scaled with the card's content, so the fallback answers the same slider as the real thing —
-  // otherwise the setting would appear to do nothing on a card whose content has not arrived.
-  font-size: calc(var(--node-label-size) * var(--content-scale, 1));
+  // Inside the scaled box now, like a document, so the slider reaches it the same way.
+  font-size: var(--node-label-size);
   line-height: 1.4;
 
   // Clamped rather than scrolled: a card is a glance, and the inspector is where the whole value is.
@@ -545,22 +567,22 @@
   every edge is a real edge and every corner is where two of them meet. The enlargement is
   screen-constant, like the rings on the rounded shapes.
 */
+// The outline pushed out by a constant distance, from the renderer — see `ringClip` for why it
+// is an offset rather than a scaled copy, and why it is written in pixels.
 .we-graph__card--cut::before {
   content: '';
   position: absolute;
-  inset: calc(-1 * var(--ring, 0px));
-  clip-path: var(--node-clip);
+  inset: calc(-1 * var(--ring-pad, 0px));
+  clip-path: var(--ring-clip, none);
   background: var(--ring-color, transparent);
   pointer-events: none;
 }
 
 .we-graph__node--card.we-graph__node--hovered .we-graph__card--cut {
-  --ring: calc(2px / var(--graph-zoom));
   --ring-color: var(--we-color-primary-300);
 }
 
 .we-graph__node--card.we-graph__node--selected .we-graph__card--cut {
-  --ring: calc(3px / var(--graph-zoom));
   --ring-color: var(--we-color-primary-500);
 }
 

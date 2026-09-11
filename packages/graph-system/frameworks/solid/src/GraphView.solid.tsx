@@ -886,58 +886,140 @@ export function GraphView(props: GraphViewProps) {
   }
 
   /**
-   * The polygon a card is cut to, for the shapes a radius cannot make.
+   * The shapes a radius cannot make, as fractions of the card's box, clockwise from the top.
    *
-   * A clip rather than a drawn outline, so the card stays a box for everything else — its content,
-   * its hit area, the edges that meet it — and only its paint changes. What the clip takes with it
-   * is the border and the shadow along the cut edges, which is the trade every clipped shape makes.
+   * One set of points, from which three things are derived so they cannot disagree: the clip the
+   * card is cut to, the ring drawn behind it when it is hovered or selected, and the floats its
+   * text wraps to. A round card is not cut — its radius draws it — but it flows, so it gets points
+   * of its own below.
    */
-  function nodeClip(visual: { shape: string; cardShape?: string }): string {
-    if (visual.shape !== 'card') return 'none';
-    switch (visual.cardShape) {
-      case 'triangle':
-        return 'polygon(50% 0, 100% 100%, 0 100%)';
-      case 'diamond':
-        return 'polygon(50% 0, 100% 50%, 50% 100%, 0 50%)';
-      case 'pentagon':
-        return 'polygon(50% 0, 100% 38%, 82% 100%, 18% 100%, 0 38%)';
-      case 'hexagon':
-        return 'polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%)';
-      default:
-        return 'none';
+  const SHAPE_POINTS: Record<string, [number, number][]> = {
+    triangle: [
+      [0.5, 0],
+      [1, 1],
+      [0, 1],
+    ],
+    diamond: [
+      [0.5, 0],
+      [1, 0.5],
+      [0.5, 1],
+      [0, 0.5],
+    ],
+    pentagon: [
+      [0.5, 0],
+      [1, 0.38],
+      [0.82, 1],
+      [0.18, 1],
+      [0, 0.38],
+    ],
+    hexagon: [
+      [0.25, 0],
+      [0.75, 0],
+      [1, 0.5],
+      [0.75, 1],
+      [0.25, 1],
+      [0, 0.5],
+    ],
+  };
+
+  type Shaped = { shape: string; cardShape?: string };
+  const cutPoints = (visual: Shaped) =>
+    visual.shape === 'card' && visual.cardShape ? SHAPE_POINTS[visual.cardShape] : undefined;
+  const pct = (value: number) => `${Math.round(value * 10000) / 100}%`;
+
+  /** The polygon a card is cut to. A clip rather than a drawn outline, so the card stays a box. */
+  function nodeClip(visual: Shaped): string {
+    const points = cutPoints(visual);
+    return points ? `polygon(${points.map(([x, y]) => `${pct(x)} ${pct(y)}`).join(', ')})` : 'none';
+  }
+
+  /** The outline text wraps to: a cut shape's own points, or an ellipse sampled for a round card. */
+  function flowPoints(visual: Shaped): [number, number][] | undefined {
+    if (visual.shape !== 'card') return undefined;
+    if (visual.cardShape === 'round') {
+      const steps = 24;
+      return Array.from({ length: steps }, (_, i) => {
+        const angle = -Math.PI / 2 + (i / steps) * Math.PI * 2;
+        return [0.5 + 0.5 * Math.cos(angle), 0.5 + 0.5 * Math.sin(angle)];
+      });
     }
+    return cutPoints(visual);
   }
 
   /**
-   * The exterior of a cut shape on each side, for the floats the text wraps to — see the
-   * stylesheet's `.we-graph__card-flow`. In the float's own coordinates, since that is what
-   * `shape-outside` measures in: a float half the card wide sees the card's 25% as its 50%. Written
-   * beside `nodeClip` so the clip and the flow come from one place; a float shaped to one polygon
-   * while the card is cut to another would wrap text into the void.
+   * The exterior of the shape on each side, for the floats — see `.we-graph__card-flow`.
+   *
+   * Each float is half the card wide and the full content height, and its polygon is the chain of
+   * outline points down its side — from the topmost point to the bottommost, taking the rightmost
+   * of a flat top for the right float and the leftmost for the left — closed along the box's outer
+   * edge, in the float's own coordinates, since that is what `shape-outside` measures in: the
+   * card's 25% is the left float's 50%. A point the other side of the middle clamps to the float's
+   * edge, so a chain can never claim space it does not border.
    */
-  function nodeFlow(visual: { shape: string; cardShape?: string }): { left: string; right: string } {
-    if (visual.shape !== 'card') return { left: 'none', right: 'none' };
-    switch (visual.cardShape) {
-      case 'triangle':
-        return { left: 'polygon(0 0, 100% 0, 0 100%)', right: 'polygon(0 0, 100% 0, 100% 100%)' };
-      case 'diamond':
-        return {
-          left: 'polygon(0 0, 100% 0, 0 50%, 100% 100%, 0 100%)',
-          right: 'polygon(0 0, 100% 0, 100% 100%, 0 100%, 100% 50%)',
-        };
-      case 'pentagon':
-        return {
-          left: 'polygon(0 0, 100% 0, 0 38%, 36% 100%, 0 100%)',
-          right: 'polygon(0 0, 100% 0, 100% 38%, 64% 100%, 100% 100%)',
-        };
-      case 'hexagon':
-        return {
-          left: 'polygon(0 0, 50% 0, 0 50%, 50% 100%, 0 100%)',
-          right: 'polygon(50% 0, 100% 0, 100% 100%, 50% 100%, 100% 50%)',
-        };
-      default:
-        return { left: 'none', right: 'none' };
-    }
+  function nodeFlow(visual: Shaped): { left: string; right: string } {
+    const points = flowPoints(visual);
+    if (!points) return { left: 'none', right: 'none' };
+    const n = points.length;
+    const pick = (better: (a: [number, number], b: [number, number]) => boolean) =>
+      points.reduce((best, p, i) => (better(p, points[best]) ? i : best), 0);
+    const topRight = pick((a, b) => a[1] < b[1] || (a[1] === b[1] && a[0] > b[0]));
+    const bottomRight = pick((a, b) => a[1] > b[1] || (a[1] === b[1] && a[0] > b[0]));
+    const topLeft = pick((a, b) => a[1] < b[1] || (a[1] === b[1] && a[0] < b[0]));
+    const bottomLeft = pick((a, b) => a[1] > b[1] || (a[1] === b[1] && a[0] < b[0]));
+    // Clockwise from one index to another, inclusive.
+    const chain = (from: number, to: number) => {
+      const out: [number, number][] = [];
+      for (let i = from; ; i = (i + 1) % n) {
+        out.push(points[i]);
+        if (i === to) break;
+      }
+      return out;
+    };
+    const right = chain(topRight, bottomRight).map(([x, y]) => `${pct(Math.max(0, (x - 0.5) * 2))} ${pct(y)}`);
+    const left = chain(bottomLeft, topLeft)
+      .reverse()
+      .map(([x, y]) => `${pct(Math.min(1, x * 2))} ${pct(y)}`);
+    return {
+      left: `polygon(0 0, ${left.join(', ')}, 0 100%)`,
+      right: `polygon(100% 0, ${right.join(', ')}, 100% 100%)`,
+    };
+  }
+
+  /**
+   * The ring behind a cut shape: the same outline pushed out by a constant distance.
+   *
+   * Pushed out, not scaled. A scaled copy moves a flat edge by the whole enlargement and a steep one
+   * by a fraction of it, which is why a triangle's base had a ring and its sides barely did. Each
+   * edge is shifted along its own outward normal by `ring`, and each corner is where two shifted
+   * edges meet — so every edge is the same thickness and every corner is sharp. In pixels of the
+   * card's box, plus the pad the pseudo-element is inset by, since that is the box it is clipped in.
+   */
+  function ringClip(visual: Shaped, width: number, height: number, ring: number, pad: number): string {
+    const points = cutPoints(visual);
+    if (!points) return 'none';
+    const px = points.map(([x, y]) => ({ x: x * width, y: y * height }));
+    const n = px.length;
+    // Each edge, shifted: a point on it and its direction.
+    const edges = px.map((from, i) => {
+      const to = px[(i + 1) % n];
+      const dx = to.x - from.x;
+      const dy = to.y - from.y;
+      const length = Math.hypot(dx, dy) || 1;
+      // Outward for a clockwise polygon in screen coordinates.
+      const nx = dy / length;
+      const ny = -dx / length;
+      return { x: from.x + nx * ring, y: from.y + ny * ring, dx, dy };
+    });
+    const corners = edges.map((edge, i) => {
+      const prev = edges[(i - 1 + n) % n];
+      // Where the previous shifted edge meets this one.
+      const det = prev.dx * edge.dy - prev.dy * edge.dx;
+      if (Math.abs(det) < 1e-9) return { x: edge.x, y: edge.y };
+      const t = ((edge.x - prev.x) * edge.dy - (edge.y - prev.y) * edge.dx) / det;
+      return { x: prev.x + prev.dx * t, y: prev.y + prev.dy * t };
+    });
+    const round = (value: number) => Math.round(value * 100) / 100;
+    return `polygon(${corners.map((c) => `${round(c.x + pad)}px ${round(c.y + pad)}px`).join(', ')})`;
   }
 
   /**
@@ -947,7 +1029,7 @@ export function GraphView(props: GraphViewProps) {
    * equilateral triangle, are both 2/√3 wide for their height; a regular pentagon is a little
    * wider than tall. Held to 1 those came out squashed, which is what a square is to a hexagon.
    */
-  function shapeRatio(visual: { shape: string; cardShape?: string }): number {
+  function shapeRatio(visual: Shaped): number {
     if (visual.shape !== 'card') return 1;
     switch (visual.cardShape) {
       case 'triangle':
@@ -963,9 +1045,9 @@ export function GraphView(props: GraphViewProps) {
   /**
    * How far in from each side a block that cannot flow — an image, an embed — should sit, so it
    * lands in the largest rectangle the shape holds. Text needs none of this: it wraps to the floats
-   * the stylesheet lays along the cut edges.
+   * the stylesheet lays along the outline.
    */
-  function nodeInset(visual: { shape: string; cardShape?: string }): string {
+  function nodeInset(visual: Shaped): string {
     if (visual.shape !== 'card') return '0';
     switch (visual.cardShape) {
       case 'triangle':
@@ -974,6 +1056,8 @@ export function GraphView(props: GraphViewProps) {
         return '25%';
       case 'pentagon':
         return '18%';
+      case 'round':
+        return '15%';
       default:
         return '0';
     }
@@ -2044,6 +2128,29 @@ export function GraphView(props: GraphViewProps) {
                 '--node-inset': nodeInset(entry.visual),
                 '--flow-left': nodeFlow(entry.visual).left,
                 '--flow-right': nodeFlow(entry.visual).right,
+                /*
+                  The ring behind a cut shape, only while it is wanted — hovered or selected — and
+                  worked out at this zoom, since it is a screen-constant thickness in world units.
+                  A cut shape at rest carries no ring and pays nothing for one.
+                */
+                ...(() => {
+                  const wanted = entry.selected ? 3 : hovered() === entry.node.id ? 2 : 0;
+                  if (!wanted || nodeClip(entry.visual) === 'none') return {};
+                  const scale = zoom() || 1;
+                  const ring = wanted / scale;
+                  const pad = ring + 1 / scale;
+                  const box = boxOf(entry);
+                  return {
+                    '--ring-pad': `${pad}px`,
+                    '--ring-clip': ringClip(
+                      entry.visual,
+                      box.width ?? DEFAULT_CARD_WIDTH,
+                      box.height ?? DEFAULT_CARD_HEIGHT,
+                      ring,
+                      pad,
+                    ),
+                  };
+                })(),
                 '--content-scale': String(entry.visual.contentScale ?? 1),
                 /*
                   Only where a rule chose one. Left unset, the stylesheet answers: a caption under a
@@ -2098,7 +2205,13 @@ export function GraphView(props: GraphViewProps) {
                   its own element, including a ring drawn around it; a ring on the box outside the
                   clip follows the shape's silhouette instead — see `.we-graph__card--cut`.
                 */}
-                <div class="we-graph__card" classList={{ 'we-graph__card--cut': nodeClip(entry.visual) !== 'none' }}>
+                <div
+                  class="we-graph__card"
+                  classList={{
+                    'we-graph__card--cut': nodeClip(entry.visual) !== 'none',
+                    'we-graph__card--flow': nodeFlow(entry.visual).left !== 'none',
+                  }}
+                >
                   <div class="we-graph__card-shape">
                     {/*
                     The card's real content, when a style rule named one and the host supplies it.
@@ -2108,34 +2221,35 @@ export function GraphView(props: GraphViewProps) {
                     also what makes `contentMinZoom` cheap: below the threshold the card draws one
                     string instead of a document, which is all that is legible at that size anyway.
                   */}
-                    <Show
-                      when={cardContent(entry.visual)}
-                      fallback={<span class="we-graph__card-text">{entry.visual.label}</span>}
-                    >
-                      {(Content) => (
-                        <div class="we-graph__card-content">
-                          {/*
-                          The scale lives on an inner element because it has to change the box the
-                          content is *laid out* in, not just how large the result is drawn. Scaling
-                          the clipping element would shrink the drawing and leave the same amount of
-                          text in it; a wider inner box at a smaller scale is what fits more of the
-                          document into the same card.
+                    <div class="we-graph__card-content">
+                      {/*
+                        The scale lives on an inner element because it has to change the box the
+                        content is *laid out* in, not just how large the result is drawn. Scaling
+                        the clipping element would shrink the drawing and leave the same amount of
+                        text in it; a wider inner box at a smaller scale is what fits more of the
+                        document into the same card.
+
+                        The fallback label lives in the same box as a document, so it flows to the
+                        shape the same way — it used to sit outside, where no float could reach it.
+                      */}
+                      <div class="we-graph__card-scale">
+                        {/*
+                          For a shape with an outline, two floats hugging its edges — the exterior
+                          on each side — so every line wraps to it. `shape-inside` does not exist;
+                          this is what does.
                         */}
-                          <div class="we-graph__card-scale">
-                            {/*
-                            For a cut shape, two floats hugging the cut edges — the exterior of
-                            the polygon on each side — so every line of the document wraps to the
-                            outline. `shape-inside` does not exist; this is what does.
-                          */}
-                            <Show when={nodeClip(entry.visual) !== 'none'}>
-                              <div class="we-graph__card-flow we-graph__card-flow--left" />
-                              <div class="we-graph__card-flow we-graph__card-flow--right" />
-                            </Show>
-                            <Dynamic component={Content()} node={entry.node} />
-                          </div>
-                        </div>
-                      )}
-                    </Show>
+                        <Show when={nodeFlow(entry.visual).left !== 'none'}>
+                          <div class="we-graph__card-flow we-graph__card-flow--left" />
+                          <div class="we-graph__card-flow we-graph__card-flow--right" />
+                        </Show>
+                        <Show
+                          when={cardContent(entry.visual)}
+                          fallback={<span class="we-graph__card-text">{entry.visual.label}</span>}
+                        >
+                          {(Content) => <Dynamic component={Content()} node={entry.node} />}
+                        </Show>
+                      </div>
+                    </div>
                     <Show when={entry.hasMore}>
                       <span class="we-graph__more we-graph__more--card">+</span>
                     </Show>
