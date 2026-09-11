@@ -75,4 +75,20 @@ describe('resizeBox', () => {
     expect(HANDLES.filter((handle) => handle.grip.x && handle.grip.y)).toHaveLength(4);
     expect(HANDLES.filter((handle) => !handle.grip.x !== !handle.grip.y)).toHaveLength(4);
   });
+
+  it('holds a square when asked, from a corner and from an edge', () => {
+    const box = { at: { x: 0, y: 0 }, width: 100, height: 60 };
+    // A corner takes the larger axis, anchoring the opposite corner.
+    const corner = resizeBox(box, { x: 1, y: 1 }, { x: 40, y: 10 }, 20, { square: true });
+    expect(corner.width).toBe(140);
+    expect(corner.height).toBe(140);
+    expect(corner.at.x - corner.width / 2).toBe(-50);
+    expect(corner.at.y - corner.height / 2).toBe(-30);
+    // An edge takes its own axis and gives the other the same, about its centre.
+    const edge = resizeBox(box, { x: 1, y: 0 }, { x: 20, y: 0 }, 20, { square: true });
+    expect(edge.width).toBe(120);
+    expect(edge.height).toBe(120);
+    expect(edge.at.x - edge.width / 2).toBe(-50);
+    expect(edge.at.y).toBe(0);
+  });
 });

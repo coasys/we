@@ -908,6 +908,57 @@ export function GraphView(props: GraphViewProps) {
     }
   }
 
+  /**
+   * The exterior of a cut shape on each side, for the floats the text wraps to — see the
+   * stylesheet's `.we-graph__card-flow`. In the float's own coordinates, since that is what
+   * `shape-outside` measures in: a float half the card wide sees the card's 25% as its 50%. Written
+   * beside `nodeClip` so the clip and the flow come from one place; a float shaped to one polygon
+   * while the card is cut to another would wrap text into the void.
+   */
+  function nodeFlow(visual: { shape: string; cardShape?: string }): { left: string; right: string } {
+    if (visual.shape !== 'card') return { left: 'none', right: 'none' };
+    switch (visual.cardShape) {
+      case 'triangle':
+        return { left: 'polygon(0 0, 100% 0, 0 100%)', right: 'polygon(0 0, 100% 0, 100% 100%)' };
+      case 'diamond':
+        return {
+          left: 'polygon(0 0, 100% 0, 0 50%, 100% 100%, 0 100%)',
+          right: 'polygon(0 0, 100% 0, 100% 100%, 0 100%, 100% 50%)',
+        };
+      case 'pentagon':
+        return {
+          left: 'polygon(0 0, 100% 0, 0 38%, 36% 100%, 0 100%)',
+          right: 'polygon(0 0, 100% 0, 100% 38%, 64% 100%, 100% 100%)',
+        };
+      case 'hexagon':
+        return {
+          left: 'polygon(0 0, 50% 0, 0 50%, 50% 100%, 0 100%)',
+          right: 'polygon(50% 0, 100% 0, 100% 100%, 50% 100%, 100% 50%)',
+        };
+      default:
+        return { left: 'none', right: 'none' };
+    }
+  }
+
+  /**
+   * How far in from each side a block that cannot flow — an image, an embed — should sit, so it
+   * lands in the largest rectangle the shape holds. Text needs none of this: it wraps to the floats
+   * the stylesheet lays along the cut edges.
+   */
+  function nodeInset(visual: { shape: string; cardShape?: string }): string {
+    if (visual.shape !== 'card') return '0';
+    switch (visual.cardShape) {
+      case 'triangle':
+      case 'diamond':
+      case 'hexagon':
+        return '25%';
+      case 'pentagon':
+        return '18%';
+      default:
+        return '0';
+    }
+  }
+
   const cardContent = (visual: { content?: string; contentMinZoom?: number }): NodeContent | undefined => {
     if (!visual.content) return undefined;
     if (visual.contentMinZoom !== undefined && zoom() < visual.contentMinZoom) return undefined;
@@ -1511,7 +1562,8 @@ export function GraphView(props: GraphViewProps) {
       // half as far or the card runs away from the pointer.
       const scale = zoom() || 1;
       const delta = { x: (moved.clientX - from.x) / scale, y: (moved.clientY - from.y) / scale };
-      const next = resizeBox({ at: entry.at, width, height }, grip, delta, MIN_CARD);
+      // Held square while the key is down — a circle, a square, a regular polygon.
+      const next = resizeBox({ at: entry.at, width, height }, grip, delta, MIN_CARD, { square: moved.ctrlKey });
       setResizing({ id: entry.node.id, x: next.at.x, y: next.at.y, width: next.width, height: next.height });
     };
     const end = (ended: PointerEvent) => {
@@ -1962,6 +2014,9 @@ export function GraphView(props: GraphViewProps) {
                 '--node-border-width': `${entry.visual.borderWidth ?? 0}px`,
                 '--node-radius': nodeRadius(entry.visual),
                 '--node-clip': nodeClip(entry.visual),
+                '--node-inset': nodeInset(entry.visual),
+                '--flow-left': nodeFlow(entry.visual).left,
+                '--flow-right': nodeFlow(entry.visual).right,
                 '--content-scale': String(entry.visual.contentScale ?? 1),
                 /*
                   Only where a rule chose one. Left unset, the stylesheet answers: a caption under a
@@ -2009,8 +2064,16 @@ export function GraphView(props: GraphViewProps) {
                   </>
                 }
               >
-                <div class="we-graph__card">
-                  {/*
+                {/*
+                  Two layers. The outer is the card's box — where it is, how large, how faded — and
+                  carries the selection ring. The inner is its shape: the fill, the border, the
+                  radius and, for the polygons, the clip. Split because a clip cuts everything on
+                  its own element, including a ring drawn around it; a ring on the box outside the
+                  clip follows the shape's silhouette instead — see `.we-graph__card--cut`.
+                */}
+                <div class="we-graph__card" classList={{ 'we-graph__card--cut': nodeClip(entry.visual) !== 'none' }}>
+                  <div class="we-graph__card-shape">
+                    {/*
                     The card's real content, when a style rule named one and the host supplies it.
 
                     Falls back to the label rather than to nothing — a card whose content component
@@ -2018,28 +2081,38 @@ export function GraphView(props: GraphViewProps) {
                     also what makes `contentMinZoom` cheap: below the threshold the card draws one
                     string instead of a document, which is all that is legible at that size anyway.
                   */}
-                  <Show
-                    when={cardContent(entry.visual)}
-                    fallback={<span class="we-graph__card-text">{entry.visual.label}</span>}
-                  >
-                    {(Content) => (
-                      <div class="we-graph__card-content">
-                        {/*
+                    <Show
+                      when={cardContent(entry.visual)}
+                      fallback={<span class="we-graph__card-text">{entry.visual.label}</span>}
+                    >
+                      {(Content) => (
+                        <div class="we-graph__card-content">
+                          {/*
                           The scale lives on an inner element because it has to change the box the
                           content is *laid out* in, not just how large the result is drawn. Scaling
                           the clipping element would shrink the drawing and leave the same amount of
                           text in it; a wider inner box at a smaller scale is what fits more of the
                           document into the same card.
                         */}
-                        <div class="we-graph__card-scale">
-                          <Dynamic component={Content()} node={entry.node} />
+                          <div class="we-graph__card-scale">
+                            {/*
+                            For a cut shape, two floats hugging the cut edges — the exterior of
+                            the polygon on each side — so every line of the document wraps to the
+                            outline. `shape-inside` does not exist; this is what does.
+                          */}
+                            <Show when={nodeClip(entry.visual) !== 'none'}>
+                              <div class="we-graph__card-flow we-graph__card-flow--left" />
+                              <div class="we-graph__card-flow we-graph__card-flow--right" />
+                            </Show>
+                            <Dynamic component={Content()} node={entry.node} />
+                          </div>
                         </div>
-                      </div>
-                    )}
-                  </Show>
-                  <Show when={entry.hasMore}>
-                    <span class="we-graph__more we-graph__more--card">+</span>
-                  </Show>
+                      )}
+                    </Show>
+                    <Show when={entry.hasMore}>
+                      <span class="we-graph__more we-graph__more--card">+</span>
+                    </Show>
+                  </div>
                 </div>
               </Show>
               {/*

@@ -34,21 +34,33 @@ export interface Box {
  * correct at the limit: a card squashed against the floor must stop growing *and* stop moving, and
  * clamping afterwards would leave the centre where the unclamped size had put it.
  */
-export function resizeBox(box: Box, grip: Grip, delta: Point, min: number): Box {
+export function resizeBox(box: Box, grip: Grip, delta: Point, min: number, options: { square?: boolean } = {}): Box {
   const left = box.at.x - box.width / 2;
   const right = box.at.x + box.width / 2;
   const top = box.at.y - box.height / 2;
   const bottom = box.at.y + box.height / 2;
 
   const next: Box = { at: { x: box.at.x, y: box.at.y }, width: box.width, height: box.height };
-  if (grip.x) {
-    next.width = Math.max(min, box.width + delta.x * grip.x);
-    next.at.x = grip.x === 1 ? left + next.width / 2 : right - next.width / 2;
+  if (grip.x) next.width = Math.max(min, box.width + delta.x * grip.x);
+  if (grip.y) next.height = Math.max(min, box.height + delta.y * grip.y);
+
+  /*
+    Held square — a circle rather than an ellipse, a square rather than a rectangle.
+
+    The side is whichever dimension the handle is pulling: a corner takes the larger of the two so
+    the box grows to meet the hand rather than lagging on one axis, and an edge takes its own axis
+    and gives the other the same. The other axis then grows about its centre, since no edge of it
+    was being held — which is what makes dragging the right edge with the key down widen and
+    heighten a card in place rather than pushing it down the board.
+  */
+  if (options.square) {
+    const side = grip.x && grip.y ? Math.max(next.width, next.height) : grip.x ? next.width : next.height;
+    next.width = side;
+    next.height = side;
   }
-  if (grip.y) {
-    next.height = Math.max(min, box.height + delta.y * grip.y);
-    next.at.y = grip.y === 1 ? top + next.height / 2 : bottom - next.height / 2;
-  }
+
+  if (grip.x) next.at.x = grip.x === 1 ? left + next.width / 2 : right - next.width / 2;
+  if (grip.y) next.at.y = grip.y === 1 ? top + next.height / 2 : bottom - next.height / 2;
   return next;
 }
 

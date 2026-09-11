@@ -294,14 +294,6 @@
   display: flex;
   width: var(--node-width);
   height: var(--node-height);
-  padding: var(--we-space-300);
-  border-radius: var(--node-radius);
-  // For the shapes a radius cannot make — see `nodeClip`. `none` for the rest.
-  clip-path: var(--node-clip, none);
-  background: var(--node-color);
-  border: var(--node-border-width) solid var(--node-border);
-  box-shadow: var(--we-shadow-sm);
-  overflow: hidden;
 
   // See `.we-graph__dot`: the fade belongs to the card, not to the chrome anchored beside it.
   opacity: var(--node-opacity, 1);
@@ -321,6 +313,73 @@
   */
   color: var(--node-label-color, var(--we-role-text));
   color: var(--node-label-color, oklch(from var(--node-color) calc((0.65 - l) * infinity) 0 0));
+}
+
+// The card's shape: fill, border, radius, and for the polygons the clip — see the markup.
+.we-graph__card-shape {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  padding: var(--we-space-300);
+  border-radius: var(--node-radius);
+  // For the shapes a radius cannot make — see `nodeClip`. `none` for the rest.
+  clip-path: var(--node-clip, none);
+  background: var(--node-color);
+  border: var(--node-border-width) solid var(--node-border);
+  box-shadow: var(--we-shadow-sm);
+  overflow: hidden;
+}
+
+/*
+  Text that flows to a cut shape.
+
+  `shape-inside` exists in no engine, but floats with `shape-outside` do: one hugging each cut edge,
+  the full height of the content box and half its width, shaped to the polygon's *exterior* on that
+  side — so every line box shortens to what the shape leaves between them. In the float's own
+  coordinates, since that is what `shape-outside` measures in: a float half the card wide sees the
+  card's 25% as its 50%. A hair of `shape-margin` keeps the words off the edge.
+*/
+.we-graph__card-flow {
+  height: 100%;
+  width: 50%;
+  pointer-events: none;
+  shape-margin: 4px;
+
+  &--left {
+    float: left;
+  }
+
+  &--right {
+    float: right;
+  }
+}
+
+.we-graph__card--cut .we-graph__card-scale {
+  // The floats need a height to stand in; the scale box already sets one.
+  position: relative;
+}
+
+// Per shape, the exterior each float carves out — `nodeFlow` in the renderer, beside the clip.
+.we-graph__card-flow--left {
+  shape-outside: var(--flow-left, none);
+}
+
+.we-graph__card-flow--right {
+  shape-outside: var(--flow-right, none);
+}
+
+/*
+  What cannot flow sits in the rectangle the shape holds.
+
+  A block-level box does not narrow around floats the way a line does, so an image or an embed
+  would run under the cut edges and be clipped. Those blocks — the custom ones, which carry a type;
+  text is serialised as plain paragraphs and headings and carries none — are inset to the largest
+  rectangle inside the shape instead. `--node-inset` comes from the renderer, per shape.
+*/
+.we-graph__card--cut .we-block-content .we-block[data-block-type] {
+  margin-inline: var(--node-inset, 0);
+  clear: both;
 }
 
 /**
@@ -432,10 +491,33 @@
   `outline` rather than a border: a border changes the box and nudges the content inside it, and on
   a surface where a card can be sized to the pixel a hover that moves the layout reads as a bug.
 */
-.we-graph__node--card.we-graph__node--hovered .we-graph__card {
+.we-graph__node--card.we-graph__node--hovered .we-graph__card:not(.we-graph__card--cut) > .we-graph__card-shape {
   box-shadow: var(--we-shadow-md);
   outline: calc(2px / var(--graph-zoom)) solid var(--we-color-primary-300);
   outline-offset: calc(1px / var(--graph-zoom));
+}
+
+/*
+  The same rings on a cut shape, as a drop shadow on the box outside the clip.
+
+  A clip removes everything on its own element outside the polygon — a ring drawn around it
+  included, which is why the first three shapes had one and the rest did not. `filter` on the box
+  *containing* the clipped layer follows the silhouette instead. Four hard-edged shadows, one per
+  direction, make a ring of the given thickness; along a diagonal it is a fraction thinner, which
+  reads as the same line. Only on the hovered and selected cards, so the cost is one filter.
+*/
+.we-graph__node--card.we-graph__node--hovered .we-graph__card--cut {
+  --ring: calc(2px / var(--graph-zoom));
+  --ring-color: var(--we-color-primary-300);
+  filter: drop-shadow(var(--ring) 0 0 var(--ring-color)) drop-shadow(calc(-1 * var(--ring)) 0 0 var(--ring-color))
+    drop-shadow(0 var(--ring) 0 var(--ring-color)) drop-shadow(0 calc(-1 * var(--ring)) 0 var(--ring-color));
+}
+
+.we-graph__node--card.we-graph__node--selected .we-graph__card--cut {
+  --ring: calc(3px / var(--graph-zoom));
+  --ring-color: var(--we-color-primary-500);
+  filter: drop-shadow(var(--ring) 0 0 var(--ring-color)) drop-shadow(calc(-1 * var(--ring)) 0 0 var(--ring-color))
+    drop-shadow(0 var(--ring) 0 var(--ring-color)) drop-shadow(0 calc(-1 * var(--ring)) 0 var(--ring-color));
 }
 
 /*
@@ -447,13 +529,13 @@
   distance off the edge, were pushed into it and then under it. Reported as the dots drifting inwards
   as you zoom, which is the ring growing outwards past them.
 */
-.we-graph__node--card.we-graph__node--selected .we-graph__card {
+.we-graph__node--card.we-graph__node--selected .we-graph__card:not(.we-graph__card--cut) > .we-graph__card-shape {
   box-shadow: 0 0 0 calc(3px / var(--graph-zoom)) var(--we-color-primary-500);
 }
 
 // A card that is both selected and hovered keeps the selection ring alone — two rings around one
 // card says nothing the stronger of them does not.
-.we-graph__node--card.we-graph__node--selected.we-graph__node--hovered .we-graph__card {
+.we-graph__node--card.we-graph__node--selected.we-graph__node--hovered .we-graph__card > .we-graph__card-shape {
   outline: none;
 }
 
@@ -477,9 +559,10 @@
   node can easily be both held and selected.
 */
 .we-graph__node--pinned .we-graph__dot,
-.we-graph__node--pinned .we-graph__card {
+.we-graph__node--pinned .we-graph__card:not(.we-graph__card--cut) > .we-graph__card-shape {
   // Screen-constant, for the reason the selection ring is: a pinned card can carry connect handles
-  // too, and this sits further out than the selection ring does.
+  // too, and this sits further out than the selection ring does. A cut shape goes without: a dashed
+  // ring cannot be made from shadows, and on a canvas every card is placed so the mark means nothing.
   outline: calc(2px / var(--graph-zoom)) dashed var(--we-color-neutral-500);
   outline-offset: calc(3px / var(--graph-zoom));
 }
