@@ -220,14 +220,27 @@ export interface PanelScrollOptions {
  *
  * ## The arithmetic
  *
- * A scroll container puts its bar at its own edge and its `padding-right` *between* the content and
- * the bar. So the content's distance from the panel edge is the reserved gutter plus that padding,
- * and `inset - scrollbarWidth` is what makes that total equal the padding on the other three sides:
- * ten pixels of gutter and two of padding come to the same twelve the panel pads itself with.
+ * Three distances across the panel's right-hand inset, and they have to add up to it exactly:
  *
- * The result is a thumb two pixels off the true edge, content inset equally all round, and neither
- * moving when a list grows past its box. `max(0px, …)` is for the theme that makes the bar wider
- * than the panel's padding, where the honest answer is no extra padding rather than negative.
+ * ```
+ * panel edge │← track →│←──── bar ────→│← pad →│ content
+ *            │   2px   │      10px     │  0px  │
+ *            │←──────────── inset, 12px ──────→│
+ * ```
+ *
+ * The **track** is held off the edge by `THUMB_EDGE_GAP` less the thumb's own clearance, which is
+ * what puts the painted thumb the whole gap in. The **bar** is the gutter, reserved whether or not
+ * one is showing. The **pad** is whatever is left, because a scroll container puts its bar at its
+ * own edge and its `padding-right` *between* the content and the bar — so the content's distance
+ * from the panel edge is all three added together, and it should come to the same inset the panel
+ * pads itself with on the other three sides.
+ *
+ * Every figure is a variable, so a theme can redraw a scrollbar without moving a panel's content or
+ * its edges. The two `max(0px, …)` clamps are for the themes where a term would go negative: a
+ * thumb inset wider than the gap, which would drag the scroller out past the panel and into its
+ * `overflow: hidden`, and a bar wider than the panel's whole inset, where the honest answer is no
+ * padding rather than negative padding. Content is then further in than the other sides rather than
+ * the bar being somewhere impossible.
  *
  * ## Do not give it a width
  *
@@ -237,16 +250,35 @@ export interface PanelScrollOptions {
  * reach the edge and nothing says why. For the same reason this needs a parent that stretches its
  * children, which a `Column` does unless something sets `ay`.
  */
+/**
+ * How far the *painted* thumb sits from the panel's real edge.
+ *
+ * Taken to the edge and left there, the bar had only the thumb's own two pixels of clearance and
+ * read as too near to it — right against the frame rather than inside it. This is the figure to
+ * change if it ever reads wrong again; everything else here is derived from it.
+ *
+ * It is the whole distance, not an addition to the thumb's inset: the track is held off the edge by
+ * whatever is left once that inset has been counted, so the gap somebody sees stays this figure
+ * under a theme that pulls its thumb in further. The same reason the padding below is measured
+ * against the bar's width rather than pinned — a theme should be able to redraw a scrollbar without
+ * moving the panel's content or its edges.
+ */
+const THUMB_EDGE_GAP = '4px';
+
 export function panelScroll(opts: PanelScrollOptions): SchemaNode {
   const pad = `var(--we-space-${opts.inset ?? '300'})`;
+  // How far the bar's *track* is held off the edge, the thumb's own clearance already counted.
+  // Clamped, because a theme whose thumb inset exceeds the gap would otherwise pull the scroller
+  // out past the panel and straight into its `overflow: hidden`.
+  const track = `max(0px, calc(${THUMB_EDGE_GAP} - var(--we-scrollbar-thumb-inset)))`;
 
   return {
     type: 'we-scroll-area',
     props: {
       flex: '1',
       minHeight: '0',
-      mr: `calc(${pad} * -1)`,
-      pr: `max(0px, calc(${pad} - var(--we-scrollbar-width)))`,
+      mr: `calc(${track} - ${pad})`,
+      pr: `max(0px, calc(${pad} - ${track} - var(--we-scrollbar-width)))`,
       scrollbarGutter: 'stable',
       ...(opts.pin ? { pin: opts.pin } : {}),
       ...(opts.jump ? { jump: opts.jump } : {}),

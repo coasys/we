@@ -152,19 +152,30 @@ describe('a panel scroll region', () => {
     */
     const p = props();
 
-    expect(p.mr).toBe('calc(var(--we-space-300) * -1)');
+    expect(p.mr).toContain('var(--we-space-300)');
     expect(p.pr).toContain('var(--we-space-300)');
   });
 
-  it('measures the inner padding against the bar, so the four sides come out equal', () => {
+  it('holds the bar off the edge by the gap the thumb does not already give', () => {
+    /*
+      The thumb is already held off its own track, so taking the track to the edge leaves only that
+      clearance — two pixels, which read as too near the frame. The track carries the remainder, so
+      what somebody sees is the whole `THUMB_EDGE_GAP` however far a theme pulls its thumb in.
+    */
+    expect(props().mr).toBe('calc(max(0px, calc(4px - var(--we-scrollbar-thumb-inset))) - var(--we-space-300))');
+  });
+
+  it('measures the inner padding against the bar and the track, so the four sides come out equal', () => {
     /*
       A scroll container puts its bar at its own edge and its `padding-right` between the content
-      and the bar — so the content's distance from the panel edge is the reserved gutter *plus* that
-      padding, and the padding it wants is the panel's inset less the bar's width. Both are
-      variables: a theme that widens the bar would otherwise push every panel's text off-centre,
-      silently, and only on the side with a bar.
+      and the bar — so the content's distance from the panel edge is the track's offset plus the
+      reserved gutter plus that padding, and the padding it wants is whatever is left of the panel's
+      inset. Every term is a variable: a theme that widened the bar or pulled its thumb in would
+      otherwise push every panel's text off-centre, silently, and only on the side with a bar.
     */
-    expect(props().pr).toBe('max(0px, calc(var(--we-space-300) - var(--we-scrollbar-width)))');
+    expect(props().pr).toBe(
+      'max(0px, calc(var(--we-space-300) - max(0px, calc(4px - var(--we-scrollbar-thumb-inset))) - var(--we-scrollbar-width)))',
+    );
   });
 
   it('reserves the bar whether or not one is showing', () => {
@@ -187,8 +198,10 @@ describe('a panel scroll region', () => {
   it('follows the panel it is in when that panel pads itself differently', () => {
     const p = props({ children: [], inset: '400' });
 
-    expect(p.mr).toBe('calc(var(--we-space-400) * -1)');
-    expect(p.pr).toBe('max(0px, calc(var(--we-space-400) - var(--we-scrollbar-width)))');
+    expect(p.mr).toContain('var(--we-space-400)');
+    expect(p.pr).toContain('var(--we-space-400)');
+    expect(p.mr).not.toContain('--we-space-300');
+    expect(p.pr).not.toContain('--we-space-300');
   });
 
   it('carries the scroller options a panel actually uses, and no others', () => {
