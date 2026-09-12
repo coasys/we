@@ -1197,6 +1197,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(entity?): opens the create form — on that model, or on the first offered one. Clears any pending connection',
         connectNodes:
           "(link): opens the form on a Relationship joining two records. Takes the graph's onEdgeCreate payload as it arrives",
+        connectNodesNow:
+          "(link): writes the Relationship straight away, with no label and no kind, and answers with its id. The same onEdgeCreate payload; the choice between this and connectNodes is the template's. Ask first where the claim is the point (a knowledge map); write first where the arrangement is (a canvas beside a live call), and let the words be added in an inspector afterwards. Pair it with an onSuccess that selects the new line — a connection nobody is shown is a connection nobody knows is a record",
         setRecordEntity: '(entity): switches which model is being created, discarding what was typed',
         setRecordField:
           '(name, value): sets one field. Takes the field name, so one action serves every control — which is the only shape that works when the fields come from data',

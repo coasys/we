@@ -364,6 +364,34 @@ export interface GraphViewProps {
     preview?: boolean;
   }) => void;
   /**
+   * The delete key, pressed while the graph holds focus and something is selected.
+   *
+   * Emits and writes nothing, like every other gesture here: what removing a thing *means* is the
+   * interface's, and it differs — a canvas deletes the record, an outline unparents it, a map with
+   * no write path should bind nothing at all and leave the key inert. Binding it is also what makes
+   * the graph focusable in the first place, so a graph nobody wired this on does not start swallowing
+   * keystrokes from whatever is around it.
+   *
+   * Fires only when something is selected — a press with an empty selection means nothing and has
+   * nothing to report. `recordId`/`recordType` are filled **only when the selection is exactly one
+   * record**: one selected node, or the selected edge, which are alternatives rather than layers (see
+   * the engine's `selectEdge`). `count` says how many, so an interface can tell one from several
+   * rather than guessing from an absence. Several is left unhandled deliberately — the host's delete
+   * confirmation is modal and per record, so firing it N times would stack N dialogs, and a batch
+   * confirmation is a thing to design rather than to fall into.
+   *
+   * Backspace counts as delete. On a Mac it is *the* delete key, and a canvas that answered only to
+   * the one the manual calls Delete would be inoperable on half the keyboards it runs on.
+   */
+  onDeleteSelection?: (payload: {
+    recordId?: string;
+    recordType?: string;
+    /** Which of the two selections this was, for an interface that treats them differently. */
+    kind?: 'node' | 'edge';
+    /** How many things are selected. `1` is the case the ids above are filled for. */
+    count: number;
+  }) => void;
+  /**
    * Data-layer bindings, injected by the host's component registry rather than written in a template.
    * Templates never supply these.
    */

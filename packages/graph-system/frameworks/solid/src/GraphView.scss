@@ -47,6 +47,27 @@
   &:active {
     cursor: grabbing;
   }
+
+  /*
+    No ring for the focus a click gives it.
+
+    The surface is focusable wherever the delete key is bound (see `onDeleteSelection`), and it fills
+    its container — so the default outline would draw a box round the entire canvas every time
+    somebody clicked a card. What says the canvas has the keyboard is the selection, which is the
+    thing the key acts on and is already drawn.
+
+    `:focus-visible` keeps its ring, and the order matters: it is a subset of `:focus`, so it has to
+    come second to win. Somebody who reached the canvas by tabbing has no selection ring to read and
+    no pointer to re-orient with, and a tab stop that shows nothing is a tab stop that looks broken.
+  */
+  &:focus {
+    outline: none;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--we-ring-color);
+    outline-offset: -2px;
+  }
 }
 
 /**

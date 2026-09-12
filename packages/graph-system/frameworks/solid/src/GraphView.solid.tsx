@@ -1795,6 +1795,63 @@ export function GraphView(props: GraphViewProps) {
     dispatchPointer(behaviours(), phase, toInput(event), engine.behaviourContext());
   }
 
+  /**
+   * The delete key, on whatever is selected.
+   *
+   * The graph's only keyboard, and it is deliberately one key. A canvas is operated by pointing at
+   * it; what a keyboard buys here is the accelerator for the one action whose alternative — reach
+   * for the panel, find the control — is disproportionate to how often it is wanted.
+   *
+   * **On the surface rather than on `window`.** The alternative was tempting and wrong: a document
+   * listener would fire while somebody is typing a label into the inspector beside the canvas, so a
+   * Backspace mid-word would delete the record the word is about. Guarding that by sniffing
+   * `event.target` for editability is a list of element names that is wrong the first time a control
+   * puts its input in a shadow root. Focus is the question actually being asked — is the canvas what
+   * the keyboard is aimed at — so focus is what answers it.
+   *
+   * The listener writes nothing. See `onDeleteSelection` for why the graph reports rather than acts.
+   */
+  function onKeyDown(event: KeyboardEvent) {
+    if (event.key !== 'Delete' && event.key !== 'Backspace') return;
+    const report = props.onDeleteSelection;
+    if (!report) return;
+
+    /*
+      The edge first, and then the nodes — never both.
+
+      `selectEdge` clears the node selection and `select` clears the edge, so at most one of these is
+      ever non-empty. Asking in this order is belt and braces rather than a rule: if that invariant
+      ever broke, deleting the line somebody can see handles is the less surprising of the two.
+    */
+    const edgeId = engine.getSelectedEdge();
+    if (edgeId) {
+      const edge = engine.store.edge(edgeId);
+      // The record behind the line, as `edgeClick` resolves it. Absent on an ordinary edge, which
+      // stands for a declared relation and has no record to delete — the payload then carries a
+      // count and no ids, and the interface says so rather than removing something else.
+      const behind = edge?.reifiedAs ? parseAddress(edge.reifiedAs) : null;
+      event.preventDefault();
+      report({
+        count: 1,
+        kind: 'edge',
+        ...(behind?.kind === 'entity' && { recordId: behind.id, recordType: behind.type }),
+      });
+      return;
+    }
+
+    const ids = engine.getSelection();
+    if (!ids.length) return;
+    // Only an entity node stands for a record. A property, a literal or a synthetic cluster has
+    // nothing to delete, so it reports as a selection with no id rather than as no press at all.
+    const at = ids.length === 1 ? parseAddress(ids[0]) : null;
+    event.preventDefault();
+    report({
+      count: ids.length,
+      ...(ids.length === 1 && { kind: 'node' as const }),
+      ...(at?.kind === 'entity' && { recordId: at.id, recordType: at.type }),
+    });
+  }
+
   function onPointerMove(event: PointerEvent) {
     dispatch('onPointerMove', event);
     // Hover is read straight off the index rather than from DOM enter/leave, so it behaves the same
@@ -1877,8 +1934,27 @@ export function GraphView(props: GraphViewProps) {
       */}
       <div
         class="we-graph__surface"
+        /*
+          Focusable only where the delete key is bound — see `onDeleteSelection`.
+
+          A graph with no answer for the key has no reason to be a tab stop, and making every one of
+          them focusable would add a stop to every page holding a map, for a focus that does nothing.
+          `0` rather than `-1` so the keyboard can reach it at all: a canvas only a mouse can focus is
+          a canvas only a mouse can delete from.
+        */
+        tabIndex={props.onDeleteSelection ? 0 : undefined}
+        onKeyDown={onKeyDown}
         onPointerDown={(event) => {
           (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
+          /*
+            Pointing at the canvas is aiming the keyboard at it — which is also what takes focus off
+            whatever field was being typed into, correctly: the press was on the canvas.
+
+            `preventScroll`, because focusing an element scrolls it into view by default and this one
+            fills its container. In a template where the graph sits below the fold, a click on a card
+            would otherwise jump the page.
+          */
+          (event.currentTarget as HTMLElement).focus?.({ preventScroll: true });
           dispatch('onPointerDown', event);
         }}
         onPointerMove={onPointerMove}

@@ -183,6 +183,25 @@ export interface RecordStore {
    * came from a gesture rather than from typing and nothing should offer to edit them.
    */
   connectNodes: (link: PendingLink) => void;
+  /**
+   * Write the connection straight away, with nothing filled in — and answer with its id.
+   *
+   * The other half of {@link connectNodes}, and the choice between them is the template's. A
+   * knowledge map asks first, because a claim two things are related is the thing that map is *for*
+   * and the form is where somebody says what they mean. A canvas beside a live call does not: there,
+   * drawing the line **is** the assertion, the arrangement is the work, and a modal per line is a
+   * mode change in the middle of it — on the one surface whose every other gesture (drag, resize,
+   * bend, re-anchor, and `retargetOnCanvas`, which edits the claim itself) writes silently.
+   *
+   * Nothing is lost by deferring the words. An unlabelled `Relationship` was always reachable — the
+   * form saves with both fields empty — so this creates no state that did not already exist; it
+   * stops charging a modal for the state people were reaching anyway. The label and the kind are
+   * then edited where the line is read, in the inspector.
+   *
+   * Returns the new record's id so an `onSuccess` can select it. `lastCreatedId` is set too, for a
+   * caller that would rather read it there.
+   */
+  connectNodesNow: (link: PendingLink) => Promise<string>;
   /** Switch which model is being created, discarding the values typed against the last one. */
   setRecordEntity: (entity: string) => void;
   /** Set one field's value. Takes the field name, so one action serves every control. */
@@ -574,6 +593,47 @@ export function RecordStoreProvider(props: ParentProps) {
       setPendingLink(link);
       setRecordEntity(RELATIONSHIP);
     });
+  }
+
+  /**
+   * The same connection, written immediately — see the interface for why a template chooses.
+   *
+   * Deliberately not routed through the draft. A draft exists so a person can fill one in, and
+   * mounting one here only to save it unread would put the modal on screen for a frame and make the
+   * discard guard reachable with nothing to discard. The write is the two steps `saveRecord` makes
+   * for a relationship and no others: the endpoint *types* go in with the fields, because the ORM
+   * writes an ordinary property from the create payload, and the endpoints themselves are linked
+   * after, because `innerUpdate` skips a relation field holding a plain value — `create(p, { source:
+   * uri })` typechecks, runs, and writes no link at all.
+   *
+   * No canvas parent, and none is needed: the canvas seed asks for connections whose `source` is
+   * among the records it has placed, rather than for its own children, so a relationship drawn here
+   * is found by the canvas that drew it and by any other showing both ends.
+   */
+  async function connectNodesNow(link: PendingLink): Promise<string> {
+    const dataset = datasetStore.currentDataset();
+    if (!dataset || !link?.sourceId || !link?.targetId) return '';
+    try {
+      const created = (await getEntity(RELATIONSHIP).create(dataset.handle, {
+        sourceType: link.sourceType,
+        targetType: link.targetType,
+      })) as {
+        id?: string;
+        setSource?: (value: string) => Promise<unknown>;
+        setTarget?: (value: string) => Promise<unknown>;
+      };
+      await created.setSource?.(link.sourceId);
+      await created.setTarget?.(link.targetId);
+      const id = created?.id ?? '';
+      setLastCreatedId(id);
+      return id;
+    } catch (error) {
+      // A toast rather than `recordErrors`: there is no form on screen holding what somebody typed,
+      // so the only place a failure can be reported is the one that does not need one.
+      console.error('RecordStore: connecting two records failed', error);
+      toastService.error('Could not draw that connection.');
+      return '';
+    }
   }
 
   /**
@@ -1186,6 +1246,7 @@ export function RecordStoreProvider(props: ParentProps) {
     savingRecord,
     lastCreatedId,
     pendingLink,
+    connectNodesNow,
     openRecordForm,
     connectNodes,
     createOnCanvas,

@@ -80,3 +80,75 @@ describe('GraphView mounts', () => {
     dispose = undefined;
   });
 });
+
+/**
+ * The delete key — the graph's only keyboard, and the only place it takes focus.
+ *
+ * Asserted here rather than in `graph-core` because none of it is engine behaviour: the engine
+ * already answers "what is selected", and what is new is a DOM listener, a tab stop and the decision
+ * about which of those exist. All three are invisible to a typecheck and to every pure-function test
+ * in this package.
+ */
+describe('GraphView delete key', () => {
+  const surfaceOf = (host: HTMLElement) => host.querySelector('.we-graph__surface') as HTMLElement;
+
+  const press = (el: HTMLElement, key: string) =>
+    el.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+
+  it('is not a tab stop unless the key is bound', () => {
+    /*
+      A graph with no answer for the key has no business being focusable: every page holding a map
+      would gain a tab stop whose focus does nothing. So the attribute is the binding, made visible.
+    */
+    expect(surfaceOf(mount()).hasAttribute('tabindex')).toBe(false);
+
+    dispose?.();
+    dispose = undefined;
+
+    expect(surfaceOf(mount({ onDeleteSelection: () => undefined })).getAttribute('tabindex')).toBe('0');
+  });
+
+  it('takes focus on a press, because pointing at the canvas is aiming the keyboard at it', () => {
+    /*
+      The whole reason the listener is on the surface rather than on `window`: focus is what
+      separates "delete the selected card" from "delete the character before the cursor" in the
+      inspector's label field, and nothing else can.
+    */
+    const surface = surfaceOf(mount({ onDeleteSelection: () => undefined }));
+
+    surface.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+
+    expect(document.activeElement).toBe(surface);
+  });
+
+  it('says nothing when nothing is selected, and nothing about any other key', () => {
+    /*
+      Two silences worth pinning. A press with an empty selection has nothing to report — firing with
+      a count of zero would make every consumer write the same guard. And the listener claims exactly
+      two keys, so a graph that has focus does not start swallowing typing near it.
+    */
+    const seen: unknown[] = [];
+    const surface = surfaceOf(mount({ onDeleteSelection: (payload) => seen.push(payload) }));
+
+    press(surface, 'Delete');
+    press(surface, 'Backspace');
+    press(surface, 'a');
+    press(surface, 'Enter');
+
+    expect(seen).toEqual([]);
+  });
+
+  it('leaves the event alone when it does not act on it', () => {
+    /*
+      `preventDefault` only where the press meant something. Backspace with nothing selected is
+      somebody's browser shortcut, or nothing at all, and a canvas that swallowed it either way would
+      be a canvas that had silently taken over a key it does not use.
+    */
+    const surface = surfaceOf(mount({ onDeleteSelection: () => undefined }));
+    const event = new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true, cancelable: true });
+
+    surface.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(false);
+  });
+});

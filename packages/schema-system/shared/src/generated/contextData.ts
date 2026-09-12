@@ -1416,6 +1416,11 @@ export const contextData: ContextData = {
           type: '((payload: { action: string; id: string; recordId?: string; recordType?: string; value?: unknown; preview?: boolean; }) => void)',
           optional: true,
         },
+        {
+          name: 'onDeleteSelection',
+          type: '((payload: { recordId?: string; recordType?: string; kind?: "node" | "edge"; count: number; }) => void)',
+          optional: true,
+        },
         { name: 'host', type: 'GraphHostBindings', optional: true },
       ],
       source: 'widgets',
@@ -2461,6 +2466,7 @@ export const contextData: ContextData = {
       actions: [
         'openRecordForm',
         'connectNodes',
+        'connectNodesNow',
         'setRecordEntity',
         'setRecordField',
         'setRelationshipKind',

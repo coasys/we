@@ -753,6 +753,172 @@ const EMPTY_COUNT = `count(${EMPTY_FIELDS})`;
  */
 const HAS_EDITABLE_FIELDS = `count(recordStore.displays[${CARD_TYPE}].fields.filter(f, !(f.kind in ['relation', 'image', 'file', 'json'])))`;
 
+/** Whether the selected thing is a drawn connection rather than a card. */
+const IS_RELATIONSHIP = `${CARD_TYPE} == 'Relationship'`;
+
+/** The kind record this connection names, or undefined — a dotted read off it is undefined too. */
+const KIND_OF_LINK = 'find(local.relationshipKinds, { id: row.relationshipTypeId })';
+
+/**
+ * Which kind of connection a line is — the one field the generated panel cannot draw.
+ *
+ * `Relationship.relationshipTypeId` holds the **id of a record** and is declared as an ordinary
+ * string, so the two halves of this panel both get it wrong on their own. `displays` derives its
+ * field list from `display.fields ?? authoring.fields`, and `Relationship.authoring.fields` is
+ * `['label', 'description']` — deliberately, since the kinds are a list to pick from rather than
+ * something to type — so the field is simply absent from the read rows and from `fieldEditor`. Put
+ * *in* that list it would be worse than absent: a text box showing a raw `we://…` id, and a caption
+ * reading "Relationship Type Id".
+ *
+ * So it is drawn here by hand, which is the same answer `recordForm` reaches for the create modal
+ * and `EdgeDetail` for the knowledge map — three surfaces, one shape, and the generic path unable to
+ * serve any of them. What would retire all three is `recordDisplay` learning a kind for "a string
+ * that references a record of a named model"; `Signal.signalTypeId` is the second instance of it, so
+ * the case is close to made. It is not made *here*: a new `DisplayKind` is a change to every surface
+ * that switches on one, and this branch has enough in it.
+ *
+ * Reading and editing, in one node, because both are one row in the same column and splitting them
+ * would put the kind in two places that have to agree about where it sits.
+ */
+const relationshipKind: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: IS_RELATIONSHIP },
+    then: {
+      type: '$if',
+      props: {
+        condition: { $: 'local.editing' },
+        /*
+          Editing: the community's kinds, and a way back out of having picked one.
+
+          Offered only where the community has named a kind. A space that has named none still
+          connects things — the label carries the meaning until a vocabulary exists, which is how one
+          gets discovered — and a picker with nothing in it would ask a question with no answers.
+
+          No "unnamed" entry among the options, and this is the trap worth naming: a schema cannot
+          prepend to a list, and the interpolation that looks like it can — `` `${[…]}${list.map(…)}` ``
+          — evaluates to a *string*, so `options` receives "[object Object]" and the select renders
+          empty. That spelling was live in `recordForm` and is gone. The unset state is the
+          placeholder; getting back to it is the button.
+        */
+        then: {
+          type: '$if',
+          props: {
+            condition: { $: 'count(local.relationshipKinds)' },
+            then: {
+              type: 'we-form-field',
+              props: { label: 'Kind', size: 'sm', width: '100%' },
+              children: [
+                {
+                  type: 'Row',
+                  props: { gap: '200', ay: 'center', width: '100%' },
+                  children: [
+                    {
+                      type: 'we-select',
+                      props: {
+                        size: 'sm',
+                        flex: '1',
+                        minWidth: '0',
+                        placeholder: 'Unnamed kind',
+                        options: {
+                          $: 'local.relationshipKinds.map(item, { label: item.name, value: item.id, icon: item.icon })',
+                        },
+                        value: { $: 'row.relationshipTypeId' },
+                        // The same writer every other control in edit mode uses — one action, named
+                        // field, value coerced by the field's declared kind. `relationshipTypeId` is
+                        // a plain string property, so nothing special happens to it on the way.
+                        onChange: {
+                          $action: 'recordStore.updateRecordField',
+                          args: [
+                            'Relationship',
+                            { $: 'routeStore.params.card' },
+                            'relationshipTypeId',
+                            {
+                              $: 'event.detail',
+                            },
+                          ],
+                        },
+                      },
+                    },
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $: 'row.relationshipTypeId' },
+                        then: {
+                          type: 'we-tooltip',
+                          props: { content: 'Leave the kind unnamed' },
+                          children: [
+                            {
+                              type: 'we-button',
+                              props: {
+                                size: 'sm',
+                                variant: 'ghost',
+                                square: true,
+                                label: 'Leave the kind unnamed',
+                                flexShrink: '0',
+                                // An empty string, which the AD4M adapter reads as "clear this
+                                // property" — see `clearOnEmpty`. Not null or undefined: those still
+                                // skip, so that an ordinary partial save is not data loss.
+                                onClick: {
+                                  $action: 'recordStore.updateRecordField',
+                                  args: ['Relationship', { $: 'routeStore.params.card' }, 'relationshipTypeId', ''],
+                                },
+                              },
+                              children: [{ type: 'we-icon', props: { name: 'x' } }],
+                            },
+                          ],
+                        },
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+        /*
+          Reading: the kind's own name and glyph, drawn as one more detail row.
+
+          Only when one is set and still resolves. A kind the community has since deleted reads as
+          nothing rather than as its bare id — the same choice the detail rows make for an empty
+          field, and for the same reason: a row showing a `we://` string is a row that looks like
+          something failing to load.
+        */
+        else: {
+          type: '$if',
+          props: {
+            condition: { $: KIND_OF_LINK },
+            then: {
+              type: 'Column',
+              props: { gap: '050', py: '100', borderTop: '1px solid border' },
+              children: [
+                { type: 'we-text', props: { variant: 'footnote', color: 'text-faint' }, children: ['Kind'] },
+                {
+                  type: 'Row',
+                  props: { gap: '200', ay: 'center' },
+                  children: [
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $: `${KIND_OF_LINK}.icon` },
+                        then: {
+                          type: 'we-icon',
+                          props: { name: { $: `${KIND_OF_LINK}.icon` }, size: 'xs', color: 'text-muted' },
+                        },
+                      },
+                    },
+                    { type: 'we-text', props: { variant: 'footnote' }, children: [{ $: `${KIND_OF_LINK}.name` }] },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      },
+    },
+  },
+};
+
 /**
  * Whether this record is a composed document rather than a filled-in form.
  *
@@ -982,6 +1148,15 @@ const inspectorPanel: SchemaNode = {
       */
       when: { $: 'routeStore.params.card' },
     },
+    /*
+      The kinds of connection this community has named — see `relationshipKind`.
+
+      Unconditional rather than gated on the selection being a line. It is one subscription over a
+      list a space has a handful of, and `when`-ing it on the card's type would tear the
+      subscription down and set it up again on every click between a card and a line, to save
+      nothing. Hoisted here so the row below reads one answer rather than one per render.
+    */
+    relationshipKinds: { entity: 'RelationshipType', order: { name: 'asc' } },
   },
   children: [
     panelHeader({
@@ -993,26 +1168,99 @@ const inspectorPanel: SchemaNode = {
         editing — a note's content is not one, and is edited where it is shown. Lit while it is on.
       */
       aside: {
-        type: '$if',
-        props: {
-          condition: { $: `count(local.card) && ${HAS_EDITABLE_FIELDS}` },
-          then: {
-            type: 'we-tooltip',
-            props: { content: { $: "local.editing ? 'Done editing' : 'Edit this record'" } },
-            children: [
-              {
-                type: 'we-button',
-                props: {
-                  size: 'sm',
-                  square: true,
-                  variant: { $: "local.editing ? 'secondary' : 'ghost'" },
-                  onClick: { $toggleLocal: 'editing' },
-                },
-                children: [{ type: 'we-icon', props: { name: { $: "local.editing ? 'check' : 'pencil-simple'" } } }],
+        type: 'Row',
+        props: { gap: '100', ay: 'center' },
+        children: [
+          {
+            type: '$if',
+            props: {
+              condition: { $: `count(local.card) && ${HAS_EDITABLE_FIELDS}` },
+              then: {
+                type: 'we-tooltip',
+                props: { content: { $: "local.editing ? 'Done editing' : 'Edit this record'" } },
+                children: [
+                  {
+                    type: 'we-button',
+                    props: {
+                      size: 'sm',
+                      square: true,
+                      variant: { $: "local.editing ? 'secondary' : 'ghost'" },
+                      onClick: { $toggleLocal: 'editing' },
+                    },
+                    children: [
+                      { type: 'we-icon', props: { name: { $: "local.editing ? 'check' : 'pencil-simple'" } } },
+                    ],
+                  },
+                ],
               },
-            ],
+            },
           },
-        },
+          /*
+            Delete, beside the pencil — and the one control here that works for a *line*.
+
+            This panel is the only surface the canvas has that opens a card and a connection with the
+            same two locals, which is what makes it the right home for a delete that has to cover
+            both: a card already has a bin on its own bar, and a line had nowhere at all. Without one,
+            immediate connection (see `onEdgeCreate`) would make every mis-drop permanent — the
+            modal's Cancel was the only way out of a line drawn by accident, and it is gone.
+
+            No `edgeActions` to mirror the card's bar. A card is a box with a free top edge; a
+            selected line's whole length is already committed to the handles that bend it, and for a
+            straight two-point route the midpoint — where a bar would go — is exactly where the
+            "drag to bend the line here" grip sits. The symmetry is only ever an appearance.
+
+            Gated on the record being loaded rather than on it being editable: a `CollectionBlock` has
+            no field the generated editor will touch, so the pencil is hidden for a note, and a note
+            is certainly deletable.
+
+            `record.delete` rather than a store action, for `nodeActions`' reason — the host's own
+            confirmation stands in front of it, so a template arriving from a stranger does not get
+            to decide whether deleting asks first.
+          */
+          {
+            type: '$if',
+            props: {
+              condition: { $: 'count(local.card)' },
+              then: {
+                type: 'we-tooltip',
+                props: { content: 'Delete this record' },
+                children: [
+                  {
+                    type: 'we-button',
+                    props: {
+                      size: 'sm',
+                      square: true,
+                      variant: 'ghost',
+                      color: 'danger-text',
+                      label: 'Delete this record',
+                      /*
+                        No `onSuccess` clearing the address, and the reason is worth writing down.
+
+                        The obvious version clears `card`/`cardType` once the delete lands, so the
+                        panel is not left pointing at a record that is gone. It cannot: the host's
+                        guard wraps a destructive action as
+                        `(await guard(…)) ? bound(…) : undefined` — so **refusing the confirmation
+                        resolves**, exactly as accepting it does, and an `onSuccess` would fire on
+                        Cancel and empty the panel over a record nobody deleted.
+
+                        Nothing is needed anyway. The panel's `card` query is subscribed, so the
+                        delete empties it and the empty state takes over on its own; a cancel leaves
+                        everything where it was. The cost is a stale parameter in the URL, which the
+                        query's own `when` and `limit: 1` already answer honestly. `nodeActions`'
+                        delete makes the same non-choice, one surface along.
+                      */
+                      onClick: {
+                        $action: 'record.delete',
+                        args: [{ $: CARD_TYPE }, { $: 'routeStore.params.card' }],
+                      },
+                    },
+                    children: [{ type: 'we-icon', props: { name: 'trash' } }],
+                  },
+                ],
+              },
+            },
+          },
+        ],
       },
     }),
     {
@@ -1192,6 +1440,13 @@ const inspectorPanel: SchemaNode = {
                         },
                       },
                     },
+                    /*
+                      After the fields and before the disclosure, in both modes — which is where it
+                      belongs in each. Reading, it is one more detail row under the label and the
+                      description; editing, it is one more control under theirs. Above the
+                      disclosure because the disclosure is for what is *not* set, and this is.
+                    */
+                    relationshipKind,
                     emptyFields,
                     /*
                       No "Open full record". There was a ghost button here that navigated to
@@ -1642,9 +1897,36 @@ const canvas: SchemaNode = {
       that produced nothing, which is exactly the state this template spent three sittings in.
     */
     showStatus: true,
-    // Connecting two records means the same thing wherever the line was drawn, so it goes through
-    // the same store call the knowledge map makes and ends in the same form.
-    onEdgeCreate: { $action: 'recordStore.connectNodes', args: [{ $: 'event' }] },
+    /*
+      The line, drawn — and written on the spot, with nothing filled in.
+
+      `connectNodesNow` rather than `connectNodes`, which is the knowledge map's answer and stays it:
+      there, a claim two things are related is what the map is *for*, and the form is where somebody
+      says what they mean by it. Here the arrangement is the work. Drawing the line **is** the
+      assertion, and a modal per line is a mode change in the middle of a spatial gesture — on the one
+      surface where every other gesture writes silently, `onEdgeRetarget` included, which changes what
+      an existing line *says* with no dialog at all. Asking on the cheaper act and not on the dearer
+      one is the wrong way round.
+
+      Nothing is deferred that was ever enforced: the form saved with both fields empty, so an
+      unlabelled connection was always reachable and this only stops charging a modal for it. The
+      words are added where the line is read — click it, and the inspector has its label, its
+      description and the community's kinds.
+
+      Which is why the `onSuccess` matters as much as the call. A line that appears with nothing
+      selected teaches nobody that it is a record with an author and a thread; opening the inspector
+      on it puts the fields in front of the person who just drew it, in the same beat. Empty on a
+      failure, which clears the panel rather than leaving the last card in it — the same honesty
+      `onEdgeClick` keeps for a line with nothing behind it.
+    */
+    onEdgeCreate: {
+      $action: 'recordStore.connectNodesNow',
+      args: [{ $: 'event' }],
+      onSuccess: [
+        { $setLocal: 'inspecting', value: { $: 'result' } },
+        { $setLocal: 'inspectingType', value: { $: "result ? 'Relationship' : ''" } },
+      ],
+    },
     /*
       The drop, written back — an upsert against the *canvas* rather than an update of the record.
 
@@ -1728,6 +2010,30 @@ const canvas: SchemaNode = {
       { $setLocal: 'inspecting', value: { $: 'event.recordId' } },
       { $setLocal: 'inspectingType', value: { $: 'event.recordType' } },
     ],
+    /*
+      Delete, on whatever is selected — a card or a line, the same key for both.
+
+      An accelerator, not the only path: a card's own bar carries a bin (see `nodeActions`), and the
+      inspector carries one for whichever of the two is open. A key that was the sole way to remove
+      something would be a way nobody discovers. What it buys is the case where reaching for either
+      of those is disproportionate — tidying up a canvas, where the answer to "this line is wrong" is
+      wanted in the same beat as noticing it.
+
+      Guarded on `event.recordId`, which the graph fills only for a selection of exactly one record.
+      That is the whole of the multi-select story here and it is deliberately small: `record.delete`
+      raises the host's own confirmation, so firing it per member of a selection would stack a dialog
+      per card. A batch confirmation is a thing to design rather than to arrive at by looping.
+
+      Through `record.delete` for `nodeActions`' reason — it is guarded by the host, so a keystroke
+      asks before it destroys anything. Which is also what makes the key safe to offer at all: there
+      is no undo behind it.
+    */
+    onDeleteSelection: {
+      $if: {
+        condition: { $: 'event.recordId' },
+        then: { $action: 'record.delete', args: [{ $: 'event.recordType' }, { $: 'event.recordId' }] },
+      },
+    },
     /*
       Clearing on a background click, and only then.
 

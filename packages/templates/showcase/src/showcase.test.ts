@@ -552,18 +552,83 @@ describe('the workshop template’s call selection', () => {
 
     expect(json).not.toContain('connect-nodes');
     expect(json).not.toContain('local.connecting');
-    expect(json).toContain('recordStore.connectNodes');
     /*
-      And the form that asks what the connection *is*.
+      And the drop writes the connection rather than asking about it.
 
-      `connectNodes` opens a draft, and a draft whose non-nullness mounts a modal needs something to
-      mount it. The modal is placed by the default template's graph view, and this template supplies
-      its own canvas — so the drag completed, the store opened a form, and the screen showed nothing.
-      The gesture looked like it had silently failed when what had failed was the surface that asks
-      about it.
+      `connectNodesNow`, not `connectNodes` — the substring is why this asserts the whole action
+      path. The knowledge map keeps the form, where the claim is what the map is for; here the
+      arrangement is the work and a modal per line is a mode change in the middle of a spatial
+      gesture, on the one surface where every other gesture writes silently.
+    */
+    expect(json).toContain('"$action":"recordStore.connectNodesNow"');
+    expect(json).not.toContain('"$action":"recordStore.connectNodes"');
+    /*
+      With the new line selected, which is the half that makes it discoverable.
+
+      A line that appears with nothing selected teaches nobody that it is a record with a label, a
+      kind and an author. Opening the inspector on it puts those in front of the person who drew it.
+    */
+    expect(json).toContain('{"$setLocal":"inspecting","value":{"$":"result"}}');
+    /*
+      The record form is still here, and still needed: `createOnCanvas` opens a draft, and a draft
+      whose non-nullness mounts a modal needs something to mount it. The modal is placed by the
+      default template's graph view, and this template supplies its own canvas — so without it the
+      double-click completed, the store opened a form, and the screen showed nothing.
     */
     expect(json).toContain('recordStore.recordDraft');
     expect(json).toContain('recordStore.saveRecord');
+  });
+
+  it('gives a drawn line a way to be removed, since nothing asks before it exists', () => {
+    /*
+      Immediate creation takes away the modal's Cancel, which was the only way out of a line drawn by
+      accident. Two things put one back, and neither is an edge toolbar: a card's bar works because a
+      card is a box with a free top edge, where a selected line's whole length is already committed
+      to the handles that bend it — for a straight route the midpoint, where a bar would go, is
+      exactly where the "drag to bend the line here" grip sits.
+
+      So: the inspector, which is the one surface that opens a card and a line through the same two
+      parameters; and the delete key, for the case where reaching for a panel is disproportionate.
+    */
+    const json = JSON.stringify(workshop);
+
+    // Guarded on `event.recordId`, which the graph fills only for a selection of exactly one record
+    // — the host's delete confirmation is modal and per record, so N of them would stack N dialogs.
+    expect(json).toContain('"onDeleteSelection"');
+    expect(json).toContain('"condition":{"$":"event.recordId"}');
+
+    // Through `record.delete` in both places, so the host's own confirmation stands in front of a
+    // keystroke that has no undo behind it.
+    expect(json).toContain('"$action":"record.delete"');
+
+    // And the panel's own, which takes the id from the address rather than from a node payload —
+    // the inspector is a panel, so the selection reaches it as parameters and nothing else.
+    expect(json).toContain('"args":[{"$":"routeStore.params.cardType"},{"$":"routeStore.params.card"}]');
+  });
+
+  it('offers a connection’s kind where the line is read, not only where it was drawn', () => {
+    /*
+      `Relationship.relationshipTypeId` is absent from `authoring.fields` on purpose — the kinds are
+      a list to pick from, not something to type — and `displays` derives its field list from that,
+      so the generated panel draws it nowhere. With the create modal gone from this surface the
+      community's vocabulary would have become unreachable from the canvas entirely.
+    */
+    const json = JSON.stringify(workshop);
+
+    expect(json).toContain('"relationshipKinds":{"entity":"RelationshipType"');
+    expect(json).toContain('relationshipTypeId');
+
+    /*
+      And the options come from a plain map.
+
+      A schema cannot prepend to a list. The interpolation that looks like it can — two lists inside
+      a template literal — evaluates to a *string*, so `options` receives "[object Object]" and the
+      select renders with nothing in it. That spelling was live in `recordForm`'s kind picker, which
+      is to say the picker never had any options; the unset state is the placeholder now, and the
+      way back to it is a button beside the select.
+    */
+    expect(json).not.toContain('[{ label: ');
+    expect(json).toContain('local.relationshipKinds.map(item, { label: item.name, value: item.id, icon: item.icon })');
   });
 
   it('accounts for both of the module’s panels, so neither is drawn twice', () => {

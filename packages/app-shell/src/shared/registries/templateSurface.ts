@@ -696,6 +696,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     pendingLink: state('content'),
     openRecordForm: action('content'),
     connectNodes: action('content'),
+    connectNodesNow: action('content'),
     createOnCanvas: action('content'),
     createCardOnCanvas: action('content'),
     placeOnCanvas: action('content'),
