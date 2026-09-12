@@ -174,14 +174,25 @@ export const editNoteModal: SchemaNode = {
  *
  * A closed set of values — a task's status — is a select over the options the model declares.
  * Media, files, JSON and relations are not editable here; a picture is uploaded, not typed.
+ *
+ * `fields` is the list to draw, as an expression, so the inspector can call this twice over two
+ * halves of the same declaration — the fields that hold something, and the ones that do not, which
+ * sit behind a disclosure. Defaults to all of them, which is what a caller with nothing to split on
+ * wants.
+ *
+ * **The record must be bound as `row`** — by whatever `$each` or `$single` this is placed inside,
+ * since the two expressions have to name the same thing. `record` was the obvious name and is the
+ * one name it cannot be: `record.create`/`update`/`delete` is the mutation namespace, so a dotted
+ * read off a binding called `record` is reported by the tier inspector as a reference to a store
+ * member that does not exist — which is a template refused at install time, over a name.
  */
-export function fieldEditor(entity: SchemaProp, id: SchemaProp): SchemaNode {
+export function fieldEditor(entity: SchemaProp, id: SchemaProp, fields = 'local.display.fields'): SchemaNode {
   const write = (value: SchemaProp): SchemaProp => ({
     $action: 'recordStore.updateRecordField',
     args: [entity, id, { $: 'field.name' }, value],
   });
   const onChange = write({ $: 'event.detail' });
-  const value = { $: 'record[field.name]' };
+  const value = { $: 'row[field.name]' };
   const control = (node: SchemaNode): SchemaNode => ({
     type: 'we-form-field',
     props: { label: { $: 'field.label' }, size: 'sm', width: '100%' },
@@ -190,7 +201,7 @@ export function fieldEditor(entity: SchemaProp, id: SchemaProp): SchemaNode {
 
   return {
     type: '$each',
-    props: { items: { $: 'local.display.fields' }, as: 'field' },
+    props: { items: { $: fields }, as: 'field' },
     children: [
       {
         type: '$if',

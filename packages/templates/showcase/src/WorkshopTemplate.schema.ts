@@ -58,6 +58,7 @@ import type { RouteSchema, SchemaNode, SchemaProp, TemplateSchema } from '@we/sc
 // depends on the former, which re-exports them, and on the latter not at all.
 import {
   anchorScope,
+  composerModal,
   emptyState,
   field,
   formModal,
@@ -79,6 +80,8 @@ import {
 } from './WorkshopCards.ts';
 import {
   keyPanel,
+  kindIcon,
+  kindLabel,
   LENS_PARAM,
   LENS_QUERY,
   lensNodeRules,
@@ -691,6 +694,187 @@ const callChrome: SchemaNode = {
   children: [callPill],
 };
 
+/** The model the selected card is of — the inspector's whole subject, named once. */
+const CARD_TYPE = 'routeStore.params.cardType';
+
+/**
+ * The fields with something in them, as details — the rows the panel is mostly made of.
+ *
+ * `role == 'detail'` because the title and the summary are already drawn, as the heading and the
+ * line under it; without the filter they appeared a second time as captioned rows, so every record
+ * showed its own name twice.
+ */
+const SET_DETAILS = "local.display.fields.filter(f, f.role == 'detail' && f.kind != 'relation' && row[f.name])";
+
+/** The same, as controls: everything set, title and summary included, since editing them is the point. */
+const SET_FIELDS = "local.display.fields.filter(f, f.kind != 'relation' && row[f.name])";
+
+/**
+ * The fields holding nothing — what the disclosure offers.
+ *
+ * Images, files and JSON are excluded along with relations: `fieldEditor` draws no control for any
+ * of them (a picture is uploaded, not typed), so counting them would promise rows that expanding
+ * does not produce.
+ */
+const EMPTY_FIELDS =
+  "local.display.fields.filter(f, !(f.kind in ['relation', 'image', 'file', 'json']) && !row[f.name])";
+
+const EMPTY_COUNT = `count(${EMPTY_FIELDS})`;
+
+/**
+ * Whether this MODEL has any field the panel could edit — asked of the declaration rather than of
+ * the record, because the header is outside the `$each` and has no row in scope.
+ *
+ * What the pencil is gated on. A composed document declares no fields at all (see
+ * `CollectionBlock`'s manifest entry), so unlocking editing on a note produced a mode with nothing
+ * in it: the same empty panel this whole piece of work started from, one press further in.
+ */
+const HAS_EDITABLE_FIELDS = `count(recordStore.displays[${CARD_TYPE}].fields.filter(f, !(f.kind in ['relation', 'image', 'file', 'json'])))`;
+
+/**
+ * Whether this record is a composed document rather than a filled-in form.
+ *
+ * The value, not the model's name: a `CollectionBlock` is both things depending on what made it.
+ * A note has an `editorState` and its substance is in there; a call record, or a board column, is
+ * the same class with none, and reads as its fields exactly as a task does.
+ */
+const COMPOSED = 'row.editorState';
+
+/**
+ * A note's actual content, drawn the way the cards route draws a post.
+ *
+ * The panel is derived from `recordStore.displays`, which is a list of *properties* — and a
+ * composed document has none worth reading: its title is usually empty and its text lives in
+ * `editorState`, a blob no field row can render. So the panel that had just learned to say
+ * "Note" went on to say "Untitled" over nothing at all, about a sticky note with three paragraphs
+ * visible on the canvas behind it.
+ *
+ * `BlockRenderer` is the same component the post card mounts, so a note reads here as it does
+ * everywhere else. On a `surface` with a border, for the same reason the card route puts one there
+ * and not a sunken well: the panel's frame paints the page, and a well belongs *in* a surface rather
+ * than on the ground — what is wanted here is a card, since the strip above is a description of the
+ * record and this is the record itself.
+ *
+ * The composer beside it is the other half: with the content on screen, the pencil in the header —
+ * which edits declared fields, and for a note means its title and description — is the wrong tool
+ * for the thing somebody is now looking at. Its own button, attached to the content, opening the
+ * same composer the canvas's double-click does and saving through the same reconcile.
+ */
+const composedContent: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: COMPOSED },
+    then: {
+      type: 'Column',
+      props: { gap: '200', width: '100%' },
+      children: [
+        {
+          type: 'Column',
+          props: {
+            width: '100%',
+            bg: 'surface',
+            border: '1px solid border',
+            r: 'surface',
+            p: '300',
+            overflow: 'hidden',
+          },
+          children: [{ type: 'BlockRenderer', props: { editorState: { $: COMPOSED } } }],
+        },
+        {
+          type: 'Row',
+          props: { ax: 'start' },
+          children: [
+            {
+              type: 'we-button',
+              props: { size: 'sm', variant: 'ghost', gap: '200', onClick: { $setLocal: 'noteOpen', value: true } },
+              children: [
+                { type: 'we-icon', props: { name: 'pencil-simple' } },
+                { type: 'we-text', props: { variant: 'footnote' }, children: ['Edit note'] },
+              ],
+            },
+          ],
+        },
+        // No `$if` of its own: the fragment mounts only while `noteOpen` is set, which is what
+        // resets the editor between one note and the next.
+        composerModal({
+          openLocal: 'noteOpen',
+          title: 'Note',
+          saveLabel: 'Save',
+          editorState: { $: COMPOSED },
+          // `arg` second: `updatePost(postId, json)`.
+          saveAction: { $action: 'spaceStore.updatePost', args: [{ $: 'row.id' }, { $: 'arg' }] },
+        }),
+      ],
+    },
+  },
+};
+
+/**
+ * The fields this record has nothing in, behind one collapsed row.
+ *
+ * Controls rather than captions, in both modes: the question somebody has when they open this is
+ * "can I put something here", and a read-only list of blanks answers it with no. It is also why the
+ * row is at the foot of the panel and shut by default — a model with twelve properties and three
+ * filled in should read as three facts, not as nine gaps.
+ *
+ * `$animate` rather than `$if`, so closing it does not unmount a control somebody is halfway through
+ * typing into — `fieldEditor` writes on change, so an unmount mid-edit would drop what was typed.
+ */
+const emptyFields: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: EMPTY_COUNT },
+    then: {
+      type: 'Column',
+      props: { gap: '200', pt: '200', borderTop: '1px solid border' },
+      children: [
+        {
+          type: 'we-button',
+          props: {
+            variant: 'bare',
+            width: '100%',
+            ax: 'start',
+            gap: '200',
+            onClick: { $toggleLocal: 'showEmpty' },
+          },
+          children: [
+            {
+              type: 'we-icon',
+              props: {
+                size: 'xs',
+                color: 'text-faint',
+                name: { $: "local.showEmpty ? 'caret-down' : 'caret-right'" },
+              },
+            },
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-faint' },
+              children: [{ $: `${EMPTY_COUNT} + ' empty ' + plural(${EMPTY_COUNT}, 'field', 'fields')` }],
+            },
+          ],
+        },
+        {
+          type: '$animate',
+          props: {
+            condition: { $: 'local.showEmpty' },
+            enterTransition: [
+              { type: 'reveal', duration: 200 },
+              { type: 'fade', duration: 150 },
+            ],
+          },
+          children: [
+            {
+              type: 'Column',
+              props: { gap: '300', pb: '100' },
+              children: [fieldEditor({ $: CARD_TYPE }, { $: 'routeStore.params.card' }, EMPTY_FIELDS)],
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
 /**
  * One card, opened out — its type, its properties, and the way to its own page.
  *
@@ -713,9 +897,27 @@ const callChrome: SchemaNode = {
  * from the same place the create form gets them. A model adopted this morning renders here with
  * nothing written for it.
  *
- * Relations are deliberately absent for now. `displays` carries properties only, so "what this is
- * connected to" would mean reading `Relationship` records for the community-named half and leaving
- * the declared half silently missing — worse than not answering.
+ * ## What is set, and what is not
+ *
+ * Two lists out of one declaration. A field holding something is a row; a field holding nothing is
+ * behind a disclosure at the foot of the panel, as a *control*, so opening it is how something gets
+ * added rather than a longer list of blanks to read past. That split is why the panel does not grow
+ * a row per property the moment a model declares one, and why "add a due date" is reachable without
+ * first deciding to edit.
+ *
+ * A model that declares no fields has neither list, and that is the ordinary case rather than a
+ * degenerate one: a note is composed, so its content is a document and not a set of properties —
+ * see `composedContent`, and `CollectionBlock`'s own manifest entry for why it declares roles and
+ * no field list. Nothing here offers to name a sticky note.
+ *
+ * Relations — `comments`, `signals`, `mentions`, a collection's `children` — are in neither, and
+ * that is deliberate rather than an omission. `displayFor` lists them now, and they arrived here as
+ * captioned blank space: the panel's query hydrates no relation (an `include` names its relations
+ * literally, and this query's entity is an expression), so a relation reads as an empty list
+ * whatever it holds, and there is no picker to write one with either. A row that can neither show a
+ * value nor take one is a label with nothing behind it. Answering "what is this connected to"
+ * properly means hydrating the declared half and reading `Relationship` records for the
+ * community-named half, which is its own piece of work.
  */
 const inspectorPanel: SchemaNode = {
   type: 'Column',
@@ -747,12 +949,13 @@ const inspectorPanel: SchemaNode = {
       /*
         Unlock editing, in the header where a mode belongs. The inspector already shows every value
         a record has, so it is the surface that edits them; a separate form would show the same
-        fields a second time. Offered only while a record is loaded, and lit while it is on.
+        fields a second time. Offered only while a record is loaded and its model has a field worth
+        editing — a note's content is not one, and is edited where it is shown. Lit while it is on.
       */
       aside: {
         type: '$if',
         props: {
-          condition: { $: 'count(local.card)' },
+          condition: { $: `count(local.card) && ${HAS_EDITABLE_FIELDS}` },
           then: {
             type: 'we-tooltip',
             props: { content: { $: "local.editing ? 'Done editing' : 'Edit this record'" } },
@@ -780,7 +983,7 @@ const inspectorPanel: SchemaNode = {
           children: [
             {
               type: '$each',
-              props: { items: { $: 'local.card' }, as: 'record' },
+              props: { items: { $: 'local.card' }, as: 'row' },
               children: [
                 {
                   type: 'Column',
@@ -793,9 +996,26 @@ const inspectorPanel: SchemaNode = {
                     expression written out six times.
                   */
                   $localState: {
-                    display: { type: 'object', initial: { $: 'recordStore.displays[routeStore.params.cardType]' } },
+                    display: { type: 'object', initial: { $: `recordStore.displays[${CARD_TYPE}]` } },
+                    /*
+                      Whether the empty fields are showing. Per record, because it is declared inside
+                      the `$each` — selecting another card closes it again, which is right: it was
+                      opened to add something to *this* one.
+                    */
+                    showEmpty: { type: 'boolean', initial: false },
+                    /** The composer, open on this note's own document — see `composedContent`. */
+                    noteOpen: { type: 'boolean', initial: false },
                   },
                   children: [
+                    /*
+                      What kind of thing this is — the same words and glyph the key uses.
+
+                      Through `kindLabel`/`kindIcon` rather than `local.display` directly, so the two
+                      panels sitting on the same edge cannot call one card two different things: a
+                      note is a "Note" in both. They also fall back to the model's own name where
+                      nothing has a display for it, which is what the panel showed instead of a blank
+                      strip for a `CollectionBlock` before one existed.
+                    */
                     {
                       type: 'Row',
                       props: { gap: '200', ay: 'center' },
@@ -803,109 +1023,138 @@ const inspectorPanel: SchemaNode = {
                         {
                           type: '$if',
                           props: {
-                            condition: { $: 'local.display.icon' },
+                            condition: { $: kindIcon(CARD_TYPE) },
                             then: {
                               type: 'we-icon',
-                              props: { name: { $: 'local.display.icon' }, color: 'accent-text' },
+                              props: { name: { $: kindIcon(CARD_TYPE) }, color: 'accent-text' },
                             },
                           },
                         },
                         {
+                          // `fontSize` rather than the `footnote` variant: this names what is
+                          // selected, and at 100 it read as a caption on the thing above it.
                           type: 'we-text',
-                          props: { variant: 'footnote', color: 'text-muted' },
-                          children: [{ $: 'local.display.label' }],
+                          props: { fontSize: '400', color: 'text-muted' },
+                          children: [{ $: kindLabel(CARD_TYPE) }],
                         },
                       ],
                     },
                     /*
                       Reading, or editing — the same fields, as values or as controls.
 
-                      Editing draws every field the model declares as a control by its kind and
+                      Editing draws the fields that hold something as controls by their kind and
                       writes each change as it is committed; see `fieldEditor`. Reading is what was
                       always here. A `$if` rather than a per-field toggle, so the two modes cannot
-                      be half on.
+                      be half on. Either way the *empty* fields are one disclosure below, shared by
+                      both — see `emptyFields`.
                     */
                     {
                       type: '$if',
                       props: {
                         condition: { $: 'local.editing' },
-                        then: fieldEditor({ $: 'routeStore.params.cardType' }, { $: 'routeStore.params.card' }),
+                        then: fieldEditor({ $: CARD_TYPE }, { $: 'routeStore.params.card' }, SET_FIELDS),
                         else: {
                           type: 'Column',
                           props: { gap: '300' },
                           children: [
                             {
-                              type: 'we-text',
-                              props: { variant: 'heading-sm' },
-                              children: [{ $: 'record[local.display.title]' }],
-                            },
-                            {
                               type: '$if',
                               props: {
-                                condition: { $: 'local.display.summary' },
+                                condition: { $: 'row[local.display.title]' },
                                 then: {
                                   type: 'we-text',
-                                  props: { color: 'text-muted' },
-                                  children: [{ $: 'record[local.display.summary]' }],
+                                  props: { variant: 'heading-sm' },
+                                  children: [{ $: 'row[local.display.title]' }],
                                 },
                               },
                             },
                             /*
-                      Every field the model declares, drawn by its kind.
+                              Nothing to call it and nothing to show — the only state where saying so
+                              is better than a blank line.
 
-                      The same switch the record page makes, and the same reason: `kind` is resolved
-                      once in the store so a template branches on one word rather than knowing what
-                      a property is. A date wants a timestamp, a boolean a badge, and everything else
-                      reads as text.
-                    */
+                              A record with no name reads as one still loading otherwise. A *note*
+                              has no name either and is not nameless: its content is the document
+                              below, so "Untitled" over a paragraph somebody wrote would be the panel
+                              contradicting what is under it. Faint, so where it does appear it reads
+                              as the panel talking rather than a record actually called that — and
+                              naming one is one of the fields the disclosure below offers.
+                            */
+                            {
+                              type: '$if',
+                              props: {
+                                condition: { $: `!row[local.display.title] && !${COMPOSED}` },
+                                then: {
+                                  type: 'we-text',
+                                  props: { variant: 'heading-sm', color: 'text-faint' },
+                                  children: ['Untitled'],
+                                },
+                              },
+                            },
+                            composedContent,
+                            {
+                              type: '$if',
+                              props: {
+                                condition: { $: 'row[local.display.summary]' },
+                                then: {
+                                  type: 'we-text',
+                                  props: { color: 'text-muted' },
+                                  children: [{ $: 'row[local.display.summary]' }],
+                                },
+                              },
+                            },
+                            /*
+                              What this record actually says, each drawn by its kind.
+
+                              The same switch the record page makes, and the same reason: `kind` is
+                              resolved once in the store so a template branches on one word rather
+                              than knowing what a property is. A date wants a timestamp, a boolean a
+                              badge, and everything else reads as text.
+
+                              The list is filtered rather than every field guarded row by row — see
+                              `SET_DETAILS`. A field with nothing in it is not a row here at all: an
+                              empty label over blank space reads as something failing to load, and
+                              the ones with nothing in them are offered as controls below.
+                            */
                             {
                               type: '$each',
-                              props: { items: { $: 'local.display.fields' }, as: 'field' },
+                              props: { items: { $: SET_DETAILS }, as: 'field' },
                               children: [
                                 {
-                                  type: '$if',
-                                  props: {
-                                    // A field with nothing in it is not worth a row: an empty label over
-                                    // blank space reads as something failing to load.
-                                    condition: { $: 'record[field.name]' },
-                                    then: {
-                                      type: 'Column',
-                                      props: { gap: '050', py: '100', borderTop: '1px solid border' },
-                                      children: [
-                                        {
-                                          type: 'we-text',
-                                          props: { variant: 'footnote', color: 'text-faint' },
-                                          children: [{ $: 'field.label' }],
+                                  type: 'Column',
+                                  props: { gap: '050', py: '100', borderTop: '1px solid border' },
+                                  children: [
+                                    {
+                                      type: 'we-text',
+                                      props: { variant: 'footnote', color: 'text-faint' },
+                                      children: [{ $: 'field.label' }],
+                                    },
+                                    {
+                                      type: '$if',
+                                      props: {
+                                        condition: { $: "field.kind == 'datetime' || field.kind == 'date'" },
+                                        then: {
+                                          type: 'we-timestamp',
+                                          props: { value: { $: 'row[field.name]' }, relative: true },
                                         },
-                                        {
+                                        else: {
                                           type: '$if',
                                           props: {
-                                            condition: { $: "field.kind == 'datetime' || field.kind == 'date'" },
+                                            condition: { $: "field.kind == 'boolean'" },
                                             then: {
-                                              type: 'we-timestamp',
-                                              props: { value: { $: 'record[field.name]' }, relative: true },
+                                              type: 'we-badge',
+                                              props: { size: 'xs' },
+                                              children: [{ $: "row[field.name] ? 'Yes' : 'No'" }],
                                             },
                                             else: {
-                                              type: '$if',
-                                              props: {
-                                                condition: { $: "field.kind == 'boolean'" },
-                                                then: {
-                                                  type: 'we-badge',
-                                                  props: { size: 'xs' },
-                                                  children: [{ $: "record[field.name] ? 'Yes' : 'No'" }],
-                                                },
-                                                else: {
-                                                  type: 'we-text',
-                                                  props: { variant: 'footnote' },
-                                                  children: [{ $: 'record[field.name]' }],
-                                                },
-                                              },
+                                              type: 'we-text',
+                                              props: { variant: 'footnote' },
+                                              children: [{ $: 'row[field.name]' }],
                                             },
                                           },
                                         },
-                                      ],
+                                      },
                                     },
-                                  },
+                                  ],
                                 },
                               ],
                             },
@@ -913,6 +1162,7 @@ const inspectorPanel: SchemaNode = {
                         },
                       },
                     },
+                    emptyFields,
                     /*
                       The full record, for reading it properly.
 

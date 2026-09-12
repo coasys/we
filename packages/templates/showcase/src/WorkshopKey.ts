@@ -129,11 +129,12 @@ export const KIND_DEFAULTS: Record<string, string> = {
 };
 
 /**
- * What a kind is called and drawn with in the key, where the model's own display does not say.
+ * What a kind is called and drawn with, here and in the inspector — one answer, so the two panels
+ * on the same edge cannot call one card two different things.
  *
- * `recordStore.displays` is derived from what a model declares under `authoring`, and a composed
- * document declares none — nobody types a note into a field list — so a `CollectionBlock` has no
- * label there and would read as its class name.
+ * `CollectionBlock` is overridden because its display says "Collection", which is the class read
+ * back rather than the word anybody uses: on this canvas one of them is a note. The fallback past
+ * it is the model's own name, for a kind nothing has a display for at all.
  */
 export function kindLabel(kind: string): string {
   return `(${kind} == 'CollectionBlock' ? 'Note' : recordStore.displays[${kind}].label ? recordStore.displays[${kind}].label : ${kind})`;
