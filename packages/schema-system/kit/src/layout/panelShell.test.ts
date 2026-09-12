@@ -101,6 +101,26 @@ describe('a section label', () => {
     expect(SECTION_LABEL_PROPS.color).not.toBe(PANEL_TITLE_PROPS.color);
     expect(SECTION_LABEL_PROPS.variant).not.toBe(PANEL_TITLE_PROPS.variant);
   });
+
+  it('holds a small control’s height where an aside is declared, and only there', () => {
+    /*
+      The header's floor, one tier down, and the key's lens sections are why: the switch that
+      reveals a section sits on that section's own heading, and the "Edit" beside it appears only
+      once the lens is on. A `we-switch` draws a 16px track, so flicking it grew the row to the
+      24px of the button that joined it and the centred heading dropped 4px — the label moving at
+      the exact moment attention was on it.
+
+      `xs`, not the header's `sm`: a section's asides are the small end of the set, and `sm` would
+      leave visible air under every heading that has one.
+    */
+    expect(sectionLabel({ label: 'States', aside: { type: 'we-switch' } }).props?.minHeight).toBe(
+      'var(--we-component-height-xs)',
+    );
+    expect(sectionLabel({ label: 'States', aside: { type: 'we-switch' } }).props?.minHeight).not.toBe(
+      panelHeader({ title: 'Key', aside: { type: 'we-switch' } }).props?.minHeight,
+    );
+    expect(sectionLabel({ label: 'Extracted' }).props?.minHeight).toBeUndefined();
+  });
 });
 
 describe('a panel shell', () => {

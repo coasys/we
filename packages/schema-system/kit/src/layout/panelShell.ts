@@ -137,7 +137,29 @@ export function sectionLabel(opts: SectionLabelOptions): SchemaNode {
 
   return {
     type: 'Row',
-    props: { width: '100%', ay: 'center', gap: '200', flex: '0 0 auto' },
+    props: {
+      width: '100%',
+      ay: 'center',
+      gap: '200',
+      flex: '0 0 auto',
+      /*
+        A control's worth of height whether or not the control is there — `panelHeader`'s floor, for
+        the same reason and one tier down.
+
+        A section's `aside` is as conditional as a panel's, and more consequentially so: the key's
+        lens sections put the switch that reveals the section *on* the section's own heading, and
+        the "Edit" beside it appears only once the lens is on. A `we-switch` draws a 16px track and
+        nothing else, so flicking the switch grew the row to the 24px of the button that joined it
+        and the centred heading dropped 4px — the label moving at the exact moment attention was on
+        it, as the answer to having flicked it.
+
+        `xs` rather than the header's `sm`: a section heading's asides are the small end of the set
+        — an xs button, a switch, a badge — and `sm` would leave visible air under every heading
+        that has one. Only where an `aside` is declared, so a plain section label is as tall as its
+        own text.
+      */
+      ...(opts.aside && { minHeight: 'var(--we-component-height-xs)' }),
+    },
     children: opts.aside ? [label, opts.aside] : [label],
   };
 }
