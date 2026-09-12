@@ -86,9 +86,7 @@ import {
   LENS_QUERY,
   lensNodeRules,
   NO_LENS,
-  placementsQuery,
   PLAIN_FILL,
-  recordFill,
   TYPE_STYLES_QUERY,
 } from './WorkshopKey.ts';
 
@@ -2129,10 +2127,6 @@ const kanbanRoute: RouteSchema = {
               */
               $queries: {
                 callRow: { entity: 'CollectionBlock', where: { id: CALL }, include: { board: true }, limit: 1 },
-                // The key and the cards' own colours, for `recordFill` on each card — declared per
-                // route, since nothing hoisted to the root reaches past a `$routes` outlet.
-                typeStyles: TYPE_STYLES_QUERY,
-                placements: placementsQuery(CALL),
               },
               children: [
                 {
@@ -2144,14 +2138,31 @@ const kanbanRoute: RouteSchema = {
                       // so nothing here has to say so.
                       boardId: { $: 'first(local.callRow).board.id' },
                       /*
-                        The same colour the canvas would give this card, under the same lenses.
+                        No `bg`, so a card is `surface` — and the key's lenses stop at the canvas.
 
-                        Mostly redundant on a board, where the column already says the state — but a
-                        lane and the unplaced column say nothing, and a card somebody coloured on the
-                        canvas should look the same here with the lenses off. What it buys is that
-                        three pages about one call never disagree about what a colour means.
+                        This route used to pass `recordFill`, on the argument that three pages about
+                        one call should never disagree about what a colour means. The argument was
+                        sound and its premise was not: neither lens says anything here.
+
+                        **Kind** is a *constant* on a board. `recordFill` takes the kind as a literal
+                        and a board holds only tasks, so the expression answered the same colour for
+                        every card on the page — a tint over the whole board rather than a key, and
+                        the default lens besides, so this is what the route looked like out of the
+                        box. **State** is the column: a bound column IS its state, so colouring by it
+                        restates the heading in a second alphabet. Its residual case — a lane and the
+                        Unplaced column, where the column says nothing — is real and is not worth a
+                        mechanism, since the card already carries a state badge there (`showState`).
+
+                        A card somebody coloured on the canvas loses that colour here, which is the
+                        one thing given up. It was already invisible: `recordFill` read the freeform
+                        colour only with both lenses off, and the lens defaults to kind. Nothing on
+                        screen changes for a reader who never touched the key.
+
+                        If per-card colour is wanted on a board later it needs a picker *here* —
+                        colouring is a `nodeActions` affordance on a graph node, so a card that never
+                        reached the canvas has no placement and no way to be given one. That is the
+                        work, not this expression.
                       */
-                      bg: recordFill({ kind: 'TaskBlock', id: 'card.id', status: 'card.status' }),
                       // Who ran the pass that wrote it — the provenance question this template is
                       // built around, and the reason its cards carry a byline where a space's board
                       // does not.
@@ -2249,9 +2260,18 @@ const eventList: SchemaNode = {
                     width: '100%',
                     ay: 'center',
                     gap: '300',
-                    // The key's colour for an event — its kind's, or its own from the canvas. An
-                    // event has no state, so the state lens leaves it plain; see the board's card.
-                    bg: recordFill({ kind: 'EventBlock', id: 'event.id' }),
+                    /*
+                      `surface`, and no lens — see the board's card for the argument, which lands
+                      harder here.
+
+                      Kind is a constant on a calendar for the same reason it is on a board: every row
+                      is an `EventBlock`, so colouring by kind painted the whole list one tint. State
+                      is worse than redundant. An event has no status, so `recordFill` was called
+                      without one and the state lens fell through to plain — meaning turning it on
+                      *removed* what colour the rows had and greyed every one of them. A lens that
+                      only ever subtracts is not a reading.
+                    */
+                    bg: 'surface',
                     r: '400',
                     border: '1px solid border',
                     p: '400',
@@ -2418,9 +2438,6 @@ const calendarRoute: RouteSchema = {
                   limit: 200,
                   include: { location: true },
                 },
-                // For `recordFill` on each row — see the board's route for why these are per route.
-                typeStyles: TYPE_STYLES_QUERY,
-                placements: placementsQuery(CALL),
               },
               children: [
                 // ── The month, with the way through them either side ──────────────────

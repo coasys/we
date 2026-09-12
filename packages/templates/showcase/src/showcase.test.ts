@@ -846,6 +846,29 @@ describe('the workshop’s key', () => {
     expect(canvas).toContain('"width":{"from":"data.canvasWidth"},"height":{"from":"data.canvasHeight"}');
   });
 
+  it('scopes its contents to the canvas without scoping the panel', () => {
+    /*
+      The colours are the canvas's, so the lenses and the legend answer nothing on the other two
+      pages — but `route: 'canvas'` on the panel entry would be the wrong way to say so. Leaving a
+      route UNREGISTERS a scoped panel, destroying its scroll position and both its subscriptions on
+      every crossing; the transcript and the readout are unscoped for exactly that reason. The
+      declaration is what a panel is; whether it has anything to say today is about its contents.
+
+      So: no `route` on the entry, the branch inside it, and a sentence rather than a blank panel —
+      an empty key reads as one that failed to load.
+    */
+    const entry = (workshop.meta?.panels ?? []).find((p) => p.id === 'key');
+    expect(entry?.route).toBeUndefined();
+
+    const key = panel('key');
+    expect(key).toContain("'canvas' in routeStore.segments");
+    expect(key).toContain('Colours are on the canvas.');
+    // The subscriptions stay outside the branch, so crossing back does not refetch them.
+    const body = key.slice(key.indexOf("'canvas' in routeStore.segments"));
+    expect(body).not.toContain('"entity":"TypeStyle"');
+    expect(body).not.toContain('"entity":"Placement"');
+  });
+
   it('writes a kind’s colour to the space and reads a state’s from the vocabulary', () => {
     /*
       Two mappings, one editor each. A kind's colour has no other home, so the key sets it — on the
@@ -877,16 +900,38 @@ describe('the workshop’s key', () => {
     expect(route('/canvas')).toContain("style: { color: 'var(--we-role-warning-surface)' }");
   });
 
-  it('gives the board and the calendar the same colours as the canvas', () => {
-    // One policy in three spellings would drift; one function, three call sites, cannot.
-    expect(route('/kanban')).toContain('find(spaceStore.taskStates, { slug: card.status })');
-    expect(route('/kanban')).toContain("find(local.typeStyles, { nodeType: 'TaskBlock' })");
-    expect(route('/calendar')).toContain("find(local.typeStyles, { nodeType: 'EventBlock' })");
-    // Both declare what they read: a query hoisted to the root does not reach past a `$routes`.
+  it('keeps the colours on the canvas, and draws the other two pages plain', () => {
+    /*
+      The board and the calendar carried the same lenses, on the argument that three pages about one
+      call should never disagree about what a colour means. Sound argument, false premise: neither
+      lens said anything there.
+
+      Kind was a *constant* on both — `recordFill` took the kind as a literal and a board holds only
+      tasks, a calendar only events — so it tinted a whole page one colour, and it was the default
+      lens, so that was the out-of-the-box reading. State is the column on a board, and on a calendar
+      it fell through to plain, so turning it on only ever removed colour.
+
+      Asserted as an absence with the canvas asserted beside it, because removing colour is only
+      right if the page that discriminates kept all three layers.
+    */
     for (const path of ['/kanban', '/calendar']) {
-      expect(route(path)).toContain('"anchor":"Space","via":"typeStyles"');
-      expect(route(path)).toContain('"entity":"Placement"');
+      expect(route(path), path).not.toContain('local.typeStyles');
+      expect(route(path), path).not.toContain('"entity":"Placement"');
+      // `stateFill`'s own tell. Not a bare `spaceStore.taskStates`, which the board still reads for
+      // `arrangedBoard` and for the name on a lane card's state badge — the thing being asserted is
+      // that no state reaches a *colour*, not that the board has stopped knowing what states exist.
+      expect(route(path), path).not.toContain("semantic == 'done'");
     }
+
+    // The canvas is a graph, so its three layers are `nodeStyle` rules rather than a `bg`: the
+    // community's colour per kind, the vocabulary's per state, and the card's own off its placement.
+    const canvas = route('/canvas');
+    expect(canvas).toContain('local.typeStyles.map(s, { when: { type: s.nodeType }');
+    expect(canvas).toContain("spaceStore.taskStates.map(s, { when: { 'data.status': s.slug }");
+    expect(canvas).toContain("{ from: 'data.canvasColor' }");
+    // And it still declares the key it reads — a query hoisted to the root does not reach past a
+    // `$routes` outlet, so losing this is how the canvas would quietly fall back to the defaults.
+    expect(canvas).toContain('"anchor":"Space","via":"typeStyles"');
   });
 
   it('keeps how a card looks in its header, and what it says in the inspector', () => {

@@ -186,33 +186,18 @@ export function stateFill(state: string): string {
   );
 }
 
-/**
- * The colour one card was given on this call's canvas, else plain. Reads `local.placements`.
+/*
+ * There was a `recordFill` here, and a `freeformFill` under it — the same policy spelt for a card
+ * that is a `Column` with a `bg` rather than a graph node. Both are gone with the board's and the
+ * calendar's colours; see the board's card for why those went.
  *
- * `we:unset` is the value the canvas writes to take a colour away — the ORM cannot store an empty
- * string — and the graph seed drops it before a rule sees it; a row read straight off the query
- * has to drop it here.
+ * Worth knowing that the canvas never used either. It is a graph, so all three layers reach it as
+ * `nodeStyle` rules (below) — `kindFill`, `stateFill`, and the card's own colour as
+ * `data.canvasColor`, which the `canvas` seed stamps onto each node from its `Placement`. So the
+ * key still has three layers and a reader can still colour a card; only the second spelling is
+ * gone, along with the `placements` query it needed to read a placement the seed hands the canvas
+ * for free.
  */
-export function freeformFill(id: string): string {
-  const own = `find(local.placements, { node: ${id} }).color`;
-  return `((${own} && ${own} != 'we:unset') ? ${own} : '${PLAIN}')`;
-}
-
-/**
- * A record's fill under whatever lenses are on — for a task card on the board or an event row on
- * the calendar, where the card is a `Column` with a `bg` rather than a graph node.
- *
- * The same order the graph rules below resolve in: state for a record that has one, then kind, then
- * the card's own colour when nothing is on, else plain.
- */
-export function recordFill(opts: { kind: string; id: string; status?: string }): SchemaProp {
-  const byState = opts.status
-    ? `${BY_STATE} && ${opts.status} ? ${stateFill(`find(spaceStore.taskStates, { slug: ${opts.status} })`)} : `
-    : '';
-  return {
-    $: `${byState}${BY_KIND} ? ${kindFill(`'${opts.kind}'`)} : ${NO_LENS} ? ${freeformFill(opts.id)} : '${PLAIN}'`,
-  };
-}
 
 /**
  * The graph's colour rules, built from the address and the data.
@@ -456,6 +441,14 @@ const stateRow: SchemaNode = {
 };
 
 /**
+ * Whether the page the key is describing is on screen.
+ *
+ * The colours are the canvas's now — the board and the calendar draw plain cards — so the lenses and
+ * the legend answer nothing on the other two pages.
+ */
+const ON_CANVAS = "'canvas' in routeStore.segments";
+
+/**
  * The key, as a panel.
  *
  * A panel rather than a column floated inside the route, which is what the graph section's key is:
@@ -466,6 +459,18 @@ const stateRow: SchemaNode = {
  *
  * Its own subscription, because a panel cannot read the root's. Cheap: fifty rows at most, and only
  * while the panel is open.
+ *
+ * ## Its contents are scoped to the canvas, and the panel is not
+ *
+ * `route: 'canvas'` on the `meta.panels` entry would be the obvious spelling and it is the wrong
+ * one, for the reason the transcript and the readout are unscoped too: leaving the route
+ * *unregisters* the panel, so its scroll position and both of these subscriptions are destroyed and
+ * rebuilt on the way back. The declaration is what a panel *is*; whether it has anything to say
+ * today is a question about its contents.
+ *
+ * So the panel is declared everywhere and branches inside. The subscriptions stay live across a
+ * page change, which is what makes crossing back instant, and they are the two cheapest queries in
+ * the template.
  */
 export function keyPanel(opts: { call: Record<string, unknown>; extracted: string }): SchemaNode {
   return {
@@ -476,61 +481,86 @@ export function keyPanel(opts: { call: Record<string, unknown>; extracted: strin
     children: [
       panelHeader({
         title: 'Key',
-        help: 'What the colours on the cards mean. Turn a lens on to colour every card by its kind or by its state; with both off, each card keeps the colour it was given in the inspector.',
+        help: 'What the colours on the cards of the canvas mean. Turn a lens on to colour every card by its kind or by its state; with both off, each card keeps the colour it was given in the inspector.',
+        // Off the canvas the lenses change nothing on screen, and a control that reports nothing is
+        // worse than one that is absent — it invites the press that proves it is broken.
         aside: {
-          type: 'Row',
-          props: { gap: '100', ay: 'center' },
-          children: [lensButton('kind', 'Kind', 'cube'), lensButton('state', 'State', 'circle-half')],
+          type: '$if',
+          props: {
+            condition: { $: ON_CANVAS },
+            then: {
+              type: 'Row',
+              props: { gap: '100', ay: 'center' },
+              children: [lensButton('kind', 'Kind', 'cube'), lensButton('state', 'State', 'circle-half')],
+            },
+          },
         },
       }),
       panelScroll({
         children: [
           {
-            type: 'Column',
-            props: { gap: '400', width: '100%' },
-            children: [
-              {
-                type: 'Column',
-                props: { gap: '300', width: '100%', opacity: { $: `${BY_KIND} ? 1 : 0.6` } },
-                children: [sectionLabel({ label: 'Kinds' }), kindRows(opts)],
+            type: '$if',
+            props: {
+              condition: { $: ON_CANVAS },
+              /*
+                Said rather than shown blank, because the panel is reachable from all three pages and
+                an empty one reads as a key that failed to load. One sentence naming where the
+                colours are is the whole of it — the way back is the switcher two inches away, so
+                this needs no button of its own.
+              */
+              else: {
+                type: 'we-text',
+                props: { variant: 'footnote', color: 'text-muted' },
+                children: ['Colours are on the canvas. The board and the calendar draw every card plain.'],
               },
-              {
+              then: {
                 type: 'Column',
-                props: { gap: '300', width: '100%', opacity: { $: `${BY_STATE} ? 1 : 0.6` } },
+                props: { gap: '400', width: '100%' },
                 children: [
-                  sectionLabel({
-                    label: 'States',
-                    // The colours are the vocabulary's, so that is where they change — one editor per
-                    // fact. Offered to whoever can change what every member sees.
-                    aside: {
-                      type: '$if',
-                      props: {
-                        condition: { $: 'spaceStore.canAdministerCurrentSpace' },
-                        then: {
-                          type: 'we-button',
-                          props: {
-                            size: 'xs',
-                            variant: 'ghost',
-                            onClick: { $action: 'shellStore.openSpaceSettings', args: ['vocabulary'] },
-                          },
-                          children: ['Edit'],
-                        },
-                      },
-                    },
-                  }),
                   {
-                    type: '$each',
-                    props: { items: { $: 'spaceStore.offeredTaskStates' }, as: 'state' },
-                    children: [stateRow],
+                    type: 'Column',
+                    props: { gap: '300', width: '100%', opacity: { $: `${BY_KIND} ? 1 : 0.6` } },
+                    children: [sectionLabel({ label: 'Kinds' }), kindRows(opts)],
                   },
                   {
-                    type: 'we-text',
-                    props: { variant: 'footnote', color: 'text-faint' },
-                    children: ['Anything without a state stays plain.'],
+                    type: 'Column',
+                    props: { gap: '300', width: '100%', opacity: { $: `${BY_STATE} ? 1 : 0.6` } },
+                    children: [
+                      sectionLabel({
+                        label: 'States',
+                        // The colours are the vocabulary's, so that is where they change — one editor per
+                        // fact. Offered to whoever can change what every member sees.
+                        aside: {
+                          type: '$if',
+                          props: {
+                            condition: { $: 'spaceStore.canAdministerCurrentSpace' },
+                            then: {
+                              type: 'we-button',
+                              props: {
+                                size: 'xs',
+                                variant: 'ghost',
+                                onClick: { $action: 'shellStore.openSpaceSettings', args: ['vocabulary'] },
+                              },
+                              children: ['Edit'],
+                            },
+                          },
+                        },
+                      }),
+                      {
+                        type: '$each',
+                        props: { items: { $: 'spaceStore.offeredTaskStates' }, as: 'state' },
+                        children: [stateRow],
+                      },
+                      {
+                        type: 'we-text',
+                        props: { variant: 'footnote', color: 'text-faint' },
+                        children: ['Anything without a state stays plain.'],
+                      },
+                    ],
                   },
                 ],
               },
-            ],
+            },
           },
         ],
       }),
