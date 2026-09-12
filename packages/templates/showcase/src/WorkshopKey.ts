@@ -126,11 +126,14 @@ export function placementsQuery(call: Record<string, unknown>) {
  * were `accent-muted` and `warning-surface`, which are tinted panels defined *relative to the page*
  * and so invert with it — in a dark theme an event card came out darker than an uncoloured one and
  * four points off the canvas's own ground. A card is an object rather than a panel, and the post-it
- * below already said so in a hex. These are the same claim for the other two.
+ * below already said so in a hex. These are the same claim for the other two, in the same spelling.
+ *
+ * Chosen rather than derived, like the states', and readable together: blue, pink and yellow are
+ * three hues apart at a glance, which is the whole job of a colour that means "kind of thing".
  */
 export const KIND_DEFAULTS: Record<string, string> = {
-  TaskBlock: 'oklch(90% 0.045 288)',
-  EventBlock: 'oklch(90% 0.06 60)',
+  TaskBlock: '#86c2ff',
+  EventBlock: '#ff94f7',
   // The post-it. A literal rather than a role on purpose: a note is yellow in a dark theme too, and
   // the card's ink follows the fill's lightness rather than the theme's, so it stays readable.
   CollectionBlock: '#ffea9f',
