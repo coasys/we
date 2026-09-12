@@ -132,10 +132,20 @@ function logSubscriptionDiff(entity: string, previous: unknown[] | null, next: u
     const was = before.get(id);
     if (!was) continue;
     for (const [key, value] of Object.entries(row)) {
-      // Scalars only: a relation comes back as an array of ids and its own record's push reports it.
-      // And nothing `_`-prefixed — `Ad4mModel` keeps its dirty-tracking snapshot there, which reads
-      // as `_snapshot: [object Object] → null` and looks alarmingly like data going missing.
+      // Nothing `_`-prefixed — `Ad4mModel` keeps its dirty-tracking snapshot there, which reads as
+      // `_snapshot: [object Object] → null` and looks alarmingly like data going missing.
       if (key.startsWith('_')) continue;
+      /*
+        A to-many relation is an array of ids, and its *order* is data — a board column's `arranges`
+        is the sequence somebody dragged the cards into. Skipping every object left this blind to the
+        one change a board makes: a same-column reorder showed up as `updatedAt` moving and nothing
+        else, so the log could not say whether the new order had come back or only the timestamp had.
+      */
+      if (Array.isArray(value)) {
+        const change = describeListChange(was[key], value);
+        if (change) changed.push(`${id}.${key}: ${change}`);
+        continue;
+      }
       if (value !== null && typeof value === 'object') continue;
       if (was[key] !== value) changed.push(`${id}.${key}: ${String(was[key])} → ${String(value)}`);
     }
@@ -244,6 +254,35 @@ function reportRoutingRefusal(stores: RendererStores, message: string): void {
   const onError = stores.$onError;
   if (onError) onError(message);
   else console.error('[query-ir]', message);
+}
+
+/**
+ * How one to-many relation changed between two pushes, in a line — or nothing, if it did not.
+ *
+ * Membership and order are reported apart because they mean different things and are fixed in
+ * different places: cards arriving or leaving is the *query* answering differently, where the same
+ * cards in a new sequence is an arrangement somebody wrote. A reorder that reads as "+1 -1" would
+ * send you looking at the wrong half.
+ *
+ * Ids are shortened to their last segment: an AD4M id is a long URI, and a line comparing two orders
+ * of five of them in full is one nobody reads.
+ */
+function describeListChange(before: unknown, after: readonly unknown[]): string {
+  const key = (entry: unknown): string => {
+    const raw =
+      entry && typeof entry === 'object' ? String((entry as { id?: unknown }).id ?? '?') : String(entry ?? '');
+    return raw.split('/').pop()?.slice(-6) ?? raw;
+  };
+  const was = (Array.isArray(before) ? before : []).map(key);
+  const now = after.map(key);
+  if (was.join() === now.join()) return '';
+
+  const gained = now.filter((id) => !was.includes(id));
+  const lost = was.filter((id) => !now.includes(id));
+  if (!gained.length && !lost.length) return `reordered [${was.join(' ')}] → [${now.join(' ')}]`;
+  return [gained.length ? `+${gained.join(' +')}` : '', lost.length ? `-${lost.join(' -')}` : '']
+    .filter(Boolean)
+    .join(' ');
 }
 
 function createQuerySignal(
