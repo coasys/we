@@ -6778,6 +6778,10 @@
           "type": "array",
           "properties": ["label", "value"]
         },
+        "nameOptions": {
+          "type": "array",
+          "properties": ["label", "value"]
+        },
         "hintEditor": {
           "type": "object",
           "properties": ["entity", "classHint", "defaultClassHint", "rows", "customized"]
@@ -6813,6 +6817,7 @@
         "cancelShapeWizard",
         "setShapeField",
         "setIdentityMember",
+        "setNameMember",
         "setExtractable",
         "addProperty",
         "addRelationship",

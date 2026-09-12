@@ -435,6 +435,7 @@ export const storeEntries: StoreEntry[] = [
       extractionNeedsIdentity: { type: 'boolean' },
       relationshipTargets: { type: 'array', properties: ['label', 'value'] },
       identityOptions: { type: 'array', properties: ['label', 'value'] },
+      nameOptions: { type: 'array', properties: ['label', 'value'] },
       hintEditor: {
         type: 'object',
         properties: ['entity', 'classHint', 'defaultClassHint', 'rows', 'customized'],
@@ -451,6 +452,7 @@ export const storeEntries: StoreEntry[] = [
       'cancelShapeWizard',
       'setShapeField',
       'setIdentityMember',
+      'setNameMember',
       'addProperty',
       'addRelationship',
       'removeMember',
@@ -1228,6 +1230,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           "{ label, value }[] — what a relationship may point at here, ready for a we-select: this space's own models, then block types, then other apps' models. Core infrastructure entities are deliberately absent",
         identityOptions:
           '{ label, value }[] — "None" plus every named property of the open draft, for the identity picker. Built in the store because a schema can map options but cannot prepend one',
+        nameOptions:
+          '{ label, value }[] — "Work it out" plus every named property of the open draft, for the naming-field picker. A different first entry from identityOptions on purpose: no identity means no dedup key, where no naming field means the name is DERIVED (a property called name or title, else whichever string is required or first) — there is no such thing as a record with no name',
         hintEditor:
           'the hint editor state ({ entity, classHint, defaultClassHint, rows: { name, predicate, hint, defaultHint }[], customized }) or null while closed — non-nullness mounts the hint editor modal',
         hintBusy: 'boolean — the hint editor is loading or saving',
@@ -1248,6 +1252,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
         setShapeField: "(field: 'name' | 'description' | 'icon' | 'classHint', value): sets one top-level draft field",
         setIdentityMember:
           "(rowId): chooses which member identifies duplicates for AI extraction; 'none' clears it. At most one, which is why it is a picker rather than a per-row flag",
+        setNameMember:
+          "(rowId): chooses which member NAMES an instance — the heading on a card, the caption on a canvas, the label on a drag chip; 'none' returns it to being worked out. Not the same question as setIdentityMember: a dedup key may be a composite nobody would recognise (an event's is its title and day joined), where this is the one short string every surface shows when it has room for one line",
         setExtractable:
           '(on: boolean): allows or refuses an AI extraction pass writing instances of the open draft. Its own action rather than a setShapeField case, because the value is a boolean and that field takes strings',
         addProperty: '(): appends an empty property (scalar field) row to the draft',

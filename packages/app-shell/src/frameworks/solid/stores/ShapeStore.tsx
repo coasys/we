@@ -186,6 +186,15 @@ export interface ShapeStore {
    * prepend one, and without the "None" entry the choice would be one-way.
    */
   identityOptions: Accessor<{ label: string; value: string }[]>;
+  /**
+   * Options for the name picker: "Work it out" plus every named property of the open draft.
+   *
+   * The same shape as {@link identityOptions} and a different first entry, because the two
+   * defaults mean different things: no identity means *no dedup key*, where no name means the
+   * property is *derived* — from what the fields are called, then from the model's shape. Saying
+   * "None" for that would claim a record has no name, which is never true.
+   */
+  nameOptions: Accessor<{ label: string; value: string }[]>;
   /** The hint editor's state, null while closed. */
   hintEditor: Accessor<HintEditorState | null>;
   /** The hint editor is loading or saving. */
@@ -211,6 +220,14 @@ export interface ShapeStore {
   setShapeField: (field: 'name' | 'description' | 'icon' | 'classHint', value: string) => void;
   /** Choose which member is the interpretation dedup key; 'none' (or '') clears it. */
   setIdentityMember: (rowId: string) => void;
+  /**
+   * Choose which member names an instance; 'none' (or '') returns it to being worked out.
+   *
+   * Deliberately a second picker rather than a reuse of the identity one: a dedup key may be a
+   * composite nobody would recognise (an event's is its title and day glued together), and a name
+   * is what a card, a graph caption and a drag chip all show.
+   */
+  setNameMember: (rowId: string) => void;
   /**
    * Whether an AI extraction pass may write instances of the open draft — its own action rather
    * than a `setShapeField` case because the value is a boolean and the field takes strings.
@@ -487,11 +504,21 @@ export function ShapeStoreProvider(props: ParentProps) {
     ];
   });
 
-  const identityOptions = createMemo<{ label: string; value: string }[]>(() => [
-    { label: 'None', value: 'none' },
-    ...(shapeDraft()?.members ?? [])
+  /** Every named property of the open draft — what both member pickers choose from. */
+  const namedProperties = createMemo(() =>
+    (shapeDraft()?.members ?? [])
       .filter((m) => m.kind === 'property' && m.name.trim())
       .map((m) => ({ label: m.name, value: m.rowId })),
+  );
+
+  const identityOptions = createMemo<{ label: string; value: string }[]>(() => [
+    { label: 'None', value: 'none' },
+    ...namedProperties(),
+  ]);
+
+  const nameOptions = createMemo<{ label: string; value: string }[]>(() => [
+    { label: 'Work it out', value: 'none' },
+    ...namedProperties(),
   ]);
 
   /** Entity names a shape may legitimately reference: core + foreign + this space's other shapes. */
@@ -718,6 +745,12 @@ export function ShapeStoreProvider(props: ParentProps) {
     if (draft) setShapeDraft({ ...draft, identityMember: rowId === 'none' ? '' : rowId });
   }
 
+  function setNameMember(rowId: string): void {
+    const draft = shapeDraft();
+    // 'none' here is "work it out" rather than "there isn't one" — see `nameOptions`.
+    if (draft) setShapeDraft({ ...draft, nameMember: rowId === 'none' ? '' : rowId });
+  }
+
   function setExtractable(on: boolean): void {
     const draft = shapeDraft();
     if (draft) setShapeDraft({ ...draft, extractable: on });
@@ -761,8 +794,9 @@ export function ShapeStoreProvider(props: ParentProps) {
       ...draft,
       members: draft.members.filter((m) => m.rowId !== rowId),
       // A dangling identity would be refused at save with an error about a row that is no longer
-      // on screen, which reads as a bug rather than a consequence.
+      // on screen, which reads as a bug rather than a consequence. Same for the naming property.
       identityMember: draft.identityMember === rowId ? '' : draft.identityMember,
+      nameMember: draft.nameMember === rowId ? '' : draft.nameMember,
     });
     setExpandedMembers(expandedMembers().filter((id) => id !== rowId));
   }
@@ -1224,12 +1258,14 @@ export function ShapeStoreProvider(props: ParentProps) {
     provideExtractionEnroller: extractionEnroller.provide,
     relationshipTargets,
     identityOptions,
+    nameOptions,
     hintEditor,
     hintBusy,
     openShapeWizard,
     cancelShapeWizard,
     setShapeField,
     setIdentityMember,
+    setNameMember,
     setExtractable,
     extractionNeedsIdentity,
     addProperty,

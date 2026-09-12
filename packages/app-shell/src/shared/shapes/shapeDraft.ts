@@ -85,6 +85,23 @@ export interface ShapeDraft {
    */
   identityMember: string;
   /**
+   * `rowId` of the member that *names* an instance, or '' to let it be worked out.
+   *
+   * **Not the same question as {@link identityMember}**, and the wizard should not let them read as
+   * one: an identity is a dedup key a machine maintains and may be a composite nobody would
+   * recognise, where this is the one short string every surface needs to call a record something —
+   * a card heading, a graph caption, a drag chip, a breadcrumb.
+   *
+   * Optional because it is usually obvious: `namePropertyOf` reads a property called `name` or
+   * `title` first, and falls back to the model's shape. This is the override for a model whose
+   * subject is called something else — a `Sighting` named by `species`, a reading named by
+   * `passage` — where the guess would pick whichever string happens to be required or first.
+   *
+   * Kept by `rowId` for the reason identity is: renaming or reordering the chosen field keeps the
+   * choice.
+   */
+  nameMember: string;
+  /**
    * An AI extraction pass may mint instances of this model from what people said.
    *
    * Off by default, and that default is the point: a model somebody curates by hand should not have
@@ -168,6 +185,7 @@ export const emptyShapeDraft = (): ShapeDraft => ({
   icon: '',
   classHint: '',
   identityMember: '',
+  nameMember: '',
   extractable: false,
   members: [],
 });
@@ -394,6 +412,25 @@ export function draftToManifest(draft: ShapeDraft, shapeUuid: string): DraftLowe
     }
   }
 
+  /*
+    Which property names an instance, where its author said rather than left it to be guessed.
+
+    The same two failure modes identity has, refused the same way: a name pointing at a
+    relationship, or at a row since deleted, would vanish at lowering and leave a model that looks
+    named in the form and is not in the space.
+  */
+  let nameProperty = '';
+  if (draft.nameMember) {
+    const chosen = rows.find((r) => r.rowId === draft.nameMember);
+    if (!chosen) {
+      fail('The field chosen to name a record no longer exists — pick another, or let it be worked out.');
+    } else if (chosen.kind !== 'property') {
+      fail(`"${chosen.name}" is a relationship, so it cannot be the field that names a record.`, chosen.rowId);
+    } else {
+      nameProperty = chosen.name.trim();
+    }
+  }
+
   if (errors.length) return { ok: false, errors, rows: [...errorRows] };
 
   const entity: EntitySchema = {
@@ -401,6 +438,10 @@ export function draftToManifest(draft: ShapeDraft, shapeUuid: string): DraftLowe
     relations,
     flag: { predicate: 'we://flag', value: `${prefix}${snakeCase(name)}` },
     ...(draft.classHint.trim() ? { interpretationHint: draft.classHint.trim() } : {}),
+    // `display.title` is the declared half of `namePropertyOf`, and the only key of `display` the
+    // wizard authors: what a card *lists* is a surface's business, and a shape says nothing about
+    // it. Written only when chosen, so the guess stays in charge by default.
+    ...(nameProperty ? { display: { title: nameProperty } } : {}),
     // Written only when true, so a manifest reads as the declarations somebody made rather than as
     // every field the IR has — the same rule `required` and `identity` follow above.
     ...(draft.extractable ? { extractable: true } : {}),
@@ -417,6 +458,8 @@ export function manifestToDraft(
   const entity = manifest.entities[entityName];
   const members: ShapeDraftMember[] = [];
   let identityMember = '';
+  let nameMember = '';
+  const declaredName = entity?.display?.title;
 
   for (const [name, spec] of Object.entries(entity?.properties ?? {})) {
     const row = draftMember({
@@ -437,6 +480,10 @@ export function manifestToDraft(
       predicate: spec.predicate,
     });
     if (spec.identity) identityMember = row.rowId;
+    // Read back so an edit does not silently drop it: the draft is lowered wholesale on save, so a
+    // declared name the wizard could not represent would survive being read and be lost on the
+    // next save — which is the trap `display` was in before this existed.
+    if (declaredName && declaredName === name) nameMember = row.rowId;
     members.push(row);
   }
 
@@ -458,6 +505,7 @@ export function manifestToDraft(
     icon: meta.icon ?? '',
     classHint: entity?.interpretationHint ?? '',
     identityMember,
+    nameMember,
     extractable: entity?.extractable ?? false,
     members: members.length ? members : [emptyDraftProperty()],
   };

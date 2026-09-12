@@ -147,6 +147,16 @@ function toolInputToDraft(input: ToolInput): ShapeDraft {
     icon: input.icon ?? '',
     classHint: input.classHint ?? '',
     identityMember: identity?.rowId ?? '',
+    /*
+      Left to be worked out rather than asked of the model.
+
+      `namePropertyOf` reads a property called `name` or `title` first and falls back to the
+      model's shape, which is right for very nearly everything a generation produces — and a field
+      the author can see and change in the wizard beats one more thing for the model to get wrong
+      in a schema it has never seen. A generated model whose subject is called something unusual is
+      exactly the case the picker exists for.
+    */
+    nameMember: '',
     // Off, even though the generation writes interpretation hints. Whether an interpreter may mint
     // rows into a model is the author's decision and not a property of the description they typed —
     // the wizard offers the switch beside the hint the generation just wrote, which is where the
