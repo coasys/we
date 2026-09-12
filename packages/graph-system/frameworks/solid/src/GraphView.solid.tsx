@@ -2193,6 +2193,14 @@ export function GraphView(props: GraphViewProps) {
                 'we-graph__node--hovered': hovered() === entry.node.id,
                 'we-graph__node--unresolved': entry.node.unresolved === true,
                 'we-graph__node--card': entry.visual.shape === 'card',
+                /*
+                  Drawing connect dots, which the action bar above the card has to clear — the dot
+                  at the top edge sits exactly where the bar hung, so a selected card's bar covered
+                  it and took every press meant for it. The same condition the dots themselves are
+                  rendered on, and it is a class rather than a style because what CSS needs to know
+                  is only whether there is a dot up there.
+                */
+                'we-graph__node--connectable': !!props.onEdgeCreate && entry.selected && entry.visual.shape === 'card',
                 // Held state has to be visible — a node the layout will not move, looking exactly
                 // like one it will, is a graph behaving differently for no reason you can see, and
                 // the reason is usually a drag somebody forgot making. Only where it is an exception,

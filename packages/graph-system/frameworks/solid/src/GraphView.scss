@@ -211,6 +211,38 @@
   width: 0;
   height: 0;
   pointer-events: none;
+
+  /*
+    Where a connect dot sits and how big its target is — in screen pixels, since both are constant
+    on screen whatever the camera is doing.
+
+    Here rather than inside `.we-graph__connect` because a second rule needs them: the action bar
+    above a selected card has to clear the dot at its top edge, and the bar and the dot are drawn by
+    rules that cannot see each other. Two numbers in one place beats a clearance somebody arrived at
+    by eye and that stops being a clearance the day either moves.
+  */
+  --connect-reach: 20px;
+  --connect-hit: 30px;
+}
+
+/*
+  A card whose top edge carries a connect dot — see `.we-graph__actions`.
+
+  The class exists to answer one question in CSS that only the renderer can answer: whether this
+  node is drawing the dots at all. A template that does not listen for a connection has no dot to
+  clear, and a bar lifted over a dot that is not there is a bar that has drifted away from its card
+  for no reason.
+*/
+.we-graph__node--connectable {
+  /*
+    Clear of the dot's whole target, not of the disc painted inside it.
+
+    The disc is 10px and the target is 30, and aiming at the dot means landing anywhere in the
+    target — so a bar that cleared only the paint would still be taking half the presses meant for
+    it. Plus the gap the bar already kept from the card, so the three read as a stack rather than as
+    a bar resting on a dot.
+  */
+  --actions-lift: calc(var(--connect-reach) + var(--connect-hit) / 2 + 4px);
 }
 
 .we-graph__dot {
@@ -798,7 +830,7 @@
     departure from one: the origin sat half a bar to the right of the centre line, and the bar
     drifted right as the board was zoomed in. Eleven pixels clear of the card's top edge.
   */
-  transform: scale(calc(1 / var(--graph-zoom))) translate(-50%, calc(-100% - 11px));
+  transform: scale(calc(1 / var(--graph-zoom))) translate(-50%, calc(-100% - var(--actions-lift, 11px)));
   transform-origin: top left;
 }
 
@@ -882,9 +914,11 @@
  * in `left`/`top`, which are the parent's coordinates, and those are world units.
  */
 .we-graph__connect {
-  --hit: 30px;
+  // The node's own two constants, in the units each is used in: the target is laid out at its screen
+  // size and scaled back, where the reach is a `top`/`left` and those are world units.
+  --hit: var(--connect-hit);
   --dot: 10px;
-  --reach: calc(20px / var(--graph-zoom));
+  --reach: calc(var(--connect-reach) / var(--graph-zoom));
   --half-w: calc(var(--node-width) / 2);
   --half-h: calc(var(--node-height) / 2);
 
