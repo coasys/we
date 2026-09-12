@@ -11,11 +11,14 @@ import { boardOptimism } from '../src/shared/boardOptimism';
 
 const { hold, release, holdStatus, releaseStatus } = boardOptimism.ports;
 
-/** Drop every entry, so one test cannot leak into the next through the module singleton. */
-beforeEach(() => {
-  boardOptimism.settle(() => []);
-  boardOptimism.settle(() => []);
-});
+/*
+  Drop every entry, so one test cannot leak into the next through the module singleton.
+
+  `settle` cannot do this, which is worth knowing: handed an empty order for everything it *seeds*
+  those as baselines rather than dropping them, and the entries survive. That is correct — an empty
+  relation is a value like any other — and it is why forgetting is its own operation.
+*/
+beforeEach(() => boardOptimism.reset());
 
 const observedFrom =
   (map: Record<string, string[]>) =>
@@ -24,14 +27,14 @@ const observedFrom =
 
 describe('an arrangement in flight', () => {
   it('is drawn before it is stored', () => {
-    hold('col-1', 'arranges', ['b', 'a'], ['a', 'b']);
+    hold('col-1', 'arranges', ['b', 'a']);
 
     expect(boardOptimism.overlay().order('col-1', 'arranges', ['a', 'b'])).toEqual(['b', 'a']);
     expect(boardOptimism.inFlight()).toBe(true);
   });
 
   it('is withdrawn when the write is refused', () => {
-    hold('col-1', 'arranges', ['b', 'a'], ['a', 'b']);
+    hold('col-1', 'arranges', ['b', 'a']);
     release('col-1', 'arranges');
 
     expect(boardOptimism.overlay().order('col-1', 'arranges', ['a', 'b'])).toBeUndefined();
@@ -39,17 +42,21 @@ describe('an arrangement in flight', () => {
   });
 
   it('survives a draw where the data has not caught up', () => {
-    hold('col-1', 'arranges', ['b', 'a'], ['a', 'b']);
+    hold('col-1', 'arranges', ['b', 'a']);
 
     // The board redraws the instant the entry is held — that is the whole point — and the rows it
-    // draws from are still the old ones. Settling on "it was drawn" would release here.
+    // draws from are still the old ones. That draw sets the baseline; it must not release.
+    boardOptimism.settle(observedFrom({ 'col-1.arranges': ['a', 'b'] }));
     boardOptimism.settle(observedFrom({ 'col-1.arranges': ['a', 'b'] }));
 
     expect(boardOptimism.overlay().order('col-1', 'arranges', ['a', 'b'])).toEqual(['b', 'a']);
   });
 
   it('is released once the data has moved', () => {
-    hold('col-1', 'arranges', ['b', 'a'], ['a', 'b']);
+    hold('col-1', 'arranges', ['b', 'a']);
+    // Two draws, which is the real sequence: the first is made from the data as it still stands and
+    // is what gives the entry its baseline; the second is made from the push that answered.
+    boardOptimism.settle(observedFrom({ 'col-1.arranges': ['a', 'b'] }));
     boardOptimism.settle(observedFrom({ 'col-1.arranges': ['b', 'a'] }));
 
     expect(boardOptimism.overlay().order('col-1', 'arranges', ['b', 'a'])).toBeUndefined();
@@ -59,7 +66,7 @@ describe('an arrangement in flight', () => {
 
 describe('a card’s state, held as an arrangement of one', () => {
   it('reads as the new state while the write is in flight', () => {
-    holdStatus('t1', 'doing', 'todo');
+    holdStatus('t1', 'doing');
 
     expect(boardOptimism.overlay().status('t1', 'todo')).toBe('doing');
   });
@@ -75,28 +82,30 @@ describe('a card’s state, held as an arrangement of one', () => {
     of the two rules it composes.
   */
   it('survives the redraw that holding it caused', () => {
-    holdStatus('t1', 'doing', 'todo');
+    holdStatus('t1', 'doing');
     boardOptimism.settle(observedFrom({ 't1.status': ['todo'] }));
 
     expect(boardOptimism.overlay().status('t1', 'todo')).toBe('doing');
   });
 
   it('is released once the record actually reads as the new state', () => {
-    holdStatus('t1', 'doing', 'todo');
+    holdStatus('t1', 'doing');
+    boardOptimism.settle(observedFrom({ 't1.status': ['todo'] }));
     boardOptimism.settle(observedFrom({ 't1.status': ['doing'] }));
 
     expect(boardOptimism.overlay().status('t1', 'doing')).toBeUndefined();
   });
 
   it('is released when the record reads as something else entirely — a peer moved it', () => {
-    holdStatus('t1', 'doing', 'todo');
+    holdStatus('t1', 'doing');
+    boardOptimism.settle(observedFrom({ 't1.status': ['todo'] }));
     boardOptimism.settle(observedFrom({ 't1.status': ['blocked'] }));
 
     expect(boardOptimism.overlay().status('t1', 'blocked')).toBeUndefined();
   });
 
   it('is withdrawn when the write is refused', () => {
-    holdStatus('t1', 'doing', 'todo');
+    holdStatus('t1', 'doing');
     releaseStatus('t1');
 
     expect(boardOptimism.overlay().status('t1', 'todo')).toBeUndefined();
@@ -105,8 +114,8 @@ describe('a card’s state, held as an arrangement of one', () => {
   it('does not collide with an arrangement on the same record', () => {
     // Both live in one map keyed `<id>.<relation>`; a card that is also a container must keep them
     // apart, and `status` is a relation name nothing else uses.
-    hold('t1', 'arranges', ['x'], ['y']);
-    holdStatus('t1', 'doing', 'todo');
+    hold('t1', 'arranges', ['x']);
+    holdStatus('t1', 'doing');
 
     expect(boardOptimism.overlay().order('t1', 'arranges', ['y'])).toEqual(['x']);
     expect(boardOptimism.overlay().status('t1', 'todo')).toBe('doing');
@@ -115,7 +124,7 @@ describe('a card’s state, held as an arrangement of one', () => {
 
 describe('what a draw reports', () => {
   it('leaves alone an entry for a record it did not draw', () => {
-    hold('col-1', 'arranges', ['b', 'a'], ['a', 'b']);
+    hold('col-1', 'arranges', ['b', 'a']);
 
     // A column outside what was drawn says nothing about whether its write has landed.
     boardOptimism.settle(observedFrom({ 'col-2.arranges': ['q'] }));
@@ -124,10 +133,12 @@ describe('what a draw reports', () => {
   });
 
   it('settles several at once — a drop writes the target, the source and the state', () => {
-    hold('col-1', 'arranges', ['a'], ['a', 'b']);
-    hold('col-2', 'arranges', ['b', 'c'], ['c']);
-    holdStatus('b', 'doing', 'todo');
+    hold('col-1', 'arranges', ['a']);
+    hold('col-2', 'arranges', ['b', 'c']);
+    holdStatus('b', 'doing');
 
+    // The draw that gives all three their baselines, then the one made from the answer.
+    boardOptimism.settle(observedFrom({ 'col-1.arranges': ['a', 'b'], 'col-2.arranges': ['c'], 'b.status': ['todo'] }));
     boardOptimism.settle(
       observedFrom({ 'col-1.arranges': ['a'], 'col-2.arranges': ['b', 'c'], 'b.status': ['doing'] }),
     );

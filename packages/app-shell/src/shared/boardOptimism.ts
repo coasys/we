@@ -35,7 +35,7 @@
  */
 import { createSignal } from 'solid-js';
 
-import { dropOrder, holdOrder, orderToDraw, type PendingOrders, spentOrders } from './shapes/pendingOrder';
+import { dropOrder, holdOrder, orderToDraw, type PendingOrders, reconcileOrders } from './shapes/pendingOrder';
 
 /** The relation a card's own state is held under — see the docblock. */
 const STATUS = 'status';
@@ -45,11 +45,10 @@ const [orders, setOrders] = createSignal<PendingOrders>({});
 export const boardOptimism = {
   /** What `createBoardActions` is given: hold on the way out, release only when a write is refused. */
   ports: {
-    hold: (recordId: string, relation: string, ids: readonly string[], before: readonly string[]) =>
-      setOrders((held) => holdOrder(held, recordId, relation, ids, before)),
+    hold: (recordId: string, relation: string, ids: readonly string[]) =>
+      setOrders((held) => holdOrder(held, recordId, relation, ids)),
     release: (recordId: string, relation: string) => setOrders((held) => dropOrder(held, recordId, relation)),
-    holdStatus: (recordId: string, status: string, before: string) =>
-      setOrders((held) => holdOrder(held, recordId, STATUS, [status], [before])),
+    holdStatus: (recordId: string, status: string) => setOrders((held) => holdOrder(held, recordId, STATUS, [status])),
     releaseStatus: (recordId: string) => setOrders((held) => dropOrder(held, recordId, STATUS)),
   },
 
@@ -81,11 +80,19 @@ export const boardOptimism = {
    * a write during a render is a re-entrancy bug waiting to happen.
    */
   settle(observed: (recordId: string, relation: string) => readonly string[] | undefined): void {
-    const spent = spentOrders(orders(), observed);
-    if (!spent.length) return;
-    setOrders((held) => spent.reduce((acc, one) => dropOrder(acc, one.recordId, one.relation), held));
+    setOrders((held) => reconcileOrders(held, observed));
   },
 
   /** Whether anything is currently drawn ahead of the data — for a caller that wants to say so. */
   inFlight: () => Object.keys(orders()).length > 0,
+
+  /**
+   * Forget everything held, unconditionally.
+   *
+   * For a change of subject rather than a change of answer: the arrangements held here belong to the
+   * board on screen, and standing in for one after moving to another space would draw a promise
+   * about records nothing on screen is showing. `settle` cannot do this — it only ever releases an
+   * entry the data has overtaken, and data that is no longer being drawn overtakes nothing.
+   */
+  reset: () => setOrders({}),
 };

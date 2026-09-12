@@ -67,11 +67,11 @@ export interface BoardDeps {
    *
    * Optional, so a host that would rather wait for the truth simply passes neither.
    */
-  hold?: (recordId: string, relation: string, ids: readonly string[], before: readonly string[]) => void;
+  hold?: (recordId: string, relation: string, ids: readonly string[]) => void;
   /** Withdraw a held arrangement — the write failed, so what is on screen is a lie. */
   release?: (recordId: string, relation: string) => void;
   /** The same pair for a card's state, which a drop into a bound column writes alongside the order. */
-  holdStatus?: (recordId: string, status: string, before: string) => void;
+  holdStatus?: (recordId: string, status: string) => void;
   releaseStatus?: (recordId: string) => void;
 }
 
@@ -456,16 +456,20 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
   async function reorderBoardColumns(boardId: string, orderedIds: string[]): Promise<void> {
     const p = dataset();
     if (!p || !boardId || !Array.isArray(orderedIds) || !orderedIds.length) return;
+    // On the tick of the drop, for the reason `arrangeColumn` gives.
+    hold(boardId, 'children', orderedIds);
     try {
       const board = await CollectionBlock.findOne(p, { where: { id: boardId } });
-      if (!board) return;
+      if (!board) {
+        release(boardId, 'children');
+        return;
+      }
       const current = ids(board.children);
       const known = new Set(current);
       const ordered = orderedIds.filter((id) => known.has(id));
       if (!ordered.length) return;
       const moved = new Set(ordered);
       const next = [...ordered, ...current.filter((id) => !moved.has(id))];
-      hold(board.id, 'children', next, current);
       try {
         await CollectionBlock.setRelation(p, board.id, 'children', next);
       } catch (error) {
@@ -493,9 +497,24 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
   async function arrangeColumn(columnId: string, orderedIds: string[]): Promise<void> {
     const p = dataset();
     if (!p || !columnId || !Array.isArray(orderedIds) || !orderedIds.length) return;
+    /*
+      Held before anything is read, which is the difference between "almost instant" and instant.
+
+      `we-sortable` restores the dragged card's opacity and *then* dispatches, in the same tick — so
+      whatever it dispatches to has one synchronous chance to reorder the list before the browser
+      paints. Holding after the `findOne` below forfeits it: the card is painted undimmed at its old
+      position and stays there for a whole read round trip.
+
+      What the relation read as before this is neither known nor needed yet — the first draw supplies
+      it. See `PendingOrder.before`.
+    */
+    hold(columnId, 'arranges', orderedIds);
     try {
       const column = await CollectionBlock.findOne(p, { where: { id: columnId } });
-      if (!column) return;
+      if (!column) {
+        release(columnId, 'arranges');
+        return;
+      }
       const current = ids(column.arranges);
       const moved = new Set(orderedIds);
       /*
@@ -504,11 +523,9 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
         before writing ordering entries, so sending the full order costs entries only for the cards
         that actually moved, and a concurrent drag of a card nobody here touched is not overwritten.
       */
+      // The visible order, then whatever the column still names that it no longer shows. The overlay
+      // above already draws the visible part; this is what gets stored.
       const next = [...orderedIds, ...current.filter((id) => !moved.has(id))];
-      // Shown before it is written, measured against what the relation read as a moment ago — see
-      // `BoardDeps.hold`. Held before the await, so the board redraws on this tick rather than after
-      // a round trip; `current` is the "before" the overlay settles against.
-      hold(column.id, 'arranges', next, current);
       try {
         await CollectionBlock.setRelation(p, column.id, 'arranges', next);
       } catch (error) {
@@ -551,6 +568,13 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
   ): Promise<void> {
     const p = dataset();
     if (!p || !cardId || !toColumnId || fromColumnId === toColumnId) return;
+    /*
+      The order half goes up immediately, as it does for a reorder. The *state* half cannot: what to
+      hold is the target column's slug, and nothing knows it until the column has been read — so a
+      drop into a bound column still shows one read of the old behaviour before the card settles.
+      Closing that means the caller passing the slug it already has on screen.
+    */
+    if (Array.isArray(orderedIds) && orderedIds.includes(cardId)) hold(toColumnId, 'arranges', orderedIds);
     try {
       const [from, to] = await Promise.all([
         /*
@@ -566,7 +590,10 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
           : Promise.resolve(null),
         CollectionBlock.findOne(p, { where: { id: toColumnId } }),
       ]);
-      if (!to) return;
+      if (!to) {
+        release(toColumnId, 'arranges');
+        return;
+      }
       const task = to.slug
         ? await getEntitiesForPerspective('TaskBlock', p)?.findOne(p, { where: { id: cardId } })
         : null;
@@ -588,19 +615,18 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
         old behaviour; closing it means the caller passing the slug in, which is a wider change than
         this is.
       */
-      const held = ids(to.arranges);
-      const holdIds = Array.isArray(orderedIds) && orderedIds.includes(cardId) ? orderedIds : [...held, cardId];
-      hold(to.id, 'arranges', holdIds, held);
-      if (to.slug && task) holdStatus(cardId, to.slug, String((task as { status?: unknown }).status ?? ''));
+      // The card appended, for a move with no position — the menu's path, which has no drop point.
+      if (!Array.isArray(orderedIds) || !orderedIds.includes(cardId)) {
+        hold(to.id, 'arranges', [...ids(to.arranges), cardId]);
+      }
+      if (to.slug) holdStatus(cardId, to.slug);
       // A lane writes no state, so nothing would take the card out of the column it left. Hold that
-      // side too, from what it reads now, so the card is not drawn in both at once.
+      // side too, so the card is not drawn in both at once.
       if (!to.slug && from) {
-        const left = ids(from.arranges);
         hold(
           from.id,
           'arranges',
-          left.filter((id) => id !== cardId),
-          left,
+          ids(from.arranges).filter((id) => id !== cardId),
         );
       }
 
