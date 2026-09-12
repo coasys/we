@@ -216,11 +216,21 @@ and the AD4M generator turns it into `linkedList`. When ad4m gains other strateg
 name one is two files — the manifest type and the generator — and nothing else in WE reads it. WE's
 contract with the ordering is only _assign an array, read an array_.
 
-When writing an order, write **the column's whole visible order** — which is what `we-sortable`
-hands over — and let the executor's diff decide what actually moved. Ids still in `arranges` that the
-column no longer shows (stale hints for cards whose state changed elsewhere) follow after it; where
-they sit cannot matter, since nothing displays them. What to avoid is writing an order that moves
-cards nobody touched, which claims positions and can overwrite somebody else's concurrent drag.
+When writing an order, write **the column's whole order** and let the executor's diff decide what
+actually moved. Ids still in `arranges` that the column no longer shows (stale hints for cards whose
+state changed elsewhere) follow after it; where they sit cannot matter, since nothing displays them.
+What to avoid is writing an order that moves cards nobody touched, which claims positions and can
+overwrite somebody else's concurrent drag.
+
+**The whole order is not always what `we-sortable` hands over.** A column showing all of itself
+hands over all of itself, and that used to be the only case. A column showing _part_ of itself —
+the people filter hiding cards, or one person's row — hands over only the part, and "that, then
+everything else" sends every card the reader could not see to the bottom of the column, for
+everyone, with nothing on screen to say so. So every drag also passes the column's order as the
+board draws it unfiltered (`contents[column].order`), and `spliceSubsetOrder` puts the moved cards
+back into the slots they occupied: hidden cards keep theirs, and a card arriving from another column
+is seated beside the visible neighbour it was dropped next to. A column showing everything hands
+over the same list either way, so the splice changes nothing there.
 
 **A move is one transaction.** Leaving one column, joining another and — for a bound column — the
 status write land as a batch, so no reader catches the card in two columns or in none. Removing a
@@ -249,6 +259,39 @@ function's docblock records it so the fragment need not.
 **The pool is unbounded.** A limit on it was the one place this design broke its own rule: the card
 past it did not land in Unplaced, it vanished. A board that outgrows one subscription wants paging,
 which is a different feature.
+
+## Who is on the work
+
+A board with `people` also reads the `Involvement` records — one person's part in one record, see
+`docs/architecture/relations.md` — and draws it three ways, all worked out in `arrangedBoard`:
+
+- **Faces on each card**, by what a kind _means_ rather than its slug, so "Assigned" renamed to
+  "Owner" still draws as the assignee. And a menu to change them, one group per kind.
+- **A filter above the board**: members to choose, and how the rest are drawn.
+  - **Dim**, the default. Nothing moves, so a filtered board keeps its shape and every column still
+    says how loaded it is — which is the reason it is the default rather than a nicety.
+  - **Hide.** The others leave the columns; a heading reads "2/5", matched of total.
+  - **A row per person.** The headings once, then a band per chosen person — or, with nobody chosen,
+    per person on any card here — plus one for work nobody is on. A card two people are on is in
+    both rows, which is true.
+
+Three decisions that look arbitrary from the code:
+
+**Declined is not being on it.** A "not going" never matches a filter, and never puts somebody in a
+row.
+
+**A drag in a row changes state and never person.** Each band's cells trade cards only with each
+other. Moving a card from Ana's row into Ben's would have to mean reassigning it, which is a claim
+somebody makes about another member — the card's menu makes that claim, deliberately, and a gesture
+aimed at a column should not make it as a side effect.
+
+**The chosen people are in the address and the mode is not.** `?who=` is view state a link should
+carry — "look at what Ana is on". Dim or hide is a way of reading, remembered per device, and a link
+should not impose it.
+
+**`participants` is not this.** A call's roster is membership a machine observed; an involvement is
+intent a person stated. The board, the calendar and anything else asking "who is on this" read
+involvements.
 
 ## Boards a person does not create
 
@@ -309,11 +352,10 @@ module writing `tag: 'transcript'` into `TextBlock.style`. Which board is canoni
 
 ## What is not built, and how it fits
 
-- **Swimlanes.** A board would gain a second axis. A column is the one-axis case of a **group**; a
-  group with two bindings is a cell. Order stays where it already is, on the group. Rows derived from
-  a field (assignee, priority) are a client-side partition of the column order — a second argument to
-  `arrangedBoard` — and need no data at all. Arbitrary named rows need row records and a second
-  binding on the group — additive, not a restructure.
+- **Swimlanes other than by person.** A row per person is built, and was exactly the client-side
+  partition this entry predicted: no data, a second argument to `arrangedBoard`. Rows by priority are
+  the same move over a scalar. Arbitrary named rows ("Design", "Backend") still need row records and
+  a second binding on the group — additive, not a restructure.
 - **WIP limits, per-board filters, saved views.** Single-setter config; see the table above. A saved
   view is where `gathers` is heading: a board whose pool is a query rather than a container.
 - **Moving cards between boards in bulk.** The add-card modal pulls one card in at a time. The Pocket
@@ -340,5 +382,7 @@ module writing `tag: 'transcript'` into `TextBlock.style`. Which board is canoni
 | The view           | `packages/templates/views/src/views/BoardsView/index.ts`                                                                                                                                                                                       |
 | The writes         | `packages/app-shell/src/shared/boards.ts`, surfaced on `spaceStore` — `createBoard`, `openBoardFor`, `addBoardColumn`, `removeBoardColumn`, `renameBoardColumn`, `reorderBoardColumns`, `arrangeColumn`, `moveCardToColumn`, `addTaskToColumn` |
 | The vocabulary     | `packages/entities/src/manifest/TaskState.ts`, and Settings → Vocabulary                                                                                                                                                                       |
+| Who is on the work | `packages/entities/src/manifest/Involvement.ts` and `InvolvementType.ts`; the writes in `packages/app-shell/src/shared/involvements.ts`; the read in `sources/involvement.ts`; the filter in `packages/templates/kit/src/we/peopleFilter.ts`   |
+| The order splice   | `packages/app-shell/src/shared/shapes/subsetOrder.ts`                                                                                                                                                                                          |
 | The anchor         | `packages/templates/kit/src/we/anchor.ts`                                                                                                                                                                                                      |
 | The showcase       | `packages/templates/showcase/src/KanbanTemplate.schema.ts` — the same fragment, over posts, as lanes                                                                                                                                           |
