@@ -164,14 +164,20 @@ export function kindIcon(kind: string): string {
  *
  * The template's opinion, and the floor the community's own choice sits on — see `CARD_KEY`.
  */
-const PLAIN = 'var(--we-color-neutral-200)';
+const PLAIN = 'var(--we-color-neutral-300)';
 export const PLAIN_FILL = PLAIN;
 
 /** What the canvas's ground is before the community says otherwise — the page it is drawn on. */
 export const CANVAS_DEFAULT = 'var(--we-role-page)';
 
-/** What a connection is drawn in before the community says otherwise — the graph's own default. */
-export const LINK_DEFAULT = 'var(--we-color-neutral-300)';
+/**
+ * What a connection is drawn in before the community says otherwise.
+ *
+ * The accent rather than the graph's own neutral: a line on this canvas is a claim somebody made —
+ * one of the few things here that is *authored* rather than extracted — and at neutral it read as
+ * chrome. A step on the ramp, so it follows the theme's polarity like the plain card does.
+ */
+export const LINK_DEFAULT = 'var(--we-color-primary-300)';
 
 /**
  * The three colours in the key that are not about a *kind* of thing: what a card with no other

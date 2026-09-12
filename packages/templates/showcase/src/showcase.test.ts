@@ -1027,7 +1027,7 @@ describe('the workshop’s key', () => {
     for (const [semantic, fill] of Object.entries(STATE_FILLS)) {
       expect(fill, semantic).toMatch(/^(#|oklch\()/);
     }
-    expect(PLAIN_FILL).toBe('var(--we-color-neutral-200)');
+    expect(PLAIN_FILL).toBe('var(--we-color-neutral-300)');
     expect(route('/canvas')).toContain(`style: { color: '${KIND_DEFAULTS.EventBlock}' }`);
     // Every state has one, `open` included: it shared the plain card until now, which made a to-do
     // task and a card that is not a task at all — a note, an event — the same colour under the lens

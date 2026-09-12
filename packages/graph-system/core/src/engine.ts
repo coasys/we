@@ -9,6 +9,7 @@
  */
 import type {
   BehaviourContext,
+  CardShape,
   EdgeGeometry,
   ExpandDirection,
   ExpanderContext,
@@ -1097,7 +1098,7 @@ export class GraphEngine {
     return { ...node, data: { ...node.data, ...patch } };
   }
 
-  private hitArea(rawNode: GraphNode): { radius: number; halfWidth?: number; halfHeight?: number } {
+  private hitArea(rawNode: GraphNode): { radius: number; halfWidth?: number; halfHeight?: number; shape?: CardShape } {
     const node = this.overlaid(rawNode);
     // Resolved through `nodeVisual` — the same function the renderer paints from — rather than read
     // off the raw style rules. Deriving it separately is how a card ended up with an 18px hit spot in
@@ -1108,7 +1109,15 @@ export class GraphEngine {
     // and a hit area that moved when a metric finished computing would be worse than a stale one.
     const visual = nodeVisual(node, resolveStyle(node, this.spec.nodeStyle), NO_METRICS);
     if (visual.shape === 'card' && visual.width && visual.height) {
-      return { radius: visual.size, halfWidth: visual.width / 2, halfHeight: visual.height / 2 };
+      // The outline comes with the box. Picking stays on the box deliberately — a forgiving hit area
+      // is right, and a triangle whose corners could not be clicked would be a worse trade than a
+      // line that met one — but routing wants the shape, which is what `cardShape` carries.
+      return {
+        radius: visual.size,
+        halfWidth: visual.width / 2,
+        halfHeight: visual.height / 2,
+        shape: visual.cardShape,
+      };
     }
     // A few pixels of slack, so a mark is grabbable at its edge rather than only inside it.
     return { radius: visual.size + 4 };
@@ -1133,7 +1142,9 @@ export class GraphEngine {
     if (!node) return 14 + gap;
     const area = this.hitArea(node);
     if (area.halfWidth === undefined || area.halfHeight === undefined) return area.radius + gap;
-    return { halfWidth: area.halfWidth + gap, halfHeight: area.halfHeight + gap };
+    // The standoff travels with the box rather than inside it: a shape cannot be inflated by adding
+    // to its half-extents, since that moves its sides and its corners by different amounts.
+    return { halfWidth: area.halfWidth, halfHeight: area.halfHeight, shape: area.shape, gap };
   }
 
   /**

@@ -223,3 +223,54 @@ export interface Metric {
     options?: Record<string, unknown>,
   ): Map<string, number>;
 }
+
+/**
+ * What each card shape is actually drawn as, in fractions of its box, clockwise from the top.
+ *
+ * **One outline, four consumers.** The renderer already derived three things from these points so
+ * they could not disagree — the clip a card is cut to, the ring behind it when it is selected, and
+ * the floats its text wraps to. The fourth is where an edge attaches, and it was the one that did
+ * not: routing met the card's *box*, which is what the shape is cut *out of*. Where the outline
+ * touches the box there was no gap and nothing looked wrong; where it does not, the line stopped in
+ * mid-air — 45px short of a triangle's side on a 180px card, a quarter of its width.
+ *
+ * So the table lives here, in the vocabulary both sides share, rather than in the renderer that
+ * happened to need it first.
+ *
+ * Only the shapes a radius cannot make. `square` and `note` are the box (a note's corner radius is
+ * small enough that nothing attaches inside it), and `round` is the ellipse inscribed in the box —
+ * exact by formula, and a polygon of it would be an approximation of something already known.
+ */
+export const CARD_SILHOUETTES: Partial<Record<CardShape, readonly (readonly [number, number])[]>> = {
+  triangle: [
+    [0.5, 0],
+    [1, 1],
+    [0, 1],
+  ],
+  diamond: [
+    [0.5, 0],
+    [1, 0.5],
+    [0.5, 1],
+    [0, 0.5],
+  ],
+  pentagon: [
+    [0.5, 0],
+    [1, 0.38],
+    [0.82, 1],
+    [0.18, 1],
+    [0, 0.38],
+  ],
+  hexagon: [
+    [0.25, 0],
+    [0.75, 0],
+    [1, 0.5],
+    [0.75, 1],
+    [0.25, 1],
+    [0, 0.5],
+  ],
+};
+
+/** The outline of a shape that has one — a cut card. `undefined` for a box, an ellipse, or a dot. */
+export function cardSilhouette(shape?: CardShape): readonly (readonly [number, number])[] | undefined {
+  return shape ? CARD_SILHOUETTES[shape] : undefined;
+}

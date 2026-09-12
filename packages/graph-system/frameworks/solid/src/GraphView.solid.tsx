@@ -54,6 +54,7 @@ import { DEFAULT_REIFIED_EDGES, defaultExpanders } from '@we/graph-expanders';
 import { defaultLayouts } from '@we/graph-layouts';
 import type {
   Behaviour,
+  CardShape,
   ControlContext,
   EdgeGeometry,
   EdgeSide,
@@ -62,7 +63,7 @@ import type {
   Point,
   PointerInput,
 } from '@we/graph-protocol';
-import { parseAddress } from '@we/graph-protocol';
+import { cardSilhouette, parseAddress } from '@we/graph-protocol';
 import { batch, createEffect, createMemo, createSignal, For, onCleanup, onMount, Show, untrack } from 'solid-js';
 import { createStore, reconcile, type SetStoreFunction } from 'solid-js/store';
 import { Dynamic } from 'solid-js/web';
@@ -934,43 +935,18 @@ export function GraphView(props: GraphViewProps) {
   /**
    * The shapes a radius cannot make, as fractions of the card's box, clockwise from the top.
    *
-   * One set of points, from which three things are derived so they cannot disagree: the clip the
-   * card is cut to, the ring drawn behind it when it is hovered or selected, and the floats its
-   * text wraps to. A round card is not cut — its radius draws it — but it flows, so it gets points
-   * of its own below.
+   * One set of points, from which **four** things are derived so they cannot disagree: the clip the
+   * card is cut to, the ring drawn behind it when it is hovered or selected, the floats its text
+   * wraps to, and — since the table moved to `@we/graph-protocol` — where an edge attaches. The
+   * fourth was the reason it moved: routing met the card's *box*, which is the shape a card is cut
+   * out of, so a line stopped 45px short of a triangle's side. A round card is not cut — its radius
+   * draws it — but it flows, so it gets points of its own below.
    */
-  const SHAPE_POINTS: Record<string, [number, number][]> = {
-    triangle: [
-      [0.5, 0],
-      [1, 1],
-      [0, 1],
-    ],
-    diamond: [
-      [0.5, 0],
-      [1, 0.5],
-      [0.5, 1],
-      [0, 0.5],
-    ],
-    pentagon: [
-      [0.5, 0],
-      [1, 0.38],
-      [0.82, 1],
-      [0.18, 1],
-      [0, 0.38],
-    ],
-    hexagon: [
-      [0.25, 0],
-      [0.75, 0],
-      [1, 0.5],
-      [0.75, 1],
-      [0.25, 1],
-      [0, 0.5],
-    ],
-  };
-
+  /** Points in the box's own 0..1 space, as the shared table gives them. */
+  type Outline = readonly (readonly [number, number])[];
   type Shaped = { shape: string; cardShape?: string };
   const cutPoints = (visual: Shaped) =>
-    visual.shape === 'card' && visual.cardShape ? SHAPE_POINTS[visual.cardShape] : undefined;
+    visual.shape === 'card' ? cardSilhouette(visual.cardShape as CardShape | undefined) : undefined;
   const pct = (value: number) => `${Math.round(value * 10000) / 100}%`;
 
   /** The polygon a card is cut to. A clip rather than a drawn outline, so the card stays a box. */
@@ -980,13 +956,13 @@ export function GraphView(props: GraphViewProps) {
   }
 
   /** The outline text wraps to: a cut shape's own points, or an ellipse sampled for a round card. */
-  function flowPoints(visual: Shaped): [number, number][] | undefined {
+  function flowPoints(visual: Shaped): Outline | undefined {
     if (visual.shape !== 'card') return undefined;
     if (visual.cardShape === 'round') {
       const steps = 24;
       return Array.from({ length: steps }, (_, i) => {
         const angle = -Math.PI / 2 + (i / steps) * Math.PI * 2;
-        return [0.5 + 0.5 * Math.cos(angle), 0.5 + 0.5 * Math.sin(angle)];
+        return [0.5 + 0.5 * Math.cos(angle), 0.5 + 0.5 * Math.sin(angle)] as const;
       });
     }
     return cutPoints(visual);
@@ -1006,7 +982,7 @@ export function GraphView(props: GraphViewProps) {
     const points = flowPoints(visual);
     if (!points) return { left: 'none', right: 'none' };
     const n = points.length;
-    const pick = (better: (a: [number, number], b: [number, number]) => boolean) =>
+    const pick = (better: (a: readonly [number, number], b: readonly [number, number]) => boolean) =>
       points.reduce((best, p, i) => (better(p, points[best]) ? i : best), 0);
     const topRight = pick((a, b) => a[1] < b[1] || (a[1] === b[1] && a[0] > b[0]));
     const bottomRight = pick((a, b) => a[1] > b[1] || (a[1] === b[1] && a[0] > b[0]));
@@ -1014,7 +990,7 @@ export function GraphView(props: GraphViewProps) {
     const bottomLeft = pick((a, b) => a[1] > b[1] || (a[1] === b[1] && a[0] < b[0]));
     // Clockwise from one index to another, inclusive.
     const chain = (from: number, to: number) => {
-      const out: [number, number][] = [];
+      const out: (readonly [number, number])[] = [];
       for (let i = from; ; i = (i + 1) % n) {
         out.push(points[i]);
         if (i === to) break;
