@@ -86,6 +86,7 @@ import {
   LENS_PARAM,
   LENS_QUERY,
   lensNodeRules,
+  LINK_FILL,
   NO_LENS,
   PLAIN_FILL,
   TYPE_STYLES_QUERY,
@@ -1601,7 +1602,15 @@ const canvas: SchemaNode = {
       // needs to see, and clicking empty canvas silently stops clearing the selection.
       'pan-zoom',
     ],
-    edgeStyle: [{ style: { curve: 'smooth', arrow: 'target', width: 2, showLabel: true } }],
+    /*
+      The lines, in the colour the community set — the key's third canvas row.
+
+      `LINK_FILL` answers the graph's own default where nobody has chosen anything, so a canvas
+      nobody has touched is unchanged. The arrowhead follows the line: the renderer emits a head per
+      colour actually asked for, since an SVG marker paints in its own right rather than inheriting
+      from the path that references it.
+    */
+    edgeStyle: [{ style: { curve: 'smooth', arrow: 'target', width: 2, showLabel: true, color: { $: LINK_FILL } } }],
     controls: ['zoom-in', 'zoom-out', 'fit', 'lock'],
     height: '100%',
     /*
@@ -2897,7 +2906,7 @@ export const workshopTemplate: TemplateSchema = {
       */
       {
         id: 'key',
-        node: keyPanel({ call: CALL, extracted: EXTRACTED.$ }),
+        node: keyPanel({ call: CALL, callExpr: CALL_EXPR, extracted: EXTRACTED.$ }),
         title: 'Key',
         snap: 'right',
         order: 2,

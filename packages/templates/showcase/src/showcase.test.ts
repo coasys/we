@@ -31,6 +31,9 @@ import {
   KIND_DEFAULTS,
   LENS_PARAM,
   LENS_QUERY,
+  LINK_ENTITY,
+  LINK_FILL,
+  LINK_KEY,
   NO_LENS,
   PLAIN_FILL,
   toggleLens,
@@ -911,7 +914,7 @@ describe('the workshop’s key', () => {
     // The same picker the vocabulary uses, tokens first, on every row of the key: the two canvas
     // rows, the kind rows (both lists that make them up), and a state's.
     const pickers = key.split('"type":"we-color-picker","props":{"tokens":true').length - 1;
-    expect(pickers).toBe(5);
+    expect(pickers).toBe(6);
   });
 
   it('turns each lens on from the heading of the section it governs, and hides the rest', () => {
@@ -933,25 +936,54 @@ describe('the workshop’s key', () => {
     expect(key).toContain(`"condition":{"$":"${BY_STATE}"},"enterTransition"`);
   });
 
-  it('offers the plain card and the canvas ground above the lenses, as the key’s own rows', () => {
+  it('offers what a canvas is made of above the lenses, as the key’s own rows', () => {
     /*
-      The colour every card certainly shows was the one nobody could change — a constant in the
-      template. Both are held as `TypeStyle` rows on the space like every other colour in the key,
-      under names no model can have, so they arrive in the same subscription and clear the same way;
-      `lensNodeRules` filters them out of the per-kind rules rather than emitting one that matches
-      nothing.
+      The three things on a canvas that are not a kind of card: the plain fill, the ground behind it,
+      and the lines between. Each was a constant in the template — the colour every canvas certainly
+      shows was the one nobody could change. All three are `TypeStyle` rows on the space like every
+      other colour in the key, under names no model can have, so they arrive in the same
+      subscription and clear the same way; `lensNodeRules` filters them out of the per-kind rules
+      rather than emitting one that matches nothing.
     */
     const key = panel('key');
     const canvas = route('/canvas');
 
     expect(key).toContain('"Cards"');
     expect(key).toContain('"Background"');
-    expect(key).toContain(`"${CARD_KEY}"`);
-    expect(key).toContain(`"${CANVAS_KEY}"`);
-    // The graph takes them as its base fill and its ground.
+    expect(key).toContain('"Connections"');
+    for (const reserved of [CARD_KEY, CANVAS_KEY, LINK_KEY]) expect(key).toContain(`"${reserved}"`);
+    // The graph takes them as its base fill, its ground and its edge colour.
     expect(canvas).toContain(`[{ style: { color: ${CARD_FILL} } }]`);
     expect(canvas).toContain(`"bg":{"$":"${CANVAS_FILL}"}`);
-    expect(canvas).toContain(`filter(s, !(s.nodeType in ['${CARD_KEY}', '${CANVAS_KEY}']))`);
+    expect(canvas).toContain(`"showLabel":true,"color":{"$":"${LINK_FILL}"}`);
+    expect(canvas).toContain(`filter(s, !(s.nodeType in ['${CARD_KEY}', '${CANVAS_KEY}', '${LINK_KEY}']))`);
+  });
+
+  it('never offers a fill for a connection among the kinds', () => {
+    /*
+      `Relationship` is one of the models a call can extract, and the kinds come from that list — so
+      it was offered a colour in the Kinds section, where picking one changed nothing at all: the
+      canvas seed takes relationships as `connections` and draws them as lines, and a line has no
+      fill. Its colour is the Connections row now, and both lists that make up the kinds skip it.
+    */
+    const key = panel('key');
+
+    expect(key).toContain(`kind != '${LINK_ENTITY}'`);
+    expect(key).toContain(`placement.nodeType != '${LINK_ENTITY}'`);
+  });
+
+  it('says what is missing rather than listing a key about nothing', () => {
+    /*
+      The panel is reachable from three pages and from a page with no call, and without a call the
+      lists are not merely empty — the kinds are what this space *could* extract rather than what is
+      on a canvas, so the panel filled with rows about nothing. Both absences are the same kind of
+      answer: one sentence naming what is missing, with the way out already on screen.
+    */
+    const key = panel('key');
+
+    expect(key).toContain(`${CALL_EXPR}`);
+    expect(key).toContain('Choose or start a call.');
+    expect(key).toContain('Colours are on the canvas.');
   });
 
   it('draws every row the same way — a swatch, a glyph, a name, a reset', () => {

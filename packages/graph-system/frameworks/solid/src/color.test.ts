@@ -13,7 +13,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { color } from './GraphView.solid';
+import { arrowId, color } from './GraphView.solid';
 
 describe('a colour reaching the renderer', () => {
   it('passes every CSS colour through untouched', () => {
@@ -52,5 +52,33 @@ describe('a colour reaching the renderer', () => {
     // raw would set `background: page`, which paints nothing.
     expect(color('', 'page')).toBe('var(--we-role-page)');
     expect(color(undefined, '')).toBe('');
+  });
+});
+
+/**
+ * The arrowhead's id, which is the second half of a coloured line.
+ *
+ * A marker paints in its own right rather than inheriting the stroke of the path referencing it, so
+ * a coloured line needs a head of its own — and the id naming it is built from the colour. A colour
+ * is `oklch(90% 0.06 150)` or `#86c2ff`, and an id carrying a bracket, a percent or a hash makes
+ * `url(#…)` reference nothing: no head, no error, the same silent shape as a colour resolving to no
+ * variable.
+ */
+describe('the arrowhead for a colour', () => {
+  it('is usable as an id and as a url() reference', () => {
+    for (const value of ['#86c2ff', 'oklch(90% 0.06 150)', 'var(--we-role-accent)', 'rgba(0, 0, 0, 0.5)']) {
+      const id = arrowId(value);
+      expect(id, value).toMatch(/^[A-Za-z][\w-]*$/);
+    }
+  });
+
+  it('is one id per colour, so every line drawn in it shares a head', () => {
+    expect(arrowId('#86c2ff')).toBe(arrowId('#86c2ff'));
+    expect(arrowId('#86c2ff')).not.toBe(arrowId('#ff94f7'));
+  });
+
+  it('falls back to the default head where no colour was asked for', () => {
+    expect(arrowId()).toBe('we-graph-arrow');
+    expect(arrowId('')).toBe('we-graph-arrow');
   });
 });

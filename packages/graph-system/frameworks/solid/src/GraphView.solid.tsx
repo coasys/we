@@ -297,6 +297,19 @@ export function color(value: string | undefined, fallback: string): string {
   return `var(--we-color-${token})`;
 }
 
+/**
+ * The arrowhead a line in this colour uses — an id per colour rather than per edge, since a marker
+ * is shared by every line drawn in it.
+ *
+ * Sanitised rather than interpolated: a colour is `oklch(90% 0.06 150)` or `#86c2ff`, and an id
+ * carrying a bracket, a percent or a hash makes `url(#…)` reference nothing — the arrowhead would
+ * simply not be drawn, with no error. The same silent class as a colour that resolves to no
+ * variable, one layer along.
+ */
+export function arrowId(stroke?: string): string {
+  return stroke ? `we-graph-arrow-${stroke.replace(/[^a-z0-9]+/gi, '-')}` : 'we-graph-arrow';
+}
+
 export function GraphView(props: GraphViewProps) {
   let surface: HTMLDivElement | undefined;
 
@@ -831,6 +844,21 @@ export function GraphView(props: GraphViewProps) {
     connectionVersion();
     return engine.getPendingConnection();
   });
+
+  /**
+   * The colours the arrowheads have to exist in — the distinct ones anybody has asked for.
+   *
+   * Only edges that carry a colour of their own: an ordinary graph asks for none, emits no extra
+   * markers, and keeps the default head it has always had, which is deliberately a shade darker
+   * than the line it finishes.
+   */
+  const arrowColors = createMemo(() => [
+    ...new Set(
+      edges()
+        .map((entry) => entry.visual.color)
+        .filter((value): value is string => !!value),
+    ),
+  ]);
 
   const transform = createMemo(() => {
     viewportVersion();
@@ -1907,8 +1935,8 @@ export function GraphView(props: GraphViewProps) {
                   stroke-dasharray={entry.visual.dashed ? '4 4' : undefined}
                   // SVG's own answer to "keep this stroke a constant width whatever the transform".
                   vector-effect={entry.visual.scaleWithZoom ? undefined : 'non-scaling-stroke'}
-                  marker-start={entry.visual.arrow === 'both' ? 'url(#we-graph-arrow)' : undefined}
-                  marker-end={entry.visual.arrow === 'none' ? undefined : 'url(#we-graph-arrow)'}
+                  marker-start={entry.visual.arrow === 'both' ? `url(#${arrowId(entry.visual.color)})` : undefined}
+                  marker-end={entry.visual.arrow === 'none' ? undefined : `url(#${arrowId(entry.visual.color)})`}
                 />
                 {/*
                   A grip on each end, for dragging the attachment around the node's rim.
@@ -2069,6 +2097,30 @@ export function GraphView(props: GraphViewProps) {
             >
               <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--we-color-neutral-400)" />
             </marker>
+            {/*
+              One head per colour anybody has actually asked for.
+
+              A marker paints in its own right rather than inheriting from the path referencing it,
+              and `context-stroke` — the one way to say it once — is SVG 2 and unsupported in Safari.
+              So a coloured line kept the default grey head, which reads as a line that failed to
+              finish rather than as a colour. These are generated from the edges on screen, so an
+              uncoloured graph emits none of them and looks exactly as it did.
+            */}
+            <For each={arrowColors()}>
+              {(stroke) => (
+                <marker
+                  id={arrowId(stroke)}
+                  viewBox="0 0 10 10"
+                  refX="0"
+                  refY="5"
+                  markerWidth={ARROW_LENGTH}
+                  markerHeight={ARROW_LENGTH}
+                  orient="auto-start-reverse"
+                >
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill={color(stroke, 'neutral-400')} />
+                </marker>
+              )}
+            </For>
             {/*
               The same head in the proposal's colour. A marker paints in its own right rather than
               inheriting from the path that references it, and the one way to say it once —

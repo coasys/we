@@ -170,15 +170,18 @@ export const PLAIN_FILL = PLAIN;
 /** What the canvas's ground is before the community says otherwise — the page it is drawn on. */
 export const CANVAS_DEFAULT = 'var(--we-role-page)';
 
+/** What a connection is drawn in before the community says otherwise — the graph's own default. */
+export const LINK_DEFAULT = 'var(--we-color-neutral-300)';
+
 /**
- * The two colours in the key that are not about a *kind* of thing: what a card with no other colour
- * is drawn in, and what the canvas behind them is.
+ * The three colours in the key that are not about a *kind* of thing: what a card with no other
+ * colour is drawn in, what the canvas behind them is, and what the lines between them are.
  *
  * Held as `TypeStyle` rows on the space like every other colour here, under a name no entity can
  * have. A `TypeStyle` is already "a colour the community keeps on its space under a name", which is
- * exactly what these two are — and storing them the same way means they arrive in the same
+ * exactly what these are — and storing them the same way means they arrive in the same
  * subscription, clear the same way (`setSpaceTypeColor` with an empty colour deletes the row), and
- * need no field on `Space`, no store action and no migration for two more colours.
+ * need no field on `Space`, no store action and no migration for three more colours.
  *
  * The `@` is what keeps them out of everything that reads the key *as* a key. A model name is a bare
  * identifier, so nothing can collide with these; `KEY_RESERVED` below is how the graph's per-kind
@@ -186,6 +189,17 @@ export const CANVAS_DEFAULT = 'var(--we-role-page)';
  */
 export const CARD_KEY = '@card';
 export const CANVAS_KEY = '@canvas';
+export const LINK_KEY = '@link';
+
+/**
+ * The one kind that is never a card.
+ *
+ * A `Relationship` is drawn as a *line* — the canvas seed takes it as `connections` — so it has no
+ * fill, and listing it among the kinds offered a colour that changed nothing. It appeared there
+ * because the kinds come from what a call can extract, which includes it. Its colour is the
+ * Connections row above, where the other things that are not cards are.
+ */
+export const LINK_ENTITY = 'Relationship';
 
 /** The space's colour for one of the keys above, as an expression. Reads `local.typeStyles`. */
 const spaceColor = (key: string) => `find(local.typeStyles, { nodeType: '${key}' }).color`;
@@ -193,6 +207,7 @@ const spaceColor = (key: string) => `find(local.typeStyles, { nodeType: '${key}'
 /** Whether the community has chosen one — so there is something for a reset to take away. */
 export const cardColorChosen = spaceColor(CARD_KEY);
 export const canvasColorChosen = spaceColor(CANVAS_KEY);
+export const linkColorChosen = spaceColor(LINK_KEY);
 
 /**
  * What a card with no other colour is drawn in: the community's choice, else the template's.
@@ -205,8 +220,11 @@ export const CARD_FILL = `(${cardColorChosen} ? ${cardColorChosen} : '${PLAIN}')
 /** The same for the canvas's ground, which the graph takes as a `bg`. */
 export const CANVAS_FILL = `(${canvasColorChosen} ? ${canvasColorChosen} : '${CANVAS_DEFAULT}')`;
 
+/** And for a connection, which the graph takes as an `edgeStyle` colour — the line and its head. */
+export const LINK_FILL = `(${linkColorChosen} ? ${linkColorChosen} : '${LINK_DEFAULT}')`;
+
 /** The key's rows that are not kinds, for the per-kind rules to skip. */
-const KEY_RESERVED = `['${CARD_KEY}', '${CANVAS_KEY}']`;
+const KEY_RESERVED = `['${CARD_KEY}', '${CANVAS_KEY}', '${LINK_KEY}']`;
 
 /** The default fill for a kind, as an expression over `kind`. */
 export function kindDefaultFill(kind: string): string {
@@ -472,47 +490,41 @@ function lensSection(opts: {
  * plain fill was a constant in the template until now, which made the one colour every canvas
  * certainly shows the only one nobody could change.
  */
+/** One of the canvas's own colours: the picker, the name, and the way back to the default. */
+function canvasRow(opts: { key: string; chosen: string; fill: string; icon: string; label: string }): SchemaNode {
+  const write = (color: SchemaProp): SchemaProp => ({
+    $action: 'recordStore.setSpaceTypeColor',
+    args: [{ $: 'spaceStore.currentSpace.id' }, opts.key, color],
+  });
+  return keyRow({
+    mark: picker({ $: opts.fill }, write({ $: 'event.detail' })),
+    icon: opts.icon,
+    label: opts.label,
+    trailing: resetButton({ $: opts.chosen }, write('')),
+  });
+}
+
 const canvasRows: SchemaNode = {
   type: 'Column',
   // No gap: the rows carry their own room, as every other list in the panel does.
   props: { width: '100%' },
   children: [
-    keyRow({
-      mark: picker(
-        { $: CARD_FILL },
-        {
-          $action: 'recordStore.setSpaceTypeColor',
-          args: [{ $: 'spaceStore.currentSpace.id' }, CARD_KEY, { $: 'event.detail' }],
-        },
-      ),
-      icon: 'square',
-      label: 'Cards',
-      trailing: resetButton(
-        { $: cardColorChosen },
-        {
-          $action: 'recordStore.setSpaceTypeColor',
-          args: [{ $: 'spaceStore.currentSpace.id' }, CARD_KEY, ''],
-        },
-      ),
-    }),
-    keyRow({
-      mark: picker(
-        { $: CANVAS_FILL },
-        {
-          $action: 'recordStore.setSpaceTypeColor',
-          args: [{ $: 'spaceStore.currentSpace.id' }, CANVAS_KEY, { $: 'event.detail' }],
-        },
-      ),
+    canvasRow({ key: CARD_KEY, chosen: cardColorChosen, fill: CARD_FILL, icon: 'square', label: 'Cards' }),
+    canvasRow({
+      key: CANVAS_KEY,
+      chosen: canvasColorChosen,
+      fill: CANVAS_FILL,
       icon: 'frame-corners',
       label: 'Background',
-      trailing: resetButton(
-        { $: canvasColorChosen },
-        {
-          $action: 'recordStore.setSpaceTypeColor',
-          args: [{ $: 'spaceStore.currentSpace.id' }, CANVAS_KEY, ''],
-        },
-      ),
     }),
+    /*
+      The lines, which are the third thing on a canvas that is not a card.
+
+      It was listed among the *kinds* — `Relationship` is one of the models a call can extract, and
+      the kinds come from that list — where it offered a colour that changed nothing, because a
+      relationship is drawn as a line and a line has no fill. Here it colours what it actually is.
+    */
+    canvasRow({ key: LINK_KEY, chosen: linkColorChosen, fill: LINK_FILL, icon: 'flow-arrow', label: 'Connections' }),
   ],
 };
 
@@ -578,7 +590,10 @@ function kindRows(opts: { call: Record<string, unknown>; extracted: string }): S
               {
                 type: '$if',
                 props: {
-                  condition: { $: 'count(local.found) || kind in local.placements.map(p, p.nodeType)' },
+                  // `LINK_ENTITY` is in this list and is not a card — see its docblock.
+                  condition: {
+                    $: `kind != '${LINK_ENTITY}' && (count(local.found) || kind in local.placements.map(p, p.nodeType))`,
+                  },
                   then: kindRow('kind'),
                 },
               },
@@ -594,7 +609,9 @@ function kindRows(opts: { call: Record<string, unknown>; extracted: string }): S
             type: '$if',
             props: {
               condition: {
-                $: `placement.nodeType != prev.nodeType && !(placement.nodeType in (${opts.extracted}))`,
+                $:
+                  `placement.nodeType != prev.nodeType && placement.nodeType != '${LINK_ENTITY}'` +
+                  ` && !(placement.nodeType in (${opts.extracted}))`,
               },
               then: kindRow('placement.nodeType'),
             },
@@ -688,7 +705,14 @@ const ON_CANVAS = "'canvas' in routeStore.segments";
  * page change, which is what makes crossing back instant, and they are the two cheapest queries in
  * the template.
  */
-export function keyPanel(opts: { call: Record<string, unknown>; extracted: string }): SchemaNode {
+export function keyPanel(opts: { call: Record<string, unknown>; callExpr: string; extracted: string }): SchemaNode {
+  /*
+    Two things have to be true for the key to mean anything: the canvas is the page on screen, and
+    there is a call for it to be about. Said as one condition with one sentence for each, because
+    they are different absences with different ways out — one is a page away, the other needs a call
+    chosen or started.
+  */
+  const ready = `${ON_CANVAS} && (${opts.callExpr})`;
   return {
     type: 'Column',
     props: { width: '100%', height: '100%', p: '300', gap: '300', overflow: 'hidden' },
@@ -709,17 +733,28 @@ export function keyPanel(opts: { call: Record<string, unknown>; extracted: strin
           {
             type: '$if',
             props: {
-              condition: { $: ON_CANVAS },
+              condition: { $: ready },
               /*
                 Said rather than shown blank, because the panel is reachable from all three pages and
-                an empty one reads as a key that failed to load. One sentence naming where the
-                colours are is the whole of it — the way back is the switcher two inches away, so
-                this needs no button of its own.
+                from a page with no call, and an empty one reads as a key that failed to load. One
+                sentence naming what is missing is the whole of it — the way out of both is two
+                inches away, in the switcher or the calls list, so neither needs a button here.
+
+                Which sentence depends on which is absent. Without a call the lists are not merely
+                empty: the kinds are whatever this space *could* extract rather than what is on a
+                canvas, so the panel filled up with rows about nothing — which is how `Relationship`,
+                a line rather than a card, came to be offered a fill.
               */
               else: {
                 type: 'we-text',
                 props: { variant: 'footnote', color: 'text-muted' },
-                children: ['Colours are on the canvas. The board and the calendar draw every card plain.'],
+                children: [
+                  {
+                    $:
+                      `${ON_CANVAS} ? 'Choose or start a call. The key is about what is on its canvas.'` +
+                      ` : 'Colours are on the canvas. The board and the calendar draw every card plain.'`,
+                  },
+                ],
               },
               then: {
                 type: 'Column',
@@ -771,21 +806,13 @@ export function keyPanel(opts: { call: Record<string, unknown>; extracted: strin
                         },
                       },
                     },
+                    // No footnote under the rows. "Anything without a state stays plain" was true and
+                    // was not worth a line: the plain colour is the first row of the panel, so the
+                    // sentence explained one part of the key using another part two inches above it.
                     body: {
-                      type: 'Column',
-                      props: { width: '100%' },
-                      children: [
-                        {
-                          type: '$each',
-                          props: { items: { $: 'spaceStore.offeredTaskStates' }, as: 'state' },
-                          children: [stateRow],
-                        },
-                        {
-                          type: 'we-text',
-                          props: { variant: 'footnote', color: 'text-faint', pt: '200' },
-                          children: ['Anything without a state stays plain.'],
-                        },
-                      ],
+                      type: '$each',
+                      props: { items: { $: 'spaceStore.offeredTaskStates' }, as: 'state' },
+                      children: [stateRow],
                     },
                   }),
                 ],
