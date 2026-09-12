@@ -66,6 +66,39 @@ export interface ArrangedBoardOptions {
   records?: CardRow[] | null;
   /** The community's states, for a heading's name, icon and colour where the column has none. */
   states?: StateRow[] | null;
+  /**
+   * Arrangements written and not yet seen come back — see `shapes/pendingOrder`.
+   *
+   * Applied to the **inputs** rather than to the answers below, which is the whole reason this is
+   * three lines rather than a second pass over every field. `contents`, `unplaced`, `available` and
+   * the counts are all derived from the columns' `arranges` and the records' `status`; substitute
+   * those two before the working out and every one of them follows, including the ones nobody would
+   * remember to patch — a heading's count, and whether the Unplaced column appears at all.
+   */
+  pending?: PendingBoardState | null;
+}
+
+/**
+ * What has been written and not yet observed: an order per `<recordId>.<relation>`, and a state per
+ * record.
+ *
+ * Both are needed and neither is enough. Dropping a card into a bound column writes two things — the
+ * target column's order, and the card's own `status` — and they arrive on two different
+ * subscriptions. Overlaying only the order leaves a window where the column claims the card and the
+ * stale-hint rule below throws it out again for having the wrong state, which draws the card in
+ * *neither* column: worse than the flash, and the reason this takes both.
+ */
+export interface PendingBoardState {
+  /** The order to draw, by `<recordId>.<relation>`; `undefined` means draw what arrived. */
+  order?: (recordId: string, relation: string, observed: readonly string[]) => string[] | undefined;
+  /**
+   * The state to read a record as having, or `undefined` to read the stored one.
+   *
+   * Given what the record actually says, for the same reason `order` is: whether an overlay still
+   * applies is decided by whether the data has moved since it was written, and only the caller of
+   * this function has the data.
+   */
+  status?: (recordId: string, observed: string | undefined) => string | undefined;
 }
 
 export interface BoardRow {
@@ -179,6 +212,28 @@ export function arrangedBoard(options: ArrangedBoardOptions | null | undefined):
   const columnRows = asRows<ColumnRow>(options?.columns).filter((c) => c && typeof c.id === 'string');
   const records = asRows<CardRow>(options?.records).filter((r) => r && typeof r.id === 'string');
   const states = asRows<StateRow>(options?.states);
+  const pending = options?.pending ?? null;
+
+  /*
+    The two substitutions the overlay makes, and the only two places it is consulted.
+
+    Everything below reads a relation's order through `arrangesOf`/`childrenOf` and a record's state
+    through `statusOf`, so an arrangement that has been written and not yet observed is indis-
+    tinguishable here from one that has. That is deliberate: the alternative is a second pass that
+    patches the answers, and the answers are eight fields derived from these two — the one somebody
+    forgets to patch is a heading's count, and it disagrees with the cards under it.
+  */
+  const orderOf = (id: string | undefined, relation: string, stored: unknown): string[] => {
+    const observed = idsOf(stored);
+    if (!id || !pending?.order) return observed;
+    return pending.order(id, relation, observed) ?? observed;
+  };
+  const arrangesOf = (record: { id?: string; arranges?: unknown } | null | undefined) =>
+    orderOf(record?.id, 'arranges', record?.arranges);
+  const childrenOf = (record: { id?: string; children?: unknown } | null | undefined) =>
+    orderOf(record?.id, 'children', record?.children);
+  const statusOf = (record: CardRow): string | undefined =>
+    pending?.status?.(record.id, record.status) ?? record.status;
 
   const ready = Boolean(board && typeof board === 'object' && board.id);
   const gathers = Boolean(ready && board?.gathers);
@@ -187,7 +242,7 @@ export function arrangedBoard(options: ArrangedBoardOptions | null | undefined):
   // not know — deleted by another agent, or not a column at all — renders as nothing rather than a hole.
   const byId = new Map(columnRows.map((c) => [c.id, c]));
   const columns = ready
-    ? idsOf(board?.children)
+    ? childrenOf(board)
         .map((id) => byId.get(id))
         .filter((c): c is ColumnRow => Boolean(c))
     : [];
@@ -197,8 +252,8 @@ export function arrangedBoard(options: ArrangedBoardOptions | null | undefined):
 
   // Everything this board holds anywhere: its columns' arrangements, and what it holds in no column.
   const held = new Set<string>();
-  for (const column of columns) for (const id of idsOf(column.arranges)) held.add(id);
-  for (const id of idsOf(board?.arranges)) held.add(id);
+  for (const column of columns) for (const id of arrangesOf(column)) held.add(id);
+  for (const id of arrangesOf(board)) held.add(id);
 
   // The work this board could show: everything in scope, or only what it holds.
   const pool = gathers ? records : records.filter((r) => held.has(r.id));
@@ -209,10 +264,10 @@ export function arrangedBoard(options: ArrangedBoardOptions | null | undefined):
   const placed = new Set<string>();
   for (const column of columns) {
     const bound = Boolean(column.slug);
-    for (const id of idsOf(column.arranges)) {
+    for (const id of arrangesOf(column)) {
       const record = recordById.get(id);
       if (!record) continue;
-      if (!bound || record.status === column.slug) placed.add(id);
+      if (!bound || statusOf(record) === column.slug) placed.add(id);
     }
   }
 
@@ -222,10 +277,10 @@ export function arrangedBoard(options: ArrangedBoardOptions | null | undefined):
   for (const column of columns) {
     const slug = column.slug ?? '';
     const state = slug ? stateBySlug.get(slug) : undefined;
-    const arranged = idsOf(column.arranges)
+    const arranged = arrangesOf(column)
       .map((id) => recordById.get(id))
-      .filter((r): r is CardRow => Boolean(r) && (!slug || r!.status === slug));
-    const unarranged = slug ? pool.filter((r) => r.status === slug && !placed.has(r.id)) : [];
+      .filter((r): r is CardRow => Boolean(r) && (!slug || statusOf(r!) === slug));
+    const unarranged = slug ? pool.filter((r) => statusOf(r) === slug && !placed.has(r.id)) : [];
     const semantic = state?.semantic ?? 'open';
     contents[column.id] = {
       id: column.id,
@@ -240,11 +295,11 @@ export function arrangedBoard(options: ArrangedBoardOptions | null | undefined):
     };
   }
 
-  const unplaced = pool.filter((r) => !placed.has(r.id) && !boundSlugs.has(r.status ?? ''));
+  const unplaced = pool.filter((r) => !placed.has(r.id) && !boundSlugs.has(statusOf(r) ?? ''));
   const seen = new Set<string>();
   const unplacedStates: { slug: string; name: string }[] = [];
   for (const record of unplaced) {
-    const slug = record.status ?? '';
+    const slug = statusOf(record) ?? '';
     if (!slug || seen.has(slug)) continue;
     seen.add(slug);
     unplacedStates.push({ slug, name: stateBySlug.get(slug)?.name || slug });

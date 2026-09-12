@@ -285,3 +285,130 @@ describe('what the pickers offer', () => {
     expect(view.total).toBe(0);
   });
 });
+
+/**
+ * A drag that has been made and not yet come back.
+ *
+ * The overlay is handed in as two lookups and applied to the *inputs*, so what these check is that
+ * every answer follows — not just the column the card landed in, but the one it left, the counts,
+ * Unplaced, and whether the card is offered as available work. Patching the answers instead is how
+ * a heading ends up disagreeing with the cards beneath it.
+ */
+describe('while a drag is in flight', () => {
+  const todoCol: Col = { id: 'c1', slug: 'todo', arranges: ['t1'] };
+  const doingCol: Col = { id: 'c2', slug: 'doing', arranges: ['t2'] };
+
+  /** What the store holds after a drop: the target's new order, and the card's new state. */
+  const pending = (order: Record<string, string[]>, status: Record<string, string> = {}) => ({
+    order: (recordId: string, relation: string) => order[`${recordId}.${relation}`],
+    status: (recordId: string) => status[recordId],
+  });
+
+  it('draws the card in the column it was dropped into, before anything is stored', () => {
+    const view = arrangedBoard({
+      ...gathering([todoCol, doingCol]),
+      records: [todo, doing],
+      states,
+      pending: pending({ 'c2.arranges': ['t1', 't2'] }, { t1: 'doing' }),
+    });
+
+    expect(view.contents.c2.arranged.map((r) => r.id)).toEqual(['t1', 't2']);
+  });
+
+  it('takes it out of the column it left, so it is never drawn twice', () => {
+    const view = arrangedBoard({
+      ...gathering([todoCol, doingCol]),
+      records: [todo, doing],
+      states,
+      pending: pending({ 'c2.arranges': ['t1', 't2'] }, { t1: 'doing' }),
+    });
+
+    // `c1` still *holds* t1 — its own write has not come back either — but the card now reads as
+    // `doing`, so the stale-hint rule drops it from a column bound to `todo`. That is the existing
+    // rule doing the work, which is the point of overlaying the inputs.
+    expect(view.contents.c1.arranged).toEqual([]);
+    expect(view.contents.c1.count).toBe(0);
+  });
+
+  it('counts the heading the same way it draws the cards', () => {
+    const view = arrangedBoard({
+      ...gathering([todoCol, doingCol]),
+      records: [todo, doing],
+      states,
+      pending: pending({ 'c2.arranges': ['t1', 't2'] }, { t1: 'doing' }),
+    });
+
+    expect(view.contents.c2.count).toBe(2);
+  });
+
+  it('reorders within one column without touching anything else', () => {
+    const two: Col = { id: 'c1', slug: 'todo', arranges: ['t1', 't5'] };
+    const alsoTodo = { id: 't5', title: 'Five', status: 'todo' };
+    const view = arrangedBoard({
+      ...gathering([two]),
+      records: [todo, alsoTodo],
+      states,
+      pending: pending({ 'c1.arranges': ['t5', 't1'] }),
+    });
+
+    expect(view.contents.c1.arranged.map((r) => r.id)).toEqual(['t5', 't1']);
+    expect(view.contents.c1.count).toBe(2);
+  });
+
+  it('does not strand the card in Unplaced while the two writes are in flight', () => {
+    /*
+      The interleaving this exists to prevent, and the reason the overlay carries a *state* as well as
+      an order. The two writes arrive on two subscriptions: the column's order and the card's status.
+      Overlay only the order and there is a window where c2 claims t1 while t1 still reads `todo` —
+      the stale-hint rule throws it out of c2 for having the wrong state, and c1 has already let it
+      go, so the card is drawn in neither column and appears under Unplaced. Worse than the flash.
+    */
+    const view = arrangedBoard({
+      ...gathering([todoCol, doingCol]),
+      records: [todo, doing],
+      states,
+      pending: pending({ 'c2.arranges': ['t1', 't2'] }, { t1: 'doing' }),
+    });
+
+    expect(view.unplaced).toEqual([]);
+    expect(view.contents.c2.arranged.map((r) => r.id)).toContain('t1');
+  });
+
+  it('reads the board’s own column order optimistically too', () => {
+    const view = arrangedBoard({
+      ...board([todoCol, doingCol]),
+      records: [],
+      states,
+      pending: pending({ 'b1.children': ['c2', 'c1'] }),
+    });
+
+    expect(view.columns.map((c) => c.id)).toEqual(['c2', 'c1']);
+  });
+
+  it('keeps a dragged-in card out of the "bring in existing work" picker', () => {
+    // `available` is what the board holds nowhere. A card the board is about to hold is not that,
+    // and offering it would let somebody add the card they are in the middle of moving.
+    const view = arrangedBoard({
+      ...curated([todoCol], []),
+      records: [todo, doing],
+      states,
+      pending: pending({ 'c1.arranges': ['t1', 't2'] }),
+    });
+
+    expect(view.available.map((r) => r.id)).not.toContain('t2');
+  });
+
+  it('behaves exactly as before when nothing is pending', () => {
+    const withOverlay = arrangedBoard({
+      ...gathering([todoCol, doingCol]),
+      records: [todo, doing],
+      states,
+      pending: pending({}),
+    });
+    const without = arrangedBoard({ ...gathering([todoCol, doingCol]), records: [todo, doing], states });
+
+    expect(withOverlay.contents.c1.arranged).toEqual(without.contents.c1.arranged);
+    expect(withOverlay.contents.c2.arranged).toEqual(without.contents.c2.arranged);
+    expect(withOverlay.unplaced).toEqual(without.unplaced);
+  });
+});

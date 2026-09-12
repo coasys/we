@@ -53,6 +53,26 @@ export interface BoardDeps {
    * before it writes. Optional, since a host without extraction has nothing to settle.
    */
   resolveSuggestion?: (recordId: string, property: string) => Promise<void>;
+  /**
+   * Show an arrangement before it is stored, and stop showing it when it fails.
+   *
+   * A drop writes a relation and then waits about a second for the subscription to come back, during
+   * which the card is drawn from the last answer — back where it started. `hold` is what the board
+   * draws in the meantime; `release` withdraws it, and is called only when the write **failed**.
+   *
+   * A write that succeeded is not released here, and that is the point. Releasing on success would
+   * mean releasing when the promise resolves, which is earlier than the data arriving — so the card
+   * would go back for the rest of the round trip, which is the flash again with extra steps. What
+   * releases a successful one is the data moving, which only whatever draws the board can see.
+   *
+   * Optional, so a host that would rather wait for the truth simply passes neither.
+   */
+  hold?: (recordId: string, relation: string, ids: readonly string[], before: readonly string[]) => void;
+  /** Withdraw a held arrangement — the write failed, so what is on screen is a lie. */
+  release?: (recordId: string, relation: string) => void;
+  /** The same pair for a card's state, which a drop into a bound column writes alongside the order. */
+  holdStatus?: (recordId: string, status: string, before: string) => void;
+  releaseStatus?: (recordId: string) => void;
 }
 
 export interface CreateBoardOptions {
@@ -84,6 +104,10 @@ const ids = (value: unknown): string[] => (Array.isArray(value) ? (value as stri
 
 export function createBoardActions(deps: BoardDeps): BoardActions {
   const { dataset, offeredStates, notify, resolveSuggestion } = deps;
+  const hold = deps.hold ?? (() => {});
+  const release = deps.release ?? (() => {});
+  const holdStatus = deps.holdStatus ?? (() => {});
+  const releaseStatus = deps.releaseStatus ?? (() => {});
 
   /**
    * The title a column stores: nothing, when it is the name of the state it stands for.
@@ -440,10 +464,14 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
       const ordered = orderedIds.filter((id) => known.has(id));
       if (!ordered.length) return;
       const moved = new Set(ordered);
-      await CollectionBlock.setRelation(p, board.id, 'children', [
-        ...ordered,
-        ...current.filter((id) => !moved.has(id)),
-      ]);
+      const next = [...ordered, ...current.filter((id) => !moved.has(id))];
+      hold(board.id, 'children', next, current);
+      try {
+        await CollectionBlock.setRelation(p, board.id, 'children', next);
+      } catch (error) {
+        release(board.id, 'children');
+        throw error;
+      }
     } catch (error) {
       console.error('SpaceStore: could not reorder the columns', error);
       notify('Could not save that order');
@@ -476,10 +504,17 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
         before writing ordering entries, so sending the full order costs entries only for the cards
         that actually moved, and a concurrent drag of a card nobody here touched is not overwritten.
       */
-      await CollectionBlock.setRelation(p, column.id, 'arranges', [
-        ...orderedIds,
-        ...current.filter((id) => !moved.has(id)),
-      ]);
+      const next = [...orderedIds, ...current.filter((id) => !moved.has(id))];
+      // Shown before it is written, measured against what the relation read as a moment ago — see
+      // `BoardDeps.hold`. Held before the await, so the board redraws on this tick rather than after
+      // a round trip; `current` is the "before" the overlay settles against.
+      hold(column.id, 'arranges', next, current);
+      try {
+        await CollectionBlock.setRelation(p, column.id, 'arranges', next);
+      } catch (error) {
+        release(column.id, 'arranges');
+        throw error;
+      }
     } catch (error) {
       console.error('SpaceStore: could not save the column arrangement', error);
       notify('Could not save that arrangement');
@@ -539,6 +574,36 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
       // than left to overwrite this the moment somebody presses Keep. Before the write, so the two
       // cannot race.
       if (task && resolveSuggestion) await resolveSuggestion(cardId, 'status');
+      /*
+        Shown before it is written — see `BoardDeps.hold`.
+
+        Both halves, because a drop into a bound column writes two things that arrive on two
+        different subscriptions: the target's order and the card's own state. Holding only the order
+        leaves a window where the target claims the card while the card still reads as the old state,
+        and the stale-hint rule below throws it out for exactly that — so it would be drawn in
+        neither column, which is worse than the flash this replaces.
+
+        After the reads rather than at the top, because the state to hold is the target column's
+        slug and nothing knows it until the column has been read. That leaves one round trip of the
+        old behaviour; closing it means the caller passing the slug in, which is a wider change than
+        this is.
+      */
+      const held = ids(to.arranges);
+      const holdIds = Array.isArray(orderedIds) && orderedIds.includes(cardId) ? orderedIds : [...held, cardId];
+      hold(to.id, 'arranges', holdIds, held);
+      if (to.slug && task) holdStatus(cardId, to.slug, String((task as { status?: unknown }).status ?? ''));
+      // A lane writes no state, so nothing would take the card out of the column it left. Hold that
+      // side too, from what it reads now, so the card is not drawn in both at once.
+      if (!to.slug && from) {
+        const left = ids(from.arranges);
+        hold(
+          from.id,
+          'arranges',
+          left.filter((id) => id !== cardId),
+          left,
+        );
+      }
+
       await runEntityTransaction(p, async (tx) => {
         const current = ids(to.arranges);
         const dropped = Array.isArray(orderedIds) && orderedIds.includes(cardId) ? orderedIds : null;
@@ -564,6 +629,11 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
         }
       });
     } catch (error) {
+      // The card goes back where it was: what is on screen is a lie the moment the write is refused,
+      // and the toast is the only thing saying so.
+      if (toColumnId) release(toColumnId, 'arranges');
+      if (fromColumnId) release(fromColumnId, 'arranges');
+      releaseStatus(cardId);
       console.error('SpaceStore: could not move that card', error);
       notify('Could not move that card');
     }

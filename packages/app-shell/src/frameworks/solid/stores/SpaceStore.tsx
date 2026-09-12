@@ -1,3 +1,4 @@
+import { boardOptimism } from '@shared/boardOptimism';
 import { createBoardActions, type CreateBoardOptions } from '@shared/boards';
 import {
   LEGACY_EXTRACTION_TARGETS,
@@ -1854,6 +1855,10 @@ export function SpaceStoreProvider(props: ParentProps) {
   */
   const boards = createBoardActions({
     dataset: datasetFor,
+    // An arrangement is drawn before it is stored; `boardOptimism` holds it, and whatever draws the
+    // board reports when the data has overtaken it. See that module for why nothing releases on
+    // success.
+    ...boardOptimism.ports,
     offeredStates: () => offeredTaskStates(),
     notify: (message) => toastService.error(message),
     /*
