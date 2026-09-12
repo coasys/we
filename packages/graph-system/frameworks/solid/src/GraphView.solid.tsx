@@ -307,6 +307,41 @@ export function color(value: string | undefined, fallback: string): string {
  * simply not be drawn, with no error. The same silent class as a colour that resolves to no
  * variable, one layer along.
  */
+/**
+ * The edge whose endpoint grip is under a point — the one exception to "nodes win".
+ *
+ * An endpoint can sit *inside* a node's box: a cut card's outline is inset from the box it is cut
+ * out of, so an edge anchored to a triangle's left side ends 45px in from that box's left edge. The
+ * grip is drawn there, and grips are only drawn while the edge is hovered — so the pointer crossed
+ * into the box, the hover cleared, and the handle it was reaching for vanished before it arrived.
+ * The anchor could be set once and never changed again.
+ *
+ * A grip beating the node under it is the rule the rest of the chrome already follows: the resize
+ * handles and the connect dots sit over the card and take their own presses. This is that rule for
+ * the one control drawn in the edge layer rather than in the node's.
+ *
+ * Nearest wins where two ends are within reach of each other, so a short edge between two cards
+ * hands the press to the end actually being aimed at.
+ */
+export function edgeEndAt(
+  at: Point,
+  edges: readonly { edge: { id: string }; route: { from: Point; to: Point } }[],
+  reach: number,
+): string | null {
+  let nearest: string | null = null;
+  let best = reach;
+  for (const entry of edges) {
+    for (const end of [entry.route.from, entry.route.to]) {
+      const distance = Math.hypot(end.x - at.x, end.y - at.y);
+      if (distance <= best) {
+        best = distance;
+        nearest = entry.edge.id;
+      }
+    }
+  }
+  return nearest;
+}
+
 export function arrowId(stroke?: string): string {
   return stroke ? `we-graph-arrow-${stroke.replace(/[^a-z0-9]+/gi, '-')}` : 'we-graph-arrow';
 }
@@ -1752,6 +1787,10 @@ export function GraphView(props: GraphViewProps) {
     return { x: entry.at.x, y: entry.at.y, width: entry.visual.width, height: entry.visual.height };
   }
 
+  /** This graph's endpoint grips, at the camera's scale — see `edgeEndAt`. */
+  const edgeEndUnder = (at: Point): string | null =>
+    props.onEdgeAnchor ? edgeEndAt(at, edges(), HANDLE_HIT_R / zoom()) : null;
+
   function dispatch(phase: Parameters<typeof dispatchPointer>[1], event: PointerEvent | WheelEvent | MouseEvent) {
     dispatchPointer(behaviours(), phase, toInput(event), engine.behaviourContext());
   }
@@ -1770,7 +1809,7 @@ export function GraphView(props: GraphViewProps) {
       two-pixel line whose clickable width is a tolerance nobody can see. Without a hover mark the
       only way to find out whether you are on the line is to click and see what opens.
     */
-    const edge = hit ? null : engine.hitTestEdge(at);
+    const edge = hit ? edgeEndUnder(at) : engine.hitTestEdge(at);
     if (edge !== hoveredEdge()) setHoveredEdge(edge);
   }
 
