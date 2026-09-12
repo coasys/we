@@ -1,5 +1,4 @@
 import { datasetAddressedBy } from '@shared/datasetIdentity';
-import { queryIRFlag } from '@shared/queryIRFlag';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { resolveParts, resolvePartsInRoutes } from '@shared/registries/moduleParts';
 import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry';
@@ -279,7 +278,6 @@ export default function TemplateProvider() {
       set: (name: string, value: string | null, options?: { push?: boolean }) =>
         routeStore.setParam(name, value, options),
     },
-    $useQueryIR: queryIRFlag.enabled, // reactive; default from the seed, live-toggled via testStore
     // Template-facing vocabulary (templates read `$me.did`), as opposed to the renderer-facing
     // bindings below: the renderer never reads `$me` itself, it resolves like any `$store` path.
     $me: sessionStore.me,

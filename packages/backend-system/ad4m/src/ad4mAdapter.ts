@@ -134,9 +134,9 @@ export interface Ad4mAdapterDeps {
  * that aren't backend-specific.
  *
  * This is the artifact another backend copies: everything a host must supply for the renderer to read
- * data, in one place. `$onError` and `$useQueryIR` are deliberately excluded — surfacing an error to
- * the UI and toggling the IR are host concerns any backend would wire the same way, so they stay with
- * the app rather than pretending to be AD4M-specific.
+ * data, in one place. `$onError` is deliberately excluded — surfacing an error to the UI is a host
+ * concern any backend would wire the same way, so it stays with the app rather than pretending to be
+ * AD4M-specific.
  *
  * Note what is *not* here: no query lowering, no capability quirks, no model-shape mapping. Those are
  * `createAd4mQueryAdapter` and `toRendererEntity` above — this only composes them.

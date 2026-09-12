@@ -1,5 +1,5 @@
 import type { EntityClass, FlatQuery, QueryAdapter, RendererStores } from '@we/backend-shared';
-import { compileQuery } from '@we/backend-shared';
+import { routeQuery } from '@we/backend-shared';
 import type {
   LocalFieldMeta,
   LocalStateField,
@@ -164,44 +164,8 @@ function logSubscriptionDiff(entity: string, previous: unknown[] | null, next: u
  * Create a reactive signal that subscribes to a $query and updates with results.
  * Must be called within a Solid reactive owner (component or createRoot).
  */
-/** Degradations already reported, keyed `entity:feature` — a reactive re-run must not respam. */
-const warnedDegradations = new Set<string>();
-
-const warnedEmptyIds = new Set<string>();
-
-/**
- * Say so when a query asks for the record with no id.
- *
- * `pruneUnresolvedWhere` drops an operand that is `undefined`; an empty string is a value and stays,
- * which is right — `''` is a real value for plenty of fields. For `id` it is not: no record has it,
- * and it is what a `$localState` field or a store accessor answers when nothing has been chosen yet
- * (`modules.call.callRecordId` returns `''` by design, so that every surface reading it gets a
- * string).
- *
- * What reaches the screen without this is a SPARQL parse error. The AD4M executor builds a `VALUES`
- * clause, drops the id for not being an IRI, and refuses the now-empty data block — "expected UNDEF"
- * — naming neither the template, the entity nor the field.
- *
- * Reported rather than repaired, because no repair here is right. Pruning `''` would mean "do not
- * narrow by id", which answers with an arbitrary record and draws somebody else's data with nothing
- * on screen saying so; refusing the query outright needs a "matches nothing" the query IR has no way
- * to express. The fix is always the same and belongs to the author: gate the query on having an id.
- *
- * Once per entity, like the degradation warnings above — a query re-runs on every reactive change,
- * and a warning per frame is a warning nobody reads.
- */
-function warnOnEmptyId(entity: string, where: unknown): void {
-  if (!(import.meta as { env?: { DEV?: boolean } }).env?.DEV) return;
-  if (!where || typeof where !== 'object') return;
-  if ((where as Record<string, unknown>).id !== '') return;
-  if (warnedEmptyIds.has(entity)) return;
-  warnedEmptyIds.add(entity);
-  console.warn(
-    `[query] "${entity}" asks for id "" — no record has it, and the backend will refuse the query. ` +
-      'Gate the query on having an id: an empty one cannot be pruned, because "do not narrow by id" ' +
-      'would answer with an arbitrary record.',
-  );
-}
+/** Diagnostics already reported, keyed `entity:diagnostic` — a reactive re-run must not respam. */
+const warnedDiagnostics = new Set<string>();
 
 /**
  * Report a query failure through the host's `$onError` (a toast, in the AD4M app), falling back to
@@ -225,71 +189,61 @@ function isAbort(err: unknown): boolean {
   return err instanceof DOMException && err.name === 'AbortError';
 }
 
-/** Reporter passed to {@link routeQueryThroughIR}; its messages are already user-facing. */
-function irErrorReporter(stores: RendererStores): (msg: string) => void {
-  return (msg) => {
-    const onError = stores.$onError;
-    if (onError) onError(msg);
-    else console.error('[query-ir]', msg);
-  };
-}
-
 /**
- * Route the (already token-resolved) query through the neutral `QueryIR` and the injected backend
- * adapter before it reaches the backend. `compileQuery` (DSL→IR) is neutral; the backend-specific
- * plan + lowering come from the injected `$queryAdapter`, so this function knows nothing about AD4M.
+ * Compile, plan and lower one query for the connected backend, and say what that found.
  *
- * **Fails loud.** When the IR can't express the query, when the adapter reports a blocking capability
- * gap, or on any error, this reports through `onError` and returns `null` — the caller then renders
- * nothing rather than silently reverting to the raw backend path. That silent revert only ever worked
- * because AD4M happens to be *both* the query dialect and the backend; against any other backend it
- * would hand over a dialect the adapter never agreed to read, so it hid real gaps instead of
- * surfacing them. A genuine capability gap is surfaced here (and, better, at author time by the
- * capability validator) — never papered over.
+ * The deciding is {@link routeQuery}'s, in `@we/backend-shared`, where it is neutral and tested. What
+ * is left here is the reporting policy, which is the renderer's because only it knows where a message
+ * goes: a refusal is user-facing and raises a toast; a diagnostic is for whoever wrote the template,
+ * so it warns to the console, once per `entity:diagnostic`, and only in development — a query re-runs
+ * on every reactive change, and a warning per frame is a warning nobody reads.
  *
- * The one exception is a **`degraded`** gap: the backend runs the query and returns correct rows but
- * silently ignores one feature (a known backend *defect* — see `Disposition`). Failing loud there
- * would block a working screen over a backend bug, so it proceeds and warns once instead. That is a
- * narrow, adapter-declared waiver, not a return to the blanket fallback: the adapter has to name the
- * feature, and it stays greppable so it can be removed when the backend is fixed.
+ * Returns `null` when the query cannot run, and the caller renders nothing. There is deliberately no
+ * third answer where the raw descriptor goes to the backend unrouted: that only ever worked because
+ * AD4M is both the dialect and the backend, so it hid real capability gaps instead of surfacing them.
+ *
+ * A host with no `$queryAdapter` at all is the same refusal with a different sentence. The binding is
+ * required by `RendererDataBindings`, so its absence is an unimplemented contract rather than a
+ * query anyone can fix — and saying which is missing beats every query on the screen reporting a
+ * compile error about a backend that was never wired up.
  */
-function routeQueryThroughIR(
+function routeForBackend(
   entity: string,
   options: Record<string, unknown>,
-  adapter: QueryAdapter,
-  onError: (msg: string) => void,
+  adapter: QueryAdapter | undefined,
+  stores: RendererStores,
 ): Record<string, unknown> | null {
-  try {
-    warnOnEmptyId(entity, options.where);
-    const { ir, unsupported } = compileQuery({ entity, ...options } as FlatQuery);
-    if (unsupported.length > 0) {
-      onError(`Query on "${entity}" uses features the query IR cannot express: ${unsupported.join(', ')}`);
-      return null;
-    }
-    const plan = adapter.plan(ir);
-    const blocking = plan.gaps.filter((g) => g.disposition !== 'degraded');
-    if (blocking.length > 0) {
-      onError(
-        `Query on "${entity}" needs capabilities this backend does not support: ` +
-          blocking.map((g) => g.feature).join(', '),
-      );
-      return null;
-    }
-    // A `degraded` gap means the backend runs this and returns correct rows, but silently ignores
-    // the named feature — a known backend defect, not a capability gap. Proceed, but say so once so
-    // the waiver never becomes invisible again. Warn (not `onError`): the results are usable, and a
-    // reactive re-run must not raise an error toast on every render.
-    for (const gap of plan.gaps) {
-      const key = `${entity}:${gap.feature}`;
-      if (warnedDegradations.has(key)) continue;
-      warnedDegradations.add(key);
-      console.warn(`[query] "${entity}" runs with a degraded feature — ${gap.feature}: ${gap.note}`);
-    }
-    return adapter.lower(ir) as Record<string, unknown>;
-  } catch (err) {
-    onError(`Query on "${entity}" could not be compiled: ${err instanceof Error ? err.message : String(err)}`);
+  if (!adapter) {
+    reportRoutingRefusal(
+      stores,
+      `Query on "${entity}" cannot run: this host injected no $queryAdapter, so there is nothing to ` +
+        'plan or lower the query for. Every backend supplies one (see RendererDataBindings).',
+    );
     return null;
   }
+
+  const routed = routeQuery({ entity, ...options } as FlatQuery, adapter);
+
+  if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV) {
+    for (const diagnostic of routed.diagnostics) {
+      const key = `${entity}:${diagnostic.key}`;
+      if (warnedDiagnostics.has(key)) continue;
+      warnedDiagnostics.add(key);
+      console.warn('[query]', diagnostic.message);
+    }
+  }
+
+  if (routed.ok) return routed.options as Record<string, unknown>;
+
+  reportRoutingRefusal(stores, routed.error);
+  return null;
+}
+
+/** A refused query is user-facing: a toast where the host offers one, the console where it does not. */
+function reportRoutingRefusal(stores: RendererStores, message: string): void {
+  const onError = stores.$onError;
+  if (onError) onError(message);
+  else console.error('[query-ir]', message);
 }
 
 function createQuerySignal(
@@ -389,25 +343,16 @@ function createQuerySignal(
       descriptor.include !== undefined
         ? (deepResolveTokens(descriptor.include, stores, context) as Record<string, boolean | Record<string, unknown>>)
         : undefined;
-    let queryOptions: Record<string, unknown> = {
+    const rawOptions: Record<string, unknown> = {
       ...resolvedParams,
       ...(resolvedInclude !== undefined && { include: resolvedInclude }),
     };
-    // Route through the QueryIR when enabled. `$useQueryIR` is a reactive accessor (default from
-    // `seed.features.useQueryIR`, live-toggled on the Queries test page); reading it *here*, inside the
-    // effect, makes the query re-run when it flips — so toggling re-routes without a reload.
-    const irFlag = stores.$useQueryIR;
-    const useQueryIR = typeof irFlag === 'function' ? (irFlag as () => unknown)() === true : irFlag === true;
-    const queryAdapter = stores.$queryAdapter;
-    if (useQueryIR && queryAdapter) {
-      // Fail loud: an IR/adapter gap renders nothing and reports, rather than silently reverting to the
-      // raw backend path (which only ever worked because AD4M is both the dialect and the backend).
-      const lowered = routeQueryThroughIR(entity, queryOptions, queryAdapter, irErrorReporter(stores));
-      if (lowered === null) {
-        setItems(reconcile([]));
-        return;
-      }
-      queryOptions = lowered;
+    // Every query goes through the neutral IR and the backend's own adapter. Fail loud: a gap renders
+    // nothing and reports, rather than handing the backend a dialect its adapter never agreed to read.
+    const queryOptions = routeForBackend(entity, rawOptions, stores.$queryAdapter, stores);
+    if (queryOptions === null) {
+      setItems(reconcile([]));
+      return;
     }
 
     // AD4M model instances expose `id` as a prototype getter, not an own enumerable
@@ -992,24 +937,17 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
                   boolean | Record<string, unknown>
                 >)
               : undefined;
-          let queryOptions: Record<string, unknown> = {
+          const rawOptions: Record<string, unknown> = {
             ...resolvedParams,
             ...(resolvedInclude !== undefined && { include: resolvedInclude }),
           };
-          // Route through the QueryIR, as the list path does. Handing options straight to the
-          // backend would skip capability planning entirely — no fail-loud on a genuine gap, no
-          // `degraded` warning, and on a non-AD4M backend it would pass a dialect the adapter
-          // never agreed to read.
-          const irFlag = stores.$useQueryIR;
-          const useQueryIR = typeof irFlag === 'function' ? (irFlag as () => unknown)() === true : irFlag === true;
-          const queryAdapter = stores.$queryAdapter;
-          if (useQueryIR && queryAdapter) {
-            const lowered = routeQueryThroughIR(entity, queryOptions, queryAdapter, irErrorReporter(stores));
-            if (lowered === null) {
-              setHasItem(false);
-              return;
-            }
-            queryOptions = lowered;
+          // Routed exactly as the list path is. Handing options straight to the backend would skip
+          // capability planning entirely — no fail-loud on a genuine gap, no `degraded` warning, and
+          // on a non-AD4M backend it would pass a dialect the adapter never agreed to read.
+          const queryOptions = routeForBackend(entity, rawOptions, stores.$queryAdapter, stores);
+          if (queryOptions === null) {
+            setHasItem(false);
+            return;
           }
 
           const handleResults = (results: unknown[]) => {

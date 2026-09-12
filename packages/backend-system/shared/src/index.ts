@@ -113,6 +113,8 @@ export { planQuery } from './queryCapabilities';
 export type { AdapterCapabilities, AggregateFn, Disposition, CapabilityGap, QueryPlan } from './queryCapabilities';
 export { compileQuery, irToFlatQuery } from './queryCompiler';
 export type { FlatQuery, CompileResult } from './queryCompiler';
+export { routeQuery } from './queryRouting';
+export type { QueryDiagnostic, QueryRouting } from './queryRouting';
 export { executeQueryIR } from './queryEngine';
 export type { Row, InMemoryDataset, InMemoryRelation } from './queryEngine';
 export type {

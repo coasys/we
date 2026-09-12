@@ -11,7 +11,7 @@
  *
  * Lives in `app-framework/shared` rather than `@we/schema-shared` because `BroadcastChannel` is a DOM
  * API: schema-shared is DOM-free and is consumed by the `we-validate-schemas` CLI under Node. This is
- * host wiring, like `$onError` and `$useQueryIR`. Under electron/tauri single-window it degrades to
+ * host wiring, like `$onError`. Under electron/tauri single-window it degrades to
  * "always leader", which is correct.
  *
  * ## Conflict resolution

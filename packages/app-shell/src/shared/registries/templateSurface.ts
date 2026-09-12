@@ -1183,7 +1183,6 @@ const ALWAYS_PRESENT = new Set([
   'consoleStore',
   '$onError',
   '$routeParams',
-  '$useQueryIR',
   '$me',
   '$currentDataset',
   '$getEntity',

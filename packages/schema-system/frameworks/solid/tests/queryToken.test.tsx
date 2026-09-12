@@ -1,6 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { render } from '@solidjs/testing-library';
-import type { RendererStores } from '@we/backend-shared';
+import {
+  type AdapterCapabilities,
+  irToFlatQuery,
+  planQuery,
+  type QueryAdapter,
+  type QueryIR,
+  type RendererStores,
+} from '@we/backend-shared';
 import type { SchemaNode } from '@we/schema-shared';
 import { createRoot, createSignal } from 'solid-js';
 import { render as webRender } from 'solid-js/web';
@@ -10,10 +17,53 @@ import { RenderSchema } from '../src/SchemaRenderer';
 import type { ComponentRegistry } from '../src/types';
 
 /**
+ * A backend that can do everything, so a test can be about the token rather than about capabilities.
+ *
+ * Every query the renderer issues is compiled to the IR and lowered by the host's own adapter — there
+ * is no path around it — so a store bag without one is not a host with fewer features, it is a host
+ * whose queries all refuse. That is what {@link asStores} supplies below, and what these tests would
+ * otherwise all be asserting instead of what they are about.
+ */
+const passthroughAdapter: QueryAdapter = (() => {
+  const capabilities: AdapterCapabilities = {
+    operators: ['eq', 'ne', 'lt', 'lte', 'gt', 'gte', 'in', 'nin', 'contains', 'startsWith', 'endsWith', 'exists'],
+    booleanCombinators: true,
+    relationFilters: true,
+    scope: true,
+    include: { supported: true },
+    aggregate: ['count'],
+    sort: { multiKey: true, byRelationPath: true, byAggregate: true },
+    pagination: ['offset'],
+    live: 'push',
+  };
+  return {
+    capabilities,
+    plan: (ir: QueryIR) => planQuery(ir, capabilities),
+    lower: (ir: QueryIR) => {
+      const { scope, ...rest } = ir;
+      const { entity: _entity, ...opts } = irToFlatQuery(rest as QueryIR);
+      void _entity;
+      return scope ? { ...opts, scope } : opts;
+    },
+  };
+})();
+
+/**
  * Mocks are deliberately loose (vitest stubs don't structurally match `EntityClass`). The
  * `RendererStores` contract exists to type-check real hosts at the boundary, not test doubles.
+ *
+ * A bag that names its own `$queryAdapter` keeps it — including as `undefined`, for a test about a
+ * host that supplies none.
+ *
+ * Copied by *descriptor* rather than spread. A bag may declare a binding as a getter so the renderer
+ * re-reads it reactively — `get $getEntity()` is how the "backend connects after mount" case is
+ * written — and a spread would call that getter once and freeze whatever it answered at copy time.
  */
-const asStores = (s: object): RendererStores => s as unknown as RendererStores;
+const asStores = (s: object): RendererStores => {
+  const bag = Object.defineProperties({}, Object.getOwnPropertyDescriptors(s)) as Record<string, unknown>;
+  if (!('$queryAdapter' in bag)) bag.$queryAdapter = passthroughAdapter;
+  return bag as unknown as RendererStores;
+};
 
 // ---------------------------------------------------------------------------
 // Helpers

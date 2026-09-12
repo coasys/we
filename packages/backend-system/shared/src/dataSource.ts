@@ -124,13 +124,21 @@ export interface RendererDataBindings {
   $onError?: (message: string) => void;
   /** Mutation surface for `record.create` / `update` / `delete` actions. */
   model?: MutationApi;
-  /** Query-execution adapter — routes a neutral `QueryIR` to this backend (plan + lower). */
-  $queryAdapter?: QueryAdapter;
   /**
-   * Route queries through the neutral `QueryIR` rather than handing the host's own dialect straight
-   * to its backend. A boolean, or an accessor so a host can toggle it reactively.
+   * Query-execution adapter — routes a neutral `QueryIR` to this backend (plan + lower).
+   *
+   * **Any host that runs queries must supply this.** Every `$query` is compiled to the IR and lowered
+   * through it, and there is no path around it: a host without one has queries that refuse, not
+   * queries that take a different route. There used to be such a route — the raw dialect, handed
+   * straight to the backend behind `seed.features.useQueryIR` — and it worked only because AD4M
+   * happens to be both the dialect and the backend, so it hid capability gaps rather than reporting
+   * them.
+   *
+   * Optional here only because a presentation-only (L0) host supplies none of these bindings and has
+   * no queries for it to be required by. Omitting it while issuing queries is reported at the first
+   * one, naming this binding.
    */
-  $useQueryIR?: boolean | (() => boolean);
+  $queryAdapter?: QueryAdapter;
   /**
    * Identity directory backing the `$agent` block: look up a profile by id, and ask the host to
    * fetch one it hasn't cached. Every backend has some version of this (AD4M agents/DIDs, another
