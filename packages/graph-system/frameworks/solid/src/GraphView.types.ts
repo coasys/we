@@ -516,6 +516,9 @@ export interface GraphHostBindings {
     name: string;
     properties: { name: string; type: 'string' | 'number' | 'boolean' | 'uri'; required?: boolean }[];
     relations: { name: string; target: string; cardinality: 'one' | 'many' }[];
+    /** The property that names an instance — the host's own answer. See `EntityShape`. */
+    nameProperty?: string;
+    /** The dedup key, which is **not** the name. See `EntityShape.identityProperty`. */
     identityProperty?: string;
     description?: string;
   }[];

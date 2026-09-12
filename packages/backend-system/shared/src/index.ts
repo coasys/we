@@ -138,6 +138,8 @@ export type {
 } from './lifecycle';
 export { manifestEntries } from './manifestEntry';
 export type { EntityManifestEntry, EntityManifestProperty } from './manifestEntry';
+export { NAME_CANDIDATES, nameFromProperties, namePropertyOf } from './recordName';
+export type { NameableProperty } from './recordName';
 export { ANONYMOUS_AGENT_NAME, displayName, isProfileEmpty } from './profileTypes';
 export type { AgentProfileSummary, PublishProfileFields } from './profileTypes';
 export type {
