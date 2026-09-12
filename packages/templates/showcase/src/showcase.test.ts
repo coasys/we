@@ -1272,3 +1272,39 @@ describe('the workshop’s canvas', () => {
     expect(KIND_DEFAULTS.CollectionBlock).toBe('#ffea9f');
   });
 });
+
+/**
+ * Who is on what a call produced — the half of the question the board and the calendar could not
+ * answer. What is worth pinning is the wiring that fails quietly: a board without its people option
+ * draws no faces and nobody notices, and an RSVP read from the call's roster would claim a meeting
+ * somebody skipped was one they attended.
+ */
+describe('the workshop’s people', () => {
+  const workshop = showcase.workshopTemplate as Schema;
+  const route = (path: string) => JSON.stringify((workshop.routes ?? []).find((entry) => entry.path === path));
+
+  it('puts who is on each card on the kanban, with a filter', () => {
+    const kanban = route('/kanban');
+    expect(kanban).toContain('"$action":"spaceStore.setInvolvement"');
+    expect(kanban).toContain('"syncParam":"who"');
+    expect(kanban).toContain('Row per person');
+  });
+
+  it('lets a member answer an event, reading answers rather than the call’s roster', () => {
+    const calendar = route('/calendar');
+    expect(calendar).toContain('"$action":"spaceStore.respondTo"');
+    expect(calendar).toContain('.committed');
+    expect(calendar).not.toContain('event.participants');
+    expect(calendar).not.toContain('setAttending');
+  });
+
+  it('filters the calendar with the board’s own control, the chosen people in the address and the mode on the device', () => {
+    const calendar = route('/calendar');
+    expect(calendar).toContain('"calendarPeople":{"type":"array","initial":[],"syncParam":"who"}');
+    expect(calendar).toContain('"calendarShow":{"type":"string","initial":"dim","persist":"calendar.show"}');
+    expect(calendar).toContain('Dim others');
+    // Hiding is offered; a row per person is a board's layout, and a calendar has no rows to lay out.
+    expect(calendar).toContain('Hide others');
+    expect(calendar).not.toContain('Row per person');
+  });
+});

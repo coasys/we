@@ -64,6 +64,7 @@ import {
   formModal,
   panelHeader,
   panelScroll,
+  peopleFilter,
   peopleRow,
   recordFormModal,
   taskBoard,
@@ -2488,6 +2489,14 @@ const kanbanRoute: RouteSchema = {
                       // built around, and the reason its cards carry a byline where a space's board
                       // does not.
                       byline: true,
+                      /*
+                        And who is doing it — the other half of the same question. A call commits
+                        people to things as often as it commits to things, and a board that could
+                        only say what was agreed and not by whom was half an answer. The filter above
+                        it rides in `?who=` beside `?call=`, so a link to this page can be "what Ana
+                        took on in this call".
+                      */
+                      people: true,
                       empty: emptyState({
                         icon: 'check-square',
                         label: 'work',
@@ -2533,6 +2542,124 @@ const kanbanRoute: RouteSchema = {
 };
 
 /**
+ * Who is on each event — the same host function the board's cards read, over the calendar's own
+ * involvement query.
+ */
+const ON_EVENTS = 'involvement({ rows: local.involvements, types: spaceStore.involvementTypes, me: me.did })';
+
+/** Whether anybody chosen in the people filter is going to, or might go to, the event named. */
+const MATCHES = (as: string) => `${ON_EVENTS}.byNode[${as}.id].dids.exists(d, d in local.calendarPeople)`;
+
+/** Somebody is chosen, so the calendar is being read by people at all. */
+const FILTERING = 'count(local.calendarPeople)';
+
+/**
+ * The events to draw: all of them, or — hiding — only the ones somebody chosen is on.
+ *
+ * Every list and every cell reads this rather than `local.events`, so the grid and the list under it
+ * cannot disagree about what is on a day. Dimming leaves the list whole and fades rows instead, which
+ * is what keeps a busy week looking busy.
+ */
+const VISIBLE_EVENTS = `(${FILTERING} && local.calendarShow == 'hide') ? local.events.filter(e, ${MATCHES('e')}) : local.events`;
+
+/** Faded, for an event nobody chosen is on while the filter dims. */
+const DIMMED = (as: string) => `${FILTERING} && local.calendarShow == 'dim' && !(${MATCHES(as)})`;
+
+/**
+ * The answers somebody can give to an event — going, maybe, not going, and whatever this community
+ * has added — as the space names them.
+ */
+const ANSWERS = `spaceStore.offeredInvolvementTypes.filter(k, k.reflexive && ('EventBlock' in k.appliesTo || !count(k.appliesTo)))`;
+
+/**
+ * Answering an invitation, and who else has.
+ *
+ * One button per answer, the chosen one filled; pressing it again takes the answer back, which is
+ * the first thing anybody tries. Only ever this agent's own answer — `respondTo` writes nobody
+ * else's — and one per event, so pressing Maybe after Going replaces it.
+ *
+ * The roster is who said they are coming, and a count of who might. Not `participants`, which is a
+ * different fact: who was in a call is something a machine saw, and who said they would come is
+ * something a person stated. Reading one as the other would tell somebody a meeting they skipped was
+ * one they attended.
+ */
+const rsvp: SchemaNode = {
+  type: 'Row',
+  props: { width: '100%', gap: '300', ay: 'center', wrap: true },
+  children: [
+    {
+      type: 'Row',
+      props: { gap: '100', ay: 'center' },
+      children: [
+        {
+          type: '$each',
+          props: { items: { $: ANSWERS }, as: 'answer' },
+          children: [
+            {
+              type: 'we-button',
+              props: {
+                size: 'xs',
+                variant: { $: `${ON_EVENTS}.answers[event.id] == answer.slug ? 'secondary' : 'ghost'` },
+                onClick: {
+                  $action: 'spaceStore.respondTo',
+                  args: [{ $: 'event.id' }, { $: `${ON_EVENTS}.answers[event.id] == answer.slug ? '' : answer.slug` }],
+                },
+              },
+              children: [
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: 'answer.icon' },
+                    then: { type: 'we-icon', props: { name: { $: 'answer.icon' } } },
+                  },
+                },
+                { $: 'answer.name' },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    {
+      type: 'Row',
+      props: { gap: '300', ay: 'center', ml: 'auto' },
+      children: [
+        {
+          type: '$if',
+          props: {
+            condition: { $: `count(${ON_EVENTS}.byNode[event.id].committed)` },
+            then: peopleRow({
+              items: { $: `${ON_EVENTS}.byNode[event.id].committed` },
+              dids: true,
+              noun: 'going',
+              nounPlural: 'going',
+              max: 5,
+              size: 'xs',
+              minHeight: '24px',
+            }),
+          },
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $: `count(${ON_EVENTS}.byNode[event.id].interested)` },
+            then: {
+              type: 'we-text',
+              props: {
+                variant: 'footnote',
+                color: 'text-muted',
+                whiteSpace: 'nowrap',
+                text: { $: `\`\${count(${ON_EVENTS}.byNode[event.id].interested)} maybe\`` },
+              },
+            },
+          },
+        },
+      ],
+    },
+  ],
+};
+
+/**
  * The events under the grid: the chosen day's, or what is coming when no day is chosen.
  *
  * Two readings of one query, because a month grid answers "what does this month look like" and a
@@ -2540,7 +2667,8 @@ const kanbanRoute: RouteSchema = {
  * Both read the hoisted `events`, so the grid and the list can never disagree about what is there.
  *
  * A row says when, what, and who is coming: extraction writes a title and a date off what was said,
- * and `participants` is how anybody answers it afterwards.
+ * and each member's own answer — going, maybe, not going — is how anybody responds to it afterwards.
+ * See `rsvp` for why that is an involvement and not `participants`.
  */
 const eventList: SchemaNode = {
   type: 'Column',
@@ -2721,7 +2849,7 @@ const eventList: SchemaNode = {
       type: '$if',
       props: {
         condition: {
-          $: 'count(local.day ? filter(local.events, { startDate: { startsWith: local.day } }) : local.events)',
+          $: `count(local.day ? filter(${VISIBLE_EVENTS}, { startDate: { startsWith: local.day } }) : ${VISIBLE_EVENTS})`,
         },
         then: {
           type: 'Column',
@@ -2731,16 +2859,15 @@ const eventList: SchemaNode = {
               type: '$each',
               props: {
                 items: {
-                  $: 'local.day ? filter(local.events, { startDate: { startsWith: local.day } }) : local.events',
+                  $: `local.day ? filter(${VISIBLE_EVENTS}, { startDate: { startsWith: local.day } }) : ${VISIBLE_EVENTS}`,
                 },
                 as: 'event',
               },
               children: [
                 {
-                  type: 'Row',
+                  type: 'Column',
                   props: {
                     width: '100%',
-                    ay: 'center',
                     gap: '300',
                     /*
                       `surface`, and no lens — see the board's card for the argument, which lands
@@ -2757,47 +2884,53 @@ const eventList: SchemaNode = {
                     r: '400',
                     border: '1px solid border',
                     p: '400',
+                    opacity: { $: `(${DIMMED('event')}) ? 0.35 : 1` },
+                    transition: 'opacity 200 ease-in-out',
                   },
                   children: [
-                    { type: 'we-icon', props: { name: 'calendar', color: 'accent-text' } },
                     {
-                      type: 'Column',
-                      props: { flex: '1', gap: '100' },
+                      type: 'Row',
+                      props: { width: '100%', ay: 'center', gap: '300' },
                       children: [
-                        { type: 'we-text', props: { fontWeight: 'semibold', text: { $: 'event.title' } } },
+                        { type: 'we-icon', props: { name: 'calendar', color: 'accent-text' } },
                         {
-                          type: '$if',
-                          props: {
-                            // The place's name, not the place. Hydrated by the `include` on the
-                            // query above; tested on the name rather than the record, since a
-                            // location that has arrived without one has nothing to print.
-                            condition: { $: 'event.location.name' },
-                            then: {
-                              type: 'Row',
-                              props: { gap: '100', ay: 'center' },
-                              children: [
-                                { type: 'we-icon', props: { size: 'xs', name: 'map-pin', color: 'text-faint' } },
-                                {
-                                  type: 'we-text',
-                                  props: {
-                                    variant: 'footnote',
-                                    color: 'text-muted',
-                                    truncate: true,
-                                    text: { $: 'event.location.name' },
-                                  },
+                          type: 'Column',
+                          props: { flex: '1', gap: '100' },
+                          children: [
+                            { type: 'we-text', props: { fontWeight: 'semibold', text: { $: 'event.title' } } },
+                            {
+                              type: '$if',
+                              props: {
+                                // The place's name, not the place. Hydrated by the `include` on the
+                                // query above; tested on the name rather than the record, since a
+                                // location that has arrived without one has nothing to print.
+                                condition: { $: 'event.location.name' },
+                                then: {
+                                  type: 'Row',
+                                  props: { gap: '100', ay: 'center' },
+                                  children: [
+                                    { type: 'we-icon', props: { size: 'xs', name: 'map-pin', color: 'text-faint' } },
+                                    {
+                                      type: 'we-text',
+                                      props: {
+                                        variant: 'footnote',
+                                        color: 'text-muted',
+                                        truncate: true,
+                                        text: { $: 'event.location.name' },
+                                      },
+                                    },
+                                  ],
                                 },
-                              ],
+                              },
                             },
-                          },
+                          ],
                         },
-                      ],
-                    },
-                    {
-                      type: 'we-timestamp',
-                      props: {
-                        value: { $: 'event.startDate' },
-                        color: 'text-muted',
-                        /*
+                        {
+                          type: 'we-timestamp',
+                          props: {
+                            value: { $: 'event.startDate' },
+                            color: 'text-muted',
+                            /*
                           What the heading does not already say.
 
                           On a chosen day the date IS the heading a reader arrived through, so
@@ -2810,13 +2943,16 @@ const eventList: SchemaNode = {
                           An empty string rather than a ternary to nothing: `we-timestamp` assembles
                           its `Intl` options by truthiness, so a blank part is simply left out.
                         */
-                        weekday: { $: "local.day ? '' : 'short'" },
-                        day: { $: "local.day ? '' : 'numeric'" },
-                        month: { $: "local.day ? '' : 'short'" },
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      },
+                            weekday: { $: "local.day ? '' : 'short'" },
+                            day: { $: "local.day ? '' : 'numeric'" },
+                            month: { $: "local.day ? '' : 'short'" },
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          },
+                        },
+                      ],
                     },
+                    rsvp,
                   ],
                 },
               ],
@@ -2836,7 +2972,7 @@ const eventList: SchemaNode = {
             Tuesday. Two situations, so two sentences.
           */
           message: {
-            $: "local.day ? 'Nothing on this day.' : 'Nothing from this call yet. Events appear here as the conversation settles on dates.'",
+            $: `(${FILTERING} && count(local.events)) ? 'Nobody chosen is going to anything here.' : local.day ? 'Nothing on this day.' : 'Nothing from this call yet. Events appear here as the conversation settles on dates.'`,
           },
         }),
       },
@@ -2912,6 +3048,13 @@ const calendarRoute: RouteSchema = {
                 monthOffset: { type: 'number', initial: 0 },
                 // The day a reader has picked, as `YYYY-MM-DD`, or empty for the whole month.
                 day: { type: 'string', initial: '' },
+                /*
+                  The people filter's two halves, split the way the board splits them: who is chosen
+                  rides in the address, since "what Ana is going to" is a thing a link can point at,
+                  and whether the rest are dimmed or hidden stays on this device.
+                */
+                calendarPeople: { type: 'array', initial: [], syncParam: 'who' },
+                calendarShow: { type: 'string', initial: 'dim', persist: 'calendar.show' },
               },
               $queries: {
                 /*
@@ -2934,6 +3077,9 @@ const calendarRoute: RouteSchema = {
                   limit: 200,
                   include: { location: true },
                 },
+                // Who said they are coming to what. Space-wide, for the board's reason: an answer is
+                // not a child of anything, and there are as many as people have given.
+                involvements: { entity: 'Involvement' },
               },
               children: [
                 // ── The month, with the way through them either side ──────────────────
@@ -2993,6 +3139,15 @@ const calendarRoute: RouteSchema = {
                     },
                   ],
                 },
+
+                // ── Whose calendar this is being read as ─────────────────────────────
+                peopleFilter({
+                  people: 'calendarPeople',
+                  show: 'calendarShow',
+                  matched: { $: `count(local.events.filter(e, ${MATCHES('e')}))` },
+                  total: { $: 'count(local.events)' },
+                  noun: 'event',
+                }),
 
                 // ── The grid ──────────────────────────────────────────────────────────
                 {
@@ -3094,7 +3249,9 @@ const calendarRoute: RouteSchema = {
                                 {
                                   type: '$each',
                                   props: {
-                                    items: { $: 'filter(local.events, { startDate: { startsWith: cell.date } }, 2)' },
+                                    items: {
+                                      $: `filter(${VISIBLE_EVENTS}, { startDate: { startsWith: cell.date } }, 2)`,
+                                    },
                                     as: 'mark',
                                   },
                                   children: [
@@ -3111,6 +3268,7 @@ const calendarRoute: RouteSchema = {
                                         // does not read as part of the month being looked at.
                                         bg: { $: "cell.inMonth ? 'accent-muted' : 'surface-sunken'" },
                                         color: { $: "cell.inMonth ? 'accent-text' : 'text-muted'" },
+                                        opacity: { $: `(${DIMMED('mark')}) ? 0.35 : 1` },
                                       },
                                     },
                                   ],
@@ -3121,7 +3279,7 @@ const calendarRoute: RouteSchema = {
                                   type: '$if',
                                   props: {
                                     condition: {
-                                      $: 'count(filter(local.events, { startDate: { startsWith: cell.date } })) > 2',
+                                      $: `count(filter(${VISIBLE_EVENTS}, { startDate: { startsWith: cell.date } })) > 2`,
                                     },
                                     then: {
                                       type: 'we-text',
@@ -3130,7 +3288,7 @@ const calendarRoute: RouteSchema = {
                                         color: 'text-faint',
                                         px: '100',
                                         text: {
-                                          $: '`+${count(filter(local.events, { startDate: { startsWith: cell.date } })) - 2} more`',
+                                          $: `\`+\${count(filter(${VISIBLE_EVENTS}, { startDate: { startsWith: cell.date } })) - 2} more\``,
                                         },
                                       },
                                     },
