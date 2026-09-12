@@ -2225,14 +2225,52 @@ const eventList: SchemaNode = {
   type: 'Column',
   props: { width: '100%', gap: '300' },
   children: [
+    /*
+      The heading, and the one thing it must not be: the key the grid matches on.
+
+      A cell's date is `YYYY-MM-DD` because `startsWith` needs it to be, and printing that straight
+      out made the list under the calendar announce itself as "2026-09-11" — machine-readable, and
+      the only place in the route where a reader is asked to parse one. `we-timestamp` says the same
+      day in their own language. Year omitted: the grid directly above is already headed with the
+      month and year, and a heading that repeats its parent is noise.
+
+      `+ 'T00:00'` is not decoration. A bare `YYYY-MM-DD` is parsed as UTC midnight, so west of
+      Greenwich it formats as the day BEFORE the one that was clicked — the heading and the rows
+      under it would disagree about which day this is. The suffix makes it a local time, which is
+      what a calendar cell means by a date, and what `startDate` already is.
+
+      The typography props rather than `we-text`'s `variant`/`uppercase` shorthands, which are that
+      element's own and not part of the DS layers a timestamp inherits — `label` is fontSize 200 at
+      medium.
+    */
     {
-      type: 'we-text',
+      type: '$if',
       props: {
-        variant: 'label',
-        color: 'text-muted',
-        textTransform: 'uppercase',
-        letterSpacing: 'wide',
-        text: { $: "local.day ? local.day : 'Coming up'" },
+        condition: { $: 'local.day' },
+        then: {
+          type: 'we-timestamp',
+          props: {
+            value: { $: "local.day + 'T00:00'" },
+            weekday: 'long',
+            day: 'numeric',
+            month: 'long',
+            fontSize: '200',
+            fontWeight: 'medium',
+            color: 'text-muted',
+            textTransform: 'uppercase',
+            letterSpacing: 'wide',
+          },
+        },
+        else: {
+          type: 'we-text',
+          props: {
+            variant: 'label',
+            color: 'text-muted',
+            textTransform: 'uppercase',
+            letterSpacing: 'wide',
+            text: 'Coming up',
+          },
+        },
       },
     },
     {
@@ -2315,8 +2353,22 @@ const eventList: SchemaNode = {
                       props: {
                         value: { $: 'event.startDate' },
                         color: 'text-muted',
-                        // The date is already the heading a reader arrived through, so the row says
-                        // the part that is not: when in the day.
+                        /*
+                          What the heading does not already say.
+
+                          On a chosen day the date IS the heading a reader arrived through, so
+                          repeating it on every row underneath says nothing — the row is only asked
+                          when in the day. "Coming up" spans weeks, though, and there the time alone
+                          is unreadable: three rows saying 14:00 are three different afternoons with
+                          no way to tell which is tomorrow. So the date parts appear exactly when the
+                          heading stops carrying them.
+
+                          An empty string rather than a ternary to nothing: `we-timestamp` assembles
+                          its `Intl` options by truthiness, so a blank part is simply left out.
+                        */
+                        weekday: { $: "local.day ? '' : 'short'" },
+                        day: { $: "local.day ? '' : 'numeric'" },
+                        month: { $: "local.day ? '' : 'short'" },
                         hour: '2-digit',
                         minute: '2-digit',
                       },
