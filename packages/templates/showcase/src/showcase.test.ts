@@ -1165,6 +1165,34 @@ describe('the workshop’s canvas', () => {
     expect(inspector).toContain('field.options.map(o, { label: o, value: o })');
   });
 
+  it('opens out the card that is selected, and says so when none is', () => {
+    /*
+      An unresolved operand in `where` is pruned, and pruning means "do not narrow" — the right
+      reading for an optional filter and the worst available for the id that says which record this
+      is. With `?cardType=TaskBlock` and no `card` — a shared link, or a selection cleared while the
+      type lingered — the clause was dropped and `limit: 1` answered with whichever task came first,
+      so the panel opened out a card the canvas showed as unselected. `when` is the distinction the
+      pruner cannot draw: the id is not a narrowing, it is the whole query.
+    */
+    const inspector = panel('inspector');
+
+    expect(inspector).toContain('"when":{"$":"routeStore.params.card"}');
+    /*
+      And with nothing selected it is the placeholder that shows, not a heading. "Untitled" stood
+      here in heading type for a record with neither a name nor a document, on the argument that a
+      nameless record otherwise reads as one still loading — which the unconditional kind strip
+      above had already answered. What it added was a heading asserting the record is called
+      something it is not, beside the field offering to name it.
+    */
+    expect(inspector).not.toContain('Untitled');
+    expect(inspector).toContain('Click a card on the canvas to look inside it');
+    // And no link out: the button pointed at `/record/:entity?id=`, which does not currently
+    // arrive anywhere usable. This panel's case for existing is reading a card *without* leaving
+    // the arrangement it is in, so the way out was the convenience rather than the feature.
+    expect(inspector).not.toContain('Open full record');
+    expect(inspector).not.toContain('/record/${routeStore.params.cardType}');
+  });
+
   it('lists in the key only the kinds on this canvas', () => {
     /*
       Not every kind the space has: what extraction may write for this call, where a record of it

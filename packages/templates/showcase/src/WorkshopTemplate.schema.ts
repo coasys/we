@@ -898,13 +898,13 @@ const emptyFields: SchemaNode = {
 };
 
 /**
- * One card, opened out — its type, its properties, and the way to its own page.
+ * One card, opened out — its type and its properties, beside the arrangement it is part of.
  *
  * ## Why a panel and not the record page
  *
- * There is a record page already, at `/record/:entity?id=`, and it is reachable from here: the host
- * appends it to every template's route table, self-routing ones included. It is the better surface
- * for reading one thing properly, and this links to it.
+ * There is a record page already, at `/record/:entity?id=`: the host appends it to every template's
+ * route table, self-routing ones included, and it is the better surface for reading one thing
+ * properly. A button here used to link to it and does not currently — see the note where it was.
  *
  * It is the wrong surface for the question a canvas asks. Navigating away to read a card loses the
  * arrangement the card is *in* — which is the whole reason the thing is on a canvas rather than in a
@@ -963,6 +963,24 @@ const inspectorPanel: SchemaNode = {
       entity: { $: 'routeStore.params.cardType' },
       where: { id: { $: 'routeStore.params.card' } },
       limit: 1,
+      /*
+        Not until there is an id to ask about — which is what kept the panel showing a record
+        nobody had selected.
+
+        An unresolved operand in `where` is *pruned*, and pruning means "do not narrow". For an
+        optional filter that is the right reading; for the id that says which record this is, it is
+        the worst one available: with `?cardType=TaskBlock` in the address and no `card` — a shared
+        link, or a selection cleared while the type lingered — the clause was dropped, `limit: 1`
+        answered with whichever task the backend returned first, and the inspector opened out a
+        card the canvas was not showing as selected. An untitled one read as "Untitled" in
+        heading type, which is what made it look like a panel failing rather than a panel
+        answering the wrong question.
+
+        `when` is the distinction the pruner cannot draw: the id is not an optional narrowing, it
+        is the whole query. Until it arrives there is nothing to ask, so nothing is asked and the
+        panel says what it says when nothing is selected.
+      */
+      when: { $: 'routeStore.params.card' },
     },
   },
   children: [
@@ -1091,27 +1109,17 @@ const inspectorPanel: SchemaNode = {
                               },
                             },
                             /*
-                              Nothing to call it and nothing to show — the only state where saying so
-                              is better than a blank line.
+                              No "Untitled". There was one here, in heading type, for a record with
+                              neither a name nor a document — on the argument that a record with no
+                              name otherwise reads as one still loading.
 
-                              A record with no name reads as one still loading otherwise. A *note*
-                              has no name either and is not nameless: its content is the document
-                              below, so "Untitled" over a paragraph somebody wrote would be the panel
-                              contradicting what is under it. Faint, so where it does appear it reads
-                              as the panel talking rather than a record actually called that — and
-                              naming one is one of the fields the disclosure below offers.
+                              That argument was answered before it was made: the kind strip above is
+                              unconditional, so a nameless card is already headed "Task" or "Note"
+                              and nothing about the panel looks unfinished. What the word added was
+                              a heading asserting the record is *called* something it is not, and
+                              naming it is one of the fields the disclosure below offers — so the
+                              panel was arguing with its own control.
                             */
-                            {
-                              type: '$if',
-                              props: {
-                                condition: { $: `!row[local.display.title] && !${COMPOSED}` },
-                                then: {
-                                  type: 'we-text',
-                                  props: { variant: 'heading-sm', color: 'text-faint' },
-                                  children: ['Untitled'],
-                                },
-                              },
-                            },
                             composedContent,
                             {
                               type: '$if',
@@ -1186,32 +1194,17 @@ const inspectorPanel: SchemaNode = {
                     },
                     emptyFields,
                     /*
-                      The full record, for reading it properly.
+                      No "Open full record". There was a ghost button here that navigated to
+                      `<space>/record/<type>?id=<id>` — the record page the host appends to every
+                      template's route table — and it did not arrive anywhere usable.
 
-                      Absolute, from `spaceStore.spacePath`: this is a panel, so it is drawn outside
-                      the route tree and "wherever you are" is not something it can resolve against.
-                      The id rides in the query for the reason `CALL` does — it is a URI.
+                      Out until it does. A control that looks like every other control in the panel
+                      and does not work costs more than the reading it was offering: this panel's
+                      case for existing is that it opens a card *without* leaving the arrangement
+                      the card is in, so the link out was the convenience, not the feature. The
+                      panel docblock above still makes the argument, and the button comes back when
+                      the page it points at holds up.
                     */
-                    {
-                      type: 'we-button',
-                      props: {
-                        size: 'sm',
-                        variant: 'ghost',
-                        gap: '200',
-                        onClick: {
-                          $action: 'routeStore.navigate',
-                          args: [
-                            {
-                              $: '`${spaceStore.spacePath}/record/${routeStore.params.cardType}?id=${routeStore.params.card}`',
-                            },
-                          ],
-                        },
-                      },
-                      children: [
-                        { type: 'we-icon', props: { name: 'arrow-square-out' } },
-                        { type: 'we-text', props: { variant: 'footnote' }, children: ['Open full record'] },
-                      ],
-                    },
                   ],
                 },
               ],
