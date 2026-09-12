@@ -186,6 +186,10 @@
   white-space: nowrap;
   pointer-events: none;
 
+  // A label sits on the page, so it reads in the page's ink unless a rule chose otherwise — the
+  // same cascade a node's label uses, and for the reason given where it is set.
+  color: var(--edge-label-color, var(--we-role-text));
+
   // Legible over the edge it sits on, without a background plate that would hide the line.
   text-shadow:
     0 0 3px var(--we-color-neutral-0),

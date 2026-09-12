@@ -2176,7 +2176,21 @@ export function GraphView(props: GraphViewProps) {
                 // resolve against the containing block's width rather than the label's own, which is
                 // the classic way to almost centre something.
                 transform: `translate(${entry.route.mid.x}px, ${entry.route.mid.y}px) translate(-50%, -50%)`,
-                color: color(entry.visual.labelColor, 'neutral-500'),
+                /*
+                  A custom property, not `color` — so the default lives in the stylesheet, as a node
+                  label's does.
+
+                  It was `color(labelColor, 'neutral-500')`, and 500 is the one step on the neutral
+                  ramp that a theme's polarity does not move: it is the ramp's fixed point, so the
+                  same mid-grey came out in a light theme and a dark one. Legible on paper-white,
+                  and on a dark canvas a label sat dimmer than every other word on screen — the
+                  worst place for it, since what an edge label says is what a line *means*.
+
+                  `DEFAULT_NODE` already argues this for node labels: a fixed step on the neutral
+                  ramp gets ink right in neither polarity, and the renderer's own stylesheet does.
+                  So the same shape here, and a rule that names a colour still wins.
+                */
+                ...(entry.visual.labelColor ? { '--edge-label-color': color(entry.visual.labelColor, '') } : {}),
               }}
             >
               {entry.visual.label}
