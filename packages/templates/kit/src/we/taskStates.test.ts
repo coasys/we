@@ -1,7 +1,16 @@
 import { evaluateExpression, listFunctions, parseExpression } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
-import { STATE_FILLS, STATE_ICONS, stateFill, stateFillFor, stateIcon } from './taskStates.ts';
+import {
+  fillForSemantic,
+  iconForSemantic,
+  STATE_FILLS,
+  STATE_ICONS,
+  stateFill,
+  stateFillFor,
+  stateIcon,
+  stateIconFor,
+} from './taskStates.ts';
 
 /**
  * What a state is drawn with, checked by running the expressions rather than by reading them.
@@ -69,5 +78,29 @@ describe('a state’s glyph', () => {
     for (const [semantic, icon] of Object.entries(STATE_ICONS)) {
       expect(run(stateIcon('state'), state({ icon: '', semantic })), semantic).toBe(icon);
     }
+  });
+});
+
+/**
+ * The value spelling, for a caller that is not a schema.
+ *
+ * A board's headings come from `arrangedBoard`, a host function, which needs these as values rather
+ * than as expression source. It kept its own copy of both tables and the colours had drifted — an
+ * uncoloured state was a hex in the key and a colour *role* on its own column, and the two agreed
+ * only once somebody edited the state. So the interesting assertion is not what these answer but
+ * that they answer *the same thing* the expressions do, for every semantic, including one nobody
+ * recognises.
+ */
+describe('the same tables, as values', () => {
+  it('answers exactly what the expression does, for every semantic', () => {
+    for (const semantic of Object.keys(STATE_FILLS)) {
+      expect(fillForSemantic(semantic), semantic).toBe(run(stateFillFor(`'${semantic}'`), {}));
+      expect(iconForSemantic(semantic), semantic).toBe(run(stateIconFor(`'${semantic}'`), {}));
+    }
+  });
+
+  it('reads a semantic it does not know as still-to-do, as the expression does', () => {
+    expect(fillForSemantic('contemplative')).toBe(STATE_FILLS.open);
+    expect(iconForSemantic('contemplative')).toBe(STATE_ICONS.open);
   });
 });

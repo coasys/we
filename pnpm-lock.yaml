@@ -538,6 +538,9 @@ importers:
       '@we/template-default':
         specifier: workspace:*
         version: link:../templates/default
+      '@we/template-kit':
+        specifier: workspace:*
+        version: link:../templates/kit
       '@we/template-shell':
         specifier: workspace:*
         version: link:../templates/shell

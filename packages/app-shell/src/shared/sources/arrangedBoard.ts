@@ -55,6 +55,7 @@
  * what changes under it. That is the client library's invalidation behaviour, not WE's, and it is
  * recorded here so the fragment need not carry it.
  */
+import { fillForSemantic, iconForSemantic } from '@we/template-kit';
 
 /** What the fragment hands over: the rows of three subscriptions and the community's vocabulary. */
 export interface ArrangedBoardOptions {
@@ -139,7 +140,11 @@ export interface ColumnContents {
   label: string;
   /** The community's icon for the state, else the shape its semantic implies. Empty for a lane. */
   icon: string;
-  /** The community's colour for the state, else a role its semantic implies. */
+  /**
+   * The community's colour for the state, else the fill its semantic implies — the same answer the
+   * workshop's key and Settings → Vocabulary give, from `@we/template-kit`'s one table. A lane, which
+   * stands for no state, takes `LANE_COLOR` instead.
+   */
   color: string;
   /** The records somebody arranged here, in that order, minus any stale hint. */
   arranged: CardRow[];
@@ -174,23 +179,21 @@ export interface ArrangedBoard {
   total: number;
 }
 
-/** The shape a state's heading takes when the community has not picked one. */
-export const SEMANTIC_ICON: Record<string, string> = {
-  open: 'circle',
-  active: 'circle-half',
-  blocked: 'warning-circle',
-  done: 'check-circle',
-  cancelled: 'x-circle',
-};
-
-/** And the colour role — a role rather than a scale position, so a theme can redesign it. */
-export const SEMANTIC_COLOR: Record<string, string> = {
-  open: 'text-muted',
-  active: 'accent-text',
-  blocked: 'warning-text',
-  done: 'success-text',
-  cancelled: 'text-faint',
-};
+/**
+ * What a column with no colour of its own is drawn in: nothing here.
+ *
+ * There were two tables at this point in the file — a glyph per semantic, which agreed with
+ * `@we/template-kit`'s, and a colour per semantic, which did not. The kit's are absolute fills; these
+ * were colour *roles*. So a state the community had never coloured came out violet in the workshop's
+ * key, violet on the canvas, and `text-muted` grey on the heading of its own column, and the three
+ * only agreed after somebody edited the state, at which point all of them fell through to the same
+ * stored string.
+ *
+ * A lane is the one heading with no state under it, and so the one that still names a colour here.
+ * It is not the absence of a *choice* — it is the absence of a shared meaning to have a colour for —
+ * and now that `open` is a hue rather than grey, the two read apart.
+ */
+const LANE_COLOR = 'text-muted';
 
 /** A relation comes back as ids, or as hydrated rows carrying an id; read either. */
 function idsOf(value: unknown): string[] {
@@ -287,8 +290,8 @@ export function arrangedBoard(options: ArrangedBoardOptions | null | undefined):
       slug,
       lane: !slug,
       label: column.title || state?.name || slug || 'Untitled',
-      icon: slug ? state?.icon || SEMANTIC_ICON[semantic] || 'circle' : '',
-      color: slug ? state?.color || SEMANTIC_COLOR[semantic] || 'text-muted' : 'text-muted',
+      icon: slug ? state?.icon || iconForSemantic(semantic) : '',
+      color: slug ? state?.color || fillForSemantic(semantic) : LANE_COLOR,
       arranged,
       unarranged,
       count: arranged.length + unarranged.length,

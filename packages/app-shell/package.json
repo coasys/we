@@ -66,6 +66,7 @@
     "@we/schema-shared": "workspace:*",
     "@we/schema-solid": "workspace:*",
     "@we/template-default": "workspace:*",
+    "@we/template-kit": "workspace:*",
     "@we/template-shell": "workspace:*",
     "@we/template-showcase": "workspace:*",
     "@we/template-views": "workspace:*",

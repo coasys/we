@@ -136,3 +136,29 @@ export function stateIconFor(semantic: string): string {
 export function stateIcon(state: string): string {
   return `(${state}.icon ? ${state}.icon : ${stateIconFor(`${state}.semantic`)})`;
 }
+
+/*
+ * The same two tables, looked up rather than compiled into an expression.
+ *
+ * Everything above emits a *string of expression source*, because its callers are schemas. A board's
+ * headings are not: its columns are worked out by `arrangedBoard`, a host function, which needs the
+ * answer as a value. It carried its own copy of both tables and the colours disagreed with these —
+ * an uncoloured state was a hex on the canvas and in the key, and a colour *role* on the board, so
+ * the surfaces only agreed once somebody had edited the state and both fell through to the same
+ * stored string. One table, two spellings, kept together so they cannot drift again.
+ */
+
+/** The chain's answer, as a value: the table's entry, else the outstanding one. */
+function lookUp(semantic: string, table: Record<string, string>): string {
+  return table[semantic] ?? table[FALLBACK];
+}
+
+/** The fill for a semantic, as a value — the runtime counterpart of `stateFillFor`. */
+export function fillForSemantic(semantic: string): string {
+  return lookUp(semantic, STATE_FILLS);
+}
+
+/** The glyph for a semantic, as a value — the runtime counterpart of `stateIconFor`. */
+export function iconForSemantic(semantic: string): string {
+  return lookUp(semantic, STATE_ICONS);
+}

@@ -61,7 +61,16 @@ export { marketplaceList } from './we/marketplaceList.ts';
 export type { MarketplaceListOptions } from './we/marketplaceList.ts';
 export { peopleRow } from './we/peopleRow.ts';
 export { HAS_OFFERED_SIGNAL_TYPES, OFFERED_SIGNAL_TYPES } from './we/signalTypes.ts';
-export { STATE_FILLS, STATE_ICONS, stateFill, stateFillFor, stateIcon, stateIconFor } from './we/taskStates.ts';
+export {
+  fillForSemantic,
+  iconForSemantic,
+  STATE_FILLS,
+  STATE_ICONS,
+  stateFill,
+  stateFillFor,
+  stateIcon,
+  stateIconFor,
+} from './we/taskStates.ts';
 export type { PeopleRowOptions } from './we/peopleRow.ts';
 export { recordFormModal } from './we/recordForm.ts';
 export type { RecordFormModalOptions } from './we/recordForm.ts';

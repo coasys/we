@@ -6,6 +6,7 @@
  * expressions that validated and computed the wrong thing. The rules moved into a host function so
  * that the fragment could go back to being arrangement; the tests moved with them, and gained types.
  */
+import { STATE_FILLS, STATE_ICONS } from '@we/template-kit';
 import { describe, expect, it } from 'vitest';
 
 import { arrangedBoard } from '../src/shared/sources/arrangedBoard';
@@ -20,7 +21,7 @@ const orphan = { id: 't4', title: 'Four', status: 'archived' };
 const states = [
   { slug: 'todo', name: 'To do', semantic: 'open' },
   { slug: 'doing', name: 'Doing', semantic: 'active', icon: 'play' },
-  { slug: 'done', name: 'Done', semantic: 'done', color: 'success-text' },
+  { slug: 'done', name: 'Done', semantic: 'done', color: '#0f9d58' },
   { slug: 'parked', name: 'Parked', semantic: 'cancelled', retired: true },
 ];
 
@@ -101,10 +102,13 @@ describe('what a local lane shows', () => {
     expect(view.contents.c3.unarranged).toEqual([]);
   });
 
-  it('has no state shape, and a neutral colour', () => {
+  it('has no state shape, and a neutral colour that no state shares', () => {
     expect(view.contents.c9.icon).toBe('');
     expect(view.contents.c9.color).toBe('text-muted');
     expect(view.contents.c9.label).toBe('Thursday');
+    // A lane's grey said "no shared meaning" and `open`'s said "outstanding" — the same grey. What
+    // makes the lane's colour legible as its own is that nothing in the vocabulary is drawn in it.
+    expect(Object.values(STATE_FILLS)).not.toContain(view.contents.c9.color);
   });
 });
 
@@ -117,7 +121,14 @@ describe('the heading', () => {
     expect(view.contents.c2.label).toBe('In flight');
   });
 
-  it('takes the community’s icon and colour, else the shape its semantic implies', () => {
+  /*
+    The regression this guards is a silent one, and it ran for a while: the defaults were a second
+    table living here, so a state nobody had coloured was drawn one way on its column and another in
+    the key and on the canvas — and editing the state hid it, since both sides then read the stored
+    colour. Asserting against the kit's tables rather than against literals is the point: a new
+    semantic, or a changed hex, has one place to change.
+  */
+  it('takes the community’s icon and colour, else the shape and fill its semantic implies', () => {
     const view = arrangedBoard({
       ...gathering([
         { id: 'c1', slug: 'todo' },
@@ -127,12 +138,19 @@ describe('the heading', () => {
       records: [],
       states,
     });
-    expect(view.contents.c1.icon).toBe('circle');
-    expect(view.contents.c1.color).toBe('text-muted');
+    expect(view.contents.c1.icon).toBe(STATE_ICONS.open);
+    expect(view.contents.c1.color).toBe(STATE_FILLS.open);
     expect(view.contents.c2.icon).toBe('play');
-    expect(view.contents.c2.color).toBe('accent-text');
-    expect(view.contents.c3.icon).toBe('check-circle');
-    expect(view.contents.c3.color).toBe('success-text');
+    expect(view.contents.c2.color).toBe(STATE_FILLS.active);
+    expect(view.contents.c3.icon).toBe(STATE_ICONS.done);
+    expect(view.contents.c3.color).toBe('#0f9d58');
+  });
+
+  it('draws a semantic it does not know as outstanding rather than as nothing', () => {
+    const odd = [{ slug: 'mulling', name: 'Mulling', semantic: 'contemplative' }];
+    const view = arrangedBoard({ ...gathering([{ id: 'c1', slug: 'mulling' }]), records: [], states: odd });
+    expect(view.contents.c1.icon).toBe(STATE_ICONS.open);
+    expect(view.contents.c1.color).toBe(STATE_FILLS.open);
   });
 
   it('falls back to the slug for a state the vocabulary no longer names', () => {
