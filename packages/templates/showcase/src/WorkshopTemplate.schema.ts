@@ -2246,55 +2246,178 @@ const kanbanRoute: RouteSchema = {
 const eventList: SchemaNode = {
   type: 'Column',
   props: { width: '100%', gap: '300' },
+  // On this node rather than on the route, so the flag sits with the button and the modal that use
+  // it. `day` and `events` are declared above and still read through — an inner declaration merges
+  // with the outer one rather than replacing it.
+  $localState: { newEventOpen: { type: 'boolean', initial: false } },
   children: [
-    /*
-      The heading, and the one thing it must not be: the key the grid matches on.
-
-      A cell's date is `YYYY-MM-DD` because `startsWith` needs it to be, and printing that straight
-      out made the list under the calendar announce itself as "2026-09-11" — machine-readable, and
-      the only place in the route where a reader is asked to parse one. `we-timestamp` says the same
-      day in their own language. Year omitted: the grid directly above is already headed with the
-      month and year, and a heading that repeats its parent is noise.
-
-      `+ 'T00:00'` is not decoration. A bare `YYYY-MM-DD` is parsed as UTC midnight, so west of
-      Greenwich it formats as the day BEFORE the one that was clicked — the heading and the rows
-      under it would disagree about which day this is. The suffix makes it a local time, which is
-      what a calendar cell means by a date, and what `startDate` already is.
-
-      The typography props rather than `we-text`'s `variant`/`uppercase` shorthands, which are that
-      element's own and not part of the DS layers a timestamp inherits — `label` is fontSize 200 at
-      medium.
-    */
     {
-      type: '$if',
-      props: {
-        condition: { $: 'local.day' },
-        then: {
-          type: 'we-timestamp',
+      type: 'Row',
+      props: { width: '100%', ay: 'center', gap: '300' },
+      children: [
+        /*
+          The heading, and the one thing it must not be: the key the grid matches on.
+
+          A cell's date is `YYYY-MM-DD` because `startsWith` needs it to be, and printing that
+          straight out made the list under the calendar announce itself as "2026-09-11" —
+          machine-readable, and the only place in the route where a reader is asked to parse one.
+          `we-timestamp` says the same day in their own language. Year omitted: the grid directly
+          above is already headed with the month and year, and a heading that repeats its parent is
+          noise.
+
+          `+ 'T00:00'` is not decoration. A bare `YYYY-MM-DD` is parsed as UTC midnight, so west of
+          Greenwich it formats as the day BEFORE the one that was clicked — the heading and the rows
+          under it would disagree about which day this is. The suffix makes it a local time, which is
+          what a calendar cell means by a date, and what `startDate` already is.
+
+          The typography props rather than `we-text`'s `variant`/`uppercase` shorthands, which are
+          that element's own and not part of the DS layers a timestamp inherits — `label` is
+          fontSize 200 at medium.
+        */
+        {
+          type: '$if',
           props: {
-            value: { $: "local.day + 'T00:00'" },
-            weekday: 'long',
-            day: 'numeric',
-            month: 'long',
-            fontSize: '200',
-            fontWeight: 'medium',
-            color: 'text-muted',
-            textTransform: 'uppercase',
-            letterSpacing: 'wide',
+            condition: { $: 'local.day' },
+            then: {
+              type: 'we-timestamp',
+              props: {
+                value: { $: "local.day + 'T00:00'" },
+                weekday: 'long',
+                day: 'numeric',
+                month: 'long',
+                fontSize: '200',
+                fontWeight: 'medium',
+                color: 'text-muted',
+                textTransform: 'uppercase',
+                letterSpacing: 'wide',
+              },
+            },
+            else: {
+              type: 'we-text',
+              props: {
+                variant: 'label',
+                color: 'text-muted',
+                textTransform: 'uppercase',
+                letterSpacing: 'wide',
+                text: 'Coming up',
+              },
+            },
           },
         },
-        else: {
-          type: 'we-text',
+        /*
+          Adding one by hand, which is the other way an event gets here.
+
+          Only with a day chosen, and that is the whole design rather than a restriction: the day
+          IS the date, so the form asks for a time and never for a date somebody has already
+          picked. Unanchored — "Coming up" — there would be nothing to create against, and a
+          button that opened a form asking for the full date would be a second, differently-shaped
+          composer for the same record.
+
+          `ml: 'auto'` rather than `ax: 'between'` on the row: the heading changes width as the
+          date does, and `between` would walk the button a few pixels left and right from one day
+          to the next.
+        */
+        {
+          type: '$if',
           props: {
-            variant: 'label',
-            color: 'text-muted',
-            textTransform: 'uppercase',
-            letterSpacing: 'wide',
-            text: 'Coming up',
+            condition: { $: 'local.day' },
+            then: {
+              type: 'we-button',
+              props: {
+                size: 'sm',
+                variant: 'secondary',
+                ml: 'auto',
+                onClick: { $setLocal: 'newEventOpen', value: true },
+              },
+              children: [{ type: 'we-icon', props: { name: 'plus' } }, 'Add event'],
+            },
           },
         },
-      },
+      ],
     },
+    /*
+      The composer.
+
+      `record.create` rather than the block composer, for the reason the other bare-record forms
+      here give: an event is a title, a time and a line of context, so putting it through a block
+      editor would ask for a document nobody wants to write.
+
+      Parented to the call, which is the part that cannot be left out. Every surface of this
+      template reads its records through `anchorScope(CALL)` — `CollectionBlock` → `children` —
+      so an event created unparented is written into the space and then shows up on no screen in
+      this template, including the calendar it was just added from. `we://children` is that
+      relation's predicate.
+
+      The drafts are declared on the modal, so closing discards them; a draft declared on the page
+      would have to be cleared by hand on every exit, and the one somebody forgets is the one that
+      re-opens holding last time's title.
+    */
+    formModal({
+      open: { $: 'local.newEventOpen' },
+      close: { $setLocal: 'newEventOpen', value: false },
+      title: 'New event',
+      size: 'sm',
+      localState: {
+        draftTitle: { type: 'string', initial: '' },
+        // A default, so the form is submittable the moment a title is typed. Mid-morning rather
+        // than midnight: an event with no time said is a daytime one, and `00:00` reads as a
+        // mistake somebody has to correct rather than as an answer.
+        draftTime: { type: 'string', initial: '09:00' },
+        draftDescription: { type: 'string', initial: '' },
+      },
+      children: [
+        {
+          // Which day this is going on, since the form never asks. Same formatting as the heading
+          // it was opened from, including the `T00:00` that keeps it off the day before.
+          type: 'Row',
+          props: { gap: '200', ay: 'center' },
+          children: [
+            { type: 'we-icon', props: { name: 'calendar', size: 'xs', color: 'text-muted' } },
+            {
+              type: 'we-timestamp',
+              props: {
+                value: { $: "local.day + 'T00:00'" },
+                weekday: 'long',
+                day: 'numeric',
+                month: 'long',
+                fontSize: '200',
+                color: 'text-muted',
+              },
+            },
+          ],
+        },
+        field({ name: 'draftTitle', label: 'What is it?', placeholder: 'Design review', props: { autofocus: true } }),
+        field({ name: 'draftTime', label: 'Time', props: { type: 'time' } }),
+        field({
+          name: 'draftDescription',
+          label: 'Notes',
+          control: 'textarea',
+          placeholder: 'Optional — what it is for, what to bring',
+        }),
+      ],
+      // What the model requires, less the date the day already answers. A precondition rather than
+      // validation rules: nothing about a title or a time is judgeable here beyond being there.
+      disabled: { $: '!local.draftTitle || !local.draftTime' },
+      // The time is deliberately absent: it arrives already filled in, so including it would make
+      // the guard fire on a form nobody has touched — which is the failure mode that teaches people
+      // to click through the dialog.
+      discardWhen: { $: 'local.draftTitle || local.draftDescription' },
+      submitLabel: 'Add event',
+      submit: {
+        $action: 'record.create',
+        args: [
+          'EventBlock',
+          {
+            title: { $: 'local.draftTitle' },
+            // The chosen day and the typed time, assembled into the `YYYY-MM-DDTHH:mm` that
+            // extraction also writes — which is what lets the grid's `startsWith` match both.
+            startDate: { $: "local.day + 'T' + local.draftTime" },
+            description: { $: 'local.draftDescription' },
+          },
+          { parent: { id: CALL, predicate: 'we://children' } },
+        ],
+      },
+    }),
     {
       type: '$if',
       props: {
