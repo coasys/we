@@ -747,6 +747,27 @@ describe('the workshop template’s three placeholders', () => {
       expect(canvasProps[key], `/canvas.${key}`).toBeUndefined();
     }
   });
+
+  it('gives the board the whole width and keeps the calendar to a measure', () => {
+    /*
+      A measure caps prose and grids that reflow; it caps a board's *column count*, which is not the
+      same thing and is not something anybody chose. The columns are a fixed 300px each, so
+      `var(--we-layout-lg)` — 1200 — was three of them and the edge of a fourth on a screen with room
+      for six, the rest behind a horizontal scroll with empty page either side of it.
+
+      Asserted in both directions, because uncapping the board is only interesting next to the route
+      that stays capped: the calendar's month grid reflows and wants the measure.
+    */
+    const measureOf = (path: string) => {
+      const route = (workshop.routes ?? []).find((entry) => entry.path === path) as unknown as SchemaNode;
+      return ((route.children as SchemaNode[])[0].props ?? {}) as Record<string, unknown>;
+    };
+    expect(measureOf('/kanban').maxWidth).toBeUndefined();
+    expect(measureOf('/calendar').maxWidth).toBe('var(--we-layout-lg)');
+    // Still full width and still the box the gate centres in — the cap was the only thing removed.
+    expect(measureOf('/kanban').width).toBe('100%');
+    expect(measureOf('/kanban').flex).toBe('1');
+  });
 });
 
 /**

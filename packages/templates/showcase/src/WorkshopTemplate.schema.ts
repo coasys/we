@@ -2078,8 +2078,23 @@ const kanbanRoute: RouteSchema = {
         it. It costs the board nothing — a Column's children stack from the top whatever height the
         box has — and it is the link that lets `callGate` centre itself, which it cannot do inside a
         box that shrink-wraps an icon and a sentence.
+
+        And no `maxWidth`, which is the one place this route parts company with the calendar beside
+        it. A measure is for prose and for grids that reflow: cap them and a wide window gets a
+        comfortable column instead of a stretched one. A board does neither. Its columns are a fixed
+        300px each by design — a kanban column is a fixed width everywhere it appears, and a column
+        that grew to a sixth of a 2560px screen would be a card gallery, not a column — so the cap
+        was not deciding how wide a column is, only how many of them fit. `var(--we-layout-lg)` is
+        1200px, which is three columns and the edge of a fourth, on a screen with room for six; the
+        rest were reachable only through the board's own horizontal scroll, with the space they
+        wanted sitting empty on either side of the page.
+
+        So the board takes the width the route was given and `overflowX` on its own row stays the
+        answer for the case that actually needs it — more columns than any screen holds. `px` on the
+        route still keeps it off the window edges, and the gate inside centres itself whatever the
+        box is, so the empty state is unchanged.
       */
-      props: { width: '100%', maxWidth: 'var(--we-layout-lg)', flex: '1', gap: '400' },
+      props: { width: '100%', flex: '1', gap: '400' },
       children: [
         {
           type: '$if',
