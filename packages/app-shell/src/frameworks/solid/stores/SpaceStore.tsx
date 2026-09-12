@@ -603,7 +603,13 @@ export interface SpaceStore {
   /** Record the order somebody dragged one column's cards into. */
   arrangeColumn: (columnId: string, orderedIds: string[]) => Promise<void>;
   /** Move a card between columns — and write its state, when the column it joins names one. */
-  moveCardToColumn: (fromColumnId: string, toColumnId: string, cardId: string, orderedIds?: string[]) => Promise<void>;
+  moveCardToColumn: (
+    fromColumnId: string,
+    toColumnId: string,
+    cardId: string,
+    orderedIds?: string[],
+    toSlug?: string,
+  ) => Promise<void>;
   /** Make a task straight into a column, parented to the board's anchor when there is one. */
   addTaskToColumn: (columnId: string, title: string, anchorId?: string) => Promise<void>;
   /**

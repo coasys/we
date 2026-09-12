@@ -96,7 +96,13 @@ export interface BoardActions {
   renameBoardColumn: (columnId: string, name: string) => Promise<void>;
   reorderBoardColumns: (boardId: string, orderedIds: string[]) => Promise<void>;
   arrangeColumn: (columnId: string, orderedIds: string[]) => Promise<void>;
-  moveCardToColumn: (fromColumnId: string, toColumnId: string, cardId: string, orderedIds?: string[]) => Promise<void>;
+  moveCardToColumn: (
+    fromColumnId: string,
+    toColumnId: string,
+    cardId: string,
+    orderedIds?: string[],
+    toSlug?: string,
+  ) => Promise<void>;
   addTaskToColumn: (columnId: string, title: string, anchorId?: string) => Promise<void>;
 }
 
@@ -565,16 +571,25 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
     toColumnId: string,
     cardId: string,
     orderedIds?: string[],
+    toSlug?: string,
   ): Promise<void> {
     const p = dataset();
     if (!p || !cardId || !toColumnId || fromColumnId === toColumnId) return;
     /*
-      The order half goes up immediately, as it does for a reorder. The *state* half cannot: what to
-      hold is the target column's slug, and nothing knows it until the column has been read — so a
-      drop into a bound column still shows one read of the old behaviour before the card settles.
-      Closing that means the caller passing the slug it already has on screen.
+      Both halves, on the tick of the drop.
+
+      A drop into a bound column writes an order and a state, and they come back on two different
+      subscriptions — so holding only the order leaves a window where the target claims the card while
+      the card still reads as the old state, and the stale-hint rule throws it out of the target for
+      exactly that. Drawn in neither column, which is worse than the flash.
+
+      Which is why `toSlug` is a parameter. The state to hold is the target column's, and reading it
+      here costs the round trip this timing exists to avoid — while the board that dispatched the drop
+      has the slug on screen already. It is a **hint for the drawing only**: the write below still
+      reads the column and uses what it finds, so a stale hint costs a frame, never a wrong write.
     */
     if (Array.isArray(orderedIds) && orderedIds.includes(cardId)) hold(toColumnId, 'arranges', orderedIds);
+    if (toSlug) holdStatus(cardId, toSlug);
     try {
       const [from, to] = await Promise.all([
         /*
@@ -619,7 +634,12 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
       if (!Array.isArray(orderedIds) || !orderedIds.includes(cardId)) {
         hold(to.id, 'arranges', [...ids(to.arranges), cardId]);
       }
-      if (to.slug) holdStatus(cardId, to.slug);
+      // Only where the caller gave no hint, or gave the wrong one. Re-holding with the same value
+      // would reset the entry's age and its baseline, undoing the draw that has already happened.
+      if (to.slug && to.slug !== toSlug) holdStatus(cardId, to.slug);
+      // The hint said a state and the column turns out to name none — a lane, whose whole point is
+      // that dropping a card there changes nothing about the work. Stop claiming otherwise.
+      if (!to.slug && toSlug) releaseStatus(cardId);
       // A lane writes no state, so nothing would take the card out of the column it left. Hold that
       // side too, so the card is not drawn in both at once.
       if (!to.slug && from) {

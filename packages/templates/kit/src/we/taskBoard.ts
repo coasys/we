@@ -393,7 +393,7 @@ export function moveTaskMenu(from: string, as = 'card'): SchemaNode {
       items: { $: `${VIEW}.choices.map(k, { id: k.id, label: \`Move to \${k.label}\` })` },
       onSelect: {
         $action: 'spaceStore.moveCardToColumn',
-        args: [{ $: from }, { $: 'arg.id' }, { $: `${as}.id` }],
+        args: [{ $: from }, { $: 'arg.id' }, { $: `${as}.id` }, [], { $: `${VIEW}.contents[arg.id].slug` }],
       },
     },
   };
@@ -493,7 +493,7 @@ const addTaskModal: SchemaNode = formModal({
       condition: { $: 'local.addExisting' },
       then: {
         $action: 'spaceStore.moveCardToColumn',
-        args: ['', { $: 'col.id' }, { $: 'local.addExisting' }],
+        args: ['', { $: 'col.id' }, { $: 'local.addExisting' }, [], { $: `${CELL}.slug` }],
         onSuccess: [{ $setLocal: 'addOpen', value: false }],
       },
       else: {
@@ -569,9 +569,23 @@ function columnCards(opts: TaskBoardOptions): SchemaNode {
         can only append, which is what "move to that column" means from the menu and not what a drag
         means.
       */
+      /*
+        The fifth argument is the state the target column stands for, and it is there for the
+        *drawing* rather than for the write. A drop writes an order and a state; the store cannot
+        know the state without reading the column, and until it does the card cannot be drawn in the
+        column it was dropped into — the stale-hint rule would throw it straight back out. The board
+        has the slug on screen already, so it says so and the card lands instantly. The store still
+        reads the column for the write itself, so a stale hint costs a frame and never a wrong write.
+      */
       onMoved: {
         $action: 'spaceStore.moveCardToColumn',
-        args: [{ $: 'arg.detail.from' }, { $: 'arg.detail.to' }, { $: 'arg.detail.id' }, { $: 'arg.detail.ids' }],
+        args: [
+          { $: 'arg.detail.from' },
+          { $: 'arg.detail.to' },
+          { $: 'arg.detail.id' },
+          { $: 'arg.detail.ids' },
+          { $: `${VIEW}.contents[arg.detail.to].slug` },
+        ],
       },
     },
     // Two loops, one continuous run of items: the arranged cards in their order, then whatever the
@@ -849,7 +863,13 @@ function unplacedColumn(opts: TaskBoardOptions): SchemaNode {
               */
               onMoved: {
                 $action: 'spaceStore.moveCardToColumn',
-                args: ['', { $: 'arg.detail.to' }, { $: 'arg.detail.id' }, { $: 'arg.detail.ids' }],
+                args: [
+                  '',
+                  { $: 'arg.detail.to' },
+                  { $: 'arg.detail.id' },
+                  { $: 'arg.detail.ids' },
+                  { $: `${VIEW}.contents[arg.detail.to].slug` },
+                ],
               },
             },
             children: [
