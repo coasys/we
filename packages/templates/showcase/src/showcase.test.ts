@@ -993,7 +993,7 @@ describe('the workshop’s key', () => {
       expect(fill, kind).toMatch(/^(oklch\(|#)/);
     }
     for (const [semantic, fill] of Object.entries(STATE_FILLS)) {
-      expect(fill, semantic).toMatch(/^oklch\(/);
+      expect(fill, semantic).toMatch(/^(#|oklch\()/);
     }
     expect(PLAIN_FILL).toBe('var(--we-color-neutral-200)');
     expect(route('/canvas')).toContain(`style: { color: '${KIND_DEFAULTS.EventBlock}' }`);

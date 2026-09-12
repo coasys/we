@@ -284,6 +284,28 @@ describe('semantic roles as colour prop values', () => {
     expect(tokenVar('space', 'surface')).toBe('var(--we-space-surface)');
   });
 
+  /**
+   * A colour written in the space the design system is itself built in.
+   *
+   * Only `oklch(from …)` was admitted — the elevation stack's own shape — so every other spelling
+   * came back as `var(--we-color-oklch(90% 0.045 288))`, a variable name built out of an
+   * expression, and the element painted nothing with no diagnostic anywhere. Reachable three ways:
+   * `we-color-picker` offers **oklch** as an output format, a theme can pin a role in one, and a
+   * card fill that must not invert with the polarity is most naturally written this way.
+   */
+  it('passes a modern colour function through, not only `oklch(from …)`', () => {
+    expect(tokenVar('color', 'oklch(90% 0.045 288)')).toBe('oklch(90% 0.045 288)');
+    expect(tokenVar('color', 'oklch(0.9 0.045 288 / 0.5)')).toBe('oklch(0.9 0.045 288 / 0.5)');
+    expect(tokenVar('color', 'oklch(from var(--we-role-page) calc(l - 0.035) c h)')).toBe(
+      'oklch(from var(--we-role-page) calc(l - 0.035) c h)',
+    );
+    expect(tokenVar('color', 'oklab(59% 0.1 0.1)')).toBe('oklab(59% 0.1 0.1)');
+    expect(tokenVar('color', 'lch(59% 0.1 120)')).toBe('lch(59% 0.1 120)');
+    expect(tokenVar('color', 'lab(59% 0.1 0.1)')).toBe('lab(59% 0.1 0.1)');
+    expect(tokenVar('color', 'hwb(194 0% 0%)')).toBe('hwb(194 0% 0%)');
+    expect(tokenVar('color', 'color(display-p3 1 0.5 0)')).toBe('color(display-p3 1 0.5 0)');
+  });
+
   it('resolves a border shorthand naming a role', () => {
     expect(parseBorder('1px solid border')).toBe('1px solid var(--we-role-border)');
     expect(parseBorder('1px solid border-strong')).toBe('1px solid var(--we-role-border-strong)');

@@ -69,6 +69,10 @@ export const ColorControl: NodeControl = (props) => (
       value={typeof props.value === 'string' && props.value ? props.value : props.fill}
       // A disc, at the size a default control's icon is — a circle of colour among square glyphs.
       styles={{ '--we-color-picker-swatch': '24px', '--we-color-picker-radius': 'var(--we-radius-full)' }}
+      // The same two the scale slider answers with: the card follows the thumb, and the placement
+      // is written once, on release. It committed on every pointermove before the picker had a
+      // `preview` to say that with — a write per frame of a drag, each one a record update.
+      on:preview={(event: CustomEvent<string>) => props.onPreview(event.detail)}
       on:change={(event: CustomEvent<string>) => props.onChange(event.detail)}
     />
   </we-tooltip>

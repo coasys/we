@@ -264,6 +264,7 @@
     {
       "tagName": "we-color-picker",
       "className": "ColorPicker",
+      "description": "A colour, chosen from the theme's tokens or picked by hand.",
       "superclass": "DesignSystemElement",
       "ownProps": [
         {

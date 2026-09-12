@@ -1195,6 +1195,11 @@ export function ThemePanel() {
             alpha
             styles={{ ...editedPalette(), '--we-color-picker-swatch': '28px' }}
             value={shown()}
+            // Both, so the theme follows the thumb as it moves and the draft is written when it
+            // settles — the picker separated the two once a drag's worth of writes turned out to be
+            // a real cost elsewhere. A role pin is a signal rather than a record, so previewing it
+            // is free; keeping the pair here is what stops this panel losing its live feel.
+            on:preview={(e: CustomEvent) => setRole(role, e.detail as string)}
             on:change={(e: CustomEvent) => setRole(role, e.detail as string)}
           />
           <Column flex="1" gap="0">

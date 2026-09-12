@@ -320,6 +320,14 @@ const styles = css`
 
 type Tab = 'tokens' | 'custom';
 
+/**
+ * A colour, chosen from the theme's tokens or picked by hand.
+ *
+ * @fires change - detail: the colour as a CSS string. A decision — a swatch clicked, a drag
+ *   released, text left, the eyedropper's answer, Default (which emits `''`). Store this one.
+ * @fires preview - detail: the same, while a thumb is moving or a value is being typed. Show it;
+ *   write nothing. See `_dispatch` for what happened when there was only one of these.
+ */
 @customElement('we-color-picker')
 export default class ColorPicker extends DesignSystemElement {
   static styles = [sharedStyles, styles];
@@ -473,17 +481,46 @@ export default class ColorPicker extends DesignSystemElement {
     this._open = true;
   }
 
-  private _emit(color: string) {
+  /**
+   * The two things this element says, and why there are two.
+   *
+   * `change` is a **decision**: a swatch clicked, a drag released, a value typed and left, the
+   * eyedropper's answer, Default. `preview` is the colour **under a moving thumb** — the same
+   * split a slider makes, and the one `NodeControl.onPreview` in the graph already expects.
+   *
+   * It was one event, fired on every `pointermove` of a drag, and consumers write on it. So
+   * dragging the saturation area wrote the colour tens of times a second — and where the row being
+   * recoloured comes from that data, as the workshop key's states do, each write handed back a new
+   * row object, `<For>` rebuilt it, and the picker was destroyed under the pointer that was using
+   * it. The popup "closed" halfway through a drag; what actually happened is that the element
+   * dragging it had been unmounted.
+   *
+   * A consumer that wants live feedback listens to `preview` and writes nothing; one that stores a
+   * value listens to `change` and gets exactly one per decision. A consumer that only ever listened
+   * to `change` is unaffected except by no longer being called forty times.
+   */
+  private _dispatch(kind: 'change' | 'preview', color: string) {
     this.value = color;
-    this.dispatchEvent(new CustomEvent('change', { detail: color, bubbles: true, composed: true }));
+    this.dispatchEvent(new CustomEvent(kind, { detail: color, bubbles: true, composed: true }));
+  }
+
+  private _emit(color: string) {
+    this._dispatch('change', color);
   }
 
   /** The current HSV + alpha as the string this component emits. */
-  private _emitCurrent() {
+  private _emitCurrent(kind: 'change' | 'preview' = 'change') {
     const rgba: Rgba = { ...hsvToRgb(this._hsv.h, this._hsv.s, this._hsv.v), a: this.alpha ? this._alpha : 1 };
-    this._emit(formatColor(rgba, this._format));
+    this._dispatch(kind, formatColor(rgba, this._format));
   }
 
+  /*
+    Typing is a preview until it is left alone.
+
+    A hex is seven characters and only the last one makes it a colour, so `#ff0000` parsed as `#ff0`
+    on the way through and committed a colour nobody asked for. The field previews while it is being
+    typed and commits on blur or Enter — which is also what a native text input means by `change`.
+  */
   private _onText(e: Event) {
     const raw = (e.target as HTMLInputElement).value;
     this._draft = raw;
@@ -491,7 +528,15 @@ export default class ColorPicker extends DesignSystemElement {
     if (!parsed) return;
     this._hsv = rgbToHsv(parsed);
     this._alpha = parsed.a;
-    this._emit(formatColor(parsed, this._format));
+    this._dispatch('preview', formatColor(parsed, this._format));
+  }
+
+  /** The typed value, settled. Invalid text leaves the last good colour alone, as it always did. */
+  private _commitText() {
+    if (this._draft === null) return;
+    const parsed = parseColor(this._draft);
+    this._draft = null;
+    if (parsed) this._emit(formatColor(parsed, this._format));
   }
 
   /**
@@ -510,13 +555,16 @@ export default class ColorPicker extends DesignSystemElement {
         Math.min(1, Math.max(0, (ev.clientY - rect.top) / rect.height)),
       );
       this._draft = null;
-      this._emitCurrent();
+      // Moving, so nothing is decided yet — see `_dispatch`. The thumb and the swatch follow this;
+      // only the release below is a value anybody should store.
+      this._emitCurrent('preview');
     };
     apply(e);
     const move = (ev: PointerEvent) => apply(ev);
     const up = () => {
       el.removeEventListener('pointermove', move);
       el.removeEventListener('pointerup', up);
+      this._emitCurrent('change');
     };
     el.addEventListener('pointermove', move);
     el.addEventListener('pointerup', up);
@@ -615,7 +663,11 @@ export default class ColorPicker extends DesignSystemElement {
           spellcheck="false"
           .value=${shown}
           @input=${(e: Event) => this._onText(e)}
-          @blur=${() => (this._draft = null)}
+          @change=${() => this._commitText()}
+          @keydown=${(e: KeyboardEvent) => {
+            if (e.key === 'Enter') this._commitText();
+          }}
+          @blur=${() => this._commitText()}
         />
         ${
           ColorPicker._canDrop

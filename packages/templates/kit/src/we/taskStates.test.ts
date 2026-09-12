@@ -54,7 +54,7 @@ describe('a state’s fill', () => {
   */
   it('is an absolute colour, so a finished card is green in either polarity', () => {
     for (const [semantic, fill] of Object.entries(STATE_FILLS)) {
-      expect(fill, semantic).toMatch(/^oklch\(/);
+      expect(fill, semantic).toMatch(/^(#|rgb|hsl|oklch|oklab|lab|lch|hwb|color)/i);
       expect(fill, semantic).not.toMatch(/var\(--we-/);
     }
   });

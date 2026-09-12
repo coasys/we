@@ -271,10 +271,28 @@ function readableFields(node: GraphNode): { name: string; value: string }[] {
  * Unknown names fall through to `--we-color-<token>` exactly as before, so nothing that worked
  * stops — including a name this build's role list has not heard of.
  */
-function color(value: string | undefined, fallback: string): string {
-  const token = value ?? fallback;
-  if (!token) return fallback;
-  if (/^(#|rgb|hsl|var\(|transparent$|currentcolor$)/i.test(token)) return token;
+export function color(value: string | undefined, fallback: string): string {
+  /*
+    `||`, not `??`: an empty value means "nothing chosen" and should reach the fallback, where `??`
+    took it as a choice and returned it. And the fallback is resolved by the same rules rather than
+    returned raw — every caller passes a role name (`page`), so returning it untouched produced
+    `background: page`, which is not a colour. Unreachable while every caller also passes a value,
+    which is the kind of trap that waits for the caller that does not.
+  */
+  const token = value || fallback;
+  if (!token) return '';
+  /*
+    A CSS colour, passed through untouched.
+
+    The modern functions were missing — `oklch()`, `oklab()`, `lab()`, `lch()`, `hwb()`, `color()` —
+    so a card fill written in one became `var(--we-color-oklch(90% 0.06 150))`, which is not a
+    variable and paints nothing. Silent, and reachable by a person rather than only by an author:
+    `we-color-picker` emits **oklch** as one of its four formats, so picking a colour for a card in
+    that format left the card uncoloured with nothing to say why.
+  */
+  if (/^#/.test(token)) return token;
+  if (/^(rgba?|hsla?|oklch|oklab|lch|lab|hwb|color|color-mix|var)\(/i.test(token)) return token;
+  if (/^(transparent|currentcolor)$/i.test(token)) return token;
   if (ROLE_NAMES.has(token)) return `var(--we-role-${token})`;
   return `var(--we-color-${token})`;
 }

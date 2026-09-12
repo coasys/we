@@ -109,6 +109,7 @@ export const contextData: ContextData = {
     {
       tagName: 'we-color-picker',
       className: 'ColorPicker',
+      description: "A colour, chosen from the theme's tokens or picked by hand.",
       superclass: 'DesignSystemElement',
       ownProps: [
         { name: 'value', type: 'string', optional: false, default: "'#000000'" },

@@ -28,9 +28,10 @@
  *
  * A card is not a panel on a page. It is an object on a surface, and a green card should be green in
  * both themes — which is what the workshop's post-it already asserted in a comment and a hex. These
- * are that, generalised: one lightness, a hue per meaning, the same value in every theme. The graph
- * inks a card's label from the lightness of its fill rather than from the theme's, so they stay
- * readable; each sits inside sRGB at its hue, so nothing is gamut-mapped into a different colour.
+ * are that, generalised: a colour per meaning, the same value in every theme, chosen rather than
+ * derived. The graph inks a card's label from the lightness of *its fill* rather than from the
+ * theme's, which is what lets them differ in lightness as freely as they do — the violet takes a
+ * light label and the gold a dark one, in either polarity.
  *
  * This is the palette exception the conventions name — "a graph fragment colouring nodes by category
  * is choosing from a scale on purpose". A theme should not be able to recolour *finished* into
@@ -54,16 +55,23 @@
  * about the most common state there is. Plain now means *no state*, which is what the key claims.
  */
 export const STATE_FILLS: Record<string, string> = {
-  /** Not started, nobody on it — tinted just enough to be a colour rather than a default. */
-  open: 'oklch(90% 0.012 288)',
+  /** Not started, nobody on it. */
+  open: '#705ec9',
   /** Being worked on. */
-  active: 'oklch(90% 0.045 250)',
-  /** Stuck, waiting on something. Coral rather than red: a blocked card is not an error. */
-  blocked: 'oklch(90% 0.048 25)',
+  active: '#f8cd51',
   /** Finished. */
-  done: 'oklch(90% 0.06 150)',
-  /** Dropped — not finished, not outstanding. Flat and a shade darker, so it recedes. */
-  cancelled: 'oklch(87% 0.008 288)',
+  done: '#59ca62',
+  /** Stuck, waiting on something. */
+  blocked: '#f95866',
+  /**
+   * Dropped — not finished, not outstanding.
+   *
+   * The one nobody picked, so it is the only value here still up for argument. Grey rather than a
+   * hue on purpose: the other four say what is happening to a card and this says that nothing is,
+   * which is a statement about absence. Dark enough to read as deliberate rather than as a card
+   * whose colour failed to load.
+   */
+  cancelled: '#8b8b96',
 };
 
 /**
