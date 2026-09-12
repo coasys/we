@@ -157,12 +157,12 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
           );
           columns.push(column.id);
         }
-        if (columns.length) await board.setChildren(columns, tx.batchId);
+        if (columns.length) await CollectionBlock.setRelation(p, board.id, 'children', columns, tx.batchId);
         if (parentId) {
           const parent = await CollectionBlock.findOne(p, { where: { id: parentId } });
           // A parent that has gone leaves the board loose rather than failing the create: the board
           // is already made, and losing it to report a missing container helps nobody.
-          if (parent) await parent.addChildren(board.id, tx.batchId);
+          if (parent) await CollectionBlock.addRelation(p, parent.id, 'children', board.id, tx.batchId);
         }
         return board.id;
       });
@@ -299,7 +299,7 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
           { kind: 'column', mode: 'feed', title: columnTitle(name, slug), slug, type: '' },
           { batchId: tx.batchId },
         );
-        await board.addChildren(column.id, tx.batchId);
+        await CollectionBlock.addRelation(p, board.id, 'children', column.id, tx.batchId);
       });
     } catch (error) {
       console.error('SpaceStore: could not add that column', error);
@@ -371,8 +371,12 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
         if (board) {
           const held = ids(board.arranges);
           const orphans = ids(column?.arranges).filter((id) => !held.includes(id));
-          if (orphans.length) await board.setArranges([...held, ...orphans], tx.batchId);
-          await board.setChildren(
+          if (orphans.length)
+            await CollectionBlock.setRelation(p, board.id, 'arranges', [...held, ...orphans], tx.batchId);
+          await CollectionBlock.setRelation(
+            p,
+            board.id,
+            'children',
             ids(board.children).filter((id) => id !== columnId),
             tx.batchId,
           );
@@ -436,7 +440,10 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
       const ordered = orderedIds.filter((id) => known.has(id));
       if (!ordered.length) return;
       const moved = new Set(ordered);
-      await board.setChildren([...ordered, ...current.filter((id) => !moved.has(id))]);
+      await CollectionBlock.setRelation(p, board.id, 'children', [
+        ...ordered,
+        ...current.filter((id) => !moved.has(id)),
+      ]);
     } catch (error) {
       console.error('SpaceStore: could not reorder the columns', error);
       notify('Could not save that order');
@@ -469,7 +476,10 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
         before writing ordering entries, so sending the full order costs entries only for the cards
         that actually moved, and a concurrent drag of a card nobody here touched is not overwritten.
       */
-      await column.setArranges([...orderedIds, ...current.filter((id) => !moved.has(id))]);
+      await CollectionBlock.setRelation(p, column.id, 'arranges', [
+        ...orderedIds,
+        ...current.filter((id) => !moved.has(id)),
+      ]);
     } catch (error) {
       console.error('SpaceStore: could not save the column arrangement', error);
       notify('Could not save that arrangement');
@@ -534,11 +544,17 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
         const dropped = Array.isArray(orderedIds) && orderedIds.includes(cardId) ? orderedIds : null;
         if (dropped) {
           const moved = new Set(dropped);
-          await to.setArranges([...dropped, ...current.filter((id) => !moved.has(id))], tx.batchId);
+          await CollectionBlock.setRelation(
+            p,
+            to.id,
+            'arranges',
+            [...dropped, ...current.filter((id) => !moved.has(id))],
+            tx.batchId,
+          );
         } else if (!current.includes(cardId)) {
-          await to.addArranges(cardId, tx.batchId);
+          await CollectionBlock.addRelation(p, to.id, 'arranges', cardId, tx.batchId);
         }
-        if (from) await from.removeArranges(cardId, tx.batchId);
+        if (from) await CollectionBlock.removeRelation(p, from.id, 'arranges', cardId, tx.batchId);
         if (task) {
           (task as Record<string, unknown>).status = to.slug;
           await (task as { save: (batch?: string) => Promise<unknown> }).save(tx.batchId);
@@ -578,7 +594,7 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
           ...(anchorId ? { parent: { id: anchorId, predicate: 'we://children' } } : {}),
           batchId: tx.batchId,
         } as never);
-        await column.addArranges((task as { id: string }).id, tx.batchId);
+        await CollectionBlock.addRelation(p, column.id, 'arranges', (task as { id: string }).id, tx.batchId);
       });
     } catch (error) {
       console.error('SpaceStore: could not add that task', error);

@@ -37,6 +37,7 @@ import { createAd4mLanguageModelPort } from './languageModelPort';
 import { createAd4mAgentSession, createAd4mDatasetLifecycle } from './lifecycleAdapter';
 import { compileManifest, manifestToEntries } from './manifestCompiler';
 import { buildEntityClasses, buildEntityManifest, getForeignShacl } from './perspectiveHelpers';
+import { installRelationWrites } from './relationWrites';
 import { type Ad4mRuntimeOptions, createAd4mRuntimeAdmin } from './runtimeAdminAdapter';
 import {
   deduplicateSpaceSdna,
@@ -124,6 +125,10 @@ export function createAd4mBackendPorts(
   // of them got. Installed before any model is registered so every class inherits it — generated,
   // manifest-compiled or built from foreign SHACL. See `clearOnEmpty.ts` for what it repairs.
   installClearOnEmpty(Ad4mModel);
+  // And the relation writes, for the same reason and in the same place: the contract can say
+  // "this relation's membership is now that list", and every model class — generated, compiled
+  // or built from foreign SHACL — inherits the ability to carry it out. See `relationWrites.ts`.
+  installRelationWrites(Ad4mModel);
   // Register the native model classes for name-based $query resolution. Previously a module-load
   // side effect in the shell; it belongs to the backend choice. Use .className (set by @Model)
   // rather than .name — bundlers mangle the native .name in production builds.
