@@ -68,6 +68,17 @@ export interface PendingLink {
 const RELATIONSHIP = 'Relationship';
 
 /**
+ * Models that can be *shown* but never *made from a form* — see {@link displayableEntities}.
+ *
+ * `Relationship` is drawn between two things rather than filled in from a picker. `CollectionBlock`
+ * is composed: a note, a post, a call record are documents, and a generated form over their fields
+ * would be asking somebody to type a structural `type` and a `kind` label instead of writing
+ * anything. Both are read constantly all the same — a line on a canvas is one, a sticky note is the
+ * other — and clicking either is exactly the moment somebody wants to read it.
+ */
+const DISPLAY_ONLY = [RELATIONSHIP, 'CollectionBlock'] as const;
+
+/**
  * Write one placement, node reference included, inside whatever write group the caller is in.
  *
  * The reference goes in as a **one-element array**, which is what makes it part of the same commit.
@@ -434,7 +445,7 @@ export function RecordStoreProvider(props: ParentProps) {
   /**
    * Every model that can be *shown*, which is not the same set as every model that can be *made*.
    *
-   * `Relationship` is the case that separates them, and the reason this exists. It is excluded from
+   * `Relationship` is the case that separated them, and the reason this exists. It is excluded from
    * `creatableEntities` on purpose — a connection is drawn between two things rather than filled in
    * from a picker, so offering it in the "new record" list would be offering a form with two
    * endpoints nobody had chosen. But it is a `WeNode` with a label, a description, comments and
@@ -443,16 +454,22 @@ export function RecordStoreProvider(props: ParentProps) {
    *
    * Deriving one list from the other quietly made "cannot be created here" mean "cannot be
    * displayed", so the inspector showed an empty panel for a connector whose name was drawn on the
-   * line beside it. Two questions, two lists.
+   * line beside it. Two questions, two lists — and `CollectionBlock` is the second name it needed:
+   * every note on a canvas is one, and every one of them opened that same empty panel.
+   *
+   * A space's own model named after one of these is left alone: it is already in `creatableEntities`
+   * with its own icon and label, and a display derived from the community's shape is the one that
+   * should win.
    */
   const displayableEntities = createMemo<CreatableEntity[]>(() => {
     const named = new Set(creatableEntities().map((entity) => entity.value));
-    const relationship = CORE_MANIFEST.entities[RELATIONSHIP];
-    if (named.has(RELATIONSHIP) || !relationship) return creatableEntities();
-    return [
-      ...creatableEntities(),
-      { label: RELATIONSHIP, value: RELATIONSHIP, icon: BLOCK_ICONS[RELATIONSHIP] ?? 'cube', group: 'Built in' },
-    ];
+    const extra = DISPLAY_ONLY.filter((name) => !named.has(name) && CORE_MANIFEST.entities[name]).map((name) => ({
+      label: modelLabel(name),
+      value: name,
+      icon: BLOCK_ICONS[name] ?? 'cube',
+      group: 'Built in',
+    }));
+    return extra.length ? [...creatableEntities(), ...extra] : creatableEntities();
   });
 
   const vocabularies = hostSlot<(vocabulary: string) => string[] | undefined>();

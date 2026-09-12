@@ -76,7 +76,11 @@ export const BLOCK_ICONS: Record<string, string> = {
   AudioBlock: 'speaker-high',
   CalloutBlock: 'megaphone',
   CodeBlock: 'code',
-  CollectionBlock: 'squares-four',
+  // A stack of rows with one more arriving: a collection is a sequence of blocks somebody adds to.
+  // `squares-four` is the app's glyph for "some node, kind unknown" — it is what `nodeTypeIcon`
+  // falls back to — so a collection drawn with it was indistinguishable from a thing nothing knew
+  // anything about.
+  CollectionBlock: 'rows-plus-bottom',
   DividerBlock: 'minus',
   EmbedBlock: 'browser',
   EventBlock: 'calendar',

@@ -343,11 +343,15 @@ const callBody: SchemaNode = {
  *
  * ## Why the generic body cannot draw one
  *
- * It reads `recordStore.displays`, which is derived from what a model declares under `authoring`:
- * the properties a person fills in, in order, on a generated form. `CollectionBlock` declares none,
- * and correctly — nobody types a post into a field list, they compose it in the block editor. So
- * `displays['CollectionBlock']` is undefined and the generic body rendered a blank heading over an
- * empty box, which is exactly what a post looked like here.
+ * It reads `recordStore.displays`, which for most models is derived from what they declare under
+ * `authoring`: the properties a person fills in, in order, on a generated form. `CollectionBlock`
+ * declares none, and correctly — nobody types a post into a field list, they compose it in the
+ * block editor. It had no display at all for that reason, so the generic body rendered a blank
+ * heading over an empty box, which is exactly what a post looked like here.
+ *
+ * It has one now — a `display` declaration naming its title and description, so a note selected on
+ * a canvas can be read in an inspector — and that changes nothing here: the two fields it lists are
+ * metadata, and a post's substance is its `editorState`, which no field list can hold.
  *
  * A post's content is its `editorState`, and `BlockRenderer` is what draws it — the same component
  * the card in the Cards route uses, so a post reads the same opened out as it does in the list.
