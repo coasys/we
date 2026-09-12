@@ -35,6 +35,10 @@ export type EdgeRoute = M.EdgeRouteRecord;
 export const EdgeRoute = defineEntity('EdgeRoute') as unknown as EntityStatic<M.EdgeRouteRecord>;
 export type MutedAgent = M.MutedAgentRecord;
 export const MutedAgent = defineEntity('MutedAgent') as unknown as EntityStatic<M.MutedAgentRecord>;
+export type Involvement = M.InvolvementRecord;
+export const Involvement = defineEntity('Involvement') as unknown as EntityStatic<M.InvolvementRecord>;
+export type InvolvementType = M.InvolvementTypeRecord;
+export const InvolvementType = defineEntity('InvolvementType') as unknown as EntityStatic<M.InvolvementTypeRecord>;
 export type Placement = M.PlacementRecord;
 export const Placement = defineEntity('Placement') as unknown as EntityStatic<M.PlacementRecord>;
 export type ReadMarker = M.ReadMarkerRecord;
@@ -68,7 +72,7 @@ export type TypeStyle = M.TypeStyleRecord;
 export const TypeStyle = defineEntity('TypeStyle') as unknown as EntityStatic<M.TypeStyleRecord>;
 export { modelToThemeData } from './utils/themeData';
 export type { ThemeData, ThemeLike } from './utils/themeData';
-export type { SignalAggregate, SignalMode, SignalSemantic } from './manifest/types';
+export type { InvolvementSemantic, SignalAggregate, SignalMode, SignalSemantic } from './manifest/types';
 export type AudioBlock = M.AudioBlockRecord;
 export const AudioBlock = defineEntity('AudioBlock') as unknown as EntityStatic<M.AudioBlockRecord>;
 export type CalloutBlock = M.CalloutBlockRecord;
@@ -101,7 +105,7 @@ export type TextBlock = M.TextBlockRecord;
 export const TextBlock = defineEntity('TextBlock') as unknown as EntityStatic<M.TextBlockRecord>;
 export type VideoBlock = M.VideoBlockRecord;
 export const VideoBlock = defineEntity('VideoBlock') as unknown as EntityStatic<M.VideoBlockRecord>;
-export { DEFAULT_TASK_STATES, FILE_STORAGE_LANGUAGE, PREDICATES } from './constants';
+export { DEFAULT_INVOLVEMENT_TYPES, DEFAULT_TASK_STATES, FILE_STORAGE_LANGUAGE, PREDICATES } from './constants';
 export {
   asFileField,
   dataURItoBlob,
