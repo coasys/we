@@ -3,6 +3,7 @@ import { sectionCard } from '@we/template-kit';
 
 import { createSignalTypeModal } from './vocabulary/CreateSignalTypeModal.ts';
 import { modelsSection } from './vocabulary/EntitiesSection.ts';
+import { involvementTypesSection } from './vocabulary/InvolvementTypesSection.ts';
 import { relationshipTypesSection } from './vocabulary/RelationshipTypesSection.ts';
 import { signalTypeCard } from './vocabulary/SignalTypeCard.ts';
 import { taskStatesSection } from './vocabulary/TaskStatesSection.ts';
@@ -107,8 +108,17 @@ export const spaceVocabularySection: SchemaNode = {
         // The state being edited, by slug — a name per row is impossible when the rows come from
         // data, and only one can be open at a time. See `editModal` in TaskStatesSection.
         editTaskStateSlug: { type: 'string', initial: '' },
+        createInvolvementTypeOpen: { type: 'boolean', initial: false },
+        editInvolvementTypeSlug: { type: 'string', initial: '' },
       },
-      children: [signalTypesSection, relationshipTypesSection, taskStatesSection, topicsSection, modelsSection],
+      children: [
+        signalTypesSection,
+        relationshipTypesSection,
+        taskStatesSection,
+        involvementTypesSection,
+        topicsSection,
+        modelsSection,
+      ],
     },
     else: openSpaceFirst,
   },
