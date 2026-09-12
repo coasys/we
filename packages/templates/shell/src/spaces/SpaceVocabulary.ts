@@ -104,6 +104,9 @@ export const spaceVocabularySection: SchemaNode = {
         createRelationshipTypeOpen: { type: 'boolean', initial: false },
         createTopicOpen: { type: 'boolean', initial: false },
         createTaskStateOpen: { type: 'boolean', initial: false },
+        // The state being edited, by slug — a name per row is impossible when the rows come from
+        // data, and only one can be open at a time. See `editModal` in TaskStatesSection.
+        editTaskStateSlug: { type: 'string', initial: '' },
       },
       children: [signalTypesSection, relationshipTypesSection, taskStatesSection, topicsSection, modelsSection],
     },

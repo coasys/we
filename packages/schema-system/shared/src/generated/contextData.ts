@@ -2880,6 +2880,7 @@ export const contextData: ContextData = {
         'createRelationshipType',
         'setSignalTypeRetired',
         'createTaskState',
+        'updateTaskState',
         'setTaskStateRetired',
         'reorderTaskStates',
         'upsertSignal',

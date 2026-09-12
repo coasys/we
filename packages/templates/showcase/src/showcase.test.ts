@@ -17,10 +17,24 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import type { SchemaNode, TemplatePanel } from '@we/schema-shared';
+import { STATE_FILLS, stateIcon } from '@we/template-kit';
 import { describe, expect, it } from 'vitest';
 
 import * as showcase from './index.ts';
-import { KIND_DEFAULTS, LENS_PARAM, LENS_QUERY, NO_LENS, PLAIN_FILL, toggleLens } from './WorkshopKey.ts';
+import {
+  BY_KIND,
+  BY_STATE,
+  CANVAS_FILL,
+  CANVAS_KEY,
+  CARD_FILL,
+  CARD_KEY,
+  KIND_DEFAULTS,
+  LENS_PARAM,
+  LENS_QUERY,
+  NO_LENS,
+  PLAIN_FILL,
+  toggleLens,
+} from './WorkshopKey.ts';
 
 /** The workshop's own name for the call on screen — see `CALL_EXPR` in its schema. */
 const CALL_EXPR = 'routeStore.params.call ? routeStore.params.call : modules.call.callRecordId';
@@ -826,7 +840,7 @@ describe('the workshop’s key', () => {
 
     expect(canvas).not.toContain('"typeStyles":"TypeStyle"');
     expect(canvas).toContain('"anchor":"Space","via":"typeStyles"');
-    expect(canvas).toContain('local.typeStyles.map(s, { when: { type: s.nodeType }');
+    expect(canvas).toContain('.map(s, { when: { type: s.nodeType }, style: { color: s.color } })');
     expect(canvas).toContain("spaceStore.taskStates.map(s, { when: { 'data.status': s.slug }");
     // The query waits for the space rather than reading every canvas's key while it settles.
     expect(canvas).toContain('"when":{"$":"spaceStore.currentSpace.id"}');
@@ -869,35 +883,124 @@ describe('the workshop’s key', () => {
     expect(body).not.toContain('"entity":"Placement"');
   });
 
-  it('writes a kind’s colour to the space and reads a state’s from the vocabulary', () => {
+  it('writes a kind’s colour to the space and a state’s to the vocabulary', () => {
     /*
-      Two mappings, one editor each. A kind's colour has no other home, so the key sets it — on the
-      space, since a call's canvas is not a board anybody wants to recolour every meeting. A state's
-      colour already lives in Settings → Vocabulary, so the key shows it and offers the way there.
+      Two mappings, two homes, one control. A kind's colour has no other home, so the key keeps it on
+      the space — a call's canvas is not a board anybody wants to recolour every meeting. A state's
+      belongs to the community's vocabulary, where a board's column heading reads it too, so the row
+      writes there and the `Edit` link still leads to the rest of what a state is.
+
+      The state row was read-only on the argument that Settings is where a state's colour is set.
+      Settings could not set it: `createTaskState` took a colour and nothing updated one, so the three
+      states a space starts with — which ship without — could never have one at all.
     */
     const key = panel('key');
 
     expect(key).toContain('recordStore.setSpaceTypeColor');
     expect(key).toContain('spaceStore.currentSpace.id');
     expect(key).not.toContain('recordStore.setTypeColor');
+    expect(key).toContain('"$action":"spaceStore.updateTaskState"');
     expect(key).toContain('"$action":"shellStore.openSpaceSettings","args":["vocabulary"]');
     expect(key).toContain('spaceStore.offeredTaskStates');
-    // The same picker the vocabulary uses, tokens first — on the kind rows (both lists that make
-    // them up), and never on a state's.
-    const pickers = key.split('"type":"we-color-picker","props":{"tokens":true').length - 1;
-    expect(pickers).toBe(2);
+    // A state is addressed by slug, which is what lets one of the three virtual defaults be coloured
+    // at all: writing to it is the act that adopts it.
+    expect(key).toContain('"args":[{"$":"state.slug"},{"color":{"$":"event.detail"}}]');
+    expect(key).toContain('"args":[{"$":"state.slug"},{"color":""}]');
+    // Naming a state is Settings' business; the key only ever changes one that exists.
     expect(key).not.toContain('createTaskState');
+    // The same picker the vocabulary uses, tokens first, on every row of the key: the two canvas
+    // rows, the kind rows (both lists that make them up), and a state's.
+    const pickers = key.split('"type":"we-color-picker","props":{"tokens":true').length - 1;
+    expect(pickers).toBe(5);
   });
 
-  it('spells every fill as CSS, the way the picker and the vocabulary do', () => {
+  it('turns each lens on from the heading of the section it governs, and hides the rest', () => {
     /*
-      The picker emits `var(--we-color-…)` or a hex, and a state's colour is whatever the picker
-      emitted — so a default written as a bare token name would be the one value in the chain that
-      the picker's own swatch could not show. Roles, in the picker's spelling.
+      The lenses were a pair of buttons in the panel's header, which put the controls one place and
+      what they did another — and left both lists on screen whether or not either was colouring
+      anything. A switch on the heading says what the section below it is for, and the section is
+      drawn only while it is on, so the panel shows what is being read and nothing else.
+
+      Still the address rather than a local: a panel and a route cannot share one.
     */
-    expect(KIND_DEFAULTS.TaskBlock).toBe('var(--we-role-accent-muted)');
+    const key = panel('key');
+
+    expect(key).toContain('"type":"we-switch"');
+    expect(key).toContain('routeStore.setParam');
+    // Each list is behind its own lens rather than merely faded.
+    expect(key).not.toContain('? 1 : 0.6');
+    expect(key).toContain(`"condition":{"$":"${BY_KIND}"},"enterTransition"`);
+    expect(key).toContain(`"condition":{"$":"${BY_STATE}"},"enterTransition"`);
+  });
+
+  it('offers the plain card and the canvas ground above the lenses, as the key’s own rows', () => {
+    /*
+      The colour every card certainly shows was the one nobody could change — a constant in the
+      template. Both are held as `TypeStyle` rows on the space like every other colour in the key,
+      under names no model can have, so they arrive in the same subscription and clear the same way;
+      `lensNodeRules` filters them out of the per-kind rules rather than emitting one that matches
+      nothing.
+    */
+    const key = panel('key');
+    const canvas = route('/canvas');
+
+    expect(key).toContain('"Cards"');
+    expect(key).toContain('"Background"');
+    expect(key).toContain(`"${CARD_KEY}"`);
+    expect(key).toContain(`"${CANVAS_KEY}"`);
+    // The graph takes them as its base fill and its ground.
+    expect(canvas).toContain(`[{ style: { color: ${CARD_FILL} } }]`);
+    expect(canvas).toContain(`"bg":{"$":"${CANVAS_FILL}"}`);
+    expect(canvas).toContain(`filter(s, !(s.nodeType in ['${CARD_KEY}', '${CANVAS_KEY}']))`);
+  });
+
+  it('draws every row the same way — a swatch, a glyph, a name, a reset', () => {
+    /*
+      One row shape for the canvas's two colours, each kind and each state. The glyph on a state is
+      the vocabulary's — its own, or the shape its semantic falls back to — from the kit's table
+      rather than from a chain written out here, which is how this and Settings had drifted into
+      drawing the same state differently.
+
+      The reset is `arrow-counter-clockwise` and comes after the name: an `x` reads as delete, and
+      leading the row it sat between two marks and the word saying what they are about.
+    */
+    const key = panel('key');
+
+    expect(key).toContain(stateIcon('state'));
+    expect(key).toContain('"name":"arrow-counter-clockwise"');
+    expect(key).not.toContain('"name":"x"');
+    // Every mark is the picker's swatch, at one size.
+    expect(key).toContain('"--we-color-picker-swatch":"24px"');
+  });
+
+  it('spells every fill as CSS, and every card fill as one that does not invert', () => {
+    /*
+      The picker emits `var(--we-color-…)` or a literal, and a chosen colour is whatever it emitted —
+      so a default written as a bare token name would be the one value in the chain the picker's own
+      swatch could not show.
+
+      The card fills are absolute rather than roles, which is the second half. `accent-muted` and
+      `success-surface` are tinted panels defined relative to the page, so they invert with it: in a
+      dark theme "doing" and "done" came out DARKER than an uncoloured card and a few points off the
+      canvas's own ground. A card is an object rather than a panel — the post-it said so in a hex
+      first — so these hold one lightness in both themes, and the graph inks each label from the
+      lightness of its fill.
+
+      The plain card is the deliberate exception and stays on the neutral ramp: it is the absence of
+      a colour, so following the theme's polarity is the whole of what it should do.
+    */
+    for (const [kind, fill] of Object.entries(KIND_DEFAULTS)) {
+      expect(fill, kind).toMatch(/^(oklch\(|#)/);
+    }
+    for (const [semantic, fill] of Object.entries(STATE_FILLS)) {
+      expect(fill, semantic).toMatch(/^oklch\(/);
+    }
     expect(PLAIN_FILL).toBe('var(--we-color-neutral-200)');
-    expect(route('/canvas')).toContain("style: { color: 'var(--we-role-warning-surface)' }");
+    expect(route('/canvas')).toContain(`style: { color: '${KIND_DEFAULTS.EventBlock}' }`);
+    // Every state has one, `open` included: it shared the plain card until now, which made a to-do
+    // task and a card that is not a task at all — a note, an event — the same colour under the lens
+    // that exists to tell them apart.
+    expect(Object.keys(STATE_FILLS).sort()).toEqual(['active', 'blocked', 'cancelled', 'done', 'open']);
   });
 
   it('keeps the colours on the canvas, and draws the other two pages plain', () => {
@@ -926,7 +1029,7 @@ describe('the workshop’s key', () => {
     // The canvas is a graph, so its three layers are `nodeStyle` rules rather than a `bg`: the
     // community's colour per kind, the vocabulary's per state, and the card's own off its placement.
     const canvas = route('/canvas');
-    expect(canvas).toContain('local.typeStyles.map(s, { when: { type: s.nodeType }');
+    expect(canvas).toContain('.map(s, { when: { type: s.nodeType }, style: { color: s.color } })');
     expect(canvas).toContain("spaceStore.taskStates.map(s, { when: { 'data.status': s.slug }");
     expect(canvas).toContain("{ from: 'data.canvasColor' }");
     // And it still declares the key it reads — a query hoisted to the root does not reach past a

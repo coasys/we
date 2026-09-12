@@ -79,6 +79,7 @@ import {
   newThingChooser,
 } from './WorkshopCards.ts';
 import {
+  CANVAS_FILL,
   keyPanel,
   kindIcon,
   kindLabel,
@@ -1533,6 +1534,9 @@ const canvas: SchemaNode = {
           no colour of its own, is the honest answer; see `WorkshopKey` for why it is a neutral step.
           The per-kind tints that used to sit here are the kind lens's defaults now, in
           `KIND_DEFAULTS`, so the key can show them beside each name.
+
+          It is the floor rather than the last word: the first rule `lensNodeRules` contributes is
+          the community's own plain colour, which is this one where nobody has chosen another.
         */
         style: {
           shape: 'card',
@@ -1600,6 +1604,15 @@ const canvas: SchemaNode = {
     edgeStyle: [{ style: { curve: 'smooth', arrow: 'target', width: 2, showLabel: true } }],
     controls: ['zoom-in', 'zoom-out', 'fit', 'lock'],
     height: '100%',
+    /*
+      The ground the cards sit on, as the community set it — the key's second row.
+
+      The graph's own default is the `page` role, which is what this answers with when nobody has
+      chosen anything, so a canvas nobody has touched is unchanged. A CSS value rather than a token
+      name because that is what the picker emits and what the graph's `color()` passes through
+      untouched; `CANVAS_FILL` spells its fallback the same way for the same reason.
+    */
+    bg: { $: CANVAS_FILL },
     /*
       The canvas's own words for an empty canvas, in the canvas.
 

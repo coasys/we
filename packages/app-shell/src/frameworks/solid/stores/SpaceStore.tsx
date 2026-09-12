@@ -786,6 +786,15 @@ export interface SpaceStore {
     icon?: string;
   }) => Promise<void>;
   /**
+   * Change what a state is called, how it is drawn, or what it counts as — for everyone in the
+   * space. By slug, which is the one thing it cannot change: tasks store it. An empty string clears
+   * a field, so a colour or an icon can be taken back off. A default is adopted by editing it.
+   */
+  updateTaskState: (
+    slug: string,
+    updates: { name?: string; icon?: string; color?: string; semantic?: TaskStateView['semantic'] },
+  ) => Promise<void>;
+  /**
    * Withdraw a state from use, or bring it back. Never touches the work sitting in it. By slug: a
    * default has no record until this, or a reorder, adopts it.
    */
@@ -837,6 +846,15 @@ const SpaceContext = createContext<SpaceStore>();
  * avatar would visibly soften them.
  */
 const SPACE_AVATAR_PX = 512;
+
+/**
+ * What a state may say it counts as — the closed set `TaskState.semantic` declares.
+ *
+ * Checked rather than trusted on the way in: the value reaches `updateTaskState` from a picker in a
+ * template, and a word nothing recognises would read as "still to do" everywhere downstream while
+ * being stored as itself. Refusing it keeps the misfiling where it can be seen.
+ */
+const TASK_STATE_SEMANTICS: TaskStateView['semantic'][] = ['open', 'active', 'blocked', 'done', 'cancelled'];
 
 export function SpaceStoreProvider(props: ParentProps) {
   const session = useSessionStore();
@@ -2670,6 +2688,55 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   /**
+   * Change a state the community already has — its name, its colour, its glyph, or what it counts as.
+   *
+   * The counterpart `createTaskState` had no pair for: a state could be named and withdrawn and
+   * nothing else, so a colour was settable exactly once, at creation, and the three defaults — which
+   * ship with none — could never have one at all. Everything a key or a board draws a state with was
+   * therefore whichever fallback the rendering surface happened to hold.
+   *
+   * **The slug is not in the update.** It is what every task stores, so changing it would leave the
+   * work holding a word nothing defines — the same reason a state is retired rather than deleted.
+   * Renaming is what `name` is for, and a rename carries: a task in `todo` follows "To do" to
+   * "Backlog" without being touched.
+   *
+   * **`semantic` is.** It is the one field that means anything outside this space, so changing it
+   * re-answers "what work is outstanding here" for every peer, every board and every agent. It is
+   * also the field most likely to have been chosen wrongly at creation, and a mis-filed state was
+   * otherwise unfixable — withdraw it and make another, losing every task sitting in it. Offered
+   * with the same framing the create form uses, which is what makes the consequence visible.
+   *
+   * **An empty string clears**, rather than being skipped — see `clearOnEmpty` in the AD4M adapter.
+   * That is what makes a reset back to the template's default possible without deleting the state.
+   *
+   * By slug, like its two neighbours: editing a default is the act that adopts it.
+   */
+  async function updateTaskState(
+    slug: string,
+    updates: { name?: string; icon?: string; color?: string; semantic?: TaskStateView['semantic'] },
+  ): Promise<void> {
+    const p = datasetStore.currentDataset()?.handle;
+    if (!p || !slug || !updates) return;
+    try {
+      const record = await adoptTaskState(p, slug);
+      if (!record) return;
+      // Only what was passed: an absent key leaves the field alone, where `''` is a deliberate clear.
+      if (updates.name !== undefined && updates.name.trim()) record.name = updates.name.trim();
+      if (updates.icon !== undefined) record.icon = updates.icon;
+      if (updates.color !== undefined) record.color = updates.color;
+      if (updates.semantic !== undefined && TASK_STATE_SEMANTICS.includes(updates.semantic)) {
+        record.semantic = updates.semantic;
+      }
+      await record.save();
+      await loadTaskStates();
+      await syncTaskStateHint();
+    } catch (error) {
+      console.error('SpaceStore: could not update task state', error);
+      toastService.error('Could not save that change');
+    }
+  }
+
+  /**
    * Set the order this community reads its states in — what a column drag on the board writes.
    *
    * An ordered relation rather than a number on each state, which is the difference between a
@@ -4294,6 +4361,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     createRelationshipType,
     setSignalTypeRetired,
     createTaskState,
+    updateTaskState,
     setTaskStateRetired,
     reorderTaskStates,
     upsertSignal,

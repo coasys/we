@@ -16,6 +16,12 @@
  *
  * With both lenses on, state wins for a task and kind answers for the rest.
  *
+ * Underneath all three, and not a lens at all: **the canvas itself** — what a card with no other
+ * colour is drawn in, and the ground behind them. Both were constants in the template, which made
+ * the one colour every canvas certainly shows the only colour nobody could change. They are the
+ * key's top two rows now, held as `TypeStyle` rows on the space like everything else here — see
+ * `CARD_KEY`.
+ *
  * ## The lenses live in the address
  *
  * The key is a **panel**, and a panel is drawn outside the route tree — so it and the canvas cannot
@@ -33,8 +39,8 @@
  * expression — the shape the graph section already uses for edges — and the same query answers a
  * task card's fill on the board. One policy, two spellings, kept here so they cannot disagree.
  */
-import type { SchemaNode, SchemaProp } from '@we/schema-shared';
-import { anchorScope, panelHeader, panelScroll, sectionLabel } from '@we/template-kit';
+import type { ExpressionToken, SchemaNode, SchemaProp } from '@we/schema-shared';
+import { anchorScope, panelHeader, panelScroll, sectionLabel, stateFill, stateIcon } from '@we/template-kit';
 
 /** The query parameter the lenses ride in — `kind`, `state`, `kind,state` or `none`. */
 export const LENS_PARAM = 'colour';
@@ -104,26 +110,28 @@ export function placementsQuery(call: Record<string, unknown>) {
   return { entity: 'Placement', scope: anchorScope(call), order: { nodeType: 'asc' }, limit: 200, when: call };
 }
 
-/**
- * A role, spelt the way a colour picker spells one.
- *
- * Every colour the key handles is a CSS value rather than a token name, because the picker emits
- * CSS — a `var(--we-color-…)` from its token grid, a hex from its custom tab — and the vocabulary
- * stores what the picker emitted. So the defaults are written in the same form, and one string
+/*
+ * Every colour the key handles is a **CSS value** rather than a token name, because the picker emits
+ * CSS — a `var(--we-color-…)` from its token grid, a literal from its custom tab — and the space
+ * stores what the picker emitted. So the defaults below are written in the same form, and one string
  * reaches a graph rule, a `bg` and the picker's own swatch without anything translating between
  * them.
  */
-const role = (name: string) => `var(--we-role-${name})`;
 
 /**
  * What a kind is drawn in before the community says otherwise — the template's own opinion, and the
- * fallback the key shows beside a kind nobody has coloured. Roles, not scale positions: these are
- * the tinted panels the design system keeps legible in either polarity.
+ * fallback the key shows beside a kind nobody has coloured.
+ *
+ * Absolute colours, not roles, for the reason `STATE_FILLS` sets out at length in the kit: these
+ * were `accent-muted` and `warning-surface`, which are tinted panels defined *relative to the page*
+ * and so invert with it — in a dark theme an event card came out darker than an uncoloured one and
+ * four points off the canvas's own ground. A card is an object rather than a panel, and the post-it
+ * below already said so in a hex. These are the same claim for the other two.
  */
 export const KIND_DEFAULTS: Record<string, string> = {
-  TaskBlock: role('accent-muted'),
-  EventBlock: role('warning-surface'),
-  // The post-it. A hex rather than a role on purpose: a note is yellow in a dark theme too, and
+  TaskBlock: 'oklch(90% 0.045 288)',
+  EventBlock: 'oklch(90% 0.06 60)',
+  // The post-it. A literal rather than a role on purpose: a note is yellow in a dark theme too, and
   // the card's ink follows the fill's lightness rather than the theme's, so it stays readable.
   CollectionBlock: '#ffea9f',
 };
@@ -150,15 +158,58 @@ export function kindIcon(kind: string): string {
  * A step on the neutral ramp rather than the surface role: a card is a thing *on* the surface, and
  * one drawn in the surface's own colour disappears into a board whose ground is a surface too. The
  * step follows the theme's polarity, and the card's ink follows the step.
+ *
+ * The template's opinion, and the floor the community's own choice sits on — see `CARD_KEY`.
  */
 const PLAIN = 'var(--we-color-neutral-200)';
 export const PLAIN_FILL = PLAIN;
+
+/** What the canvas's ground is before the community says otherwise — the page it is drawn on. */
+export const CANVAS_DEFAULT = 'var(--we-role-page)';
+
+/**
+ * The two colours in the key that are not about a *kind* of thing: what a card with no other colour
+ * is drawn in, and what the canvas behind them is.
+ *
+ * Held as `TypeStyle` rows on the space like every other colour here, under a name no entity can
+ * have. A `TypeStyle` is already "a colour the community keeps on its space under a name", which is
+ * exactly what these two are — and storing them the same way means they arrive in the same
+ * subscription, clear the same way (`setSpaceTypeColor` with an empty colour deletes the row), and
+ * need no field on `Space`, no store action and no migration for two more colours.
+ *
+ * The `@` is what keeps them out of everything that reads the key *as* a key. A model name is a bare
+ * identifier, so nothing can collide with these; `KEY_RESERVED` below is how the graph's per-kind
+ * rules leave them alone rather than emitting a rule matching a type called `@card`.
+ */
+export const CARD_KEY = '@card';
+export const CANVAS_KEY = '@canvas';
+
+/** The space's colour for one of the keys above, as an expression. Reads `local.typeStyles`. */
+const spaceColor = (key: string) => `find(local.typeStyles, { nodeType: '${key}' }).color`;
+
+/** Whether the community has chosen one — so there is something for a reset to take away. */
+export const cardColorChosen = spaceColor(CARD_KEY);
+export const canvasColorChosen = spaceColor(CANVAS_KEY);
+
+/**
+ * What a card with no other colour is drawn in: the community's choice, else the template's.
+ *
+ * An expression rather than `PLAIN_FILL` wherever a card's colour is *decided* — the key's own rows,
+ * the graph's base rule — so recolouring the plain card recolours every reading of it at once.
+ */
+export const CARD_FILL = `(${cardColorChosen} ? ${cardColorChosen} : '${PLAIN}')`;
+
+/** The same for the canvas's ground, which the graph takes as a `bg`. */
+export const CANVAS_FILL = `(${canvasColorChosen} ? ${canvasColorChosen} : '${CANVAS_DEFAULT}')`;
+
+/** The key's rows that are not kinds, for the per-kind rules to skip. */
+const KEY_RESERVED = `['${CARD_KEY}', '${CANVAS_KEY}']`;
 
 /** The default fill for a kind, as an expression over `kind`. */
 export function kindDefaultFill(kind: string): string {
   return Object.entries(KIND_DEFAULTS).reduceRight(
     (rest, [name, color]) => `(${kind} == '${name}' ? '${color}' : ${rest})`,
-    `'${PLAIN}'`,
+    CARD_FILL,
   );
 }
 
@@ -168,23 +219,12 @@ export function kindFill(kind: string): string {
   return `(${chosen} ? ${chosen} : ${kindDefaultFill(kind)})`;
 }
 
-/**
- * A state's fill: the colour the community picked for it, else a tint by what it counts as.
- *
- * The vocabulary's own fallback maps a semantic to a *text* role, which is right for the icon it was
- * written for and wrong as a fill — `success-text` behind a label is a label nobody can read. These
- * are the surface roles the same semantics carry elsewhere. Open is plain on purpose: it is the
- * unmarked state, and a board where "to do" is a colour is a board where everything is.
+/*
+ * `stateFill` and `stateIcon` were here, each a chain over `semantic` written out by hand — and each
+ * disagreeing with the one Settings → Vocabulary drew the same states with. They are
+ * `@we/template-kit`'s now, read by both, which is also what lets the picker below and the edit form
+ * over there show the same default.
  */
-export function stateFill(state: string): string {
-  return (
-    `(${state}.color ? ${state}.color : ` +
-    `${state}.semantic == 'done' ? '${role('success-surface')}' : ` +
-    `${state}.semantic == 'active' ? '${role('accent-muted')}' : ` +
-    `${state}.semantic == 'blocked' ? '${role('warning-surface')}' : ` +
-    `${state}.semantic == 'cancelled' ? '${role('surface-sunken')}' : '${PLAIN}')`
-  );
-}
 
 /*
  * There was a `recordFill` here, and a `freeformFill` under it — the same policy spelt for a card
@@ -211,9 +251,24 @@ export function lensNodeRules(): SchemaProp[] {
     .map(([name, color]) => `{ when: { type: '${name}' }, style: { color: '${color}' } }`)
     .join(', ');
   return [
+    /*
+      The plain card, as the community set it — before any lens, since this is what a lens colours
+      *over*. Unconditional: it is the base rule's fill made adjustable, so a canvas whose community
+      has chosen nothing is exactly what it was.
+    */
+    { $: `[{ style: { color: ${CARD_FILL} } }]` },
     // By kind: the template's defaults, then the community's key in front of them.
     { $: `${BY_KIND} ? [${defaults}] : []` },
-    { $: `${BY_KIND} ? local.typeStyles.map(s, { when: { type: s.nodeType }, style: { color: s.color } }) : []` },
+    /*
+      The community's key. Filtered, because the same subscription carries the two rows that are not
+      kinds — a rule matching a type called `@card` would match nothing, and be one more thing a
+      reader of the style list has to work out is inert.
+    */
+    {
+      $:
+        `${BY_KIND} ? local.typeStyles.filter(s, !(s.nodeType in ${KEY_RESERVED}))` +
+        `.map(s, { when: { type: s.nodeType }, style: { color: s.color } }) : []`,
+    },
     // By state: one rule per state the community has, matched on the record's own field.
     {
       $: `${BY_STATE} ? spaceStore.taskStates.map(s, { when: { 'data.status': s.slug }, style: { color: ${stateFill('s')} } }) : []`,
@@ -223,95 +278,240 @@ export function lensNodeRules(): SchemaProp[] {
   ];
 }
 
-/** A coloured disc — the key's mark beside a name that cannot be changed from here. */
-function disc(bg: SchemaProp): SchemaNode {
-  return {
-    type: 'Column',
-    props: { width: '24px', height: '24px', r: '100', flexShrink: '0', bg, border: '1px solid border-strong' },
-  };
-}
-
-export interface ColorControlOptions {
-  /** The colour the picker shows — an expression answering a CSS value, never empty. */
-  value: SchemaProp;
-  /** Whether a colour has been chosen at all, so there is something for the reset to take away. */
-  chosen: SchemaProp;
-  /** What picking does. Handed the picker's `event.detail`, a CSS colour. */
-  pick: SchemaProp;
-  /** What the reset does — the same write with an empty colour, usually. */
-  clear: SchemaProp;
-}
+/**
+ * How wide the mark at the start of a row is.
+ *
+ * The picker's own swatch variable, so every row of the key — a kind's, a state's, the canvas's two
+ * — carries the same disc at the same size. There was a hand-drawn `Column` here for the rows that
+ * could not be edited, at a different radius and a different border, and the difference said nothing
+ * true: a state's colour is no less the community's for being part of its vocabulary.
+ */
+const MARK = '24px';
 
 /**
- * The colour picker the rest of the app uses, at the key's scale, with a way back to the default.
+ * The colour picker the rest of the app uses, at the key's scale.
  *
  * The same primitive the vocabulary picks a state's colour with, and for the same reason it offers
  * tokens first: a token from the grid keeps following the theme's hue and polarity, where a hex
  * pinned against a light theme is a hole in a dark one. The custom tab is there for the community
  * that wants exactly its own colour anyway.
- *
- * The reset is a separate control rather than an empty swatch in the grid: a picker has no notion
- * of "none", and the default it goes back to is a rule's answer rather than a colour of its own.
  */
-export function colorControl(opts: ColorControlOptions): SchemaNode {
+function picker(value: SchemaProp, pick: SchemaProp): SchemaNode {
+  return {
+    type: 'we-color-picker',
+    props: {
+      tokens: true,
+      value,
+      onChange: pick,
+      // The picker's own size variable; its default is a form-field swatch, and a row wants a disc.
+      styles: { '--we-color-picker-swatch': MARK },
+    },
+  };
+}
+
+/**
+ * The way back to the default, at the end of the row it belongs to.
+ *
+ * A separate control rather than an empty swatch in the picker's grid: a picker has no notion of
+ * "none", and the default it goes back to is a rule's answer rather than a colour of its own.
+ *
+ * After the name, not before it. Leading the row it sat between the swatch and the glyph — two
+ * marks and a control before the word that says what any of them are about — and it is the one
+ * thing in the row that is *about* the row rather than part of reading it.
+ *
+ * `arrow-counter-clockwise`, which is the app's word for undoing to a previous state: an `x` here
+ * reads as delete, and what this takes away is a choice, not the row.
+ */
+function resetButton(chosen: SchemaProp, clear: SchemaProp): SchemaNode {
+  return {
+    type: '$if',
+    props: {
+      condition: chosen,
+      then: {
+        type: 'we-tooltip',
+        props: { content: 'Back to the default' },
+        children: [
+          {
+            type: 'we-button',
+            props: { size: 'xs', variant: 'ghost', square: true, color: 'text-faint', onClick: clear },
+            children: [{ type: 'we-icon', props: { name: 'arrow-counter-clockwise' } }],
+          },
+        ],
+      },
+    },
+  };
+}
+
+export interface KeyRowOptions {
+  /** The colour itself — the picker, at the key's scale. */
+  mark: SchemaNode;
+  /** The glyph before the name. An expression where the row comes from data; omitted draws none. */
+  icon?: string | ExpressionToken;
+  /** What this row is. */
+  label: string | ExpressionToken;
+  /** Shown at the end of the row — the reset, where there is something to reset. */
+  trailing?: SchemaNode;
+}
+
+/**
+ * One row of the key: a colour, what it is, and whatever can be done about it.
+ *
+ * One shape for every row — the two canvas colours, each kind, each state — so the panel reads as a
+ * single list rather than as three lists with three spacings. The rows carry their own room above and
+ * below rather than the lists spacing them; see `kindRows` for why that is load-bearing there.
+ */
+export function keyRow(opts: KeyRowOptions): SchemaNode {
+  const glyph: SchemaNode = { type: 'we-icon', props: { size: 'xs', color: 'text-muted', name: opts.icon } };
   return {
     type: 'Row',
-    props: { gap: '100', ay: 'center', flexShrink: '0' },
+    props: { gap: '300', ay: 'center', width: '100%', py: '100' },
+    children: [
+      opts.mark,
+      // A literal glyph is always there; one read from data is drawn only where there is one, since
+      // a model that declares no icon would otherwise leave a gap the size of one in every row.
+      ...(!opts.icon
+        ? []
+        : typeof opts.icon === 'string'
+          ? [glyph]
+          : [{ type: '$if', props: { condition: opts.icon, then: glyph } } as SchemaNode]),
+      {
+        type: 'we-text',
+        props: { variant: 'label', truncate: true, flex: '1', minWidth: '0' },
+        children: [opts.label],
+      },
+      ...(opts.trailing ? [opts.trailing] : []),
+    ],
+  };
+}
+
+/**
+ * A lens's own switch, on the heading of the section it governs.
+ *
+ * It was a pair of buttons in the panel's header, which put the controls one place and what they did
+ * another — and left both lists on screen whether or not either was colouring anything, so most of
+ * the panel was a legend for a reading nobody had asked for. On the heading, the switch says what the
+ * section below it *is* for, and the section is there only while it is on.
+ *
+ * Still the address, not a local: a panel and a route cannot share one, and a lens is view state —
+ * see `toggleLens`. A switch reports only that it was flicked, which is all `toggleLens` needs.
+ */
+function lensSwitch(lens: 'kind' | 'state', label: string): SchemaNode {
+  const on = lens === 'kind' ? BY_KIND : BY_STATE;
+  return {
+    type: 'we-tooltip',
+    props: { content: `Colour cards by ${label}` },
     children: [
       {
-        type: 'we-color-picker',
+        type: 'we-switch',
         props: {
-          tokens: true,
-          value: opts.value,
-          onChange: opts.pick,
-          // The picker's own size variable; its default is a form-field swatch, and a row wants a disc.
-          styles: { '--we-color-picker-swatch': '24px' },
-        },
-      },
-      {
-        type: '$if',
-        props: {
-          condition: opts.chosen,
-          then: {
-            type: 'we-tooltip',
-            props: { content: 'Back to the default' },
-            children: [
-              {
-                type: 'we-button',
-                props: { size: 'xs', variant: 'ghost', square: true, color: 'text-faint', onClick: opts.clear },
-                children: [{ type: 'we-icon', props: { name: 'x' } }],
-              },
-            ],
-          },
+          size: 'sm',
+          label: `Colour cards by ${label}`,
+          checked: { $: on },
+          onChange: toggleLens(lens),
         },
       },
     ],
   };
 }
 
-/** One lens's switch, in the panel's header. */
-function lensButton(lens: 'kind' | 'state', label: string, icon: string): SchemaNode {
-  const on = lens === 'kind' ? BY_KIND : BY_STATE;
+/**
+ * A section of the key that a lens turns on, with its switch on its own heading.
+ *
+ * `$if` rather than `$animate`: what is inside is a list of rows built from two subscriptions and
+ * nothing in it is worth keeping mounted while it is off — and the panel is narrow, so a section
+ * left in the DOM at zero height is a scroll region pretending to be shorter than it is.
+ */
+function lensSection(opts: {
+  lens: 'kind' | 'state';
+  label: string;
+  /** What this lens colours and how far the colours reach, behind the heading's info glyph. */
+  help?: string;
+  aside?: SchemaNode;
+  body: SchemaNode;
+}): SchemaNode {
+  const on = opts.lens === 'kind' ? BY_KIND : BY_STATE;
   return {
-    type: 'we-tooltip',
-    props: { content: `Colour cards by ${label.toLowerCase()}` },
+    type: 'Column',
+    props: { gap: '300', width: '100%' },
     children: [
-      {
-        type: 'we-button',
-        props: {
-          size: 'sm',
-          gap: '100',
-          variant: { $: `${on} ? 'secondary' : 'ghost'` },
-          onClick: toggleLens(lens),
+      sectionLabel({
+        label: opts.label,
+        ...(opts.help ? { help: opts.help } : {}),
+        aside: {
+          type: 'Row',
+          props: { gap: '200', ay: 'center' },
+          children: [
+            ...(opts.aside ? [{ type: '$if', props: { condition: { $: on }, then: opts.aside } } as SchemaNode] : []),
+            lensSwitch(opts.lens, opts.lens),
+          ],
         },
-        children: [
-          { type: 'we-icon', props: { name: icon } },
-          { type: 'we-text', children: [label] },
-        ],
+      }),
+      {
+        type: '$if',
+        props: {
+          condition: { $: on },
+          enterTransition: [
+            { type: 'reveal', duration: 200 },
+            { type: 'fade', duration: 150 },
+          ],
+          then: opts.body,
+        },
       },
     ],
   };
 }
+
+/**
+ * The colours that are not about a kind of thing: the plain card, and the ground behind them.
+ *
+ * Above the lenses because they are underneath them — what a canvas looks like before anybody says
+ * anything about kinds or states — and because neither is a reading that can be turned off. The
+ * plain fill was a constant in the template until now, which made the one colour every canvas
+ * certainly shows the only one nobody could change.
+ */
+const canvasRows: SchemaNode = {
+  type: 'Column',
+  // No gap: the rows carry their own room, as every other list in the panel does.
+  props: { width: '100%' },
+  children: [
+    keyRow({
+      mark: picker(
+        { $: CARD_FILL },
+        {
+          $action: 'recordStore.setSpaceTypeColor',
+          args: [{ $: 'spaceStore.currentSpace.id' }, CARD_KEY, { $: 'event.detail' }],
+        },
+      ),
+      icon: 'square',
+      label: 'Cards',
+      trailing: resetButton(
+        { $: cardColorChosen },
+        {
+          $action: 'recordStore.setSpaceTypeColor',
+          args: [{ $: 'spaceStore.currentSpace.id' }, CARD_KEY, ''],
+        },
+      ),
+    }),
+    keyRow({
+      mark: picker(
+        { $: CANVAS_FILL },
+        {
+          $action: 'recordStore.setSpaceTypeColor',
+          args: [{ $: 'spaceStore.currentSpace.id' }, CANVAS_KEY, { $: 'event.detail' }],
+        },
+      ),
+      icon: 'frame-corners',
+      label: 'Background',
+      trailing: resetButton(
+        { $: canvasColorChosen },
+        {
+          $action: 'recordStore.setSpaceTypeColor',
+          args: [{ $: 'spaceStore.currentSpace.id' }, CANVAS_KEY, ''],
+        },
+      ),
+    }),
+  ],
+};
 
 /**
  * One kind, with the picker that sets its colour for the whole space.
@@ -320,37 +520,24 @@ function lensButton(lens: 'kind' | 'state', label: string, icon: string): Schema
  * names — see `kindRows`.
  */
 function kindRow(kind: string): SchemaNode {
-  return {
-    type: 'Row',
-    // Its own room above and below — see `kindRows` for why the list has no gap.
-    props: { gap: '300', ay: 'center', width: '100%', py: '100' },
-    children: [
-      colorControl({
-        value: { $: kindFill(kind) },
-        chosen: { $: `find(local.typeStyles, { nodeType: ${kind} }).color` },
-        pick: {
-          $action: 'recordStore.setSpaceTypeColor',
-          args: [{ $: 'spaceStore.currentSpace.id' }, { $: kind }, { $: 'event.detail' }],
-        },
-        clear: {
-          $action: 'recordStore.setSpaceTypeColor',
-          args: [{ $: 'spaceStore.currentSpace.id' }, { $: kind }, ''],
-        },
-      }),
+  return keyRow({
+    mark: picker(
+      { $: kindFill(kind) },
       {
-        type: '$if',
-        props: {
-          condition: { $: kindIcon(kind) },
-          then: { type: 'we-icon', props: { size: 'xs', color: 'text-muted', name: { $: kindIcon(kind) } } },
-        },
+        $action: 'recordStore.setSpaceTypeColor',
+        args: [{ $: 'spaceStore.currentSpace.id' }, { $: kind }, { $: 'event.detail' }],
       },
+    ),
+    icon: { $: kindIcon(kind) },
+    label: { $: kindLabel(kind) },
+    trailing: resetButton(
+      { $: `find(local.typeStyles, { nodeType: ${kind} }).color` },
       {
-        type: 'we-text',
-        props: { variant: 'label', truncate: true, flex: '1', minWidth: '0' },
-        children: [{ $: kindLabel(kind) }],
+        $action: 'recordStore.setSpaceTypeColor',
+        args: [{ $: 'spaceStore.currentSpace.id' }, { $: kind }, ''],
       },
-    ],
-  };
+    ),
+  });
 }
 
 /**
@@ -426,19 +613,45 @@ function kindRows(opts: { call: Record<string, unknown>; extracted: string }): S
   };
 }
 
-/** One state, read-only: its colour is the vocabulary's, and the vocabulary is where it is set. */
-const stateRow: SchemaNode = {
-  type: 'Row',
-  props: { gap: '300', ay: 'center', width: '100%', py: '100' },
-  children: [
-    disc({ $: stateFill('state') }),
-    {
-      type: 'we-text',
-      props: { variant: 'label', truncate: true, flex: '1', minWidth: '0' },
-      children: [{ $: 'state.name' }],
-    },
-  ],
-};
+/**
+ * What a pick and a reset on a state row write.
+ *
+ * By slug, because that is how `updateTaskState` addresses a state: the three a space starts with
+ * are *virtual* until somebody acts on one, and colouring "To do" is one of the acts that writes it
+ * down. An empty colour clears the field rather than storing an empty one, which is what takes the
+ * state back to the template's default without deleting anything.
+ */
+const setStateColor = (color: SchemaProp): SchemaProp => ({
+  $action: 'spaceStore.updateTaskState',
+  args: [{ $: 'state.slug' }, { color }],
+});
+
+/**
+ * One state, with the picker that sets its colour for the whole space.
+ *
+ * The same row as a kind's, and now the same control: mark, glyph, name, reset. It was read-only,
+ * on the argument that a state's colour is the vocabulary's and the vocabulary is where it is set —
+ * true, and the vocabulary had no way to set it. A colour could be given to a state only at the
+ * moment it was created, so the three a space starts with could never have one at all.
+ *
+ * So: the picker here, and a real edit form in Settings → Vocabulary for the rest of what a state is
+ * — its name, its glyph, what it counts as. Both write the same field on the same record, and the
+ * `Edit` link above still leads to the one that can do more.
+ *
+ * Where the two rows genuinely differ is what they write. A kind's colour is a `TypeStyle` that
+ * exists for nothing else, so it changes what a canvas draws and nothing more. A state's colour is
+ * part of the community's vocabulary: a board's column heading takes it too. That is the point
+ * rather than a leak — a state is one thing wherever it is shown — but it is why this row's help
+ * says so out loud.
+ */
+const stateRow: SchemaNode = keyRow({
+  mark: picker({ $: stateFill('state') }, setStateColor({ $: 'event.detail' })),
+  icon: { $: stateIcon('state') },
+  label: { $: 'state.name' },
+  // A state nobody has coloured has nothing to reset: its fill is the template's, and the row would
+  // otherwise offer to undo a choice that was never made. Same rule as a kind's.
+  trailing: resetButton({ $: 'state.color' }, setStateColor('')),
+});
 
 /**
  * Whether the page the key is describing is on screen.
@@ -479,22 +692,14 @@ export function keyPanel(opts: { call: Record<string, unknown>; extracted: strin
     // The key's own subscriptions: what is placed here, for the kinds list — see `kindRows`.
     $queries: { typeStyles: TYPE_STYLES_QUERY, placements: placementsQuery(opts.call) },
     children: [
+      /*
+        No aside. The lenses used to be a pair of buttons here — see `lensSwitch` for why each one is
+        on the heading of the section it governs instead, which also leaves the header with nothing
+        that has to be hidden off the canvas.
+      */
       panelHeader({
         title: 'Key',
-        help: 'What the colours on the cards of the canvas mean. Turn a lens on to colour every card by its kind or by its state; with both off, each card keeps the colour it was given in the inspector.',
-        // Off the canvas the lenses change nothing on screen, and a control that reports nothing is
-        // worse than one that is absent — it invites the press that proves it is broken.
-        aside: {
-          type: '$if',
-          props: {
-            condition: { $: ON_CANVAS },
-            then: {
-              type: 'Row',
-              props: { gap: '100', ay: 'center' },
-              children: [lensButton('kind', 'Kind', 'cube'), lensButton('state', 'State', 'circle-half')],
-            },
-          },
-        },
+        help: 'What the colours on the cards of the canvas mean. Every card starts from the plain colour at the top; turn a lens on to colour cards by their kind or by their state, and with both off each card keeps the colour it was given in its header.',
       }),
       panelScroll({
         children: [
@@ -517,47 +722,69 @@ export function keyPanel(opts: { call: Record<string, unknown>; extracted: strin
                 type: 'Column',
                 props: { gap: '400', width: '100%' },
                 children: [
+                  // What a canvas is before any lens: the plain card, and the ground behind it.
                   {
                     type: 'Column',
-                    props: { gap: '300', width: '100%', opacity: { $: `${BY_KIND} ? 1 : 0.6` } },
-                    children: [sectionLabel({ label: 'Kinds' }), kindRows(opts)],
-                  },
-                  {
-                    type: 'Column',
-                    props: { gap: '300', width: '100%', opacity: { $: `${BY_STATE} ? 1 : 0.6` } },
+                    props: { gap: '300', width: '100%' },
                     children: [
                       sectionLabel({
-                        label: 'States',
-                        // The colours are the vocabulary's, so that is where they change — one editor per
-                        // fact. Offered to whoever can change what every member sees.
-                        aside: {
-                          type: '$if',
-                          props: {
-                            condition: { $: 'spaceStore.canAdministerCurrentSpace' },
-                            then: {
-                              type: 'we-button',
-                              props: {
-                                size: 'xs',
-                                variant: 'ghost',
-                                onClick: { $action: 'shellStore.openSpaceSettings', args: ['vocabulary'] },
-                              },
-                              children: ['Edit'],
-                            },
-                          },
-                        },
+                        label: 'Canvas',
+                        help: 'What a canvas looks like before anything else colours it: the fill of a card with no colour of its own, and the ground behind the cards. Both belong to the whole space, so every call in it opens looking the same.',
                       }),
-                      {
-                        type: '$each',
-                        props: { items: { $: 'spaceStore.offeredTaskStates' }, as: 'state' },
-                        children: [stateRow],
-                      },
-                      {
-                        type: 'we-text',
-                        props: { variant: 'footnote', color: 'text-faint' },
-                        children: ['Anything without a state stays plain.'],
-                      },
+                      canvasRows,
                     ],
                   },
+                  lensSection({
+                    lens: 'kind',
+                    label: 'Kinds',
+                    help: 'A colour per kind of thing on the canvas, kept on the space — so a canvas made tomorrow opens coloured like this one. It says nothing anywhere else.',
+                    body: kindRows(opts),
+                  }),
+                  lensSection({
+                    lens: 'state',
+                    label: 'States',
+                    /*
+                      Said here because a state's colour reaches further than a kind's. A kind's is a
+                      `TypeStyle` that exists to colour cards; a state's is part of the community's
+                      vocabulary, so a board's column heading takes it too. That is a state being one
+                      thing wherever it is shown rather than a leak, but somebody picking a colour on
+                      a canvas should know where else it lands.
+                    */
+                    help: 'A colour per state, from the vocabulary this community keeps in Settings — so it is the same colour on a board\u2019s columns. Everything without a state keeps the plain card colour above.',
+                    // The rest of what a state is — its name, its glyph, what it counts as — is
+                    // Settings' to edit. Offered to whoever can change what every member sees.
+                    aside: {
+                      type: '$if',
+                      props: {
+                        condition: { $: 'spaceStore.canAdministerCurrentSpace' },
+                        then: {
+                          type: 'we-button',
+                          props: {
+                            size: 'xs',
+                            variant: 'ghost',
+                            onClick: { $action: 'shellStore.openSpaceSettings', args: ['vocabulary'] },
+                          },
+                          children: ['Edit'],
+                        },
+                      },
+                    },
+                    body: {
+                      type: 'Column',
+                      props: { width: '100%' },
+                      children: [
+                        {
+                          type: '$each',
+                          props: { items: { $: 'spaceStore.offeredTaskStates' }, as: 'state' },
+                          children: [stateRow],
+                        },
+                        {
+                          type: 'we-text',
+                          props: { variant: 'footnote', color: 'text-faint', pt: '200' },
+                          children: ['Anything without a state stays plain.'],
+                        },
+                      ],
+                    },
+                  }),
                 ],
               },
             },

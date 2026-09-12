@@ -456,6 +456,9 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       new one is the act that commits the community to a word, so it sits with the other two.
     */
     createTaskState: action('signals'),
+    // Changing one is the same act as naming one — and it is how a state gets a colour at all, which
+    // is why the workshop's key can reach it from a canvas rather than only from Settings.
+    updateTaskState: action('signals'),
     setTaskStateRetired: action('signals'),
     reorderTaskStates: action('signals'),
 

@@ -383,6 +383,7 @@ export const storeEntries: StoreEntry[] = [
       'createSignalType',
       'setSignalTypeRetired',
       'createTaskState',
+      'updateTaskState',
       'setTaskStateRetired',
       'reorderTaskStates',
       'upsertSignal',
@@ -1092,6 +1093,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(signalTypeId: string, retired: boolean): withdraws a signal type from use, or brings it back. Never deletes the signals given with it — a signal names its type by record id while templates resolve it by slug, so DELETING a type strands every reaction ever given and re-creating one with the same slug does not restore them. Retiring is the reversible version: the type stops being offered, existing counts keep working, and un-retiring brings everything back. Filter the offered list with OFFERED_SIGNAL_TYPES from @we/template-kit; leave find()-by-slug unfiltered so history still resolves',
         createTaskState:
           '(config: { name, semantic?, color?, icon? }): names a state this community\u2019s work moves through — "Blocked", "In review". The counterpart to createSignalType one concept along. The defaults stay virtual beside it; a name whose slug matches a default adopts that default rather than sitting beside it. The space\u2019s own board gains a column for the new state in the same act. Slug derived from the name; it is what tasks store, so it is not editable afterwards',
+        updateTaskState:
+          '(slug: string, updates: { name?, icon?, color?, semantic? }): changes a state the community already has — what it is called, the glyph and colour it is drawn with, and what the rest of the app reads it as. The counterpart createTaskState had no pair for, and the only way a state gets a colour after it is made: the three defaults ship without one. An empty string CLEARS a field, which is how a colour goes back to the template’s default without deleting the state. The slug is deliberately absent — every task stores it, so changing it would leave the work holding a word nothing defines; renaming is what `name` is for and it carries. By slug, so editing a default adopts it',
         setTaskStateRetired:
           '(slug: string, retired: boolean): withdraws a state from use, or brings it back. Never touches the work sitting in it — a task names its state by slug, so deleting the state would leave the work holding a word nothing defines. The same decision setSignalTypeRetired makes. By slug, so a default can be withdrawn: doing so writes its record, which is the moment a default becomes the community\u2019s own',
         reorderTaskStates:
