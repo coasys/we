@@ -93,3 +93,61 @@ describe('defineEntity', () => {
     expect(() => Space.findAll()).toThrowError(/BackendConnector\.initialize/);
   });
 });
+
+/**
+ * What `this` is inside a static reached through the stand-in — and why it must not be consulted.
+ *
+ * The proxy's own docblock says it: operations forward, identity does not. `Reflect.get` is given the
+ * *receiver*, so a static invoked as `CollectionBlock.setRelation(…)` runs with `this` bound to the
+ * stand-in rather than to the implementation class. Anything keyed off the class object — a
+ * `WeakMap`, memoised SHACL, AD4M's decorator metadata — therefore misses.
+ *
+ * This is not hypothetical. The AD4M relation writes were written to check `getModelMetadata()`
+ * before writing, and shipped refusing every board write: `CollectionBlock` reported that it declared
+ * `comments, signals, participants, calls, mentions` — `WeNode`'s relations, every one — because the
+ * lookup missed the stand-in, walked up, and answered for the base class. Nothing in the types said
+ * so, both backends' own unit tests passed, and it took a real drag on a real board to see it.
+ *
+ * So the property is pinned here, at the seam, where it is one assertion instead of a debugging
+ * session in whichever backend next reaches for class-level metadata.
+ */
+describe('what a static sees as `this`', () => {
+  it('binds `this` to the stand-in, not to the registered class', async () => {
+    const seen: unknown[] = [];
+    class Impl {
+      static marker = 'impl';
+      static probe(this: unknown) {
+        seen.push(this);
+      }
+    }
+    registerEntity('Space', Impl as unknown as EntityClass);
+
+    (Space as unknown as { probe: () => void }).probe();
+
+    // The call works — operations forward — but what arrived is the proxy.
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).not.toBe(Impl);
+  });
+
+  it('misses class-keyed metadata, which is why a backend must read the record instead', async () => {
+    // A registry keyed by the class object — the shape of every metadata store this trap applies to.
+    const metadata = new WeakMap<object, string[]>();
+    class Impl {
+      static relationsOf(this: object): string[] {
+        return metadata.get(this) ?? [];
+      }
+      static accessorsOn() {
+        return ['setChildren', 'setArranges'];
+      }
+    }
+    metadata.set(Impl, ['children', 'arranges']);
+    registerEntity('Space', Impl as unknown as EntityClass);
+
+    // Asked through the stand-in, the class does not know its own relations.
+    expect((Space as unknown as { relationsOf: () => string[] }).relationsOf()).toEqual([]);
+    // Asked directly, it does — so the answer depends on how it was reached, which is the trap.
+    expect(Impl.relationsOf()).toEqual(['children', 'arranges']);
+    // Anything that does not key off the class object is unaffected, which is the way out.
+    expect((Space as unknown as { accessorsOn: () => string[] }).accessorsOn()).toEqual(['setChildren', 'setArranges']);
+  });
+});

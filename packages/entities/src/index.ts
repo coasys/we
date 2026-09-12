@@ -125,3 +125,14 @@ export { decodeFileAsString, decodeFileAsJson, encodeJsonFileData } from './util
  */
 export type DatasetProxy = unknown;
 export * from './entityRegistry';
+
+/**
+ * How a stand-in is made — exported so a backend can check it satisfies the contract *through* one.
+ *
+ * Every entity above is already a stand-in, so nothing in the app needs to build another. What does
+ * is a conformance test: a backend's statics are reached by the app through a proxy, which forwards
+ * the call while binding `this` to itself, and a backend that consults class-level metadata on the
+ * way to a write therefore answers for the wrong class. Testing the statics directly cannot see that
+ * — it is how an implementation shipped refusing every board write with a green suite.
+ */
+export { defineEntity } from './entityProxy';

@@ -29,6 +29,13 @@
  *
  * A relation declared without a `through` predicate — a getter-only relation — has no accessors at
  * all, and is read-only by construction. That is reported rather than silently skipped.
+ *
+ * ## The trap this file fell into once
+ *
+ * Everything here works off the **loaded record**, never off the class, and that is not an
+ * incidental choice — see {@link accessorFor}. A call site holds the entity stand-in from
+ * `@we/entities`, which forwards operations and cannot forward identity, so any class-level metadata
+ * read through it answers for the wrong class. Nothing in the type system says so.
  */
 import type { Ad4mModel } from '@coasys/ad4m';
 
@@ -39,19 +46,50 @@ type RelationAccessor = (arg: unknown, batchId?: string) => Promise<unknown>;
 
 interface ModelStatic {
   findOne(dataset: unknown, query: { where: { id: string } }): Promise<Record<string, unknown> | null>;
-  getModelMetadata?: () => { className?: string; relations?: Record<string, unknown> };
 }
 
 const accessorName = (verb: string, relation: string) =>
   `${verb}${relation.charAt(0).toUpperCase()}${relation.slice(1)}`;
 
 /**
+ * The relations this record can actually be written through, read off the instance.
+ *
+ * Only for the error message, and only built when there is about to be one — it walks a prototype
+ * chain, which is not something a write path should do on the way to succeeding.
+ */
+function writableRelations(record: object): string[] {
+  const names = new Set<string>();
+  for (let level = Object.getPrototypeOf(record); level && level !== Object.prototype;) {
+    for (const key of Object.getOwnPropertyNames(level)) {
+      const match = /^set([A-Z].*)$/.exec(key);
+      if (match) names.add(match[1].charAt(0).toLowerCase() + match[1].slice(1));
+    }
+    level = Object.getPrototypeOf(level);
+  }
+  return [...names].sort();
+}
+
+/**
  * Load the record and hand back the accessor for this write, or explain why there is not one.
+ *
+ * ## Why it asks the record and never the class
+ *
+ * `CollectionBlock` at a call site is the **stand-in** from `@we/entities`, not the AD4M class, and
+ * a proxy forwards operations but cannot forward identity — which `entityProxy.ts` says in as many
+ * words, naming AD4M's decorator metadata as the thing that breaks. `getModelMetadata()` is exactly
+ * that: called with `this` bound to the stand-in it finds no registry entry for it, walks up, and
+ * answers with the *base* class's relations. So `CollectionBlock` reported that it declares
+ * `comments, signals, participants, calls, mentions` — `WeNode`'s, every one — and refused every
+ * board write as being for a relation that does not exist.
+ *
+ * A loaded record has no such problem: it is a real instance of the real class, its prototype chain
+ * is the real one, and the generated accessors are on it. So the accessor's *presence* is the test,
+ * which also collapses two questions into one — a relation that does not exist and a getter-only
+ * relation with no predicate both arrive here as "no such method", and neither can be written.
  *
  * A record that is not there resolves to `null` rather than throwing: a record deleted between being
  * read and being arranged is the ordinary race, and the caller's intent — "this record's relation
- * should read like that" — is satisfied by there being no such record. A relation that does not
- * exist, or cannot be written, is a mistake in the calling code and says so.
+ * should read like that" — is satisfied by there being no such record.
  */
 async function accessorFor(
   entity: ModelStatic,
@@ -60,23 +98,16 @@ async function accessorFor(
   relation: string,
   verb: 'set' | 'add' | 'remove',
 ): Promise<{ record: Record<string, unknown>; call: RelationAccessor } | null> {
-  const className = entity.getModelMetadata?.().className ?? 'entity';
-  const declared = entity.getModelMetadata?.().relations ?? {};
-  if (!(relation in declared)) {
-    throw new Error(
-      `${className}.${verb}Relation(): "${relation}" is not a relation of ${className}. ` +
-        `It declares: ${Object.keys(declared).join(', ') || '(none)'}.`,
-    );
-  }
-
   const record = await entity.findOne(dataset, { where: { id } });
   if (!record) return null;
 
   const call = record[accessorName(verb, relation)] as RelationAccessor | undefined;
   if (typeof call !== 'function') {
+    const className = (record.constructor as { name?: string })?.name ?? 'entity';
     throw new Error(
-      `${className}.${verb}Relation(): "${relation}" has no predicate, so it is read-only. ` +
-        'A getter-only relation is derived, not stored, and nothing can be written into it.',
+      `${className}.${verb}Relation(): "${relation}" cannot be written on ${className} — it is not a ` +
+        'relation, or it is a getter-only one, which is derived rather than stored. ' +
+        `Writable relations: ${writableRelations(record).join(', ') || '(none)'}.`,
     );
   }
   return { record, call };

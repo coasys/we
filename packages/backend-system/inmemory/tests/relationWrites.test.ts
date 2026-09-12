@@ -11,7 +11,8 @@
  * between columns, take one out. If this backend can do these, `boards.ts` runs on it.
  */
 import type { EntityManifest } from '@we/backend-shared';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { defineEntity, type EntityClass, registerEntity, unregisterEntity } from '@we/entities';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { compileEntities } from '../src/entities';
 
@@ -160,5 +161,46 @@ describe('what it refuses', () => {
     await Collection.delete(dataset, column.id);
 
     await expect(Collection.setRelation(dataset, column.id, 'arranges', [cards[0].id])).resolves.toBeUndefined();
+  });
+});
+
+/**
+ * Through the stand-in, which is how the app reaches these.
+ *
+ * `boards.ts` writes `CollectionBlock.setRelation(…)`, and `CollectionBlock` there is the entity
+ * proxy, not a class. The proxy forwards the call but binds `this` to itself, so a backend that
+ * consults class-level metadata on the way to a write answers for the wrong class — which is exactly
+ * how the AD4M implementation shipped refusing every board write while its own unit tests passed.
+ *
+ * This backend is immune by construction (its relation table is a closure, not class state), so what
+ * these assert is the *requirement* rather than a repair: a relation write must work when reached the
+ * way the app reaches it, and adding class-keyed state here would fail this and not the tests above.
+ */
+describe('reached through the entity stand-in', () => {
+  const StandIn = defineEntity('Collection') as unknown as typeof Collection;
+
+  beforeEach(() => registerEntity('Collection', Collection as unknown as EntityClass));
+  afterEach(() => unregisterEntity('Collection'));
+
+  it('arranges a relation', async () => {
+    await StandIn.setRelation(dataset, column.id, 'arranges', [cards[1].id, cards[0].id]);
+
+    expect(await arrangesOf(column.id)).toEqual([cards[1].id, cards[0].id]);
+  });
+
+  it('adds and removes one member', async () => {
+    await StandIn.addRelation(dataset, column.id, 'arranges', cards[2].id);
+    expect(await arrangesOf(column.id)).toEqual([cards[2].id]);
+
+    await StandIn.removeRelation(dataset, column.id, 'arranges', cards[2].id);
+    expect(await arrangesOf(column.id)).toEqual([]);
+  });
+
+  it('still names the entity correctly when it refuses', async () => {
+    // The refusal is the half that broke: it has to know which entity it is looking at, and reading
+    // that off the stand-in is what gave the base class's answer.
+    await expect(StandIn.setRelation(dataset, column.id, 'nope', [cards[0].id])).rejects.toThrow(
+      /"nope" is not a relation of Collection/,
+    );
   });
 });
