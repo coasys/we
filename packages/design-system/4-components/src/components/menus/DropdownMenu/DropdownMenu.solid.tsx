@@ -64,12 +64,34 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
     if (item.disabled) return;
     item.onAction?.();
     props.onSelect?.(item);
+    setQuery('');
     closeMenu();
   };
 
   const handleToggle = (item: SolidDropdownMenuToggle) => {
     if (item.disabled) return;
-    item.onToggle();
+    item.onToggle?.();
+    // Reported with `checked` as a plain value, whichever way the entry carried it — a schema reads
+    // `arg.checked`, and an accessor there would be a function it cannot call.
+    props.onSelect?.({ ...item, checked: isChecked(item) });
+  };
+
+  /*
+    The search query, when the menu is searchable.
+
+    Cleared when an action closes the menu, so the next opening starts from the whole list. A menu
+    closed by clicking away keeps it — the popover owns that dismissal and says nothing about it —
+    which leaves somebody's half-typed name where they left it, the better of the two failures.
+  */
+  const [query, setQuery] = createSignal('');
+  const matches = (entry: SolidDropdownMenuEntry | undefined): boolean => {
+    const needle = query().trim().toLowerCase();
+    if (!needle || !entry) return true;
+    if (entry.type === 'divider') return false;
+    if (entry.type === 'group') return entry.items.some((item) => matches(item));
+    return String(entry.label ?? '')
+      .toLowerCase()
+      .includes(needle);
   };
 
   const isChecked = (item: SolidDropdownMenuToggle): boolean => {
@@ -120,6 +142,7 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
     return (
       <we-menu-item
         on:select={() => handleAction(getItem())}
+        selected={Boolean(getItem().selected)}
         variant={getItem().variant || 'default'}
         opacity={getItem().disabled ? 0.5 : 1}
         cursor={getItem().disabled ? 'not-allowed' : 'pointer'}
@@ -132,6 +155,9 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
           <we-icon name={getItem().icon!} size={metrics().icon} />
         </Show>
         <we-text fontSize={metrics().fontSize}>{getItem().label}</we-text>
+        <Show when={getItem().selected}>
+          <we-icon name="check" size="xs" weight="bold" color="accent" ml="auto" />
+        </Show>
       </we-menu-item>
     );
   };
@@ -243,7 +269,7 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
   const renderEntry = (getEntry: () => SolidDropdownMenuEntry) => {
     const present = createMemo(() => {
       const entry = getEntry();
-      return Boolean(entry) && !('hidden' in entry && entry.hidden);
+      return Boolean(entry) && !('hidden' in entry && entry.hidden) && matches(entry);
     });
     return <Show when={present()}>{renderBody(getEntry)}</Show>;
   };
@@ -323,6 +349,26 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
       </Show>
 
       <we-menu slot="content">
+        <Show when={props.searchable}>
+          {/*
+            Inside the menu rather than above it, so it sits in the same panel; the menu's own keys
+            are arrows, Home and End, and the two that belong to a caret are kept here.
+          */}
+          <div
+            style={{ padding: '0 var(--we-space-200) var(--we-space-200)' }}
+            on:keydown={(event: KeyboardEvent) => {
+              if (event.key === 'Home' || event.key === 'End') event.stopPropagation();
+            }}
+          >
+            <we-input
+              size={props.itemSize ?? props.size ?? 'md'}
+              width="100%"
+              placeholder={props.searchPlaceholder ?? 'Search'}
+              value={query()}
+              on:input={(event: CustomEvent<string>) => setQuery(String(event.detail ?? ''))}
+            />
+          </div>
+        </Show>
         <Index each={props.items}>{(getEntry) => renderEntry(getEntry)}</Index>
       </we-menu>
     </we-popover>

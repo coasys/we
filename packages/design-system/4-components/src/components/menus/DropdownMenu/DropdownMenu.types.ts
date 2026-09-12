@@ -25,6 +25,15 @@ interface MenuItemBase {
 export interface DropdownMenuAction extends MenuItemBase {
   type?: 'action';
   variant?: 'default' | 'danger';
+  /**
+   * Mark the entry as the one currently chosen — a tick beside it, and `we-menu-item`'s selected state.
+   *
+   * For a set of actions that are really one choice among several: "Dim others", "Hide others".
+   * A toggle is the wrong entry for that, because a toggle stays open and says *this is on*, where
+   * choosing a mode is one act that ends the menu and says *this one, not those*. The primitive has
+   * always carried a selected state; an action entry had no way to ask for it.
+   */
+  selected?: boolean;
   /** Optional when the menu has `onSelect`, which is how a schema handles rows that came from data. */
   onAction?: () => void;
 }
@@ -35,7 +44,8 @@ export interface DropdownMenuAction extends MenuItemBase {
 export interface DropdownMenuToggle extends MenuItemBase {
   type: 'toggle';
   checked: boolean;
-  onToggle: () => void;
+  /** Optional when the menu has `onSelect`, for the reason it is on an action entry. */
+  onToggle?: () => void;
 }
 
 /**
@@ -77,8 +87,24 @@ export interface DropdownMenuProps {
    * What lets a schema build a menu out of data: `items` can be a comprehension over rows —
    * `local.columns.map(c, { id: c.id, label: c.title })` — which cannot attach a handler per row,
    * so the menu reports the row and one handler on the menu reads it as `arg`.
+   *
+   * **Toggle entries report here too**, carrying `checked` as it was *before* the press — so a handler
+   * wanting the new state reads `!arg.checked`. They were left out once, which made a menu of toggles
+   * impossible to build from data: every row needed its own `onToggle`, and a comprehension cannot
+   * attach one. A toggle keeps the menu open, as it always has; an action still closes it.
    */
-  onSelect?: (item: DropdownMenuAction) => void;
+  onSelect?: (item: DropdownMenuAction | DropdownMenuToggle) => void;
+  /**
+   * A search field above the entries, filtering them by label as somebody types.
+   *
+   * For a menu built from a list that outgrows reading — the members of a space. Matching ignores
+   * case; a group whose entries all fall away takes its heading with it, and dividers stand down
+   * while a search is active, since what they divided is no longer on screen. ArrowDown leaves the
+   * field for the first entry that is left.
+   */
+  searchable?: boolean;
+  /** What the search field says while empty. */
+  searchPlaceholder?: string;
   placement?: Placement;
   triggerLabel?: string;
   triggerIcon?: string;
