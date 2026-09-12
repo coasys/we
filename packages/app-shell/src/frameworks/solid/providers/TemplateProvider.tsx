@@ -386,7 +386,13 @@ export default function TemplateProvider() {
     ...sources,
     arrangedBoard: (options: unknown) => {
       const given = (options ?? {}) as { columns?: unknown; board?: unknown };
-      const view = arrangedBoardSource({ ...given, pending: boardOptimism.overlay() });
+      const view = arrangedBoardSource({
+        ...given,
+        pending: boardOptimism.overlay(),
+        // Who is on each card, including a tick nobody's subscription has carried back yet — a
+        // filter that ignored it would dim the card somebody was just assigned to.
+        pendingInvolvements: involvementOptimism.overlay(),
+      });
 
       const rows = new Map<string, readonly string[]>();
       const note = (record: unknown, relation: 'arranges' | 'children') => {
@@ -409,6 +415,10 @@ export default function TemplateProvider() {
       }
 
       queueMicrotask(() => boardOptimism.settle((id, relation) => rows.get(`${id}.${relation}`)));
+      const involvementRows = (given as { involvements?: unknown }).involvements;
+      if (Array.isArray(involvementRows)) {
+        queueMicrotask(() => involvementOptimism.settle(observeInvolvements(involvementRows)));
+      }
       return view;
     },
     /*

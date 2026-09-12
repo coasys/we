@@ -9,7 +9,7 @@
 import { STATE_FILLS, STATE_ICONS } from '@we/template-kit';
 import { describe, expect, it } from 'vitest';
 
-import { arrangedBoard } from '../src/shared/sources/arrangedBoard';
+import { arrangedBoard, NOBODY_ROW } from '../src/shared/sources/arrangedBoard';
 
 const SPACE = 'space-1';
 
@@ -428,5 +428,93 @@ describe('while a drag is in flight', () => {
     expect(withOverlay.contents.c1.arranged).toEqual(without.contents.c1.arranged);
     expect(withOverlay.contents.c2.arranged).toEqual(without.contents.c2.arranged);
     expect(withOverlay.unplaced).toEqual(without.unplaced);
+  });
+});
+
+describe('a board read by who is on the work', () => {
+  const ANA = 'did:key:ana';
+  const BEN = 'did:key:ben';
+  const kinds = [
+    { slug: 'assignee', semantic: 'responsible' },
+    { slug: 'reviewer', semantic: 'reviewing' },
+    { slug: 'passed', semantic: 'declined', reflexive: true },
+  ];
+  const t1 = { id: 't1', status: 'todo' };
+  const t2 = { id: 't2', status: 'todo' };
+  const t3 = { id: 't3', status: 'todo' };
+  const t4 = { id: 't4', status: 'archived' };
+  const involvements = [
+    { node: 't1', agent: ANA, kind: 'assignee' },
+    { node: 't2', agent: BEN, kind: 'assignee' },
+    { node: 't2', agent: ANA, kind: 'reviewer' },
+    // Declined is not being on it.
+    { node: 't3', agent: ANA, kind: 'passed' },
+    { node: 't4', agent: BEN, kind: 'assignee' },
+  ];
+  const todoCol: Col = { id: 'c1', slug: 'todo', arranges: ['t3', 't1'] };
+  const base = { ...gathering([todoCol]), records: [t1, t2, t3, t4], states, involvements, kinds };
+
+  it('changes nothing about what is drawn while nobody is chosen', () => {
+    const view = arrangedBoard(base);
+    expect(view.filtering).toBe(false);
+    expect(view.dimmed).toEqual([]);
+    expect(view.contents.c1.count).toBe(3);
+    expect(view.contents.c1.shown).toBe(3);
+    expect(view.contents.c1.matched).toBe(3);
+    expect(view.matchedCount).toBe(view.cardCount);
+  });
+
+  it('dims by default, keeping every card where it is and every count true', () => {
+    const view = arrangedBoard({ ...base, people: [ANA] });
+    expect(view.show).toBe('dim');
+    expect(view.contents.c1.arranged.map((r) => r.id)).toEqual(['t3', 't1']);
+    expect(view.dimmed.sort()).toEqual(['t3', 't4']);
+    expect(view.contents.c1.matched).toBe(2);
+    expect(view.contents.c1.count).toBe(3);
+  });
+
+  it('hides the others when asked, and still says how many there were', () => {
+    const view = arrangedBoard({ ...base, people: [ANA], show: 'hide' });
+    expect([...view.contents.c1.arranged, ...view.contents.c1.unarranged].map((r) => r.id)).toEqual(['t1', 't2']);
+    expect(view.contents.c1.shown).toBe(2);
+    expect(view.contents.c1.count).toBe(3);
+    // Unplaced is filtered as well — but what it offers to fix is still every state it holds.
+    expect(view.unplaced).toEqual([]);
+    expect(view.unplacedTotal).toBe(1);
+    expect(view.unplacedStates.map((s) => s.slug)).toEqual(['archived']);
+    expect(`${view.matchedCount} of ${view.cardCount}`).toBe('2 of 4');
+  });
+
+  it('hands over the column’s whole order, so a drag among the shown cards cannot move the hidden ones', () => {
+    const view = arrangedBoard({ ...base, people: [ANA], show: 'hide' });
+    expect(view.contents.c1.order).toEqual(['t3', 't1', 't2']);
+  });
+
+  it('lays out a row per person on the work, and one for work nobody is on', () => {
+    const view = arrangedBoard({ ...base, show: 'rows' });
+    expect(view.rows).toEqual([ANA, BEN, NOBODY_ROW]);
+    const idsIn = (row: string) => [...view.cells[row].c1.arranged, ...view.cells[row].c1.unarranged].map((r) => r.id);
+    expect(idsIn(ANA)).toEqual(['t1', 't2']);
+    expect(idsIn(BEN)).toEqual(['t2']);
+    // Declining is not being on it, so t3 is nobody's.
+    expect(idsIn(NOBODY_ROW)).toEqual(['t3']);
+    // A card two people are on is in both rows, and the column's own count does not double.
+    expect(view.contents.c1.count).toBe(3);
+    // A row counts what its cells draw: Ben's other card has no column here, and sits in Unplaced.
+    expect(view.rowCounts[BEN]).toBe(1);
+  });
+
+  it('gives only the chosen people rows, beside the one for work nobody is on', () => {
+    const view = arrangedBoard({ ...base, people: [BEN], show: 'rows' });
+    expect(view.rows).toEqual([BEN, NOBODY_ROW]);
+  });
+
+  it('counts an assignment somebody has just made, before the data carries it back', () => {
+    const view = arrangedBoard({
+      ...base,
+      people: [BEN],
+      pendingInvolvements: [{ node: 't3', agent: BEN, kind: 'assignee', on: true }],
+    });
+    expect(view.dimmed).not.toContain('t3');
   });
 });

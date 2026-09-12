@@ -54,8 +54,37 @@
  * could stay as it was until something else invalidated the query. Each subscription covers exactly
  * what changes under it. That is the client library's invalidation behaviour, not WE's, and it is
  * recorded here so the fragment need not carry it.
+ *
+ * ## People
+ *
+ * Given the involvement rows and a set of people, the board says which cards any of them is on — as
+ * responsible, reviewing, anything but declined — and draws the rest one of three ways:
+ *
+ * - **`dim`**, the default. Every card stays where it is, and the others are listed in `dimmed`. The
+ *   board keeps its shape, so a column's count still says how loaded it is.
+ * - **`hide`**. The others leave `arranged`, `unarranged` and `unplaced`. `count` stays the column's
+ *   true count and `shown` says how many are drawn, so a heading can say "3 of 11".
+ * - **`rows`**. A row per person — the ones chosen, or with nobody chosen everyone on a card here —
+ *   and one for work nobody is on, each crossing every column: `rows` are the keys, and
+ *   `cells[row][column]` is what a cell shows. A card several people are on is in each of their rows,
+ *   which is true, and is why a row's count is not a share of the column's.
+ *
+ * Both of the last two show a column only in part, so a drag inside one hands over part of an order.
+ * `contents[column].order` is the column's whole order as it would be drawn unfiltered, which is
+ * what `arrangeColumn` needs to put the moved cards back into their own slots rather than sending
+ * every hidden card to the bottom of the column for everybody.
+ *
+ * Row keys are strings — a DID, or `nobody` — rather than objects, for the identity reason above: a
+ * fresh object per row per push would remount every row and the sortables inside it.
  */
 import { fillForSemantic, iconForSemantic } from '@we/template-kit';
+
+import {
+  involvement,
+  type InvolvementKindInput,
+  type InvolvementRowInput,
+  type PendingInvolvement,
+} from './involvement';
 
 /** What the fragment hands over: the rows of three subscriptions and the community's vocabulary. */
 export interface ArrangedBoardOptions {
@@ -77,6 +106,26 @@ export interface ArrangedBoardOptions {
    * remember to patch — a heading's count, and whether the Unplaced column appears at all.
    */
   pending?: PendingBoardState | null;
+  /** The `Involvement` rows — who is on what. Omit for a board that does not filter by people. */
+  involvements?: InvolvementRowInput[] | null;
+  /** `spaceStore.involvementTypes`, so a declined answer is known as one whatever it is called. */
+  kinds?: InvolvementKindInput[] | null;
+  /** The DIDs of the people chosen. Empty means nobody is chosen, and nothing is filtered. */
+  people?: string[] | null;
+  /** How cards nobody chosen is on are drawn — `dim` (the default), `hide`, or `rows`. See above. */
+  show?: string | null;
+  /** Involvements written and not yet seen — see `involvementOptimism`. Supplied by the host. */
+  pendingInvolvements?: readonly PendingInvolvement[] | null;
+}
+
+/** The key of the row for work nobody is on. DIDs begin `did:`, so it cannot collide with one. */
+export const NOBODY_ROW = 'nobody';
+
+/** What one cell of a board laid out a row per person shows. */
+export interface CellContents {
+  arranged: CardRow[];
+  unarranged: CardRow[];
+  count: number;
 }
 
 /**
@@ -150,7 +199,17 @@ export interface ColumnContents {
   arranged: CardRow[];
   /** The records this column's state gathers that nobody has positioned. Empty for a lane. */
   unarranged: CardRow[];
+  /** Every card in the column, whatever is filtered — the true count. */
   count: number;
+  /** How many `arranged` and `unarranged` draw — `count` unless people are being hidden. */
+  shown: number;
+  /** How many cards here the chosen people are on — `count` when nobody is chosen. */
+  matched: number;
+  /**
+   * The column's whole order as it draws unfiltered — `arranged` then `unarranged`, as ids. What a
+   * drag inside a column showing only part of itself passes to `arrangeColumn`.
+   */
+  order: string[];
 }
 
 export interface ArrangedBoard {
@@ -177,6 +236,24 @@ export interface ArrangedBoard {
   unboundStates: { slug: string; name: string }[];
   /** How many records the pool held, so a surface can say when a board is large. */
   total: number;
+  /** Whether anybody is chosen, so anything is being filtered at all. */
+  filtering: boolean;
+  /** How the others are drawn — `dim`, `hide` or `rows`, normalised. */
+  show: 'dim' | 'hide' | 'rows';
+  /** The cards to draw faded: in `dim` with somebody chosen, every card on the board none of them is on. */
+  dimmed: string[];
+  /** Cards on the board — every column's, and Unplaced — counted once each. */
+  cardCount: number;
+  /** Of those, how many the chosen people are on. `cardCount` when nobody is chosen. */
+  matchedCount: number;
+  /** How many cards Unplaced holds before anything is hidden. */
+  unplacedTotal: number;
+  /** In `rows`: one key per row, a DID or `NOBODY_ROW`, in order. Empty otherwise. */
+  rows: string[];
+  /** In `rows`: what each cell shows, by row key then column id. */
+  cells: Record<string, Record<string, CellContents>>;
+  /** In `rows`: how many cards each row holds across the board. */
+  rowCounts: Record<string, number>;
 }
 
 /**
@@ -295,13 +372,91 @@ export function arrangedBoard(options: ArrangedBoardOptions | null | undefined):
       arranged,
       unarranged,
       count: arranged.length + unarranged.length,
+      // Filled in below, once the board knows who is on what.
+      shown: arranged.length + unarranged.length,
+      matched: arranged.length + unarranged.length,
+      order: [],
     };
   }
 
-  const unplaced = pool.filter((r) => !placed.has(r.id) && !boundSlugs.has(statusOf(r) ?? ''));
+  const unplacedAll = pool.filter((r) => !placed.has(r.id) && !boundSlugs.has(statusOf(r) ?? ''));
+
+  /*
+    People. Worked out after the columns rather than threaded through them, so everything above says
+    what the board holds and everything below says what of it to draw — and a board nobody filters
+    runs exactly the code it ran before this existed.
+  */
+  const show: ArrangedBoard['show'] = options?.show === 'hide' || options?.show === 'rows' ? options.show : 'dim';
+  const people = [...new Set(asRows<string>(options?.people).filter((did) => typeof did === 'string' && did))];
+  const filtering = people.length > 0;
+  const chosen = new Set(people);
+  const on = involvement({
+    rows: options?.involvements ?? null,
+    types: options?.kinds ?? null,
+    pending: options?.pendingInvolvements ?? null,
+  }).byNode;
+  const peopleOn = (record: CardRow) => on[record.id]?.dids ?? [];
+  const matches = (record: CardRow) => !filtering || peopleOn(record).some((did) => chosen.has(did));
+  const hiding = filtering && show !== 'dim';
+
+  const onBoard = new Map<string, CardRow>();
+  for (const column of columns) {
+    const cell = contents[column.id];
+    cell.order = [...cell.arranged, ...cell.unarranged].map((r) => r.id);
+    cell.matched = filtering ? [...cell.arranged, ...cell.unarranged].filter(matches).length : cell.count;
+    for (const record of [...cell.arranged, ...cell.unarranged]) onBoard.set(record.id, record);
+  }
+  for (const record of unplacedAll) onBoard.set(record.id, record);
+
+  // Rows before hiding, since a row is itself a filter and draws from the whole column.
+  const rows: string[] = [];
+  const cells: Record<string, Record<string, CellContents>> = {};
+  const rowCounts: Record<string, number> = {};
+  if (show === 'rows') {
+    if (filtering) rows.push(...people);
+    else {
+      const seen = new Set<string>();
+      for (const record of onBoard.values()) {
+        for (const did of peopleOn(record)) {
+          if (!seen.has(did)) {
+            seen.add(did);
+            rows.push(did);
+          }
+        }
+      }
+    }
+    rows.push(NOBODY_ROW);
+    for (const row of rows) {
+      const inRow = (record: CardRow) =>
+        row === NOBODY_ROW ? peopleOn(record).length === 0 : peopleOn(record).includes(row);
+      const held = new Set<string>();
+      cells[row] = {};
+      for (const column of columns) {
+        const cell = contents[column.id];
+        const arranged = cell.arranged.filter(inRow);
+        const unarranged = cell.unarranged.filter(inRow);
+        for (const record of [...arranged, ...unarranged]) held.add(record.id);
+        cells[row][column.id] = { arranged, unarranged, count: arranged.length + unarranged.length };
+      }
+      rowCounts[row] = held.size;
+    }
+  }
+
+  if (hiding) {
+    for (const column of columns) {
+      const cell = contents[column.id];
+      cell.arranged = cell.arranged.filter(matches);
+      cell.unarranged = cell.unarranged.filter(matches);
+    }
+  }
+  for (const column of columns) {
+    const cell = contents[column.id];
+    cell.shown = cell.arranged.length + cell.unarranged.length;
+  }
+  const unplaced = hiding ? unplacedAll.filter(matches) : unplacedAll;
   const seen = new Set<string>();
   const unplacedStates: { slug: string; name: string }[] = [];
-  for (const record of unplaced) {
+  for (const record of unplacedAll) {
     const slug = statusOf(record) ?? '';
     if (!slug || seen.has(slug)) continue;
     seen.add(slug);
@@ -321,5 +476,17 @@ export function arrangedBoard(options: ArrangedBoardOptions | null | undefined):
       .filter((s) => s && s.slug && !s.retired && !boundSlugs.has(s.slug))
       .map((s) => ({ slug: s.slug, name: s.name || s.slug })),
     total: records.length,
+    filtering,
+    show,
+    dimmed:
+      filtering && show === 'dim'
+        ? [...onBoard.values()].filter((record) => !matches(record)).map((record) => record.id)
+        : [],
+    cardCount: onBoard.size,
+    matchedCount: filtering ? [...onBoard.values()].filter(matches).length : onBoard.size,
+    unplacedTotal: unplacedAll.length,
+    rows,
+    cells,
+    rowCounts,
   };
 }

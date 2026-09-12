@@ -621,7 +621,7 @@ export interface SpaceStore {
   /** The order this board reads its columns in. */
   reorderBoardColumns: (boardId: string, orderedIds: string[]) => Promise<void>;
   /** Record the order somebody dragged one column's cards into. */
-  arrangeColumn: (columnId: string, orderedIds: string[]) => Promise<void>;
+  arrangeColumn: (columnId: string, orderedIds: string[], columnOrder?: string[]) => Promise<void>;
   /** Move a card between columns — and write its state, when the column it joins names one. */
   moveCardToColumn: (
     fromColumnId: string,
@@ -629,6 +629,7 @@ export interface SpaceStore {
     cardId: string,
     orderedIds?: string[],
     toSlug?: string,
+    columnOrder?: string[],
   ) => Promise<void>;
   /** Make a task straight into a column, parented to the board's anchor when there is one. */
   addTaskToColumn: (columnId: string, title: string, anchorId?: string) => Promise<void>;

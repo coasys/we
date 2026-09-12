@@ -29,6 +29,8 @@ import {
   Space,
 } from '@we/entities';
 
+import { spliceSubsetOrder } from './shapes/subsetOrder';
+
 /** What the board actions need from the app around them. */
 export interface BoardDeps {
   /**
@@ -95,13 +97,14 @@ export interface BoardActions {
   removeBoardColumn: (boardId: string, columnId: string) => Promise<void>;
   renameBoardColumn: (columnId: string, name: string) => Promise<void>;
   reorderBoardColumns: (boardId: string, orderedIds: string[]) => Promise<void>;
-  arrangeColumn: (columnId: string, orderedIds: string[]) => Promise<void>;
+  arrangeColumn: (columnId: string, orderedIds: string[], columnOrder?: string[]) => Promise<void>;
   moveCardToColumn: (
     fromColumnId: string,
     toColumnId: string,
     cardId: string,
     orderedIds?: string[],
     toSlug?: string,
+    columnOrder?: string[],
   ) => Promise<void>;
   addTaskToColumn: (columnId: string, title: string, anchorId?: string) => Promise<void>;
 }
@@ -499,10 +502,17 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
    * An ordered relation rather than a `position` scalar, and this is the thing that could not be
    * done before: two people rearranging the same column at the same moment converge, where two
    * writes of the same number lose one of the answers.
+   *
+   * **`columnOrder` is for a column showing part of itself** — a people filter hiding cards, or one
+   * person's row. The sortable hands over only what it shows, and "that, then everything else" sends
+   * every hidden card to the bottom of the column for everybody. Given the column's whole order as
+   * the board draws it unfiltered, the moved cards go back into their own slots instead; see
+   * `spliceSubsetOrder`. Omitted, the list is taken to be the whole column, as it always was.
    */
-  async function arrangeColumn(columnId: string, orderedIds: string[]): Promise<void> {
+  async function arrangeColumn(columnId: string, shownIds: string[], columnOrder?: string[]): Promise<void> {
     const p = dataset();
-    if (!p || !columnId || !Array.isArray(orderedIds) || !orderedIds.length) return;
+    if (!p || !columnId || !Array.isArray(shownIds) || !shownIds.length) return;
+    const orderedIds = Array.isArray(columnOrder) ? spliceSubsetOrder(columnOrder, shownIds) : shownIds;
     /*
       Held before anything is read, which is the difference between "almost instant" and instant.
 
@@ -565,16 +575,27 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
    * One transaction. Before this the three were separate round trips, ordered add-then-remove so a
    * failure between them left the card in two columns rather than none. A batch makes the question
    * moot: every reader sees the card in one column, in one state, or the move did not happen.
+   *
+   * `columnOrder` is the target column's whole order, for a drop into a column showing only part of
+   * itself — `arrangeColumn` says why.
    */
   async function moveCardToColumn(
     fromColumnId: string,
     toColumnId: string,
     cardId: string,
-    orderedIds?: string[],
+    shownIds?: string[],
     toSlug?: string,
+    columnOrder?: string[],
   ): Promise<void> {
     const p = dataset();
     if (!p || !cardId || !toColumnId || fromColumnId === toColumnId) return;
+    const orderedIds =
+      Array.isArray(shownIds) && Array.isArray(columnOrder) && shownIds.includes(cardId)
+        ? spliceSubsetOrder(
+            columnOrder.filter((id) => id !== cardId),
+            shownIds,
+          )
+        : shownIds;
     /*
       Both halves, on the tick of the drop.
 
