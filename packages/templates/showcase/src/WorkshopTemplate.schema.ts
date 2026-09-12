@@ -632,6 +632,28 @@ const startCallButton = (size: 'sm' | 'md'): SchemaNode => ({
 });
 
 /**
+ * Where the fixed pill bar starts, how tall it is, and where it ends — the three numbers every
+ * surface that has to clear it reads.
+ *
+ * Both pills are pinned to `top: '300'` — which is what `CHROME_TOP` spells, in the form a `calc`
+ * can read — and both come to `PILL_HEIGHT`, which is not a coincidence: each is a padded row whose
+ * tallest child is one control at the default height. So one band covers both, and `CHROME_BOTTOM`
+ * is the line content has to start below.
+ *
+ * Written once and shared because it had already drifted. `ROUTE_BAND` spelt the same clearance as
+ * `pt: '900'` — 64px against a bar that ends at 68 — so the kanban and the calendar began four
+ * pixels *inside* the pills, and further in under any theme that adds to control heights, since a
+ * token cannot know about `--we-theme-control-height-offset` and this expression can. A number that
+ * approximates an expression is a number that goes stale the next time the expression moves; see
+ * `chromeReserve`, which is the one place the shell forces a number and where that has already
+ * happened once.
+ */
+const CHROME_TOP = 'var(--we-space-300)';
+const PILL_HEIGHT =
+  'calc(var(--we-component-height-md) + var(--we-theme-control-height-offset, 0px) + 2 * var(--we-space-200))';
+const CHROME_BOTTOM = `calc(${CHROME_TOP} + ${PILL_HEIGHT})`;
+
+/**
  * The corner that says which call every other surface is about.
  *
  * ## What it is, now that it is one thing
@@ -686,10 +708,10 @@ const callChrome: SchemaNode = {
       collapsed to nothing while the switcher beside it sat centred in the full height — the two
       pinned to the same `top` and looking misaligned. Stated as the arithmetic the pill arrives at
       rather than as a number: a control at the default height, plus the padding above and below it,
-      including whatever a theme adds to control heights.
+      including whatever a theme adds to control heights. Shared with the routes that clear this bar
+      — see `PILL_HEIGHT`.
     */
-    minHeight:
-      'calc(var(--we-component-height-md) + var(--we-theme-control-height-offset, 0px) + 2 * var(--we-space-200))',
+    minHeight: PILL_HEIGHT,
   },
   children: [callPill],
 };
@@ -2028,8 +2050,21 @@ function callGate(icon: string, message: string, action?: SchemaNode): SchemaNod
  * Horizontal padding stays on the route, where it applies to both branches: it shifts nothing
  * vertically, and outside the measure column is where it belongs, so the content is the full
  * measure wide rather than the measure less its gutters.
+ *
+ * The top is the bar's own bottom edge plus a gap, not a token that comes close to it. It was
+ * `pt: '900'` — 64px, against pills that end at 68 — so the kanban's first column and the calendar's
+ * month header both started *under* the chrome they were meant to clear, by four pixels and by more
+ * under a theme that adds to control heights. See `CHROME_BOTTOM`, which is where that arithmetic
+ * now lives.
+ *
+ * The gap over it is `500` rather than the `300` `chromeReserve` adds for panels, and the difference
+ * is deliberate. A panel snapped to the top is a floating card with an edge and a shadow of its own,
+ * and twelve pixels of daylight reads as one object clearing another; a route's content *is* the
+ * page, so at the same distance the kanban's first column and the calendar's month header looked
+ * tucked under the pills rather than starting below them. Content wants more room from chrome than
+ * chrome wants from chrome.
  */
-const ROUTE_BAND = { pt: '900', pb: '600' } as const;
+const ROUTE_BAND = { pt: `calc(${CHROME_BOTTOM} + var(--we-space-500))`, pb: '600' } as const;
 
 const kanbanRoute: RouteSchema = {
   path: '/kanban',
@@ -2621,6 +2656,11 @@ export const workshopTemplate: TemplateSchema = {
       Both pills come to the same height, which is not a coincidence: each is a padded row whose
       tallest child is one control, and that is what makes one band cover both. `top` stacks across
       every contributor and spans the full width, so the left-hand pill needs no term of its own.
+
+      The same sum the routes clear the bar with, and the only reason it is spelt twice: the shell
+      wants a number here, so the theme's control-height offset — which `CHROME_BOTTOM` carries and
+      a number cannot — is the term this one is missing. It rounds up rather than down, which is the
+      right direction for a reservation.
 
       The width describes the *centred* bar alone — it is what decides whether the module rail has
       to drop below it, and the rail is a column at top right that a left-hand pill cannot reach.

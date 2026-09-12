@@ -724,9 +724,20 @@ describe('the workshop template’s three placeholders', () => {
         }
       }
 
-      // And the band is still there, on the half that wants it.
-      expect((content?.props as Record<string, unknown>)?.pt, path).toBe('900');
-      expect((content?.props as Record<string, unknown>)?.pb, path).toBe('600');
+      /*
+        And the band is still there, on the half that wants it — with a top that is *derived* from
+        the pills rather than a token that comes close to them.
+
+        It was `pt: '900'`, 64px, against a bar whose bottom edge is 12 + 40 + 16 = 68 and more
+        under a theme that adds to control heights. Both routes began under the chrome they were
+        meant to clear. Asserted as the shape — an expression naming the control height and the
+        theme's offset — because the alternative is pinning a number that is exactly the kind of
+        number this replaced.
+      */
+      const band = (content?.props ?? {}) as Record<string, unknown>;
+      expect(String(band.pt), path).toContain('var(--we-component-height-md)');
+      expect(String(band.pt), path).toContain('var(--we-theme-control-height-offset, 0px)');
+      expect(band.pb, path).toBe('600');
     }
 
     // The canvas is the one they are lining up against, so it must stay unpadded too.
