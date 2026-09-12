@@ -50,6 +50,8 @@ import { field, formModal } from '@we/schema-kit';
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
 import { agentByline } from './agentByline.ts';
+import { peopleFilter } from './peopleFilter.ts';
+import { peopleRow } from './peopleRow.ts';
 
 /** The board record, hydrated one level: its columns, its own arrangement, what it gathers. */
 const BOARD = 'first(local.board)';
@@ -62,7 +64,18 @@ const BOARD = 'first(local.board)';
  * every reader agrees on the answer; each use is its own memo, and the function is cheap.
  */
 const VIEW =
-  'arrangedBoard({ board: first(local.board), columns: local.columns, records: local.pool, states: spaceStore.taskStates })';
+  'arrangedBoard({ board: first(local.board), columns: local.columns, records: local.pool, states: spaceStore.taskStates, involvements: local.involvements, kinds: spaceStore.involvementTypes, people: local.boardPeople, show: local.boardShow })';
+
+/**
+ * Who is on each card — the `involvement` host function over the board's own involvement query.
+ *
+ * Read by the card for its faces and its assign menu. The board's filtering reads the same rows
+ * through `arrangedBoard`, so a card is never dimmed for somebody its faces say is on it.
+ */
+const PEOPLE = 'involvement({ rows: local.involvements, types: spaceStore.involvementTypes, me: me.did })';
+
+/** What the card in scope carries of it: `{ people, responsible, reviewing, pairs, … }`, or nothing. */
+const ON = (as: string) => `${PEOPLE}.byNode[${as}.id]`;
 
 /** What the column in scope shows and how its heading reads — see `ColumnContents`. */
 const CELL = `${VIEW}.contents[col.id]`;
@@ -120,6 +133,15 @@ export interface TaskCardOptions {
    * expression should answer `'surface'` where the rule has nothing to say.
    */
   bg?: SchemaProp;
+  /** Draw the card faded — an expression, per row. For a people filter in `dim`; see `arrangedBoard`. */
+  dimmed?: string;
+  /**
+   * Who is on the card, and a menu to change it.
+   *
+   * The entity whose kinds the menu offers — `TaskBlock` on a task board. Omit for a card with no
+   * people on it. Needs the board's involvement query in scope, which `taskBoard` declares.
+   */
+  peopleOf?: string;
 }
 
 /**
@@ -158,7 +180,13 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
       p: '300',
       // A suggestion looks like one: dimmed, with a dashed edge, the way the canvas draws it.
       border: { $: `(${pending}) ? '1px dashed border-strong' : '1px solid border'` },
-      opacity: { $: `(${pending}) ? 0.75 : 1` },
+      /*
+        Faded further for a card the people filter does not match. Well below a suggestion's 0.75, so
+        the two never read as one state; above zero, so the board's shape is still legible through it,
+        which is the whole reason dimming is the default.
+      */
+      opacity: { $: `(${opts.dimmed ?? 'false'}) ? 0.35 : (${pending}) ? 0.75 : 1` },
+      transition: 'opacity 200 ease-in-out',
     },
     children: [
       {
@@ -251,17 +279,21 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
               },
             },
           },
-          {
-            type: '$if',
-            props: {
-              condition: { $: `${as}.assignee` },
-              then: {
-                type: 'we-text',
-                props: { fontSize: '200', color: 'text-muted' },
-                children: [{ $: '`@${' + as + '.assignee}`' }],
-              },
-            },
-          },
+          ...(opts.peopleOf
+            ? cardPeople(as, opts.peopleOf)
+            : [
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: `${as}.assignee` },
+                    then: {
+                      type: 'we-text',
+                      props: { fontSize: '200', color: 'text-muted' },
+                      children: [{ $: '`@${' + as + '.assignee}`' }],
+                    },
+                  },
+                } as SchemaNode,
+              ]),
           // The card's state, where the caller says the column does not already give it away.
           {
             type: '$if',
@@ -360,12 +392,122 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
                   },
                 },
               },
+              ...(opts.peopleOf ? [assignMenu(as, opts.peopleOf)] : []),
               ...(opts.actions ? [opts.actions] : []),
             ],
           },
         ],
       },
     ],
+  };
+}
+
+/** The kinds a menu on this entity offers someone else — assigning, not answering. */
+const assignable = (entity: string) =>
+  `spaceStore.offeredInvolvementTypes.filter(k, !k.reflexive && ('${entity}' in k.appliesTo || !count(k.appliesTo)))`;
+
+/**
+ * Who is on a card, drawn from what their part *means*: faces for whoever is responsible, and an eye
+ * before whoever is reviewing. By semantic, so "Assigned" renamed to "Owner" still draws here.
+ *
+ * And the one bridge from extraction. A pass writes `assignee` as the name somebody said — "James" —
+ * because a model cannot know a DID, and until now that name sat on the card connected to nobody.
+ * Where it names exactly one member and nobody is on the card yet, the card offers to make it real.
+ * Exactly one: two Jameses is a guess, and a guess about who owns work is the wrong one to automate.
+ */
+function cardPeople(as: string, entity: string): SchemaNode[] {
+  const candidates = `spaceStore.members.filter(m, lower(m.name) == lower(${as}.assignee) || startsWith(lower(m.name), lower(${as}.assignee) + ' '))`;
+  const kind = `${assignable(entity)}.find(k, k.semantic == 'responsible').slug`;
+  return [
+    {
+      type: '$if',
+      props: {
+        condition: { $: `count(${ON(as)}.responsible)` },
+        then: peopleRow({ items: { $: `${ON(as)}.responsible` }, dids: true, max: 3, size: 'xxs' }),
+      },
+    },
+    {
+      type: '$if',
+      props: {
+        condition: { $: `count(${ON(as)}.reviewing)` },
+        then: {
+          type: 'Row',
+          props: { gap: '100', ay: 'center' },
+          children: [
+            { type: 'we-icon', props: { name: 'eye', size: 'xs', color: 'text-muted' } },
+            peopleRow({ items: { $: `${ON(as)}.reviewing` }, dids: true, max: 3, size: 'xxs' }),
+          ],
+        },
+      },
+    },
+    {
+      type: '$if',
+      props: {
+        condition: { $: `${as}.assignee && !count(${ON(as)}.responsible) && count(${candidates}) == 1 && ${kind}` },
+        then: {
+          type: 'we-tooltip',
+          props: { content: { $: `\`The conversation named \${${as}.assignee}\`` } },
+          children: [
+            {
+              type: 'we-button',
+              props: {
+                variant: 'ghost',
+                size: 'xs',
+                onClick: {
+                  $action: 'spaceStore.setInvolvement',
+                  args: [{ $: `${as}.id` }, { $: `first(${candidates}).did` }, { $: kind }, true],
+                },
+              },
+              children: [
+                { type: 'we-icon', props: { name: 'user-plus' } },
+                { $: `\`Assign \${first(${candidates}).name}?\`` },
+              ],
+            },
+          ],
+        },
+        // A name matching nobody, or several people, is still worth seeing as the words that were said.
+        else: {
+          type: '$if',
+          props: {
+            condition: { $: `${as}.assignee && !count(${ON(as)}.responsible)` },
+            then: {
+              type: 'we-text',
+              props: { fontSize: '200', color: 'text-muted' },
+              children: [{ $: '`@${' + as + '.assignee}`' }],
+            },
+          },
+        },
+      },
+    },
+  ];
+}
+
+/**
+ * Put somebody on a card, or take them off — one group per kind this entity offers, each listing the
+ * space's members with a tick for who holds it.
+ *
+ * Every entry carries its kind, so the one handler knows which it was: a comprehension cannot attach a
+ * handler per row, and the menu reports the row. `!arg.checked` because a toggle reports the state it
+ * had before the press, and the store takes the state wanted rather than a flip.
+ */
+function assignMenu(as: string, entity: string): SchemaNode {
+  return {
+    type: 'DropdownMenu',
+    props: {
+      triggerIcon: 'user-plus',
+      triggerTitle: 'Who is on this',
+      size: 'xs',
+      itemSize: 'sm',
+      searchable: true,
+      searchPlaceholder: 'Find a member',
+      items: {
+        $: `${assignable(entity)}.map(k, { type: 'group', id: k.slug, label: k.name, collapsible: false, items: spaceStore.members.map(m, { type: 'toggle', id: m.did, kind: k.slug, label: m.did == me.did ? m.name + ' (you)' : m.name, checked: (m.did + '|' + k.slug) in ${ON(as)}.pairs }) })`,
+      },
+      onSelect: {
+        $action: 'spaceStore.setInvolvement',
+        args: [{ $: `${as}.id` }, { $: 'arg.id' }, { $: 'arg.kind' }, { $: '!arg.checked' }],
+      },
+    },
   };
 }
 
@@ -433,6 +575,15 @@ export interface TaskBoardOptions {
    * that is the only kind. The containment kanban, as a special case of this one.
    */
   lanesOnly?: boolean;
+  /**
+   * Who is on the work: faces and an assign menu on every card, and a filter above the board that
+   * dims, hides, or lays the board out a row per person.
+   *
+   * The chosen people ride in the address as `?who=`, so a link can say "look at what Ana is on"; how
+   * the rest are drawn is remembered per device, since that is a way of reading rather than a thing
+   * being pointed at. Off by default — a board of posts has nobody assigned to anything.
+   */
+  people?: boolean;
 }
 
 /**
@@ -536,24 +687,39 @@ function draggable(card: SchemaNode, as: string): SchemaNode {
   };
 }
 
-/** The cards of one column, in a drop zone. Shared by every column, bound or lane. */
-function columnCards(opts: TaskBoardOptions): SchemaNode {
-  const card = opts.card
+/** The default card for a column of this board — see `taskCard`. */
+function boardCard(opts: TaskBoardOptions, showState: string, from: string): SchemaNode {
+  return opts.card
     ? opts.card('card')
     : taskCard({
-        actions: moveTaskMenu('col.id'),
+        actions: moveTaskMenu(from),
         byline: opts.byline,
         bg: opts.bg,
-        showState: `${CELL}.lane`,
+        showState,
         pending: `card.id in (${PENDING})`,
+        dimmed: `card.id in ${VIEW}.dimmed`,
+        ...(opts.people ? { peopleOf: opts.entity ?? 'TaskBlock' } : {}),
       });
+}
+
+/**
+ * The cards of one column, in a drop zone. Shared by every column, bound or lane, and by every cell of
+ * a board laid out a row per person.
+ *
+ * `cell` is an expression for what to draw — `{ arranged, unarranged }` — and `group` says which zones
+ * trade cards. A whole column trades with every column; a person's cell only with that person's
+ * other cells, so dragging moves work between states and never between people, which is a menu's
+ * job and a different claim.
+ */
+function columnCards(opts: TaskBoardOptions, cell: string, group: SchemaProp): SchemaNode {
+  const card = boardCard(opts, `${CELL}.lane`, 'col.id');
   return {
     type: 'we-sortable',
     props: {
       // The zone is the column's **record id**, which is what makes a drop a two-line write: the
       // event says which zone the card landed in, and the store resolves both ends from those ids.
       zone: { $: 'col.id' },
-      group: 'board-cards',
+      group,
       gap: 'var(--we-space-300)',
       /*
         The zone has to be the whole trough. A drop target is hit-tested by its own bounding
@@ -562,7 +728,15 @@ function columnCards(opts: TaskBoardOptions): SchemaNode {
       */
       flex: '1',
       width: '100%',
-      onReorder: { $action: 'spaceStore.arrangeColumn', args: [{ $: 'col.id' }, { $: 'arg.detail' }] },
+      /*
+        The column's whole order goes with the drop, as the third argument. A column showing all of
+        itself hands over the same list and nothing changes; one showing part — people hidden, or one
+        person's row — would otherwise send every card it is not showing to the bottom, for everybody.
+      */
+      onReorder: {
+        $action: 'spaceStore.arrangeColumn',
+        args: [{ $: 'col.id' }, { $: 'arg.detail' }, { $: `${VIEW}.contents[col.id].order` }],
+      },
       /*
         `ids` is the target column's whole new order, with the card already at the index it was
         dropped at — so a cross-column drop seats it where the pointer put it. Without it the store
@@ -585,14 +759,135 @@ function columnCards(opts: TaskBoardOptions): SchemaNode {
           { $: 'arg.detail.id' },
           { $: 'arg.detail.ids' },
           { $: `${VIEW}.contents[arg.detail.to].slug` },
+          { $: `${VIEW}.contents[arg.detail.to].order` },
         ],
       },
     },
     // Two loops, one continuous run of items: the arranged cards in their order, then whatever the
     // column's state gathers that nobody has placed.
     children: [
-      { type: '$each', props: { items: { $: `${CELL}.arranged` }, as: 'card' }, children: [draggable(card, 'card')] },
-      { type: '$each', props: { items: { $: `${CELL}.unarranged` }, as: 'card' }, children: [draggable(card, 'card')] },
+      { type: '$each', props: { items: { $: `${cell}.arranged` }, as: 'card' }, children: [draggable(card, 'card')] },
+      { type: '$each', props: { items: { $: `${cell}.unarranged` }, as: 'card' }, children: [draggable(card, 'card')] },
+    ],
+  };
+}
+
+/**
+ * A column's heading: its state's shape and name, how many cards it holds, and its controls.
+ *
+ * The count reads "2/5" while people are chosen — how many the chosen people are on, of how many
+ * there are — in every mode, since that is the question the filter was opened to ask.
+ */
+function columnHeading(opts: TaskBoardOptions): SchemaNode {
+  return {
+    type: 'Row',
+    props: { gap: '200', ay: 'center', width: '100%' },
+    children: [
+      // The state's shape — the community's icon, or the one its semantic implies. A lane
+      // stands for no state and so has none.
+      ...(opts.lanesOnly
+        ? []
+        : [
+            {
+              type: '$if',
+              props: {
+                condition: { $: `!${CELL}.lane` },
+                then: {
+                  type: 'we-icon',
+                  props: { name: { $: `${CELL}.icon` }, size: 'xs', color: { $: `${CELL}.color` } },
+                },
+              },
+            },
+          ]),
+      {
+        type: 'we-text',
+        props: {
+          variant: 'footnote',
+          uppercase: true,
+          truncate: true,
+          // A lane claims no shared meaning, so it takes no state colour.
+          color: { $: `${CELL}.color` },
+        },
+        children: [{ $: `${CELL}.label` }],
+      },
+      // Says which columns propagate and which do not, at the only moment it matters — and
+      // not on a board where every column is a lane, where it would say nothing.
+      ...(opts.lanesOnly
+        ? []
+        : [
+            {
+              type: '$if',
+              props: {
+                condition: { $: `${CELL}.lane` },
+                then: {
+                  type: 'we-tooltip',
+                  props: { content: 'A lane on this board only — dropping a card here changes no state' },
+                  children: [
+                    {
+                      type: 'we-badge',
+                      props: {
+                        size: 'xs',
+                        variant: 'neutral',
+                      },
+                      children: ['lane'],
+                    },
+                  ],
+                },
+              },
+            },
+          ]),
+      {
+        type: 'we-text',
+        props: {
+          variant: 'footnote',
+          color: 'text-muted',
+          ml: 'auto',
+          text: { $: `${CELL}.matched != ${CELL}.count ? \`\${${CELL}.matched}/\${${CELL}.count}\` : ${CELL}.count` },
+        },
+      },
+      {
+        type: 'we-tooltip',
+        props: { content: { $: `\`Add a card to \${${CELL}.label}\`` } },
+        children: [
+          {
+            type: 'we-button',
+            props: {
+              label: { $: `\`Add a card to \${${CELL}.label}\`` },
+              variant: 'ghost',
+              size: 'xs',
+              square: true,
+              onClick: { $setLocal: 'addOpen', value: true },
+            },
+            children: [{ type: 'we-icon', props: { name: 'plus' } }],
+          },
+        ],
+      },
+      {
+        type: 'DropdownMenu',
+        props: {
+          triggerIcon: 'dots-three',
+          triggerTitle: 'Column options',
+          size: 'xs',
+          items: [
+            { id: 'rename', label: 'Rename' },
+            { id: 'remove', label: 'Remove column', variant: 'danger' },
+          ],
+          onSelect: [
+            {
+              $if: {
+                condition: { $: "arg.id == 'rename'" },
+                then: { $setLocal: 'renameOpen', value: true },
+                // Removing takes the column record and nothing else: the cards keep their
+                // state, so they reappear in another column bound to it or in Unplaced.
+                else: {
+                  $action: 'spaceStore.removeBoardColumn',
+                  args: [opts.boardId, { $: 'col.id' }],
+                },
+              },
+            },
+          ],
+        },
+      },
     ],
   };
 }
@@ -638,115 +933,10 @@ function column(opts: TaskBoardOptions): SchemaNode {
           ay: 'start',
         },
         children: [
-          {
-            type: 'Row',
-            props: { gap: '200', ay: 'center', width: '100%' },
-            children: [
-              // The state's shape — the community's icon, or the one its semantic implies. A lane
-              // stands for no state and so has none.
-              ...(opts.lanesOnly
-                ? []
-                : [
-                    {
-                      type: '$if',
-                      props: {
-                        condition: { $: `!${CELL}.lane` },
-                        then: {
-                          type: 'we-icon',
-                          props: { name: { $: `${CELL}.icon` }, size: 'xs', color: { $: `${CELL}.color` } },
-                        },
-                      },
-                    },
-                  ]),
-              {
-                type: 'we-text',
-                props: {
-                  variant: 'footnote',
-                  uppercase: true,
-                  truncate: true,
-                  // A lane claims no shared meaning, so it takes no state colour.
-                  color: { $: `${CELL}.color` },
-                },
-                children: [{ $: `${CELL}.label` }],
-              },
-              // Says which columns propagate and which do not, at the only moment it matters — and
-              // not on a board where every column is a lane, where it would say nothing.
-              ...(opts.lanesOnly
-                ? []
-                : [
-                    {
-                      type: '$if',
-                      props: {
-                        condition: { $: `${CELL}.lane` },
-                        then: {
-                          type: 'we-tooltip',
-                          props: { content: 'A lane on this board only — dropping a card here changes no state' },
-                          children: [
-                            {
-                              type: 'we-badge',
-                              props: {
-                                size: 'xs',
-                                variant: 'neutral',
-                              },
-                              children: ['lane'],
-                            },
-                          ],
-                        },
-                      },
-                    },
-                  ]),
-              {
-                type: 'we-text',
-                props: { variant: 'footnote', color: 'text-muted', ml: 'auto', text: { $: `${CELL}.count` } },
-              },
-              {
-                type: 'we-tooltip',
-                props: { content: { $: `\`Add a card to \${${CELL}.label}\`` } },
-                children: [
-                  {
-                    type: 'we-button',
-                    props: {
-                      label: { $: `\`Add a card to \${${CELL}.label}\`` },
-                      variant: 'ghost',
-                      size: 'xs',
-                      square: true,
-                      onClick: { $setLocal: 'addOpen', value: true },
-                    },
-                    children: [{ type: 'we-icon', props: { name: 'plus' } }],
-                  },
-                ],
-              },
-              {
-                type: 'DropdownMenu',
-                props: {
-                  triggerIcon: 'dots-three',
-                  triggerTitle: 'Column options',
-                  size: 'xs',
-                  items: [
-                    { id: 'rename', label: 'Rename' },
-                    { id: 'remove', label: 'Remove column', variant: 'danger' },
-                  ],
-                  onSelect: [
-                    {
-                      $if: {
-                        condition: { $: "arg.id == 'rename'" },
-                        then: { $setLocal: 'renameOpen', value: true },
-                        // Removing takes the column record and nothing else: the cards keep their
-                        // state, so they reappear in another column bound to it or in Unplaced.
-                        else: {
-                          $action: 'spaceStore.removeBoardColumn',
-                          args: [opts.boardId, { $: 'col.id' }],
-                        },
-                      },
-                    },
-                  ],
-                },
-              },
-            ],
-          },
+          columnHeading(opts),
           opts.addCardModal ?? addTaskModal,
           renameModal,
-          columnCards(opts),
+          columnCards(opts, CELL, 'board-cards'),
         ],
       },
     ],
@@ -755,15 +945,7 @@ function column(opts: TaskBoardOptions): SchemaNode {
 
 /** Work no column here claims — shown only when there is some, and cleared by dragging out of it. */
 function unplacedColumn(opts: TaskBoardOptions): SchemaNode {
-  const card = opts.card
-    ? opts.card('card')
-    : taskCard({
-        actions: moveTaskMenu("''"),
-        byline: opts.byline,
-        bg: opts.bg,
-        showState: 'true',
-        pending: `card.id in (${PENDING})`,
-      });
+  const card = boardCard(opts, 'true', "''");
   return {
     type: '$if',
     props: {
@@ -869,6 +1051,7 @@ function unplacedColumn(opts: TaskBoardOptions): SchemaNode {
                   { $: 'arg.detail.id' },
                   { $: 'arg.detail.ids' },
                   { $: `${VIEW}.contents[arg.detail.to].slug` },
+                  { $: `${VIEW}.contents[arg.detail.to].order` },
                 ],
               },
             },
@@ -883,6 +1066,166 @@ function unplacedColumn(opts: TaskBoardOptions): SchemaNode {
         ],
       },
     },
+  };
+}
+
+/**
+ * A column's heading on its own, for a board laid out a row per person — where the cards live in the
+ * rows below and the heading is drawn once, above all of them.
+ *
+ * Still an item of the columns' sortable, so a column is dragged by its heading here exactly as it is
+ * by its whole trough on an ordinary board.
+ */
+function columnHead(opts: TaskBoardOptions): SchemaNode {
+  return {
+    type: 'div',
+    props: { 'data-we-id': { $: 'col.id' }, style: { flex: '0 0 auto', cursor: 'grab' } },
+    children: [
+      {
+        type: 'Column',
+        $localState: {
+          addOpen: { type: 'boolean', initial: false },
+          renameOpen: { type: 'boolean', initial: false },
+        },
+        props: { width: '300px', bg: 'surface-sunken', border: '1px solid border', r: '400', px: '300', py: '200' },
+        children: [columnHeading(opts), opts.addCardModal ?? addTaskModal, renameModal],
+      },
+    ],
+  };
+}
+
+/** The key of the row for work nobody is on, as `arrangedBoard` names it. */
+const NOBODY = "'nobody'";
+
+/**
+ * The board laid out a row per person: the headings once across the top, then a band per person — and
+ * one for work nobody is on — crossing every column.
+ *
+ * A card several people are on is in each of their rows, which is true, and is why each band says its
+ * own count rather than a share of the column's. Each band's cells trade cards only with each other,
+ * so a drag changes state and never who is on the work; the card's own menu does that, as the claim
+ * it is.
+ *
+ * The gutter is a fixed width so every band's cells line up under the headings, which a board of
+ * 300px columns needs more than it needs the space.
+ */
+function personRows(opts: TaskBoardOptions): SchemaNode {
+  const gutter = '180px';
+  const name = 'find(profileStore.profiles, { did: person }).name';
+  return {
+    type: 'Column',
+    props: { gap: '300', ay: 'start' },
+    children: [
+      {
+        type: 'Row',
+        props: { gap: '400', ay: 'start' },
+        children: [
+          { type: 'div', props: { style: { width: gutter, flex: '0 0 auto' } } },
+          {
+            type: 'we-sortable',
+            props: {
+              direction: 'horizontal',
+              zone: 'columns',
+              group: 'board-columns',
+              gap: 'var(--we-space-400)',
+              ay: 'start',
+              onReorder: { $action: 'spaceStore.reorderBoardColumns', args: [opts.boardId, { $: 'arg.detail' }] },
+            },
+            children: [
+              { type: '$each', props: { items: { $: `${VIEW}.columns` }, as: 'col' }, children: [columnHead(opts)] },
+            ],
+          },
+        ],
+      },
+      {
+        type: '$each',
+        props: { items: { $: `${VIEW}.rows` }, as: 'person' },
+        children: [
+          {
+            type: 'Row',
+            props: { gap: '400', ay: 'stretch' },
+            children: [
+              {
+                type: 'Row',
+                props: { width: gutter, flex: '0 0 auto', gap: '300', ay: 'start', pt: '300' },
+                children: [
+                  {
+                    type: '$if',
+                    props: {
+                      condition: { $: `person == ${NOBODY}` },
+                      then: { type: 'we-icon', props: { name: 'user-circle-dashed', size: 'md', color: 'text-faint' } },
+                      else: {
+                        type: 'we-avatar',
+                        props: {
+                          size: 'sm',
+                          image: { $: 'find(profileStore.profiles, { did: person }).avatar' },
+                          hash: { $: 'person' },
+                        },
+                      },
+                    },
+                  },
+                  {
+                    type: 'Column',
+                    props: { gap: '050', flex: '1', minWidth: '0' },
+                    children: [
+                      {
+                        type: 'we-text',
+                        props: {
+                          fontWeight: 'semibold',
+                          truncate: true,
+                          text: {
+                            $: `person == ${NOBODY} ? 'Nobody yet' : person == me.did ? ${name} + ' (you)' : ${name}`,
+                          },
+                        },
+                      },
+                      {
+                        type: 'we-text',
+                        props: {
+                          variant: 'footnote',
+                          color: 'text-muted',
+                          text: {
+                            $: `\`\${${VIEW}.rowCounts[person]} \${plural(${VIEW}.rowCounts[person], 'card', 'cards')}\``,
+                          },
+                        },
+                      },
+                    ],
+                  },
+                ],
+              },
+              {
+                type: 'Row',
+                props: { gap: '400', ay: 'stretch' },
+                children: [
+                  {
+                    type: '$each',
+                    props: { items: { $: `${VIEW}.columns` }, as: 'col' },
+                    children: [
+                      {
+                        type: 'Column',
+                        props: {
+                          width: '300px',
+                          minHeight: '120px',
+                          flex: '0 0 auto',
+                          gap: '300',
+                          bg: 'surface-sunken',
+                          border: '1px solid border',
+                          r: '400',
+                          p: '300',
+                          ay: 'start',
+                        },
+                        children: [
+                          columnCards(opts, `${VIEW}.cells[person][col.id]`, { $: "'board-cards-' + person" }),
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
   };
 }
 
@@ -969,7 +1312,16 @@ export function taskBoard(opts: TaskBoardOptions): SchemaNode {
   return {
     type: 'Column',
     props: { width: '100%', gap: '300' },
-    $localState: { addColumnOpen: { type: 'boolean', initial: false } },
+    $localState: {
+      addColumnOpen: { type: 'boolean', initial: false },
+      /*
+        Declared on every board, so the one expression every list reads can always name them; a board
+        without `people` simply never changes them, and `arrangedBoard` filters nothing for nobody.
+        The people ride in the address and the mode stays on the device — see `TaskBoardOptions.people`.
+      */
+      boardPeople: { type: 'array', initial: [], ...(opts.people ? { syncParam: 'who' } : {}) },
+      boardShow: { type: 'string', initial: 'dim', ...(opts.people ? { persist: 'board.show' } : {}) },
+    },
     /*
       Three subscriptions for the whole board, read together through `arrangedBoard`.
 
@@ -1012,9 +1364,27 @@ export function taskBoard(opts: TaskBoardOptions): SchemaNode {
         */
         when: { $: 'local.boardLoaded' },
       },
+      /*
+        Who is on what, space-wide. Not scoped to the pool: an involvement is not a child of anything,
+        and the rows are a person's deliberate claims, so there are as many as people have made. Never
+        asked on a board without `people`, which leaves it empty and every card undimmed.
+      */
+      involvements: { entity: 'Involvement', ...(opts.people ? {} : { when: { $: 'false' } }) },
     },
     children: [
       addColumnModal(opts),
+      ...(opts.people
+        ? [
+            peopleFilter({
+              people: 'boardPeople',
+              show: 'boardShow',
+              modes: ['dim', 'hide', 'rows'],
+              matched: { $: `${VIEW}.matchedCount` },
+              total: { $: `${VIEW}.cardCount` },
+              noun: 'card',
+            }),
+          ]
+        : []),
       {
         type: '$if',
         props: {
@@ -1037,36 +1407,47 @@ export function taskBoard(opts: TaskBoardOptions): SchemaNode {
               */
               condition: { $: `count(${VIEW}.columns)` },
               then: {
-                type: 'Row',
-                props: { width: '100%', gap: '400', ay: 'start', overflowX: 'auto' },
-                children: [
-                  {
-                    type: 'we-sortable',
-                    props: {
-                      // The columns are themselves a sortable, in its own group so a card can never
-                      // be dropped among them.
-                      direction: 'horizontal',
-                      zone: 'columns',
-                      group: 'board-columns',
-                      gap: 'var(--we-space-400)',
-                      ay: 'start',
-                      onReorder: {
-                        $action: 'spaceStore.reorderBoardColumns',
-                        args: [opts.boardId, { $: 'arg.detail' }],
-                      },
-                    },
+                type: '$if',
+                props: {
+                  condition: { $: `${VIEW}.show == 'rows'` },
+                  then: {
+                    type: 'Row',
+                    props: { width: '100%', gap: '400', ay: 'start', overflowX: 'auto' },
+                    children: [personRows(opts), ...(opts.lanesOnly ? [] : [unplacedColumn(opts)])],
+                  },
+                  else: {
+                    type: 'Row',
+                    props: { width: '100%', gap: '400', ay: 'start', overflowX: 'auto' },
                     children: [
                       {
-                        type: '$each',
-                        props: { items: { $: `${VIEW}.columns` }, as: 'col' },
-                        children: [column(opts)],
+                        type: 'we-sortable',
+                        props: {
+                          // The columns are themselves a sortable, in its own group so a card can never
+                          // be dropped among them.
+                          direction: 'horizontal',
+                          zone: 'columns',
+                          group: 'board-columns',
+                          gap: 'var(--we-space-400)',
+                          ay: 'start',
+                          onReorder: {
+                            $action: 'spaceStore.reorderBoardColumns',
+                            args: [opts.boardId, { $: 'arg.detail' }],
+                          },
+                        },
+                        children: [
+                          {
+                            type: '$each',
+                            props: { items: { $: `${VIEW}.columns` }, as: 'col' },
+                            children: [column(opts)],
+                          },
+                        ],
                       },
+                      // Outside the sortable, because it is not one of the board's columns: it has no
+                      // record and no id to reorder, and inside it looked draggable and did nothing.
+                      ...(opts.lanesOnly ? [] : [unplacedColumn(opts)]),
                     ],
                   },
-                  // Outside the sortable, because it is not one of the board's columns: it has no
-                  // record and no id to reorder, and inside it looked draggable and did nothing.
-                  ...(opts.lanesOnly ? [] : [unplacedColumn(opts)]),
-                ],
+                },
               },
               else: opts.empty,
             },

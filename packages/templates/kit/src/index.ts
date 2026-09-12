@@ -59,6 +59,8 @@ export type { InstalledListOptions } from './we/installedList.ts';
 export { RECORD_ROUTE_PATH, recordLink } from './we/recordLink.ts';
 export { marketplaceList } from './we/marketplaceList.ts';
 export type { MarketplaceListOptions } from './we/marketplaceList.ts';
+export { peopleFilter } from './we/peopleFilter.ts';
+export type { PeopleFilterMode, PeopleFilterOptions } from './we/peopleFilter.ts';
 export { peopleRow } from './we/peopleRow.ts';
 export { HAS_OFFERED_SIGNAL_TYPES, OFFERED_SIGNAL_TYPES } from './we/signalTypes.ts';
 export {
