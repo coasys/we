@@ -20,6 +20,7 @@
 import { arrangedBoard } from './arrangedBoard';
 import { calendarMonth, calendarMonths, monthLabel, yearLabel } from './calendarMonth';
 import { formatJson } from './formatJson';
+import { involvement } from './involvement';
 
 export interface HostSource {
   /** The name a template calls. */
@@ -73,6 +74,14 @@ export const hostSources: readonly HostSource[] = [
     example:
       'arrangedBoard({ board: first(local.board), columns: local.columns, records: local.pool, states: spaceStore.taskStates }).columns',
     fn: arrangedBoard,
+  },
+  {
+    name: 'involvement',
+    params: ['options'],
+    doc: 'Who is on each record, from the Involvement rows — { byNode, answers, dids }. byNode[recordId] is { people, dids, responsible, reviewing, committed, interested, declined, pairs }: people are { did, kind, name, semantic, reflexive, icon, color }; the five lists are DIDs grouped by what each kind means, so a renamed or added kind still lands in the right one; dids is everyone not declined; pairs is every "did|kind" present, for a menu tick with `in`. answers[recordId] is the viewer\u2019s own reflexive answer (going, maybe, …). Options: rows (an Involvement query), types (spaceStore.involvementTypes), me (me.did).',
+    example:
+      'involvement({ rows: local.involvements, types: spaceStore.involvementTypes, me: me.did }).byNode[card.id].responsible',
+    fn: involvement,
   },
   {
     name: 'formatJson',

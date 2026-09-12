@@ -10,6 +10,14 @@ import {
 import { datasetAddressedBy } from '@shared/datasetIdentity';
 import { buildGuestLink } from '@shared/guestLink';
 import { containmentPredicate, gatherTranscriptTurns, type TurnRecord } from '@shared/interpretation/transcriptTurns';
+import { involvementOptimism } from '@shared/involvementOptimism';
+import {
+  createInvolvementActions,
+  INVOLVEMENT_SEMANTICS,
+  type InvolvementTypeView,
+  parseAppliesTo,
+  resolveInvolvementTypes,
+} from '@shared/involvements';
 import {
   clearSetting,
   type LevelValues,
@@ -66,6 +74,8 @@ import {
   type FileData,
   FOLLOW_SPACE,
   getEntitiesForPerspective,
+  type InvolvementSemantic,
+  InvolvementType,
   LocationBlock,
   MutedAgent,
   PREDICATES,
@@ -479,6 +489,16 @@ export interface SpaceStore {
   offeredTaskStates: Accessor<TaskStateView[]>;
   /** The space has been asked for its states. An empty list is otherwise "not fetched yet". */
   taskStatesLoaded: Accessor<boolean>;
+  /**
+   * The kinds of part a person can have in a record — assigned, reviewing, going, maybe — the
+   * space's own where it has named any, otherwise the defaults. Includes withdrawn kinds, so an
+   * involvement somebody still holds resolves; offer `offeredInvolvementTypes` instead.
+   */
+  involvementTypes: Accessor<InvolvementTypeView[]>;
+  /** The same list without the withdrawn ones — what an assign menu or an RSVP control offers. */
+  offeredInvolvementTypes: Accessor<InvolvementTypeView[]>;
+  /** The space has been asked for its kinds. */
+  involvementTypesLoaded: Accessor<boolean>;
   /** Options for the per-space template override picker, including a "follow the space" entry. */
   templateOverrideOptions: Accessor<{ label: string; value: string }[]>;
   /** Options for the per-space theme override picker, including a "follow the space" entry. */
@@ -812,6 +832,30 @@ export interface SpaceStore {
    * By slug, since a default has no id until it is placed in an order, which adopts it.
    */
   reorderTaskStates: (orderedSlugs: string[]) => Promise<void>;
+  /**
+   * Put somebody on a record, or take them off, as a kind one member says about another — assigning
+   * a task. `on` is the state wanted rather than a toggle, so a menu passes the opposite of the tick
+   * it shows. A reflexive kind is only ever the agent's own answer, and is refused for anybody else.
+   */
+  setInvolvement: (nodeId: string, agent: string, kind: string, on: boolean) => Promise<void>;
+  /** This agent's own answer to a record — going, maybe, not going — replacing any other; `''` withdraws it. */
+  respondTo: (nodeId: string, kind: string) => Promise<void>;
+  /** Name a kind of part people can have. One with a default's slug adopts that default. */
+  createInvolvementType: (config: {
+    name: string;
+    semantic?: InvolvementSemantic;
+    reflexive?: boolean;
+    appliesTo?: string;
+    icon?: string;
+    color?: string;
+  }) => Promise<void>;
+  /** Change a kind's name, look or meaning. By slug, which it cannot change; an empty string clears. */
+  updateInvolvementType: (
+    slug: string,
+    updates: { name?: string; icon?: string; color?: string; semantic?: InvolvementSemantic; appliesTo?: string },
+  ) => Promise<void>;
+  /** Withdraw a kind from use, or bring it back — never touching anybody who holds it. */
+  setInvolvementTypeRetired: (slug: string, retired: boolean) => Promise<void>;
   upsertSignal: (nodeId: string, signalTypeId: string, value: number) => Promise<void>;
   navigateToSpace: (spaceId: string, view?: string) => Promise<void>;
   openRecordRef: (ref: string) => Promise<void>;
@@ -2813,6 +2857,182 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   /*
+    ── Involvements ─────────────────────────────────────────────────────────────────────────────
+
+    Who is on what. The vocabulary is loaded here, virtual defaults and all, for the reason task
+    states are: a template can filter a list it was handed and cannot substitute one it was not. The
+    involvements themselves are not — they change with every click anybody makes, so a template holds
+    them in a live query and reads them through the `involvement` host function. What a write *means*
+    lives in `involvements.ts`.
+  */
+  const [ownInvolvementTypes, setOwnInvolvementTypes] = createSignal<InvolvementTypeView[]>([]);
+  const [involvementTypesLoaded, setInvolvementTypesLoaded] = createSignal(false);
+
+  async function loadInvolvementTypes(): Promise<void> {
+    const dataset = datasetStore.currentDataset()?.handle;
+    const uuid = datasetStore.currentDataset()?.id;
+    const ports = session.backendPorts()?.schemas;
+    if (!dataset || !ports || !datasetStore.isWeSpace()) {
+      setOwnInvolvementTypes([]);
+      setInvolvementTypesLoaded(true);
+      return;
+    }
+    setInvolvementTypesLoaded(false);
+    try {
+      // Every space predates the entity; `ensure` is the diff-first install `loadTaskStates` uses.
+      await ports.ensure(dataset, InvolvementType as never);
+      const records = (await InvolvementType.findAll(dataset)) as InvolvementType[];
+      if (datasetStore.currentDataset()?.id !== uuid) return;
+      const stamp = (r: InvolvementType) =>
+        String((r as unknown as { timestamp?: unknown; createdAt?: unknown }).timestamp ?? r.createdAt ?? '');
+      setOwnInvolvementTypes(
+        [...records]
+          .sort((a, b) => stamp(a).localeCompare(stamp(b)))
+          .map((r) => ({
+            id: r.id,
+            name: r.name || r.slug,
+            slug: r.slug || deriveSlug(r.name || ''),
+            semantic: (INVOLVEMENT_SEMANTICS.includes(r.semantic) ? r.semantic : 'responsible') as InvolvementSemantic,
+            reflexive: Boolean(r.reflexive),
+            appliesTo: parseAppliesTo(r.appliesTo),
+            icon: r.icon || '',
+            color: r.color || '',
+            retired: Boolean(r.retired),
+            defined: true,
+          })),
+      );
+    } catch (error) {
+      console.warn('SpaceStore: could not read involvement types', error);
+      if (datasetStore.currentDataset()?.id === uuid) setOwnInvolvementTypes([]);
+    } finally {
+      if (datasetStore.currentDataset()?.id === uuid) setInvolvementTypesLoaded(true);
+    }
+  }
+
+  createEffect(() => {
+    void datasetStore.currentDataset()?.id;
+    // A hold is a promise about records on the screen being left; see `involvementOptimism.reset`.
+    involvementOptimism.reset();
+    void loadInvolvementTypes();
+  });
+
+  const involvementTypes = createMemo<InvolvementTypeView[]>(() => resolveInvolvementTypes(ownInvolvementTypes()));
+  const offeredInvolvementTypes = createMemo<InvolvementTypeView[]>(() =>
+    involvementTypes().filter((kind) => !kind.retired),
+  );
+
+  const involvements = createInvolvementActions({
+    dataset: () => datasetStore.currentDataset()?.handle,
+    me: () => session.me()?.did,
+    types: () => involvementTypes(),
+    notify: (message) => toastService.error(message),
+    ...involvementOptimism.ports,
+  });
+
+  /**
+   * The record behind a kind, writing a default down first if that is all it is — `adoptTaskState`'s
+   * rule: editing or withdrawing a default is the act that makes it the community's own.
+   */
+  async function adoptInvolvementType(p: DatasetProxy, slug: string): Promise<InvolvementType | null> {
+    const existing = (await InvolvementType.findAll(p, { where: { slug } }).catch(() => [])) as InvolvementType[];
+    if (existing.length) return existing[0];
+    const fallback = involvementTypes().find((kind) => kind.slug === slug && !kind.defined);
+    if (!fallback) return null;
+    return (await InvolvementType.create(p, {
+      name: fallback.name,
+      slug: fallback.slug,
+      semantic: fallback.semantic,
+      reflexive: fallback.reflexive,
+      appliesTo: fallback.appliesTo.join(','),
+      icon: fallback.icon,
+      color: fallback.color,
+    })) as InvolvementType;
+  }
+
+  /**
+   * Name a kind of part — "Shepherd", "Second pair of eyes".
+   *
+   * Refused for a slug the community already wrote, since two records with one slug are one kind to
+   * everybody holding it. `reflexive` is fixed at creation and not offered for editing: turning an
+   * assignment into an answer would leave every existing one claiming somebody said something they
+   * never said.
+   */
+  async function createInvolvementType(config: {
+    name: string;
+    semantic?: InvolvementSemantic;
+    reflexive?: boolean;
+    appliesTo?: string;
+    icon?: string;
+    color?: string;
+  }): Promise<void> {
+    const p = datasetStore.currentDataset()?.handle;
+    if (!p || !config?.name?.trim()) return;
+    try {
+      const slug = deriveSlug(config.name);
+      if (ownInvolvementTypes().some((kind) => kind.slug === slug)) {
+        toastService.error(`A kind called "${config.name}" already exists`);
+        return;
+      }
+      await InvolvementType.create(p, {
+        name: config.name.trim(),
+        slug,
+        semantic: INVOLVEMENT_SEMANTICS.includes(config.semantic as InvolvementSemantic)
+          ? config.semantic
+          : 'responsible',
+        reflexive: Boolean(config.reflexive),
+        appliesTo: parseAppliesTo(config.appliesTo ?? '').join(','),
+        icon: config.icon ?? '',
+        color: config.color ?? '',
+      });
+      await loadInvolvementTypes();
+    } catch (error) {
+      console.error('SpaceStore: could not create involvement type', error);
+      toastService.error('Could not add that kind');
+    }
+  }
+
+  /** Change a kind — see `updateTaskState` for why the slug is absent and an empty string clears. */
+  async function updateInvolvementType(
+    slug: string,
+    updates: { name?: string; icon?: string; color?: string; semantic?: InvolvementSemantic; appliesTo?: string },
+  ): Promise<void> {
+    const p = datasetStore.currentDataset()?.handle;
+    if (!p || !slug || !updates) return;
+    try {
+      const record = await adoptInvolvementType(p, slug);
+      if (!record) return;
+      if (updates.name !== undefined && updates.name.trim()) record.name = updates.name.trim();
+      if (updates.icon !== undefined) record.icon = updates.icon;
+      if (updates.color !== undefined) record.color = updates.color;
+      if (updates.appliesTo !== undefined) record.appliesTo = parseAppliesTo(updates.appliesTo).join(',');
+      if (updates.semantic !== undefined && INVOLVEMENT_SEMANTICS.includes(updates.semantic)) {
+        record.semantic = updates.semantic;
+      }
+      await record.save();
+      await loadInvolvementTypes();
+    } catch (error) {
+      console.error('SpaceStore: could not update involvement type', error);
+      toastService.error('Could not save that change');
+    }
+  }
+
+  /** Withdraw a kind, or bring it back — `setTaskStateRetired`'s decision, one vocabulary along. */
+  async function setInvolvementTypeRetired(slug: string, retired: boolean): Promise<void> {
+    const p = datasetStore.currentDataset()?.handle;
+    if (!p || !slug) return;
+    try {
+      const record = await adoptInvolvementType(p, slug);
+      if (!record) return;
+      record.retired = retired;
+      await record.save();
+      await loadInvolvementTypes();
+    } catch (error) {
+      console.error('SpaceStore: could not update involvement type', error);
+      toastService.error('Could not update that kind');
+    }
+  }
+
+  /*
     ── Module settings ──────────────────────────────────────────────────────────────────────────
 
     The four levels a capability's settings resolve through, read from the four places they live.
@@ -4305,6 +4525,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     taskStates,
     offeredTaskStates,
     taskStatesLoaded,
+    involvementTypes,
+    offeredInvolvementTypes,
+    involvementTypesLoaded,
     installedModules,
     requiredModules,
     missingModules,
@@ -4375,6 +4598,11 @@ export function SpaceStoreProvider(props: ParentProps) {
     updateTaskState,
     setTaskStateRetired,
     reorderTaskStates,
+    setInvolvement: involvements.setInvolvement,
+    respondTo: involvements.respond,
+    createInvolvementType,
+    updateInvolvementType,
+    setInvolvementTypeRetired,
     upsertSignal,
     navigateToSpace,
     openRecordRef,

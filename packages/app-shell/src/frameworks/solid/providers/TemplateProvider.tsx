@@ -1,5 +1,7 @@
 import { boardOptimism } from '@shared/boardOptimism';
 import { datasetAddressedBy } from '@shared/datasetIdentity';
+import { involvementOptimism } from '@shared/involvementOptimism';
+import { relationId } from '@shared/involvements';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { resolveParts, resolvePartsInRoutes } from '@shared/registries/moduleParts';
 import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry';
@@ -7,10 +9,21 @@ import { onSlotRegistryChanged, slotRegistry } from '@shared/registries/slotRegi
 import { provideTemplateBag } from '@shared/registries/templateBag';
 import { buildTemplateBag, CHROME_TIER, SPACE_TIER } from '@shared/registries/templateSurface';
 import { hostSourceBag } from '@shared/sources';
+import type { InvolvementRowInput } from '@shared/sources/involvement';
 
 /** A relation comes back as ids or as hydrated rows; read either, the way `arrangedBoard` does. */
 const idOf = (entry: unknown): string =>
   typeof entry === 'string' ? entry : String((entry as { id?: unknown } | null)?.id ?? '');
+
+/** Whether the rows a surface drew from hold a pair — what `involvementOptimism.settle` asks. */
+const observeInvolvements = (rows: unknown) => {
+  const present = new Set(
+    (Array.isArray(rows) ? (rows as InvolvementRowInput[]) : []).map(
+      (row) => `${relationId(row?.node)}\u0000${row?.agent ?? ''}\u0000${row?.kind ?? ''}`,
+    ),
+  );
+  return (node: string, agent: string, kind: string) => present.has(`${node}\u0000${agent}\u0000${kind}`);
+};
 
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
 import {
@@ -396,6 +409,18 @@ export default function TemplateProvider() {
       }
 
       queueMicrotask(() => boardOptimism.settle((id, relation) => rows.get(`${id}.${relation}`)));
+      return view;
+    },
+    /*
+      Who is on what, with the answers somebody gave and the data has not carried back yet — the
+      same two halves as the board above, for the same reason. The rows the view was drawn from are
+      reported, so a hold is released the moment they have overtaken it rather than when the write's
+      promise settles.
+    */
+    involvement: (options: unknown) => {
+      const given = (options ?? {}) as { rows?: unknown };
+      const view = sources.involvement({ ...given, pending: involvementOptimism.overlay() });
+      queueMicrotask(() => involvementOptimism.settle(observeInvolvements(given.rows)));
       return view;
     },
   };

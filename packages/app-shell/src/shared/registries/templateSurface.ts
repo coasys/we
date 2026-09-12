@@ -413,6 +413,16 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     taskStates: state('content'),
     offeredTaskStates: state('content'),
     taskStatesLoaded: state('content'),
+    /*
+      Who is on what. Reading the kinds is `content` for the reason reading states is. Giving your own
+      answer and assigning somebody are content too — any member may do either, as any member may drag
+      a card — and the store is what refuses one member answering for another, not this table.
+    */
+    involvementTypes: state('content'),
+    offeredInvolvementTypes: state('content'),
+    involvementTypesLoaded: state('content'),
+    setInvolvement: action('content'),
+    respondTo: action('content'),
     mutedDids: state('content'),
     mutedAgents: state('content'),
     setAgentMuted: action('content'),
@@ -461,6 +471,10 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     updateTaskState: action('signals'),
     setTaskStateRetired: action('signals'),
     reorderTaskStates: action('signals'),
+    // The fourth vocabulary of the family, and the same act as naming a state.
+    createInvolvementType: action('signals'),
+    updateInvolvementType: action('signals'),
+    setInvolvementTypeRetired: action('signals'),
 
     // ── navigation ──
     spaceList: state('navigation'),
