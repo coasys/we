@@ -5,5 +5,6 @@ export default defineConfig({
   plugins: [solidPlugin()],
   test: {
     environment: 'happy-dom',
+    setupFiles: ['./tests/setup.ts'],
   },
 });

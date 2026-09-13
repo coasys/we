@@ -7,7 +7,7 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 
-import { acquireSubscription } from '../src/subscriptionPool';
+import { acquireSubscription, subscriptionPoolConfig } from '../src/subscriptionPool';
 
 const tick = () => new Promise<void>((r) => setTimeout(r, 0));
 
@@ -57,6 +57,37 @@ describe('a shared subscription', () => {
     builders[0].push([{ id: 'i1' }, { id: 'i2' }]);
     expect(a).toHaveBeenLastCalledWith([{ id: 'i1' }, { id: 'i2' }]);
     expect(b).toHaveBeenLastCalledWith([{ id: 'i1' }, { id: 'i2' }]);
+  });
+
+  it('shares by entity name, whatever object the host wraps the model in', async () => {
+    // The AD4M bindings build a fresh wrapper on every lookup; keyed by object, nothing ever matched.
+    const { Model, builders } = model();
+    const wrap = () => ({
+      query: (dataset: unknown, options: Record<string, unknown>) =>
+        (Model.query as (...args: unknown[]) => unknown)(dataset, options),
+    });
+    const kanban = vi.fn();
+    acquireSubscription(wrap(), dataset, question, kanban, vi.fn(), 'Involvement');
+    acquireSubscription(wrap(), dataset, question, vi.fn(), vi.fn(), 'Involvement');
+    expect(Model.query).toHaveBeenCalledTimes(1);
+    builders[0].answer([]);
+    await tick();
+    builders[0].push([{ id: 'i1' }]);
+    expect(kanban).toHaveBeenLastCalledWith([{ id: 'i1' }]);
+  });
+
+  it('keeps a subscription nobody holds for its grace period', async () => {
+    subscriptionPoolConfig.releaseGraceMs = 30;
+    const { Model, builders } = model();
+    const release = acquireSubscription(Model, dataset, question, vi.fn(), vi.fn(), 'Involvement');
+    builders[0].answer([]);
+    await tick();
+    release();
+    await tick();
+    // A panel remounting a moment later finds it still there.
+    acquireSubscription(Model, dataset, question, vi.fn(), vi.fn(), 'Involvement');
+    expect(Model.query).toHaveBeenCalledTimes(1);
+    expect(builders[0].dispose).not.toHaveBeenCalled();
   });
 
   it('stays live for the others when one lets go', async () => {

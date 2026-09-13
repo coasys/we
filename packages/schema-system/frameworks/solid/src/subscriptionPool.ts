@@ -18,12 +18,21 @@
  * left asking. Keeping the count on this side is the fix that does not wait on the executor; the
  * executor counting its own holders is the fix that covers callers outside the renderer.
  *
+ * ## Keyed by what is asked, never by the object asking
+ *
+ * Entity name, dataset id, and the question as JSON. The first version keyed on the model object, and
+ * shared nothing in the app: the AD4M bindings hand the renderer a fresh wrapper around a model class
+ * on every `$getEntity` call, so no two queries — not even one query's own re-runs — ever matched, and
+ * the collision above went on silencing the kanban. The tests passed because a mock model is one
+ * object.
+ *
  * ## Two timing rules
  *
- * - **Release is deferred a microtask.** An effect that re-runs with the same question releases and
- *   re-acquires in one synchronous pass; disposing in between would send the executor a dispose and a
- *   subscribe for the same id at once, and whichever it handles second decides whether the query is
- *   live.
+ * - **Release waits a grace period.** An effect that re-runs with the same question releases and
+ *   re-acquires in one pass, and a panel remounting does so a frame apart; disposing in between sends
+ *   the executor a dispose and a subscribe for the same id at once, and whichever it handles second
+ *   decides whether the query is live. Held for {@link subscriptionPoolConfig}`.releaseGraceMs`, a
+ *   question asked again soon is simply still there.
  * - **A dispose before the answer is repeated after it.** `ModelQueryBuilder.subscribe` only records
  *   what to dispose once its first round trip returns, so a dispose issued before then does nothing
  *   and the subscription outlives everyone who asked for it.
@@ -52,8 +61,16 @@ interface Entry {
   disposed: boolean;
 }
 
-/** Keyed by model, then by dataset handle, then by the question as JSON. Emptied as entries go. */
+/** How long a subscription nobody holds is kept for somebody to ask again. Tests set it to 0. */
+export const subscriptionPoolConfig = { releaseGraceMs: 1500 };
+
+/** Keyed by entity, then by dataset id, then by the question as JSON. Emptied as entries go. */
 const pool = new Map<unknown, Map<unknown, Map<string, Entry>>>();
+
+/** Forget every shared subscription without disposing any — for a test's isolation, never the app. */
+export function resetSubscriptionPool(): void {
+  pool.clear();
+}
 
 /** A dataset by its id where it has one — a handle may be rebuilt for the same dataset between reads. */
 function datasetKey(dataset: unknown): unknown {
@@ -93,12 +110,15 @@ export function acquireSubscription(
   options: Record<string, unknown>,
   onRows: (rows: Rows) => void,
   onError: (err: unknown) => void,
+  entityName = '',
 ): () => void {
   const listener: Listener = { onRows, onError };
   const key = questionKey(options);
   const at = datasetKey(dataset);
+  // The name where there is one — see "Keyed by what is asked". The object, for a caller with no name.
+  const kind: unknown = entityName || model;
 
-  let entry = key === null ? undefined : pool.get(model)?.get(at)?.get(key);
+  let entry = key === null ? undefined : pool.get(kind)?.get(at)?.get(key);
   if (entry && !entry.disposed) {
     entry.listeners.add(listener);
     const joined = entry;
@@ -120,8 +140,8 @@ export function acquireSubscription(
     };
     entry = created;
     if (key !== null) {
-      let byDataset = pool.get(model);
-      if (!byDataset) pool.set(model, (byDataset = new Map()));
+      let byDataset = pool.get(kind);
+      if (!byDataset) pool.set(kind, (byDataset = new Map()));
       let byQuestion = byDataset.get(at);
       if (!byQuestion) byDataset.set(at, (byQuestion = new Map()));
       byQuestion.set(key, created);
@@ -160,10 +180,12 @@ export function acquireSubscription(
     released = true;
     held.listeners.delete(listener);
     if (held.listeners.size) return;
-    queueMicrotask(() => {
+    const letGo = () => {
       if (held.listeners.size || held.disposed) return;
-      if (key !== null) forget(model, at, key, held);
+      if (key !== null) forget(kind, at, key, held);
       dispose(held);
-    });
+    };
+    if (subscriptionPoolConfig.releaseGraceMs > 0) setTimeout(letGo, subscriptionPoolConfig.releaseGraceMs);
+    else queueMicrotask(letGo);
   };
 }
