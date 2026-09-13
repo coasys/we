@@ -240,7 +240,7 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
             prop:hoverProps={{ color: 'neutral-500' }}
           >
             <we-icon name={collapsed() ? 'caret-right' : 'caret-down'} size="xs" />
-            <we-text fontSize="100" fontWeight="semibold" letterSpacing="wide" uppercase>
+            <we-text fontSize="100" letterSpacing="wide" uppercase>
               {getGroup().label}
             </we-text>
           </we-menu-item>
@@ -249,7 +249,7 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
         {/* Non-collapsible header */}
         <Show when={getGroup().collapsible === false}>
           <we-menu-item color="text-muted" cursor="default" pointerEvents="none">
-            <we-text fontSize="100" fontWeight="semibold" letterSpacing="wide" uppercase>
+            <we-text fontSize="100" letterSpacing="wide" uppercase>
               {getGroup().label}
             </we-text>
           </we-menu-item>
