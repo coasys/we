@@ -524,7 +524,10 @@ export class GraphEngine {
 
     // Claimed before anything is released, so a node that was previously held only by an expansion
     // and now also answers the seed query is not briefly unheld.
-    const change = this.store.merge({ nodes, edges: fragment.edges });
+    //
+    // The seeds are a fresh read of every node they return, so their data replaces what is held
+    // rather than merging into it — a key a seed has stopped writing is a key that is no longer true.
+    const change = this.store.merge({ nodes, edges: fragment.edges }, { replaceData: true });
     this.expansion.attribute(SEED_OPENER, seedNodes, seedEdges);
 
     const released = this.expansion.releaseFrom(SEED_OPENER, seedNodes, seedEdges);

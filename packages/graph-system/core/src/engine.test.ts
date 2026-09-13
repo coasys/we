@@ -5,7 +5,7 @@
  * collapse round-tripping — is testable without mounting anything. If any of this needed a browser to
  * verify, the layering would have failed.
  */
-import type { Expander, ExpanderContext, SeedSource } from '@we/graph-protocol';
+import type { Expander, ExpanderContext, GraphValue, SeedSource } from '@we/graph-protocol';
 import { describe, expect, it, vi } from 'vitest';
 
 import { GraphEngine } from './engine';
@@ -1564,6 +1564,46 @@ describe('restarting the same graph keeps the arrangement', () => {
     expect(engine.getPositions().get('seed-0')).toMatchObject({ x: 123, y: 456 });
     expect(engine.isPinned('seed-0')).toBe(true);
     expect(engine.getSelection()).toEqual(['seed-1']);
+  });
+
+  it('drops a data key the seeds stopped writing', async () => {
+    /*
+      The canvas seed writes `pending: true` only while a card is a suggestion. Accepting one
+      restarted the graph with the key absent, the restart merged into the node on screen, and the
+      old `true` survived — the card stayed faded until the graph was remounted.
+    */
+    let pending = true;
+    const seed: SeedSource = {
+      id: 'test',
+      async seed() {
+        return {
+          nodes: [
+            {
+              id: 'card',
+              kind: 'entity' as const,
+              type: 'Thing',
+              label: 'card',
+              data: (pending ? { pending: true } : {}) as Record<string, GraphValue>,
+            },
+          ],
+          edges: [],
+        };
+      },
+    };
+    const registry = new PluginRegistry({ seeds: [seed], layouts });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+    await engine.start();
+    expect(engine.store.node('card')?.data).toEqual({ pending: true });
+
+    pending = false;
+    await engine.start();
+    expect(engine.store.node('card')?.data).toEqual({});
+
+    pending = true;
+    await engine.refresh();
+    pending = false;
+    await engine.refresh();
+    expect(engine.store.node('card')?.data?.pending).toBeUndefined();
   });
 
   it('starts clean when the seeds return a different graph', async () => {
