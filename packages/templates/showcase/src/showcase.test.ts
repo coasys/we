@@ -17,6 +17,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import type { SchemaNode, TemplatePanel } from '@we/schema-shared';
+import { evaluateExpression, listFunctions, parseExpression } from '@we/schema-shared';
 import { STATE_FILLS, stateIcon } from '@we/template-kit';
 import { describe, expect, it } from 'vitest';
 
@@ -1392,5 +1393,154 @@ describe('the workshop’s people', () => {
     // Hiding is offered; a row per person is a board's layout, and a calendar has no rows to lay out.
     expect(calendar).toContain('Hide others');
     expect(calendar).not.toContain('Row per person');
+  });
+});
+
+describe('the inspector’s connections', () => {
+  const workshop = showcase.workshopTemplate as Schema & { meta?: { panels?: TemplatePanel[] } };
+  const inspector = workshop.meta?.panels?.find((entry) => entry.id === 'inspector')?.node;
+  const json = JSON.stringify(inspector);
+
+  /** The `items` expression of the `$each` binding `as` — found by walking, not by exporting. */
+  function itemsOf(as: string): string {
+    let found: string | undefined;
+    const walk = (value: unknown): void => {
+      if (found || typeof value !== 'object' || value === null) return;
+      const node = value as { type?: string; props?: { as?: string; items?: { $?: string } } };
+      if (node.type === '$each' && node.props?.as === as && node.props.items?.$) {
+        found = node.props.items.$;
+        return;
+      }
+      Object.values(value).forEach(walk);
+    };
+    walk(inspector);
+    if (!found) throw new Error(`no $each as "${as}" in the inspector`);
+    return found;
+  }
+
+  /** Evaluate against a scope of plain objects — the same evaluator the renderer runs. */
+  function evaluate(source: string, scope: Record<string, unknown>): unknown {
+    return evaluateExpression(parseExpression(source), {
+      root: (name: string) => (name in scope ? { bound: true, value: scope[name] } : { bound: false }),
+      call: (name: string, args: unknown[]) =>
+        listFunctions()
+          .find((f) => f.name === name)
+          ?.impl(args, {} as never),
+    } as never);
+  }
+
+  const displays = {
+    TaskBlock: { label: 'Task', icon: 'check-square', title: 'title' },
+    EventBlock: { label: 'Event', icon: 'calendar', title: 'title' },
+    CollectionBlock: { label: 'Collection', icon: 'folder', title: 'title' },
+  };
+  const kinds = [
+    { id: 'k-blocks', name: 'blocks', inverseName: 'is blocked by', directed: true, color: '#d33' },
+    { id: 'k-same', name: 'same as', directed: false },
+  ];
+  const scopeFor = (connections: unknown[], link: unknown[] = []) => ({
+    local: { connections, link, relationshipKinds: kinds },
+    routeStore: { params: { card: 'me' } },
+    recordStore: { displays },
+  });
+
+  it('asks for the card’s connections at either end, with both ends hydrated', () => {
+    // Native on AD4M: each arm is a triple pattern on the relation's predicate, the OR a UNION.
+    expect(json).toContain(
+      '"where":{"OR":[{"source":{"$":"routeStore.params.card"}},{"target":{"$":"routeStore.params.card"}}]}',
+    );
+    expect(json).toContain('"include":{"source":true,"target":true}');
+  });
+
+  it('reads every row from this card’s side of the line', () => {
+    const rows = evaluate(
+      itemsOf('conn'),
+      scopeFor([
+        // Outgoing, with a kind: its name, pointing away.
+        {
+          id: 'r1',
+          source: { id: 'me' },
+          target: { id: 't2', title: 'Ship the docs' },
+          sourceType: 'TaskBlock',
+          targetType: 'TaskBlock',
+          relationshipTypeId: 'k-blocks',
+        },
+        // Incoming, with the same kind: its inverse, pointing back.
+        {
+          id: 'r2',
+          source: { id: 'e1', title: 'Standup' },
+          target: { id: 'me' },
+          sourceType: 'EventBlock',
+          targetType: 'TaskBlock',
+          relationshipTypeId: 'k-blocks',
+        },
+        // Undirected kind: both ways, whichever end this card is.
+        {
+          id: 'r3',
+          source: { id: 'n1', textContent: 'Draft plan' },
+          target: { id: 'me' },
+          sourceType: 'CollectionBlock',
+          relationshipTypeId: 'k-same',
+        },
+        // Label only, and no stored types — an extraction pass's connection. The type comes from the
+        // hydrated end, and the end arrived as a bare id rather than a record.
+        { id: 'r4', source: 'me', target: { id: 't3', __subjectClass: 'TaskBlock' }, label: 'came out of' },
+        // The far end is gone.
+        { id: 'r5', source: { id: 'me' }, target: null, targetType: 'TaskBlock' },
+      ]),
+    ) as Record<string, unknown>[];
+
+    expect(rows.map((row) => [row.arrow, row.verb, row.name, row.otherId, row.otherType])).toEqual([
+      ['arrow-right', 'blocks', 'Ship the docs', 't2', 'TaskBlock'],
+      ['arrow-left', 'is blocked by', 'Standup', 'e1', 'EventBlock'],
+      ['arrows-left-right', 'same as', 'Draft plan', 'n1', 'CollectionBlock'],
+      ['arrow-right', 'came out of', 'Task', 't3', 'TaskBlock'],
+      // No id to open, which is what disables the row's button: the connection is shown, and so is
+      // the fact that what it pointed at is gone.
+      ['arrow-right', undefined, 'Removed', null, 'TaskBlock'],
+    ]);
+    // The kind's colour travels with the row, for the arrow.
+    expect(rows[0].tint).toBe('#d33');
+  });
+
+  it('falls back to the kind’s name for an incoming row whose kind names no inverse', () => {
+    // "same as" has no `inverseName`, so an incoming row reads the name itself — not blank.
+    const [row] = evaluate(
+      itemsOf('conn'),
+      scopeFor([{ id: 'r1', source: { id: 'o', title: 'Other' }, target: { id: 'me' }, relationshipTypeId: 'k-same' }]),
+    ) as Record<string, unknown>[];
+    expect(row.verb).toBe('same as');
+  });
+
+  it('names both ends of a selected line', () => {
+    const ends = evaluate(
+      itemsOf('end'),
+      scopeFor(
+        [],
+        [
+          {
+            id: 'r1',
+            source: { id: 't1', title: 'Write it' },
+            target: { id: 'e1', __subjectClass: 'EventBlock', title: 'Review' },
+            sourceType: 'TaskBlock',
+          },
+        ],
+      ),
+    ) as Record<string, unknown>[];
+
+    expect(ends.map((end) => [end.role, end.name, end.id, end.type, end.icon])).toEqual([
+      ['From', 'Write it', 't1', 'TaskBlock', 'check-square'],
+      ['To', 'Review', 'e1', 'EventBlock', 'calendar'],
+    ]);
+    // And nothing at all until the line's own query has answered.
+    expect(evaluate(itemsOf('end'), scopeFor([], []))).toEqual([]);
+  });
+
+  it('opens a row by writing the address the canvas follows', () => {
+    // The panel cannot reach the canvas's locals; the address is the one thing both can see, and the
+    // canvas binds `focus` to it — so a row opened here is selected and brought into view there.
+    expect(json).toContain('{"$action":"routeStore.setParam","args":["card",{"$":"conn.otherId"}]}');
+    expect(json).toContain('{"$action":"routeStore.setParam","args":["cardType","Relationship"]}');
+    expect(JSON.stringify(workshop)).toContain('"focus":{"$":"routeStore.params.card"}');
   });
 });

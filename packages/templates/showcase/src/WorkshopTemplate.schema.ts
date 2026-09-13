@@ -1064,6 +1064,306 @@ const emptyFields: SchemaNode = {
   },
 };
 
+/** The selected record's id — what the connection queries ask about. */
+const CARD_ID = 'routeStore.params.card';
+
+/**
+ * What to call the record at one end of a connection, as an expression over that end and its type.
+ *
+ * The same chain the rest of the panel uses, in the order it can fail. An end that is gone — a card
+ * deleted after the line was drawn — reads as that, rather than as a type name that implies there is
+ * something to open. Then the model's own title property, then a note's text (a note is a
+ * `CollectionBlock` whose substance is its content, so its title is usually empty and three
+ * connections to "Note" would say nothing), then the kind's own name as the floor.
+ */
+function endName(end: string, type: string): string {
+  const title = `${end}[recordStore.displays[${type}].title]`;
+  return `(!${end} ? 'Removed' : ${title} ? ${title} : ${end}.textContent ? ${end}.textContent : ${kindLabel(type)})`;
+}
+
+/**
+ * The type of the record at one end: the one stored on the connection, else the one the end reports.
+ *
+ * Stored first because a writer that recorded it meant it — see `reifiedEdgeFrom`. The fallback is
+ * for connections an extraction pass wrote without `sourceType`/`targetType`: the end then arrives
+ * hydrated and classified, carrying `__subjectClass`, which is the key the executor writes and the
+ * graph reads (`NODE_TYPE_KEY`).
+ */
+function endType(stored: string, end: string): string {
+  return `(${stored} ? ${stored} : ${end}.__subjectClass)`;
+}
+
+/**
+ * A card's connections, as rows ready to draw — one `map` per step, so each step names what it adds.
+ *
+ * Chained rather than written as one object, because a comprehension binds one name and every field
+ * after the first needs the ones before it: which end is *this* card decides which is the other, and
+ * the other decides the name, the icon and where a click goes. A literal inlining all of that would
+ * repeat the direction test a dozen times.
+ *
+ * - **Direction** compares the source end with the selected id. An end arrives as a hydrated record
+ *   or as a bare id depending on what the backend could hydrate, so it reads `.id` and falls back to
+ *   the value itself — the same tolerance `reverseLookup` has. The parentheses matter: `??` binds more
+ *   loosely than `==`.
+ * - **The verb** reads from this card's side. Outgoing is the kind's name; incoming is its
+ *   `inverseName` where the community gave one — "is blocked by" rather than "blocks" pointing the
+ *   wrong way — and a label-only connection, which has no inverse to offer, shows its label and lets
+ *   the arrow carry the direction.
+ * - **The arrow** is `↔` for a kind declared undirected, and otherwise which way the line runs.
+ */
+const CONNECTION_ROWS = [
+  'local.connections',
+  `.map(link, { link: link, out: (link.source.id ?? link.source) == ${CARD_ID} })`,
+  '.map(c, { link: c.link, out: c.out, other: c.out ? c.link.target : c.link.source, stored: c.out ? c.link.targetType : c.link.sourceType, kind: find(local.relationshipKinds, { id: c.link.relationshipTypeId }) })',
+  `.map(c, { link: c.link, out: c.out, other: c.other, kind: c.kind, type: ${endType('c.stored', 'c.other')} })`,
+  [
+    '.map(c, { ',
+    'id: c.link.id, ',
+    'otherId: c.other.id ?? c.other, ',
+    'otherType: c.type, ',
+    `name: ${endName('c.other', 'c.type')}, `,
+    `icon: ${kindIcon('c.type')}, `,
+    'verb: c.out ? (c.kind.name ? c.kind.name : c.link.label) : (c.kind.inverseName ? c.kind.inverseName : c.kind.name ? c.kind.name : c.link.label), ',
+    "arrow: c.kind.directed == false ? 'arrows-left-right' : c.out ? 'arrow-right' : 'arrow-left', ",
+    'tint: c.kind.color',
+    ' })',
+  ].join(''),
+].join('');
+
+/**
+ * The two ends of a selected line, as the same kind of row — "From" and "To".
+ *
+ * Empty until the line's own query answers, so nothing is drawn for a frame from an absent record.
+ */
+const LINK_END_ROWS = [
+  "count(local.link) ? [{ role: 'From', end: first(local.link).source, stored: first(local.link).sourceType }, { role: 'To', end: first(local.link).target, stored: first(local.link).targetType }]",
+  `.map(e, { role: e.role, end: e.end, type: ${endType('e.stored', 'e.end')} })`,
+  `.map(e, { role: e.role, id: e.end.id ?? e.end, type: e.type, name: ${endName('e.end', 'e.type')}, icon: ${kindIcon('e.type')} })`,
+  ' : []',
+].join('');
+
+/**
+ * Open a record in this panel — by writing the address, which is also what the canvas follows.
+ *
+ * The parameters rather than a `$setLocal`, because a panel is not inside the route's tree and
+ * cannot reach the canvas's locals — the reason the selection travels in the address at all. And
+ * writing them is the whole of it: the canvas binds `focus` to the same parameter, so it selects the
+ * record and brings it into view, or clears its selection when the record lives somewhere else.
+ *
+ * Type before id. The panel's query is keyed on both, and each write re-asks it; the order only
+ * decides which half-changed pair is asked about for the instant between them, and neither answers.
+ */
+function openRecord(id: string, type: SchemaProp): SchemaProp[] {
+  return [
+    { $action: 'routeStore.setParam', args: ['cardType', type] },
+    { $action: 'routeStore.setParam', args: ['card', { $: id }] },
+  ];
+}
+
+/**
+ * The part of a row that names the other end and opens it: its kind's glyph and its name.
+ *
+ * Disabled when the end is gone, which is the one case where there is nothing to open — the row
+ * still says the connection exists, and that the thing it pointed at does not.
+ */
+function endButton(opts: { id: string; type: string; icon: string; name: string; lead: SchemaNode[] }): SchemaNode {
+  return {
+    type: 'we-button',
+    props: {
+      variant: 'ghost',
+      size: 'sm',
+      flex: '1',
+      minWidth: '0',
+      ax: 'start',
+      gap: '200',
+      disabled: { $: `!${opts.id}` },
+      label: { $: `'Open ' + ${opts.name}` },
+      onClick: openRecord(opts.id, { $: opts.type }),
+    },
+    children: [
+      ...opts.lead,
+      {
+        type: '$if',
+        props: {
+          condition: { $: opts.icon },
+          then: { type: 'we-icon', props: { name: { $: opts.icon }, size: 'xs', color: 'text-muted' } },
+        },
+      },
+      { type: 'we-text', props: { variant: 'footnote', truncate: true, minWidth: '0' }, children: [{ $: opts.name }] },
+    ],
+  };
+}
+
+/** A section's caption, with a count beside it where the count is worth reading. */
+function sectionCaption(label: string, count?: string): SchemaNode {
+  return {
+    type: 'Row',
+    props: { gap: '200', ay: 'center' },
+    children: [
+      { type: 'we-text', props: { variant: 'footnote', color: 'text-faint' }, children: [label] },
+      ...(count
+        ? [
+            {
+              type: '$if',
+              props: {
+                condition: { $: count },
+                then: {
+                  type: 'we-text',
+                  props: { variant: 'footnote', color: 'text-faint' },
+                  children: [{ $: count }],
+                },
+              },
+            } as SchemaNode,
+          ]
+        : []),
+    ],
+  };
+}
+
+/**
+ * Everything this card is connected to — including what this canvas cannot draw.
+ *
+ * The canvas draws a line only when both of its ends are placed on it (see the `canvas` seed), which
+ * is right for a drawing and leaves the drawing silent about the rest: a task tied to a decision on
+ * another call's canvas, or to a record nobody placed, looks unconnected here. This list is the one
+ * place on this surface those connections are visible.
+ *
+ * One query, native on AD4M: a relation key in a `where` compiles to a triple pattern on that
+ * relation's predicate, and an `OR` of two such arms to a SPARQL `UNION` — so a card's connections
+ * are found by asking, not by reading every connection in the space and filtering. The `include`
+ * brings both ends back hydrated, which is where the names and icons come from.
+ *
+ * Each row opens the other end; the button at its end opens the connection itself, for its label and
+ * kind. No delete here — the connection's own panel has one, and so does the delete key.
+ */
+const cardConnections: SchemaNode = {
+  type: 'Column',
+  props: { gap: '100', pt: '200', borderTop: '1px solid border' },
+  children: [
+    sectionCaption('Connections', 'count(local.connections)'),
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'count(local.connections)' },
+        then: {
+          type: '$each',
+          props: { items: { $: CONNECTION_ROWS }, as: 'conn' },
+          children: [
+            {
+              type: 'Row',
+              props: { gap: '100', ay: 'center', width: '100%' },
+              children: [
+                endButton({
+                  id: 'conn.otherId',
+                  type: 'conn.otherType',
+                  icon: 'conn.icon',
+                  name: 'conn.name',
+                  lead: [
+                    {
+                      type: 'we-icon',
+                      props: {
+                        name: { $: 'conn.arrow' },
+                        size: 'xs',
+                        // The kind's own colour, where the community chose one — the same colour its
+                        // lines are drawn in on the knowledge map.
+                        color: { $: "conn.tint ? conn.tint : 'text-faint'" },
+                      },
+                    },
+                    {
+                      type: 'we-text',
+                      props: {
+                        variant: 'footnote',
+                        flexShrink: '0',
+                        color: { $: "conn.verb ? 'text-muted' : 'text-faint'" },
+                      },
+                      children: [{ $: "conn.verb ? conn.verb : 'connected to'" }],
+                    },
+                  ],
+                }),
+                {
+                  type: 'we-tooltip',
+                  props: { content: 'Open this connection' },
+                  children: [
+                    {
+                      type: 'we-button',
+                      props: {
+                        variant: 'ghost',
+                        size: 'sm',
+                        square: true,
+                        flexShrink: '0',
+                        label: 'Open this connection',
+                        onClick: openRecord('conn.id', 'Relationship'),
+                      },
+                      children: [{ type: 'we-icon', props: { name: 'line-segment', color: 'text-faint' } }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        /*
+          Nothing yet — said only once the query has answered, and said as what to do.
+
+          The connect handles appear on a selected card's edges and nowhere else, so the gesture is
+          easy to miss; this is the moment somebody is looking at a selected card and wondering.
+        */
+        else: {
+          type: '$if',
+          props: {
+            condition: { $: 'local.connectionsLoaded' },
+            then: {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-faint' },
+              children: ['Not connected to anything yet. Drag from one of its edges to another card.'],
+            },
+          },
+        },
+      },
+    },
+  ],
+};
+
+/**
+ * What a selected line joins — its two ends, each opening that record.
+ *
+ * The create modal used to say "Post → Sighting" above the label field; with connections written on
+ * the drop, the inspector is where a line is read, and it said what the line *was* without saying
+ * what it connected.
+ */
+const linkEnds: SchemaNode = {
+  type: 'Column',
+  props: { gap: '100', pt: '200', borderTop: '1px solid border' },
+  children: [
+    sectionCaption('Connects'),
+    {
+      type: '$each',
+      props: { items: { $: LINK_END_ROWS }, as: 'end' },
+      children: [
+        endButton({
+          id: 'end.id',
+          type: 'end.type',
+          icon: 'end.icon',
+          name: 'end.name',
+          lead: [
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-faint', flexShrink: '0', minWidth: '2.5em' },
+              children: [{ $: 'end.role' }],
+            },
+          ],
+        }),
+      ],
+    },
+  ],
+};
+
+/** The connection section for whatever is selected — a card's connections, or a line's two ends. */
+const connectionsSection: SchemaNode = {
+  type: '$if',
+  props: { condition: { $: IS_RELATIONSHIP }, then: linkEnds, else: cardConnections },
+};
+
 /**
  * One card, opened out — its type and its properties, beside the arrangement it is part of.
  *
@@ -1158,6 +1458,34 @@ const inspectorPanel: SchemaNode = {
       nothing. Hoisted here so the row below reads one answer rather than one per render.
     */
     relationshipKinds: { entity: 'RelationshipType', order: { name: 'asc' } },
+    /*
+      Every connection this card is at either end of — see `cardConnections`.
+
+      Gated on the selection being a card: a line's own connections are a different question, and
+      `link` below answers the one that matters for a line. Ordered by when each was made, which is
+      the one order the backend can give that stays still as connections are added.
+    */
+    connections: {
+      entity: 'Relationship',
+      where: { OR: [{ source: { $: CARD_ID } }, { target: { $: CARD_ID } }] },
+      include: { source: true, target: true },
+      order: { createdAt: 'asc' },
+      limit: 50,
+      when: { $: `${CARD_ID} && !(${IS_RELATIONSHIP})` },
+    },
+    /*
+      The selected line with its two ends hydrated — see `linkEnds`.
+
+      Its own query rather than an `include` on `card`, because `card` asks for whatever type is
+      selected and an `include` naming `source` on a task would name a relation tasks do not have.
+    */
+    link: {
+      entity: 'Relationship',
+      where: { id: { $: CARD_ID } },
+      include: { source: true, target: true },
+      limit: 1,
+      when: { $: `${CARD_ID} && ${IS_RELATIONSHIP}` },
+    },
   },
   children: [
     panelHeader({
@@ -1449,6 +1777,9 @@ const inspectorPanel: SchemaNode = {
                     */
                     relationshipKind,
                     emptyFields,
+                    // After the disclosure: that is about this record's own fields, and connections
+                    // are about other records.
+                    connectionsSection,
                     /*
                       No "Open full record". There was a ghost button here that navigated to
                       `<space>/record/<type>?id=<id>` — the record page the host appends to every
@@ -1907,6 +2238,21 @@ const canvas: SchemaNode = {
     */
     showStatus: true,
     /*
+      The selection, followed — so the canvas agrees with the inspector about what is open.
+
+      A click on the canvas writes `card`; so does a row in the inspector's connections, a line just
+      drawn, and a link somebody sent. Before this only the first moved the canvas, so the panel could
+      open a card while the canvas went on ringing a different one somewhere off screen. Bound to the
+      address rather than to `local.inspecting` because the panel writes the address and cannot reach
+      the local — see `openRecord`.
+
+      Safe to bind to the value a click just wrote: the graph leaves an already-selected card alone
+      and only moves the camera for something out of view, so clicking a card you can see does
+      nothing more than it did. A record not on this canvas clears the selection rather than leaving
+      the last one lit.
+    */
+    focus: { $: 'routeStore.params.card' },
+    /*
       The line, drawn — and written on the spot, with nothing filled in.
 
       `connectNodesNow` rather than `connectNodes`, which is the knowledge map's answer and stays it:
@@ -1926,7 +2272,8 @@ const canvas: SchemaNode = {
       selected teaches nobody that it is a record with an author and a thread; opening the inspector
       on it puts the fields in front of the person who just drew it, in the same beat. Empty on a
       failure, which clears the panel rather than leaving the last card in it — the same honesty
-      `onEdgeClick` keeps for a line with nothing behind it.
+      `onEdgeClick` keeps for a line with nothing behind it. And through `focus` below, the line is
+      selected on the canvas too, as soon as the canvas has re-read and drawn it.
     */
     onEdgeCreate: {
       $action: 'recordStore.connectNodesNow',

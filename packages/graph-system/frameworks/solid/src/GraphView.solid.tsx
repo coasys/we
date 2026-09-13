@@ -384,6 +384,15 @@ export function GraphView(props: GraphViewProps) {
    */
   const [gesturing, setGesturing] = createSignal<string | null>(null);
 
+  /**
+   * True only while `focus` is selecting something — see the effect that applies it.
+   *
+   * Declared above the engine because the engine's event handler reads it, and a `let` read before
+   * its declaration throws. Emission is synchronous, so a flag set around the call is exact: every
+   * event raised while it is up was raised by the selection this graph made on the interface's behalf.
+   */
+  let applyingFocus = false;
+
   // Read once: expanders are constructed with their options, so changing `reified` needs a remount —
   // which is what a template does anyway when it swaps one graph for another.
   const registry = new PluginRegistry({
@@ -490,6 +499,10 @@ export function GraphView(props: GraphViewProps) {
           props.onCanvasDoubleClick?.({ x: event.at.x, y: event.at.y });
           break;
         case 'selectionChange':
+          // Not while `focus` is selecting: the interface asked for this selection, and hearing it
+          // back is an echo — a harmful one when a line is chosen, since clearing the node selection
+          // reports an empty list and an interface reads that as "close the panel".
+          if (applyingFocus) break;
           props.onSelectionChange?.(event.ids);
           break;
         case 'nodeDragEnd': {
@@ -610,6 +623,138 @@ export function GraphView(props: GraphViewProps) {
     that is clear *now*.
   */
   createEffect(() => engine.viewport.setObscured(props.host?.obscured?.()));
+
+  /**
+   * What `focus` names, if the graph holds it yet: the element standing for that record, and the
+   * world point to bring into view.
+   *
+   * A node first, then a line. A record is drawn as one or the other on any given graph, never both —
+   * a reified class collapses into an edge precisely so it does not also appear as a dot — so the
+   * order only matters if that ever stopped being true, and a card is the less surprising answer.
+   *
+   * A line's point is the midpoint of its ends. For a route bent round a card that is not on the
+   * line itself, but it is between the two things the line joins, which is what bringing a
+   * connection into view is for.
+   */
+  function focusTarget(recordId: string): { kind: 'node' | 'edge'; id: string; at: Point } | null {
+    const positions = engine.getPositions();
+    for (const node of engine.store.nodes()) {
+      const address = parseAddress(node.id);
+      if (address?.kind !== 'entity' || address.id !== recordId) continue;
+      const at = positions.get(node.id);
+      if (at) return { kind: 'node', id: node.id, at: { x: at.x, y: at.y } };
+    }
+    const geometry = engine.getEdgeGeometry();
+    for (const edge of engine.store.edges()) {
+      if (!edge.reifiedAs) continue;
+      const behind = parseAddress(edge.reifiedAs);
+      if (behind?.kind !== 'entity' || behind.id !== recordId) continue;
+      const route = geometry.get(edge.id);
+      if (route) {
+        return {
+          kind: 'edge',
+          id: edge.id,
+          at: { x: (route.from.x + route.to.x) / 2, y: (route.from.y + route.to.y) / 2 },
+        };
+      }
+    }
+    return null;
+  }
+
+  /** How far inside the clear part of the canvas a point must be to count as already in view. */
+  const REVEAL_MARGIN = 48;
+
+  /**
+   * Centre a world point in the part of the canvas nobody is covering — unless it is already there.
+   *
+   * The margin is what "already there" means. A card whose centre is two pixels inside the edge is
+   * technically on screen and practically not: most of it is cut off. Nothing moves for anything
+   * comfortably inside, which is what makes binding `focus` to a click's own selection a no-op.
+   *
+   * No surface yet, no move. Before the canvas has been measured the clear rectangle is empty, every
+   * point is outside it, and centring against a zero-sized box would throw the camera somewhere
+   * arbitrary for the fit that follows to correct.
+   */
+  function revealPoint(world: Point): void {
+    const clear = engine.viewport.visibleRect();
+    if (!clear.width || !clear.height) return;
+    const screen = engine.viewport.toScreen(world);
+    const inside =
+      screen.x >= clear.x + REVEAL_MARGIN &&
+      screen.x <= clear.x + clear.width - REVEAL_MARGIN &&
+      screen.y >= clear.y + REVEAL_MARGIN &&
+      screen.y <= clear.y + clear.height - REVEAL_MARGIN;
+    if (inside) return;
+    engine.behaviourContext().pan(clear.x + clear.width / 2 - screen.x, clear.y + clear.height / 2 - screen.y);
+  }
+
+  /**
+   * Apply `focus` — once per value, and as soon as the graph holds what it names.
+   *
+   * Reads `version()` so it runs again as the graph fills in: a line written a moment ago is not
+   * drawn until the canvas re-reads, and a link opened cold names a card the first load has not
+   * reached. Each run that finds nothing waits for the next.
+   *
+   * `applied` is what stops it applying again once it has. Without it every redraw — and a live graph
+   * redraws whenever the data changes — would re-centre on the focused card, so somebody panning away
+   * from it would be dragged back by the next write anyone made. Set *before* selecting, because
+   * selecting bumps `version` and the run that causes would otherwise see an unapplied value.
+   *
+   * Cleared when `focus` empties, so the same record named again — a background click, then the same
+   * card chosen from the panel — is applied again rather than taken for the one already done.
+   */
+  let applied: string | undefined;
+  /**
+   * The focus value the selection was last cleared for, while what it names is not on the graph.
+   *
+   * Clearing once rather than on every run: a card somebody then selects by hand while the named
+   * record is still missing must stay selected, not be swept away by the next redraw.
+   */
+  let clearedFor: string | undefined;
+  createEffect(() => {
+    version();
+    const recordId = props.focus;
+    if (!recordId) {
+      applied = undefined;
+      clearedFor = undefined;
+      return;
+    }
+    if (recordId === applied) return;
+    const target = untrack(() => focusTarget(recordId));
+
+    applyingFocus = true;
+    try {
+      if (!target) {
+        /*
+          Named, and not here — so whatever *is* selected is not what the interface is showing.
+
+          The case is ordinary: an inspector listing a card's connections opens a record that lives on
+          another canvas. Left alone, the canvas goes on ringing the card somebody came from while the
+          panel beside it describes a different one, and the two read as one statement that is false.
+          Nothing selected is the true answer.
+
+          It may also just be early — a line written a moment ago — in which case the selection is
+          made as soon as the record arrives, and the gap between is a frame of nothing selected.
+        */
+        if (clearedFor !== recordId) {
+          clearedFor = recordId;
+          if (engine.getSelection().length || engine.getSelectedEdge()) engine.select([]);
+        }
+        return;
+      }
+      applied = recordId;
+      if (target.kind === 'node') {
+        const selection = engine.getSelection();
+        if (selection.length !== 1 || selection[0] !== target.id) engine.select([target.id]);
+      } else {
+        // `selectEdge` returns early for the line already open, so no guard is needed here.
+        engine.selectEdge(target.id);
+      }
+    } finally {
+      applyingFocus = false;
+    }
+    untrack(() => revealPoint(target.at));
+  });
 
   /**
    * The graph's own chrome, kept out from under whatever the host has floating over the canvas.

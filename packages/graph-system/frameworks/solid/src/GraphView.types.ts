@@ -364,6 +364,46 @@ export interface GraphViewProps {
     preview?: boolean;
   }) => void;
   /**
+   * A record the interface wants shown: selected, and brought into view if it is off screen.
+   *
+   * The other direction from `onNodeClick` / `onEdgeClick`. Those tell the interface what somebody
+   * picked on the graph; this lets something *beside* the graph pick — an inspector listing a card's
+   * connections, a link somebody sent with a record in it — and have the graph answer as though the
+   * click had happened here. Without it the two disagree the moment anything but the graph chooses:
+   * the panel opens a card and the canvas goes on showing nothing selected, somewhere else entirely.
+   *
+   * A **record id**, not a graph address, for the reason every event here resolves addresses into
+   * records: a template has no operator that could build `we-graph://entity/<dataset>/<type>/<id>`,
+   * and it already holds the id. It matches a node standing for that record, or — failing one — a
+   * line whose `reifiedAs` is that record, so a connection can be focused as readily as a card.
+   *
+   * Four properties make it safe to bind straight to the same value a click writes:
+   *
+   * - **Idempotent.** Already selected is left alone, and the camera only moves for something outside
+   *   the visible part of the canvas. Binding it to the selection a click just made therefore does
+   *   nothing at all — no jump every time somebody clicks a card they can already see.
+   * - **Once per value.** Applied when it changes, not on every redraw: a live graph re-reads as the
+   *   data changes, and re-applying then would yank the camera back to a card somebody has since
+   *   panned away from.
+   * - **Patient.** A record not in the graph yet — a line written a moment ago, a canvas still
+   *   loading — is looked for again as the graph fills in, and applied when it arrives.
+   * - **Silent.** Selecting this way emits no `selectionChange`. The interface asked; being told back
+   *   is an echo, and a harmful one: choosing a line clears the node selection, which reports an
+   *   empty list, which an interface reasonably reads as "nothing selected — close the panel".
+   *
+   * Empty does nothing, rather than clearing the selection. Clearing is a background click's job, and
+   * a focus that emptied the graph whenever its source was momentarily blank would fight it.
+   *
+   * A record the graph does not hold *does* clear it, once. Whatever is selected is then not what the
+   * interface is showing — an inspector opening a connection's far end, which lives on another
+   * canvas — and a ring left on the card somebody came from would say something false. If the record
+   * arrives later it is selected then.
+   *
+   * "Visible" means the part of the canvas nobody is covering — `host.obscured` is subtracted — so a
+   * card sitting under a floating panel counts as off screen and is brought out from under it.
+   */
+  focus?: string;
+  /**
    * The delete key, pressed while the graph holds focus and something is selected.
    *
    * Emits and writes nothing, like every other gesture here: what removing a thing *means* is the

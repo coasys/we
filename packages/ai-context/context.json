@@ -3927,6 +3927,11 @@
           "optional": true
         },
         {
+          "name": "focus",
+          "type": "string",
+          "optional": true
+        },
+        {
           "name": "onDeleteSelection",
           "type": "((payload: { recordId?: string; recordType?: string; kind?: \"node\" | \"edge\"; count: number; }) => void)",
           "optional": true
