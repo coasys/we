@@ -1893,7 +1893,7 @@
         },
         {
           "name": "relativeStyle",
-          "type": "Intl.RelativeTimeFormatStyle",
+          "type": "'long' | 'short' | 'narrow'",
           "optional": false,
           "default": "'long'"
         },
@@ -1905,55 +1905,55 @@
         },
         {
           "name": "dateStyle",
-          "type": "Intl.DateTimeFormatOptions['dateStyle'] | null",
+          "type": "'full' | 'long' | 'medium' | 'short' | null",
           "optional": false,
           "default": "null"
         },
         {
           "name": "timeStyle",
-          "type": "Intl.DateTimeFormatOptions['timeStyle'] | null",
+          "type": "'full' | 'long' | 'medium' | 'short' | null",
           "optional": false,
           "default": "null"
         },
         {
           "name": "weekday",
-          "type": "Intl.DateTimeFormatOptions['weekday'] | null",
+          "type": "'long' | 'short' | 'narrow' | null",
           "optional": false,
           "default": "null"
         },
         {
           "name": "year",
-          "type": "Intl.DateTimeFormatOptions['year'] | null",
+          "type": "'numeric' | '2-digit' | null",
           "optional": false,
           "default": "null"
         },
         {
           "name": "month",
-          "type": "Intl.DateTimeFormatOptions['month'] | null",
+          "type": "'numeric' | '2-digit' | 'long' | 'short' | 'narrow' | null",
           "optional": false,
           "default": "null"
         },
         {
           "name": "day",
-          "type": "Intl.DateTimeFormatOptions['day'] | null",
+          "type": "'numeric' | '2-digit' | null",
           "optional": false,
           "default": "null"
         },
         {
           "name": "hour",
-          "type": "Intl.DateTimeFormatOptions['hour'] | null",
+          "type": "'numeric' | '2-digit' | null",
           "optional": false,
           "default": "null"
         },
         {
           "name": "minute",
-          "type": "Intl.DateTimeFormatOptions['minute'] | null",
+          "type": "'numeric' | '2-digit' | null",
           "optional": false,
           "default": "null"
         },
         {
           "name": "second",
-          "type": "Intl.DateTimeFormatOptions['second'] | null",
+          "type": "'numeric' | '2-digit' | null",
           "optional": false,
           "default": "null"
         },
@@ -1965,7 +1965,7 @@
         },
         {
           "name": "hourCycle",
-          "type": "Intl.DateTimeFormatOptions['hourCycle'] | null",
+          "type": "'h11' | 'h12' | 'h23' | 'h24' | null",
           "optional": false,
           "default": "null"
         },
