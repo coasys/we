@@ -727,10 +727,24 @@ const CARD_TYPE = 'routeStore.params.cardType';
  * line under it; without the filter they appeared a second time as captioned rows, so every record
  * showed its own name twice.
  */
-const SET_DETAILS = "local.display.fields.filter(f, f.role == 'detail' && f.kind != 'relation' && row[f.name])";
+/**
+ * The kinds of part the selected record's entity is offered — a task's Assigned and Reviewing, an
+ * event's answers. Declared here, ahead of the field lists that read it.
+ */
+const PEOPLE_KINDS = `spaceStore.offeredInvolvementTypes.filter(k, ${CARD_TYPE} in k.appliesTo || !count(k.appliesTo))`;
+
+/**
+ * Whether a field is one the People section already answers. `assignee` is the name an extraction
+ * pass writes because a model cannot know a DID; where the entity has parts people can hold, People
+ * shows who is actually on it and quotes that name when nobody is, so the free-text field beside it
+ * is the same fact twice — and, empty, an input nobody should type into.
+ */
+const NOT_PEOPLE_FIELD = `(f.name != 'assignee' || !count(${PEOPLE_KINDS}))`;
+
+const SET_DETAILS = `local.display.fields.filter(f, f.role == 'detail' && f.kind != 'relation' && row[f.name] && ${NOT_PEOPLE_FIELD})`;
 
 /** The same, as controls: everything set, title and summary included, since editing them is the point. */
-const SET_FIELDS = "local.display.fields.filter(f, f.kind != 'relation' && row[f.name])";
+const SET_FIELDS = `local.display.fields.filter(f, f.kind != 'relation' && row[f.name] && ${NOT_PEOPLE_FIELD})`;
 
 /**
  * The fields holding nothing — what the disclosure offers.
@@ -739,8 +753,7 @@ const SET_FIELDS = "local.display.fields.filter(f, f.kind != 'relation' && row[f
  * of them (a picture is uploaded, not typed), so counting them would promise rows that expanding
  * does not produce.
  */
-const EMPTY_FIELDS =
-  "local.display.fields.filter(f, !(f.kind in ['relation', 'image', 'file', 'json']) && !row[f.name])";
+const EMPTY_FIELDS = `local.display.fields.filter(f, !(f.kind in ['relation', 'image', 'file', 'json']) && !row[f.name] && ${NOT_PEOPLE_FIELD})`;
 
 const EMPTY_COUNT = `count(${EMPTY_FIELDS})`;
 
@@ -1200,7 +1213,12 @@ function sectionCaption(label: string, count?: string): SchemaNode {
     type: 'Row',
     props: { gap: '200', ay: 'center' },
     children: [
-      { type: 'we-text', props: { variant: 'footnote', color: 'text-faint' }, children: [label] },
+      // Uppercase, so a section's name reads apart from the properties and names under it.
+      {
+        type: 'we-text',
+        props: { variant: 'footnote', uppercase: true, letterSpacing: 'wide', color: 'text-faint' },
+        children: [label],
+      },
       ...(count
         ? [
             {
@@ -1363,7 +1381,7 @@ const ON_ROW =
   'involvement({ rows: local.involvements, types: spaceStore.involvementTypes, me: me.did }).byNode[row.id]';
 
 /** The kinds of part this record's entity is offered — a task's Assigned and Reviewing, an event's answers. */
-const ROW_KINDS = `spaceStore.offeredInvolvementTypes.filter(k, ${CARD_TYPE} in k.appliesTo || !count(k.appliesTo))`;
+const ROW_KINDS = PEOPLE_KINDS;
 
 /**
  * Everyone on the selected record, by part, by name — the detail view a card's faces stand in for.
@@ -1406,7 +1424,8 @@ const peopleSection: SchemaNode = {
                         triggerIcon: 'user-plus',
                         triggerTitle: 'Who is on this',
                         triggerVariant: 'ghost',
-                        size: 'xs',
+                        // The size of the pencil and the bin in the panel's header — the controls it sits among.
+                        size: 'sm',
                         itemSize: 'sm',
                         placement: 'bottom-end',
                         searchable: true,
@@ -1535,9 +1554,10 @@ const peopleSection: SchemaNode = {
  * Where the selected record came from — extracted from the conversation, and on whose node, or added
  * by somebody — and when.
  *
- * Its own line at the foot of the record rather than the last line of People: it is about the record,
- * not about who is on it, and on a card it lives on the extracted mark for the same reason. A line
- * joining two cards has no origin worth a sentence, so it is not asked.
+ * Straight under the title and the description, and not the last line of People: it is about the
+ * record, not about who is on it, and on a card it lives on the extracted mark for the same reason.
+ * Near the top because it is the context the rest of the panel is read in. A line joining two cards
+ * has no origin worth a sentence, so it is not asked.
  */
 const originLine: SchemaNode = {
   type: '$if',
@@ -1545,7 +1565,6 @@ const originLine: SchemaNode = {
     condition: { $: `!(${IS_RELATIONSHIP})` },
     then: {
       type: 'Column',
-      props: { pt: '200', borderTop: '1px solid border' },
       children: [
         {
           type: '$agent',
@@ -1944,6 +1963,8 @@ const inspectorPanel: SchemaNode = {
                                 },
                               },
                             },
+                            // Where it came from, straight under what it is — see `originLine`.
+                            originLine,
                             /*
                               What this record actually says, each drawn by its kind.
 
@@ -2018,8 +2039,6 @@ const inspectorPanel: SchemaNode = {
                     // After the disclosure: that is about this record's own fields, and connections
                     // are about other records.
                     connectionsSection,
-                    // Last: where this record came from, which is history rather than content.
-                    originLine,
                     /*
                       No "Open full record". There was a ghost button here that navigated to
                       `<space>/record/<type>?id=<id>` — the record page the host appends to every
@@ -2986,7 +3005,41 @@ const ROUTE_BAND = { pt: `calc(${CHROME_BOTTOM} + var(--we-space-500))`, pb: '60
 const kanbanRoute: RouteSchema = {
   path: '/kanban',
   type: 'Column',
-  props: { width: '100%', minHeight: '100%', ax: 'center', px: '400' },
+  /*
+    A press anywhere on the page lets go of the selected card — unless it was a press on a card.
+
+    A press on a card reaches here too, after the card has selected itself, so the card marks the
+    press as its own and this reads the mark rather than second-guessing the event. The inspector is a
+    panel outside this tree, so working in it never deselects what it is showing.
+
+    Both parameters, not only the card. A type left behind with no card is the state that once opened
+    an arbitrary task in the inspector — see the `when` on its query — and a selection that is gone
+    should leave nothing to be misread.
+  */
+  $localState: { pressedCard: { type: 'boolean', initial: false } },
+  props: {
+    width: '100%',
+    minHeight: '100%',
+    ax: 'center',
+    px: '400',
+    onClick: [
+      {
+        $if: {
+          condition: { $: 'local.pressedCard' },
+          then: { $setLocal: 'pressedCard', value: false },
+          else: {
+            $if: {
+              condition: { $: 'routeStore.params.card' },
+              then: [
+                { $action: 'routeStore.setParam', args: ['card', null] },
+                { $action: 'routeStore.setParam', args: ['cardType', null] },
+              ],
+            },
+          },
+        },
+      },
+    ],
+  },
   children: [
     {
       type: 'Column',
@@ -3109,25 +3162,25 @@ const kanbanRoute: RouteSchema = {
                           */
                           people: true,
                           /*
-                        Pressing a card selects it, the way pressing one on the canvas does: the same
-                        two parameters, so the inspector opens it and the canvas focuses it if you go
-                        there. Editing is the inspector's — its pencil unlocks the fields — rather than a
-                        second editor on the card. Pressing the selected card again lets it go.
+                            Pressing a card selects it, the way pressing one on the canvas does: the
+                            same two parameters, so the inspector opens it and the canvas focuses it if
+                            you go there. Editing is the inspector's — its pencil unlocks the fields —
+                            rather than a second editor on the card.
 
-                        The type first, and only then the card, so the inspector's query never asks
-                        about a card under the wrong type for the instant between the two writes.
-                      */
+                            A press only ever selects. It used to let go of a card already selected, and
+                            a press on the faces or the move menu is a press on the card too, so opening
+                            either deselected the card behind the menu. Letting go is a press anywhere
+                            else on the page — see `pressedCard` on the route.
+
+                            The type first, and only then the card, so the inspector's query never asks
+                            about a card under the wrong type for the instant between the two writes.
+                          */
                           select: {
                             selected: 'routeStore.params.card',
                             onSelect: [
+                              { $setLocal: 'pressedCard', value: true },
                               { $action: 'routeStore.setParam', args: ['cardType', 'TaskBlock'] },
-                              {
-                                $if: {
-                                  condition: { $: 'card.id == routeStore.params.card' },
-                                  then: { $action: 'routeStore.setParam', args: ['card', null] },
-                                  else: { $action: 'routeStore.setParam', args: ['card', { $: 'card.id' }] },
-                                },
-                              },
+                              { $action: 'routeStore.setParam', args: ['card', { $: 'card.id' }] },
                             ],
                           },
                           empty: emptyState({

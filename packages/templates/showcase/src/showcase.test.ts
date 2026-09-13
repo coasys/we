@@ -1382,6 +1382,21 @@ describe('the workshop’s people', () => {
     expect(kanban).toContain('Extracted from the conversation');
   });
 
+  it('keeps a card selected while its own menus are open, and lets go on a press anywhere else', () => {
+    const kanbanRoute = (workshop.routes ?? []).find((entry) => entry.path === '/kanban') as unknown as SchemaNode;
+    const onClick = JSON.stringify(kanbanRoute.props?.onClick);
+    /*
+      A press on the faces or the move menu is a press on the card too, so a card that let go of itself
+      on a second press deselected itself behind the menu that press opened. A press only selects.
+    */
+    expect(route('/kanban')).not.toContain('"condition":{"$":"card.id == routeStore.params.card"}');
+    expect(route('/kanban')).toContain('{"$setLocal":"pressedCard","value":true}');
+    // The page lets go — both parameters, so no type is left behind to be read without its card.
+    expect(onClick).toContain('local.pressedCard');
+    expect(onClick).toContain('{"$action":"routeStore.setParam","args":["card",null]}');
+    expect(onClick).toContain('{"$action":"routeStore.setParam","args":["cardType",null]}');
+  });
+
   it('lets a member answer an event, reading answers rather than the call’s roster', () => {
     const calendar = route('/calendar');
     expect(calendar).toContain('"$action":"spaceStore.respondTo"');
@@ -1565,5 +1580,16 @@ describe('the workshop inspector’s people', () => {
   it('says where the record came from, which a card’s face no longer does', () => {
     expect(inspector).toContain('row.id in first(local.inspectedCall).extracted');
     expect(inspector).toContain('Extracted from the conversation');
+    // Under the title and description, ahead of People, rather than at the foot of the panel.
+    expect(inspector.indexOf('Extracted from the conversation')).toBeLessThan(inspector.indexOf('involvementMenu('));
+  });
+
+  it('offers no assignee text box beside the People section that answers it', () => {
+    expect(inspector).toContain("f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes");
+  });
+
+  it('sets section names apart from the properties under them, with a picker sized like the header’s', () => {
+    expect(inspector).toContain('"uppercase":true');
+    expect(inspector).toContain('"triggerTitle":"Who is on this","triggerVariant":"ghost","size":"sm"');
   });
 });
