@@ -97,9 +97,27 @@ async function accessorFor(
   id: string,
   relation: string,
   verb: 'set' | 'add' | 'remove',
+  batch?: string,
 ): Promise<{ record: Record<string, unknown>; call: RelationAccessor } | null> {
   const record = await entity.findOne(dataset, { where: { id } });
-  if (!record) return null;
+  if (!record) {
+    /*
+      Said out loud when there is a batch, because then the ordinary race is not the likely reason.
+
+      The executor stages a batch's writes out of every read until it commits, so a record created
+      earlier in the same batch is not there to be found — and this write does nothing. That is how
+      every board came to be made with no columns: its columns were written by id onto a board the
+      same transaction had just created. Nothing failed and nothing was logged. Still not a throw,
+      since a record deleted mid-batch is as ordinary as one deleted outside one.
+    */
+    if (batch) {
+      console.warn(
+        `${verb}Relation("${relation}"): no record "${id}" is visible, so nothing was written. A record ` +
+          'created in this same batch cannot be read until it commits — write the relation at creation instead.',
+      );
+    }
+    return null;
+  }
 
   const call = record[accessorName(verb, relation)] as RelationAccessor | undefined;
   if (typeof call !== 'function') {
@@ -130,7 +148,7 @@ export function installRelationWrites(model: typeof Ad4mModel): void {
     targetIds: readonly string[],
     batch?: string,
   ): Promise<void> {
-    const found = await accessorFor(this, dataset, id, relation, 'set');
+    const found = await accessorFor(this, dataset, id, relation, 'set', batch);
     // The whole list, in order, handed over for the backend to diff. The executor records only what
     // moved and merges concurrent writes, which is why sending everything is cheap and why nothing
     // here indexes or breaks a tie.
@@ -145,7 +163,7 @@ export function installRelationWrites(model: typeof Ad4mModel): void {
     targetId: string,
     batch?: string,
   ): Promise<void> {
-    const found = await accessorFor(this, dataset, id, relation, 'add');
+    const found = await accessorFor(this, dataset, id, relation, 'add', batch);
     if (found) await found.call.call(found.record, targetId, batch);
   };
 
@@ -157,7 +175,7 @@ export function installRelationWrites(model: typeof Ad4mModel): void {
     targetId: string,
     batch?: string,
   ): Promise<void> {
-    const found = await accessorFor(this, dataset, id, relation, 'remove');
+    const found = await accessorFor(this, dataset, id, relation, 'remove', batch);
     if (found) await found.call.call(found.record, targetId, batch);
   };
 
