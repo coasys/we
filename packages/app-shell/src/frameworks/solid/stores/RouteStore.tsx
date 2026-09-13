@@ -82,7 +82,17 @@ export function RouteStoreProvider(props: ParentProps) {
     setNavigateFunction(() => navigate);
     return () => setNavigateFunction((current) => (current === navigate ? null : current));
   }
-  const [params, setParamsSignal] = createSignal<Record<string, string>>(readParams());
+  /*
+    Equal when every parameter is, so a write that changes nothing wakes nothing. Pressing a card that
+    is already selected writes the same two parameters again, and every reader of `params` — each
+    query naming the selection among them — re-ran and resubscribed for it.
+  */
+  const [params, setParamsSignal] = createSignal<Record<string, string>>(readParams(), {
+    equals: (a, b) => {
+      const keys = Object.keys(a);
+      return keys.length === Object.keys(b).length && keys.every((k) => a[k] === b[k]);
+    },
+  });
   const segments = createMemo(() => currentPath().split('/').filter(Boolean));
   const templateSegments = createMemo(() => {
     const all = segments();

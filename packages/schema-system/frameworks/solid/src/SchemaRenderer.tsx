@@ -26,6 +26,7 @@ import { Dynamic } from 'solid-js/web';
 
 import { AnimateRenderer } from './AnimateRenderer';
 import { ConditionalRenderer } from './ConditionalRenderer';
+import { acquireSubscription } from './subscriptionPool';
 import { SurfaceRenderer } from './SurfaceRenderer';
 import type { RendererOutput, RenderProps, SchemaNode } from './types';
 import { useVisualEditor } from './VisualEditorContext';
@@ -393,15 +394,15 @@ function runQuery(request: {
 
   if (request.subscribe) {
     for (const { entity, Model, queryOptions } of plans) {
-      const builder = Model.query(dataset, queryOptions) as {
-        subscribe: (cb: (results: unknown[]) => void) => Promise<unknown[]>;
-        dispose: () => void;
-      };
-      builder
-        .subscribe((results) => take(entity, results))
-        .then((initial) => take(entity, initial))
-        .catch((err: unknown) => fail(entity, err));
-      onCleanup(() => builder.dispose());
+      // Shared with every other node asking the same question — see `subscriptionPool`.
+      const release = acquireSubscription(
+        Model as never,
+        dataset,
+        queryOptions,
+        (results) => take(entity, results),
+        (err) => fail(entity, err),
+      );
+      onCleanup(release);
     }
   } else {
     // The effect re-runs when any reactive dep changes — perspective swap,

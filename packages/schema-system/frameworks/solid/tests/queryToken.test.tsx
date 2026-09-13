@@ -192,8 +192,9 @@ describe('$query token', () => {
     expect(builder.subscribe).toHaveBeenCalledOnce();
     expect(builder.dispose).not.toHaveBeenCalled();
 
-    // Trigger cleanup
+    // Trigger cleanup. Released a microtask later, so a node re-running the same question keeps it.
     dispose();
+    await tick();
     expect(builder.dispose).toHaveBeenCalledOnce();
   });
 
