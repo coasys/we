@@ -108,77 +108,6 @@ function composeHandlers(handlers: unknown[]): (...args: unknown[]) => void {
 }
 
 /**
- * What a subscription push actually carried — development only.
- *
- * Diagnostic for the class of bug where a write lands, a refresh shows it, and the screen does not:
- * somewhere between the executor deciding a result set changed and Solid re-rendering, the change
- * stops. This says which side of that line the problem is on, which is otherwise guesswork.
- *
- * Reports the *difference* rather than the rows — added and removed ids, and per surviving row the
- * scalar fields whose values moved — because a query of two hundred tasks logged in full is
- * unreadable and the interesting thing is always one field. A push that changed nothing is reported
- * too, since "arrived and was identical" and "never arrived" have different causes and look the same
- * from the screen.
- *
- * Pair with ad4m's own `[ModelQueryBuilder.subscribe]` lines, which say whether a push arrived at all
- * and whether its fingerprint check suppressed it — both are `console.info`, so the browser console
- * needs its Verbose level on to show either.
- */
-function logSubscriptionDiff(entity: string, previous: unknown[] | null, next: unknown[]): void {
-  // Read through a cast rather than `import.meta.env.DEV` directly: this package carries no bundler
-  // types, and a diagnostic is not a reason to make the renderer depend on one. Absent reads as
-  // production, so a host that does not define it gets nothing.
-  if (!(import.meta as { env?: { DEV?: boolean } }).env?.DEV) return;
-  const rowsOf = (rows: unknown[]) =>
-    new Map(rows.map((row) => [String((row as { id?: unknown }).id ?? ''), row as Record<string, unknown>]));
-  const before = rowsOf(previous ?? []);
-  const after = rowsOf(next);
-  const added = [...after.keys()].filter((id) => !before.has(id));
-  const removed = [...before.keys()].filter((id) => !after.has(id));
-  const changed: string[] = [];
-  for (const [id, row] of after) {
-    const was = before.get(id);
-    if (!was) continue;
-    for (const [key, value] of Object.entries(row)) {
-      // Nothing `_`-prefixed — `Ad4mModel` keeps its dirty-tracking snapshot there, which reads as
-      // `_snapshot: [object Object] → null` and looks alarmingly like data going missing.
-      if (key.startsWith('_')) continue;
-      /*
-        A to-many relation is an array of ids, and its *order* is data — a board column's `arranges`
-        is the sequence somebody dragged the cards into. Skipping every object left this blind to the
-        one change a board makes: a same-column reorder showed up as `updatedAt` moving and nothing
-        else, so the log could not say whether the new order had come back or only the timestamp had.
-      */
-      if (Array.isArray(value)) {
-        const change = describeListChange(was[key], value);
-        if (change) changed.push(`${id}.${key}: ${change}`);
-        continue;
-      }
-      if (value !== null && typeof value === 'object') continue;
-      if (was[key] !== value) changed.push(`${id}.${key}: ${String(was[key])} → ${String(value)}`);
-    }
-  }
-  if (!previous) {
-    console.info(`[query] ${entity} ← first result, ${next.length} rows`);
-    return;
-  }
-  if (!added.length && !removed.length && !changed.length) {
-    console.info(`[query] ${entity} ← push with no difference (${next.length} rows)`);
-    return;
-  }
-  console.info(
-    `[query] ${entity} ←`,
-    [
-      added.length ? `+${added.length}` : '',
-      removed.length ? `-${removed.length}` : '',
-      changed.length ? changed.join(', ') : '',
-    ]
-      .filter(Boolean)
-      .join(' '),
-  );
-}
-
-/**
  * Create a reactive signal that subscribes to a $query and updates with results.
  * Must be called within a Solid reactive owner (component or createRoot).
  */
@@ -401,6 +330,7 @@ function runQuery(request: {
         queryOptions,
         (results) => take(entity, results),
         (err) => fail(entity, err),
+        entity,
       );
       onCleanup(release);
     }
@@ -432,35 +362,6 @@ function runQuery(request: {
     }
   }
   return true;
-}
-
-/**
- * How one to-many relation changed between two pushes, in a line — or nothing, if it did not.
- *
- * Membership and order are reported apart because they mean different things and are fixed in
- * different places: cards arriving or leaving is the *query* answering differently, where the same
- * cards in a new sequence is an arrangement somebody wrote. A reorder that reads as "+1 -1" would
- * send you looking at the wrong half.
- *
- * Ids are shortened to their last segment: an AD4M id is a long URI, and a line comparing two orders
- * of five of them in full is one nobody reads.
- */
-function describeListChange(before: unknown, after: readonly unknown[]): string {
-  const key = (entry: unknown): string => {
-    const raw =
-      entry && typeof entry === 'object' ? String((entry as { id?: unknown }).id ?? '?') : String(entry ?? '');
-    return raw.split('/').pop()?.slice(-6) ?? raw;
-  };
-  const was = (Array.isArray(before) ? before : []).map(key);
-  const now = after.map(key);
-  if (was.join() === now.join()) return '';
-
-  const gained = now.filter((id) => !was.includes(id));
-  const lost = was.filter((id) => !now.includes(id));
-  if (!gained.length && !lost.length) return `reordered [${was.join(' ')}] → [${now.join(' ')}]`;
-  return [gained.length ? `+${gained.join(' +')}` : '', lost.length ? `-${lost.join(' -')}` : '']
-    .filter(Boolean)
-    .join(' ');
 }
 
 function createQuerySignal(
@@ -548,9 +449,7 @@ function createQuerySignal(
       ...resolvedParams,
       ...(resolvedInclude !== undefined && { include: resolvedInclude }),
     };
-    // Development only, and only what changed — see `logSubscriptionDiff`.
-    const label = entities.names.join(' + ');
-    let seen: unknown[] | null = null;
+
     const started = runQuery({
       ...entities,
       dataset: p,
@@ -558,10 +457,6 @@ function createQuerySignal(
       subscribe: descriptor.subscribe,
       stores,
       onRows: (rows) => {
-        if (descriptor.subscribe) {
-          logSubscriptionDiff(label, seen, rows);
-          seen = rows;
-        }
         setItems(reconcile(rows, { key: 'id', merge: true }));
         setLoaded(true);
       },

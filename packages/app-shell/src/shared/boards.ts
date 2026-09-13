@@ -690,9 +690,6 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
         if (task) {
           (task as Record<string, unknown>).status = to.slug;
           await (task as { save: (batch?: string) => Promise<unknown> }).save(tx.batchId);
-          // Development only: the write half of the picture the renderer's `[query]` lines give.
-          // Together they say whether a status that reached the backend came back to the screen.
-          if (import.meta.env.DEV) console.info(`[board] wrote status ${to.slug} to ${cardId}`);
         }
       });
     } catch (error) {
