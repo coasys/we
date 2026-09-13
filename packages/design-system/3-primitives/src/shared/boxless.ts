@@ -105,3 +105,35 @@ export function warnAboutBoxlessLayoutProps(el: HTMLElement, tag: string): void 
     el,
   );
 }
+
+/**
+ * The nearest element at or under `el` that takes part in layout — what a boxless wrapper measures.
+ *
+ * A `display: contents` element has no rectangle: `getBoundingClientRect` on one is zero at the
+ * origin, so anything positioned against it lands in the top-left corner of the screen. And what a
+ * slot hands back is rarely what an author wrote, because the schema renderer wraps every node in a
+ * `display: contents` div of its own. So this descends: through the light DOM first, then the shadow
+ * root, which is where a boxless custom element keeps its own drawing (`we-icon` renders an `svg`).
+ *
+ * `we-tooltip` found this out first and kept the answer to itself; `we-popover` needs the same one,
+ * so it lives here rather than twice.
+ */
+export function firstBoxIn(el: Element, depth = 0): HTMLElement | null {
+  if (!(el instanceof HTMLElement) || depth > 4) return null;
+  if (getComputedStyle(el).display !== 'contents') return el;
+  for (const child of [...el.children, ...(el.shadowRoot?.children ?? [])]) {
+    const found = firstBoxIn(child, depth + 1);
+    if (found) return found;
+  }
+  return null;
+}
+
+/** The first box among what a slot holds, or `fallback` when it holds none — see {@link firstBoxIn}. */
+export function anchorInSlot(slot: HTMLSlotElement | null | undefined, fallback: HTMLElement): HTMLElement {
+  for (const assigned of slot?.assignedElements({ flatten: true }) ?? []) {
+    const box = firstBoxIn(assigned);
+    if (box) return box;
+  }
+  // Nothing to point at — better a panel in the wrong place than a thrown getter.
+  return fallback;
+}

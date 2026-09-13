@@ -374,17 +374,7 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
       <Show
         when={!customTrigger()}
         fallback={
-          <we-button
-            slot="trigger"
-            variant="bare"
-            size={props.size}
-            // A flex box rather than an inline one, so it is as tall as what is in it: inline, it sat
-            // on a line of text and took that line's height, which stood a 24px stack of faces taller
-            // than the 24px buttons beside it.
-            display="flex"
-            ay="center"
-            aria-label={props.triggerTitle}
-          >
+          <we-button slot="trigger" variant="bare" size={props.size} aria-label={props.triggerTitle}>
             {customTrigger()}
           </we-button>
         }
