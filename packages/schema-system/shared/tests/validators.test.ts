@@ -41,6 +41,20 @@ describe('validators', () => {
     expect(res.errors.length).toBeGreaterThan(0);
   });
 
+  it('checks a panel’s opening box as numbers', () => {
+    const meta = (box: unknown) => ({
+      type: 'root',
+      meta: { name: 'T', description: 'd', icon: 'x', panels: [{ id: 'key', snap: 'top-right', box }] },
+    });
+
+    expect(validateStructure(meta({ width: 252, height: 545 })).valid).toBe(true);
+    expect(validateStructure(meta({ height: 545 })).valid).toBe(true);
+    // A CSS length would pass an unlisted key unchecked and resolve to NaN in the dock geometry.
+    const res = validateStructure(meta({ width: '252px' }));
+    expect(res.valid).toBe(false);
+    expect(res.errors.some((e) => e.path.includes('box'))).toBe(true);
+  });
+
   it('reports multiple nested errors in TemplateSchema', () => {
     const template = {
       type: 'root',

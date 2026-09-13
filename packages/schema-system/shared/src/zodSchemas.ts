@@ -282,6 +282,10 @@ export const zTemplateMeta: z.ZodType<TemplateMeta> = z
           // Not promotable. See `fixed` on `TemplatePanel`.
           fixed: z.boolean().optional(),
           size: z.enum(['sm', 'md', 'lg', 'full']).optional(),
+          // The opening box in pixels, clamped by the host. See `box` on `TemplatePanel`. Listed
+          // because this object is not strict: a key it does not name passes with nothing checked,
+          // so `box: { width: '252px' }` would validate and then resolve to NaN.
+          box: z.object({ width: z.number().optional(), height: z.number().optional() }).optional(),
           grow: z.number().optional(),
           displace: z.boolean().optional(),
           // The smallest usable box, in pixels — a fact about the content. See `min` on `TemplatePanel`.

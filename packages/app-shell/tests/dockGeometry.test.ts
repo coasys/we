@@ -1313,6 +1313,36 @@ describe('a template’s declared placement', () => {
     // already does for a module that asks to float.
     expect(placementFromDeclaration({}, desktop).snap).toBe('bottom-right');
   });
+
+  it('opens at a declared box, whatever the named size says', () => {
+    // A key is tall and narrow and a strip of faces is wide and low — neither is 16:9 of anything.
+    const key = placementFromDeclaration({ snap: 'top-right', size: 'sm', box: { width: 252, height: 545 } }, desktop);
+    const strip = placementFromDeclaration({ snap: 'bottom', box: { width: 862, height: 211 } }, desktop);
+
+    expect([key.w, key.h]).toEqual([252, 545]);
+    expect([strip.w, strip.h]).toEqual([862, 211]);
+  });
+
+  it('fills a side the box leaves out the way it would have been filled anyway', () => {
+    const sm = placementFromDeclaration({ snap: 'left', size: 'sm' }, desktop);
+    const wide = placementFromDeclaration({ snap: 'left', size: 'sm', box: { width: 480 } }, desktop);
+    const tall = placementFromDeclaration({ snap: 'left', size: 'sm', box: { height: 600 } }, desktop);
+
+    // A width alone keeps the usual shape, so it is a bigger card rather than one with no height.
+    expect([wide.w, wide.h]).toEqual([480, 270]);
+    // A height alone keeps the width the named size gives.
+    expect([tall.w, tall.h]).toEqual([sm.w, 600]);
+  });
+
+  it('clamps a declared box to the room there is, as it does a named size', () => {
+    // The template cannot see the viewport, which is the whole reason this is a bid and not a size.
+    const huge = placementFromDeclaration({ snap: 'bottom', box: { width: 5000, height: 5000 } }, laptop);
+    const tiny = placementFromDeclaration({ snap: 'bottom', box: { width: 10, height: 10 } }, desktop);
+
+    expect(huge.w).toBeLessThan(laptop.width);
+    expect(huge.h).toBeLessThan(laptop.height);
+    expect([tiny.w, tiny.h]).toEqual([MIN_FLOAT_PX, MIN_FLOAT_PX]);
+  });
 });
 
 /**
