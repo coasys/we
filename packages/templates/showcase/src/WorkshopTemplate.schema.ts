@@ -1881,9 +1881,14 @@ const canvas: SchemaNode = {
       call to be about, and a call that has not produced anything yet. The generic
       "Nothing to show yet." is right for a graph whose host has no opinion and wrong here, where
       there is something to do about it.
+
+      `CALL_EXPR` parenthesised, because it is a ternary itself and a ternary binds to the right:
+      pasted in bare, a chosen call short-circuited the whole thing and the canvas "said" the call's
+      `ad4m://` id. And naming both ways a card arrives, because a past call is read here too — one
+      whose conversation is over, where "as the conversation produces them" is only half the answer.
     */
     empty: {
-      $: `${CALL_EXPR} ? 'Nothing from this call yet. Tasks and events appear here as the conversation produces them — drag them into an arrangement and join them up.' : 'Start or choose a call. What it produces appears here as cards you can move and join up.'`,
+      $: `(${CALL_EXPR}) ? 'Nothing on this canvas yet. Double-click anywhere to add a card, or give extraction a moment — what the conversation commits to appears here on its own.' : 'Start or choose a call. What it produces appears here as cards you can move and join up.'`,
     },
     /*
       And drawn as an invitation, which is what both of those sentences are — the same gradient the

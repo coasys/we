@@ -329,6 +329,10 @@ describe('the workshop template’s call selection', () => {
     expect(action?.type).toBe('$if');
     expect(action?.props?.condition?.$).toBe(`!(${CALL_EXPR})`);
     expect(JSON.stringify(action)).toContain('modules.call.startCall');
+
+    // The sentence above it tests the same call, parenthesised: `CALL_EXPR` is a ternary, and pasted
+    // in bare a chosen call's id became the whole expression — the canvas "said" `ad4m://obj/…`.
+    expect((graph?.props?.empty as { $: string }).$.startsWith(`(${CALL_EXPR}) ? `)).toBe(true);
   });
 
   it('starts a call rather than reopening the one selected in the list', () => {
