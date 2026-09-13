@@ -265,9 +265,15 @@ which is a different feature.
 A board with `people` also reads the `Involvement` records — one person's part in one record, see
 `docs/architecture/relations.md` — and draws it three ways, all worked out in `arrangedBoard`:
 
-- **Faces on each card**, by what a kind _means_ rather than its slug, so "Assigned" renamed to
-  "Owner" still draws as the assignee. And a menu to change them, one group per kind.
-- **A filter above the board**: members to choose, and how the rest are drawn.
+- **Faces on each card** — assignees, then reviewers, as one stack of three and a count, at the
+  card's right edge. By what a kind _means_ rather than its slug, so "Assigned" renamed to "Owner"
+  still draws as the assignee. A reviewer is ringed in red (`TONE_BY_SEMANTIC`), which is the whole
+  of how the two are told apart. The stack is the picker's trigger; a card with nobody on it shows a
+  dashed empty face in the same place. Hovering names each part and its people, and where the card
+  came from.
+- **A filter above the board**: a row of faces for the people on a card here, you first — press to
+  narrow, press again to let go — ending in a chip that opens every member, searchable. How the rest
+  are drawn is its own small control beside it:
   - **Dim**, the default. Nothing moves, so a filtered board keeps its shape and every column still
     says how loaded it is — which is the reason it is the default rather than a nicety.
   - **Hide.** The others leave the columns; a heading reads "2/5", matched of total.
@@ -275,7 +281,12 @@ A board with `people` also reads the `Involvement` records — one person's part
     per person on any card here — plus one for work nobody is on. A card two people are on is in
     both rows, which is true.
 
-Three decisions that look arbitrary from the code:
+The decisions that look arbitrary from the code:
+
+**The creator is not on a card.** Every board that has settled this puts only whoever is on the work
+on a card's face; who made it is history, and lives in the hovercard and the inspector. On an
+extracted card the author is whichever member's node ran the pass, not who proposed the work, so the
+name was false as well as prominent — an `extracted` mark says what is true.
 
 **Declined is not being on it.** A "not going" never matches a filter, and never puts somebody in a
 row.
