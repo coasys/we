@@ -330,6 +330,7 @@
 
 .we-graph__label {
   position: absolute;
+
   // A caption sits on the page, so it reads in the page's ink unless a rule chose otherwise.
   color: var(--node-label-color, var(--we-role-text));
   font-size: var(--node-label-size);
@@ -390,8 +391,9 @@
     The plain line first is the fallback for an engine without relative colours; one that has them
     takes the second. Set on the card so its content inherits it, the fallback text included.
   */
+  /* stylelint-disable-next-line declaration-block-no-duplicate-properties -- the fallback pair below */
   color: var(--node-label-color, var(--we-role-text));
-  color: var(--node-label-color, oklch(from var(--node-color) calc((0.65 - l) * infinity) 0 0));
+  color: var(--node-label-color, oklch(from var(--node-color) calc((0.65 - l) * infinity) 0 0deg));
 }
 
 // The card's shape: fill, border, radius, and for the polygons the clip — see the markup.
@@ -402,6 +404,7 @@
   min-width: 0;
   padding: var(--we-space-300);
   border-radius: var(--node-radius);
+
   // For the shapes a radius cannot make — see `nodeClip`. `none` for the rest.
   clip-path: var(--node-clip, none);
   background: var(--node-color);
@@ -859,6 +862,7 @@
  */
 .we-graph__actions {
   position: absolute;
+
   // On the node's own point, which is the card's centre; the transform below centres the bar on it.
   left: 0;
   top: calc(var(--node-height) / -2);
