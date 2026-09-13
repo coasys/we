@@ -222,7 +222,7 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       id: 'content',
       category: 'style',
       description:
-        "Node style, cards only. Names a host-supplied component to draw INSIDE the card instead of a text label — WE registers `block`, which renders a CollectionBlock's composed content the way a post card does. A label can only ever be the first line, so a card holding an image and three paragraphs shows sixty characters and gives no sign the rest exists. Clipped, not scrolled: a card is a preview, and what does not fit is reached by opening it. Falls back to the label when the host supplies no component by that name.",
+        "Node style, cards only. Names a host-supplied component to draw INSIDE the card instead of a text label — WE registers `block`, which renders a CollectionBlock's composed content the way a post card does, and `record`, which does the same for a note and draws any other record as its kind, its name and every value it holds. A label can only ever be the first line, so a card holding an image and three paragraphs shows sixty characters and gives no sign the rest exists. Clipped, not scrolled: a card is a preview, and what does not fit is reached by opening it. Falls back to the label when the host supplies no component by that name.",
       example: `"nodeStyle": [{ "style": { "shape": "card", "width": 180, "content": "block" } }]`,
     },
     {

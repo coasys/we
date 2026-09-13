@@ -75,6 +75,16 @@ export interface DisplayField {
    */
   options: string[];
   /**
+   * Which community vocabulary the value is a slug of — `'taskState'` for a task's `status` — or
+   * empty for a field whose options are just words.
+   *
+   * `options` says which slugs are allowed and nothing about what they are called: a slug is what a
+   * record stores, and a state's name is what a person reads, and a community can rename one without
+   * touching the other. A surface drawing the value needs to know where to look the name up, and the
+   * declaration is the only place that knows.
+   */
+  vocabulary: string;
+  /**
    * For a `relation` field, the model it points at — `'LocationBlock'`. Empty for everything else,
    * and for a relation declared against no particular type.
    *
@@ -239,6 +249,7 @@ export function displayFor(source: DisplaySource): RecordDisplay {
     // Stringified: a declaration may close a numeric set, and every consumer of this is a control
     // or a label, both of which deal in strings.
     options: optionsFor(name),
+    vocabulary: properties[name].vocabulary ?? '',
     target: '',
     many: false,
   }));
@@ -273,6 +284,7 @@ export function displayFor(source: DisplaySource): RecordDisplay {
       kind: 'relation',
       role: 'detail',
       options: [],
+      vocabulary: '',
       target: relations[name].target ?? '',
       many: relations[name].cardinality === 'many',
     });

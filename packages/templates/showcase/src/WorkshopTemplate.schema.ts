@@ -1791,7 +1791,10 @@ const canvas: SchemaNode = {
         style: {
           shape: 'card',
           width: 180,
-          content: 'block',
+          // `record` rather than `block`: a note draws its document either way, and a task, an event
+          // or a community's own model draws what kind of thing it is and every value it holds,
+          // where `block` drew only its name — a canvas beside a live call is read card by card.
+          content: 'record',
           contentMinZoom: 0.5,
           color: PLAIN_FILL,
           // No `labelColor`: left unset, the graph inks a card black or white by the lightness of

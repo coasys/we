@@ -517,6 +517,17 @@
   pointer-events: none;
 
   /*
+    Whatever a host draws here is at the card's type size, like the label it stands in for.
+
+    A document and the fallback label each state this for themselves below; a host's own content — a
+    record's fields — had nothing to inherit but the page's body size, and drew three sizes larger
+    than the note beside it. Stated once here, it reaches content nobody wrote a rule for, and `em`
+    inside that content scales from it.
+  */
+  font-size: var(--node-label-size);
+  line-height: 1.4;
+
+  /*
     The document's ink is the card's — see the card's own `color`.
 
     A rendered document pins `--we-role-text` on itself and on every block in it, which is right
