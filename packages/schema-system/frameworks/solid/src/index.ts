@@ -1,4 +1,5 @@
 export { RenderSchema } from './SchemaRenderer';
+export { resetSubscriptionPool, subscriptionPoolConfig } from './subscriptionPool';
 
 /*
   The measuring half of a surface, for hosts.

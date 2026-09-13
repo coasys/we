@@ -31,6 +31,8 @@ export interface IndexedNode {
    */
   halfWidth?: number;
   halfHeight?: number;
+  /** Stacking order — see `NodeStyle.z`. The node drawn in front is the one a press lands on. */
+  z?: number;
 }
 
 const DEFAULT_CELL = 120;
@@ -64,13 +66,15 @@ export class SpatialIndex {
   }
 
   /**
-   * Nodes under a world point, nearest first.
+   * Nodes under a world point, frontmost first, then nearest.
    *
    * Ordered because overlapping nodes are normal in a force layout and "whichever the iteration
-   * happened to reach first" makes clicks feel random.
+   * happened to reach first" makes clicks feel random. Stacking comes before distance because a
+   * card drawn over another covers it: a press on the covering card that picked the one beneath,
+   * for being nearer its centre, would be a click on something you cannot see.
    */
   hitTest(at: Point): string[] {
-    const hits: { id: string; distance: number }[] = [];
+    const hits: { id: string; distance: number; z: number }[] = [];
     const cx = Math.floor(at.x / this.cellSize);
     const cy = Math.floor(at.y / this.cellSize);
 
@@ -86,12 +90,12 @@ export class SpatialIndex {
               : distance <= node.radius;
           // Distance to centre still orders the hits — for overlapping cards, the one you are
           // nearest the middle of is the one you meant.
-          if (inside) hits.push({ id: node.id, distance });
+          if (inside) hits.push({ id: node.id, distance, z: node.z ?? 0 });
         }
       }
     }
 
-    return hits.sort((a, b) => a.distance - b.distance).map((h) => h.id);
+    return hits.sort((a, b) => b.z - a.z || a.distance - b.distance).map((h) => h.id);
   }
 
   /** Ids intersecting a world rectangle — marquee selection, and viewport culling. */

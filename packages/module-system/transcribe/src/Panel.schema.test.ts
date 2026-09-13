@@ -872,8 +872,11 @@ describe('the extraction panel', () => {
       community's own colour. Here it is one line among several.
     */
     expect(json).not.toContain("last(field.options) ? 'success'");
-    // The one badge left is the count beside "Awaiting your call", which is a number and not a state.
-    expect(json).toContain('"we-badge","props":{"size":"xs","variant":"warning","appearance":"solid"}');
+    // The one badge left is the count beside "Awaiting your call", which is a number and not a
+    // state. Left open at the end rather than closing the props object: what is being pinned is
+    // that the badge is the count's, and it should not have to be rewritten when the count's chip
+    // gains a size or a colour.
+    expect(json).toContain('"we-badge","props":{"size":"xs","variant":"warning","appearance":"solid"');
   });
 
   it('lists only the fields a record actually has something in', () => {
@@ -1536,7 +1539,84 @@ describe('the history of what was read', () => {
     const activity = JSON.stringify(extractionActivity);
     expect(activity).not.toContain('interpretationStore.settledPasses');
     expect(activity).not.toContain('extractions processed');
-    // The log keeps its own count, which is the one that survives a reload.
-    expect(json).toContain("plural(count(local.passes), 'reading', 'readings')");
+    // The log keeps its own count, which is the one that survives a reload. On the heading's badge
+    // now, where the other two sections carry theirs — it used to be spelled out a row lower, in a
+    // line that also owned the fold.
+    expect(json).toContain('"count(local.passes)"');
+  });
+
+  it('folds the readings from their heading, like every other section', () => {
+    /*
+      The fold was a row *under* the "Logs" heading carrying its own caret and its own count, so
+      this was the one section of three whose heading did nothing and the one list that folded from
+      somewhere else. Two rows of chrome over one list, saying the count twice.
+
+      Asserted as the absence of the row as well as the presence of the heading control: leaving
+      both would not fail anything, and would be exactly the state this is about.
+    */
+    expect(json).toContain('"$toggleLocal":"logsOpen"');
+    expect(json).toContain('"persist":"transcribe.logsOpen"');
+    expect(json).not.toContain('historyOpen');
+    expect(json).not.toContain('of this call`');
+  });
+
+  it('makes the whole heading row the control, not just its caret', () => {
+    /*
+      The fold was a glyph-sized button at the far end of a row whose obvious target is the word
+      naming the thing. Asserted structurally rather than by string, because "the heading is the
+      button" is a statement about which node the handler sits on — a search of the serialised panel
+      would pass just as happily with the caret button back and the row inert around it.
+
+      Exactly one `we-button` inside each: the caret cannot go back to being its own, because a
+      button nested in a button is invalid markup and would take the press on the way past and
+      toggle twice.
+    */
+    const fields = ['proposalsOpen', 'extractedOpen', 'logsOpen'];
+    const found: Record<string, string> = {};
+
+    const walk = (node: unknown): void => {
+      if (!node || typeof node !== 'object') return;
+      if (Array.isArray(node)) return void node.forEach(walk);
+      const n = node as { type?: string; props?: Record<string, unknown> };
+      const field = (n.props?.onClick as { $toggleLocal?: string } | undefined)?.$toggleLocal;
+      if (field && fields.includes(field)) {
+        expect(n.type, `${field} is toggled from a ${n.type}`).toBe('we-button');
+        found[field] = JSON.stringify(node);
+      }
+      Object.values(n).forEach(walk);
+    };
+    walk(extractionPanel);
+
+    expect(Object.keys(found).sort()).toEqual([...fields].sort());
+
+    for (const [field, label] of [
+      ['proposalsOpen', 'Awaiting your call'],
+      ['extractedOpen', 'Extracted'],
+      ['logsOpen', 'Logs'],
+    ]) {
+      expect(found[field]).toContain(`"${label}"`);
+      expect(found[field].match(/"type":"we-button"/g)).toHaveLength(1);
+    }
+  });
+
+  it('puts the readings above the queue, and the queue above what it produced', () => {
+    /*
+      The panel reads as what it does, in order: what will be looked for, what is running, every
+      pass so far, then the records waiting on a person and the ones already theirs.
+
+      Before this the first thing the panel said was "answer this", with the controls that caused
+      the suggestions and the log that explains them underneath. By index rather than by walking the
+      tree, because what is being asserted is the order of four siblings in one array and every one
+      of them is identified by a string that appears exactly once.
+    */
+    const chips = json.indexOf('"Things to extract"');
+    const logs = json.indexOf('"Logs"');
+    const awaiting = json.indexOf('"Awaiting your call"');
+    const extracted = json.indexOf('"Extracted"');
+
+    expect(chips).toBeGreaterThan(-1);
+    expect(logs).toBeGreaterThan(chips);
+    expect(awaiting).toBeGreaterThan(logs);
+    expect(extracted).toBeGreaterThan(awaiting);
   });
 });

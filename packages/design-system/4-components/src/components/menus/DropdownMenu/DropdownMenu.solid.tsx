@@ -1,4 +1,13 @@
-import { Accessor, createMemo, createSignal, Index, Show } from 'solid-js';
+import {
+  Accessor,
+  children as resolveChildren,
+  createMemo,
+  createSignal,
+  Index,
+  type JSX,
+  Show,
+  untrack,
+} from 'solid-js';
 
 export type * from './DropdownMenu.types';
 import type {
@@ -19,6 +28,14 @@ type SolidDropdownMenuEntry =
   | { type: 'divider' };
 type SolidDropdownMenuProps = Omit<DropdownMenuProps, 'items'> & {
   items: SolidDropdownMenuEntry[];
+  /**
+   * What to press, when it is not a button with a glyph and a word — a stack of faces, say.
+   *
+   * Drawn inside a bare `we-button`, so it is still focusable and still opens on Enter; given, it
+   * replaces `triggerIcon`/`triggerLabel`, and `triggerTitle` becomes its accessible name rather than
+   * a tooltip, since content rich enough to be a trigger usually brings a tooltip of its own.
+   */
+  children?: JSX.Element;
 };
 
 /**
@@ -60,27 +77,54 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
     popoverRef?.removeAttribute('open');
   };
 
+  // Resolved once: reading `props.children` twice would build the trigger twice.
+  const customTrigger = resolveChildren(() => props.children);
+
   const handleAction = (item: DropdownMenuAction) => {
     if (item.disabled) return;
     item.onAction?.();
     props.onSelect?.(item);
+    setQuery('');
     closeMenu();
   };
 
   const handleToggle = (item: SolidDropdownMenuToggle) => {
     if (item.disabled) return;
-    item.onToggle();
+    item.onToggle?.();
+    // Reported with `checked` as a plain value, whichever way the entry carried it — a schema reads
+    // `arg.checked`, and an accessor there would be a function it cannot call.
+    props.onSelect?.({ ...item, checked: isChecked(item) });
+  };
+
+  /*
+    The search query, when the menu is searchable.
+
+    Cleared when an action closes the menu, so the next opening starts from the whole list. A menu
+    closed by clicking away keeps it — the popover owns that dismissal and says nothing about it —
+    which leaves somebody's half-typed name where they left it, the better of the two failures.
+  */
+  const [query, setQuery] = createSignal('');
+  const matches = (entry: SolidDropdownMenuEntry | undefined): boolean => {
+    const needle = query().trim().toLowerCase();
+    if (!needle || !entry) return true;
+    if (entry.type === 'divider') return false;
+    if (entry.type === 'group') return entry.items.some((item) => matches(item));
+    return String(entry.label ?? '')
+      .toLowerCase()
+      .includes(needle);
   };
 
   const isChecked = (item: SolidDropdownMenuToggle): boolean => {
     return typeof item.checked === 'function' ? item.checked() : item.checked;
   };
 
-  const toggleGroup = (groupId: string) => {
-    setGroupStates((prev) => ({
-      ...prev,
-      [groupId]: !prev[groupId],
-    }));
+  /*
+    Flips what is on screen, not what was last remembered. A group nobody has touched has no entry
+    here, so flipping the entry turned "unset" into "collapsed" — which a group that started collapsed
+    already was, and the first press did nothing. Its declared default is part of what is on screen.
+  */
+  const toggleGroup = (group: DropdownMenuGroup) => {
+    setGroupStates((prev) => ({ ...prev, [group.id]: !isGroupCollapsed(group) }));
   };
 
   const isGroupCollapsed = (group: DropdownMenuGroup): boolean => {
@@ -104,6 +148,25 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
 
   const metrics = () => ITEM_SIZES[props.itemSize ?? props.size ?? 'md'];
 
+  /** What leads an entry: its face if it is a person, otherwise its glyph. */
+  const leading = (getItem: () => { icon?: string; avatar?: DropdownMenuAction['avatar'] }) => (
+    <Show
+      when={getItem().avatar}
+      fallback={
+        <Show when={getItem().icon}>
+          <we-icon name={getItem().icon!} size={metrics().icon} />
+        </Show>
+      }
+    >
+      <we-avatar
+        size="xs"
+        image={getItem().avatar?.image ?? ''}
+        hash={getItem().avatar?.hash ?? ''}
+        prop:ringColor={getItem().avatar?.tone ?? ''}
+      />
+    </Show>
+  );
+
   /*
     Every binding reads through the accessor, rather than off a snapshot taken once.
 
@@ -120,6 +183,7 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
     return (
       <we-menu-item
         on:select={() => handleAction(getItem())}
+        selected={Boolean(getItem().selected)}
         variant={getItem().variant || 'default'}
         opacity={getItem().disabled ? 0.5 : 1}
         cursor={getItem().disabled ? 'not-allowed' : 'pointer'}
@@ -128,10 +192,11 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
         gap={metrics().gap}
         fontSize={metrics().fontSize}
       >
-        <Show when={getItem().icon}>
-          <we-icon name={getItem().icon!} size={metrics().icon} />
-        </Show>
+        {leading(getItem)}
         <we-text fontSize={metrics().fontSize}>{getItem().label}</we-text>
+        <Show when={getItem().selected}>
+          <we-icon name="check" size="xs" weight="bold" color="accent" ml="auto" />
+        </Show>
       </we-menu-item>
     );
   };
@@ -150,20 +215,26 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
         gap={metrics().gap}
         fontSize={metrics().fontSize}
       >
-        <Show when={getItem().icon}>
-          <we-icon name={getItem().icon!} size={metrics().icon} />
-        </Show>
+        {leading(getItem)}
         <we-text fontSize={metrics().fontSize}>{getItem().label}</we-text>
         <Show when={checked()}>
-          <we-icon name="check" size="xs" weight="bold" color="accent" />
+          <we-icon name="check" size="xs" weight="bold" color="accent" ml="auto" />
         </Show>
       </we-menu-item>
     );
   };
 
+  /*
+   * A group's heading is set small, in capitals and spaced out, so it reads as the name of what
+   * follows rather than as one more entry. Beside a list of people especially: "Reviewing" and
+   * "Ana" are both a capitalised word in the same size, and only the caret told them apart.
+   * Written out on both headings rather than spread from one shared object: spread onto a custom
+   * element, `uppercase` arrived and `fontSize` did not.
+   */
   const renderGroup = (getGroup: () => DropdownMenuGroup & { items: SolidDropdownMenuEntry[] }) => {
     // Through the accessor throughout, for the reason spelled out above `renderActionItem`.
-    const collapsed = createMemo(() => isGroupCollapsed(getGroup()));
+    // Open while somebody is searching: a match inside a closed group is a match nobody can see.
+    const collapsed = createMemo(() => isGroupCollapsed(getGroup()) && !query().trim());
     const groupItems = createMemo(() => getGroup().items);
 
     return (
@@ -171,21 +242,25 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
         {/* Collapsible header */}
         <Show when={getGroup().collapsible !== false}>
           <we-menu-item
-            on:select={() => !getGroup().disabled && toggleGroup(getGroup().id)}
+            on:select={() => !getGroup().disabled && toggleGroup(getGroup())}
             opacity={getGroup().disabled ? 0.5 : 1}
             cursor={getGroup().disabled ? 'not-allowed' : 'pointer'}
             color="text-faint"
             prop:hoverProps={{ color: 'neutral-500' }}
           >
             <we-icon name={collapsed() ? 'caret-right' : 'caret-down'} size="xs" />
-            <we-text>{getGroup().label}</we-text>
+            <we-text fontSize="100" letterSpacing="wide" uppercase>
+              {getGroup().label}
+            </we-text>
           </we-menu-item>
         </Show>
 
         {/* Non-collapsible header */}
         <Show when={getGroup().collapsible === false}>
           <we-menu-item color="text-muted" cursor="default" pointerEvents="none">
-            <we-text>{getGroup().label}</we-text>
+            <we-text fontSize="100" letterSpacing="wide" uppercase>
+              {getGroup().label}
+            </we-text>
           </we-menu-item>
         </Show>
 
@@ -202,7 +277,8 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
   };
 
   const renderBody = (getEntry: () => SolidDropdownMenuEntry) => {
-    const entry = getEntry();
+    // Read once, untracked: the caller rebuilds this only when the entry's kind changes.
+    const entry = untrack(getEntry);
 
     if (entry.type === 'divider') {
       return renderDivider();
@@ -243,9 +319,27 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
   const renderEntry = (getEntry: () => SolidDropdownMenuEntry) => {
     const present = createMemo(() => {
       const entry = getEntry();
-      return Boolean(entry) && !('hidden' in entry && entry.hidden);
+      return Boolean(entry) && !('hidden' in entry && entry.hidden) && matches(entry);
     });
-    return <Show when={present()}>{renderBody(getEntry)}</Show>;
+    /*
+      Built once per kind of entry, not once per entry object.
+
+      The body used to be built inside the `Show`, and it reads the entry to decide what to draw — so
+      that read was tracked by the `Show`, and every time `items` was recomputed (a new array of new
+      objects, which is every time a menu built from data re-derives) every row was thrown away and
+      built again. On screen that was the hovered row's background fading out and back in a second
+      after a press, when the data caught up; underneath it was worse — a row replaced between the
+      press and the release takes the click with it, so a quick second press sometimes did nothing.
+
+      Keyed on the kind instead: a toggle stays the same element while its label, tick and face
+      follow the entry through the accessor, and only a position that stops being a toggle is rebuilt.
+    */
+    const kind = createMemo(() => (present() ? (getEntry()?.type ?? 'action') : undefined));
+    return (
+      <Show when={kind()} keyed>
+        {(_kind) => renderBody(getEntry)}
+      </Show>
+    );
   };
 
   /*
@@ -316,13 +410,42 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
         round: slot assignment considers a shadow host's *direct* children, so whichever element is
         outermost is the one that has to carry `slot`.
       */}
-      <Show when={props.triggerTitle} fallback={trigger('trigger')}>
-        <we-tooltip slot="trigger" content={props.triggerTitle!} placement="bottom">
-          {trigger('')}
-        </we-tooltip>
+      <Show
+        when={!customTrigger()}
+        fallback={
+          <we-button slot="trigger" variant="bare" size={props.size} aria-label={props.triggerTitle}>
+            {customTrigger()}
+          </we-button>
+        }
+      >
+        <Show when={props.triggerTitle} fallback={trigger('trigger')}>
+          <we-tooltip slot="trigger" content={props.triggerTitle!} placement="bottom">
+            {trigger('')}
+          </we-tooltip>
+        </Show>
       </Show>
 
       <we-menu slot="content">
+        <Show when={props.searchable}>
+          {/*
+            Inside the menu rather than above it, so it sits in the same panel; the menu's own keys
+            are arrows, Home and End, and the two that belong to a caret are kept here.
+          */}
+          <div
+            style={{ padding: '0 var(--we-space-200) var(--we-space-200)' }}
+            on:keydown={(event: KeyboardEvent) => {
+              if (event.key === 'Home' || event.key === 'End') event.stopPropagation();
+            }}
+          >
+            <we-input
+              size={props.itemSize ?? props.size ?? 'md'}
+              width="100%"
+              placeholder={props.searchPlaceholder ?? 'Search'}
+              value={query()}
+              on:input={(event: CustomEvent<string>) => setQuery(String(event.detail ?? ''))}
+            />
+          </div>
+        </Show>
         <Index each={props.items}>{(getEntry) => renderEntry(getEntry)}</Index>
       </we-menu>
     </we-popover>

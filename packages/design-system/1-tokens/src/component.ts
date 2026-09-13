@@ -11,6 +11,7 @@ export type ScrollbarToken =
   | 'cornerBackground'
   | 'thumbBoxShadow'
   | 'thumbBorderRadius'
+  | 'thumbInset'
   | 'thumbBackground';
 
 /**
@@ -18,12 +19,34 @@ export type ScrollbarToken =
  * These values define the appearance of scrollbars across the system.
  */
 export const scrollbar = {
-  width: '6px',
+  /**
+   * The room the bar takes, thumb *and* its clearance — see `thumbInset`.
+   *
+   * `10px` where it was `6px`, and the visible thumb is unchanged at six: the extra four are the
+   * two pixels of air on either side of it. A scroll region's content is that much narrower when it
+   * overflows, which is the whole price of the change.
+   */
+  width: '10px',
   backgroundImage: 'none',
   background: 'transparent',
   cornerBackground: 'transparent',
   thumbBoxShadow: 'none',
   thumbBorderRadius: 'var(--we-radius-pill)',
+  /**
+   * How far the thumb is held off the edges of its own track.
+   *
+   * Without it the thumb fills the track, so an overflowing panel ends its content flush against
+   * the bar — the cards in the extraction panel are where that was noticed, and it was true of
+   * every scroll region in WE. Padding on each scroller fixes one of them at a time and costs
+   * layout: the padding cannot know whether anything is currently scrolling, so it is also there on
+   * a panel with no bar, leaving the content nearer one edge than the other.
+   *
+   * Inset here instead, where it costs no layout at all and is right everywhere at once. `border`
+   * with `background-clip: content-box` is what does it — a transparent border is still the
+   * element's own box, so the thumb keeps its full hit area and only the paint pulls in. The track
+   * is transparent, so what shows through the border is whatever is behind the bar.
+   */
+  thumbInset: '2px',
   // The role that names exactly this — see `controlSurface`, whose own documentation lists a
   // scrollbar thumb. It was the last scale position left in the token layer after the migration.
   thumbBackground: 'var(--we-role-control-surface)',
@@ -77,6 +100,19 @@ export function scrollbarRules(prefix = ''): string {
     box-shadow: var(--we-scrollbar-thumb-box-shadow);
     border-radius: var(--we-scrollbar-thumb-border-radius);
     background-color: var(--we-scrollbar-thumb-background);
+    /*
+      The pair that insets the thumb inside its own track — see the \`thumbInset\` token.
+
+      They only work together: the border is what reserves the space and \`content-box\` is what
+      stops the background painting into it. Either alone is a no-op, and dropping the second is
+      the likely accident, since a transparent border looks like it should already be invisible.
+
+      The radius is on the border box, so the painted pill is the inner curve of it. That is right
+      at a pill radius, which is larger than any of these figures and stays a capsule however far
+      the thumb is pulled in.
+    */
+    border: var(--we-scrollbar-thumb-inset) solid transparent;
+    background-clip: content-box;
   }
 
   ${prefix}::-webkit-scrollbar-button {

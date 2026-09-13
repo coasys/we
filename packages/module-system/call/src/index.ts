@@ -911,8 +911,9 @@ const participants: SchemaNode = peopleTooltip({
             },
             max: 3,
             size: 'sm',
-            // The faces overlap, so each needs the surface behind it to show between them.
-            ring: '0 0 0 2px var(--we-ring-color)',
+            // The faces overlap, so each is edged in the bar's own colour to show where one ends. It was
+            // `--we-ring-color` — the focus colour — which put a permanent accent ring on everyone.
+            edge: 'var(--we-role-page)',
           },
         },
         /*

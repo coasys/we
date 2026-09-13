@@ -19,6 +19,7 @@ import {
   gatePrompt,
   marketplaceList,
   pageShell,
+  peopleFilter,
   peopleRow,
   peopleTooltip,
   railGroup,
@@ -27,6 +28,7 @@ import {
   recordCard,
   sectionCard,
   statChip,
+  taskBoard,
 } from './index.ts';
 
 /**
@@ -142,7 +144,6 @@ const portable: Record<string, SchemaNode> = {
   railShell: railShell({
     header: { type: 'we-image', props: { src: '/logo.svg' } },
     footer: railItem({ icon: 'sign-out', label: 'Logout' }),
-    persistKey: 'test.rail',
     children: [
       railItem({ icon: 'user', label: 'Profile', active: true, tooltip: 'Profile' }),
       railGroup({
@@ -182,6 +183,20 @@ const weDomain: Record<string, SchemaNode> = {
   agentByline: agentByline({ did: { $: 'post.author' }, timestamp: { $: 'post.createdAt' } }),
   'agentByline (stacked)': agentByline({ did: { $: 'u.author' }, as: 'speaker', stacked: true }),
   peopleRow: peopleRow({ items: { $: 'spaceStore.members' }, noun: 'Member' }),
+  peopleFilter: peopleFilter({
+    people: 'who',
+    show: 'whoMode',
+    modes: ['dim', 'hide'],
+    faces: { $: 'spaceStore.memberDids' },
+    matched: { $: 'count(local.who)' },
+    total: { $: 'count(spaceStore.members)' },
+    noun: 'event',
+  }),
+  'taskBoard (people)': taskBoard({
+    boardId: { $: 'spaceStore.currentSpace.id' },
+    empty: { type: 'Column' },
+    people: true,
+  }),
   'peopleRow (dids)': peopleRow({ items: { $: 'call.participants' }, dids: true }),
   adminSection: adminSection({ title: 'Models', icon: 'sparkle', refresh: 'runtimeStore.loadAiModels', children: [] }),
   marketplaceList: marketplaceList({
@@ -224,6 +239,8 @@ const withAmbientScope = (node: SchemaNode): SchemaNode => ({
     displayMode: { type: 'string', initial: 'expanded' },
     formOpen: { type: 'boolean', initial: false },
     composeOpen: { type: 'boolean', initial: false },
+    who: { type: 'array', initial: [] },
+    whoMode: { type: 'string', initial: 'dim' },
   },
   children: [node],
 });
@@ -236,6 +253,7 @@ describe('every expansion is a valid schema fragment', () => {
     'formModal (guarded)',
     'composerModal',
     'composerModal (unguarded)',
+    'peopleFilter',
   ]);
   for (const [name, node] of Object.entries({ ...portable, ...weDomain })) {
     it(name, () => {

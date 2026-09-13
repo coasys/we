@@ -914,6 +914,41 @@ const shapeWizardModal: SchemaNode = {
             },
           ],
         },
+        /*
+          Which field names one of these — beside the identifying field, and deliberately not
+          merged with it.
+
+          The two look like one question and are not. An identity is a dedup key a machine
+          maintains, and may be a composite nobody would recognise; this is the one short string
+          every surface shows when it has room for one line — a card's heading, a node's caption on
+          a canvas, a drag chip, a breadcrumb. WE's own models declare it, and until this picker
+          existed a community's could not: the guess ("a property called `name` or `title`, else
+          whichever string is required or first") is right most of the time and silent when it is
+          not, which is how a code block came to be titled by its entire body.
+
+          "Work it out" rather than "None", because there is no such thing as a record with no name
+          — only one whose name is derived. See `shapeStore.nameOptions`.
+        */
+        {
+          type: 'we-form-field',
+          props: {
+            label: 'Naming field',
+            description:
+              'The field that says what one of these is called — shown as the heading on a card, and as the label on a canvas. Leave as Work it out and a field called name or title will be used.',
+          },
+          children: [
+            {
+              type: 'we-select',
+              props: {
+                size: 'sm',
+                width: '240px',
+                options: { $: 'shapeStore.nameOptions' },
+                value: { $: "shapeStore.shapeDraft.nameMember ? shapeStore.shapeDraft.nameMember : 'none'" },
+                onChange: { $action: 'shapeStore.setNameMember', args: [{ $: 'arg.detail' }] },
+              },
+            },
+          ],
+        },
         {
           type: '$if',
           props: {

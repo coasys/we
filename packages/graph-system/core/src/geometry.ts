@@ -10,7 +10,15 @@
  * path string. A renderer turns that into whatever it strokes with, and the core can measure the same
  * curve without knowing anything about either.
  */
-import type { EdgeAnchors, EdgeCurve, EdgeGeometry, EdgeSide, Point } from '@we/graph-protocol';
+import {
+  type CardShape,
+  cardSilhouette,
+  type EdgeAnchors,
+  type EdgeCurve,
+  type EdgeGeometry,
+  type EdgeSide,
+  type Point,
+} from '@we/graph-protocol';
 
 /**
  * Canonical curve name for whatever a style asked for.
@@ -44,11 +52,105 @@ export function normaliseCurve(curve: string | undefined): EdgeCurve {
 export interface EdgeClearance {
   halfWidth: number;
   halfHeight: number;
+  /**
+   * What the box is cut to, where it is cut to anything — see `CARD_SILHOUETTES`.
+   *
+   * Without it an edge meets the box, which is the shape a card is cut *out of* rather than the
+   * shape anybody sees. That is invisible on a square and on every outline that happens to touch
+   * the box where the line arrives — a diamond's vertex, an ellipse's widest point — and 45px of
+   * daylight on a triangle's side, which is a quarter of a 180px card.
+   */
+  shape?: CardShape;
+  /**
+   * How far *beyond* the outline to stop, in world units.
+   *
+   * The end an arrowhead points at wants a few pixels so the head lands against the card rather
+   * than on it; the end a line leaves wants none. It is held apart from the half-extents rather
+   * than added to them because a shape cannot be inflated by adding to its box: a triangle grown
+   * that way moves its sides by a different amount than its corners, and the standoff is supposed
+   * to be the same distance whichever way the line leaves.
+   */
+  gap?: number;
 }
 
-/** Half-extents on each axis. A circle's are equal, which is all the axis-aligned cases need. */
-function clearanceOf(clearance: number | EdgeClearance): EdgeClearance {
-  return typeof clearance === 'number' ? { halfWidth: clearance, halfHeight: clearance } : clearance;
+/**
+ * Half-extents on each axis, standoff included. A circle's are equal, which is all the axis-aligned
+ * cases need — this answers "how much room does this node take", not "where does a line meet it".
+ */
+function clearanceOf(clearance: number | EdgeClearance): { halfWidth: number; halfHeight: number } {
+  if (typeof clearance === 'number') return { halfWidth: clearance, halfHeight: clearance };
+  const gap = clearance.gap ?? 0;
+  return { halfWidth: clearance.halfWidth + gap, halfHeight: clearance.halfHeight + gap };
+}
+
+/**
+ * How far the node reaches along one direction — the distance from its centre to its outline.
+ *
+ * The one question every attachment asks, whatever decided the direction: an anchor naming a side, a
+ * smooth curve's axis, or the chord a straight edge travels. Answering it in one place is what lets
+ * all three meet the *shape* rather than two of them meeting a box.
+ */
+function reachAlong(ux: number, uy: number, clearance: number | EdgeClearance): number {
+  if (typeof clearance === 'number') return clearance;
+  const { halfWidth, halfHeight, shape } = clearance;
+  if (halfWidth <= 0 && halfHeight <= 0) return 0;
+
+  // A round card is the ellipse inscribed in its box — exact by formula, where a polygon of it would
+  // be an approximation of something already known.
+  if (shape === 'round') {
+    const rx = halfWidth > 0 ? ux / halfWidth : Infinity;
+    const ry = halfHeight > 0 ? uy / halfHeight : Infinity;
+    const d = Math.hypot(rx, ry);
+    return d > 0 ? 1 / d : 0;
+  }
+
+  const outline = cardSilhouette(shape);
+  if (outline) {
+    const reach = polygonReach(ux, uy, outline, halfWidth, halfHeight);
+    // A ray from the centre of a closed outline always leaves it; the fallback is for a table that
+    // somehow did not contain its own centre, where a box is a better answer than none.
+    if (Number.isFinite(reach)) return reach;
+  }
+  return boxReach(ux, uy, halfWidth, halfHeight);
+}
+
+/** Where a ray from the centre crosses the box: whichever side it reaches first. */
+function boxReach(ux: number, uy: number, halfWidth: number, halfHeight: number): number {
+  return Math.min(
+    Math.abs(ux) > 1e-6 ? Math.abs(halfWidth / ux) : Infinity,
+    Math.abs(uy) > 1e-6 ? Math.abs(halfHeight / uy) : Infinity,
+  );
+}
+
+/**
+ * Where a ray from the centre crosses an outline given in fractions of the box.
+ *
+ * The points are clockwise from the top in the same 0..1 space the clip path uses, so the table is
+ * read identically by the thing that draws the shape and the thing that attaches to it.
+ */
+function polygonReach(
+  ux: number,
+  uy: number,
+  outline: readonly (readonly [number, number])[],
+  halfWidth: number,
+  halfHeight: number,
+): number {
+  let nearest = Infinity;
+  for (let i = 0; i < outline.length; i++) {
+    const [ax, ay] = outline[i];
+    const [bx, by] = outline[(i + 1) % outline.length];
+    // Fractions of the box, centred: (0.5, 0.5) is the middle, which is where the ray starts.
+    const px = (ax - 0.5) * halfWidth * 2;
+    const py = (ay - 0.5) * halfHeight * 2;
+    const ex = (bx - ax) * halfWidth * 2;
+    const ey = (by - ay) * halfHeight * 2;
+    const denominator = ux * ey - uy * ex;
+    if (Math.abs(denominator) < 1e-9) continue; // Parallel to this side.
+    const along = (px * ey - py * ex) / denominator;
+    const across = (px * uy - py * ux) / denominator;
+    if (along > 0 && across >= 0 && across <= 1) nearest = Math.min(nearest, along);
+  }
+  return nearest;
 }
 
 /** Which way a side faces, as a unit vector out of the node. See {@link EdgeSide}. */
@@ -416,43 +518,41 @@ function attachPoint(
 ): Point {
   const { halfWidth, halfHeight } = clearanceOf(clearance);
   if (halfWidth <= 0 && halfHeight <= 0) return to;
+  const gap = typeof clearance === 'number' ? 0 : (clearance.gap ?? 0);
+  /** The outline's distance along a direction, plus the standoff — the point, given a direction. */
+  const along = (ux: number, uy: number): Point => {
+    const reach = reachAlong(ux, uy, clearance) + gap;
+    return { x: to.x + ux * reach, y: to.y + uy * reach };
+  };
+
   if (side) {
     const [ax, ay] = OUTWARD[side];
-    return { x: to.x + ax * halfWidth, y: to.y + ay * halfHeight };
+    return along(ax, ay);
   }
   if (curve === 'smooth' || curve === 'step') {
     // The axis it arrives on is the axis to measure: a curve arriving horizontally meets the left or
     // right side, and how tall the node happens to be says nothing about where that side is.
-    return horizontal
-      ? { x: to.x - Math.sign(to.x - from.x || 1) * halfWidth, y: to.y }
-      : { x: to.x, y: to.y - Math.sign(to.y - from.y || 1) * halfHeight };
+    return horizontal ? along(-Math.sign(to.x - from.x || 1), 0) : along(0, -Math.sign(to.y - from.y || 1));
   }
-  // A number is a round node, so the chord meets it at a constant distance; a box is met wherever
-  // the ray crosses it, which depends on the direction.
-  return typeof clearance === 'number' ? trimToRadius(from, to, clearance) : trimToBox(from, to, halfWidth, halfHeight);
+  // A straight or arced edge travels the chord, so the chord's direction is the one to measure —
+  // and the point is clamped to the far end, since a target nearer than its own outline would
+  // otherwise put the arrowhead behind the node it came from.
+  const dx = from.x - to.x;
+  const dy = from.y - to.y;
+  const distance = Math.hypot(dx, dy);
+  if (distance === 0) return to;
+  const point = along(dx / distance, dy / distance);
+  // Its own centre rather than past the other end: two overlapping cards would otherwise put this
+  // end behind the node it is attaching to.
+  return Math.hypot(point.x - to.x, point.y - to.y) >= distance ? to : point;
 }
 
-/**
- * Trim a straight chord to where it crosses the target's box.
- *
- * The ray-box intersection, which for equal half-extents is exactly a circle — so this replaces
- * {@link trimToRadius} for routing without changing anything about a round node. The chord is what a
- * straight or arced edge travels along, so it is the direction that decides which side it meets.
+/*
+ * `trimToBox` was here — the ray-box intersection a straight chord was trimmed with. It is
+ * `boxReach` now, one of the three answers `reachAlong` picks between: a box, an inscribed ellipse,
+ * or the outline a card is actually cut to. Trimming and attaching were the same question asked
+ * twice, and only one of the two had heard of a shape.
  */
-function trimToBox(from: Point, to: Point, halfWidth: number, halfHeight: number): Point {
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
-  const length = Math.hypot(dx, dy);
-  if (length === 0) return to;
-  // Distance from the centre to the box along this direction: whichever side the ray reaches first.
-  const reach = Math.min(
-    Math.abs(dx) > 1e-6 ? (halfWidth * length) / Math.abs(dx) : Infinity,
-    Math.abs(dy) > 1e-6 ? (halfHeight * length) / Math.abs(dy) : Infinity,
-  );
-  if (!Number.isFinite(reach) || length <= reach) return to;
-  const ratio = (length - reach) / length;
-  return { x: from.x + dx * ratio, y: from.y + dy * ratio };
-}
 
 /**
  * Route one edge.

@@ -250,9 +250,25 @@ function isRawCSSValue(value: string): boolean {
     `var(--we-color-color-mix(…))`, a variable name built out of an expression.
   */
   if (/^color-mix\(/i.test(value)) return true;
-  // `oklch(from …)` — the elevation stack, expressed as a step from another role. Same hazard as
-  // color-mix: read as a token name it becomes `var(--we-color-oklch(from …))`, which is nothing.
-  if (/^oklch\(from\s/i.test(value)) return true;
+  /*
+    The modern colour functions, `oklch(from …)` among them.
+
+    This line used to be `/^oklch\(from\s/` — the elevation stack and nothing else, because that was
+    the one shape a role happened to be written in. Every other spelling fell through to the token
+    branch and came back as `var(--we-color-oklch(90% 0.045 288))`, a variable name built out of an
+    expression, which resolves to nothing at all: the element painted no background and said
+    nothing about why.
+
+    Three ways in, so this is not hypothetical. `we-color-picker`'s custom tab offers **oklch** as
+    one of its four output formats, so a person choosing one hands the app a value nothing can
+    paint. A theme or a template naming a fill in the space the design system itself is built in
+    hits the same wall. And a card fill that must not invert with the polarity — a task's colour, a
+    state's — is most naturally written in exactly this form, which is how it was found.
+
+    Every function here answers a colour and none is a token name, so admitting them costs nothing
+    and closes the class rather than the instance.
+  */
+  if (/^(oklch|oklab|lch|lab|hwb|color|color-contrast|light-dark)\(/i.test(value)) return true;
   return /^-?(var\(|#|rgba?|hsla?|\d+(\.\d+)?(px|rem|em|%|vh|vw|vmin|vmax|ch|ex|\s))/.test(value);
 }
 

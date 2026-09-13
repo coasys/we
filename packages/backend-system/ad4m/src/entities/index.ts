@@ -21,6 +21,8 @@ export * from './EventBlock';
 export * from './ExtractionPass';
 export * from './FileBlock';
 export * from './ImageBlock';
+export * from './Involvement';
+export * from './InvolvementType';
 export * from './LinkBlock';
 export * from './LocationBlock';
 export * from './MutedAgent';

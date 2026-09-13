@@ -35,6 +35,10 @@ export type EdgeRoute = M.EdgeRouteRecord;
 export const EdgeRoute = defineEntity('EdgeRoute') as unknown as EntityStatic<M.EdgeRouteRecord>;
 export type MutedAgent = M.MutedAgentRecord;
 export const MutedAgent = defineEntity('MutedAgent') as unknown as EntityStatic<M.MutedAgentRecord>;
+export type Involvement = M.InvolvementRecord;
+export const Involvement = defineEntity('Involvement') as unknown as EntityStatic<M.InvolvementRecord>;
+export type InvolvementType = M.InvolvementTypeRecord;
+export const InvolvementType = defineEntity('InvolvementType') as unknown as EntityStatic<M.InvolvementTypeRecord>;
 export type Placement = M.PlacementRecord;
 export const Placement = defineEntity('Placement') as unknown as EntityStatic<M.PlacementRecord>;
 export type ReadMarker = M.ReadMarkerRecord;
@@ -68,7 +72,7 @@ export type TypeStyle = M.TypeStyleRecord;
 export const TypeStyle = defineEntity('TypeStyle') as unknown as EntityStatic<M.TypeStyleRecord>;
 export { modelToThemeData } from './utils/themeData';
 export type { ThemeData, ThemeLike } from './utils/themeData';
-export type { SignalAggregate, SignalMode, SignalSemantic } from './manifest/types';
+export type { InvolvementSemantic, SignalAggregate, SignalMode, SignalSemantic } from './manifest/types';
 export type AudioBlock = M.AudioBlockRecord;
 export const AudioBlock = defineEntity('AudioBlock') as unknown as EntityStatic<M.AudioBlockRecord>;
 export type CalloutBlock = M.CalloutBlockRecord;
@@ -101,7 +105,7 @@ export type TextBlock = M.TextBlockRecord;
 export const TextBlock = defineEntity('TextBlock') as unknown as EntityStatic<M.TextBlockRecord>;
 export type VideoBlock = M.VideoBlockRecord;
 export const VideoBlock = defineEntity('VideoBlock') as unknown as EntityStatic<M.VideoBlockRecord>;
-export { DEFAULT_TASK_STATES, FILE_STORAGE_LANGUAGE, PREDICATES } from './constants';
+export { DEFAULT_INVOLVEMENT_TYPES, DEFAULT_TASK_STATES, FILE_STORAGE_LANGUAGE, PREDICATES } from './constants';
 export {
   asFileField,
   dataURItoBlob,
@@ -125,3 +129,14 @@ export { decodeFileAsString, decodeFileAsJson, encodeJsonFileData } from './util
  */
 export type DatasetProxy = unknown;
 export * from './entityRegistry';
+
+/**
+ * How a stand-in is made — exported so a backend can check it satisfies the contract *through* one.
+ *
+ * Every entity above is already a stand-in, so nothing in the app needs to build another. What does
+ * is a conformance test: a backend's statics are reached by the app through a proxy, which forwards
+ * the call while binding `this` to itself, and a backend that consults class-level metadata on the
+ * way to a write therefore answers for the wrong class. Testing the statics directly cannot see that
+ * — it is how an implementation shipped refusing every board write with a green suite.
+ */
+export { defineEntity } from './entityProxy';

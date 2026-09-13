@@ -1,4 +1,4 @@
-import { panelHeader, recordCard } from '@we/schema-kit';
+import { panelHeader, panelScroll, recordCard } from '@we/schema-kit';
 import type { SchemaNode } from '@we/schema-shared';
 
 import { POCKET_PREDICATES } from './entities';
@@ -846,8 +846,7 @@ const panel: SchemaNode = {
             header,
             newFolderForm,
             deleteFolderConfirm,
-            {
-              type: 'we-scroll-area',
+            panelScroll({
               children: [
                 /*
                   Nothing is listed until there is a folder to list the contents of.
@@ -862,7 +861,7 @@ const panel: SchemaNode = {
                   props: { condition: currentFolder, then: folderContents },
                 },
               ],
-            },
+            }),
           ],
         },
       ],

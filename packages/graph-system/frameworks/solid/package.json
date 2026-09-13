@@ -26,6 +26,7 @@
     "dist"
   ],
   "dependencies": {
+    "@we/drag": "workspace:*",
     "@we/graph-core": "workspace:*",
     "@we/graph-expanders": "workspace:*",
     "@we/graph-layouts": "workspace:*"

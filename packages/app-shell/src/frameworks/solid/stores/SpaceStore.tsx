@@ -1,3 +1,4 @@
+import { boardOptimism } from '@shared/boardOptimism';
 import { createBoardActions, type CreateBoardOptions } from '@shared/boards';
 import {
   LEGACY_EXTRACTION_TARGETS,
@@ -9,6 +10,14 @@ import {
 import { datasetAddressedBy } from '@shared/datasetIdentity';
 import { buildGuestLink } from '@shared/guestLink';
 import { containmentPredicate, gatherTranscriptTurns, type TurnRecord } from '@shared/interpretation/transcriptTurns';
+import { involvementOptimism } from '@shared/involvementOptimism';
+import {
+  createInvolvementActions,
+  INVOLVEMENT_SEMANTICS,
+  type InvolvementTypeView,
+  parseAppliesTo,
+  resolveInvolvementTypes,
+} from '@shared/involvements';
 import {
   clearSetting,
   type LevelValues,
@@ -65,6 +74,8 @@ import {
   type FileData,
   FOLLOW_SPACE,
   getEntitiesForPerspective,
+  type InvolvementSemantic,
+  InvolvementType,
   LocationBlock,
   MutedAgent,
   PREDICATES,
@@ -478,6 +489,16 @@ export interface SpaceStore {
   offeredTaskStates: Accessor<TaskStateView[]>;
   /** The space has been asked for its states. An empty list is otherwise "not fetched yet". */
   taskStatesLoaded: Accessor<boolean>;
+  /**
+   * The kinds of part a person can have in a record — assigned, reviewing, going, maybe — the
+   * space's own where it has named any, otherwise the defaults. Includes withdrawn kinds, so an
+   * involvement somebody still holds resolves; offer `offeredInvolvementTypes` instead.
+   */
+  involvementTypes: Accessor<InvolvementTypeView[]>;
+  /** The same list without the withdrawn ones — what an assign menu or an RSVP control offers. */
+  offeredInvolvementTypes: Accessor<InvolvementTypeView[]>;
+  /** The space has been asked for its kinds. */
+  involvementTypesLoaded: Accessor<boolean>;
   /** Options for the per-space template override picker, including a "follow the space" entry. */
   templateOverrideOptions: Accessor<{ label: string; value: string }[]>;
   /** Options for the per-space theme override picker, including a "follow the space" entry. */
@@ -600,9 +621,16 @@ export interface SpaceStore {
   /** The order this board reads its columns in. */
   reorderBoardColumns: (boardId: string, orderedIds: string[]) => Promise<void>;
   /** Record the order somebody dragged one column's cards into. */
-  arrangeColumn: (columnId: string, orderedIds: string[]) => Promise<void>;
+  arrangeColumn: (columnId: string, orderedIds: string[], columnOrder?: string[]) => Promise<void>;
   /** Move a card between columns — and write its state, when the column it joins names one. */
-  moveCardToColumn: (fromColumnId: string, toColumnId: string, cardId: string, orderedIds?: string[]) => Promise<void>;
+  moveCardToColumn: (
+    fromColumnId: string,
+    toColumnId: string,
+    cardId: string,
+    orderedIds?: string[],
+    toSlug?: string,
+    columnOrder?: string[],
+  ) => Promise<void>;
   /** Make a task straight into a column, parented to the board's anchor when there is one. */
   addTaskToColumn: (columnId: string, title: string, anchorId?: string) => Promise<void>;
   /**
@@ -786,6 +814,15 @@ export interface SpaceStore {
     icon?: string;
   }) => Promise<void>;
   /**
+   * Change what a state is called, how it is drawn, or what it counts as — for everyone in the
+   * space. By slug, which is the one thing it cannot change: tasks store it. An empty string clears
+   * a field, so a colour or an icon can be taken back off. A default is adopted by editing it.
+   */
+  updateTaskState: (
+    slug: string,
+    updates: { name?: string; icon?: string; color?: string; semantic?: TaskStateView['semantic'] },
+  ) => Promise<void>;
+  /**
    * Withdraw a state from use, or bring it back. Never touches the work sitting in it. By slug: a
    * default has no record until this, or a reorder, adopts it.
    */
@@ -796,6 +833,30 @@ export interface SpaceStore {
    * By slug, since a default has no id until it is placed in an order, which adopts it.
    */
   reorderTaskStates: (orderedSlugs: string[]) => Promise<void>;
+  /**
+   * Put somebody on a record, or take them off, as a kind one member says about another — assigning
+   * a task. `on` is the state wanted rather than a toggle, so a menu passes the opposite of the tick
+   * it shows. A reflexive kind is only ever the agent's own answer, and is refused for anybody else.
+   */
+  setInvolvement: (nodeId: string, agent: string, kind: string, on: boolean) => Promise<void>;
+  /** This agent's own answer to a record — going, maybe, not going — replacing any other; `''` withdraws it. */
+  respondTo: (nodeId: string, kind: string) => Promise<void>;
+  /** Name a kind of part people can have. One with a default's slug adopts that default. */
+  createInvolvementType: (config: {
+    name: string;
+    semantic?: InvolvementSemantic;
+    reflexive?: boolean;
+    appliesTo?: string;
+    icon?: string;
+    color?: string;
+  }) => Promise<void>;
+  /** Change a kind's name, look or meaning. By slug, which it cannot change; an empty string clears. */
+  updateInvolvementType: (
+    slug: string,
+    updates: { name?: string; icon?: string; color?: string; semantic?: InvolvementSemantic; appliesTo?: string },
+  ) => Promise<void>;
+  /** Withdraw a kind from use, or bring it back — never touching anybody who holds it. */
+  setInvolvementTypeRetired: (slug: string, retired: boolean) => Promise<void>;
   upsertSignal: (nodeId: string, signalTypeId: string, value: number) => Promise<void>;
   navigateToSpace: (spaceId: string, view?: string) => Promise<void>;
   openRecordRef: (ref: string) => Promise<void>;
@@ -837,6 +898,15 @@ const SpaceContext = createContext<SpaceStore>();
  * avatar would visibly soften them.
  */
 const SPACE_AVATAR_PX = 512;
+
+/**
+ * What a state may say it counts as — the closed set `TaskState.semantic` declares.
+ *
+ * Checked rather than trusted on the way in: the value reaches `updateTaskState` from a picker in a
+ * template, and a word nothing recognises would read as "still to do" everywhere downstream while
+ * being stored as itself. Refusing it keeps the misfiling where it can be seen.
+ */
+const TASK_STATE_SEMANTICS: TaskStateView['semantic'][] = ['open', 'active', 'blocked', 'done', 'cancelled'];
 
 export function SpaceStoreProvider(props: ParentProps) {
   const session = useSessionStore();
@@ -1836,6 +1906,10 @@ export function SpaceStoreProvider(props: ParentProps) {
   */
   const boards = createBoardActions({
     dataset: datasetFor,
+    // An arrangement is drawn before it is stored; `boardOptimism` holds it, and whatever draws the
+    // board reports when the data has overtaken it. See that module for why nothing releases on
+    // success.
+    ...boardOptimism.ports,
     offeredStates: () => offeredTaskStates(),
     notify: (message) => toastService.error(message),
     /*
@@ -1915,16 +1989,43 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
     // If no dataset found, route change alone will show the join gate
 
+    /*
+      The section being read, if that is what the segment on screen is.
+
+      Carrying it across is what keeps somebody on About as they walk from space to space, and it
+      has to ask whether the segment names a section at all. Two things live at that depth and are
+      not sections: a host route (`record`), and a self-routing template's own screen (Workshop's
+      `canvas`, Discord's `channel`). Both were carried, and both name a section no space has.
+
+      Against `routableViews` rather than this space's enabled list — the destination decides what
+      it has, and gating on the *source's* switches would refuse to carry a section the reader is
+      looking at merely because they had hidden it somewhere else.
+    */
     const segs = routeStore.segments();
-    const currentView = view ?? (segs[0] === 'space' && segs[2] ? segs[2] : 'about');
+    const here = segs[0] === 'space' ? (segs[2] ?? '') : '';
+    const carried = routableViews().some((v) => v.segment === here) ? here : '';
     /*
       The canonical segment, not the one the caller happened to hold. `spaceId` here may be either
       form — a sidebar row passes the local id, a share link the shared one — and both resolve, so
       without this one space ended up with two addresses depending on how you reached it.
     */
-    const targetPath = '/space/' + (ds ? canonicalSpaceId(ds) : spaceId) + '/' + currentView;
+    const base = '/space/' + (ds ? canonicalSpaceId(ds) : spaceId);
+    /*
+      A section only where the destination HAS sections, and otherwise the space itself — whose own
+      index decides, exactly as `switchTemplate` leaves it.
+
+      This said `'about'`, which assumed the space shape of every template. A space whose default is
+      a self-routing one — Workshop, Discord — has no `about` route, so entering it from the sidebar
+      landed on its catch-all and said "No such page" until you pressed a nav button. It is also the
+      last of the four places that spelled a space path by hand; the rest went when `SPACE_ROUTE_PATH`
+      became one literal.
+
+      A named `view` is always taken: a caller that asked for one knows what it is asking for, and
+      `openRecordRef`'s is a host route rather than a section.
+    */
+    const section = view ?? (ds && !usesSectionsFor(ds.id) ? '' : carried);
     shellStore.closeShellView();
-    routeStore.navigate(targetPath);
+    routeStore.navigate(section ? `${base}/${section}` : base);
     // Notify embedded app iframes (e.g. Flux) after the dataset has switched
     broadcastPerspectiveNavigation(spaceId);
   }
@@ -2643,6 +2744,55 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   /**
+   * Change a state the community already has — its name, its colour, its glyph, or what it counts as.
+   *
+   * The counterpart `createTaskState` had no pair for: a state could be named and withdrawn and
+   * nothing else, so a colour was settable exactly once, at creation, and the three defaults — which
+   * ship with none — could never have one at all. Everything a key or a board draws a state with was
+   * therefore whichever fallback the rendering surface happened to hold.
+   *
+   * **The slug is not in the update.** It is what every task stores, so changing it would leave the
+   * work holding a word nothing defines — the same reason a state is retired rather than deleted.
+   * Renaming is what `name` is for, and a rename carries: a task in `todo` follows "To do" to
+   * "Backlog" without being touched.
+   *
+   * **`semantic` is.** It is the one field that means anything outside this space, so changing it
+   * re-answers "what work is outstanding here" for every peer, every board and every agent. It is
+   * also the field most likely to have been chosen wrongly at creation, and a mis-filed state was
+   * otherwise unfixable — withdraw it and make another, losing every task sitting in it. Offered
+   * with the same framing the create form uses, which is what makes the consequence visible.
+   *
+   * **An empty string clears**, rather than being skipped — see `clearOnEmpty` in the AD4M adapter.
+   * That is what makes a reset back to the template's default possible without deleting the state.
+   *
+   * By slug, like its two neighbours: editing a default is the act that adopts it.
+   */
+  async function updateTaskState(
+    slug: string,
+    updates: { name?: string; icon?: string; color?: string; semantic?: TaskStateView['semantic'] },
+  ): Promise<void> {
+    const p = datasetStore.currentDataset()?.handle;
+    if (!p || !slug || !updates) return;
+    try {
+      const record = await adoptTaskState(p, slug);
+      if (!record) return;
+      // Only what was passed: an absent key leaves the field alone, where `''` is a deliberate clear.
+      if (updates.name !== undefined && updates.name.trim()) record.name = updates.name.trim();
+      if (updates.icon !== undefined) record.icon = updates.icon;
+      if (updates.color !== undefined) record.color = updates.color;
+      if (updates.semantic !== undefined && TASK_STATE_SEMANTICS.includes(updates.semantic)) {
+        record.semantic = updates.semantic;
+      }
+      await record.save();
+      await loadTaskStates();
+      await syncTaskStateHint();
+    } catch (error) {
+      console.error('SpaceStore: could not update task state', error);
+      toastService.error('Could not save that change');
+    }
+  }
+
+  /**
    * Set the order this community reads its states in — what a column drag on the board writes.
    *
    * An ordered relation rather than a number on each state, which is the difference between a
@@ -2704,6 +2854,182 @@ export function SpaceStoreProvider(props: ParentProps) {
     } catch (error) {
       console.error('SpaceStore: could not update task state', error);
       toastService.error('Could not update that state');
+    }
+  }
+
+  /*
+    ── Involvements ─────────────────────────────────────────────────────────────────────────────
+
+    Who is on what. The vocabulary is loaded here, virtual defaults and all, for the reason task
+    states are: a template can filter a list it was handed and cannot substitute one it was not. The
+    involvements themselves are not — they change with every click anybody makes, so a template holds
+    them in a live query and reads them through the `involvement` host function. What a write *means*
+    lives in `involvements.ts`.
+  */
+  const [ownInvolvementTypes, setOwnInvolvementTypes] = createSignal<InvolvementTypeView[]>([]);
+  const [involvementTypesLoaded, setInvolvementTypesLoaded] = createSignal(false);
+
+  async function loadInvolvementTypes(): Promise<void> {
+    const dataset = datasetStore.currentDataset()?.handle;
+    const uuid = datasetStore.currentDataset()?.id;
+    const ports = session.backendPorts()?.schemas;
+    if (!dataset || !ports || !datasetStore.isWeSpace()) {
+      setOwnInvolvementTypes([]);
+      setInvolvementTypesLoaded(true);
+      return;
+    }
+    setInvolvementTypesLoaded(false);
+    try {
+      // Every space predates the entity; `ensure` is the diff-first install `loadTaskStates` uses.
+      await ports.ensure(dataset, InvolvementType as never);
+      const records = (await InvolvementType.findAll(dataset)) as InvolvementType[];
+      if (datasetStore.currentDataset()?.id !== uuid) return;
+      const stamp = (r: InvolvementType) =>
+        String((r as unknown as { timestamp?: unknown; createdAt?: unknown }).timestamp ?? r.createdAt ?? '');
+      setOwnInvolvementTypes(
+        [...records]
+          .sort((a, b) => stamp(a).localeCompare(stamp(b)))
+          .map((r) => ({
+            id: r.id,
+            name: r.name || r.slug,
+            slug: r.slug || deriveSlug(r.name || ''),
+            semantic: (INVOLVEMENT_SEMANTICS.includes(r.semantic) ? r.semantic : 'responsible') as InvolvementSemantic,
+            reflexive: Boolean(r.reflexive),
+            appliesTo: parseAppliesTo(r.appliesTo),
+            icon: r.icon || '',
+            color: r.color || '',
+            retired: Boolean(r.retired),
+            defined: true,
+          })),
+      );
+    } catch (error) {
+      console.warn('SpaceStore: could not read involvement types', error);
+      if (datasetStore.currentDataset()?.id === uuid) setOwnInvolvementTypes([]);
+    } finally {
+      if (datasetStore.currentDataset()?.id === uuid) setInvolvementTypesLoaded(true);
+    }
+  }
+
+  createEffect(() => {
+    void datasetStore.currentDataset()?.id;
+    // A hold is a promise about records on the screen being left; see `involvementOptimism.reset`.
+    involvementOptimism.reset();
+    void loadInvolvementTypes();
+  });
+
+  const involvementTypes = createMemo<InvolvementTypeView[]>(() => resolveInvolvementTypes(ownInvolvementTypes()));
+  const offeredInvolvementTypes = createMemo<InvolvementTypeView[]>(() =>
+    involvementTypes().filter((kind) => !kind.retired),
+  );
+
+  const involvements = createInvolvementActions({
+    dataset: () => datasetStore.currentDataset()?.handle,
+    me: () => session.me()?.did,
+    types: () => involvementTypes(),
+    notify: (message) => toastService.error(message),
+    ...involvementOptimism.ports,
+  });
+
+  /**
+   * The record behind a kind, writing a default down first if that is all it is — `adoptTaskState`'s
+   * rule: editing or withdrawing a default is the act that makes it the community's own.
+   */
+  async function adoptInvolvementType(p: DatasetProxy, slug: string): Promise<InvolvementType | null> {
+    const existing = (await InvolvementType.findAll(p, { where: { slug } }).catch(() => [])) as InvolvementType[];
+    if (existing.length) return existing[0];
+    const fallback = involvementTypes().find((kind) => kind.slug === slug && !kind.defined);
+    if (!fallback) return null;
+    return (await InvolvementType.create(p, {
+      name: fallback.name,
+      slug: fallback.slug,
+      semantic: fallback.semantic,
+      reflexive: fallback.reflexive,
+      appliesTo: fallback.appliesTo.join(','),
+      icon: fallback.icon,
+      color: fallback.color,
+    })) as InvolvementType;
+  }
+
+  /**
+   * Name a kind of part — "Shepherd", "Second pair of eyes".
+   *
+   * Refused for a slug the community already wrote, since two records with one slug are one kind to
+   * everybody holding it. `reflexive` is fixed at creation and not offered for editing: turning an
+   * assignment into an answer would leave every existing one claiming somebody said something they
+   * never said.
+   */
+  async function createInvolvementType(config: {
+    name: string;
+    semantic?: InvolvementSemantic;
+    reflexive?: boolean;
+    appliesTo?: string;
+    icon?: string;
+    color?: string;
+  }): Promise<void> {
+    const p = datasetStore.currentDataset()?.handle;
+    if (!p || !config?.name?.trim()) return;
+    try {
+      const slug = deriveSlug(config.name);
+      if (ownInvolvementTypes().some((kind) => kind.slug === slug)) {
+        toastService.error(`A kind called "${config.name}" already exists`);
+        return;
+      }
+      await InvolvementType.create(p, {
+        name: config.name.trim(),
+        slug,
+        semantic: INVOLVEMENT_SEMANTICS.includes(config.semantic as InvolvementSemantic)
+          ? config.semantic
+          : 'responsible',
+        reflexive: Boolean(config.reflexive),
+        appliesTo: parseAppliesTo(config.appliesTo ?? '').join(','),
+        icon: config.icon ?? '',
+        color: config.color ?? '',
+      });
+      await loadInvolvementTypes();
+    } catch (error) {
+      console.error('SpaceStore: could not create involvement type', error);
+      toastService.error('Could not add that kind');
+    }
+  }
+
+  /** Change a kind — see `updateTaskState` for why the slug is absent and an empty string clears. */
+  async function updateInvolvementType(
+    slug: string,
+    updates: { name?: string; icon?: string; color?: string; semantic?: InvolvementSemantic; appliesTo?: string },
+  ): Promise<void> {
+    const p = datasetStore.currentDataset()?.handle;
+    if (!p || !slug || !updates) return;
+    try {
+      const record = await adoptInvolvementType(p, slug);
+      if (!record) return;
+      if (updates.name !== undefined && updates.name.trim()) record.name = updates.name.trim();
+      if (updates.icon !== undefined) record.icon = updates.icon;
+      if (updates.color !== undefined) record.color = updates.color;
+      if (updates.appliesTo !== undefined) record.appliesTo = parseAppliesTo(updates.appliesTo).join(',');
+      if (updates.semantic !== undefined && INVOLVEMENT_SEMANTICS.includes(updates.semantic)) {
+        record.semantic = updates.semantic;
+      }
+      await record.save();
+      await loadInvolvementTypes();
+    } catch (error) {
+      console.error('SpaceStore: could not update involvement type', error);
+      toastService.error('Could not save that change');
+    }
+  }
+
+  /** Withdraw a kind, or bring it back — `setTaskStateRetired`'s decision, one vocabulary along. */
+  async function setInvolvementTypeRetired(slug: string, retired: boolean): Promise<void> {
+    const p = datasetStore.currentDataset()?.handle;
+    if (!p || !slug) return;
+    try {
+      const record = await adoptInvolvementType(p, slug);
+      if (!record) return;
+      record.retired = retired;
+      await record.save();
+      await loadInvolvementTypes();
+    } catch (error) {
+      console.error('SpaceStore: could not update involvement type', error);
+      toastService.error('Could not update that kind');
     }
   }
 
@@ -4200,6 +4526,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     taskStates,
     offeredTaskStates,
     taskStatesLoaded,
+    involvementTypes,
+    offeredInvolvementTypes,
+    involvementTypesLoaded,
     installedModules,
     requiredModules,
     missingModules,
@@ -4267,8 +4596,14 @@ export function SpaceStoreProvider(props: ParentProps) {
     createRelationshipType,
     setSignalTypeRetired,
     createTaskState,
+    updateTaskState,
     setTaskStateRetired,
     reorderTaskStates,
+    setInvolvement: involvements.setInvolvement,
+    respondTo: involvements.respond,
+    createInvolvementType,
+    updateInvolvementType,
+    setInvolvementTypeRetired,
     upsertSignal,
     navigateToSpace,
     openRecordRef,

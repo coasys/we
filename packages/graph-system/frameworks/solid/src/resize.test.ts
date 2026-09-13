@@ -75,4 +75,24 @@ describe('resizeBox', () => {
     expect(HANDLES.filter((handle) => handle.grip.x && handle.grip.y)).toHaveLength(4);
     expect(HANDLES.filter((handle) => !handle.grip.x !== !handle.grip.y)).toHaveLength(4);
   });
+
+  it('holds a ratio when asked, from a corner and from an edge', () => {
+    const box = { at: { x: 0, y: 0 }, width: 100, height: 60 };
+    // A corner takes the larger axis, anchoring the opposite corner.
+    const corner = resizeBox(box, { x: 1, y: 1 }, { x: 40, y: 10 }, 20, { ratio: 1 });
+    expect(corner.width).toBe(140);
+    expect(corner.height).toBe(140);
+    expect(corner.at.x - corner.width / 2).toBe(-50);
+    expect(corner.at.y - corner.height / 2).toBe(-30);
+    // An edge takes its own axis and derives the other, about its centre.
+    const edge = resizeBox(box, { x: 1, y: 0 }, { x: 20, y: 0 }, 20, { ratio: 1 });
+    expect(edge.width).toBe(120);
+    expect(edge.height).toBe(120);
+    expect(edge.at.x - edge.width / 2).toBe(-50);
+    expect(edge.at.y).toBe(0);
+    // A shape with a ratio of its own — a regular hexagon is wider than it is tall.
+    const hex = resizeBox(box, { x: 0, y: 1 }, { x: 0, y: 40 }, 20, { ratio: 2 });
+    expect(hex.height).toBe(100);
+    expect(hex.width).toBe(200);
+  });
 });

@@ -538,6 +538,9 @@ importers:
       '@we/template-default':
         specifier: workspace:*
         version: link:../templates/default
+      '@we/template-kit':
+        specifier: workspace:*
+        version: link:../templates/kit
       '@we/template-shell':
         specifier: workspace:*
         version: link:../templates/shell
@@ -1206,6 +1209,9 @@ importers:
 
   packages/graph-system/frameworks/solid:
     dependencies:
+      '@we/drag':
+        specifier: workspace:*
+        version: link:../../../design-system/drag
       '@we/graph-core':
         specifier: workspace:*
         version: link:../../core

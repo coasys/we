@@ -28,6 +28,8 @@ export type AssertClassesSatisfyContract = [
   Satisfies<InstanceType<typeof C.EventBlock>, M.EventBlockRecord>,
   Satisfies<InstanceType<typeof C.FileBlock>, M.FileBlockRecord>,
   Satisfies<InstanceType<typeof C.ImageBlock>, M.ImageBlockRecord>,
+  Satisfies<InstanceType<typeof C.Involvement>, M.InvolvementRecord>,
+  Satisfies<InstanceType<typeof C.InvolvementType>, M.InvolvementTypeRecord>,
   Satisfies<InstanceType<typeof C.LinkBlock>, M.LinkBlockRecord>,
   Satisfies<InstanceType<typeof C.LocationBlock>, M.LocationBlockRecord>,
   Satisfies<InstanceType<typeof C.MutedAgent>, M.MutedAgentRecord>,

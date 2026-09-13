@@ -40,12 +40,28 @@ const rail: SchemaNode = railShell({
     always been meant to; it simply lost to a neighbour that outranked it.
   */
   zIndex: 'chrome',
-  bg: 'page',
-  // Blends into a page that shares this background rather than drawing a seam against it.
+  // The app's own furniture, not the plane a template renders on — see the `chrome` role.
+  bg: 'chrome',
+  /*
+    No border, because the colour is the seam now.
+
+    This said it blended into a page that shared its background, which was true while the rail and
+    the template both painted `page` — a line was the only thing that could have separated them, and
+    drawing one made a join out of two identical planes. `chrome` is a step off the page in either
+    polarity, so the edge is visible without being drawn, and a rule on top of it would be saying the
+    same thing twice.
+  */
   border: '0',
-  // Whether somebody likes their rail pinned open is about their own window, so it is remembered
-  // per device and never travels in a shared link.
-  persistKey: 'shell.sidebarExpanded',
+  /*
+    Nothing is remembered about whether it is open, because nothing here decides that but the
+    pointer.
+
+    This persisted `expanded` under `shell.sidebarExpanded`, which sounds like a preference and is
+    not: the only thing that sets it is the cursor arriving, and the only thing that clears it is
+    `mouseleave`. Miss one — the rail is removed under the pointer, the window loses focus over it —
+    and the rail is open with nothing to close it, now on this device for good. `railShell` refuses
+    the pair outright; see there.
+  */
   header: {
     // No box of its own — `we-tooltip` is `display: contents`, so the Column below is the flex
     // child the rail sizes, exactly as it was before the tooltip was wrapped around it.

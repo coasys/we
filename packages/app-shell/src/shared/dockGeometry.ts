@@ -1130,9 +1130,10 @@ export function seedPlacement(
  * non-destructive and switching back restores what was there — the same shape `meta.themeId`
  * already follows for themes.
  *
- * Everything the declaration carries is a *name* — a snap, a `DockSize`, a grow ratio. The pixels
- * are worked out here, against the viewport the template cannot see, exactly as a module's `md`
- * becomes 440.
+ * Nearly everything the declaration carries is a *name* — a snap, a `DockSize`, a grow ratio. The
+ * pixels are worked out here, against the viewport the template cannot see, exactly as a module's
+ * `md` becomes 440. The exception is `box`, a size in pixels, and it passes through the same clamps
+ * a named size does: the template may say what shape it wants, and this still decides what fits.
  */
 export function placementFromDeclaration(
   declared: {
@@ -1144,6 +1145,7 @@ export function placementFromDeclaration(
     grow?: number;
     displace?: boolean;
     size?: DockSize;
+    box?: { width?: number; height?: number };
   },
   viewport: Viewport,
   occupied: ContentInset = NO_INSET,
@@ -1162,13 +1164,20 @@ export function placementFromDeclaration(
     same 440 wherever it is written. Its height follows the 16:9 the float seed already uses — a
     number that only matters until the panel joins a column, where `grow` takes over and the height
     is a share of the edge rather than a card dimension.
+
+    A declared `box` stands in for either side, one at a time. A width alone still derives its
+    height, so `{ width }` is a wider card of the usual shape rather than a card of no height.
   */
   const w = clamp(
-    dockThickness(edge ?? 'right', declared.size ?? 'md', viewport, undefined, occupied),
+    declared.box?.width ?? dockThickness(edge ?? 'right', declared.size ?? 'md', viewport, undefined, occupied),
     MIN_FLOAT_PX,
     Math.max(MIN_FLOAT_PX, region.width - DOCK_GAP_PX * 2),
   );
-  const h = clamp(Math.round((w * 9) / 16), MIN_FLOAT_PX, Math.max(MIN_FLOAT_PX, region.height - DOCK_GAP_PX * 2));
+  const h = clamp(
+    declared.box?.height ?? Math.round((w * 9) / 16),
+    MIN_FLOAT_PX,
+    Math.max(MIN_FLOAT_PX, region.height - DOCK_GAP_PX * 2),
+  );
 
   return {
     snap,

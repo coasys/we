@@ -445,6 +445,7 @@ Nothing is ever added to the grammar above: a new capability is a function here,
 registers (listed last). Wrong-typed input answers with the empty value of its kind, never an error.
   Lists:
     count(items) — How many entries a list has. Anything that is not a list counts as 0.  e.g. count(spaceStore.members)
+    distinct(...lists) — The entries of every list given, each once, in the order first seen. Records compare by `id`, other values by value. Anything that is not a list contributes nothing.  e.g. distinct(local.found.map(r, r.__subjectClass), local.placements.map(p, p.nodeType))
     filter(items, where, limit?) — The entries matching a where-object — the same grammar $query takes. `limit` keeps the first N. Prefer the comprehension `items.filter(x, …)` when the test is not a where-object.  e.g. filter(spaceStore.members, { role: 'admin' }, 5)
     find(items, where?) — The first entry matching a where-object, or undefined. Without `where`, the first entry. Read a field off the result directly: `find(…).id` is undefined when nothing matched.  e.g. find(local.signalTypes, { slug: 'like' }).id
     first(items) — The first entry of a list, or undefined when it is empty.  e.g. first(local.posts).title
@@ -474,7 +475,9 @@ registers (listed last). Wrong-typed input answers with the empty value of its k
     calendarMonths(options?) — The twelve months of the year an offset lands in — { label, month, year, offset, isThisMonth, isShown } — each carrying its own offset from today, for a jump-to-month picker.  e.g. calendarMonths({ offset: local.monthOffset })
     monthLabel(options?) — The month a calendar is showing, as "August 2026" in the viewer’s language. Same options as calendarMonth.  e.g. monthLabel({ offset: local.monthOffset })
     yearLabel(options?) — The year a calendar is showing, on its own. Same options as calendarMonth.  e.g. yearLabel({ offset: local.monthOffset })
-    arrangedBoard(options) — A board worked out from its three subscriptions — { ready, gathers, columns, contents, unplaced, unplacedStates, available, total }. columns are the caller’s own column records in the board’s order; contents[columnId] is { label, icon, color, lane, arranged, unarranged, count }; unplaced is work no column here shows. Options: board (the record with children hydrated), columns (its kind: "column" children), records (everything in scope), states (spaceStore.taskStates).  e.g. arrangedBoard({ board: first(local.board), columns: local.columns, records: local.pool, states: spaceStore.taskStates }).columns
+    arrangedBoard(options) — A board worked out from its three subscriptions — { ready, gathers, columns, contents, unplaced, unplacedStates, available, total, involved, filtering, show, dimmed, cardCount, matchedCount, unplacedTotal, rows, cells, rowCounts }. columns are the caller’s own column records in the board’s order; contents[columnId] is { label, icon, color, lane, arranged, unarranged, count, shown, matched, order }; unplaced is work no column here shows. Options: board (the record with children hydrated), columns (its kind: "column" children), records (everything in scope), states (spaceStore.taskStates). To read it by who is on the work, also pass involvements (an Involvement query), kinds (spaceStore.involvementTypes), people (the chosen DIDs), me (me.did — involved is everyone on a card here, the viewer first) and show: "dim" lists the others in dimmed and moves nothing; "hide" drops them from arranged, unarranged and unplaced while count stays true and shown says how many are drawn; "rows" adds a row per person plus "nobody" — rows are keys, cells[row][columnId] is { arranged, unarranged, count }. A drag in a column showing only part of itself passes contents[columnId].order to arrangeColumn, so the hidden cards keep their places.  e.g. arrangedBoard({ board: first(local.board), columns: local.columns, records: local.pool, states: spaceStore.taskStates }).columns
+    involvement(options) — Who is on each record, from the Involvement rows — { byNode, answers, dids }. byNode[recordId] is { people, dids, responsible, reviewing, committed, interested, declined, pairs }: people are { did, kind, name, semantic, reflexive, icon, color, tone }, assignees first then reviewers and so on, and tone is the avatar ring the part wears ("warning" for reviewing, empty otherwise) — pass it as an AvatarStack avatar’s tone; the five lists are DIDs grouped by what each kind means, so a renamed or added kind still lands in the right one; dids is everyone not declined; pairs is every "did|kind" present, for a menu tick with `in`. answers[recordId] is the viewer’s own reflexive answer (going, maybe, …). Options: rows (an Involvement query), types (spaceStore.involvementTypes), me (me.did, who then leads the top-level dids), nodes (record ids the top-level dids is limited to).  e.g. involvement({ rows: local.involvements, types: spaceStore.involvementTypes, me: me.did }).byNode[card.id].responsible
+    involvementMenu(options) — The entries of a "who is on this" DropdownMenu for one record: the member a conversation named, when `said` matches exactly one and nobody is doing it yet; "Assign to me" while the viewer is not already on it, then a group per kind the entity is offered that anybody may give (the first open, the rest closed unless somebody holds them), each listing members with their faces — current holders ticked and first, then the viewer, then everyone by name. Every entry carries `kind`, and a toggle `checked`, so one handler serves all: setInvolvement(record, arg.id, arg.kind, !arg.checked). Options: node, entity, rows (an Involvement query), types (spaceStore.offeredInvolvementTypes), members (spaceStore.members), profiles (profileStore.profiles), me (me.did), said (a name somebody said — TaskBlock.assignee).  e.g. involvementMenu({ node: card.id, entity: 'TaskBlock', rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.did })
     formatJson(options) — A JSON string indented for reading, or the text unchanged when it will not parse — which is the case worth showing rather than swallowing. Options: text. For displaying a stored blob (an extraction pass’s prompt and response); a schema has no JSON.stringify of its own.  e.g. formatJson({ text: pass.prompt })
 
 The where-object — one grammar shared by filter(), find(), and $query's where. Keys are field names;
@@ -596,6 +599,33 @@ runtime, so a typo fails as a silently empty list rather than as an error — an
 resolved yet reads as "not ready", so the query simply waits. Note the counts of such a set cannot
 be totalled: each group is its own subscription and a schema cannot sum a list of queries whose
 length it does not know, so put a count inside each group rather than above them.
+
+entity may also be a LIST of names — literal, or an expression answering with one — which asks the
+same question of every entity in it and answers with ONE list. Reach for it when the rows belong
+together rather than in a group per model: a mixed feed, "what did this call produce", "which kinds
+are on this canvas", or anything whose total or emptiness you need to read above the rows.
+{
+  "$queries": {
+    "produced": {
+      "entity": { "$": "shapeStore.extractionCandidates" },
+      "scope": { "anchor": "CollectionBlock", "via": "children", "anchorId": { "$": "local.callId" } },
+      "order": { "createdAt": "desc" },
+      "limit": 50
+    }
+  }
+}
+- Every row carries the entity it came from as __subjectClass — { "$": "row.__subjectClass" } — the
+  same key a polymorphic include already sets, so recordStore.displays[row.__subjectClass] draws it.
+- order and limit apply to the WHOLE list, not to each entity. offset is refused.
+- A record two entities both answer with (an abstract model and a concrete one) is listed once, as
+  the first entity in the list.
+- Nothing is shown, and local.<name>Loaded stays false, until every entity has answered once.
+- An EMPTY list is an answer: loaded, no rows. So { "$": "local.producedLoaded && !count(local.produced)" }
+  is a sound empty-state condition even when the list of kinds is computed.
+- One entity that cannot be read is reported and counts as having no rows; the others still show.
+- A literal list is checked name by name, like a literal name.
+To read the distinct kinds out of it, or merge them with kinds from another list, use distinct():
+{ "$": "distinct(local.produced.map(r, r.__subjectClass), local.placements.map(p, p.nodeType))" }
 
 Backend-neutral identity & dataset refs — prefer these over backend-store paths inside $query and conditions:
 - currentDataset — the currently active dataset (an AD4M perspective, in the AD4M backend). Use as a dataset value.
@@ -1069,7 +1099,7 @@ Most @we/primitives also accept Design System Props (see next section for detail
 - we-audio (LayoutVisualElement)
   Props: src: string = '', controls: boolean = false, preload: 'none' | 'metadata' | 'auto' = 'metadata', autoplay: boolean = false, loop: boolean = false, muted: boolean = false, stream?: MediaStream | null | undefined
 - we-avatar (LayoutVisualElement)
-  Props: image: string = '', hash: string = '', initials: string = '', icon: string = '', size?: 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '{css-length}' | undefined, clickable: boolean = false
+  Props: image: string = '', hash: string = '', initials: string = '', icon: string = '', size?: 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '{css-length}' | undefined, clickable: boolean = false, ringColor: string = '', ringWidth: string = '', edgeColor: string = ''
 - we-badge (DesignSystemElement)
   Props: variant: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' = 'neutral', appearance: 'soft' | 'solid' = 'soft', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-blockquote (DesignSystemElement)
@@ -1079,8 +1109,8 @@ Most @we/primitives also accept Design System Props (see next section for detail
   Props: checked: boolean = false, disabled: boolean = false, name: string = '', label: string = '', value: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-code (DesignSystemElement)
   Props: block: boolean = false
-- we-color-picker (DesignSystemElement)
-  Props: value: string = '#000000', disabled: boolean = false, name: string = '', palette: array = [ '#000000', '#434343', '#666666', '#999999', '#b7b7b7', '#cccccc', '#d9d9d9', '#ffffff', '#980000', '#ff0000', '#ff9900', '#ffff00', '#00ff00', '#00ffff', '#4a86e8', '#0000ff', '#9900ff', '#ff00ff', '#e6b8af', '#f4cccc', '#fce5cd', '#fff2cc', '#d9ead3', '#d0e0e3', '#c9daf8', '#cfe2f3', '#d9d2e9', '#ead1dc', ], tokens: boolean = false, alpha: boolean = false
+- we-color-picker (DesignSystemElement) — A colour, chosen from the theme's tokens or picked by hand.
+  Props: value: string = '#000000', disabled: boolean = false, name: string = '', palette: array = [ '#000000', '#434343', '#666666', '#999999', '#b7b7b7', '#cccccc', '#d9d9d9', '#ffffff', '#980000', '#ff0000', '#ff9900', '#ffff00', '#00ff00', '#00ffff', '#4a86e8', '#0000ff', '#9900ff', '#ff00ff', '#e6b8af', '#f4cccc', '#fce5cd', '#fff2cc', '#d9ead3', '#d0e0e3', '#c9daf8', '#cfe2f3', '#d9d2e9', '#ead1dc', ], tokens: boolean = false, alpha: boolean = false, clearable: boolean = false
 - we-date-picker (DesignSystemElement)
   Props: value: string = '', showTime: boolean = false, placeholder: string = 'Select date', disabled: boolean = false, name: string = '', label: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-divider (LayoutElement)
@@ -1347,7 +1377,7 @@ item is considered.
   Props: value: string = '', name: string = '', label: string = '', placeholder: string = '', rows: number = 3, maxlength: unknown = Infinity, minlength: number = 0, disabled: boolean = false, required: boolean = false, readonly: boolean = false, resize: 'none' | 'vertical' | 'horizontal' | 'both' = 'vertical', autoGrow: boolean = false, maxRows: number = 6, submitOnEnter: boolean = false, size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-timestamp (DesignSystemElement) — Displays a formatted or relative timestamp that self-updates each minute
 when `relative` is enabled.
-  Props: value: string = '', relative: boolean = false, relativeStyle: Intl.RelativeTimeFormatStyle = 'long', locale: string = 'en', dateStyle: Intl.DateTimeFormatOptions['dateStyle'] | null = null, timeStyle: Intl.DateTimeFormatOptions['timeStyle'] | null = null, weekday: Intl.DateTimeFormatOptions['weekday'] | null = null, year: Intl.DateTimeFormatOptions['year'] | null = null, month: Intl.DateTimeFormatOptions['month'] | null = null, day: Intl.DateTimeFormatOptions['day'] | null = null, hour: Intl.DateTimeFormatOptions['hour'] | null = null, minute: Intl.DateTimeFormatOptions['minute'] | null = null, second: Intl.DateTimeFormatOptions['second'] | null = null, timeZone: string | null = null, hourCycle: Intl.DateTimeFormatOptions['hourCycle'] | null = null, formattedTime: string
+  Props: value: string = '', relative: boolean = false, relativeStyle: 'long' | 'short' | 'narrow' = 'long', locale: string = 'en', dateStyle: 'full' | 'long' | 'medium' | 'short' | null = null, timeStyle: 'full' | 'long' | 'medium' | 'short' | null = null, weekday: 'long' | 'short' | 'narrow' | null = null, year: 'numeric' | '2-digit' | null = null, month: 'numeric' | '2-digit' | 'long' | 'short' | 'narrow' | null = null, day: 'numeric' | '2-digit' | null = null, hour: 'numeric' | '2-digit' | null = null, minute: 'numeric' | '2-digit' | null = null, second: 'numeric' | '2-digit' | null = null, timeZone: string | null = null, hourCycle: 'h11' | 'h12' | 'h23' | 'h24' | null = null, formattedTime: string
 - we-tooltip (LayoutElement)
   Props: open: boolean = false, content: string = '', placement: 'top' | 'bottom' | 'left' | 'right' | 'top-start' | 'top-end' | 'bottom-start' | 'bottom-end' | 'left-start' | 'left-end' | 'right-start' | 'right-end' = 'top', tooltipEl: HTMLElement, arrowEl: HTMLElement
 - we-video (LayoutVisualElement)
@@ -1421,7 +1451,7 @@ when `relative` is enabled.
 - AudioVisualiser
   Props: src: string | undefined, bars?: number, height?: number, color?: string, activeColor?: string
 - AvatarStack
-  Props: avatars: AvatarInfo[], max?: number, size?: "xs" | "sm" | "md" | "lg" | "xl" | "xxs" | "xxl", overlap?: number, ring?: string, styles?: Record<string, string | number>
+  Props: avatars: AvatarInfo[], max?: number, size?: "xs" | "sm" | "md" | "lg" | "xl" | "xxs" | "xxl", overlap?: number, edge?: string, ringWidth?: string, styles?: Record<string, string | number>
 - Calendar
   Props: value?: string, events?: CalendarEvent[], onSelect?: ((date: string) => void), styles?: Record<string, string | number>
 - Canvas (DesignSystemElement)
@@ -1435,7 +1465,7 @@ when `relative` is enabled.
 - Combobox (DesignSystemElement)
   Props: options: string[] | ComboboxOption[], value?: string, placeholder?: string, size?: "xs" | "sm" | "md" | "lg" | "xl", onChange?: ((value: string) => void)
 - DropdownMenu — Flexible dropdown menu for actions, toggles, and grouped items. Use for context menus, settings panels, layer controls, and command palettes.
-  Props: styles?: Record<string, string | number>, class?: string, onSelect?: ((item: DropdownMenuAction) => void), placement?: Placement, triggerLabel?: string, triggerIcon?: string, triggerVariant?: "primary" | "danger" | "secondary" | "ghost" | "outline" | "bare", triggerTitle?: string, size?: "xs" | "sm" | "md" | "lg" | "xl", itemSize?: "xs" | "sm" | "md" | "lg" | "xl", items: SolidDropdownMenuEntry[]
+  Props: styles?: Record<string, string | number>, class?: string, onSelect?: ((item: DropdownMenuAction | DropdownMenuToggle) => void), searchable?: boolean, searchPlaceholder?: string, placement?: Placement, triggerLabel?: string, triggerIcon?: string, triggerVariant?: "primary" | "danger" | "secondary" | "ghost" | "outline" | "bare", triggerTitle?: string, size?: "xs" | "sm" | "md" | "lg" | "xl", itemSize?: "xs" | "sm" | "md" | "lg" | "xl", items: SolidDropdownMenuEntry[], children?: JSX.Element
 - EditableImage (DesignSystemElement)
   Props: src?: string, alt?: string, fit?: "cover" | "contain" | "none" | "fill" | "scale-down", placeholderIcon?: string, onImageChange?: ((file: File) => void), onImageRemove?: (() => void), uploadLabel?: string, editLabel?: string, class?: string, aspect?: number, maxSize?: number
 - FlipCard
@@ -1472,7 +1502,7 @@ Common recipes:
 the relations between them. Picks up model types added later with no template change.
 - **Hierarchy** — `layout: { type: 'tree' }` with a `collection` expansion for nested content.
 - **Static diagram** — `seeds: { literal: true, nodes: [...], edges: [...] }` and no expansion at all.
-  Props: seeds?: SeedSpec | SeedSpec[], expansion?: ExpansionSpec, revision?: string | number | boolean, live?: boolean, layout?: LayoutSpec, nodeStyle?: NodeStyleRules, edgeStyle?: EdgeStyleRules, behaviours?: BehaviourSpec[], reified?: Record<string, { source: string; target: string; type?: string; sourceType?: string; targetType?: string; }>, width?: string, height?: string, bg?: string, showStatus?: boolean, empty?: string, emptyIcon?: string, showControls?: boolean, controls?: string[], onNodeClick?: ((node: GraphNode & { recordId?: string; recordType?: string; fields: { name: string; value: string; }[]; }) => void), expandRequest?: { id: string; expanders?: string[]; direction?: "in" | "out" | "both"; } | null, onNodeDoubleClick?: ((node: GraphNode & { recordId?: string; recordType?: string; }) => void), onEdgeClick?: ((edge: GraphEdge & { recordId?: string; recordType?: string; }) => void), onEdgeRetarget?: ((payload: { id: string; end: "source" | "target"; nodeId: string; nodeType: string; recordId?: string; recordType?: string; }) => void), onEdgeReroute?: ((payload: { id: string; points: EdgeWaypoint[]; recordId?: string; recordType?: string; }) => void), onEdgeAnchor?: ((payload: { id: string; end: "source" | "target"; side: "" | "n" | "e" | "s" | "w"; recordId?: string; recordType?: string; }) => void), onEdgeCreate?: ((payload: { source: GraphNode; target: GraphNode; sourceId: string; sourceType: string; targetId: string; targetType: string; sourceLabel: string; targetLabel: string; }) => void), onCanvasDoubleClick?: ((payload: { x: number; y: number; }) => void), onSelectionChange?: ((ids: string[]) => void), onNodeDragEnd?: ((payload: { id: string; x: number; y: number; recordId?: string; recordType?: string; }) => void), onNodeResize?: ((payload: { id: string; x: number; y: number; width: number; height: number; recordId?: string; recordType?: string; }) => void), nodeActions?: NodeAction[], onNodeAction?: ((payload: { action: string; id: string; recordId?: string; recordType?: string; }) => void), host?: GraphHostBindings
+  Props: seeds?: SeedSpec | SeedSpec[], expansion?: ExpansionSpec, revision?: string | number | boolean, live?: boolean, layout?: LayoutSpec, nodeStyle?: NodeStyleRules, edgeStyle?: EdgeStyleRules, behaviours?: BehaviourSpec[], reified?: Record<string, { source: string; target: string; type?: string; sourceType?: string; targetType?: string; }>, width?: string, height?: string, bg?: string, showStatus?: boolean, empty?: string, emptyIcon?: string, emptyGradient?: string, emptyAction?: JSX.Element, showControls?: boolean, controls?: string[], onNodeClick?: ((node: GraphNode & { recordId?: string; recordType?: string; fields: { name: string; value: string; }[]; }) => void), expandRequest?: { id: string; expanders?: string[]; direction?: "in" | "out" | "both"; } | null, onNodeDoubleClick?: ((node: GraphNode & { recordId?: string; recordType?: string; }) => void), onEdgeClick?: ((edge: GraphEdge & { recordId?: string; recordType?: string; }) => void), onEdgeRetarget?: ((payload: { id: string; end: "source" | "target"; nodeId: string; nodeType: string; recordId?: string; recordType?: string; }) => void), onEdgeReroute?: ((payload: { id: string; points: EdgeWaypoint[]; recordId?: string; recordType?: string; }) => void), onEdgeAnchor?: ((payload: { id: string; end: "source" | "target"; side: "" | "n" | "e" | "s" | "w"; recordId?: string; recordType?: string; }) => void), onEdgeCreate?: ((payload: { source: GraphNode; target: GraphNode; sourceId: string; sourceType: string; targetId: string; targetType: string; sourceLabel: string; targetLabel: string; }) => void), onCanvasDoubleClick?: ((payload: { x: number; y: number; }) => void), onSelectionChange?: ((ids: string[]) => void), onNodeDragEnd?: ((payload: { id: string; x: number; y: number; recordId?: string; recordType?: string; }) => void), onNodeResize?: ((payload: { id: string; x: number; y: number; width: number; height: number; recordId?: string; recordType?: string; }) => void), onDrop?: ((payload: { entity: string; id: string; dataset?: string; label: string; x: number; y: number; }) => void), nodeActions?: NodeAction[], onNodeAction?: ((payload: { action: string; id: string; recordId?: string; recordType?: string; value?: unknown; preview?: boolean; }) => void), focus?: string, onDeleteSelection?: ((payload: { recordId?: string; recordType?: string; kind?: "node" | "edge"; count: number; }) => void), host?: GraphHostBindings
 
 ---
 
@@ -1562,7 +1592,7 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
   - Example: `"edgeStyle": [{ "style": { "arrow": "none" } }]`
 - `scaleWithZoom` — Edge style. true (default) treats the line as part of the drawing, so it thickens as you zoom in — right for a canvas. false pins it to a constant on-screen width, so hairlines stay visible when you zoom out to see a whole network.
   - Example: `"edgeStyle": [{ "style": { "scaleWithZoom": false } }]`
-- `content` — Node style, cards only. Names a host-supplied component to draw INSIDE the card instead of a text label — WE registers `block`, which renders a CollectionBlock's composed content the way a post card does. A label can only ever be the first line, so a card holding an image and three paragraphs shows sixty characters and gives no sign the rest exists. Clipped, not scrolled: a card is a preview, and what does not fit is reached by opening it. Falls back to the label when the host supplies no component by that name.
+- `content` — Node style, cards only. Names a host-supplied component to draw INSIDE the card instead of a text label — WE registers `block`, which renders a CollectionBlock's composed content the way a post card does, and `record`, which does the same for a note and draws any other record as its kind, its name and every value it holds. A label can only ever be the first line, so a card holding an image and three paragraphs shows sixty characters and gives no sign the rest exists. Clipped, not scrolled: a card is a preview, and what does not fit is reached by opening it. Falls back to the label when the host supplies no component by that name.
   - Example: `"nodeStyle": [{ "style": { "shape": "card", "width": 180, "content": "block" } }]`
 - `contentMinZoom` — Node style. Hides card content below this zoom and falls back to the label. The sibling of labelMinZoom, and the thing that decides whether rich cards scale: a hundred documents rendered at once is a hundred component trees, and at the zoom where a canvas reads as coloured rectangles none of them is legible anyway.
   - Example: `"nodeStyle": [{ "style": { "shape": "card", "content": "block", "contentMinZoom": 0.5 } }]`
@@ -1687,7 +1717,8 @@ a user-chosen swatch.
 
 | Role | Use for |
 |---|---|
-| `page` | The app/route background behind everything. Set it on a template's root node. |
+| `chrome` | The app's ground, and the bottom of the stack: the sidebar, the module rail, a docked panel's frame, and the app's own screens (profile, settings, about, the marketplace). Reach for it when what you are painting belongs to the app rather than to a community — and for a space template meant to blend into the app instead of sitting above it. |
+| `page` | The plane a **space's own content** sits on, a step above the chrome framing it, and what the surfaces below are measured from. Set it on a space template's root node. |
 | `surface` | A card, panel or sheet sitting on the page. |
 | `surface-raised` | Something floating above the page — a popover, a floating bar, a docked rail with a shadow. |
 | `surface-sunken` | A well recessed into a surface — an inset box, a code block, an input trough. |
@@ -1992,7 +2023,7 @@ color.hues: 'neutral', 'primary', 'success', 'warning', 'danger'
 
 color.lightness: '0', '25', '50', '75', '100', '200', '300', '400', '500', '600', '700', '800', '900', '1000'
 
-component.scrollbar: 'width', 'backgroundImage', 'background', 'cornerBackground', 'thumbBoxShadow', 'thumbBorderRadius', 'thumbBackground'
+component.scrollbar: 'width', 'backgroundImage', 'background', 'cornerBackground', 'thumbBoxShadow', 'thumbBorderRadius', 'thumbInset', 'thumbBackground'
 
 componentHeight: 'xs', 'sm', 'md', 'lg', 'xl'
 
@@ -2171,6 +2202,27 @@ ImageBlock extends WeNode:
   - height: number [we://height]
   - version: number [we://version]
 
+Involvement extends Ad4mModel:
+  Fields:
+  - agent: string (required) [we://involved_agent]
+  - kind: string (required) [we://involvement_kind]
+  - note: string [we://description]
+  Relations:
+  - node: HasOne [we://involved_in]
+
+InvolvementType extends WeNode:
+  Fields:
+  - name: string (required) [we://name]
+  - slug: string [we://slug]
+  - description: string [we://description]
+  - icon: string [we://icon]
+  - color: string [we://color]
+  - semantic: InvolvementSemantic = 'responsible' [we://semantic]
+  - reflexive: boolean = false [we://reflexive]
+  - appliesTo: string [we://applies_to]
+  - retired: boolean = false [we://retired]
+  - schemaVersion: number = 1 [we://schema_version]
+
 LinkBlock extends WeNode:
   Fields:
   - url: string (required) [we://url]
@@ -2293,6 +2345,7 @@ Space extends WeNode:
   - location: HasOne → LocationBlock [we://location]
   - board: HasOne → CollectionBlock [we://board]
   - taskStates: HasMany → TaskState [we://task_state_order]
+  - typeStyles: HasMany → TypeStyle [we://type_style]
 
 SpacePreference extends WeNode:
   Fields:
@@ -2593,7 +2646,7 @@ RecordStore:
   - creatableEntities: { label, value, icon, group }[] — models a person can create an instance of here, ready for a we-select: this space's own models first, then WE's built-in content types. A model appears here by declaring `authoring` in the manifest, or by being a shape this community defined
   - recordDraft: the open form's draft ({ entity, label, icon, fields[] }) or null while closed — its non-nullness is what mounts the modal. Each field is { name, label, control, required, options, placeholder, value }, derived from the model's own declaration, so a form exists for a model nobody wrote a form for
   - recordDraftDirty: boolean — the open form holds something worth keeping. What a discard guard reads: the fields come from the model, so a shape this community defined has properties no schema was written against and there is no set of local names an expression could test. Pass it to discardGuard's `dirty`
-  - displays: Record<entity, RecordDisplay> — how to show an instance of each creatable model, keyed by entity name and derived from its declaration: { entity, label, icon, title, summary, media, fields[] }, where title/summary/media name the properties playing those roles ('' when none does) and each field is { name, label, kind, role, options }. kind is one of text, longText, number, boolean, date, datetime, color, url, image, file, json; role is title, summary, media or detail. `options` is the values a field is allowed to hold where the model closes the set (a task's status), empty otherwise — count() it to tell a state worth drawing as a we-badge from free text, and map it into a we-select rather than offering a text box that accepts a word the model does not know. Index it by a row's type — { $: 'recordStore.displays[row.type]' } — and render the fields with $each; see "A record of any type" in the patterns
+  - displays: Record<entity, RecordDisplay> — how to show an instance of each creatable model, keyed by entity name and derived from its declaration: { entity, label, icon, title, summary, media, fields[] }, where title/summary/media name the properties playing those roles ('' when none does) and each field is { name, label, kind, role, options, vocabulary }. kind is one of text, longText, number, boolean, date, datetime, color, url, image, file, json; role is title, summary, media or detail. `options` is the values a field is allowed to hold where the model closes the set (a task's status), empty otherwise — count() it to tell a state worth drawing as a we-badge from free text, and map it into a we-select rather than offering a text box that accepts a word the model does not know. `vocabulary` names the community list a value is a slug of ('taskState' for a task's status, looked up in spaceStore.taskStates for its name and colour), empty otherwise. Index it by a row's type — { $: 'recordStore.displays[row.type]' } — and render the fields with $each; see "A record of any type" in the patterns
   - recordErrors: string[] — validation errors from the last save attempt, plus any backend failure
   - savingRecord: boolean — a create is in flight
   - lastCreatedId: string — the id of the last record created, empty before the first. Read it to act on what was just made; kept in the store because an $action's onSuccess can read a store and cannot hold a value
@@ -2602,12 +2655,15 @@ RecordStore:
 - Actions:
   - openRecordForm(entity?): opens the create form — on that model, or on the first offered one. Clears any pending connection
   - connectNodes(link): opens the form on a Relationship joining two records. Takes the graph's onEdgeCreate payload as it arrives
+  - connectNodesNow(link): writes the Relationship straight away, with no label and no kind, and answers with its id. The same onEdgeCreate payload; the choice between this and connectNodes is the template's. Ask first where the claim is the point (a knowledge map); write first where the arrangement is (a canvas beside a live call), and let the words be added in an inspector afterwards. Pair it with an onSuccess that selects the new line — a connection nobody is shown is a connection nobody knows is a record
   - setRecordEntity(entity): switches which model is being created, discarding what was typed
   - setRecordField(name, value): sets one field. Takes the field name, so one action serves every control — which is the only shape that works when the fields come from data
   - setRelationshipKind(id): sets which named kind the pending connection is; an empty value clears it
   - cancelRecordForm(): closes the form, discarding it
   - saveRecord(): validates and creates. Errors land in recordErrors and the form stays open holding what was typed; success closes it and sets lastCreatedId
   - placeOnCanvas(canvas: string, nodeId: string, nodeType: string, x: number, y: number): puts a record at a position on a canvas, or moves one already there. An upsert, so dragging twice leaves one coordinate. Pair with the graph’s onNodeDragEnd
+  - dropOnCanvas(canvas: string, payload): puts something dragged in from elsewhere onto a canvas where it landed. Takes the graph's onDrop payload as it arrives. Refuses, with a toast, a record from another space (this canvas draws only its own dataset) and anything that is not a record here — an agent, a space
+  - updateRecordField(entity: string, id: string, field: string, value): changes one property of one record — the inspector's edit mode. Takes the field name so one action serves every control; the value is coerced by the field's declared kind and a control's { detail } is unwrapped. An empty string is not written, so a text field cannot be cleared this way
   - removeFromCanvas(canvas: string, nodeId: string): takes a record off a canvas, leaving the record itself alone. A card the canvas owns survives as an unplaced one in the tray
   - resizeOnCanvas(canvas: string, payload): resizes a card on a canvas. Takes the graph's onNodeResize payload as it arrives; the size lives on the placement, so the same post on another canvas is unaffected
   - anchorOnCanvas(canvas: string, payload): pins which SIDE of a card a connection leaves or arrives on, for this canvas. Takes the graph's onEdgeAnchor payload as it arrives; an empty side clears that end, and a route with neither end pinned and no bends is deleted. Bends survive a clear — one record holds both, and letting go of a side says nothing about the shape somebody drew. Per canvas, like a placement — the same connection on somebody else's canvas is unaffected
@@ -2616,6 +2672,7 @@ RecordStore:
   - setCardStyle(canvas: string, nodeId: string, field: string, value): sets one presentation property of one card on one canvas — 'color', 'cardShape', 'contentScale', 'rotation' (degrees clockwise) and 'z' (stacking order). Takes the field name so one action serves a swatch, a picker and a slider. 0 is unset for the numbers, so a card is un-rotated by writing 0. Undone by taking the card off the canvas
   - previewCardStyle(nodeId: string, field: string, value): shows a presentation change without writing it — for a slider that reports while it moves. Pair with setCardStyle on release; both go through the same pending map so the card never jumps
   - setTypeColor(canvas: string, nodeType: string, color): sets the colour every card of one type is drawn in, on one canvas — the canvas's key, made writable. An empty colour clears it
+  - setSpaceTypeColor(spaceId: string, nodeType: string, color): sets the colour every card of one type is drawn in across the whole space — the community's key, which a canvas falls back to where it has no colour of its own for that type. Pass spaceStore.currentSpace.id. Read the result back with a TypeStyle query scoped { anchor: 'Space', via: 'typeStyles', anchorId: spaceStore.currentSpace.id }. An empty colour clears it
   - createOnCanvas(canvas: string, x?: number, y?: number): opens the create form and places whatever it makes onto that canvas, at the point given. Pair with the graph’s onCanvasDoubleClick
   - createCardOnCanvas(editorState, { canvas, at? }): composes a card onto a canvas and records where it sits, as one write. Without `at` the card lands in the canvas's tray. The composer's counterpart to createOnCanvas
 
@@ -2733,6 +2790,7 @@ ShapeStore:
   - extractionCandidates: string[] — entity names an extraction pass COULD write here: core vocabulary that declares itself extractable, plus every adopted shape that does. Candidacy, not a decision — which of these a call actually looks for is two layers down (spaceStore.extractionTargets, then the call's own participants). Read it to offer a choice, and to display findings: a card should show a record somebody extracted an hour ago even if the target has since been switched off
   - relationshipTargets: { label, value }[] — what a relationship may point at here, ready for a we-select: this space's own models, then block types, then other apps' models. Core infrastructure entities are deliberately absent
   - identityOptions: { label, value }[] — "None" plus every named property of the open draft, for the identity picker. Built in the store because a schema can map options but cannot prepend one
+  - nameOptions: { label, value }[] — "Work it out" plus every named property of the open draft, for the naming-field picker. A different first entry from identityOptions on purpose: no identity means no dedup key, where no naming field means the name is DERIVED (a property called name or title, else whichever string is required or first) — there is no such thing as a record with no name
   - hintEditor: the hint editor state ({ entity, classHint, defaultClassHint, rows: { name, predicate, hint, defaultHint }[], customized }) or null while closed — non-nullness mounts the hint editor modal
   - hintBusy: boolean — the hint editor is loading or saving
   - extractionNeedsIdentity: boolean — the open draft would be extracted into and has no field to recognise what it already wrote, so every pass duplicates everything. A warning to put beside the switch, not a refusal: the wizard saves either way
@@ -2747,6 +2805,7 @@ ShapeStore:
   - cancelShapeWizard(): closes the wizard, discarding the draft
   - setShapeField(field: 'name' | 'description' | 'icon' | 'classHint', value): sets one top-level draft field
   - setIdentityMember(rowId): chooses which member identifies duplicates for AI extraction; 'none' clears it. At most one, which is why it is a picker rather than a per-row flag
+  - setNameMember(rowId): chooses which member NAMES an instance — the heading on a card, the caption on a canvas, the label on a drag chip; 'none' returns it to being worked out. Not the same question as setIdentityMember: a dedup key may be a composite nobody would recognise (an event's is its title and day joined), where this is the one short string every surface shows when it has room for one line
   - setExtractable(on: boolean): allows or refuses an AI extraction pass writing instances of the open draft. Its own action rather than a setShapeField case, because the value is a boolean and that field takes strings
   - addProperty(): appends an empty property (scalar field) row to the draft
   - addRelationship(): appends an empty relationship (edge to another model) row to the draft
@@ -2857,6 +2916,9 @@ SpaceStore:
   - taskStates: { id, name, slug, semantic, color, retired, defined }[] — the states this community’s work moves through, its own if it has defined any and otherwise the defaults ("unset" means not decided, never none). Ordered by the community’s own arrangement where it has one, otherwise by what each state counts as — what is coming, what is happening, what is stuck, what is finished, what was dropped. `slug` is what TaskBlock.status holds; `semantic` is the closed fact underneath a community’s own word, so "is this outstanding?" stays answerable after a rename. Includes withdrawn states, because a task sitting in one still has to resolve — offer offeredTaskStates instead. `defined` is false for a default the space has never written down — a virtual state, which becomes a record the first time somebody reorders it, withdraws it, or names a state with its slug
   - offeredTaskStates: { id, name, slug, semantic, color, retired, defined }[] — the same list without the withdrawn ones. What a state picker or a new board column should offer
   - taskStatesLoaded: boolean — the space has been asked for its states. An empty list is otherwise indistinguishable from "not fetched yet"; gate an empty state on it
+  - involvementTypes: { id, name, slug, semantic, reflexive, appliesTo, icon, color, retired, defined }[] — the kinds of part a person can have in a record: "Assigned" and "Reviewing" on a task, "Going", "Maybe" and "Not going" on an event, plus whatever this community has named. Its own if it has named any, otherwise those defaults. `slug` is what Involvement.kind holds. `semantic` is the closed meaning underneath the name — responsible, reviewing, committed, interested, declined — so a board still finds the assignee after "Assigned" is renamed. `reflexive` kinds are an agent’s own answer, which nobody else may give, and an agent holds one per record. `appliesTo` is the entity names the kind is offered on, empty for all — filter with `'TaskBlock' in kind.appliesTo || !count(kind.appliesTo)`. Includes withdrawn kinds; offer offeredInvolvementTypes. Read who holds them through the `involvement` host function
+  - offeredInvolvementTypes: { id, name, slug, semantic, reflexive, appliesTo, icon, color, retired, defined }[] — the same list without the withdrawn ones. What an assign menu or an RSVP control should offer
+  - involvementTypesLoaded: boolean — the space has been asked for its kinds of involvement
   - templateOverrideOptions: { label, value }[] — options for the per-space template override picker: "Use the space’s default" (space-default), "Use my default" (agent-default), then every template. Each of the first two names what it resolves to. Pre-built because a schema can map a store array into options but cannot prepend one, and without those entries overriding would be one-way
   - themeOverrideOptions: { label, value }[] — the same, for themes
   - spaceThemePinned: boolean — this agent has pinned a theme for the space on screen that differs from what would otherwise apply, so there is something for a reset to undo. False outside a space, and false for a pin that happens to name what the space resolves to anyway. Gate a "pinned here / reset" affordance on it rather than on the pin merely existing
@@ -2896,8 +2958,8 @@ SpaceStore:
   - removeBoardColumn(boardId: string, columnId: string): takes a column off a board — the column record only, never the work in it. A column arranges its cards rather than owning them, so nothing that walks children can reach them; on a made board they are handed to the board itself so they stay on it. They keep their state, so they reappear in another column bound to it or in the unplaced column
   - renameBoardColumn(columnId: string, name: string): renames one column on this board. Its slug — its meaning — is untouched; renaming a state everywhere is Settings → Vocabulary
   - reorderBoardColumns(boardId: string, orderedIds: string[]): the order this board reads its columns in. Pair with we-sortable’s onReorder and pass { $: "arg.detail" }
-  - arrangeColumn(columnId: string, orderedIds: string[]): records the order somebody dragged one column’s cards into — the column’s `arranges`, an ordered relation, so two people rearranging at once converge instead of one write discarding the other. Pair with we-sortable’s onReorder
-  - moveCardToColumn(fromColumnId: string, toColumnId: string, cardId: string, orderedIds?: string[]): moves a card between columns — and writes its state when the column it joins names one, which is what makes “done is done” true on every board. A lane writes no state. One transaction, so no reader sees the card in two columns. Pass orderedIds — we-sortable’s `arg.detail.ids`, the target column’s whole new order — to seat the card where it was dropped; without it the card appends. An empty fromColumnId means the card came from nowhere on this board — Unplaced, or a picker
+  - arrangeColumn(columnId: string, orderedIds: string[], columnOrder?: string[]): records the order somebody dragged one column’s cards into — the column’s `arranges`, an ordered relation, so two people rearranging at once converge instead of one write discarding the other. Pair with we-sortable’s onReorder. Where the column shows only some of its cards — a people filter hiding the rest, one person’s row — pass the column’s whole order as columnOrder (arrangedBoard’s contents[col].order): the moved cards go back into their own slots and the hidden ones keep theirs, where without it every hidden card would drop to the bottom of the column for everybody
+  - moveCardToColumn(fromColumnId: string, toColumnId: string, cardId: string, orderedIds?: string[], toSlug?: string, columnOrder?: string[]): moves a card between columns — and writes its state when the column it joins names one, which is what makes “done is done” true on every board. A lane writes no state. One transaction, so no reader sees the card in two columns. Pass orderedIds — we-sortable’s `arg.detail.ids`, the target column’s whole new order — to seat the card where it was dropped; without it the card appends. An empty fromColumnId means the card came from nowhere on this board — Unplaced, or a picker. Pass toSlug — the state the target column stands for, which the board already has on screen — and the card is drawn in its new column the instant it is dropped rather than a round trip later: the store cannot know that state without reading the column, and until it does the card cannot be drawn there at all. A hint for the drawing only; the write reads the column itself, so a stale one costs a frame and never a wrong write. columnOrder is the target column’s whole order, for a drop into a column showing only part of itself — see arrangeColumn
   - addTaskToColumn(columnId: string, title: string, anchorId?: string): makes a task straight into a column, parented to the board’s anchor when there is one so every other scoped surface finds it. A bound column also gives it that column’s state
   - setAttending(nodeId: string, attending: boolean): joins or leaves a node's participant roster — an RSVP. Writes only this agent's own entry, so the roster stays conflict-free. Boolean, so a switch can pass `event.detail` bare
   - setAgentMuted(did: string, muted: boolean, description?: string): mutes or unmutes an agent for this agent everywhere, with an optional note. Positively phrased so a switch can pass `event.detail` bare
@@ -2931,8 +2993,14 @@ SpaceStore:
   - createRelationshipType(config: Partial<RelationshipType>): names a kind of connection this community makes — "contradicts", "came out of". The counterpart to createSignalType; slug derived from name if blank
   - setSignalTypeRetired(signalTypeId: string, retired: boolean): withdraws a signal type from use, or brings it back. Never deletes the signals given with it — a signal names its type by record id while templates resolve it by slug, so DELETING a type strands every reaction ever given and re-creating one with the same slug does not restore them. Retiring is the reversible version: the type stops being offered, existing counts keep working, and un-retiring brings everything back. Filter the offered list with OFFERED_SIGNAL_TYPES from @we/template-kit; leave find()-by-slug unfiltered so history still resolves
   - createTaskState(config: { name, semantic?, color?, icon? }): names a state this community’s work moves through — "Blocked", "In review". The counterpart to createSignalType one concept along. The defaults stay virtual beside it; a name whose slug matches a default adopts that default rather than sitting beside it. The space’s own board gains a column for the new state in the same act. Slug derived from the name; it is what tasks store, so it is not editable afterwards
+  - updateTaskState(slug: string, updates: { name?, icon?, color?, semantic? }): changes a state the community already has — what it is called, the glyph and colour it is drawn with, and what the rest of the app reads it as. The counterpart createTaskState had no pair for, and the only way a state gets a colour after it is made: the three defaults ship without one. An empty string CLEARS a field, which is how a colour goes back to the template’s default without deleting the state. The slug is deliberately absent — every task stores it, so changing it would leave the work holding a word nothing defines; renaming is what `name` is for and it carries. By slug, so editing a default adopts it
   - setTaskStateRetired(slug: string, retired: boolean): withdraws a state from use, or brings it back. Never touches the work sitting in it — a task names its state by slug, so deleting the state would leave the work holding a word nothing defines. The same decision setSignalTypeRetired makes. By slug, so a default can be withdrawn: doing so writes its record, which is the moment a default becomes the community’s own
   - reorderTaskStates(orderedSlugs: string[]): sets the order this community reads its states in — which is the order of a board’s columns. An ordered relation rather than a number on each state, so two people reordering at once converge instead of one write discarding the other. A state the order does not mention still appears, after the ones it does. Slugs, because a default has no id until it is placed in an order, which adopts it. Key the rows by slug and pair with we-sortable’s onReorder, passing { $: "arg.detail" }
+  - setInvolvement(nodeId: string, agent: string, kind: string, on: boolean): puts somebody on a record as a kind one member says about another — assigning a task, asking for a review — or takes them off. `on` is the state wanted rather than a toggle, so a menu passes the opposite of the tick it shows and a double press cannot undo itself. Every copy of the pair goes on removal. A reflexive kind is routed to respondTo, and refused for anybody but the agent it is about. Pair with a DropdownMenu of toggle entries: `onSelect: { $action: "spaceStore.setInvolvement", args: [{ $: "card.id" }, { $: "arg.id" }, "assignee", { $: "!arg.checked" }] }`
+  - respondTo(nodeId: string, kind: string): gives this agent’s own answer to a record — "going", "maybe", "not-going" — replacing any other answer it held there, in one transaction. Pass an empty kind to withdraw the answer. Refuses a kind that is not reflexive. Shown on the click, before the write lands
+  - createInvolvementType(config: { name, semantic?, reflexive?, appliesTo?, icon?, color? }): names a kind of part a person can have — "Shepherd", "Second pair of eyes". `appliesTo` is entity names joined with commas. `reflexive` is fixed once made. A name whose slug matches a default adopts it
+  - updateInvolvementType(slug: string, updates: { name?, icon?, color?, semantic?, appliesTo? }): changes a kind the community already has. The slug and `reflexive` are absent — every involvement stores the one, and changing the other would rewrite who said what. An empty string clears a field. By slug, so editing a default adopts it
+  - setInvolvementTypeRetired(slug: string, retired: boolean): withdraws a kind from use, or brings it back, without touching anybody who holds it
   - upsertSignal(nodeId: string, signalTypeId: string, value: number): adds or updates a signal on a node; value=0 deletes it
   - navigateToSpace(spaceId: string, view?: string): navigates to a space — accepts a perspective UUID or a neighbourhood CID (sharedUrl without the neighbourhood:// prefix); pre-loads space templates before switching so the template and data arrive together
   - openRecordRef(ref: string): goes to whatever a record reference names — the space, and the record's own page within it. Takes the whole `we:…` reference rather than its parts, so nothing outside the host restates where a record's page lives. A reference naming only a dataset opens the space; a relative one (`we:./…`) resolves against the space on screen; a person has no page, so nothing happens
@@ -4191,7 +4259,8 @@ Two kinds of entry, one list:
 | `snap`     | One of `top-left` `top` `top-right` `left` `right` `bottom-left` `bottom` `bottom-right`. |
 | `order`    | Position *along* the edge among the panels sharing its lane — lower is nearer the start.       |
 | `band`     | Which lane, counting inward from the edge. `displace` only. Absent means a lane of its own.    |
-| `size`     | `sm` `md` `lg` `full`. Named, never pixels: only the host can see the viewport.             |
+| `size`     | `sm` `md` `lg` `full`. The default way to size a panel — see "Sizes" below.                  |
+| `box`      | `{ width?, height? }` in pixels — the box it opens at, when no named size is the right shape. |
 | `grow`     | Share of the *spare* room in a lane, relative to lane-mates. Absent means 1; 0 pins a size.    |
 | `displace` | Push the content aside instead of covering it. Edge snaps only — ignored on a corner.          |
 | `tab`      | Position in a seat shared with others — entries with the same lane and `order` are tabs.      |
@@ -4206,8 +4275,29 @@ invokes the action its launcher declares, and that is not always "open a panel" 
 is `goToCall`, which *joins a call* when there is not one. Declaring the call window without
 `open: false` would start a call the moment somebody entered the space.
 
-**Never write pixels.** A template cannot see the viewport, and a guessed pixel is wrong on a
-display it never ran on. That is what `size` and `grow` are for.
+### Sizes
+
+**Positions are always named.** A template cannot see the viewport, and a coordinate it guessed is
+wrong on a display it never ran on — that is what `snap`, `order` and `grow` are for.
+
+**Reach for `size` first.** A named size is a card whose width comes from the host's table and
+whose height is 16:9 of that, which is the right shape for most panels on every screen.
+
+**`box` is for a panel with a shape of its own** — a legend that is tall and narrow, a strip of
+faces that is wide and low. It is an opening bid in pixels, not a size the panel is held to:
+
+- **The host clamps it** to the room there is, exactly as it does a named size, so a box too big
+  for a laptop is capped rather than hung off the edge. A drag still beats it.
+- **It is the whole panel**, titlebar and frame included — the same box `min` is measured against.
+  Content that needs a given area adds the host's chrome (a 33px titlebar, a 1px border each side).
+- **Either side may be left out.** A width alone keeps the 16:9 height derived from it; a height
+  alone keeps the width `size` gives.
+- **In a lane, `grow` still has the last word** along the edge: a box's height on a side edge is
+  the base the lane divides, not a height the panel keeps.
+
+```json
+{ "id": "key", "node": { "…": "…" }, "title": "Key", "snap": "top-right", "box": { "width": 252, "height": 545 } }
+```
 
 ### An edge is two axes
 

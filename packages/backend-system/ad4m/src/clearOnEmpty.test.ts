@@ -37,7 +37,45 @@ function makeModelClass() {
     setProperty(key: string, value: unknown, batchId?: string): Promise<void> {
       return setProperty(key, value, batchId);
     }
+
+    /**
+     * What the real `innerUpdate` does with the fields it is given, in one line.
+     *
+     * The filter is the whole point of the second patch: `value !== ''` is why the `setProperty`
+     * wrapper above was never reached from `save()`. Reproduced here rather than described, so a
+     * test that passes says the clearing happens *despite* it.
+     */
+    innerUpdate(setProperties = true, batchId?: string): Promise<void> {
+      return innerUpdate(this as never, setProperties, batchId);
+    }
+
+    /** Every field whose current value differs from the snapshot — the real one's contract. */
+    changedFields(): string[] {
+      const snapshot = (this._snapshot ?? {}) as Record<string, unknown>;
+      const self = this as unknown as Record<string, unknown>;
+      return Object.keys(snapshot).filter((key) => self[key] !== snapshot[key]);
+    }
+
+    /** As `Ad4mModel.save()` does for a record that already exists. */
+    save(batchId?: string): Promise<void> {
+      return (this as unknown as { innerUpdate: (s: boolean, b?: string) => Promise<void> }).innerUpdate(true, batchId);
+    }
   }
+
+  const innerUpdate = vi.fn(async (model: Record<string, unknown>, setProperties: boolean, batchId?: string) => {
+    if (!setProperties) return;
+    const snapshot = (model._snapshot ?? {}) as Record<string, unknown>;
+    for (const key of Object.keys(snapshot)) {
+      const value = model[key];
+      // The real filter, verbatim — see the note on the method above.
+      if (value === undefined || value === null || value === '') continue;
+      await (model as unknown as { setProperty: (k: string, v: unknown, b?: string) => Promise<void> }).setProperty(
+        key,
+        value,
+        batchId,
+      );
+    }
+  });
 
   const links: FakeLink[] = [
     { source: 'we://record-1', predicate: 'we://text' },
@@ -45,7 +83,7 @@ function makeModelClass() {
     { source: 'we://other', predicate: 'we://text' },
   ];
 
-  return { FakeModel, links, setProperty };
+  return { FakeModel, links, setProperty, innerUpdate };
 }
 
 describe('installClearOnEmpty', () => {
@@ -121,5 +159,71 @@ describe('installClearOnEmpty', () => {
     installClearOnEmpty(harness.FakeModel as never);
     await (model as unknown as { setProperty: (k: string, v: unknown) => Promise<void> }).setProperty('text', 'hi');
     expect(harness.setProperty).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * The path callers actually take.
+ *
+ * Everything above tests the `setProperty` wrapper by calling it, which is the only way to test a
+ * wrapper and says nothing about whether the wrapped method is ever reached. It was not: `save()`
+ * runs `innerUpdate`, which drops `''` before `setProperty` is called, so every case above was
+ * green while the behaviour they describe did not happen in the app.
+ */
+describe('clearing through save()', () => {
+  let harness: ReturnType<typeof makeModelClass>;
+  let model: InstanceType<ReturnType<typeof makeModelClass>['FakeModel']> & Record<string, unknown>;
+
+  beforeEach(() => {
+    harness = makeModelClass();
+    installClearOnEmpty(harness.FakeModel as never);
+    model = new harness.FakeModel() as never;
+    model._snapshot = { text: 'hello', listItem: 'bullet' };
+    model.text = 'hello';
+    model.listItem = 'bullet';
+  });
+
+  it('removes the links for a property emptied and saved', async () => {
+    // The state colour's reset, and the content layer's four: `record.color = ''; await save()`.
+    model.listItem = '';
+    await (model as unknown as { save: () => Promise<void> }).save();
+    expect(harness.links.map((l) => l.predicate)).toEqual(['we://text', 'we://text']);
+  });
+
+  it('still writes the fields that have values', async () => {
+    model.listItem = '';
+    model.text = 'changed';
+    await (model as unknown as { save: () => Promise<void> }).save();
+    expect(harness.setProperty).toHaveBeenCalledWith('text', 'changed', undefined);
+    // Cleared rather than written — the original skips it, so nothing is written twice.
+    expect(harness.setProperty).not.toHaveBeenCalledWith('listItem', '', undefined);
+  });
+
+  it('leaves a field alone when it was already empty', async () => {
+    // Not dirty: it has always been empty, so there is nothing stored to remove and no link query
+    // worth paying for.
+    model._snapshot = { text: 'hello', listItem: '' };
+    model.listItem = '';
+    await (model as unknown as { save: () => Promise<void> }).save();
+    expect(model._perspective.get).not.toHaveBeenCalled();
+    expect(harness.links).toHaveLength(3);
+  });
+
+  it('does not clear on the create path', async () => {
+    // `setProperties: false` is `create` with a constructor, where `create_subject` writes the
+    // values map and there is nothing stored to remove.
+    model.listItem = '';
+    await (model as unknown as { innerUpdate: (s: boolean) => Promise<void> }).innerUpdate(false);
+    expect(harness.links).toHaveLength(3);
+  });
+
+  it('does not clear a flag or a read-only property', async () => {
+    // Immutable after creation — `innerUpdate` refuses to write them, and the same reasoning
+    // applies to removing them.
+    model.getPropertyMetadata = (key: string) =>
+      key === 'listItem' ? { through: 'we://listItem', flag: true } : { through: `we://${key}` };
+    model.listItem = '';
+    await (model as unknown as { save: () => Promise<void> }).save();
+    expect(harness.links).toHaveLength(3);
   });
 });

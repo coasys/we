@@ -24,6 +24,7 @@
  */
 import { Column, Row } from '@we/components/solid';
 import { ROLE_NAMES } from '@we/design-utils';
+import { dragSession } from '@we/drag';
 import type { EdgeWaypoint } from '@we/graph-core';
 import {
   bendPoints,
@@ -41,6 +42,7 @@ import {
   nodeVisual,
   PluginRegistry,
   polyline,
+  readField,
   resolveStyle,
   routesAlike,
   splineThrough,
@@ -52,6 +54,7 @@ import { DEFAULT_REIFIED_EDGES, defaultExpanders } from '@we/graph-expanders';
 import { defaultLayouts } from '@we/graph-layouts';
 import type {
   Behaviour,
+  CardShape,
   ControlContext,
   EdgeGeometry,
   EdgeSide,
@@ -60,8 +63,20 @@ import type {
   Point,
   PointerInput,
 } from '@we/graph-protocol';
-import { parseAddress } from '@we/graph-protocol';
-import { batch, createEffect, createMemo, createSignal, For, onCleanup, onMount, Show, untrack } from 'solid-js';
+import { cardSilhouette, parseAddress } from '@we/graph-protocol';
+import {
+  batch,
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  type JSX,
+  onCleanup,
+  onMount,
+  Show,
+  untrack,
+} from 'solid-js';
+import { createStore, reconcile, type SetStoreFunction } from 'solid-js/store';
 import { Dynamic } from 'solid-js/web';
 
 import type { GraphViewProps, NodeContent } from './GraphView.types';
@@ -268,12 +283,78 @@ function readableFields(node: GraphNode): { name: string; value: string }[] {
  * Unknown names fall through to `--we-color-<token>` exactly as before, so nothing that worked
  * stops — including a name this build's role list has not heard of.
  */
-function color(value: string | undefined, fallback: string): string {
-  const token = value ?? fallback;
-  if (!token) return fallback;
-  if (/^(#|rgb|hsl|var\(|transparent$|currentcolor$)/i.test(token)) return token;
+export function color(value: string | undefined, fallback: string): string {
+  /*
+    `||`, not `??`: an empty value means "nothing chosen" and should reach the fallback, where `??`
+    took it as a choice and returned it. And the fallback is resolved by the same rules rather than
+    returned raw — every caller passes a role name (`page`), so returning it untouched produced
+    `background: page`, which is not a colour. Unreachable while every caller also passes a value,
+    which is the kind of trap that waits for the caller that does not.
+  */
+  const token = value || fallback;
+  if (!token) return '';
+  /*
+    A CSS colour, passed through untouched.
+
+    The modern functions were missing — `oklch()`, `oklab()`, `lab()`, `lch()`, `hwb()`, `color()` —
+    so a card fill written in one became `var(--we-color-oklch(90% 0.06 150))`, which is not a
+    variable and paints nothing. Silent, and reachable by a person rather than only by an author:
+    `we-color-picker` emits **oklch** as one of its four formats, so picking a colour for a card in
+    that format left the card uncoloured with nothing to say why.
+  */
+  if (/^#/.test(token)) return token;
+  if (/^(rgba?|hsla?|oklch|oklab|lch|lab|hwb|color|color-mix|var)\(/i.test(token)) return token;
+  if (/^(transparent|currentcolor)$/i.test(token)) return token;
   if (ROLE_NAMES.has(token)) return `var(--we-role-${token})`;
   return `var(--we-color-${token})`;
+}
+
+/**
+ * The arrowhead a line in this colour uses — an id per colour rather than per edge, since a marker
+ * is shared by every line drawn in it.
+ *
+ * Sanitised rather than interpolated: a colour is `oklch(90% 0.06 150)` or `#86c2ff`, and an id
+ * carrying a bracket, a percent or a hash makes `url(#…)` reference nothing — the arrowhead would
+ * simply not be drawn, with no error. The same silent class as a colour that resolves to no
+ * variable, one layer along.
+ */
+/**
+ * The edge whose endpoint grip is under a point — the one exception to "nodes win".
+ *
+ * An endpoint can sit *inside* a node's box: a cut card's outline is inset from the box it is cut
+ * out of, so an edge anchored to a triangle's left side ends 45px in from that box's left edge. The
+ * grip is drawn there, and grips are only drawn while the edge is hovered — so the pointer crossed
+ * into the box, the hover cleared, and the handle it was reaching for vanished before it arrived.
+ * The anchor could be set once and never changed again.
+ *
+ * A grip beating the node under it is the rule the rest of the chrome already follows: the resize
+ * handles and the connect dots sit over the card and take their own presses. This is that rule for
+ * the one control drawn in the edge layer rather than in the node's.
+ *
+ * Nearest wins where two ends are within reach of each other, so a short edge between two cards
+ * hands the press to the end actually being aimed at.
+ */
+export function edgeEndAt(
+  at: Point,
+  edges: readonly { edge: { id: string }; route: { from: Point; to: Point } }[],
+  reach: number,
+): string | null {
+  let nearest: string | null = null;
+  let best = reach;
+  for (const entry of edges) {
+    for (const end of [entry.route.from, entry.route.to]) {
+      const distance = Math.hypot(end.x - at.x, end.y - at.y);
+      if (distance <= best) {
+        best = distance;
+        nearest = entry.edge.id;
+      }
+    }
+  }
+  return nearest;
+}
+
+export function arrowId(stroke?: string): string {
+  return stroke ? `we-graph-arrow-${stroke.replace(/[^a-z0-9]+/gi, '-')}` : 'we-graph-arrow';
 }
 
 export function GraphView(props: GraphViewProps) {
@@ -313,6 +394,15 @@ export function GraphView(props: GraphViewProps) {
    * settles the draft on the spot, and the handles would vanish from under the finger holding them.
    */
   const [gesturing, setGesturing] = createSignal<string | null>(null);
+
+  /**
+   * True only while `focus` is selecting something — see the effect that applies it.
+   *
+   * Declared above the engine because the engine's event handler reads it, and a `let` read before
+   * its declaration throws. Emission is synchronous, so a flag set around the call is exact: every
+   * event raised while it is up was raised by the selection this graph made on the interface's behalf.
+   */
+  let applyingFocus = false;
 
   // Read once: expanders are constructed with their options, so changing `reified` needs a remount —
   // which is what a template does anyway when it swaps one graph for another.
@@ -420,6 +510,10 @@ export function GraphView(props: GraphViewProps) {
           props.onCanvasDoubleClick?.({ x: event.at.x, y: event.at.y });
           break;
         case 'selectionChange':
+          // Not while `focus` is selecting: the interface asked for this selection, and hearing it
+          // back is an echo — a harmful one when a line is chosen, since clearing the node selection
+          // reports an empty list and an interface reads that as "close the panel".
+          if (applyingFocus) break;
           props.onSelectionChange?.(event.ids);
           break;
         case 'nodeDragEnd': {
@@ -464,8 +558,24 @@ export function GraphView(props: GraphViewProps) {
     return engine.getSelectedEdge();
   });
 
+  /*
+    Rebuilt when the behaviour specs change by value, and never otherwise.
+
+    A behaviour is stateful — `drag-node` holds the card being dragged, `select` the press it is
+    waiting to see released — so building a fresh set drops whatever gesture is under way. And a
+    re-read of `props.behaviours` is not evidence that anything changed: the schema renderer hands a
+    component all its props through one memo, so *any* prop moving re-runs every read of every other.
+    On the workshop's canvas that meant a card let go of mid-drag whenever the pending suggestions
+    or the lens rules re-resolved — frozen wherever it was, with no `onNodeDragEnd` to save it.
+
+    The key is a string, so its memo stops propagation when nothing changed; the build reads the
+    specs untracked, since the key has already said everything about them worth reacting to. An
+    armed `connect-nodes` still rebuilds when its `armed` flips, which is the change that matters.
+  */
+  const behaviourKey = createMemo(() => JSON.stringify(props.behaviours ?? DEFAULT_BEHAVIOURS));
   const behaviours = createMemo<Behaviour[]>(() => {
-    const specs = props.behaviours ?? DEFAULT_BEHAVIOURS;
+    behaviourKey();
+    const specs = untrack(() => props.behaviours ?? DEFAULT_BEHAVIOURS);
     return specs.flatMap((spec) => {
       const id = typeof spec === 'string' ? spec : spec.type;
       const options = typeof spec === 'string' ? undefined : spec.options;
@@ -540,6 +650,138 @@ export function GraphView(props: GraphViewProps) {
     that is clear *now*.
   */
   createEffect(() => engine.viewport.setObscured(props.host?.obscured?.()));
+
+  /**
+   * What `focus` names, if the graph holds it yet: the element standing for that record, and the
+   * world point to bring into view.
+   *
+   * A node first, then a line. A record is drawn as one or the other on any given graph, never both —
+   * a reified class collapses into an edge precisely so it does not also appear as a dot — so the
+   * order only matters if that ever stopped being true, and a card is the less surprising answer.
+   *
+   * A line's point is the midpoint of its ends. For a route bent round a card that is not on the
+   * line itself, but it is between the two things the line joins, which is what bringing a
+   * connection into view is for.
+   */
+  function focusTarget(recordId: string): { kind: 'node' | 'edge'; id: string; at: Point } | null {
+    const positions = engine.getPositions();
+    for (const node of engine.store.nodes()) {
+      const address = parseAddress(node.id);
+      if (address?.kind !== 'entity' || address.id !== recordId) continue;
+      const at = positions.get(node.id);
+      if (at) return { kind: 'node', id: node.id, at: { x: at.x, y: at.y } };
+    }
+    const geometry = engine.getEdgeGeometry();
+    for (const edge of engine.store.edges()) {
+      if (!edge.reifiedAs) continue;
+      const behind = parseAddress(edge.reifiedAs);
+      if (behind?.kind !== 'entity' || behind.id !== recordId) continue;
+      const route = geometry.get(edge.id);
+      if (route) {
+        return {
+          kind: 'edge',
+          id: edge.id,
+          at: { x: (route.from.x + route.to.x) / 2, y: (route.from.y + route.to.y) / 2 },
+        };
+      }
+    }
+    return null;
+  }
+
+  /** How far inside the clear part of the canvas a point must be to count as already in view. */
+  const REVEAL_MARGIN = 48;
+
+  /**
+   * Centre a world point in the part of the canvas nobody is covering — unless it is already there.
+   *
+   * The margin is what "already there" means. A card whose centre is two pixels inside the edge is
+   * technically on screen and practically not: most of it is cut off. Nothing moves for anything
+   * comfortably inside, which is what makes binding `focus` to a click's own selection a no-op.
+   *
+   * No surface yet, no move. Before the canvas has been measured the clear rectangle is empty, every
+   * point is outside it, and centring against a zero-sized box would throw the camera somewhere
+   * arbitrary for the fit that follows to correct.
+   */
+  function revealPoint(world: Point): void {
+    const clear = engine.viewport.visibleRect();
+    if (!clear.width || !clear.height) return;
+    const screen = engine.viewport.toScreen(world);
+    const inside =
+      screen.x >= clear.x + REVEAL_MARGIN &&
+      screen.x <= clear.x + clear.width - REVEAL_MARGIN &&
+      screen.y >= clear.y + REVEAL_MARGIN &&
+      screen.y <= clear.y + clear.height - REVEAL_MARGIN;
+    if (inside) return;
+    engine.behaviourContext().pan(clear.x + clear.width / 2 - screen.x, clear.y + clear.height / 2 - screen.y);
+  }
+
+  /**
+   * Apply `focus` — once per value, and as soon as the graph holds what it names.
+   *
+   * Reads `version()` so it runs again as the graph fills in: a line written a moment ago is not
+   * drawn until the canvas re-reads, and a link opened cold names a card the first load has not
+   * reached. Each run that finds nothing waits for the next.
+   *
+   * `applied` is what stops it applying again once it has. Without it every redraw — and a live graph
+   * redraws whenever the data changes — would re-centre on the focused card, so somebody panning away
+   * from it would be dragged back by the next write anyone made. Set *before* selecting, because
+   * selecting bumps `version` and the run that causes would otherwise see an unapplied value.
+   *
+   * Cleared when `focus` empties, so the same record named again — a background click, then the same
+   * card chosen from the panel — is applied again rather than taken for the one already done.
+   */
+  let applied: string | undefined;
+  /**
+   * The focus value the selection was last cleared for, while what it names is not on the graph.
+   *
+   * Clearing once rather than on every run: a card somebody then selects by hand while the named
+   * record is still missing must stay selected, not be swept away by the next redraw.
+   */
+  let clearedFor: string | undefined;
+  createEffect(() => {
+    version();
+    const recordId = props.focus;
+    if (!recordId) {
+      applied = undefined;
+      clearedFor = undefined;
+      return;
+    }
+    if (recordId === applied) return;
+    const target = untrack(() => focusTarget(recordId));
+
+    applyingFocus = true;
+    try {
+      if (!target) {
+        /*
+          Named, and not here — so whatever *is* selected is not what the interface is showing.
+
+          The case is ordinary: an inspector listing a card's connections opens a record that lives on
+          another canvas. Left alone, the canvas goes on ringing the card somebody came from while the
+          panel beside it describes a different one, and the two read as one statement that is false.
+          Nothing selected is the true answer.
+
+          It may also just be early — a line written a moment ago — in which case the selection is
+          made as soon as the record arrives, and the gap between is a frame of nothing selected.
+        */
+        if (clearedFor !== recordId) {
+          clearedFor = recordId;
+          if (engine.getSelection().length || engine.getSelectedEdge()) engine.select([]);
+        }
+        return;
+      }
+      applied = recordId;
+      if (target.kind === 'node') {
+        const selection = engine.getSelection();
+        if (selection.length !== 1 || selection[0] !== target.id) engine.select([target.id]);
+      } else {
+        // `selectEdge` returns early for the line already open, so no guard is needed here.
+        engine.selectEdge(target.id);
+      }
+    } finally {
+      applyingFocus = false;
+    }
+    untrack(() => revealPoint(target.at));
+  });
 
   /**
    * The graph's own chrome, kept out from under whatever the host has floating over the canvas.
@@ -637,6 +879,51 @@ export function GraphView(props: GraphViewProps) {
       ];
     });
   });
+
+  /*
+    One row per node, kept across ticks.
+
+    `nodes()` builds a fresh entry per node every time the engine's version moves — a settle, a
+    reload, a drag frame — and `<For>` keys by reference, so every card's DOM was torn down and
+    rebuilt on each tick. That cost was invisible until something in a card held state of its own:
+    a header control's popup, or the colour picker's, closed by itself a few seconds after opening,
+    on the next watch reload.
+
+    So each node gets a row that lives as long as the node does, holding its entry in a store; a
+    tick reconciles the store rather than replacing the row. The JSX below reads `entry.x` exactly
+    as before and every read is tracked through the proxy, so a changed position or selection still
+    repaints only what it touches — and everything else, controls included, stays mounted.
+
+    Reconciled inside the memo rather than in an effect, because the rows have to be current on the
+    same pass the list is read, or a frame would draw the new list with the old entries.
+  */
+  type NodeEntry = ReturnType<typeof nodes>[number];
+  const rowsById = new Map<string, { entry: NodeEntry; set: SetStoreFunction<NodeEntry> }>();
+  const nodeRows = createMemo(() => {
+    const fresh = nodes();
+    const seen = new Set<string>();
+    const rows = fresh.map((entry) => {
+      const id = entry.node.id;
+      seen.add(id);
+      let row = rowsById.get(id);
+      if (!row) {
+        const [store, set] = createStore(entry);
+        row = { entry: store, set };
+        rowsById.set(id, row);
+      } else {
+        row.set(reconcile(entry));
+      }
+      return row;
+    });
+    for (const id of rowsById.keys()) if (!seen.has(id)) rowsById.delete(id);
+    return rows;
+  });
+
+  /**
+   * The rows whose chrome is drawn. The same row objects, so a tick that leaves the selection alone
+   * leaves the chrome mounted — a picker the bar opened stays open, for the reason the rows exist.
+   */
+  const selectedRows = createMemo(() => nodeRows().filter((row) => row.entry.selected));
 
   /*
     The host's optimistic fields, handed to the engine keyed by node.
@@ -772,6 +1059,21 @@ export function GraphView(props: GraphViewProps) {
     return engine.getPendingConnection();
   });
 
+  /**
+   * The colours the arrowheads have to exist in — the distinct ones anybody has asked for.
+   *
+   * Only edges that carry a colour of their own: an ordinary graph asks for none, emits no extra
+   * markers, and keeps the default head it has always had, which is deliberately a shade darker
+   * than the line it finishes.
+   */
+  const arrowColors = createMemo(() => [
+    ...new Set(
+      edges()
+        .map((entry) => entry.visual.color)
+        .filter((value): value is string => !!value),
+    ),
+  ]);
+
   const transform = createMemo(() => {
     viewportVersion();
     version();
@@ -839,7 +1141,161 @@ export function GraphView(props: GraphViewProps) {
     if (visual.shape !== 'card') return 'var(--we-radius-300)';
     if (visual.cardShape === 'square') return '0';
     if (visual.cardShape === 'round') return '50%';
-    return 'var(--we-radius-300)';
+    // The note: rounded enough that choosing it over a square is visible on the card itself.
+    return 'var(--we-radius-500)';
+  }
+
+  /**
+   * The shapes a radius cannot make, as fractions of the card's box, clockwise from the top.
+   *
+   * One set of points, from which **four** things are derived so they cannot disagree: the clip the
+   * card is cut to, the ring drawn behind it when it is hovered or selected, the floats its text
+   * wraps to, and — since the table moved to `@we/graph-protocol` — where an edge attaches. The
+   * fourth was the reason it moved: routing met the card's *box*, which is the shape a card is cut
+   * out of, so a line stopped 45px short of a triangle's side. A round card is not cut — its radius
+   * draws it — but it flows, so it gets points of its own below.
+   */
+  /** Points in the box's own 0..1 space, as the shared table gives them. */
+  type Outline = readonly (readonly [number, number])[];
+  type Shaped = { shape: string; cardShape?: string };
+  const cutPoints = (visual: Shaped) =>
+    visual.shape === 'card' ? cardSilhouette(visual.cardShape as CardShape | undefined) : undefined;
+  const pct = (value: number) => `${Math.round(value * 10000) / 100}%`;
+
+  /** The polygon a card is cut to. A clip rather than a drawn outline, so the card stays a box. */
+  function nodeClip(visual: Shaped): string {
+    const points = cutPoints(visual);
+    return points ? `polygon(${points.map(([x, y]) => `${pct(x)} ${pct(y)}`).join(', ')})` : 'none';
+  }
+
+  /** The outline text wraps to: a cut shape's own points, or an ellipse sampled for a round card. */
+  function flowPoints(visual: Shaped): Outline | undefined {
+    if (visual.shape !== 'card') return undefined;
+    if (visual.cardShape === 'round') {
+      const steps = 24;
+      return Array.from({ length: steps }, (_, i) => {
+        const angle = -Math.PI / 2 + (i / steps) * Math.PI * 2;
+        return [0.5 + 0.5 * Math.cos(angle), 0.5 + 0.5 * Math.sin(angle)] as const;
+      });
+    }
+    return cutPoints(visual);
+  }
+
+  /**
+   * The exterior of the shape on each side, for the floats — see `.we-graph__card-flow`.
+   *
+   * Each float is half the card wide and the full content height, and its polygon is the chain of
+   * outline points down its side — from the topmost point to the bottommost, taking the rightmost
+   * of a flat top for the right float and the leftmost for the left — closed along the box's outer
+   * edge, in the float's own coordinates, since that is what `shape-outside` measures in: the
+   * card's 25% is the left float's 50%. A point the other side of the middle clamps to the float's
+   * edge, so a chain can never claim space it does not border.
+   */
+  function nodeFlow(visual: Shaped): { left: string; right: string } {
+    const points = flowPoints(visual);
+    if (!points) return { left: 'none', right: 'none' };
+    const n = points.length;
+    const pick = (better: (a: readonly [number, number], b: readonly [number, number]) => boolean) =>
+      points.reduce((best, p, i) => (better(p, points[best]) ? i : best), 0);
+    const topRight = pick((a, b) => a[1] < b[1] || (a[1] === b[1] && a[0] > b[0]));
+    const bottomRight = pick((a, b) => a[1] > b[1] || (a[1] === b[1] && a[0] > b[0]));
+    const topLeft = pick((a, b) => a[1] < b[1] || (a[1] === b[1] && a[0] < b[0]));
+    const bottomLeft = pick((a, b) => a[1] > b[1] || (a[1] === b[1] && a[0] < b[0]));
+    // Clockwise from one index to another, inclusive.
+    const chain = (from: number, to: number) => {
+      const out: (readonly [number, number])[] = [];
+      for (let i = from; ; i = (i + 1) % n) {
+        out.push(points[i]);
+        if (i === to) break;
+      }
+      return out;
+    };
+    const right = chain(topRight, bottomRight).map(([x, y]) => `${pct(Math.max(0, (x - 0.5) * 2))} ${pct(y)}`);
+    const left = chain(bottomLeft, topLeft)
+      .reverse()
+      .map(([x, y]) => `${pct(Math.min(1, x * 2))} ${pct(y)}`);
+    return {
+      left: `polygon(0 0, ${left.join(', ')}, 0 100%)`,
+      right: `polygon(100% 0, ${right.join(', ')}, 100% 100%)`,
+    };
+  }
+
+  /**
+   * The ring behind a cut shape: the same outline pushed out by a constant distance.
+   *
+   * Pushed out, not scaled. A scaled copy moves a flat edge by the whole enlargement and a steep one
+   * by a fraction of it, which is why a triangle's base had a ring and its sides barely did. Each
+   * edge is shifted along its own outward normal by `ring`, and each corner is where two shifted
+   * edges meet — so every edge is the same thickness and every corner is sharp. In pixels of the
+   * card's box, plus the pad the pseudo-element is inset by, since that is the box it is clipped in.
+   */
+  function ringClip(visual: Shaped, width: number, height: number, ring: number, pad: number): string {
+    const points = cutPoints(visual);
+    if (!points) return 'none';
+    const px = points.map(([x, y]) => ({ x: x * width, y: y * height }));
+    const n = px.length;
+    // Each edge, shifted: a point on it and its direction.
+    const edges = px.map((from, i) => {
+      const to = px[(i + 1) % n];
+      const dx = to.x - from.x;
+      const dy = to.y - from.y;
+      const length = Math.hypot(dx, dy) || 1;
+      // Outward for a clockwise polygon in screen coordinates.
+      const nx = dy / length;
+      const ny = -dx / length;
+      return { x: from.x + nx * ring, y: from.y + ny * ring, dx, dy };
+    });
+    const corners = edges.map((edge, i) => {
+      const prev = edges[(i - 1 + n) % n];
+      // Where the previous shifted edge meets this one.
+      const det = prev.dx * edge.dy - prev.dy * edge.dx;
+      if (Math.abs(det) < 1e-9) return { x: edge.x, y: edge.y };
+      const t = ((edge.x - prev.x) * edge.dy - (edge.y - prev.y) * edge.dx) / det;
+      return { x: prev.x + prev.dx * t, y: prev.y + prev.dy * t };
+    });
+    const round = (value: number) => Math.round(value * 100) / 100;
+    return `polygon(${corners.map((c) => `${round(c.x + pad)}px ${round(c.y + pad)}px`).join(', ')})`;
+  }
+
+  /**
+   * Width over height for a shape drawn true — what a resize holds to while the key is down.
+   *
+   * A circle and a square are 1. A regular hexagon with its points left and right, and an
+   * equilateral triangle, are both 2/√3 wide for their height; a regular pentagon is a little
+   * wider than tall. Held to 1 those came out squashed, which is what a square is to a hexagon.
+   */
+  function shapeRatio(visual: Shaped): number {
+    if (visual.shape !== 'card') return 1;
+    switch (visual.cardShape) {
+      case 'triangle':
+      case 'hexagon':
+        return 2 / Math.sqrt(3);
+      case 'pentagon':
+        return 1.0515;
+      default:
+        return 1;
+    }
+  }
+
+  /**
+   * How far in from each side a block that cannot flow — an image, an embed — should sit, so it
+   * lands in the largest rectangle the shape holds. Text needs none of this: it wraps to the floats
+   * the stylesheet lays along the outline.
+   */
+  function nodeInset(visual: Shaped): string {
+    if (visual.shape !== 'card') return '0';
+    switch (visual.cardShape) {
+      case 'triangle':
+      case 'diamond':
+      case 'hexagon':
+        return '25%';
+      case 'pentagon':
+        return '18%';
+      case 'round':
+        return '15%';
+      default:
+        return '0';
+    }
   }
 
   const cardContent = (visual: { content?: string; contentMinZoom?: number }): NodeContent | undefined => {
@@ -1426,7 +1882,11 @@ export function GraphView(props: GraphViewProps) {
 
   function beginResize(
     event: PointerEvent,
-    entry: { node: GraphNode; at: { x: number; y: number }; visual: { width?: number; height?: number } },
+    entry: {
+      node: GraphNode;
+      at: { x: number; y: number };
+      visual: { shape: string; cardShape?: string; width?: number; height?: number };
+    },
     grip: Grip,
   ) {
     // Never reaches the canvas dispatcher, which would read the same press as the start of a drag —
@@ -1445,7 +1905,11 @@ export function GraphView(props: GraphViewProps) {
       // half as far or the card runs away from the pointer.
       const scale = zoom() || 1;
       const delta = { x: (moved.clientX - from.x) / scale, y: (moved.clientY - from.y) / scale };
-      const next = resizeBox({ at: entry.at, width, height }, grip, delta, MIN_CARD);
+      // Held to the shape's own proportions while the key is down — a circle, a square, a regular
+      // hexagon — see `shapeRatio`.
+      const next = resizeBox({ at: entry.at, width, height }, grip, delta, MIN_CARD, {
+        ...(moved.ctrlKey ? { ratio: shapeRatio(entry.visual) } : {}),
+      });
       setResizing({ id: entry.node.id, x: next.at.x, y: next.at.y, width: next.width, height: next.height });
     };
     const end = (ended: PointerEvent) => {
@@ -1501,8 +1965,86 @@ export function GraphView(props: GraphViewProps) {
     return { x: entry.at.x, y: entry.at.y, width: entry.visual.width, height: entry.visual.height };
   }
 
+  /**
+   * Where a node is and how large, as the style both its own element and its chrome's are placed by.
+   *
+   * One function for the two because the chrome is a separate element now (see the layer after the
+   * nodes), and a handle positioned from a second copy of this arithmetic would drift off its card
+   * the first time one of the copies changed — during a resize, say, which is exactly when both are
+   * being read every frame.
+   */
+  function anchorStyle(entry: NodeEntry): JSX.CSSProperties {
+    const box = boxOf(entry);
+    return {
+      transform: `translate(${box.x}px, ${box.y}px)`,
+      '--node-width': `${box.width ?? entry.visual.size * 2}px`,
+      '--node-height': `${box.height ?? entry.visual.size * 2}px`,
+    };
+  }
+
+  /** This graph's endpoint grips, at the camera's scale — see `edgeEndAt`. */
+  const edgeEndUnder = (at: Point): string | null =>
+    props.onEdgeAnchor ? edgeEndAt(at, edges(), HANDLE_HIT_R / zoom()) : null;
+
   function dispatch(phase: Parameters<typeof dispatchPointer>[1], event: PointerEvent | WheelEvent | MouseEvent) {
     dispatchPointer(behaviours(), phase, toInput(event), engine.behaviourContext());
+  }
+
+  /**
+   * The delete key, on whatever is selected.
+   *
+   * The graph's only keyboard, and it is deliberately one key. A canvas is operated by pointing at
+   * it; what a keyboard buys here is the accelerator for the one action whose alternative — reach
+   * for the panel, find the control — is disproportionate to how often it is wanted.
+   *
+   * **On the surface rather than on `window`.** The alternative was tempting and wrong: a document
+   * listener would fire while somebody is typing a label into the inspector beside the canvas, so a
+   * Backspace mid-word would delete the record the word is about. Guarding that by sniffing
+   * `event.target` for editability is a list of element names that is wrong the first time a control
+   * puts its input in a shadow root. Focus is the question actually being asked — is the canvas what
+   * the keyboard is aimed at — so focus is what answers it.
+   *
+   * The listener writes nothing. See `onDeleteSelection` for why the graph reports rather than acts.
+   */
+  function onKeyDown(event: KeyboardEvent) {
+    if (event.key !== 'Delete' && event.key !== 'Backspace') return;
+    const report = props.onDeleteSelection;
+    if (!report) return;
+
+    /*
+      The edge first, and then the nodes — never both.
+
+      `selectEdge` clears the node selection and `select` clears the edge, so at most one of these is
+      ever non-empty. Asking in this order is belt and braces rather than a rule: if that invariant
+      ever broke, deleting the line somebody can see handles is the less surprising of the two.
+    */
+    const edgeId = engine.getSelectedEdge();
+    if (edgeId) {
+      const edge = engine.store.edge(edgeId);
+      // The record behind the line, as `edgeClick` resolves it. Absent on an ordinary edge, which
+      // stands for a declared relation and has no record to delete — the payload then carries a
+      // count and no ids, and the interface says so rather than removing something else.
+      const behind = edge?.reifiedAs ? parseAddress(edge.reifiedAs) : null;
+      event.preventDefault();
+      report({
+        count: 1,
+        kind: 'edge',
+        ...(behind?.kind === 'entity' && { recordId: behind.id, recordType: behind.type }),
+      });
+      return;
+    }
+
+    const ids = engine.getSelection();
+    if (!ids.length) return;
+    // Only an entity node stands for a record. A property, a literal or a synthetic cluster has
+    // nothing to delete, so it reports as a selection with no id rather than as no press at all.
+    const at = ids.length === 1 ? parseAddress(ids[0]) : null;
+    event.preventDefault();
+    report({
+      count: ids.length,
+      ...(ids.length === 1 && { kind: 'node' as const }),
+      ...(at?.kind === 'entity' && { recordId: at.id, recordType: at.type }),
+    });
   }
 
   function onPointerMove(event: PointerEvent) {
@@ -1519,9 +2061,43 @@ export function GraphView(props: GraphViewProps) {
       two-pixel line whose clickable width is a tolerance nobody can see. Without a hover mark the
       only way to find out whether you are on the line is to click and see what opens.
     */
-    const edge = hit ? null : engine.hitTestEdge(at);
+    const edge = hit ? edgeEndUnder(at) : engine.hitTestEdge(at);
     if (edge !== hoveredEdge()) setHoveredEdge(edge);
   }
+
+  /*
+    The graph as a drop target, for whatever the app's drag session carries.
+
+    Registered here rather than by wrapping the graph in a `we-drop-zone`, because the zone hands
+    its receiver a client point and a canvas needs a world one — and only this component holds the
+    camera. Only while `onDrop` is bound: a graph nobody asked to receive drops should not light up
+    as a target when something is carried past it. The session decides the innermost zone and fires
+    exactly once, so a drop on a card lands on the canvas beneath it at the card's point, which is
+    the right reading — the card was never the destination.
+  */
+  onMount(() => {
+    if (!props.onDrop || !surface) return;
+    const el = surface;
+    const unregister = dragSession.registerZone({
+      el,
+      label: 'the canvas',
+      onDrop: ({ payload, point }) => {
+        const box = el.getBoundingClientRect();
+        const world = engine.viewport.toWorld({ x: point.x - box.left, y: point.y - box.top });
+        for (const item of payload.items) {
+          props.onDrop?.({
+            entity: item.ref.entity,
+            id: item.ref.id,
+            ...(item.ref.dataset ? { dataset: item.ref.dataset } : {}),
+            label: item.label,
+            x: world.x,
+            y: world.y,
+          });
+        }
+      },
+    });
+    onCleanup(unregister);
+  });
 
   return (
     <div
@@ -1553,8 +2129,27 @@ export function GraphView(props: GraphViewProps) {
       */}
       <div
         class="we-graph__surface"
+        /*
+          Focusable only where the delete key is bound — see `onDeleteSelection`.
+
+          A graph with no answer for the key has no reason to be a tab stop, and making every one of
+          them focusable would add a stop to every page holding a map, for a focus that does nothing.
+          `0` rather than `-1` so the keyboard can reach it at all: a canvas only a mouse can focus is
+          a canvas only a mouse can delete from.
+        */
+        tabIndex={props.onDeleteSelection ? 0 : undefined}
+        onKeyDown={onKeyDown}
         onPointerDown={(event) => {
           (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
+          /*
+            Pointing at the canvas is aiming the keyboard at it — which is also what takes focus off
+            whatever field was being typed into, correctly: the press was on the canvas.
+
+            `preventScroll`, because focusing an element scrolls it into view by default and this one
+            fills its container. In a template where the graph sits below the fold, a click on a card
+            would otherwise jump the page.
+          */
+          (event.currentTarget as HTMLElement).focus?.({ preventScroll: true });
           dispatch('onPointerDown', event);
         }}
         onPointerMove={onPointerMove}
@@ -1626,8 +2221,8 @@ export function GraphView(props: GraphViewProps) {
                   stroke-dasharray={entry.visual.dashed ? '4 4' : undefined}
                   // SVG's own answer to "keep this stroke a constant width whatever the transform".
                   vector-effect={entry.visual.scaleWithZoom ? undefined : 'non-scaling-stroke'}
-                  marker-start={entry.visual.arrow === 'both' ? 'url(#we-graph-arrow)' : undefined}
-                  marker-end={entry.visual.arrow === 'none' ? undefined : 'url(#we-graph-arrow)'}
+                  marker-start={entry.visual.arrow === 'both' ? `url(#${arrowId(entry.visual.color)})` : undefined}
+                  marker-end={entry.visual.arrow === 'none' ? undefined : `url(#${arrowId(entry.visual.color)})`}
                 />
                 {/*
                   A grip on each end, for dragging the attachment around the node's rim.
@@ -1789,6 +2384,30 @@ export function GraphView(props: GraphViewProps) {
               <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--we-color-neutral-400)" />
             </marker>
             {/*
+              One head per colour anybody has actually asked for.
+
+              A marker paints in its own right rather than inheriting from the path referencing it,
+              and `context-stroke` — the one way to say it once — is SVG 2 and unsupported in Safari.
+              So a coloured line kept the default grey head, which reads as a line that failed to
+              finish rather than as a colour. These are generated from the edges on screen, so an
+              uncoloured graph emits none of them and looks exactly as it did.
+            */}
+            <For each={arrowColors()}>
+              {(stroke) => (
+                <marker
+                  id={arrowId(stroke)}
+                  viewBox="0 0 10 10"
+                  refX="0"
+                  refY="5"
+                  markerWidth={ARROW_LENGTH}
+                  markerHeight={ARROW_LENGTH}
+                  orient="auto-start-reverse"
+                >
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill={color(stroke, 'neutral-400')} />
+                </marker>
+              )}
+            </For>
+            {/*
               The same head in the proposal's colour. A marker paints in its own right rather than
               inheriting from the path that references it, and the one way to say it once —
               `context-stroke` — is SVG 2 and unsupported in Safari, so this is a copy on purpose.
@@ -1828,7 +2447,21 @@ export function GraphView(props: GraphViewProps) {
                 // resolve against the containing block's width rather than the label's own, which is
                 // the classic way to almost centre something.
                 transform: `translate(${entry.route.mid.x}px, ${entry.route.mid.y}px) translate(-50%, -50%)`,
-                color: color(entry.visual.labelColor, 'neutral-500'),
+                /*
+                  A custom property, not `color` — so the default lives in the stylesheet, as a node
+                  label's does.
+
+                  It was `color(labelColor, 'neutral-500')`, and 500 is the one step on the neutral
+                  ramp that a theme's polarity does not move: it is the ramp's fixed point, so the
+                  same mid-grey came out in a light theme and a dark one. Legible on paper-white,
+                  and on a dark canvas a label sat dimmer than every other word on screen — the
+                  worst place for it, since what an edge label says is what a line *means*.
+
+                  `DEFAULT_NODE` already argues this for node labels: a fixed step on the neutral
+                  ramp gets ink right in neither polarity, and the renderer's own stylesheet does.
+                  So the same shape here, and a rule that names a colour still wins.
+                */
+                ...(entry.visual.labelColor ? { '--edge-label-color': color(entry.visual.labelColor, '') } : {}),
               }}
             >
               {entry.visual.label}
@@ -1836,36 +2469,74 @@ export function GraphView(props: GraphViewProps) {
           )}
         </For>
 
-        <For each={nodes()}>
-          {(entry) => (
-            <div
-              class="we-graph__node"
-              classList={{
-                'we-graph__node--selected': entry.selected,
-                'we-graph__node--hovered': hovered() === entry.node.id,
-                'we-graph__node--unresolved': entry.node.unresolved === true,
-                'we-graph__node--card': entry.visual.shape === 'card',
-                // Held state has to be visible — a node the layout will not move, looking exactly
-                // like one it will, is a graph behaving differently for no reason you can see, and
-                // the reason is usually a drag somebody forgot making. Only where it is an exception,
-                // though: under a layout that reads positions from the data every node is placed, so
-                // the same mark lands on all of them and says nothing.
-                'we-graph__node--pinned': entry.at.fixed === true && engine.pinningIsMeaningful(),
-              }}
-              style={{
-                transform: `translate(${boxOf(entry).x}px, ${boxOf(entry).y}px)`,
-                '--node-size': `${entry.visual.size * 2}px`,
-                '--node-width': `${boxOf(entry).width ?? entry.visual.size * 2}px`,
-                '--node-height': `${boxOf(entry).height ?? entry.visual.size * 2}px`,
-                '--node-color': color(entry.visual.color, 'primary-500'),
-                '--node-border': color(entry.visual.borderColor, 'transparent'),
-                '--node-border-width': `${entry.visual.borderWidth ?? 0}px`,
-                '--node-radius': nodeRadius(entry.visual),
-                '--content-scale': String(entry.visual.contentScale ?? 1),
-                '--node-label-color': color(entry.visual.labelColor, 'neutral-800'),
-                '--node-label-size': `${entry.visual.labelSize ?? 12}px`,
-                '--label-scale': entry.visual.scaleLabelWithZoom ? '1' : 'calc(1 / var(--graph-zoom))',
-                /*
+        {/*
+          The nodes, in a stacking context of their own — see `.we-graph__nodes`. A card's `z` orders
+          it among the other cards and can never lift it over the selection chrome drawn after this.
+        */}
+        <div class="we-graph__nodes">
+          <For each={nodeRows()}>
+            {({ entry }) => (
+              <div
+                class="we-graph__node"
+                classList={{
+                  'we-graph__node--selected': entry.selected,
+                  'we-graph__node--hovered': hovered() === entry.node.id,
+                  'we-graph__node--unresolved': entry.node.unresolved === true,
+                  'we-graph__node--card': entry.visual.shape === 'card',
+                  // Held state has to be visible — a node the layout will not move, looking exactly
+                  // like one it will, is a graph behaving differently for no reason you can see, and
+                  // the reason is usually a drag somebody forgot making. Only where it is an exception,
+                  // though: under a layout that reads positions from the data every node is placed, so
+                  // the same mark lands on all of them and says nothing.
+                  'we-graph__node--pinned': entry.at.fixed === true && engine.pinningIsMeaningful(),
+                }}
+                style={{
+                  ...anchorStyle(entry),
+                  // Only where a rule chose an order; unset, document order stands, as it always has.
+                  ...(entry.visual.z !== undefined ? { 'z-index': String(entry.visual.z) } : {}),
+                  '--node-size': `${entry.visual.size * 2}px`,
+                  '--node-color': color(entry.visual.color, 'primary-500'),
+                  '--node-border': color(entry.visual.borderColor, 'transparent'),
+                  '--node-border-width': `${entry.visual.borderWidth ?? 0}px`,
+                  '--node-radius': nodeRadius(entry.visual),
+                  '--node-clip': nodeClip(entry.visual),
+                  '--node-inset': nodeInset(entry.visual),
+                  '--flow-left': nodeFlow(entry.visual).left,
+                  '--flow-right': nodeFlow(entry.visual).right,
+                  /*
+                  The ring behind a cut shape, only while it is wanted — hovered or selected — and
+                  worked out at this zoom, since it is a screen-constant thickness in world units.
+                  A cut shape at rest carries no ring and pays nothing for one.
+                */
+                  ...(() => {
+                    const wanted = entry.selected ? 3 : hovered() === entry.node.id ? 2 : 0;
+                    if (!wanted || nodeClip(entry.visual) === 'none') return {};
+                    const scale = zoom() || 1;
+                    const ring = wanted / scale;
+                    const pad = ring + 1 / scale;
+                    const box = boxOf(entry);
+                    return {
+                      '--ring-pad': `${pad}px`,
+                      '--ring-clip': ringClip(
+                        entry.visual,
+                        box.width ?? DEFAULT_CARD_WIDTH,
+                        box.height ?? DEFAULT_CARD_HEIGHT,
+                        ring,
+                        pad,
+                      ),
+                    };
+                  })(),
+                  '--content-scale': String(entry.visual.contentScale ?? 1),
+                  /*
+                  Only where a rule chose one. Left unset, the stylesheet answers: a caption under a
+                  dot in the page's own text colour, and a card's text in black or white by the
+                  lightness of its fill — see `.we-graph__card`. The old fixed default here was
+                  `neutral-800`, which in a dark theme is near-white on a pale post-it.
+                */
+                  ...(entry.visual.labelColor ? { '--node-label-color': color(entry.visual.labelColor, '') } : {}),
+                  '--node-label-size': `${entry.visual.labelSize ?? 12}px`,
+                  '--label-scale': entry.visual.scaleLabelWithZoom ? '1' : 'calc(1 / var(--graph-zoom))',
+                  /*
                   Published for the drawn parts to read rather than set here, because `opacity`
                   composites the *whole* subtree and this element is not only the node — it also
                   anchors the resize handles and the action buttons.
@@ -1875,35 +2546,49 @@ export function GraphView(props: GraphViewProps) {
                   true — they are the way to settle it. So the fade goes on what is drawn and the
                   chrome anchored beside it stays legible.
                 */
-                '--node-opacity': String(entry.visual.opacity ?? 1),
-              }}
-              title={entry.visual.label}
-            >
-              {/*
+                  '--node-opacity': String(entry.visual.opacity ?? 1),
+                }}
+                title={entry.visual.label}
+              >
+                {/*
                 A card carries its text *inside* the box — the post-it, where the content is the node
                 rather than a caption attached to a mark. Everything else keeps the label underneath,
                 which is what keeps a dense map readable when the marks are 8px across.
               */}
-              <Show
-                when={entry.visual.shape === 'card'}
-                fallback={
-                  <>
-                    <div class="we-graph__dot">
-                      <Show when={entry.visual.image}>
-                        <img class="we-graph__image" src={entry.visual.image} alt="" />
-                      </Show>
-                      <Show when={!entry.visual.image && entry.hasMore}>
-                        {/* An open node with more to give says so — otherwise a paged expansion looks
+                <Show
+                  when={entry.visual.shape === 'card'}
+                  fallback={
+                    <>
+                      <div class="we-graph__dot">
+                        <Show when={entry.visual.image}>
+                          <img class="we-graph__image" src={entry.visual.image} alt="" />
+                        </Show>
+                        <Show when={!entry.visual.image && entry.hasMore}>
+                          {/* An open node with more to give says so — otherwise a paged expansion looks
                             identical to one that returned everything. */}
-                        <span class="we-graph__more">+</span>
-                      </Show>
-                    </div>
-                    <span class="we-graph__label">{entry.visual.label}</span>
-                  </>
-                }
-              >
-                <div class="we-graph__card">
+                          <span class="we-graph__more">+</span>
+                        </Show>
+                      </div>
+                      <span class="we-graph__label">{entry.visual.label}</span>
+                    </>
+                  }
+                >
                   {/*
+                  Two layers. The outer is the card's box — where it is, how large, how faded — and
+                  carries the selection ring. The inner is its shape: the fill, the border, the
+                  radius and, for the polygons, the clip. Split because a clip cuts everything on
+                  its own element, including a ring drawn around it; a ring on the box outside the
+                  clip follows the shape's silhouette instead — see `.we-graph__card--cut`.
+                */}
+                  <div
+                    class="we-graph__card"
+                    classList={{
+                      'we-graph__card--cut': nodeClip(entry.visual) !== 'none',
+                      'we-graph__card--flow': nodeFlow(entry.visual).left !== 'none',
+                    }}
+                  >
+                    <div class="we-graph__card-shape">
+                      {/*
                     The card's real content, when a style rule named one and the host supplies it.
 
                     Falls back to the label rather than to nothing — a card whose content component
@@ -1911,30 +2596,76 @@ export function GraphView(props: GraphViewProps) {
                     also what makes `contentMinZoom` cheap: below the threshold the card draws one
                     string instead of a document, which is all that is legible at that size anyway.
                   */}
-                  <Show
-                    when={cardContent(entry.visual)}
-                    fallback={<span class="we-graph__card-text">{entry.visual.label}</span>}
-                  >
-                    {(Content) => (
                       <div class="we-graph__card-content">
                         {/*
-                          The scale lives on an inner element because it has to change the box the
-                          content is *laid out* in, not just how large the result is drawn. Scaling
-                          the clipping element would shrink the drawing and leave the same amount of
-                          text in it; a wider inner box at a smaller scale is what fits more of the
-                          document into the same card.
-                        */}
+                        The scale lives on an inner element because it has to change the box the
+                        content is *laid out* in, not just how large the result is drawn. Scaling
+                        the clipping element would shrink the drawing and leave the same amount of
+                        text in it; a wider inner box at a smaller scale is what fits more of the
+                        document into the same card.
+
+                        The fallback label lives in the same box as a document, so it flows to the
+                        shape the same way — it used to sit outside, where no float could reach it.
+                      */}
                         <div class="we-graph__card-scale">
-                          <Dynamic component={Content()} node={entry.node} />
+                          {/*
+                          For a shape with an outline, two floats hugging its edges — the exterior
+                          on each side — so every line wraps to it. `shape-inside` does not exist;
+                          this is what does.
+                        */}
+                          <Show when={nodeFlow(entry.visual).left !== 'none'}>
+                            <div class="we-graph__card-flow we-graph__card-flow--left" />
+                            <div class="we-graph__card-flow we-graph__card-flow--right" />
+                          </Show>
+                          <Show
+                            when={cardContent(entry.visual)}
+                            fallback={<span class="we-graph__card-text">{entry.visual.label}</span>}
+                          >
+                            {(Content) => <Dynamic component={Content()} node={entry.node} />}
+                          </Show>
                         </div>
                       </div>
-                    )}
-                  </Show>
-                  <Show when={entry.hasMore}>
-                    <span class="we-graph__more we-graph__more--card">+</span>
-                  </Show>
-                </div>
-              </Show>
+                      <Show when={entry.hasMore}>
+                        <span class="we-graph__more we-graph__more--card">+</span>
+                      </Show>
+                    </div>
+                  </div>
+                </Show>
+              </div>
+            )}
+          </For>
+        </div>
+
+        {/*
+          The selected node's chrome — resize handles, connect dots, the action bar — in a layer of
+          its own, after every node.
+
+          It used to live inside the node it belongs to, and that cannot work: each node is
+          positioned with a transform, which makes it a stacking context, so nothing inside one can
+          ever be drawn over a sibling however high its `z-index`. Every card later in the list
+          painted over the bar, the handles and any picker the bar opened. Out here the chrome is
+          above all of them, and a card's own stacking order stays what somebody chose rather than
+          jumping forward whenever it is selected.
+
+          Same anchor and the same custom properties the node publishes, so the stylesheet places
+          everything exactly as it did against the node.
+        */}
+        <For each={selectedRows()}>
+          {({ entry }) => (
+            <div
+              class="we-graph__chrome"
+              classList={{
+                /*
+                  Drawing connect dots, which the action bar above the card has to clear — the dot
+                  at the top edge sits exactly where the bar hung, so a selected card's bar covered
+                  it and took every press meant for it. The same condition the dots themselves are
+                  rendered on, and it is a class rather than a style because what CSS needs to know
+                  is only whether there is a dot up there.
+                */
+                'we-graph__chrome--connectable': !!props.onEdgeCreate && entry.visual.shape === 'card',
+              }}
+              style={anchorStyle(entry)}
+            >
               {/*
                 Resize handles, on a selected card only.
 
@@ -1949,7 +2680,7 @@ export function GraphView(props: GraphViewProps) {
                 what every canvas tool does and what keeps a selected card from being ringed with
                 furniture.
               */}
-              <Show when={props.onNodeResize && entry.selected && entry.visual.shape === 'card'}>
+              <Show when={props.onNodeResize && entry.visual.shape === 'card'}>
                 <For each={HANDLES}>
                   {(handle) => (
                     <div
@@ -1985,7 +2716,7 @@ export function GraphView(props: GraphViewProps) {
                 Off the edge rather than on it, so they do not sit on the resize strips: the corners
                 and edges of the box are already a grab area for changing its size.
               */}
-              <Show when={props.onEdgeCreate && entry.selected && entry.visual.shape === 'card'}>
+              <Show when={props.onEdgeCreate && entry.visual.shape === 'card'}>
                 <For each={CONNECT_EDGES}>
                   {(handle) => (
                     <div
@@ -2015,41 +2746,102 @@ export function GraphView(props: GraphViewProps) {
                   )}
                 </For>
               </Show>
-              <Show when={entry.selected && actionsFor(entry.node).length > 0}>
-                <div class="we-graph__actions">
-                  <For each={actionsFor(entry.node)}>
-                    {(action) => (
-                      <button
-                        type="button"
-                        class="we-graph__action"
-                        classList={{
-                          'we-graph__action--positive': action.tone === 'positive',
-                          'we-graph__action--danger': action.tone === 'danger',
-                        }}
-                        title={action.title ?? action.id}
-                        aria-label={action.title ?? action.id}
-                        /*
-                          `pointerdown`, stopped, as well as the click.
-
-                          The canvas hit-tests in world space from a pointer press on the layer
-                          beneath, so a press that reached it would start a drag of the very node
-                          this button sits above — the button would work and the card would move.
-                        */
-                        onPointerDown={(event) => event.stopPropagation()}
-                        onClick={(event) => {
-                          event.stopPropagation();
+              <Show when={actionsFor(entry.node).length > 0}>
+                {/*
+                  `pointerdown` stopped, as well as the click — on the bar, once, for everything in
+                  it. The canvas hit-tests in world space from a pointer press on the layer beneath,
+                  so a press that reached it would start a drag of the very node the bar sits above:
+                  the button would work and the card would move. A click that reached it would
+                  reselect. Here rather than per button, because a host control is arbitrary DOM
+                  and the press that opens a picker needs stopping just the same.
+                */}
+                <div
+                  class="we-graph__actions"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  {/*
+                    The bar itself is a design-system row, so its padding and gap are spacing
+                    tokens rather than pixels of its own; the box around it only positions it and
+                    takes the presses. One bar, not a row of pills: the buttons used to be raised
+                    discs each with a border and a shadow, and a host control stretched its disc
+                    into whatever ellipse its contents needed.
+                  */}
+                  <Row ay="center" gap="0" p="200" bg="surface-raised" border="1px solid border" r="300" shadow="md">
+                    <For each={actionsFor(entry.node)}>
+                      {(action) => {
+                        const report = (extra: { value?: unknown; preview?: boolean } = {}) => {
                           const at = parseAddress(entry.node.id);
                           props.onNodeAction?.({
                             action: action.id,
                             id: entry.node.id,
                             ...(at?.kind === 'entity' && { recordId: at.id, recordType: at.type }),
+                            ...extra,
                           });
-                        }}
-                      >
-                        <we-icon name={action.icon} size="14px" />
-                      </button>
-                    )}
-                  </For>
+                        };
+                        const control = () => (action.control ? props.host?.nodeControls?.[action.control] : undefined);
+                        return (
+                          <Show
+                            when={control()}
+                            fallback={
+                              /*
+                              The design system's own button, ghost and square: the bar is chrome
+                              that appears once, for the selected node, so the per-node cost that
+                              keeps the card itself raw does not apply. `sm` is the bar's square,
+                              and the icon inside takes the size a small control gives it.
+
+                              The two answers, coloured — a status foreground at rest, the status
+                              fill on hover. Said in colour rather than only in the icon: a bin and
+                              a tick the same shade is a pair of buttons you have to read before
+                              pressing.
+                            */
+                              <we-tooltip content={action.title ?? action.id}>
+                                <we-button
+                                  variant="ghost"
+                                  square
+                                  size="md"
+                                  label={action.title ?? action.id}
+                                  color={
+                                    action.tone === 'positive'
+                                      ? 'success-text'
+                                      : action.tone === 'danger'
+                                        ? 'danger-text'
+                                        : 'text-muted'
+                                  }
+                                  // Hover behaves as every other button's does; only the glyph
+                                  // strengthens, from the status text role to the status fill.
+                                  prop:hoverProps={
+                                    action.tone === 'positive'
+                                      ? { color: 'success' }
+                                      : action.tone === 'danger'
+                                        ? { color: 'danger' }
+                                        : { color: 'text' }
+                                  }
+                                  onClick={() => report()}
+                                >
+                                  <we-icon name={action.icon ?? 'dot'} />
+                                </we-button>
+                              </we-tooltip>
+                            }
+                          >
+                            {(component) => (
+                              <div class="we-graph__control">
+                                <Dynamic
+                                  component={component()}
+                                  node={entry.node}
+                                  value={action.value ? readField(entry.node, action.value.from) : undefined}
+                                  fill={color(entry.visual.color, 'primary-500')}
+                                  title={action.title}
+                                  onPreview={(value: unknown) => report({ value, preview: true })}
+                                  onChange={(value: unknown) => report({ value })}
+                                />
+                              </div>
+                            )}
+                          </Show>
+                        );
+                      }}
+                    </For>
+                  </Row>
                 </div>
               </Show>
             </div>
@@ -2203,14 +2995,46 @@ export function GraphView(props: GraphViewProps) {
           ax="center"
           ay="center"
         >
+          {/*
+            The empty state is sized as a page's placeholder, not as a footnote.
+
+            It stands in the middle of a whole canvas — often the first thing a reader sees of a
+            template — where `lg` and a footnote read as a caption for content that is about to
+            appear. Icon at `xl`, body text and the narrow measure: the same scale every other
+            full-surface placeholder uses, so a route that gates on one thing and a canvas that is
+            empty for another do not look like two different qualities of nothing.
+          */}
           <Show
             when={loadingWholeGraph()}
             fallback={
-              <Column ax="center" ay="center" gap="200" maxWidth="34ch" px="400">
-                <we-icon name={props.emptyIcon ?? 'graph'} size="lg" color="text-faint" />
-                <we-text variant="footnote" color="text-faint" textAlign="center">
+              <Column ax="center" ay="center" gap="400" maxWidth="var(--we-layout-xs)" px="400">
+                <we-icon
+                  name={props.emptyIcon ?? 'graph'}
+                  size="xl"
+                  gradient={props.emptyGradient ?? ''}
+                  color={props.emptyGradient ? '' : 'text-faint'}
+                />
+                <we-text variant="body" color="text-muted" textAlign="center">
                   {props.empty ?? 'Nothing to show yet.'}
                 </we-text>
+                {/*
+                  The one part of this box that takes the pointer back.
+
+                  Everything around it is `pointerEvents: none`, because an empty graph is still one
+                  you can pan and drop things onto — and a transparent sheet over the whole canvas
+                  would swallow both. A control inside that sheet has to opt back in, or it renders,
+                  looks pressable and does nothing.
+
+                  `display: contents`, so the wrapper is not a box. A caller's action is usually a
+                  node that decides for itself whether to draw anything — the canvas passes one
+                  gated on there being no call — so a real element here would be an empty child on
+                  every other reading, and the column's `gap` would put 16px of nothing under the
+                  sentence. Pointer-events inherits through a contents box, which is what makes the
+                  opt-in survive not having one.
+                */}
+                <Show when={props.emptyAction}>
+                  <div style={{ display: 'contents', 'pointer-events': 'auto' }}>{props.emptyAction}</div>
+                </Show>
               </Column>
             }
           >

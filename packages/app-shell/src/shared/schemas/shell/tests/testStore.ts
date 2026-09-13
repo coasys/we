@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { queryIRFlag } from '@shared/queryIRFlag';
 import type { EntityManifest, SchemaPort } from '@we/backend-shared';
 import { type Accessor, createEffect, createSignal } from 'solid-js';
 
@@ -246,8 +245,6 @@ export function createTestStore(
     deleteTestItem,
     seedQueryData,
     queryOwner,
-    queryIRenabled: queryIRFlag.enabled,
-    toggleQueryIR: queryIRFlag.toggle,
 
     // AD4M
     perspective,

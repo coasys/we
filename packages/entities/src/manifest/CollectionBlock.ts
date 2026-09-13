@@ -6,6 +6,32 @@ export const CollectionBlock: CoreEntityDef = {
   entity: {
     blockable: true,
     flag: { predicate: 'we://flag', value: 'we://collection_block' },
+    /*
+      How a collection reads when something shows one — a card on a canvas, an inspector, the
+      record page. Manifest-side prose: `display` is a hint for whatever draws a record and has no
+      counterpart on the generated class, so it is not lifted into one.
+
+      It carries no `authoring`, and correctly: nobody types a document into a field list, so the
+      composer makes these and no generated form should offer to. But `authoring` was also the only
+      thing `displayFor` had to work from, so "cannot be typed in" silently meant "cannot be shown",
+      and a note selected on a canvas opened an inspector with nothing in it at all — no name, no
+      description, not even its own type. The two questions are separate, which is what this half of
+      the declaration is for.
+
+      Roles, and deliberately no `fields`. The two are separate halves: the roles say which property
+      is the name and which the one-line summary — worth knowing for a *container*, since a call, a
+      channel and a board column all carry a title somebody chose — while `fields` is the list a
+      surface enumerates, and there is no list here worth enumerating. Everything else on this class
+      is machinery (the structural `type`, the `kind` label, `mode`, `version`, and `textContent`,
+      which is a projection of the children for search), and a note has nothing to say in a field at
+      all: its substance is its children, read through the composer, and its name is their first
+      line. Declaring the two properties as a list made an inspector offer to *name a sticky note*,
+      which is a question nobody has.
+
+      So: a container shows its title and description where it has them, and a composed document
+      shows neither and is not asked for either.
+    */
+    display: { title: 'title', summary: 'description' },
     properties: {
       editorState: { type: 'string', predicate: 'we://editor_state', format: 'file', default: null },
       /**

@@ -1,4 +1,5 @@
 import type { DesignSystemProps } from '@we/design-types';
+import { AVATAR_TONES, type AvatarTone, avatarToneColor } from '@we/tokens';
 import { toSvg } from 'jdenticon';
 import { css, html } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
@@ -75,6 +76,28 @@ function seededFill(seed: string): { bg: string; fg: string } {
 export const avatarSeededHueForTest = seededHue;
 export const avatarSeededFillForTest = seededFill;
 
+/** A tone name reads as that tone's colour; anything else is taken as a CSS colour. */
+const ringColorOf = (value: string): string =>
+  (AVATAR_TONES as readonly string[]).includes(value) ? avatarToneColor(value as AvatarTone) : value;
+
+/**
+ * The rings an avatar paints inside its own edge, as one `box-shadow` list — or nothing.
+ *
+ * The edge is outermost and listed first, since the first shadow in a list paints on top: it is a
+ * thin band in the colour behind the avatar, which is how overlapping faces in a stack stay apart.
+ * The ring sits inside it. Both are inset, and both are drawn on a layer *above* the picture — see
+ * the `::after` rule — because an inset shadow on the box itself paints beneath its content, and
+ * the `<img>` would cover it.
+ */
+export function avatarInnerRings(opts: { ringColor?: string; ringWidth?: string; edgeColor?: string }): string {
+  const edge = opts.edgeColor ? `inset 0 0 0 var(--we-avatar-edge-width) ${ringColorOf(opts.edgeColor)}` : '';
+  const width = opts.ringWidth || 'var(--we-avatar-ring-width)';
+  const ring = opts.ringColor
+    ? `inset 0 0 0 ${opts.edgeColor ? `calc(var(--we-avatar-edge-width) + ${width})` : width} ${ringColorOf(opts.ringColor)}`
+    : '';
+  return [edge, ring].filter(Boolean).join(', ');
+}
+
 const styles = css`
   :host {
     --we-avatar-host-display: inline-flex;
@@ -86,6 +109,15 @@ const styles = css`
     /* The disc behind an identicon or initials — a sunken surface, whose default is the
        neutral-100 that was here, so nothing moves. */
     --we-avatar-bg: var(--we-role-surface-sunken);
+    /* How thick a ring and an edge are, by size — see ringColor. Thinner small, since 2px is a fifth
+       of the radius of a 20px face. Overridable per avatar with ringWidth, or by a theme. */
+    --we-avatar-ring-width: 2px;
+    --we-avatar-edge-width: 2px;
+  }
+  :host([size='xxs']),
+  :host([size='xs']) {
+    --we-avatar-ring-width: 1.5px;
+    --we-avatar-edge-width: 1.5px;
   }
   /* The disc exists for the identicon/initials/icon fallbacks; a picture covers it
      entirely, so it is dropped when there is one. Keyed off the marker attribute rather
@@ -103,7 +135,7 @@ const styles = css`
     the rail's live-call mark had to be built as a wrapper around the avatar to avoid reading as
     "online". A baked-in decoration nobody used was shaping the design of the one people did.
 
-    What replaces them is not on this element: a tone through the ring prop (see avatarToneRing),
+    What replaces them: a tone through ringColor, drawn inside the face (see the ::after rule),
     and badgedAvatar in the schema kit for a corner mark. Both are open vocabularies, so the next
     kind of badge needs no change here.
   */
@@ -133,6 +165,24 @@ const styles = css`
     align-items: center;
     justify-content: center;
     padding: 0;
+  }
+
+  /*
+    The ring, inside the avatar's own box and above its picture.
+
+    Inside, so an avatar is the size it says whether or not it is ringed: a ring drawn outside made a
+    24px face look 28px beside a 24px button, made ringed and unringed faces in one row look like two
+    sizes, and reached into whatever sat next to it. Above the picture, because an inset shadow on
+    [part=base] itself paints beneath its content and the image would cover it. radius: inherit, so
+    it follows the theme's avatar shape — a circle, a rounded square, a square.
+  */
+  [part='base']::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    box-shadow: var(--we-avatar-inner-rings, none);
   }
 
   svg {
@@ -213,6 +263,22 @@ export default class Avatar extends LayoutVisualElement {
   @property({ type: String }) icon = '';
   @property({ type: String, reflect: true }) size?: SizeValue;
   @property({ type: Boolean, reflect: true }) clickable = false;
+  /**
+   * A ring inside the avatar's edge — a tone (`primary`, `success`, `warning`, `danger`, `neutral`)
+   * or any CSS colour. Empty for none.
+   *
+   * Not the generic `ring` design-system prop, which buttons and fields use for focus and which
+   * paints *outside* the box. An avatar's ring is a mark on the face, so it is drawn inside it, and
+   * the face stays the size it says.
+   */
+  @property({ type: String }) ringColor = '';
+  /** How thick that ring is — any CSS length. Empty for the size's own default. */
+  @property({ type: String }) ringWidth = '';
+  /**
+   * A thin band just inside the edge, in the colour behind the avatar — how faces that overlap stay
+   * apart. `AvatarStack` sets it; a face on its own has no use for one.
+   */
+  @property({ type: String }) edgeColor = '';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   // Before render rather than after, so the disc is already gone on the frame the picture first
@@ -281,7 +347,12 @@ export default class Avatar extends LayoutVisualElement {
   render() {
     // The caller's own `styles` last, so a call site that names a background still wins over the
     // generated one.
-    const inline = { ...this.initialsFill(), ...(this.styles || {}) };
+    const rings = avatarInnerRings({ ringColor: this.ringColor, ringWidth: this.ringWidth, edgeColor: this.edgeColor });
+    const inline = {
+      ...this.initialsFill(),
+      ...(rings ? { '--we-avatar-inner-rings': rings } : {}),
+      ...(this.styles || {}),
+    };
     return this.clickable
       ? html` <button part="base" style=${styleMap(inline)}>${this.renderContent()}</button> `
       : html` <div part="base" style=${styleMap(inline)}>${this.renderContent()}</div> `;

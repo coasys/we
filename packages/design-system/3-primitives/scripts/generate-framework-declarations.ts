@@ -283,10 +283,19 @@ function generateComponentProps(component: Component, typesPath: string, framewo
     // Add component-specific custom events
     ...getEventProps(component.events, framework),
 
-    // Add prop: namespace for Solid.js to explicitly set object properties (only for props that exist)
+    /*
+      The `prop:` namespace for Solid, which sets a property by its exact name.
+
+      Needed for object props (`hoverProps`), which have no attribute form at all — and for any
+      camelCase property bound to a *dynamic* value. Solid assigns a dynamic value on a custom
+      element as a property through `toPropertyName`, which lowercases the name first, so
+      `ringColor={x}` writes `el.ringcolor` and the element's `ringColor` never changes. A static
+      string survives only because it becomes an attribute, and Lit's default attribute for
+      `ringColor` happens to be `ringcolor`.
+    */
     ...(framework?.name === 'solid'
       ? Object.keys(component.properties)
-          .filter((name) => name.endsWith('Props'))
+          .filter((name) => name.endsWith('Props') || /[A-Z]/.test(name))
           .map((name) => `${indent(4)}'prop:${name}'?: ${component.properties[name].type};`)
       : []),
   ].join('\n');

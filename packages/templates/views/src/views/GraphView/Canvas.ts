@@ -116,6 +116,7 @@ const canvasCards: SchemaNode = {
           contentScale: { from: 'data.canvasContentScale' },
           cardShape: { from: 'data.canvasCardShape' },
           color: { from: 'data.canvasColor' },
+          z: { from: 'data.canvasZ' },
         },
       },
     ],

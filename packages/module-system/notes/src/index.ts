@@ -49,7 +49,7 @@
  * keeps `@we/schema-shared` framework-neutral.
  */
 import { defineModule, type ModuleStoreDeps } from '@we/module-shared';
-import { panelShell } from '@we/schema-kit';
+import { panelScroll, panelShell } from '@we/schema-kit';
 import { type SchemaNode } from '@we/schema-shared';
 
 import { NOTE_MANIFEST, NOTE_PREDICATES } from './Note';
@@ -218,8 +218,7 @@ const panel: SchemaNode = {
               },
             ],
           },
-          {
-            type: 'we-scroll-area',
+          panelScroll({
             children: [
               {
                 type: 'Column',
@@ -267,7 +266,7 @@ const panel: SchemaNode = {
                 ],
               },
             ],
-          },
+          }),
         ],
       }),
       // The collection every note hangs off, subscribed once for the whole panel.

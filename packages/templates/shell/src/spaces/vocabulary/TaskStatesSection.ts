@@ -1,5 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { field, formModal, sectionCard } from '@we/template-kit';
+import { field, formModal, sectionCard, stateFill, stateFillFor, stateIcon } from '@we/template-kit';
 
 /**
  * The states this community's work moves through.
@@ -29,6 +29,17 @@ import { field, formModal, sectionCard } from '@we/template-kit';
  * with its slug. That act adopts it. Writing all three down the moment anybody added a fourth was
  * the alternative, and two members doing so on two nodes at once wrote six.
  *
+ * ## What can be changed afterwards, and the one thing that cannot
+ *
+ * Everything except the slug. A state could be named and withdrawn and nothing else until now, which
+ * meant a colour was settable exactly once — at creation — and the three states a space starts with,
+ * which ship without one, could never have one at all. A name typed in a hurry, a semantic picked
+ * wrongly, a glyph nobody likes: each was fixable only by withdrawing the state and making another,
+ * which strands every task sitting in it.
+ *
+ * The slug stays put because that is what a task stores. Renaming carries — work in `todo` follows
+ * "To do" to "Backlog" untouched — and that is the whole point of the two being separate.
+ *
  * ## Why states are retired rather than deleted
  *
  * A task names its state by slug, so removing the state leaves the work holding a word nothing
@@ -46,23 +57,27 @@ const labelled = (label: string, control: SchemaNode): SchemaNode => ({
   children: [control],
 });
 
-const createModal: SchemaNode = formModal({
-  open: { $: 'local.createTaskStateOpen' },
-  close: { $setLocal: 'createTaskStateOpen', value: false },
-  title: 'New state',
-  size: 'sm',
-  localState: {
-    stateName: { type: 'string', initial: '' },
-    stateSemantic: { type: 'string', initial: 'open' },
-    stateColor: { type: 'string', initial: '' },
-    stateIcon: { type: 'string', initial: '' },
-  },
-  children: [
-    field({
-      name: 'stateName',
-      label: 'Name',
-      placeholder: 'Blocked',
-    }),
+/** The names the four fields are held under, so one form serves both modals. */
+interface StateFieldNames {
+  name: string;
+  semantic: string;
+  icon: string;
+  color: string;
+}
+
+/**
+ * What a state is, as a form — written once and filled in twice.
+ *
+ * The create and edit modals ask exactly the same four questions and differ only in what they start
+ * from and where they submit. Two copies of this drifted apart in every other vocabulary section
+ * before anybody noticed, and the fields here are the ones most worth keeping in step: the semantic
+ * select's wording is an explanation, and an explanation that exists twice is one that is wrong in
+ * one place.
+ */
+function stateFields(names: StateFieldNames): SchemaNode[] {
+  const chosen = `local.${names.color}`;
+  return [
+    field({ name: names.name, label: 'Name', placeholder: 'Blocked' }),
     /*
       What the rest of the app should read this as — not what it is called, and not literally what
       stage of work it is.
@@ -75,8 +90,8 @@ const createModal: SchemaNode = formModal({
     labelled('The rest of the app reads this as', {
       type: 'we-select',
       props: {
-        value: { $: 'local.stateSemantic' },
-        onChange: { $setLocal: 'stateSemantic', value: { $: 'event.detail' } },
+        value: { $: `local.${names.semantic}` },
+        onChange: { $setLocal: names.semantic, value: { $: 'event.detail' } },
         options: [
           { label: 'Still to do — nobody on it', value: 'open' },
           { label: 'Being worked on', value: 'active' },
@@ -86,15 +101,6 @@ const createModal: SchemaNode = formModal({
         ],
       },
     }),
-    // The vocabulary's own field, which nothing offered a way to set. A state with an icon reads at a
-    // glance on a board heading; one without falls back to a shape derived from its semantic.
-    labelled('Icon', {
-      type: 'we-icon-picker',
-      props: {
-        value: { $: 'local.stateIcon' },
-        onChange: { $setLocal: 'stateIcon', value: { $: 'event.detail' } },
-      },
-    }),
     {
       type: 'we-text',
       props: { variant: 'footnote', color: 'text-muted' },
@@ -102,15 +108,50 @@ const createModal: SchemaNode = formModal({
         'What this state means to everything outside this board — another view, a peer, an agent asking what is outstanding. The name is yours; this is the part they read.',
       ],
     },
+    // The vocabulary's own field, which nothing offered a way to set. A state with an icon reads at a
+    // glance on a board heading; one without falls back to a shape derived from its semantic.
+    labelled('Icon', {
+      type: 'we-icon-picker',
+      props: {
+        value: { $: `local.${names.icon}` },
+        onChange: { $setLocal: names.icon, value: { $: 'event.detail' } },
+      },
+    }),
+    /*
+      The colour, previewing the default rather than showing nothing.
+
+      An unset colour is `''`, which paints the swatch as no colour at all — so the control for the
+      one field with a sensible default was the one that showed nothing. It shows what the state
+      *would* be drawn in instead, which follows the semantic select above as it changes.
+
+      `clearable`, because a picker has no notion of none and this value is an override: the way back
+      to the default belongs in the same popover as the way in. That is the same job the key panel's
+      reset button does beside a row, in the place a modal has for it.
+    */
     labelled('Colour', {
       type: 'we-color-picker',
       props: {
         tokens: true,
-        value: { $: 'local.stateColor' },
-        onChange: { $setLocal: 'stateColor', value: { $: 'event.detail' } },
+        clearable: true,
+        value: { $: `${chosen} ? ${chosen} : ${stateFillFor(`local.${names.semantic}`)}` },
+        onChange: { $setLocal: names.color, value: { $: 'event.detail' } },
       },
     }),
-  ],
+  ];
+}
+
+const createModal: SchemaNode = formModal({
+  open: { $: 'local.createTaskStateOpen' },
+  close: { $setLocal: 'createTaskStateOpen', value: false },
+  title: 'New state',
+  size: 'sm',
+  localState: {
+    stateName: { type: 'string', initial: '' },
+    stateSemantic: { type: 'string', initial: 'open' },
+    stateColor: { type: 'string', initial: '' },
+    stateIcon: { type: 'string', initial: '' },
+  },
+  children: stateFields({ name: 'stateName', semantic: 'stateSemantic', icon: 'stateIcon', color: 'stateColor' }),
   disabled: { $: '!local.stateName' },
   // `stateSemantic` and `stateColor` both start set, so including them would fire the guard on a
   // form nobody has touched.
@@ -129,6 +170,64 @@ const createModal: SchemaNode = formModal({
   },
 });
 
+/** The state being edited, found by the slug the row's pencil wrote. */
+const EDITING = 'find(spaceStore.taskStates, { slug: local.editTaskStateSlug })';
+
+/**
+ * Changing a state the community already has.
+ *
+ * One modal for the whole list rather than one per row: `$localState` names are fixed when the
+ * template is written, so a boolean per row is unavailable for rows that come from data — the slug
+ * is held instead, and the modal finds its state from it. That is the same shape `$toggleLocalIn`
+ * exists for, one step simpler because only one row can be open at a time.
+ *
+ * The draft is seeded from the record, so `discardWhen` asks whether it *changed* rather than
+ * whether it is filled in. A form seeded from a record and guarded the other way reports unsaved
+ * work the moment it opens.
+ *
+ * Not the slug, which is what every task stores — see the docblock above.
+ */
+const editModal: SchemaNode = formModal({
+  open: { $: 'local.editTaskStateSlug' },
+  close: { $setLocal: 'editTaskStateSlug', value: '' },
+  title: 'Edit state',
+  size: 'sm',
+  localState: {
+    editName: { type: 'string', initial: { $: `${EDITING}.name` } },
+    editSemantic: { type: 'string', initial: { $: `${EDITING}.semantic` } },
+    editColor: { type: 'string', initial: { $: `${EDITING}.color` } },
+    editIcon: { type: 'string', initial: { $: `${EDITING}.icon` } },
+  },
+  children: [
+    ...stateFields({ name: 'editName', semantic: 'editSemantic', icon: 'editIcon', color: 'editColor' }),
+    {
+      // What renaming does and does not touch, where somebody is about to do it.
+      type: 'we-text',
+      props: { variant: 'footnote', color: 'text-faint' },
+      children: [{ $: '`Tasks store this state as “${' + EDITING + '.slug}”, whatever it is called.`' }],
+    },
+  ],
+  disabled: { $: '!local.editName' },
+  discardWhen: {
+    $:
+      `local.editName != ${EDITING}.name || local.editSemantic != ${EDITING}.semantic || ` +
+      `local.editIcon != ${EDITING}.icon || local.editColor != ${EDITING}.color`,
+  },
+  submitLabel: 'Save',
+  submit: {
+    $action: 'spaceStore.updateTaskState',
+    args: [
+      { $: 'local.editTaskStateSlug' },
+      {
+        name: { $: 'local.editName' },
+        semantic: { $: 'local.editSemantic' },
+        color: { $: 'local.editColor' },
+        icon: { $: 'local.editIcon' },
+      },
+    ],
+  },
+});
+
 /**
  * How a semantic reads when it is not the state's own name.
  *
@@ -142,31 +241,42 @@ const SEMANTIC_LABEL =
   "state.semantic == 'active' ? 'in flight' : " +
   "state.semantic == 'blocked' ? 'stuck' : 'not started'";
 
-/** The shape a state takes when nobody has picked an icon for it. */
-const SEMANTIC_ICON =
-  "state.semantic == 'done' ? 'check-circle' : " +
-  "state.semantic == 'cancelled' ? 'x-circle' : " +
-  "state.semantic == 'active' ? 'circle-half' : " +
-  "state.semantic == 'blocked' ? 'warning-circle' : 'circle'";
-
-/** And the colour, where the community has not chosen one. */
-const SEMANTIC_COLOR =
-  'state.color ? state.color : ' +
-  "state.semantic == 'done' ? 'success-text' : " +
-  "state.semantic == 'cancelled' ? 'text-faint' : " +
-  "state.semantic == 'active' ? 'accent-text' : " +
-  "state.semantic == 'blocked' ? 'warning-text' : 'text-muted'";
+/*
+ * The glyph chain and the colour chain were written out here too, and disagreed with the workshop
+ * key's copies of the same two. They are `@we/template-kit`'s now — `stateIcon` and `stateFill` —
+ * so a state is drawn the same way wherever it is shown, and the picker in this section's form
+ * previews exactly what the canvas will paint.
+ */
 
 const stateRow: SchemaNode = {
   type: 'Row',
   props: { gap: '300', ay: 'center', width: '100%', py: '300', borderBottom: '1px solid border' },
   children: [
+    /*
+      The colour as a *fill*, which is what it is.
+
+      It used to ink the glyph, from a chain whose fallbacks were text roles — fine while a colour
+      could only be chosen at creation and rarely was, and wrong now that these are the colours a
+      card is painted in: a fill chosen to sit behind a label is a poor colour to draw a 24px glyph
+      with. The swatch shows the state as the canvas will draw it, and the glyph stays legible.
+    */
+    {
+      type: 'Column',
+      props: {
+        width: '24px',
+        height: '24px',
+        r: '400',
+        flexShrink: '0',
+        bg: { $: stateFill('state') },
+        border: '2px solid border',
+      },
+    },
     {
       type: 'we-icon',
       props: {
         // The community's own icon where it chose one, and the semantic's shape where it did not.
-        name: { $: `state.icon ? state.icon : ${SEMANTIC_ICON}` },
-        color: { $: SEMANTIC_COLOR },
+        name: { $: stateIcon('state') },
+        color: 'text-muted',
       },
     },
     {
@@ -214,6 +324,30 @@ const stateRow: SchemaNode = {
           type: 'we-text',
           props: { variant: 'footnote', color: 'text-faint' },
           children: [{ $: '`tasks store this as “${state.slug}”`' }],
+        },
+      ],
+    },
+    {
+      type: 'we-tooltip',
+      props: { content: 'Edit this state' },
+      children: [
+        {
+          /*
+            Everything about a state except its slug — and, until now, the only way to change any of
+            it was to withdraw the state and make another, which strands the work sitting in it.
+
+            By slug like its neighbour, and for the same reason: editing a default is the act that
+            writes it down. Which is why this is offered on a default's row too, where there is no
+            record yet to edit.
+          */
+          type: 'we-button',
+          props: {
+            label: 'Edit this state',
+            size: 'xs',
+            variant: 'ghost',
+            onClick: { $setLocal: 'editTaskStateSlug', value: { $: 'state.slug' } },
+          },
+          children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],
         },
       ],
     },
@@ -295,5 +429,7 @@ export const taskStatesSection: SchemaNode = sectionCard({
       ],
     },
     createModal,
+    // One modal for the whole list, opened by whichever row's pencil was pressed — see `editModal`.
+    editModal,
   ],
 });

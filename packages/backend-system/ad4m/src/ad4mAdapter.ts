@@ -81,8 +81,17 @@ function asPerspective(dataset: DatasetHandle): PerspectiveProxy {
   return dataset as PerspectiveProxy;
 }
 
+/**
+ * One adapter per model class, so a lookup answers with the same object every time. A new wrapper per
+ * `$getEntity` call made every query look like a different model to anything comparing them — the
+ * renderer's subscription pool shared nothing because of it.
+ */
+const rendererEntities = new WeakMap<Ad4mEntityClass, RendererEntityClass>();
+
 export function toRendererEntity(Model: Ad4mEntityClass): RendererEntityClass {
-  return {
+  const known = rendererEntities.get(Model);
+  if (known) return known;
+  const adapted: RendererEntityClass = {
     query: (dataset, opts) =>
       Model.query(asPerspective(dataset), opts as Parameters<typeof Model.query>[1]) as ReturnType<
         RendererEntityClass['query']
@@ -99,6 +108,8 @@ export function toRendererEntity(Model: Ad4mEntityClass): RendererEntityClass {
         RendererEntityClass['findAll']
       >,
   };
+  rendererEntities.set(Model, adapted);
+  return adapted;
 }
 
 /**
@@ -134,9 +145,9 @@ export interface Ad4mAdapterDeps {
  * that aren't backend-specific.
  *
  * This is the artifact another backend copies: everything a host must supply for the renderer to read
- * data, in one place. `$onError` and `$useQueryIR` are deliberately excluded — surfacing an error to
- * the UI and toggling the IR are host concerns any backend would wire the same way, so they stay with
- * the app rather than pretending to be AD4M-specific.
+ * data, in one place. `$onError` is deliberately excluded — surfacing an error to the UI is a host
+ * concern any backend would wire the same way, so it stays with the app rather than pretending to be
+ * AD4M-specific.
  *
  * Note what is *not* here: no query lowering, no capability quirks, no model-shape mapping. Those are
  * `createAd4mQueryAdapter` and `toRendererEntity` above — this only composes them.

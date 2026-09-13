@@ -330,12 +330,15 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
                 around it — it either abuts the content or covers it — so lifting it off a
                 background nobody can see just makes it paler than everything near it.
 
-                A panel is the app's own ground, extended. Same role, and the frame's border is what
-                separates it from the content beside it. Note this makes the panel body and its
+                A panel is the app's own ground, extended — so it paints `chrome`, the role the
+                sidebar and the module rail use, rather than the `page` a template renders on. It
+                used to be `page`, which was the same colour as the content it docked beside; the
+                frame's border was then the only thing separating them, where now the ground does it
+                and the border sharpens it. Note this makes the panel body and its
                 titlebar the same colour, which is deliberate: the bar's bottom border is the line
                 between them, so a panel reads as one surface rather than as a header stuck on a box.
               */
-              bg: { $: `${glass} ? '${glassBg('page')}' : 'page'` },
+              bg: { $: `${glass} ? '${glassBg('chrome')}' : 'chrome'` },
               // Backdrop blur belongs with the transparency and goes when it does: it is expensive,
               // it makes the element a containing block for fixed descendants, and over an opaque
               // background it would cost both of those for nothing visible.
@@ -529,7 +532,7 @@ function titleBar(entry: DockEntry): SchemaNode {
         than the body it labels — about half at the default 0.3, and still the same way round at
         whatever the theme sets, which is the right way round for the part you grab.
       */
-      bg: { $: `${isGlass(entry.id)} ? '${glassBg('page')}' : 'page'` },
+      bg: { $: `${isGlass(entry.id)} ? '${glassBg('chrome')}' : 'chrome'` },
       borderBottom: '1px solid border',
       /*
         Double-click to maximise, the other half of the convention the grip completes.

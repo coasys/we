@@ -11,7 +11,7 @@ import type { Placement } from '@we/design-types';
 import { css, html, type PropertyValues } from 'lit';
 import { customElement, property, query, state } from 'lit/decorators.js';
 
-import { DEV_BUILD, warnAboutBoxlessLayoutProps } from '../shared/boxless';
+import { anchorInSlot, DEV_BUILD, warnAboutBoxlessLayoutProps } from '../shared/boxless';
 import { LayoutElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
 
@@ -149,24 +149,7 @@ export default class Tooltip extends LayoutElement {
    * and renders an `svg` inside, so a tooltip on a bare icon is anchored on that svg.
    */
   private get anchorEl(): HTMLElement {
-    const slot = this.renderRoot?.querySelector('slot:not([name])') as HTMLSlotElement | null;
-    for (const assigned of slot?.assignedElements({ flatten: true }) ?? []) {
-      const box = this.firstBoxIn(assigned);
-      if (box) return box;
-    }
-    // Nothing to point at — better a bubble in the wrong place than a thrown getter.
-    return this;
-  }
-
-  /** The nearest descendant that takes part in layout, `el` itself included. */
-  private firstBoxIn(el: Element, depth = 0): HTMLElement | null {
-    if (!(el instanceof HTMLElement) || depth > 4) return null;
-    if (getComputedStyle(el).display !== 'contents') return el;
-    for (const child of [...el.children, ...(el.shadowRoot?.children ?? [])]) {
-      const found = this.firstBoxIn(child, depth + 1);
-      if (found) return found;
-    }
-    return null;
+    return anchorInSlot(this.renderRoot?.querySelector('slot:not([name])') as HTMLSlotElement | null, this);
   }
 
   @state() private cleanup?: () => void;

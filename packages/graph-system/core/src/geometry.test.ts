@@ -856,3 +856,90 @@ describe('routesAlike', () => {
     expect(routesAlike(before, after)).toBe(false);
   });
 });
+
+/**
+ * A line meets the shape somebody can see, not the box it was cut out of.
+ *
+ * Routing used the card's box, and a card is *drawn* clipped to an outline inside it. Where the
+ * outline happens to touch the box — the middle of a square's side, a diamond's vertex, an
+ * ellipse's widest point — nothing looked wrong, which is why this survived: the shapes that gap
+ * are the ones whose sides are inset, and on a 180px card a triangle's are inset by 45px, a quarter
+ * of its width, so the line stopped in mid-air.
+ *
+ * Measured against the same table the renderer clips with, so a change to a shape moves both.
+ */
+describe('attaching to a card’s outline', () => {
+  const from = { x: 0, y: 0 };
+  /** A 180 × 135 card, centred 400 to the right: the workshop's own default card. */
+  const card = (shape?: 'triangle' | 'diamond' | 'pentagon' | 'hexagon' | 'round' | 'square' | 'note') => ({
+    halfWidth: 90,
+    halfHeight: 67.5,
+    ...(shape ? { shape } : {}),
+  });
+  /** How far short of the card's centre the line stops, approaching from the left. */
+  const reachOf = (shape?: Parameters<typeof card>[0], to = { x: 400, y: 0 }) =>
+    Math.hypot(
+      to.x - routeEdge('e', from, to, 'smooth', 0, card(shape)).to.x,
+      to.y - routeEdge('e', from, to, 'smooth', 0, card(shape)).to.y,
+    );
+
+  it('meets a square and a note on the box, which is what they are', () => {
+    expect(reachOf('square')).toBeCloseTo(90, 5);
+    expect(reachOf('note')).toBeCloseTo(90, 5);
+    expect(reachOf()).toBeCloseTo(90, 5);
+  });
+
+  it('meets a triangle’s side where the side is, not 45px out in space', () => {
+    // The loud one: at mid-height the triangle spans the middle half of its box.
+    expect(reachOf('triangle')).toBeCloseTo(45, 5);
+  });
+
+  it('meets a pentagon just inside its box', () => {
+    // 6px on a 180 card — small, and visible once you know it is there.
+    expect(reachOf('pentagon')).toBeCloseTo(83.73, 1);
+  });
+
+  it('leaves the shapes whose outline touches the box exactly where they were', () => {
+    // A diamond's and a hexagon's vertices are on the box's side midpoints, and an ellipse's widest
+    // point is too — these never gapped, and the change must not move them.
+    expect(reachOf('diamond')).toBeCloseTo(90, 5);
+    expect(reachOf('hexagon')).toBeCloseTo(90, 5);
+    expect(reachOf('round')).toBeCloseTo(90, 5);
+  });
+
+  it('meets a round card on its ellipse from any direction, not on its box', () => {
+    // The diagonal is where a box and an ellipse disagree most: 19px apart on this card.
+    const to = { x: 300, y: -300 };
+    const route = routeEdge('e', from, to, 'straight', 0, card('round'));
+    const reach = Math.hypot(to.x - route.to.x, to.y - route.to.y);
+
+    expect(reach).toBeCloseTo(76.37, 1);
+  });
+
+  it('meets a diamond on the chord a straight edge travels', () => {
+    // 41px of daylight before: the box's corner is a long way outside a diamond.
+    const to = { x: 300, y: -300 };
+    const route = routeEdge('e', from, to, 'straight', 0, card('diamond'));
+
+    expect(Math.hypot(to.x - route.to.x, to.y - route.to.y)).toBeCloseTo(54.55, 1);
+  });
+
+  it('keeps the standoff the same distance whichever way the line leaves', () => {
+    /*
+      The gap an arrowhead needs is a distance from the outline, so it travels with the shape rather
+      than inflating the box — which would move a triangle's sides and its corners by different
+      amounts, and leave the head sitting at neither.
+    */
+    const plain = routeEdge('e', from, { x: 400, y: 0 }, 'smooth', 0, card('triangle'));
+    const stood = routeEdge('e', from, { x: 400, y: 0 }, 'smooth', 0, { ...card('triangle'), gap: 6 });
+
+    expect(plain.to.x - stood.to.x).toBeCloseTo(6, 5);
+  });
+
+  it('anchors to the side of the shape, not the side of the box', () => {
+    // An anchor says which side; what the side *is* is the shape's business.
+    const route = routeEdge('e', from, { x: 400, y: 0 }, 'smooth', 0, card('triangle'), 0, { target: 'w' });
+
+    expect(route.to.x).toBeCloseTo(355, 5);
+  });
+});

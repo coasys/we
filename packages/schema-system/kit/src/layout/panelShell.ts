@@ -137,7 +137,29 @@ export function sectionLabel(opts: SectionLabelOptions): SchemaNode {
 
   return {
     type: 'Row',
-    props: { width: '100%', ay: 'center', gap: '200', flex: '0 0 auto' },
+    props: {
+      width: '100%',
+      ay: 'center',
+      gap: '200',
+      flex: '0 0 auto',
+      /*
+        A control's worth of height whether or not the control is there — `panelHeader`'s floor, for
+        the same reason and one tier down.
+
+        A section's `aside` is as conditional as a panel's, and more consequentially so: the key's
+        lens sections put the switch that reveals the section *on* the section's own heading, and
+        the "Edit" beside it appears only once the lens is on. A `we-switch` draws a 16px track and
+        nothing else, so flicking the switch grew the row to the 24px of the button that joined it
+        and the centred heading dropped 4px — the label moving at the exact moment attention was on
+        it, as the answer to having flicked it.
+
+        `xs` rather than the header's `sm`: a section heading's asides are the small end of the set
+        — an xs button, a switch, a badge — and `sm` would leave visible air under every heading
+        that has one. Only where an `aside` is declared, so a plain section label is as tall as its
+        own text.
+      */
+      ...(opts.aside && { minHeight: 'var(--we-component-height-xs)' }),
+    },
     children: opts.aside ? [label, opts.aside] : [label],
   };
 }
@@ -173,5 +195,124 @@ export function panelShell(opts: PanelShellOptions): SchemaNode {
       overflow: 'hidden',
     },
     children: [panelHeader({ title: opts.title, aside: opts.aside, help: opts.help }), ...opts.children],
+  };
+}
+
+export interface PanelScrollOptions {
+  /** What scrolls. */
+  children: SchemaNode[];
+  /**
+   * The space token the panel pads itself with — the amount this bleeds back out through.
+   *
+   * A token rather than a length, because the arithmetic below subtracts the scrollbar's width from
+   * it and both have to be variables for a theme to move either. Match it to the panel's own `p`;
+   * `panelShell`'s default is `300`, which is what every panel in the repo uses.
+   */
+  inset?: string;
+  /** Follow the tail while the reader is at it — `we-scroll-area`'s `pin`. */
+  pin?: string;
+  /** Jump-to-end controls — `we-scroll-area`'s `jump`. */
+  jump?: string;
+}
+
+/**
+ * A panel's scrolling region, with its bar at the panel's edge rather than floating in the padding.
+ *
+ * ## The problem
+ *
+ * A panel pads itself and the scroller sits inside that padding, so the bar is inset by the padding
+ * *and* by its own thumb clearance — twelve pixels plus two, on a bar whose painted thumb is six
+ * wide. It reads as misaligned, because it is: the gutter it sits in belongs to the content, not to
+ * it. And the bar takes its width out of the content when it appears, so every list twitches
+ * narrower the moment it overflows.
+ *
+ * ## The fix, which is two independent fixes
+ *
+ * **The bar goes to the edge** by pulling the scroller out through the padding — a negative right
+ * margin of exactly the panel's inset — and putting the inset back *inside* the scroller as padding.
+ * The scroller is then the full width of the panel, which is the ordinary arrangement everywhere
+ * else: the scroll container is the region, and the padding belongs to the content in it. Margin
+ * lands on the element's host and padding on its inner box, which is what makes the two halves
+ * reach the right places.
+ *
+ * **The content stops twitching** with `scrollbarGutter: 'stable'`, which reserves the bar's width
+ * whether or not one is showing. Nothing can ask an element whether it is currently overflowing, so
+ * this is the only way to hold the content still; it is also what makes the arithmetic below
+ * constant rather than dependent on the state of the list.
+ *
+ * ## The arithmetic
+ *
+ * Three distances across the panel's right-hand inset, and they have to add up to it exactly:
+ *
+ * ```
+ * panel edge │← track →│←──── bar ────→│← pad →│ content
+ *            │   2px   │      10px     │  0px  │
+ *            │←──────────── inset, 12px ──────→│
+ * ```
+ *
+ * The **track** is held off the edge by `THUMB_EDGE_GAP` less the thumb's own clearance, which is
+ * what puts the painted thumb the whole gap in. The **bar** is the gutter, reserved whether or not
+ * one is showing. The **pad** is whatever is left, because a scroll container puts its bar at its
+ * own edge and its `padding-right` *between* the content and the bar — so the content's distance
+ * from the panel edge is all three added together, and it should come to the same inset the panel
+ * pads itself with on the other three sides.
+ *
+ * Every figure is a variable, so a theme can redraw a scrollbar without moving a panel's content or
+ * its edges. The two `max(0px, …)` clamps are for the themes where a term would go negative: a
+ * thumb inset wider than the gap, which would drag the scroller out past the panel and into its
+ * `overflow: hidden`, and a bar wider than the panel's whole inset, where the honest answer is no
+ * padding rather than negative padding. Content is then further in than the other sides rather than
+ * the bar being somewhere impossible.
+ *
+ * ## Do not give it a width
+ *
+ * It widens by being stretched — an auto-width flex item takes its container's width *plus* the
+ * negative margin. An explicit `width: '100%'` resolves against the container's content box
+ * instead, so the element stays its old width and only its margin edge moves: the bar does not
+ * reach the edge and nothing says why. For the same reason this needs a parent that stretches its
+ * children, which a `Column` does unless something sets `ay`.
+ */
+/**
+ * How far the *painted* thumb sits from the panel's real edge.
+ *
+ * **The bar is centred in the inset, and this is the half of it that decides where.** A twelve-pixel
+ * inset holding a six-pixel thumb has six pixels of slack, and every one given to the edge is taken
+ * from the gap between the thumb and the text — so this figure and that one always add to six, and
+ * three is the only value that makes them equal. Both other values were tried and both read as an
+ * error rather than as a choice: two put the bar against the frame, four left it nearer the frame
+ * than the words it belongs to.
+ *
+ * It is the whole distance, not an addition to the thumb's inset: the track is held off the edge by
+ * whatever is left once that inset has been counted, so the gap somebody sees stays this figure
+ * under a theme that pulls its thumb in further. The same reason the padding below is measured
+ * against the bar's width rather than pinned — a theme should be able to redraw a scrollbar without
+ * moving the panel's content or its edges.
+ *
+ * Which also means this is not free to change alone. It is centred against the *panel's* inset and
+ * the bar's own width, so a panel padded differently or a theme with a wider bar keeps the bar
+ * centred only because the arithmetic below re-derives it; a figure pinned here in pixels is a
+ * figure that stops being the middle the moment either of those moves.
+ */
+const THUMB_EDGE_GAP = '3px';
+
+export function panelScroll(opts: PanelScrollOptions): SchemaNode {
+  const pad = `var(--we-space-${opts.inset ?? '300'})`;
+  // How far the bar's *track* is held off the edge, the thumb's own clearance already counted.
+  // Clamped, because a theme whose thumb inset exceeds the gap would otherwise pull the scroller
+  // out past the panel and straight into its `overflow: hidden`.
+  const track = `max(0px, calc(${THUMB_EDGE_GAP} - var(--we-scrollbar-thumb-inset)))`;
+
+  return {
+    type: 'we-scroll-area',
+    props: {
+      flex: '1',
+      minHeight: '0',
+      mr: `calc(${track} - ${pad})`,
+      pr: `max(0px, calc(${pad} - ${track} - var(--we-scrollbar-width)))`,
+      scrollbarGutter: 'stable',
+      ...(opts.pin ? { pin: opts.pin } : {}),
+      ...(opts.jump ? { jump: opts.jump } : {}),
+    },
+    children: opts.children,
   };
 }

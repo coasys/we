@@ -17,6 +17,8 @@ import {
   ExtractionPass,
   FileBlock,
   ImageBlock,
+  Involvement,
+  InvolvementType,
   LinkBlock,
   LocationBlock,
   MutedAgent,
@@ -612,6 +614,15 @@ export const SPACE_MODELS = [
   TaskState,
   TextBlock,
   VideoBlock,
+  /*
+    A person's part in a record, and the community's words for the kinds of part there are.
+
+    Shared, both of them, for `Relationship`'s reason: "Sarah is reviewing this" is a claim made to
+    the community, and an RSVP held privately would be a note to self about an event everyone else
+    is planning around.
+  */
+  Involvement,
+  InvolvementType,
 ] as const;
 
 /**

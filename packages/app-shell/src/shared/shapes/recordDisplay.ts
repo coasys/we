@@ -21,7 +21,7 @@
  * anything. A template reads the result through `recordStore.displays` and renders it with ordinary
  * `$each` and `$if` — see the "A record of any type" pattern in the generated reference.
  */
-import type { EntitySchema, PropertySchema } from '@we/backend-shared';
+import { type EntitySchema, namePropertyOf, type PropertySchema } from '@we/backend-shared';
 
 import { humanise } from './recordDraft';
 
@@ -74,6 +74,16 @@ export interface DisplayField {
    * surface rendering a model it was not written for has no other way to ask.
    */
   options: string[];
+  /**
+   * Which community vocabulary the value is a slug of — `'taskState'` for a task's `status` — or
+   * empty for a field whose options are just words.
+   *
+   * `options` says which slugs are allowed and nothing about what they are called: a slug is what a
+   * record stores, and a state's name is what a person reads, and a community can rename one without
+   * touching the other. A surface drawing the value needs to know where to look the name up, and the
+   * declaration is the only place that knows.
+   */
+  vocabulary: string;
   /**
    * For a `relation` field, the model it points at — `'LocationBlock'`. Empty for everything else,
    * and for a relation declared against no particular type.
@@ -211,10 +221,20 @@ export function displayFor(source: DisplaySource): RecordDisplay {
     return names.find(test) ?? '';
   };
 
-  // The first required string is the name of the thing; failing that, the first string at all.
-  const title =
-    pick(declared.title, (name) => isString(properties[name]) && properties[name].required === true) ||
-    pick(undefined, (name) => isString(properties[name]));
+  /*
+    What names this record — one shared answer, not this file's own.
+
+    It used to guess here: "the first required string, else the first string", over the *shown*
+    field list. Both halves were wrong. Required-ness is a fact about storage that only correlates
+    with naming, so `CodeBlock` (whose one required string is `code`) was headed by its entire code
+    body, and a `LinkBlock` by its URL. And narrowing to the shown list meant a model that declares
+    no field list — a composed document — had no name at all, however plainly its `title` said so.
+
+    `namePropertyOf` reads the declaration first, then the property's *name*, then its shape, over
+    every property. See its docblock: eight surfaces were each answering this, and the graph
+    disagreeing with this file is what put "Untitled" over a note the canvas had labelled fine.
+  */
+  const title = namePropertyOf(schema);
   // A long-form string after the title is a summary; so is any other string when nothing is long.
   const summary =
     pick(declared.summary, (name) => name !== title && properties[name].control === 'textarea') ||
@@ -229,6 +249,7 @@ export function displayFor(source: DisplaySource): RecordDisplay {
     // Stringified: a declaration may close a numeric set, and every consumer of this is a control
     // or a label, both of which deal in strings.
     options: optionsFor(name),
+    vocabulary: properties[name].vocabulary ?? '',
     target: '',
     many: false,
   }));
@@ -263,6 +284,7 @@ export function displayFor(source: DisplaySource): RecordDisplay {
       kind: 'relation',
       role: 'detail',
       options: [],
+      vocabulary: '',
       target: relations[name].target ?? '',
       many: relations[name].cardinality === 'many',
     });

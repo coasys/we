@@ -413,6 +413,16 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     taskStates: state('content'),
     offeredTaskStates: state('content'),
     taskStatesLoaded: state('content'),
+    /*
+      Who is on what. Reading the kinds is `content` for the reason reading states is. Giving your own
+      answer and assigning somebody are content too — any member may do either, as any member may drag
+      a card — and the store is what refuses one member answering for another, not this table.
+    */
+    involvementTypes: state('content'),
+    offeredInvolvementTypes: state('content'),
+    involvementTypesLoaded: state('content'),
+    setInvolvement: action('content'),
+    respondTo: action('content'),
     mutedDids: state('content'),
     mutedAgents: state('content'),
     setAgentMuted: action('content'),
@@ -456,8 +466,15 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       new one is the act that commits the community to a word, so it sits with the other two.
     */
     createTaskState: action('signals'),
+    // Changing one is the same act as naming one — and it is how a state gets a colour at all, which
+    // is why the workshop's key can reach it from a canvas rather than only from Settings.
+    updateTaskState: action('signals'),
     setTaskStateRetired: action('signals'),
     reorderTaskStates: action('signals'),
+    // The fourth vocabulary of the family, and the same act as naming a state.
+    createInvolvementType: action('signals'),
+    updateInvolvementType: action('signals'),
+    setInvolvementTypeRetired: action('signals'),
 
     // ── navigation ──
     spaceList: state('navigation'),
@@ -635,12 +652,14 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     extractionNeedsIdentity: state('space-settings'),
     relationshipTargets: state('space-settings'),
     identityOptions: state('space-settings'),
+    nameOptions: state('space-settings'),
     hintEditor: state('space-settings'),
     hintBusy: state('space-settings'),
     openShapeWizard: action('space-settings'),
     cancelShapeWizard: action('space-settings'),
     setShapeField: action('space-settings'),
     setIdentityMember: action('space-settings'),
+    setNameMember: action('space-settings'),
     setExtractable: action('space-settings'),
     addProperty: action('space-settings'),
     addRelationship: action('space-settings'),
@@ -691,6 +710,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     pendingLink: state('content'),
     openRecordForm: action('content'),
     connectNodes: action('content'),
+    connectNodesNow: action('content'),
     createOnCanvas: action('content'),
     createCardOnCanvas: action('content'),
     placeOnCanvas: action('content'),
@@ -709,6 +729,9 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     previewCardStyle: action('content'),
     setCardStyle: action('content'),
     setTypeColor: action('content'),
+    setSpaceTypeColor: action('content'),
+    dropOnCanvas: action('content'),
+    updateRecordField: action('content'),
     setRecordEntity: action('content'),
     setRecordField: action('content'),
     relationshipKind: state('content'),
@@ -1175,7 +1198,6 @@ const ALWAYS_PRESENT = new Set([
   'consoleStore',
   '$onError',
   '$routeParams',
-  '$useQueryIR',
   '$me',
   '$currentDataset',
   '$getEntity',

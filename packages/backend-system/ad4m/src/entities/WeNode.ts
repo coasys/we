@@ -36,6 +36,12 @@ export class WeNode extends Ad4mModel {
    * for as long as each agent writes its own entry and nobody else's. A writer that appends every
    * member it can see turns it into a multiset that grows with every session — which is what the
    * transcribe module used to do, and why an avatar row drew the same two faces over and over.
+   *
+   * **Membership a machine observed, not intent a person stated.** Who was in a call belongs here.
+   * Who is assigned to a task, or said they are coming to an event, is an `Involvement` — a claim
+   * with an author, a date and a community-named kind, which a DID in a bag cannot carry. The two
+   * are different facts about the same people: reading this roster as "said they would come" would
+   * tell somebody a meeting they skipped was one they attended.
    */
   @HasMany({ through: 'we://participants' })
   participants: string[] = [];

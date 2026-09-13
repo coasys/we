@@ -76,8 +76,20 @@ export { badgedAvatar } from './layout/badgedAvatar.ts';
 export type { BadgedAvatarOptions } from './layout/badgedAvatar.ts';
 export { pageShell } from './layout/pageShell.ts';
 export type { PageShellOptions } from './layout/pageShell.ts';
-export { PANEL_TITLE_PROPS, panelHeader, panelShell, SECTION_LABEL_PROPS, sectionLabel } from './layout/panelShell.ts';
-export type { PanelHeaderOptions, PanelShellOptions, SectionLabelOptions } from './layout/panelShell.ts';
+export {
+  PANEL_TITLE_PROPS,
+  panelHeader,
+  panelScroll,
+  panelShell,
+  SECTION_LABEL_PROPS,
+  sectionLabel,
+} from './layout/panelShell.ts';
+export type {
+  PanelHeaderOptions,
+  PanelScrollOptions,
+  PanelShellOptions,
+  SectionLabelOptions,
+} from './layout/panelShell.ts';
 export { recordCard } from './layout/recordCard.ts';
 export type { RecordCardOptions } from './layout/recordCard.ts';
 export { railButton, railGroup, railItem, railShell } from './layout/rail.ts';

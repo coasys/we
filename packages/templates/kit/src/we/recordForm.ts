@@ -193,10 +193,21 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
             which is how a vocabulary gets discovered before anybody knows what it is. Once kinds
             exist this picker carries it and the label qualifies it.
 
-            "None" is prepended by hand because a schema can `$map` a store array into options but
-            cannot add one — the same reason `shapeStore.identityOptions` is built in a store. Here
-            the list comes from `$queries` rather than a store, so the prepend happens in the
-            fragment instead.
+            There is no "None" option, and there cannot be one.
+
+            A "None" used to be prepended here, written as an interpolation over two lists —
+            `` `${[{ label: 'None', value: '' }]}${kinds.map(…)}` ``. A template literal evaluates to
+            a **string**, whatever is interpolated into it, so what reached `options` was the eleven
+            characters `[object Object]` twice over. The picker rendered with no options at all: not
+            the list plus None, not the list, nothing. Which is why this is worth spelling out rather
+            than quietly correcting — it validated, it typechecked, and the control it broke is the
+            one control this modal exists for.
+
+            The comment it carried was right about the cause and wrong about the workaround: a schema
+            genuinely cannot prepend to a list, which is why `shapeStore.identityOptions` is built in
+            a store. Nothing prepends here now. The unset state is the `placeholder`, which is what a
+            select shows for a value matching no option, and getting *back* to unset is the button
+            beside it — one control per job, both of which work.
           */
           {
             type: '$if',
@@ -207,22 +218,54 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
                 props: { label: 'Kind', width: '100%' },
                 children: [
                   {
-                    type: 'we-select',
-                    props: {
-                      width: '100%',
-                      placeholder: 'Unnamed kind',
-                      options: {
-                        $: "`${[{ label: 'Unnamed kind', value: '' }]}${local.relationshipKinds.map(item, { label: item.name, value: item.id, icon: item.icon })}`",
+                    type: 'Row',
+                    props: { gap: '200', ay: 'center', width: '100%' },
+                    children: [
+                      {
+                        type: 'we-select',
+                        props: {
+                          flex: '1',
+                          minWidth: '0',
+                          placeholder: 'Unnamed kind',
+                          options: {
+                            $: 'local.relationshipKinds.map(item, { label: item.name, value: item.id, icon: item.icon })',
+                          },
+                          // Not `setRecordField`: `relationshipTypeId` is deliberately absent from
+                          // the draft's fields, so writing it through the field setter found nothing
+                          // and silently did nothing. The chosen kind is held beside the draft.
+                          value: { $: 'recordStore.relationshipKind' },
+                          onChange: {
+                            $action: 'recordStore.setRelationshipKind',
+                            args: [{ $: 'event.detail' }],
+                          },
+                        },
                       },
-                      // Not `setRecordField`: `relationshipTypeId` is deliberately absent from the
-                      // draft's fields, so writing it through the field setter found nothing and
-                      // silently did nothing. The chosen kind is held beside the draft instead.
-                      value: { $: 'recordStore.relationshipKind' },
-                      onChange: {
-                        $action: 'recordStore.setRelationshipKind',
-                        args: [{ $: 'event.detail' }],
+                      // Only once there is something to undo. An always-present clear beside an empty
+                      // picker is a control offering to do what has already been done.
+                      {
+                        type: '$if',
+                        props: {
+                          condition: { $: 'recordStore.relationshipKind' },
+                          then: {
+                            type: 'we-tooltip',
+                            props: { content: 'Leave the kind unnamed' },
+                            children: [
+                              {
+                                type: 'we-button',
+                                props: {
+                                  variant: 'ghost',
+                                  square: true,
+                                  label: 'Leave the kind unnamed',
+                                  flexShrink: '0',
+                                  onClick: { $action: 'recordStore.setRelationshipKind', args: [''] },
+                                },
+                                children: [{ type: 'we-icon', props: { name: 'x' } }],
+                              },
+                            ],
+                          },
+                        },
                       },
-                    },
+                    ],
                   },
                 ],
               },

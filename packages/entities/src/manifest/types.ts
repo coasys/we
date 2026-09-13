@@ -14,6 +14,7 @@ import type { RecordInstance, WeNodeRecord } from './base';
 
 export type { RecordInstance, WeNodeRecord };
 
+export type InvolvementSemantic = 'responsible' | 'reviewing' | 'committed' | 'interested' | 'declined';
 export type SignalMode = 'toggle' | 'vote' | 'rating' | 'slider';
 export type SignalAggregate = 'count' | 'mean' | 'sum' | 'median';
 export type SignalSemantic = 'approval' | 'quality' | 'relevance' | 'agreement' | 'custom';
@@ -168,6 +169,26 @@ export interface ImageBlockRecord extends WeNodeRecord {
   version: number;
 }
 
+export interface InvolvementRecord extends RecordInstance {
+  agent: string;
+  kind: string;
+  note: string;
+  node?: string;
+}
+
+export interface InvolvementTypeRecord extends WeNodeRecord {
+  name: string;
+  slug: string;
+  description: string;
+  icon: string;
+  color: string;
+  semantic: 'responsible' | 'reviewing' | 'committed' | 'interested' | 'declined';
+  reflexive: boolean;
+  appliesTo: string;
+  retired: boolean;
+  schemaVersion: number;
+}
+
 export interface LinkBlockRecord extends WeNodeRecord {
   url: string;
   title: string;
@@ -286,6 +307,7 @@ export interface SpaceRecord extends WeNodeRecord {
   location?: LocationBlockRecord;
   board?: CollectionBlockRecord;
   taskStates: string[];
+  typeStyles: string[];
   setLocation(value: LocationBlockRecord): Promise<unknown>;
   setBoard(value: CollectionBlockRecord): Promise<unknown>;
   addTaskStates(value: string | { id: string }, batch?: string): Promise<unknown>;

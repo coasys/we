@@ -151,8 +151,19 @@ export interface EntityShape {
   /** Typed relations — the edges of a schema-derived graph. */
   relations: { name: string; target: string; cardinality: 'one' | 'many' }[];
   /**
-   * The property that best names an instance, where the backend declares one.
-   * Used as the default label; falls back to a heuristic when absent.
+   * The property that names an instance — what a node is captioned with.
+   *
+   * The host's answer, resolved once for every surface that needs a record's name rather than
+   * guessed again here (see `nameFromProperties` in `@we/backend-shared`). Absent only when a host
+   * supplies shapes without one, in which case `labelProperty` guesses.
+   */
+  nameProperty?: string;
+  /**
+   * The property a backend dedups instances by, where it declares one.
+   *
+   * **Not the name**, and the distinction is load-bearing: an event's identity is its title and day
+   * glued together, so labelling by it captions a card `Standup|2026-09-14`. Consulted for a label
+   * only after {@link nameProperty} and the conventional names, where it is better than nothing.
    */
   identityProperty?: string;
   /** Human description of the type, where the backend has one. Shown in legends and tooltips. */

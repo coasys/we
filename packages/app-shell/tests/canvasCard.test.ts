@@ -1,0 +1,171 @@
+import { CORE_MANIFEST } from '@we/entities/manifest';
+import type { EvaluationEnv } from '@we/schema-shared';
+import { evaluateExpression, parseExpression } from '@we/schema-shared';
+import { describe, expect, it } from 'vitest';
+
+import { CANVAS_RECORD_CARD, canvasCard } from '../src/shared/shapes/canvasCard';
+import { displayFor } from '../src/shared/shapes/recordDisplay';
+
+const task = displayFor({
+  entity: 'TaskBlock',
+  label: 'Task',
+  icon: 'check-square',
+  schema: CORE_MANIFEST.entities.TaskBlock,
+  authorable: false,
+});
+
+const states = [
+  { slug: 'todo', name: 'To do', fill: '#705ec9' },
+  { slug: 'in-review', name: 'In review', fill: '#f8cd51' },
+];
+
+describe('canvasCard', () => {
+  it('heads a card with its kind and name, and lists what the record holds', () => {
+    const card = canvasCard({
+      type: 'TaskBlock',
+      label: 'Ship the docs',
+      data: {
+        title: 'Ship the docs',
+        description: 'Before Friday',
+        status: 'in-review',
+        priority: 'high',
+        dueDate: '2026-09-14',
+        assignee: '',
+      },
+      display: task,
+      states,
+      locale: 'en-GB',
+    });
+
+    expect(card.icon).toBe('check-square');
+    expect(card.kind).toBe('Task');
+    expect(card.title).toBe('Ship the docs');
+    // The title is the heading, not a line; an empty assignee is left to the inspector.
+    expect(card.lines.map((line) => line.name)).toEqual(['status', 'priority', 'dueDate']);
+    expect(card.prose).toEqual([
+      { name: 'description', label: '', text: 'Before Friday', swatch: '', swatchRadius: '' },
+    ]);
+  });
+
+  it('shows a state by what the community calls it, in its colour', () => {
+    const card = canvasCard({
+      type: 'TaskBlock',
+      label: 'x',
+      data: { status: 'in-review' },
+      display: task,
+      states,
+    });
+    expect(card.lines[0]).toMatchObject({ label: 'Status', text: 'In review', swatch: '#f8cd51', swatchRadius: '50%' });
+  });
+
+  it('shows a slug nothing defines as itself, with no colour', () => {
+    const card = canvasCard({ type: 'TaskBlock', label: 'x', data: { status: 'parked' }, display: task, states });
+    expect(card.lines[0]).toMatchObject({ text: 'parked', swatch: '' });
+  });
+
+  it('reads a calendar day in UTC, so it is the same day everywhere', () => {
+    const card = canvasCard({
+      type: 'TaskBlock',
+      label: 'x',
+      data: { dueDate: '2026-09-14' },
+      display: task,
+      states,
+      locale: 'en-GB',
+    });
+    expect(card.lines[0].text).toBe('14 Sept 2026');
+  });
+
+  it('keeps a value that will not parse as a date as it was stored', () => {
+    const card = canvasCard({ type: 'TaskBlock', label: 'x', data: { dueDate: 'soon' }, display: task, states });
+    expect(card.lines[0].text).toBe('soon');
+  });
+
+  it('leaves out false and nothing, and keeps 0', () => {
+    const sighting = displayFor({
+      entity: 'Sighting',
+      authorable: true,
+      schema: {
+        properties: {
+          species: { type: 'string', required: true },
+          confirmed: { type: 'boolean' },
+          flagged: { type: 'boolean' },
+          count: { type: 'number' },
+          place: { type: 'string' },
+        },
+        relations: {},
+      },
+    });
+    const card = canvasCard({
+      type: 'Sighting',
+      label: 'heron',
+      data: { species: 'heron', confirmed: true, flagged: false, count: 0, place: '' },
+      display: sighting,
+      states,
+    });
+    expect(card.lines.map((line) => [line.name, line.text])).toEqual([
+      ['confirmed', 'Yes'],
+      ['count', '0'],
+    ]);
+  });
+
+  it('draws no heading for a record with no name, since the header already says what it is', () => {
+    const card = canvasCard({ type: 'TaskBlock', label: 'TaskBlock', data: {}, display: task, states });
+    expect(card.title).toBe('');
+  });
+
+  it('still says what a record is when its model is unknown', () => {
+    const card = canvasCard({
+      type: 'SightingBlock',
+      label: 'A heron',
+      data: { species: 'heron' },
+      display: undefined,
+      states,
+    });
+    expect(card).toMatchObject({ icon: 'cube', kind: 'Sighting', title: 'A heron', lines: [], prose: [] });
+  });
+});
+
+describe('CANVAS_RECORD_CARD', () => {
+  const expressions: string[] = [];
+  const types: string[] = [];
+  (function walk(value: unknown): void {
+    if (Array.isArray(value)) return value.forEach(walk);
+    if (!value || typeof value !== 'object') return;
+    const record = value as Record<string, unknown>;
+    if (typeof record.$ === 'string') expressions.push(record.$);
+    if (typeof record.type === 'string') types.push(record.type);
+    Object.values(record).forEach(walk);
+  })(CANVAS_RECORD_CARD);
+
+  const evaluate = (source: string, scope: Record<string, unknown>) => {
+    const env: EvaluationEnv = {
+      root: (name) => ({ bound: name in scope, value: scope[name] }),
+      call: () => undefined,
+    };
+    return evaluateExpression(parseExpression(source), env);
+  };
+
+  it('parses', () => {
+    expect(expressions.length).toBeGreaterThan(0);
+    for (const source of expressions) expect(() => parseExpression(source)).not.toThrow();
+  });
+
+  /*
+    The fragment has to wrap to a shaped card, which a flex box cannot, and has to keep pointer events
+    off, which `$if`'s wrapper does not. See the fragment's own docblock.
+  */
+  it('uses no flex layout component and no conditional wrapper', () => {
+    expect(types.filter((type) => ['Row', 'Column', 'Grid', '$if', '$animate'].includes(type))).toEqual([]);
+  });
+
+  it('hides a caption and a swatch that have nothing to show', () => {
+    const caption = expressions.find((source) => source.startsWith('line.label ?')) ?? '';
+    const swatch = expressions.find((source) => source.startsWith('line.swatch ?')) ?? '';
+    expect(evaluate(caption, { line: { label: '' } })).toBe('display: none;');
+    expect(evaluate(caption, { line: { label: 'Status' } })).toContain('opacity');
+    expect(evaluate(swatch, { line: { swatch: '' } })).toBe('display: none;');
+    expect(evaluate(swatch, { line: { swatch: '#f8cd51', swatchRadius: '50%' } })).toContain(
+      'border-radius: 50%; background: #f8cd51;',
+    );
+  });
+});

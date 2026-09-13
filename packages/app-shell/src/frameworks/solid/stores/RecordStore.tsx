@@ -22,7 +22,7 @@
  * A surface that offers both should offer the composer for that case and this for the rest — one
  * entry point, two bodies. Folding a document editor into a generated form would serve neither.
  */
-import type { EntitySchema } from '@we/backend-shared';
+import { datasetKey, type EntitySchema, HERE } from '@we/backend-shared';
 import { createBlocks } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
 import { EdgeRoute, getEntity, Placement, PREDICATES, runEntityTransaction, TypeStyle } from '@we/entities';
@@ -66,6 +66,17 @@ export interface PendingLink {
 
 /** The model a drawn connection is written as. Named once, so the store and the form agree. */
 const RELATIONSHIP = 'Relationship';
+
+/**
+ * Models that can be *shown* but never *made from a form* — see {@link displayableEntities}.
+ *
+ * `Relationship` is drawn between two things rather than filled in from a picker. `CollectionBlock`
+ * is composed: a note, a post, a call record are documents, and a generated form over their fields
+ * would be asking somebody to type a structural `type` and a `kind` label instead of writing
+ * anything. Both are read constantly all the same — a line on a canvas is one, a sticky note is the
+ * other — and clicking either is exactly the moment somebody wants to read it.
+ */
+const DISPLAY_ONLY = [RELATIONSHIP, 'CollectionBlock'] as const;
 
 /**
  * Write one placement, node reference included, inside whatever write group the caller is in.
@@ -172,6 +183,25 @@ export interface RecordStore {
    * came from a gesture rather than from typing and nothing should offer to edit them.
    */
   connectNodes: (link: PendingLink) => void;
+  /**
+   * Write the connection straight away, with nothing filled in — and answer with its id.
+   *
+   * The other half of {@link connectNodes}, and the choice between them is the template's. A
+   * knowledge map asks first, because a claim two things are related is the thing that map is *for*
+   * and the form is where somebody says what they mean. A canvas beside a live call does not: there,
+   * drawing the line **is** the assertion, the arrangement is the work, and a modal per line is a
+   * mode change in the middle of it — on the one surface whose every other gesture (drag, resize,
+   * bend, re-anchor, and `retargetOnCanvas`, which edits the claim itself) writes silently.
+   *
+   * Nothing is lost by deferring the words. An unlabelled `Relationship` was always reachable — the
+   * form saves with both fields empty — so this creates no state that did not already exist; it
+   * stops charging a modal for the state people were reaching anyway. The label and the kind are
+   * then edited where the line is read, in the inspector.
+   *
+   * Returns the new record's id so an `onSuccess` can select it. `lastCreatedId` is set too, for a
+   * caller that would rather read it there.
+   */
+  connectNodesNow: (link: PendingLink) => Promise<string>;
   /** Switch which model is being created, discarding the values typed against the last one. */
   setRecordEntity: (entity: string) => void;
   /** Set one field's value. Takes the field name, so one action serves every control. */
@@ -197,6 +227,29 @@ export interface RecordStore {
    * its own position, which is the whole reason a coordinate is not a field on the record.
    */
   placeOnCanvas: (canvas: string, nodeId: string, nodeType: string, x: number, y: number) => Promise<void>;
+  /**
+   * Put something dragged in from elsewhere onto a canvas, where it landed.
+   *
+   * Takes the graph's `onDrop` payload as it arrives, the way `resizeOnCanvas` takes `onNodeResize`'s.
+   * A placement is the canvas's membership, so this is `placeOnCanvas` with two refusals in front of
+   * it: a record from another space, which this canvas cannot draw because its seed reads this
+   * dataset; and a thing that is not a record here at all — an agent, a space — which has no card
+   * to be. Both say so rather than placing a coordinate for nothing.
+   */
+  dropOnCanvas: (
+    canvas: string,
+    payload: { entity: string; id: string; dataset?: string; x: number; y: number },
+  ) => Promise<void>;
+  /**
+   * Change one property of one record, from a control bound to it.
+   *
+   * Takes the field name, so one action serves every control the inspector draws — the same shape
+   * `setRecordField` has for the draft. The value is coerced by the kind the model declares for
+   * that field, since a number input hands back a string and a switch a boolean, and a picker's
+   * `{ detail }` is unwrapped. An empty string is not written: the ORM skips it, so clearing a text
+   * field leaves the old value, which is a limit of the store beneath rather than a choice here.
+   */
+  updateRecordField: (entity: string, id: string, field: string, value: unknown) => Promise<void>;
   /**
    * Take a record off a canvas, leaving the record itself alone.
    *
@@ -296,6 +349,20 @@ export interface RecordStore {
    * colouring by. An empty colour clears it.
    */
   setTypeColor: (canvas: string, nodeType: string, color: unknown) => Promise<void>;
+  /**
+   * Set the colour every card of one type is drawn in, everywhere in this space.
+   *
+   * The space's key — `Space.typeStyles` — which is what a canvas falls back to where it has no
+   * opinion of its own. `setTypeColor` answers for one board; this answers for the community, and it
+   * is the one the workshop's key writes, since a call's canvas is not a board anybody wants to
+   * recolour every meeting.
+   *
+   * Takes the space's record id rather than reading it, for the reason every canvas action takes a
+   * canvas: this store knows datasets, not spaces, and a template has `spaceStore.currentSpace.id` to
+   * hand. An empty colour *deletes* the record rather than writing the unset sentinel, so the list a
+   * key reads back never carries a row that means nothing.
+   */
+  setSpaceTypeColor: (spaceId: string, nodeType: string, color: unknown) => Promise<void>;
   /**
    * Open the create form, and place whatever it makes onto this canvas.
    *
@@ -397,7 +464,7 @@ export function RecordStoreProvider(props: ParentProps) {
   /**
    * Every model that can be *shown*, which is not the same set as every model that can be *made*.
    *
-   * `Relationship` is the case that separates them, and the reason this exists. It is excluded from
+   * `Relationship` is the case that separated them, and the reason this exists. It is excluded from
    * `creatableEntities` on purpose — a connection is drawn between two things rather than filled in
    * from a picker, so offering it in the "new record" list would be offering a form with two
    * endpoints nobody had chosen. But it is a `WeNode` with a label, a description, comments and
@@ -406,16 +473,22 @@ export function RecordStoreProvider(props: ParentProps) {
    *
    * Deriving one list from the other quietly made "cannot be created here" mean "cannot be
    * displayed", so the inspector showed an empty panel for a connector whose name was drawn on the
-   * line beside it. Two questions, two lists.
+   * line beside it. Two questions, two lists — and `CollectionBlock` is the second name it needed:
+   * every note on a canvas is one, and every one of them opened that same empty panel.
+   *
+   * A space's own model named after one of these is left alone: it is already in `creatableEntities`
+   * with its own icon and label, and a display derived from the community's shape is the one that
+   * should win.
    */
   const displayableEntities = createMemo<CreatableEntity[]>(() => {
     const named = new Set(creatableEntities().map((entity) => entity.value));
-    const relationship = CORE_MANIFEST.entities[RELATIONSHIP];
-    if (named.has(RELATIONSHIP) || !relationship) return creatableEntities();
-    return [
-      ...creatableEntities(),
-      { label: RELATIONSHIP, value: RELATIONSHIP, icon: BLOCK_ICONS[RELATIONSHIP] ?? 'cube', group: 'Built in' },
-    ];
+    const extra = DISPLAY_ONLY.filter((name) => !named.has(name) && CORE_MANIFEST.entities[name]).map((name) => ({
+      label: modelLabel(name),
+      value: name,
+      icon: BLOCK_ICONS[name] ?? 'cube',
+      group: 'Built in',
+    }));
+    return extra.length ? [...creatableEntities(), ...extra] : creatableEntities();
   });
 
   const vocabularies = hostSlot<(vocabulary: string) => string[] | undefined>();
@@ -520,6 +593,47 @@ export function RecordStoreProvider(props: ParentProps) {
       setPendingLink(link);
       setRecordEntity(RELATIONSHIP);
     });
+  }
+
+  /**
+   * The same connection, written immediately — see the interface for why a template chooses.
+   *
+   * Deliberately not routed through the draft. A draft exists so a person can fill one in, and
+   * mounting one here only to save it unread would put the modal on screen for a frame and make the
+   * discard guard reachable with nothing to discard. The write is the two steps `saveRecord` makes
+   * for a relationship and no others: the endpoint *types* go in with the fields, because the ORM
+   * writes an ordinary property from the create payload, and the endpoints themselves are linked
+   * after, because `innerUpdate` skips a relation field holding a plain value — `create(p, { source:
+   * uri })` typechecks, runs, and writes no link at all.
+   *
+   * No canvas parent, and none is needed: the canvas seed asks for connections whose `source` is
+   * among the records it has placed, rather than for its own children, so a relationship drawn here
+   * is found by the canvas that drew it and by any other showing both ends.
+   */
+  async function connectNodesNow(link: PendingLink): Promise<string> {
+    const dataset = datasetStore.currentDataset();
+    if (!dataset || !link?.sourceId || !link?.targetId) return '';
+    try {
+      const created = (await getEntity(RELATIONSHIP).create(dataset.handle, {
+        sourceType: link.sourceType,
+        targetType: link.targetType,
+      })) as {
+        id?: string;
+        setSource?: (value: string) => Promise<unknown>;
+        setTarget?: (value: string) => Promise<unknown>;
+      };
+      await created.setSource?.(link.sourceId);
+      await created.setTarget?.(link.targetId);
+      const id = created?.id ?? '';
+      setLastCreatedId(id);
+      return id;
+    } catch (error) {
+      // A toast rather than `recordErrors`: there is no form on screen holding what somebody typed,
+      // so the only place a failure can be reported is the one that does not need one.
+      console.error('RecordStore: connecting two records failed', error);
+      toastService.error('Could not draw that connection.');
+      return '';
+    }
   }
 
   /**
@@ -939,6 +1053,82 @@ export function RecordStoreProvider(props: ParentProps) {
     }
   }
 
+  async function dropOnCanvas(
+    canvas: string,
+    payload: { entity: string; id: string; dataset?: string; x: number; y: number },
+  ): Promise<void> {
+    const dataset = datasetStore.currentDataset();
+    if (!dataset || !canvas || !payload?.id || !payload.entity) return;
+    // The same spelling a stored reference uses for this dataset, so a row gathered here and dragged
+    // back out compares equal to the space it came from.
+    const here = datasetKey({ cid: dataset.sharedUri, uuid: dataset.id });
+    const from = payload.dataset ?? '';
+    if (from && from !== HERE && from !== here) {
+      toastService.error('Only things from this space can be put on its canvas.');
+      return;
+    }
+    if (!schemaFor(payload.entity)) {
+      toastService.error('That is not something a canvas can hold.');
+      return;
+    }
+    await placeOnCanvas(canvas, payload.id, payload.entity, payload.x, payload.y);
+  }
+
+  async function updateRecordField(entity: string, id: string, field: string, value: unknown): Promise<void> {
+    const dataset = datasetStore.currentDataset();
+    if (!dataset || !entity || !id || !field) return;
+    const raw =
+      value !== null && typeof value === 'object' && 'detail' in value ? (value as { detail: unknown }).detail : value;
+    const kind = displays()[entity]?.fields.find((row) => row.name === field)?.kind;
+    let next: unknown = raw;
+    if (kind === 'number') next = raw === '' || raw === null || raw === undefined ? undefined : Number(raw);
+    else if (kind === 'boolean') next = Boolean(raw);
+    else if (raw !== null && raw !== undefined && typeof raw !== 'string') next = String(raw);
+    if (next === undefined || (typeof next === 'number' && Number.isNaN(next))) return;
+    try {
+      await getEntity(entity).update(dataset.handle, id, { [field]: next });
+    } catch (error) {
+      console.error('RecordStore: updating a record field failed', error);
+      toastService.error('Could not save that change.');
+    }
+  }
+
+  async function setSpaceTypeColor(spaceId: string, nodeType: string, color: unknown): Promise<void> {
+    const dataset = datasetStore.currentDataset();
+    if (!dataset || !spaceId || !nodeType) return;
+    const raw =
+      color !== null && typeof color === 'object' && 'detail' in color ? (color as { detail: unknown }).detail : color;
+    const value = typeof raw === 'string' ? raw : '';
+    // The relation's own predicate, not `children`: a space is not a container and a key is not one
+    // of its contents. It is what `Space.typeStyles` reads through.
+    const parent = { id: spaceId, predicate: PREDICATES.TYPE_STYLE };
+
+    try {
+      const existing = (await TypeStyle.findAll(dataset.handle, { parent } as Record<string, unknown>)) as {
+        id: string;
+        nodeType?: string;
+      }[];
+      const rows = existing.filter((row) => row.nodeType === nodeType);
+      if (!value) {
+        // Clearing deletes. `''` cannot be stored — the ORM's update skips it — and the canvas
+        // sentinel would leave a row every reader has to know to ignore.
+        for (const row of rows) await TypeStyle.delete(dataset.handle, row.id);
+        return;
+      }
+      const [already, ...duplicates] = rows;
+      // Two people colouring the same kind at once can leave two rows; the second write settles it.
+      for (const row of duplicates) await TypeStyle.delete(dataset.handle, row.id);
+      if (already) {
+        await TypeStyle.update(dataset.handle, already.id, { color: value });
+        return;
+      }
+      await TypeStyle.create(dataset.handle as never, { nodeType, color: value } as never, { parent } as never);
+    } catch (error) {
+      console.error("RecordStore: colouring a type in the space's key failed", error);
+      toastService.error('Could not save that colour.');
+    }
+  }
+
   async function removeFromCanvas(canvas: string, nodeId: string): Promise<void> {
     const dataset = datasetStore.currentDataset();
     if (!dataset || !canvas || !nodeId) return;
@@ -1056,6 +1246,7 @@ export function RecordStoreProvider(props: ParentProps) {
     savingRecord,
     lastCreatedId,
     pendingLink,
+    connectNodesNow,
     openRecordForm,
     connectNodes,
     createOnCanvas,
@@ -1071,6 +1262,9 @@ export function RecordStoreProvider(props: ParentProps) {
     retargetOnCanvas,
     setCardStyle,
     setTypeColor,
+    setSpaceTypeColor,
+    dropOnCanvas,
+    updateRecordField,
     setRecordEntity,
     setRecordField,
     relationshipKind,

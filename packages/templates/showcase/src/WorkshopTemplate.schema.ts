@@ -47,7 +47,7 @@
  *   the module now and this places it. A body is for an arrangement the module genuinely cannot
  *   express, not for a difference it should have absorbed.
  * - **no `route` on any of them.** The key exists for a shell that routes itself and wants a panel on
- *   one page only — but scoping these to the canvas meant crossing to the tasks list *unregistered*
+ *   one page only — but scoping these to the canvas meant crossing to the kanban *unregistered*
  *   them, throwing away their scroll position, their subscriptions and wherever they had been
  *   dragged. A column of context on a page that did not strictly need it is the cheaper of the two.
  * - **`open: false`** on the call, because the call module's launcher action is `goToCall`, which
@@ -58,15 +58,40 @@ import type { RouteSchema, SchemaNode, SchemaProp, TemplateSchema } from '@we/sc
 // depends on the former, which re-exports them, and on the latter not at all.
 import {
   anchorScope,
+  composerModal,
   emptyState,
   field,
   formModal,
   panelHeader,
+  panelScroll,
+  peopleFilter,
   peopleRow,
   recordFormModal,
   taskBoard,
   taskBoardLoading,
 } from '@we/template-kit';
+
+import {
+  askWhatGoesHere,
+  CARD_LOCALS,
+  editNoteModal,
+  fieldEditor,
+  newNoteModal,
+  newThingChooser,
+} from './WorkshopCards.ts';
+import {
+  CANVAS_FILL,
+  keyPanel,
+  kindIcon,
+  kindLabel,
+  LENS_PARAM,
+  LENS_QUERY,
+  lensNodeRules,
+  LINK_FILL,
+  NO_LENS,
+  PLAIN_FILL,
+  TYPE_STYLES_QUERY,
+} from './WorkshopKey.ts';
 
 /**
  * The call on screen — **named in the address**, or the one being recorded when it names none.
@@ -120,7 +145,7 @@ const EXTRACTED = { $: `modules.transcribe.extractionFor[${CALL_EXPR}].targets.m
  * The page on screen, as a segment — or the canvas, before the redirect has landed on one.
  *
  * Changing which call you are looking at is not a reason to change the page. Both of these used to
- * name `canvas` outright, so choosing a call from the tasks list threw you onto the canvas, and the
+ * name `canvas` outright, so choosing a call from the kanban threw you onto the canvas, and the
  * only way back was the switcher.
  */
 const PAGE_EXPR = "routeStore.templateSegments[0] ? routeStore.templateSegments[0] : 'canvas'";
@@ -147,9 +172,12 @@ const pageWithCall = (callExpr: string): SchemaProp => ({
     The id rides in the query rather than a path segment because it is a URI; see `CALL`. Raw, as the
     host's own record links are (`…/record/<Entity>?id=<id>`): a query value takes the slashes and
     the colon as they are.
+
+    The key's lens comes along — an explicit `?` drops whatever the address held, so a navigation
+    that spelt only the call would turn the lens back to its default on every change of call.
   */
   $action: 'routeStore.navigate',
-  args: [{ $: `\`\${spaceStore.spacePath}/\${${PAGE_EXPR}}?call=\${${callExpr}}\`` }],
+  args: [{ $: `\`\${spaceStore.spacePath}/\${${PAGE_EXPR}}?call=\${${callExpr}}${LENS_QUERY}\`` }],
 });
 
 /** Look at a call, wherever you are. */
@@ -159,7 +187,7 @@ const openCall = (idExpr: string): SchemaProp => pageWithCall(idExpr);
  * Back to the call being recorded — the same one navigation, naming no call.
  *
  * An empty value rather than a bare path. `navigate` restores the query a path was last left with —
- * which is what makes leaving for the tasks list and coming back keep the call you were on — so the
+ * which is what makes leaving for the kanban and coming back keep the call you were on — so the
  * path alone would bring the old parameter straight back. An explicit `?` always wins, and an empty
  * parameter reads as absent everywhere it is tested.
  */
@@ -174,12 +202,37 @@ const openLiveCall: SchemaProp = pageWithCall("''");
  * segment it freed goes to the other half of what a conversation produces: tasks have no date and
  * events do, and a list is the wrong shape for the second.
  */
-const ROUTE = { canvas: 'canvas', tasks: 'tasks', events: 'events' } as const;
+/**
+ * The three pages, named for the arrangement rather than for what happens to be in them.
+ *
+ * They were `canvas`, `tasks` and `events` — one named for its form and two for a content type,
+ * which reads as three different subjects when it is three readings of one. What a call produces is
+ * not a fixed pair either: `EXTRACTED` asks the call what it is extracting, so a community that
+ * defines a `Sighting` gets Sightings on the canvas, and two tabs named after two members of an open
+ * set stop describing it the moment somebody adds a third. A form-name stays true — a calendar is
+ * still a calendar, and a record with no date is self-evidently not on it.
+ *
+ * ## Kanban, where the rest of WE says Boards
+ *
+ * A **board** is the record: a `CollectionBlock` holding columns, which is what `createBoard` makes
+ * and `arrangedBoard` arranges. **Kanban** is the arrangement — cards in columns standing for
+ * states. `KIND.board` already says so, calling it "a kanban board holding columns": kanban is the
+ * adjective, board is the noun, and they are not two words for one thing.
+ *
+ * So the code goes on saying board everywhere, and this strip says Kanban — because it is the one
+ * surface in WE where the two arrangements are *adjacent tabs*. Miro, Trello and Jira all call their
+ * canvas or their columns a board, so "Canvas | Board" asks a reader to tell apart two things the
+ * word covers equally well. `BoardsView` keeps its name: it lists board records, has a picker, and
+ * has no canvas beside it. See `docs/architecture/boards.md`.
+ */
+const ROUTE = { canvas: 'canvas', kanban: 'kanban', calendar: 'calendar' } as const;
 
 const NAV = [
   { segment: ROUTE.canvas, icon: 'graph', label: 'Canvas' },
-  { segment: ROUTE.tasks, icon: 'check-square', label: 'Tasks' },
-  { segment: ROUTE.events, icon: 'calendar', label: 'Events' },
+  // `kanban`, not `check-square`: the icon named a content type while the page's own placeholder
+  // already used this one, so the strip and the page it led to disagreed about what was there.
+  { segment: ROUTE.kanban, icon: 'kanban', label: 'Kanban' },
+  { segment: ROUTE.calendar, icon: 'calendar', label: 'Calendar' },
 ];
 
 /**
@@ -195,8 +248,13 @@ const NAV = [
  *
  * Absolute, from `spacePath`, because it now has a query on it: a relative path with a `?` is where
  * resolution rules and remembered query strings meet, and neither of them is worth relying on.
+ *
+ * The key's lens rides along for the same reason the call does: it is in the address, and a page
+ * switch that spelt its query without it would silently put the colours back to the default.
  */
-const navPath = { $: "`${spaceStore.spacePath}/${nav.segment}?call=${routeStore.params.call ?? ''}`" };
+const navPath = {
+  $: `\`\${spaceStore.spacePath}/\${nav.segment}?call=\${routeStore.params.call ?? ''}${LENS_QUERY}\``,
+};
 
 /**
  * The view switcher, floating over the content.
@@ -215,7 +273,7 @@ const navPath = { $: "`${spaceStore.spacePath}/${nav.segment}?call=${routeStore.
  * ## Its own pill, beside the switcher rather than inside it
  *
  * The obvious home is the bar the route buttons live in, and it is the wrong one: that pill is
- * content-sized and centred, so a title in it moves Canvas, Tasks and Events sideways every time
+ * content-sized and centred, so a title in it moves Canvas, Kanban and Calendar sideways every time
  * somebody renames a call or opens one with a longer name. Nav you cannot build muscle memory for
  * is worse than nav you have to look at. Two pills of the same family, each sized by its own
  * contents, and neither disturbs the other.
@@ -484,10 +542,14 @@ const A_CALL_IS_RUNNING = 'modules.call.active || count(modules.call.liveCalls)'
 /**
  * Start a call, join the one running here, or go back to your own.
  *
- * Takes its size because it is placed twice at two scales: beside the call's name in the corner,
- * where it stands alone and matches the pill's own controls, and in the calls panel header, where
- * `panelShell` reserves the height of a small control and a default one would make that header
- * taller than every other panel's.
+ * Takes its size because it is placed at two scales. `md` on a page with no call to be about —
+ * under the sentence each of the three routes shows there, which is the template's main way in and
+ * wants the default control height. `sm` in the calls panel header, where `panelShell` reserves the
+ * height of a small control and a default one would make that header taller than every other
+ * panel's.
+ *
+ * It used to sit in the corner beside the pill as well. That placement showed on the same condition
+ * the page gates do and did the same thing, so it was the same door drawn twice — see `callChrome`.
  */
 const startCallButton = (size: 'sm' | 'md'): SchemaNode => ({
   type: '$if',
@@ -498,6 +560,16 @@ const startCallButton = (size: 'sm' | 'md'): SchemaNode => ({
       props: {
         size,
         gap: '200',
+        /*
+          Room above it, in the placement that sits under a sentence.
+
+          `md` is always that one — the gate on each of the three routes — where the placeholder's
+          own `gap` alone reads as too tight: an icon, a line of prose and a button spaced identically
+          make three items in a list rather than a statement and the thing to do about it. `sm` is the
+          calls panel header, where a top margin would push the control out of a band whose height
+          `panelShell` has already reserved.
+        */
+        ...(size === 'md' ? { mt: '400' } : {}),
         // Its words are fixed, so it is the wrong half of the pair to shorten — see `callPill`.
         flexShrink: '0',
         variant: { $: "modules.call.active ? 'secondary' : 'primary'" },
@@ -561,33 +633,56 @@ const startCallButton = (size: 'sm' | 'md'): SchemaNode => ({
 });
 
 /**
- * The corner that is about the conversation, and it is always there.
+ * Where the fixed pill bar starts, how tall it is, and where it ends — the three numbers every
+ * surface that has to clear it reads.
  *
- * ## Why it stopped coming and going
+ * Both pills are pinned to `top: '300'` — which is what `CHROME_TOP` spells, in the form a `calc`
+ * can read — and both come to `PILL_HEIGHT`, which is not a coincidence: each is a padded row whose
+ * tallest child is one control at the default height. So one band covers both, and `CHROME_BOTTOM`
+ * is the line content has to start below.
  *
- * The pill alone lived here, so the whole region appeared when a call was named and vanished when
- * one was not — which made the one thing people had learned to look at the one thing that was
- * sometimes missing. Calls had no permanent address on screen at all: the module rail's launcher is
- * the least discoverable control in the app, the calls panel is a section somebody can close, and
- * this flickered. A fixed region makes the conversation a *place*, so starting one, seeing the
- * current one and picking an old one back up all resolve to the same corner.
+ * Written once and shared because it had already drifted. `ROUTE_BAND` spelt the same clearance as
+ * `pt: '900'` — 64px against a bar that ends at 68 — so the kanban and the calendar began four
+ * pixels *inside* the pills, and further in under any theme that adds to control heights, since a
+ * token cannot know about `--we-theme-control-height-offset` and this expression can. A number that
+ * approximates an expression is a number that goes stale the next time the expression moves; see
+ * `chromeReserve`, which is the one place the shell forces a number and where that has already
+ * happened once.
+ */
+const CHROME_TOP = 'var(--we-space-300)';
+const PILL_HEIGHT =
+  'calc(var(--we-component-height-md) + var(--we-theme-control-height-offset, 0px) + 2 * var(--we-space-200))';
+const CHROME_BOTTOM = `calc(${CHROME_TOP} + ${PILL_HEIGHT})`;
+
+/**
+ * The corner that says which call every other surface is about.
  *
- * ## Two children rather than one that swaps
+ * ## What it is, now that it is one thing
  *
- * The obvious shape is a region that shows the start button *or* the pill. It has a hole, and it is
- * a bug we had already fixed once: reading a finished call is exactly when somebody wants to start a
- * fresh one — that is how the reopen bug got noticed — and swapping would mean deselecting first to
- * reach the button. So both are here, and only one state quietens the button: being *in* a call,
- * where a second one is refused anyway and the pill's own control already says "go to the call".
+ * The call on screen, named — and nothing when there is not one. It held a start button beside the
+ * pill as well, under an argument worth recording because it was right for as long as its premise
+ * held: calls needed a permanent address, since the module rail's launcher is the least discoverable
+ * control in the app and the calls panel is a section somebody can close, so a corner that was
+ * sometimes empty left the whole subject with nowhere to live.
  *
- * ## The pill leads
+ * What changed is that the *page* now offers it. Each of the three routes draws a gate when no call
+ * is named, and each carries the same button — under the sentence explaining why the page is empty,
+ * in the middle of the screen, which is where somebody with no call is already looking. The corner
+ * button showed on exactly that condition and did exactly that thing, so it was not a second way in;
+ * it was the same way in, smaller and at the edge. Three of them on one screen — corner, page, calls
+ * panel — and the loudest was the one nobody's eye was on.
  *
- * When there is a call it is the subject, and the subject holds the left edge; the offer of another
- * follows it. Which means the button moves as a title grows, and that is the cheaper thing to move —
- * it is the less-used of the two whenever the pill is there at all.
+ * So the corner narrows to the subject. When there is a call it names it; when there is not, the
+ * page asks the question and the region is empty. Nothing is lost: every state that had the button
+ * here has it in the middle instead, and the calls panel keeps its own for the one state neither
+ * covers — wanting a fresh call while reading a finished one, where the pill holds this corner.
  *
- * The switcher beside this does not move either way: it is centred on the *content*, computed from
- * the sidebar and dock insets, so a neighbour that changes width is nothing to it.
+ * ## The band keeps its height regardless
+ *
+ * `minHeight` stands whether or not the pill does, so the switcher pinned to the same `top` has
+ * something to align against. The switcher itself does not move either way: it is centred on the
+ * *content*, computed from the sidebar and dock insets, so a neighbour that changes width — or
+ * disappears — is nothing to it.
  */
 const callChrome: SchemaNode = {
   type: 'Row',
@@ -610,45 +705,956 @@ const callChrome: SchemaNode = {
     /*
       The pill's own height, held whether or not the pill is there.
 
-      Without it the region is as tall as whatever it happens to contain, so with no call the start
-      button sat at the top of the band while the switcher beside it sat centred in the full height —
-      the two pinned to the same `top` and looking misaligned. Stated as the arithmetic the pill
-      arrives at rather than as a number: a control at the default height, plus the padding above and
-      below it, including whatever a theme adds to control heights.
+      Without it the region is as tall as whatever it happens to contain, so with no call it
+      collapsed to nothing while the switcher beside it sat centred in the full height — the two
+      pinned to the same `top` and looking misaligned. Stated as the arithmetic the pill arrives at
+      rather than as a number: a control at the default height, plus the padding above and below it,
+      including whatever a theme adds to control heights. Shared with the routes that clear this bar
+      — see `PILL_HEIGHT`.
     */
-    minHeight:
-      'calc(var(--we-component-height-md) + var(--we-theme-control-height-offset, 0px) + 2 * var(--we-space-200))',
+    minHeight: PILL_HEIGHT,
   },
-  children: [
-    callPill,
-    {
-      /*
-        Only where the pill is not — so the corner holds one thing at a time.
+  children: [callPill],
+};
 
-        This began as the opposite: both present, on the argument that reading a finished call is
-        exactly when somebody wants to start a fresh one, and a corner that swapped would make that
-        state need a detour. The argument was sound and its premise was not — the calls panel keeps
-        its own start button, and clicking the selected row there deselects it and brings this one
-        straight back. So the detour is a click somebody is already making, and what it buys is a
-        corner that says one thing rather than a button crowding the name of the call beside it.
+/** The model the selected card is of — the inspector's whole subject, named once. */
+const CARD_TYPE = 'routeStore.params.cardType';
 
-        `!CALL` rather than `!active`, and it subsumes it: being in a call sets the record `CALL`
-        falls back to, so the pill is there and this is not.
-      */
+/**
+ * The fields with something in them, as details — the rows the panel is mostly made of.
+ *
+ * `role == 'detail'` because the title and the summary are already drawn, as the heading and the
+ * line under it; without the filter they appeared a second time as captioned rows, so every record
+ * showed its own name twice.
+ */
+/**
+ * The kinds of part the selected record's entity is offered — a task's Assigned and Reviewing, an
+ * event's answers. Declared here, ahead of the field lists that read it.
+ */
+const PEOPLE_KINDS = `spaceStore.offeredInvolvementTypes.filter(k, ${CARD_TYPE} in k.appliesTo || !count(k.appliesTo))`;
+
+/**
+ * Whether a field is one the People section already answers. `assignee` is the name an extraction
+ * pass writes because a model cannot know a DID; where the entity has parts people can hold, People
+ * shows who is actually on it and quotes that name when nobody is, so the free-text field beside it
+ * is the same fact twice — and, empty, an input nobody should type into.
+ */
+const NOT_PEOPLE_FIELD = `(f.name != 'assignee' || !count(${PEOPLE_KINDS}))`;
+
+const SET_DETAILS = `local.display.fields.filter(f, f.role == 'detail' && f.kind != 'relation' && row[f.name] && ${NOT_PEOPLE_FIELD})`;
+
+/** The same, as controls: everything set, title and summary included, since editing them is the point. */
+const SET_FIELDS = `local.display.fields.filter(f, f.kind != 'relation' && row[f.name] && ${NOT_PEOPLE_FIELD})`;
+
+/**
+ * The fields holding nothing — what the disclosure offers.
+ *
+ * Images, files and JSON are excluded along with relations: `fieldEditor` draws no control for any
+ * of them (a picture is uploaded, not typed), so counting them would promise rows that expanding
+ * does not produce.
+ */
+const EMPTY_FIELDS = `local.display.fields.filter(f, !(f.kind in ['relation', 'image', 'file', 'json']) && !row[f.name] && ${NOT_PEOPLE_FIELD})`;
+
+const EMPTY_COUNT = `count(${EMPTY_FIELDS})`;
+
+/**
+ * Whether this MODEL has any field the panel could edit — asked of the declaration rather than of
+ * the record, because the header is outside the `$each` and has no row in scope.
+ *
+ * What the pencil is gated on. A composed document declares no fields at all (see
+ * `CollectionBlock`'s manifest entry), so unlocking editing on a note produced a mode with nothing
+ * in it: the same empty panel this whole piece of work started from, one press further in.
+ */
+const HAS_EDITABLE_FIELDS = `count(recordStore.displays[${CARD_TYPE}].fields.filter(f, !(f.kind in ['relation', 'image', 'file', 'json'])))`;
+
+/** Whether the selected thing is a drawn connection rather than a card. */
+const IS_RELATIONSHIP = `${CARD_TYPE} == 'Relationship'`;
+
+/** The kind record this connection names, or undefined — a dotted read off it is undefined too. */
+const KIND_OF_LINK = 'find(local.relationshipKinds, { id: row.relationshipTypeId })';
+
+/**
+ * Which kind of connection a line is — the one field the generated panel cannot draw.
+ *
+ * `Relationship.relationshipTypeId` holds the **id of a record** and is declared as an ordinary
+ * string, so the two halves of this panel both get it wrong on their own. `displays` derives its
+ * field list from `display.fields ?? authoring.fields`, and `Relationship.authoring.fields` is
+ * `['label', 'description']` — deliberately, since the kinds are a list to pick from rather than
+ * something to type — so the field is simply absent from the read rows and from `fieldEditor`. Put
+ * *in* that list it would be worse than absent: a text box showing a raw `we://…` id, and a caption
+ * reading "Relationship Type Id".
+ *
+ * So it is drawn here by hand, which is the same answer `recordForm` reaches for the create modal
+ * and `EdgeDetail` for the knowledge map — three surfaces, one shape, and the generic path unable to
+ * serve any of them. What would retire all three is `recordDisplay` learning a kind for "a string
+ * that references a record of a named model"; `Signal.signalTypeId` is the second instance of it, so
+ * the case is close to made. It is not made *here*: a new `DisplayKind` is a change to every surface
+ * that switches on one, and this branch has enough in it.
+ *
+ * Reading and editing, in one node, because both are one row in the same column and splitting them
+ * would put the kind in two places that have to agree about where it sits.
+ */
+const relationshipKind: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: IS_RELATIONSHIP },
+    then: {
       type: '$if',
-      props: { condition: { $: `!(${CALL_EXPR})` }, then: startCallButton('md') },
+      props: {
+        condition: { $: 'local.editing' },
+        /*
+          Editing: the community's kinds, and a way back out of having picked one.
+
+          Offered only where the community has named a kind. A space that has named none still
+          connects things — the label carries the meaning until a vocabulary exists, which is how one
+          gets discovered — and a picker with nothing in it would ask a question with no answers.
+
+          No "unnamed" entry among the options, and this is the trap worth naming: a schema cannot
+          prepend to a list, and the interpolation that looks like it can — `` `${[…]}${list.map(…)}` ``
+          — evaluates to a *string*, so `options` receives "[object Object]" and the select renders
+          empty. That spelling was live in `recordForm` and is gone. The unset state is the
+          placeholder; getting back to it is the button.
+        */
+        then: {
+          type: '$if',
+          props: {
+            condition: { $: 'count(local.relationshipKinds)' },
+            then: {
+              type: 'we-form-field',
+              props: { label: 'Kind', size: 'sm', width: '100%' },
+              children: [
+                {
+                  type: 'Row',
+                  props: { gap: '200', ay: 'center', width: '100%' },
+                  children: [
+                    {
+                      type: 'we-select',
+                      props: {
+                        size: 'sm',
+                        flex: '1',
+                        minWidth: '0',
+                        placeholder: 'Unnamed kind',
+                        options: {
+                          $: 'local.relationshipKinds.map(item, { label: item.name, value: item.id, icon: item.icon })',
+                        },
+                        value: { $: 'row.relationshipTypeId' },
+                        // The same writer every other control in edit mode uses — one action, named
+                        // field, value coerced by the field's declared kind. `relationshipTypeId` is
+                        // a plain string property, so nothing special happens to it on the way.
+                        onChange: {
+                          $action: 'recordStore.updateRecordField',
+                          args: [
+                            'Relationship',
+                            { $: 'routeStore.params.card' },
+                            'relationshipTypeId',
+                            {
+                              $: 'event.detail',
+                            },
+                          ],
+                        },
+                      },
+                    },
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $: 'row.relationshipTypeId' },
+                        then: {
+                          type: 'we-tooltip',
+                          props: { content: 'Leave the kind unnamed' },
+                          children: [
+                            {
+                              type: 'we-button',
+                              props: {
+                                size: 'sm',
+                                variant: 'ghost',
+                                square: true,
+                                label: 'Leave the kind unnamed',
+                                flexShrink: '0',
+                                // An empty string, which the AD4M adapter reads as "clear this
+                                // property" — see `clearOnEmpty`. Not null or undefined: those still
+                                // skip, so that an ordinary partial save is not data loss.
+                                onClick: {
+                                  $action: 'recordStore.updateRecordField',
+                                  args: ['Relationship', { $: 'routeStore.params.card' }, 'relationshipTypeId', ''],
+                                },
+                              },
+                              children: [{ type: 'we-icon', props: { name: 'x' } }],
+                            },
+                          ],
+                        },
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+        /*
+          Reading: the kind's own name and glyph, drawn as one more detail row.
+
+          Only when one is set and still resolves. A kind the community has since deleted reads as
+          nothing rather than as its bare id — the same choice the detail rows make for an empty
+          field, and for the same reason: a row showing a `we://` string is a row that looks like
+          something failing to load.
+        */
+        else: {
+          type: '$if',
+          props: {
+            condition: { $: KIND_OF_LINK },
+            then: {
+              type: 'Column',
+              props: { gap: '050', py: '100', borderTop: '1px solid border' },
+              children: [
+                { type: 'we-text', props: { variant: 'footnote', color: 'text-faint' }, children: ['Kind'] },
+                {
+                  type: 'Row',
+                  props: { gap: '200', ay: 'center' },
+                  children: [
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $: `${KIND_OF_LINK}.icon` },
+                        then: {
+                          type: 'we-icon',
+                          props: { name: { $: `${KIND_OF_LINK}.icon` }, size: 'xs', color: 'text-muted' },
+                        },
+                      },
+                    },
+                    { type: 'we-text', props: { variant: 'footnote' }, children: [{ $: `${KIND_OF_LINK}.name` }] },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      },
+    },
+  },
+};
+
+/**
+ * Whether this record is a composed document rather than a filled-in form.
+ *
+ * The value, not the model's name: a `CollectionBlock` is both things depending on what made it.
+ * A note has an `editorState` and its substance is in there; a call record, or a board column, is
+ * the same class with none, and reads as its fields exactly as a task does.
+ */
+const COMPOSED = 'row.editorState';
+
+/**
+ * A note's actual content, drawn the way the cards route draws a post.
+ *
+ * The panel is derived from `recordStore.displays`, which is a list of *properties* — and a
+ * composed document has none worth reading: its title is usually empty and its text lives in
+ * `editorState`, a blob no field row can render. So the panel that had just learned to say
+ * "Note" went on to say "Untitled" over nothing at all, about a sticky note with three paragraphs
+ * visible on the canvas behind it.
+ *
+ * `BlockRenderer` is the same component the post card mounts, so a note reads here as it does
+ * everywhere else. On a `surface` with a border, for the same reason the card route puts one there
+ * and not a sunken well: the panel's frame paints the page, and a well belongs *in* a surface rather
+ * than on the ground — what is wanted here is a card, since the strip above is a description of the
+ * record and this is the record itself.
+ *
+ * The composer beside it is the other half: with the content on screen, the pencil in the header —
+ * which edits declared fields, and for a note means its title and description — is the wrong tool
+ * for the thing somebody is now looking at. Its own button, attached to the content, opening the
+ * same composer the canvas's double-click does and saving through the same reconcile.
+ */
+const composedContent: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: COMPOSED },
+    then: {
+      type: 'Column',
+      props: { gap: '200', width: '100%' },
+      children: [
+        {
+          type: 'Column',
+          props: {
+            width: '100%',
+            bg: 'surface',
+            border: '1px solid border',
+            r: 'surface',
+            p: '300',
+            overflow: 'hidden',
+          },
+          children: [{ type: 'BlockRenderer', props: { editorState: { $: COMPOSED } } }],
+        },
+        {
+          type: 'Row',
+          props: { ax: 'start' },
+          children: [
+            {
+              type: 'we-button',
+              props: { size: 'sm', variant: 'ghost', gap: '200', onClick: { $setLocal: 'noteOpen', value: true } },
+              children: [
+                { type: 'we-icon', props: { name: 'pencil-simple' } },
+                { type: 'we-text', props: { variant: 'footnote' }, children: ['Edit note'] },
+              ],
+            },
+          ],
+        },
+        // No `$if` of its own: the fragment mounts only while `noteOpen` is set, which is what
+        // resets the editor between one note and the next.
+        composerModal({
+          openLocal: 'noteOpen',
+          title: 'Note',
+          saveLabel: 'Save',
+          editorState: { $: COMPOSED },
+          // `arg` second: `updatePost(postId, json)`.
+          saveAction: { $action: 'spaceStore.updatePost', args: [{ $: 'row.id' }, { $: 'arg' }] },
+        }),
+      ],
+    },
+  },
+};
+
+/**
+ * The fields this record has nothing in, behind one collapsed row.
+ *
+ * Controls rather than captions, in both modes: the question somebody has when they open this is
+ * "can I put something here", and a read-only list of blanks answers it with no. It is also why the
+ * row is at the foot of the panel and shut by default — a model with twelve properties and three
+ * filled in should read as three facts, not as nine gaps.
+ *
+ * `$animate` rather than `$if`, so closing it does not unmount a control somebody is halfway through
+ * typing into — `fieldEditor` writes on change, so an unmount mid-edit would drop what was typed.
+ */
+const emptyFields: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: EMPTY_COUNT },
+    then: {
+      type: 'Column',
+      props: { gap: '200', pt: '200', borderTop: '1px solid border' },
+      children: [
+        {
+          type: 'we-button',
+          props: {
+            variant: 'bare',
+            width: '100%',
+            ax: 'start',
+            gap: '200',
+            onClick: { $toggleLocal: 'showEmpty' },
+          },
+          children: [
+            {
+              type: 'we-icon',
+              props: {
+                size: 'xs',
+                color: 'text-faint',
+                name: { $: "local.showEmpty ? 'caret-down' : 'caret-right'" },
+              },
+            },
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-faint' },
+              children: [{ $: `${EMPTY_COUNT} + ' empty ' + plural(${EMPTY_COUNT}, 'field', 'fields')` }],
+            },
+          ],
+        },
+        {
+          type: '$animate',
+          props: {
+            condition: { $: 'local.showEmpty' },
+            enterTransition: [
+              { type: 'reveal', duration: 200 },
+              { type: 'fade', duration: 150 },
+            ],
+          },
+          children: [
+            {
+              type: 'Column',
+              props: { gap: '300', pb: '100' },
+              children: [fieldEditor({ $: CARD_TYPE }, { $: 'routeStore.params.card' }, EMPTY_FIELDS)],
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
+/** The selected record's id — what the connection queries ask about. */
+const CARD_ID = 'routeStore.params.card';
+
+/**
+ * What to call the record at one end of a connection, as an expression over that end and its type.
+ *
+ * The same chain the rest of the panel uses, in the order it can fail. An end that is gone — a card
+ * deleted after the line was drawn — reads as that, rather than as a type name that implies there is
+ * something to open. Then the model's own title property, then a note's text (a note is a
+ * `CollectionBlock` whose substance is its content, so its title is usually empty and three
+ * connections to "Note" would say nothing), then the kind's own name as the floor.
+ */
+function endName(end: string, type: string): string {
+  const title = `${end}[recordStore.displays[${type}].title]`;
+  return `(!${end} ? 'Removed' : ${title} ? ${title} : ${end}.textContent ? ${end}.textContent : ${kindLabel(type)})`;
+}
+
+/**
+ * The type of the record at one end: the one stored on the connection, else the one the end reports.
+ *
+ * Stored first because a writer that recorded it meant it — see `reifiedEdgeFrom`. The fallback is
+ * for connections an extraction pass wrote without `sourceType`/`targetType`: the end then arrives
+ * hydrated and classified, carrying `__subjectClass`, which is the key the executor writes and the
+ * graph reads (`NODE_TYPE_KEY`).
+ */
+function endType(stored: string, end: string): string {
+  return `(${stored} ? ${stored} : ${end}.__subjectClass)`;
+}
+
+/**
+ * A card's connections, as rows ready to draw — one `map` per step, so each step names what it adds.
+ *
+ * Chained rather than written as one object, because a comprehension binds one name and every field
+ * after the first needs the ones before it: which end is *this* card decides which is the other, and
+ * the other decides the name, the icon and where a click goes. A literal inlining all of that would
+ * repeat the direction test a dozen times.
+ *
+ * - **Direction** compares the source end with the selected id. An end arrives as a hydrated record
+ *   or as a bare id depending on what the backend could hydrate, so it reads `.id` and falls back to
+ *   the value itself — the same tolerance `reverseLookup` has. The parentheses matter: `??` binds more
+ *   loosely than `==`.
+ * - **The verb** reads from this card's side. Outgoing is the kind's name; incoming is its
+ *   `inverseName` where the community gave one — "is blocked by" rather than "blocks" pointing the
+ *   wrong way — and a label-only connection, which has no inverse to offer, shows its label and lets
+ *   the arrow carry the direction.
+ * - **The arrow** is `↔` for a kind declared undirected, and otherwise which way the line runs.
+ */
+const CONNECTION_ROWS = [
+  'local.connections',
+  `.map(link, { link: link, out: (link.source.id ?? link.source) == ${CARD_ID} })`,
+  '.map(c, { link: c.link, out: c.out, other: c.out ? c.link.target : c.link.source, stored: c.out ? c.link.targetType : c.link.sourceType, kind: find(local.relationshipKinds, { id: c.link.relationshipTypeId }) })',
+  `.map(c, { link: c.link, out: c.out, other: c.other, kind: c.kind, type: ${endType('c.stored', 'c.other')} })`,
+  [
+    '.map(c, { ',
+    'id: c.link.id, ',
+    'otherId: c.other.id ?? c.other, ',
+    'otherType: c.type, ',
+    `name: ${endName('c.other', 'c.type')}, `,
+    `icon: ${kindIcon('c.type')}, `,
+    'verb: c.out ? (c.kind.name ? c.kind.name : c.link.label) : (c.kind.inverseName ? c.kind.inverseName : c.kind.name ? c.kind.name : c.link.label), ',
+    "arrow: c.kind.directed == false ? 'arrows-left-right' : c.out ? 'arrow-right' : 'arrow-left', ",
+    'tint: c.kind.color',
+    ' })',
+  ].join(''),
+].join('');
+
+/**
+ * The two ends of a selected line, as the same kind of row — "From" and "To".
+ *
+ * Empty until the line's own query answers, so nothing is drawn for a frame from an absent record.
+ */
+const LINK_END_ROWS = [
+  "count(local.link) ? [{ role: 'From', end: first(local.link).source, stored: first(local.link).sourceType }, { role: 'To', end: first(local.link).target, stored: first(local.link).targetType }]",
+  `.map(e, { role: e.role, end: e.end, type: ${endType('e.stored', 'e.end')} })`,
+  `.map(e, { role: e.role, id: e.end.id ?? e.end, type: e.type, name: ${endName('e.end', 'e.type')}, icon: ${kindIcon('e.type')} })`,
+  ' : []',
+].join('');
+
+/**
+ * Open a record in this panel — by writing the address, which is also what the canvas follows.
+ *
+ * The parameters rather than a `$setLocal`, because a panel is not inside the route's tree and
+ * cannot reach the canvas's locals — the reason the selection travels in the address at all. And
+ * writing them is the whole of it: the canvas binds `focus` to the same parameter, so it selects the
+ * record and brings it into view, or clears its selection when the record lives somewhere else.
+ *
+ * Type before id. The panel's query is keyed on both, and each write re-asks it; the order only
+ * decides which half-changed pair is asked about for the instant between them, and neither answers.
+ */
+function openRecord(id: string, type: SchemaProp): SchemaProp[] {
+  return [
+    { $action: 'routeStore.setParam', args: ['cardType', type] },
+    { $action: 'routeStore.setParam', args: ['card', { $: id }] },
+  ];
+}
+
+/**
+ * The part of a row that names the other end and opens it: its kind's glyph and its name.
+ *
+ * Disabled when the end is gone, which is the one case where there is nothing to open — the row
+ * still says the connection exists, and that the thing it pointed at does not.
+ */
+function endButton(opts: { id: string; type: string; icon: string; name: string; lead: SchemaNode[] }): SchemaNode {
+  return {
+    type: 'we-button',
+    props: {
+      variant: 'ghost',
+      size: 'sm',
+      flex: '1',
+      minWidth: '0',
+      ax: 'start',
+      gap: '200',
+      disabled: { $: `!${opts.id}` },
+      label: { $: `'Open ' + ${opts.name}` },
+      onClick: openRecord(opts.id, { $: opts.type }),
+    },
+    children: [
+      ...opts.lead,
+      {
+        type: '$if',
+        props: {
+          condition: { $: opts.icon },
+          then: { type: 'we-icon', props: { name: { $: opts.icon }, size: 'xs', color: 'text-muted' } },
+        },
+      },
+      { type: 'we-text', props: { variant: 'footnote', truncate: true, minWidth: '0' }, children: [{ $: opts.name }] },
+    ],
+  };
+}
+
+/**
+ * A section's caption, with a count beside it where the count is worth reading.
+ *
+ * Uppercase, and a step fainter than the faintest text role, so a section's name reads apart from
+ * the properties under it and from a placeholder sentence like "Nobody is on this yet", which is
+ * already `text-faint`. There is no role below that one, so the step is opacity — it follows the
+ * theme either way, where a scale position would fix it to one theme's idea of grey.
+ */
+function sectionCaption(label: string, count?: string): SchemaNode {
+  return {
+    type: 'Row',
+    props: { gap: '200', ay: 'center', opacity: 0.75 },
+    children: [
+      {
+        type: 'we-text',
+        props: { variant: 'footnote', uppercase: true, letterSpacing: 'wide', color: 'text-faint' },
+        children: [label],
+      },
+      ...(count
+        ? [
+            {
+              type: '$if',
+              props: {
+                condition: { $: count },
+                then: {
+                  type: 'we-text',
+                  props: { variant: 'footnote', color: 'text-faint' },
+                  children: [{ $: count }],
+                },
+              },
+            } as SchemaNode,
+          ]
+        : []),
+    ],
+  };
+}
+
+/**
+ * Everything this card is connected to — including what this canvas cannot draw.
+ *
+ * The canvas draws a line only when both of its ends are placed on it (see the `canvas` seed), which
+ * is right for a drawing and leaves the drawing silent about the rest: a task tied to a decision on
+ * another call's canvas, or to a record nobody placed, looks unconnected here. This list is the one
+ * place on this surface those connections are visible.
+ *
+ * One query, native on AD4M: a relation key in a `where` compiles to a triple pattern on that
+ * relation's predicate, and an `OR` of two such arms to a SPARQL `UNION` — so a card's connections
+ * are found by asking, not by reading every connection in the space and filtering. The `include`
+ * brings both ends back hydrated, which is where the names and icons come from.
+ *
+ * Each row opens the other end; the button at its end opens the connection itself, for its label and
+ * kind. No delete here — the connection's own panel has one, and so does the delete key.
+ */
+const cardConnections: SchemaNode = {
+  type: 'Column',
+  props: { gap: '100', pt: '200', borderTop: '1px solid border' },
+  children: [
+    sectionCaption('Connections', 'count(local.connections)'),
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'count(local.connections)' },
+        then: {
+          type: '$each',
+          props: { items: { $: CONNECTION_ROWS }, as: 'conn' },
+          children: [
+            {
+              type: 'Row',
+              props: { gap: '100', ay: 'center', width: '100%' },
+              children: [
+                endButton({
+                  id: 'conn.otherId',
+                  type: 'conn.otherType',
+                  icon: 'conn.icon',
+                  name: 'conn.name',
+                  lead: [
+                    {
+                      type: 'we-icon',
+                      props: {
+                        name: { $: 'conn.arrow' },
+                        size: 'xs',
+                        // The kind's own colour, where the community chose one — the same colour its
+                        // lines are drawn in on the knowledge map.
+                        color: { $: "conn.tint ? conn.tint : 'text-faint'" },
+                      },
+                    },
+                    {
+                      type: 'we-text',
+                      props: {
+                        variant: 'footnote',
+                        flexShrink: '0',
+                        color: { $: "conn.verb ? 'text-muted' : 'text-faint'" },
+                      },
+                      children: [{ $: "conn.verb ? conn.verb : 'connected to'" }],
+                    },
+                  ],
+                }),
+                {
+                  type: 'we-tooltip',
+                  props: { content: 'Open this connection' },
+                  children: [
+                    {
+                      type: 'we-button',
+                      props: {
+                        variant: 'ghost',
+                        size: 'sm',
+                        square: true,
+                        flexShrink: '0',
+                        label: 'Open this connection',
+                        onClick: openRecord('conn.id', 'Relationship'),
+                      },
+                      children: [{ type: 'we-icon', props: { name: 'line-segment', color: 'text-faint' } }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        /*
+          Nothing yet — said only once the query has answered, and said as what to do.
+
+          The connect handles appear on a selected card's edges and nowhere else, so the gesture is
+          easy to miss; this is the moment somebody is looking at a selected card and wondering.
+        */
+        else: {
+          type: '$if',
+          props: {
+            condition: { $: 'local.connectionsLoaded' },
+            then: {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-faint' },
+              children: ['Not connected to anything yet. Drag from one of its edges to another card.'],
+            },
+          },
+        },
+      },
     },
   ],
 };
 
 /**
- * One card, opened out — its type, its properties, and the way to its own page.
+ * What a selected line joins — its two ends, each opening that record.
+ *
+ * The create modal used to say "Post → Sighting" above the label field; with connections written on
+ * the drop, the inspector is where a line is read, and it said what the line *was* without saying
+ * what it connected.
+ */
+const linkEnds: SchemaNode = {
+  type: 'Column',
+  props: { gap: '100', pt: '200', borderTop: '1px solid border' },
+  children: [
+    sectionCaption('Connects'),
+    {
+      type: '$each',
+      props: { items: { $: LINK_END_ROWS }, as: 'end' },
+      children: [
+        endButton({
+          id: 'end.id',
+          type: 'end.type',
+          icon: 'end.icon',
+          name: 'end.name',
+          lead: [
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-faint', flexShrink: '0', minWidth: '2.5em' },
+              children: [{ $: 'end.role' }],
+            },
+          ],
+        }),
+      ],
+    },
+  ],
+};
+
+/** Who is on the record in the inspector — the `involvement` host function over the panel's own query. */
+const ON_ROW =
+  'involvement({ rows: local.involvements, types: spaceStore.involvementTypes, me: me.did }).byNode[row.id]';
+
+/** The kinds of part this record's entity is offered — a task's Assigned and Reviewing, an event's answers. */
+const ROW_KINDS = PEOPLE_KINDS;
+
+/**
+ * Everyone on the selected record, by part, by name — the detail view a card's faces stand in for.
+ *
+ * A card has room for three faces and a hovercard; this is where every part is read at once and each
+ * person is named without hovering. Grouped by kind in the community's words, each person with the
+ * face and ring the card gives them. The picker is the card's own (`involvementMenu`), so the two
+ * cannot offer different choices; an × takes somebody off a part anybody may give, and your own
+ * answer to an event is withdrawn the same way — nobody else's.
+ *
+ * Shown only for an entity somebody can be on, which is every entity a kind applies to. Where the
+ * record came from is not here — see `originLine`, which is about the record rather than its people.
+ */
+const peopleSection: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: `!(${IS_RELATIONSHIP}) && count(${ROW_KINDS})` },
+    then: {
+      type: 'Column',
+      // The same gap under the caption as Connections has; the parts below keep a wider one.
+      props: { gap: '100', pt: '200', borderTop: '1px solid border' },
+      children: [
+        {
+          type: 'Row',
+          props: { gap: '200', ay: 'center', width: '100%' },
+          children: [
+            sectionCaption('People'),
+            /*
+              One caption line tall, with the picker centred on it and spilling over either side.
+
+              The button is the size of the header's pencil, which is taller than a footnote; left in
+              flow it made this caption row that tall, so People stood further from its first line
+              than Connections does from its own. Held to the caption's line, the two sections share
+              one rhythm and the button keeps the size it is pressed at.
+            */
+            {
+              type: 'Row',
+              props: { ml: 'auto', fontSize: '100', height: '1lh', ay: 'center' },
+              children: [
+                {
+                  type: '$if',
+                  props: {
+                    // An event's answers have their own buttons on the calendar; the picker is for parts
+                    // one member gives another, and an entity with none of those has nothing to pick.
+                    condition: { $: `count(${ROW_KINDS}.filter(k, !k.reflexive))` },
+                    then: {
+                      type: 'DropdownMenu',
+                      props: {
+                        triggerIcon: 'user-plus',
+                        triggerTitle: 'Who is on this',
+                        triggerVariant: 'ghost',
+                        // The size of the pencil and the bin in the panel's header — the controls it sits among.
+                        size: 'sm',
+                        itemSize: 'sm',
+                        placement: 'bottom-end',
+                        searchable: true,
+                        searchPlaceholder: 'Find a member',
+                        items: {
+                          $: `involvementMenu({ node: row.id, entity: ${CARD_TYPE}, rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.did, said: row.assignee })`,
+                        },
+                        onSelect: {
+                          $action: 'spaceStore.setInvolvement',
+                          args: [{ $: 'row.id' }, { $: 'arg.id' }, { $: 'arg.kind' }, { $: '!arg.checked' }],
+                        },
+                      },
+                    },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+        {
+          type: 'Column',
+          props: { gap: '200' },
+          children: [
+            {
+              type: '$each',
+              props: {
+                items: { $: `${ROW_KINDS}.filter(k, count(${ON_ROW}.people.filter(p, p.kind == k.slug)))` },
+                as: 'part',
+              },
+              children: [
+                {
+                  type: 'Column',
+                  props: { gap: '100' },
+                  children: [
+                    { type: 'we-text', props: { variant: 'footnote', color: 'text-muted', text: { $: 'part.name' } } },
+                    {
+                      type: '$each',
+                      props: { items: { $: `${ON_ROW}.people.filter(p, p.kind == part.slug)` }, as: 'holder' },
+                      children: [
+                        {
+                          type: 'Row',
+                          props: { gap: '200', ay: 'center', width: '100%' },
+                          children: [
+                            {
+                              type: 'AvatarStack',
+                              props: {
+                                size: 'xs',
+                                avatars: {
+                                  $: '[{ image: find(profileStore.profiles, { did: holder.did }).avatar, hash: holder.did, tone: holder.tone }]',
+                                },
+                              },
+                            },
+                            {
+                              type: 'we-text',
+                              props: {
+                                fontSize: '200',
+                                flex: '1',
+                                minWidth: '0',
+                                truncate: true,
+                                text: {
+                                  $: "holder.did == me.did ? find(profileStore.profiles, { did: holder.did }).name + ' (you)' : find(profileStore.profiles, { did: holder.did }).name",
+                                },
+                              },
+                            },
+                            {
+                              type: '$if',
+                              props: {
+                                // Anybody may take somebody off an assignment; only you may withdraw your own answer.
+                                condition: { $: '!holder.reflexive || holder.did == me.did' },
+                                then: {
+                                  type: 'we-tooltip',
+                                  props: {
+                                    content: { $: "holder.reflexive ? 'Withdraw your answer' : 'Take them off this'" },
+                                  },
+                                  children: [
+                                    {
+                                      type: 'we-button',
+                                      props: {
+                                        variant: 'ghost',
+                                        size: 'xs',
+                                        square: true,
+                                        label: {
+                                          $: "holder.reflexive ? 'Withdraw your answer' : 'Take them off this'",
+                                        },
+                                        onClick: {
+                                          $if: {
+                                            condition: { $: 'holder.reflexive' },
+                                            then: { $action: 'spaceStore.respondTo', args: [{ $: 'row.id' }, ''] },
+                                            else: {
+                                              $action: 'spaceStore.setInvolvement',
+                                              args: [{ $: 'row.id' }, { $: 'holder.did' }, { $: 'holder.kind' }, false],
+                                            },
+                                          },
+                                        },
+                                      },
+                                      children: [{ type: 'we-icon', props: { name: 'x', color: 'text-faint' } }],
+                                    },
+                                  ],
+                                },
+                              },
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+            {
+              type: '$if',
+              props: {
+                condition: { $: `!count(${ON_ROW}.people)` },
+                then: {
+                  type: 'we-text',
+                  props: {
+                    variant: 'footnote',
+                    color: 'text-faint',
+                    text: {
+                      $: "row.assignee ? `Nobody yet — the conversation named “${row.assignee}”.` : 'Nobody is on this yet.'",
+                    },
+                  },
+                },
+              },
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
+/**
+ * Where the selected record came from — extracted from the conversation, and on whose node, or added
+ * by somebody — and when.
+ *
+ * Straight under the title and the description, and not the last line of People: it is about the
+ * record, not about who is on it, and on a card it lives on the extracted mark for the same reason.
+ * Near the top because it is the context the rest of the panel is read in. A line joining two cards
+ * has no origin worth a sentence, so it is not asked.
+ */
+const originLine: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: `!(${IS_RELATIONSHIP})` },
+    then: {
+      type: 'Column',
+      children: [
+        {
+          type: '$agent',
+          props: { did: { $: 'row.author' }, as: 'author' },
+          children: [
+            /*
+              The glyph beside one run of text, which wraps at words.
+
+              It was three flex items in a wrapping row — the glyph, the whole sentence, the time — so
+              a narrow panel wrapped *items*: the sentence dropped under the glyph as one block, and
+              the time under that. One text holding the time inline lets the browser break between
+              words, and the glyph sits in a box one line tall so it centres on the first line
+              whatever the theme's type scale is.
+            */
+            {
+              type: 'Row',
+              props: { gap: '100', ay: 'start' },
+              children: [
+                {
+                  type: 'Row',
+                  props: { fontSize: '100', height: '1lh', ay: 'center', flexShrink: '0' },
+                  children: [
+                    {
+                      type: 'we-icon',
+                      props: {
+                        name: {
+                          $: "row.id in first(local.inspectedCall).extracted ? 'sparkle' : 'pencil-simple-line'",
+                        },
+                        size: 'xs',
+                        color: 'text-faint',
+                      },
+                    },
+                  ],
+                },
+                {
+                  type: 'we-text',
+                  props: { variant: 'footnote', color: 'text-faint', flex: '1', minWidth: '0' },
+                  children: [
+                    {
+                      $: "row.id in first(local.inspectedCall).extracted ? `Extracted from the conversation · run by ${author.name} · ` : `Added by ${author.did == me.did ? 'you' : author.name} · `",
+                    },
+                    { type: 'we-timestamp', props: { value: { $: 'row.createdAt' }, relative: true, fontSize: '100' } },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
+/** The connection section for whatever is selected — a card's connections, or a line's two ends. */
+const connectionsSection: SchemaNode = {
+  type: '$if',
+  props: { condition: { $: IS_RELATIONSHIP }, then: linkEnds, else: cardConnections },
+};
+
+/**
+ * One card, opened out — its type and its properties, beside the arrangement it is part of.
  *
  * ## Why a panel and not the record page
  *
- * There is a record page already, at `/record/:entity?id=`, and it is reachable from here: the host
- * appends it to every template's route table, self-routing ones included. It is the better surface
- * for reading one thing properly, and this links to it.
+ * There is a record page already, at `/record/:entity?id=`: the host appends it to every template's
+ * route table, self-routing ones included, and it is the better surface for reading one thing
+ * properly. A button here used to link to it and does not currently — see the note where it was.
  *
  * It is the wrong surface for the question a canvas asks. Navigating away to read a card loses the
  * arrangement the card is *in* — which is the whole reason the thing is on a canvas rather than in a
@@ -663,13 +1669,36 @@ const callChrome: SchemaNode = {
  * from the same place the create form gets them. A model adopted this morning renders here with
  * nothing written for it.
  *
- * Relations are deliberately absent for now. `displays` carries properties only, so "what this is
- * connected to" would mean reading `Relationship` records for the community-named half and leaving
- * the declared half silently missing — worse than not answering.
+ * ## What is set, and what is not
+ *
+ * Two lists out of one declaration. A field holding something is a row; a field holding nothing is
+ * behind a disclosure at the foot of the panel, as a *control*, so opening it is how something gets
+ * added rather than a longer list of blanks to read past. That split is why the panel does not grow
+ * a row per property the moment a model declares one, and why "add a due date" is reachable without
+ * first deciding to edit.
+ *
+ * A model that declares no fields has neither list, and that is the ordinary case rather than a
+ * degenerate one: a note is composed, so its content is a document and not a set of properties —
+ * see `composedContent`, and `CollectionBlock`'s own manifest entry for why it declares roles and
+ * no field list. Nothing here offers to name a sticky note.
+ *
+ * Relations — `comments`, `signals`, `mentions`, a collection's `children` — are in neither, and
+ * that is deliberate rather than an omission. `displayFor` lists them now, and they arrived here as
+ * captioned blank space: the panel's query hydrates no relation (an `include` names its relations
+ * literally, and this query's entity is an expression), so a relation reads as an empty list
+ * whatever it holds, and there is no picker to write one with either. A row that can neither show a
+ * value nor take one is a label with nothing behind it. Answering "what is this connected to"
+ * properly means hydrating the declared half and reading `Relationship` records for the
+ * community-named half, which is its own piece of work.
  */
 const inspectorPanel: SchemaNode = {
   type: 'Column',
   props: { width: '100%', height: '100%', p: '300', gap: '300', overflow: 'hidden' },
+  /*
+    Whether the fields are controls or values — the pencil in the header. Ephemeral and per panel:
+    it is a mode of looking, not a fact about the record, and it drops when the panel is rebuilt.
+  */
+  $localState: { editing: { type: 'boolean', initial: false } },
   $queries: {
     /*
       The record itself, by id. `limit: 1` because an id names one thing — the list is the shape a
@@ -684,21 +1713,184 @@ const inspectorPanel: SchemaNode = {
       entity: { $: 'routeStore.params.cardType' },
       where: { id: { $: 'routeStore.params.card' } },
       limit: 1,
+      /*
+        Not until there is an id to ask about — which is what kept the panel showing a record
+        nobody had selected.
+
+        An unresolved operand in `where` is *pruned*, and pruning means "do not narrow". For an
+        optional filter that is the right reading; for the id that says which record this is, it is
+        the worst one available: with `?cardType=TaskBlock` in the address and no `card` — a shared
+        link, or a selection cleared while the type lingered — the clause was dropped, `limit: 1`
+        answered with whichever task the backend returned first, and the inspector opened out a
+        card the canvas was not showing as selected. An untitled one read as "Untitled" in
+        heading type, which is what made it look like a panel failing rather than a panel
+        answering the wrong question.
+
+        `when` is the distinction the pruner cannot draw: the id is not an optional narrowing, it
+        is the whole query. Until it arrives there is nothing to ask, so nothing is asked and the
+        panel says what it says when nothing is selected.
+      */
+      when: { $: 'routeStore.params.card' },
     },
+    /*
+      The kinds of connection this community has named — see `relationshipKind`.
+
+      Unconditional rather than gated on the selection being a line. It is one subscription over a
+      list a space has a handful of, and `when`-ing it on the card's type would tear the
+      subscription down and set it up again on every click between a card and a line, to save
+      nothing. Hoisted here so the row below reads one answer rather than one per render.
+    */
+    relationshipKinds: { entity: 'RelationshipType', order: { name: 'asc' } },
+    /*
+      Every connection this card is at either end of — see `cardConnections`.
+
+      Gated on the selection being a card: a line's own connections are a different question, and
+      `link` below answers the one that matters for a line. Ordered by when each was made, which is
+      the one order the backend can give that stays still as connections are added.
+    */
+    connections: {
+      entity: 'Relationship',
+      where: { OR: [{ source: { $: CARD_ID } }, { target: { $: CARD_ID } }] },
+      include: { source: true, target: true },
+      order: { createdAt: 'asc' },
+      limit: 50,
+      when: { $: `${CARD_ID} && !(${IS_RELATIONSHIP})` },
+    },
+    /*
+      The selected line with its two ends hydrated — see `linkEnds`.
+
+      Its own query rather than an `include` on `card`, because `card` asks for whatever type is
+      selected and an `include` naming `source` on a task would name a relation tasks do not have.
+    */
+    link: {
+      entity: 'Relationship',
+      where: { id: { $: CARD_ID } },
+      include: { source: true, target: true },
+      limit: 1,
+      when: { $: `${CARD_ID} && ${IS_RELATIONSHIP}` },
+    },
+    /*
+      Who is on the selected record — see `peopleSection`. Space-wide, for the board's reason: an
+      involvement is not a child of anything. Not asked for a line, which has nobody on it.
+    */
+    involvements: { entity: 'Involvement', when: { $: `${CARD_ID} && !(${IS_RELATIONSHIP})` } },
+    // The call's own record, for which of its records a model proposed — see `peopleSection`.
+    inspectedCall: { entity: 'CollectionBlock', where: { id: CALL }, limit: 1, when: CALL },
   },
   children: [
-    panelHeader({ title: 'Inspector' }),
+    panelHeader({
+      title: 'Inspector',
+      /*
+        Unlock editing, in the header where a mode belongs. The inspector already shows every value
+        a record has, so it is the surface that edits them; a separate form would show the same
+        fields a second time. Offered only while a record is loaded and its model has a field worth
+        editing — a note's content is not one, and is edited where it is shown. Lit while it is on.
+      */
+      aside: {
+        type: 'Row',
+        props: { gap: '100', ay: 'center' },
+        children: [
+          {
+            type: '$if',
+            props: {
+              condition: { $: `count(local.card) && ${HAS_EDITABLE_FIELDS}` },
+              then: {
+                type: 'we-tooltip',
+                props: { content: { $: "local.editing ? 'Done editing' : 'Edit this record'" } },
+                children: [
+                  {
+                    type: 'we-button',
+                    props: {
+                      size: 'sm',
+                      square: true,
+                      variant: { $: "local.editing ? 'secondary' : 'ghost'" },
+                      onClick: { $toggleLocal: 'editing' },
+                    },
+                    children: [
+                      { type: 'we-icon', props: { name: { $: "local.editing ? 'check' : 'pencil-simple'" } } },
+                    ],
+                  },
+                ],
+              },
+            },
+          },
+          /*
+            Delete, beside the pencil — and the one control here that works for a *line*.
+
+            This panel is the only surface the canvas has that opens a card and a connection with the
+            same two locals, which is what makes it the right home for a delete that has to cover
+            both: a card already has a bin on its own bar, and a line had nowhere at all. Without one,
+            immediate connection (see `onEdgeCreate`) would make every mis-drop permanent — the
+            modal's Cancel was the only way out of a line drawn by accident, and it is gone.
+
+            No `edgeActions` to mirror the card's bar. A card is a box with a free top edge; a
+            selected line's whole length is already committed to the handles that bend it, and for a
+            straight two-point route the midpoint — where a bar would go — is exactly where the
+            "drag to bend the line here" grip sits. The symmetry is only ever an appearance.
+
+            Gated on the record being loaded rather than on it being editable: a `CollectionBlock` has
+            no field the generated editor will touch, so the pencil is hidden for a note, and a note
+            is certainly deletable.
+
+            `record.delete` rather than a store action, for `nodeActions`' reason — the host's own
+            confirmation stands in front of it, so a template arriving from a stranger does not get
+            to decide whether deleting asks first.
+          */
+          {
+            type: '$if',
+            props: {
+              condition: { $: 'count(local.card)' },
+              then: {
+                type: 'we-tooltip',
+                props: { content: 'Delete this record' },
+                children: [
+                  {
+                    type: 'we-button',
+                    props: {
+                      size: 'sm',
+                      square: true,
+                      variant: 'ghost',
+                      color: 'danger-text',
+                      label: 'Delete this record',
+                      /*
+                        No `onSuccess` clearing the address, and the reason is worth writing down.
+
+                        The obvious version clears `card`/`cardType` once the delete lands, so the
+                        panel is not left pointing at a record that is gone. It cannot: the host's
+                        guard wraps a destructive action as
+                        `(await guard(…)) ? bound(…) : undefined` — so **refusing the confirmation
+                        resolves**, exactly as accepting it does, and an `onSuccess` would fire on
+                        Cancel and empty the panel over a record nobody deleted.
+
+                        Nothing is needed anyway. The panel's `card` query is subscribed, so the
+                        delete empties it and the empty state takes over on its own; a cancel leaves
+                        everything where it was. The cost is a stale parameter in the URL, which the
+                        query's own `when` and `limit: 1` already answer honestly. `nodeActions`'
+                        delete makes the same non-choice, one surface along.
+                      */
+                      onClick: {
+                        $action: 'record.delete',
+                        args: [{ $: CARD_TYPE }, { $: 'routeStore.params.card' }],
+                      },
+                    },
+                    children: [{ type: 'we-icon', props: { name: 'trash' } }],
+                  },
+                ],
+              },
+            },
+          },
+        ],
+      },
+    }),
     {
       type: '$if',
       props: {
         condition: { $: 'count(local.card)' },
-        then: {
-          type: 'we-scroll-area',
-          props: { flex: '1', minHeight: '0' },
+        then: panelScroll({
           children: [
             {
               type: '$each',
-              props: { items: { $: 'local.card' }, as: 'record' },
+              props: { items: { $: 'local.card' }, as: 'row' },
               children: [
                 {
                   type: 'Column',
@@ -711,9 +1903,26 @@ const inspectorPanel: SchemaNode = {
                     expression written out six times.
                   */
                   $localState: {
-                    display: { type: 'object', initial: { $: 'recordStore.displays[routeStore.params.cardType]' } },
+                    display: { type: 'object', initial: { $: `recordStore.displays[${CARD_TYPE}]` } },
+                    /*
+                      Whether the empty fields are showing. Per record, because it is declared inside
+                      the `$each` — selecting another card closes it again, which is right: it was
+                      opened to add something to *this* one.
+                    */
+                    showEmpty: { type: 'boolean', initial: false },
+                    /** The composer, open on this note's own document — see `composedContent`. */
+                    noteOpen: { type: 'boolean', initial: false },
                   },
                   children: [
+                    /*
+                      What kind of thing this is — the same words and glyph the key uses.
+
+                      Through `kindLabel`/`kindIcon` rather than `local.display` directly, so the two
+                      panels sitting on the same edge cannot call one card two different things: a
+                      note is a "Note" in both. They also fall back to the model's own name where
+                      nothing has a display for it, which is what the panel showed instead of a blank
+                      strip for a `CollectionBlock` before one existed.
+                    */
                     {
                       type: 'Row',
                       props: { gap: '200', ay: 'center' },
@@ -721,129 +1930,184 @@ const inspectorPanel: SchemaNode = {
                         {
                           type: '$if',
                           props: {
-                            condition: { $: 'local.display.icon' },
+                            condition: { $: kindIcon(CARD_TYPE) },
                             then: {
                               type: 'we-icon',
-                              props: { name: { $: 'local.display.icon' }, color: 'accent-text' },
+                              props: { name: { $: kindIcon(CARD_TYPE) }, color: 'accent-text' },
                             },
                           },
                         },
                         {
+                          // `fontSize` rather than the `footnote` variant: this names what is
+                          // selected, and at 100 it read as a caption on the thing above it.
                           type: 'we-text',
-                          props: { variant: 'footnote', color: 'text-muted' },
-                          children: [{ $: 'local.display.label' }],
+                          props: { fontSize: '400', color: 'text-muted' },
+                          children: [{ $: kindLabel(CARD_TYPE) }],
                         },
                       ],
                     },
-                    {
-                      type: 'we-text',
-                      props: { variant: 'heading-sm' },
-                      children: [{ $: 'record[local.display.title]' }],
-                    },
+                    /*
+                      Reading, or editing — the same fields, as values or as controls.
+
+                      Editing draws the fields that hold something as controls by their kind and
+                      writes each change as it is committed; see `fieldEditor`. Reading is what was
+                      always here. A `$if` rather than a per-field toggle, so the two modes cannot
+                      be half on. Either way the *empty* fields are one disclosure below, shared by
+                      both — see `emptyFields`.
+                    */
                     {
                       type: '$if',
                       props: {
-                        condition: { $: 'local.display.summary' },
-                        then: {
-                          type: 'we-text',
-                          props: { color: 'text-muted' },
-                          children: [{ $: 'record[local.display.summary]' }],
-                        },
-                      },
-                    },
-                    /*
-                      Every field the model declares, drawn by its kind.
+                        condition: { $: 'local.editing' },
+                        then: fieldEditor({ $: CARD_TYPE }, { $: 'routeStore.params.card' }, SET_FIELDS),
+                        else: {
+                          type: 'Column',
+                          props: { gap: '300' },
+                          children: [
+                            {
+                              type: '$if',
+                              props: {
+                                condition: { $: 'row[local.display.title]' },
+                                then: {
+                                  type: 'we-text',
+                                  props: { variant: 'heading-sm' },
+                                  children: [{ $: 'row[local.display.title]' }],
+                                },
+                              },
+                            },
+                            /*
+                              No "Untitled". There was one here, in heading type, for a record with
+                              neither a name nor a document — on the argument that a record with no
+                              name otherwise reads as one still loading.
 
-                      The same switch the record page makes, and the same reason: `kind` is resolved
-                      once in the store so a template branches on one word rather than knowing what
-                      a property is. A date wants a timestamp, a boolean a badge, and everything else
-                      reads as text.
-                    */
-                    {
-                      type: '$each',
-                      props: { items: { $: 'local.display.fields' }, as: 'field' },
-                      children: [
-                        {
-                          type: '$if',
-                          props: {
-                            // A field with nothing in it is not worth a row: an empty label over
-                            // blank space reads as something failing to load.
-                            condition: { $: 'record[field.name]' },
-                            then: {
-                              type: 'Column',
-                              props: { gap: '050', py: '100', borderTop: '1px solid border' },
+                              That argument was answered before it was made: the kind strip above is
+                              unconditional, so a nameless card is already headed "Task" or "Note"
+                              and nothing about the panel looks unfinished. What the word added was
+                              a heading asserting the record is *called* something it is not, and
+                              naming it is one of the fields the disclosure below offers — so the
+                              panel was arguing with its own control.
+                            */
+                            composedContent,
+                            {
+                              type: '$if',
+                              props: {
+                                condition: { $: 'row[local.display.summary]' },
+                                then: {
+                                  type: 'we-text',
+                                  props: { color: 'text-muted' },
+                                  children: [{ $: 'row[local.display.summary]' }],
+                                },
+                              },
+                            },
+                            // Where it came from, straight under what it is — see `originLine`.
+                            originLine,
+                            /*
+                              What this record actually says, each drawn by its kind.
+
+                              The same switch the record page makes, and the same reason: `kind` is
+                              resolved once in the store so a template branches on one word rather
+                              than knowing what a property is. A date wants a timestamp, a boolean a
+                              badge, and everything else reads as text.
+
+                              The list is filtered rather than every field guarded row by row — see
+                              `SET_DETAILS`. A field with nothing in it is not a row here at all: an
+                              empty label over blank space reads as something failing to load, and
+                              the ones with nothing in them are offered as controls below.
+                            */
+                            {
+                              type: '$each',
+                              props: { items: { $: SET_DETAILS }, as: 'field' },
                               children: [
                                 {
-                                  type: 'we-text',
-                                  props: { variant: 'footnote', color: 'text-faint' },
-                                  children: [{ $: 'field.label' }],
-                                },
-                                {
-                                  type: '$if',
-                                  props: {
-                                    condition: { $: "field.kind == 'datetime' || field.kind == 'date'" },
-                                    then: {
-                                      type: 'we-timestamp',
-                                      props: { value: { $: 'record[field.name]' }, relative: true },
+                                  type: 'Column',
+                                  props: { gap: '050', py: '100', borderTop: '1px solid border' },
+                                  children: [
+                                    {
+                                      type: 'we-text',
+                                      props: { variant: 'footnote', color: 'text-faint' },
+                                      children: [{ $: 'field.label' }],
                                     },
-                                    else: {
+                                    {
                                       type: '$if',
                                       props: {
-                                        condition: { $: "field.kind == 'boolean'" },
+                                        condition: { $: "field.kind == 'datetime' || field.kind == 'date'" },
                                         then: {
-                                          type: 'we-badge',
-                                          props: { size: 'xs' },
-                                          children: [{ $: "record[field.name] ? 'Yes' : 'No'" }],
+                                          type: 'we-timestamp',
+                                          props: { value: { $: 'row[field.name]' }, relative: true },
                                         },
                                         else: {
-                                          type: 'we-text',
-                                          props: { variant: 'footnote' },
-                                          children: [{ $: 'record[field.name]' }],
+                                          type: '$if',
+                                          props: {
+                                            condition: { $: "field.kind == 'boolean'" },
+                                            then: {
+                                              type: 'we-badge',
+                                              props: { size: 'xs' },
+                                              children: [{ $: "row[field.name] ? 'Yes' : 'No'" }],
+                                            },
+                                            else: {
+                                              type: 'we-text',
+                                              props: { variant: 'footnote' },
+                                              children: [{ $: 'row[field.name]' }],
+                                            },
+                                          },
                                         },
                                       },
                                     },
-                                  },
+                                  ],
                                 },
                               ],
-                            },
-                          },
-                        },
-                      ],
-                    },
-                    /*
-                      The full record, for reading it properly.
-
-                      Absolute, from `spaceStore.spacePath`: this is a panel, so it is drawn outside
-                      the route tree and "wherever you are" is not something it can resolve against.
-                      The id rides in the query for the reason `CALL` does — it is a URI.
-                    */
-                    {
-                      type: 'we-button',
-                      props: {
-                        size: 'sm',
-                        variant: 'ghost',
-                        gap: '200',
-                        onClick: {
-                          $action: 'routeStore.navigate',
-                          args: [
-                            {
-                              $: '`${spaceStore.spacePath}/record/${routeStore.params.cardType}?id=${routeStore.params.card}`',
                             },
                           ],
                         },
                       },
-                      children: [
-                        { type: 'we-icon', props: { name: 'arrow-square-out' } },
-                        { type: 'we-text', props: { variant: 'footnote' }, children: ['Open full record'] },
-                      ],
                     },
+                    /*
+                      After the fields and before the disclosure, in both modes — which is where it
+                      belongs in each. Reading, it is one more detail row under the label and the
+                      description; editing, it is one more control under theirs. Above the
+                      disclosure because the disclosure is for what is *not* set, and this is.
+                    */
+                    relationshipKind,
+                    emptyFields,
+                    // After the record's own fields and before its connections: who is on this record
+                    // is about the record, and connections are about other records.
+                    peopleSection,
+                    // After the disclosure: that is about this record's own fields, and connections
+                    // are about other records.
+                    connectionsSection,
+                    /*
+                      No "Open full record". There was a ghost button here that navigated to
+                      `<space>/record/<type>?id=<id>` — the record page the host appends to every
+                      template's route table — and it did not arrive anywhere usable.
+
+                      Out until it does. A control that looks like every other control in the panel
+                      and does not work costs more than the reading it was offering: this panel's
+                      case for existing is that it opens a card *without* leaving the arrangement
+                      the card is in, so the link out was the convenience, not the feature. The
+                      panel docblock above still makes the argument, and the button comes back when
+                      the page it points at holds up.
+                    */
                   ],
                 },
               ],
             },
           ],
-        },
-        else: emptyState({ icon: 'cursor-click', label: 'a card selected' }),
+        }),
+        /*
+          A sentence, because `label` alone builds the wrong one.
+
+          `emptyState` composes its default from the label — "This space doesn't have any <label>."
+          — which is right for a plural noun naming what a list would have held, and this is not a
+          list. With `label: 'a card selected'` the panel read "This space doesn't have any a card
+          selected.", in the panel this template opens by default, on the first screen anybody sees
+          of it. The label stays as what a reader of the schema sees the panel is *for*; `message`
+          says the true thing on screen.
+        */
+        else: emptyState({
+          icon: 'cursor-click',
+          label: 'a card selected',
+          message: 'Click a card on the canvas to look inside it, or double-click the canvas to add one.',
+        }),
       },
     },
   ],
@@ -855,7 +2119,7 @@ const inspectorPanel: SchemaNode = {
  * The same list the `/calls` route draws, without the transcripts: choosing is a two-second act and
  * a panel that made you scroll past a meeting to reach the one below it would not be a switcher.
  *
- * Declared with no `route`, so it is reachable from the tasks list as well. Selection is a
+ * Declared with no `route`, so it is reachable from the kanban as well. Selection is a
  * *navigation* — `./canvas/<id>` — which is what makes it survive a reload and paste into a message.
  */
 const callsPanel: SchemaNode = {
@@ -883,13 +2147,12 @@ const callsPanel: SchemaNode = {
       type: '$if',
       props: {
         condition: { $: 'count(local.calls)' },
-        then: {
-          type: 'we-scroll-area',
-          props: { flex: '1', minHeight: '0' },
+        then: panelScroll({
           children: [
             {
+              // No gap: each row carries its own vertical padding now, so the rows meet flush and
+              // the selected fill reads as a band in a list rather than a chip floating in one.
               type: 'Column',
-              props: { gap: '100' },
               children: [
                 {
                   type: '$each',
@@ -899,7 +2162,21 @@ const callsPanel: SchemaNode = {
                       // Two verbs, side by side rather than nested: looking at a call and recording
                       // into it are different weights, and a button inside a button is not a thing.
                       type: 'Row',
-                      props: { width: '100%', ay: 'center', gap: '100' },
+                      props: {
+                        width: '100%',
+                        ay: 'center',
+                        gap: '100',
+                        /*
+                          The row knows whether the pointer is on it, so its trash can keep out of
+                          the way until it is wanted. Held by the row rather than the button, for the
+                          reason the transcript's pencil is: `hoverProps` answers for the element it
+                          is on, and there is no way to say "when my parent is hovered" in props.
+                        */
+                        onMouseEnter: { $setLocal: 'pointerOnRow', value: true },
+                        onMouseLeave: { $setLocal: 'pointerOnRow', value: false },
+                      },
+                      // Per row: `$localState` on a node inside `$each` is created per mount.
+                      $localState: { pointerOnRow: { type: 'boolean', initial: false } },
                       children: [
                         {
                           type: 'we-button',
@@ -908,6 +2185,17 @@ const callsPanel: SchemaNode = {
                             flex: '1',
                             ax: 'start',
                             gap: '200',
+                            /*
+                              Two lines — the name and when — and a button's size pins its height to
+                              the one-line control height, so the selected row's fill was shorter
+                              than its own label and the icon sat on the edge of it. `auto` lets the
+                              content set the height; the vertical padding is what the fill then
+                              keeps clear above and below it. Horizontal matches it: a list row in
+                              a `sm` panel, not a standalone control, and the icon is its own inset.
+                            */
+                            height: 'auto',
+                            py: '200',
+                            px: '200',
                             /*
                               The whole of choosing: the id goes in the address, and every surface
                               follows. Nothing is joined, claimed or written.
@@ -991,6 +2279,28 @@ const callsPanel: SchemaNode = {
                                 color: 'text-faint',
                                 hoverProps: { color: 'danger-text' },
                                 /*
+                                  Out of the way until the row is pointed at, and always there on
+                                  the selected row.
+
+                                  A trash can on every row is furniture on the ordinary case, which
+                                  is choosing a call — and thirty of them in a column read as a
+                                  warning rather than an affordance. Faded rather than unmounted, so
+                                  the row keeps its width as the pointer crosses it and the button
+                                  keeps its place in the tab order.
+
+                                  The selected row keeps its visible because hovering is not a thing
+                                  on a touchscreen: choose a call, then delete it is a path that
+                                  works everywhere, and one trash can beside the row that is lit
+                                  reads as belonging to it rather than as repetition.
+
+                                  `focusProps` is the half that stops this being a mouse-only
+                                  affordance: it fires on `:focus-visible`, so tabbing to the button
+                                  brings it back even though nothing is hovering the row.
+                                */
+                                opacity: { $: `local.pointerOnRow || call.id == (${CALL_EXPR}) ? 1 : 0` },
+                                focusProps: { opacity: 1 },
+                                transition: 'opacity 200 ease-in-out',
+                                /*
                                   No `confirmModal`: the host raises its own in front of every
                                   destructive store action, and a panel is guarded like any other
                                   part of the template. Grants — and the guard with them — follow
@@ -1024,7 +2334,7 @@ const callsPanel: SchemaNode = {
               ],
             },
           ],
-        },
+        }),
         else: emptyState({ icon: 'archive', label: 'recorded calls' }),
       },
     },
@@ -1088,35 +2398,53 @@ const canvas: SchemaNode = {
     nodeStyle: [
       {
         /*
-          Roles, not scale positions — which is why these were all but black in a dark theme.
+          Plain, and a role rather than a scale position.
 
           `primary-50` is a step on a ramp, and the ramp flips with the theme's polarity: the pale
           tint it names in a light theme is a near-black in a dark one, and there is no number that
-          is right in both. A role is the thing a theme redefines, and these three are the tinted
-          panels the design system already maintains for exactly this — legible in either polarity,
-          with a foreground that is corrected against them.
+          is right in both. A role is the thing a theme redefines, and the tinted panels the key
+          draws with are the ones the design system already maintains for exactly this — legible in
+          either polarity, with a foreground corrected against them.
 
-          The canvas's own per-type colours and each card's own colour still override these, and both
-          are palettes rather than meanings, so a scale position stays right there.
+          `PLAIN_FILL` is what a card is when nothing colours it — which, with both lenses off and
+          no colour of its own, is the honest answer; see `WorkshopKey` for why it is a neutral step.
+          The per-kind tints that used to sit here are the kind lens's defaults now, in
+          `KIND_DEFAULTS`, so the key can show them beside each name.
+
+          It is the floor rather than the last word: the first rule `lensNodeRules` contributes is
+          the community's own plain colour, which is this one where nobody has chosen another.
         */
         style: {
           shape: 'card',
           width: 180,
-          content: 'block',
+          // `record` rather than `block`: a note draws its document either way, and a task, an event
+          // or a community's own model draws what kind of thing it is and every value it holds,
+          // where `block` drew only its name — a canvas beside a live call is read card by card.
+          content: 'record',
           contentMinZoom: 0.5,
-          color: 'surface',
-          labelColor: 'text',
+          color: PLAIN_FILL,
+          // No `labelColor`: left unset, the graph inks a card black or white by the lightness of
+          // its fill, which is the only answer that survives a post-it in a dark theme.
         },
       },
-      { when: { type: 'TaskBlock' }, style: { color: 'accent-muted', labelColor: 'text' } },
-      { when: { type: 'EventBlock' }, style: { color: 'warning-surface', labelColor: 'text' } },
-      // The card's own presentation, in front of the rules above — a size and colour somebody chose
-      // is a fact about the card, where the rules are this template's opinion about a kind.
+      /*
+        The key: by kind, by state, or the card's own colour, read from the address and the space —
+        see `WorkshopKey`. Rules built from data, in the place static ones would go, so the graph's
+        cascade is unchanged: what is on contributes, what is off contributes nothing.
+      */
+      ...lensNodeRules(),
+      // The card's own size, always — a box somebody dragged out is a fact about the card whatever
+      // lens is on. Its colour is above, where the lenses decide whether it shows.
       {
         style: {
           width: { from: 'data.canvasWidth' },
           height: { from: 'data.canvasHeight' },
-          color: { from: 'data.canvasColor' },
+          // The card's own outline and how large its content is drawn — set from its header, kept
+          // on its placement, and shown whatever lens is on: neither is a colour.
+          cardShape: { from: 'data.canvasCardShape' },
+          contentScale: { from: 'data.canvasContentScale' },
+          // Which card is in front where two overlap — a fact about the arrangement, like its size.
+          z: { from: 'data.canvasZ' },
         },
       },
       /*
@@ -1145,15 +2473,35 @@ const canvas: SchemaNode = {
       is unchanged.
     */
     behaviours: [
+      // The two halves of a double-click: on a note it opens, on empty canvas it asks what to make.
+      'node-double-click',
+      'canvas-double-click',
       'select',
       { type: 'drag-node', options: { pin: true } },
       // Last, because it is the background fallback — listed earlier it claims the press `select`
       // needs to see, and clicking empty canvas silently stops clearing the selection.
       'pan-zoom',
     ],
-    edgeStyle: [{ style: { curve: 'smooth', arrow: 'target', width: 2, showLabel: true } }],
+    /*
+      The lines, in the colour the community set — the key's third canvas row.
+
+      `LINK_FILL` answers the graph's own default where nobody has chosen anything, so a canvas
+      nobody has touched is unchanged. The arrowhead follows the line: the renderer emits a head per
+      colour actually asked for, since an SVG marker paints in its own right rather than inheriting
+      from the path that references it.
+    */
+    edgeStyle: [{ style: { curve: 'smooth', arrow: 'target', width: 2, showLabel: true, color: { $: LINK_FILL } } }],
     controls: ['zoom-in', 'zoom-out', 'fit', 'lock'],
     height: '100%',
+    /*
+      The ground the cards sit on, as the community set it — the key's second row.
+
+      The graph's own default is the `page` role, which is what this answers with when nobody has
+      chosen anything, so a canvas nobody has touched is unchanged. A CSS value rather than a token
+      name because that is what the picker emits and what the graph's `color()` passes through
+      untouched; `CANVAS_FILL` spells its fallback the same way for the same reason.
+    */
+    bg: { $: CANVAS_FILL },
     /*
       The canvas's own words for an empty canvas, in the canvas.
 
@@ -1161,10 +2509,22 @@ const canvas: SchemaNode = {
       call to be about, and a call that has not produced anything yet. The generic
       "Nothing to show yet." is right for a graph whose host has no opinion and wrong here, where
       there is something to do about it.
+
+      `CALL_EXPR` parenthesised, because it is a ternary itself and a ternary binds to the right:
+      pasted in bare, a chosen call short-circuited the whole thing and the canvas "said" the call's
+      `ad4m://` id. And naming both ways a card arrives, because a past call is read here too — one
+      whose conversation is over, where "as the conversation produces them" is only half the answer.
     */
     empty: {
-      $: `${CALL_EXPR} ? 'Nothing from this call yet. Tasks and events appear here as the conversation produces them — drag them into an arrangement and join them up.' : 'Start a call. What the conversation produces appears here as cards you can move and join up.'`,
+      $: `(${CALL_EXPR}) ? 'Nothing on this canvas yet. Double-click anywhere to add a card, or give extraction a moment — what the conversation commits to appears here on its own.' : 'Start or choose a call. What it produces appears here as cards you can move and join up.'`,
     },
+    /*
+      And drawn as an invitation, which is what both of those sentences are — the same gradient the
+      other two routes' gates carry, so the three pages of this template answer an empty address in
+      one voice. Neither state is a dead end: one is waiting for a call to be started or chosen, the
+      other for the conversation to produce something.
+    */
+    emptyGradient: 'primary',
     /*
       The graph's own status strip, on.
 
@@ -1174,9 +2534,52 @@ const canvas: SchemaNode = {
       that produced nothing, which is exactly the state this template spent three sittings in.
     */
     showStatus: true,
-    // Connecting two records means the same thing wherever the line was drawn, so it goes through
-    // the same store call the knowledge map makes and ends in the same form.
-    onEdgeCreate: { $action: 'recordStore.connectNodes', args: [{ $: 'event' }] },
+    /*
+      The selection, followed — so the canvas agrees with the inspector about what is open.
+
+      A click on the canvas writes `card`; so does a row in the inspector's connections, a line just
+      drawn, and a link somebody sent. Before this only the first moved the canvas, so the panel could
+      open a card while the canvas went on ringing a different one somewhere off screen. Bound to the
+      address rather than to `local.inspecting` because the panel writes the address and cannot reach
+      the local — see `openRecord`.
+
+      Safe to bind to the value a click just wrote: the graph leaves an already-selected card alone
+      and only moves the camera for something out of view, so clicking a card you can see does
+      nothing more than it did. A record not on this canvas clears the selection rather than leaving
+      the last one lit.
+    */
+    focus: { $: 'routeStore.params.card' },
+    /*
+      The line, drawn — and written on the spot, with nothing filled in.
+
+      `connectNodesNow` rather than `connectNodes`, which is the knowledge map's answer and stays it:
+      there, a claim two things are related is what the map is *for*, and the form is where somebody
+      says what they mean by it. Here the arrangement is the work. Drawing the line **is** the
+      assertion, and a modal per line is a mode change in the middle of a spatial gesture — on the one
+      surface where every other gesture writes silently, `onEdgeRetarget` included, which changes what
+      an existing line *says* with no dialog at all. Asking on the cheaper act and not on the dearer
+      one is the wrong way round.
+
+      Nothing is deferred that was ever enforced: the form saved with both fields empty, so an
+      unlabelled connection was always reachable and this only stops charging a modal for it. The
+      words are added where the line is read — click it, and the inspector has its label, its
+      description and the community's kinds.
+
+      Which is why the `onSuccess` matters as much as the call. A line that appears with nothing
+      selected teaches nobody that it is a record with an author and a thread; opening the inspector
+      on it puts the fields in front of the person who just drew it, in the same beat. Empty on a
+      failure, which clears the panel rather than leaving the last card in it — the same honesty
+      `onEdgeClick` keeps for a line with nothing behind it. And through `focus` below, the line is
+      selected on the canvas too, as soon as the canvas has re-read and drawn it.
+    */
+    onEdgeCreate: {
+      $action: 'recordStore.connectNodesNow',
+      args: [{ $: 'event' }],
+      onSuccess: [
+        { $setLocal: 'inspecting', value: { $: 'result' } },
+        { $setLocal: 'inspectingType', value: { $: "result ? 'Relationship' : ''" } },
+      ],
+    },
     /*
       The drop, written back — an upsert against the *canvas* rather than an update of the record.
 
@@ -1227,6 +2630,26 @@ const canvas: SchemaNode = {
       { $setLocal: 'inspectingType', value: { $: 'event.recordType' } },
     ],
     /*
+      Double-click opens a note in the composer. The first click has already selected it, so the
+      modal reads the selection — see `editNoteModal`. A record that is not a note has no document
+      to compose; its fields are in the inspector, where the pencil unlocks them.
+    */
+    onNodeDoubleClick: {
+      $if: {
+        condition: { $: "event.recordType == 'CollectionBlock'" },
+        then: { $setLocal: 'noteOpen', value: true },
+      },
+    },
+    // Double-click empty canvas to make something there — see `newThingChooser`.
+    onCanvasDoubleClick: askWhatGoesHere,
+    /*
+      Something dragged in from the Pocket, or from anywhere else, lands where it was dropped.
+
+      A placement is the canvas's membership, so the store's one action is enough — and it refuses
+      a record from another space, which this canvas could not draw, with a sentence saying so.
+    */
+    onDrop: { $action: 'recordStore.dropOnCanvas', args: [CALL, { $: 'event' }] },
+    /*
       A line is a record here too, so clicking one inspects it.
 
       The canvas draws its connections from `Relationship`, a reified entity — which means each line
@@ -1240,6 +2663,30 @@ const canvas: SchemaNode = {
       { $setLocal: 'inspecting', value: { $: 'event.recordId' } },
       { $setLocal: 'inspectingType', value: { $: 'event.recordType' } },
     ],
+    /*
+      Delete, on whatever is selected — a card or a line, the same key for both.
+
+      An accelerator, not the only path: a card's own bar carries a bin (see `nodeActions`), and the
+      inspector carries one for whichever of the two is open. A key that was the sole way to remove
+      something would be a way nobody discovers. What it buys is the case where reaching for either
+      of those is disproportionate — tidying up a canvas, where the answer to "this line is wrong" is
+      wanted in the same beat as noticing it.
+
+      Guarded on `event.recordId`, which the graph fills only for a selection of exactly one record.
+      That is the whole of the multi-select story here and it is deliberately small: `record.delete`
+      raises the host's own confirmation, so firing it per member of a selection would stack a dialog
+      per card. A batch confirmation is a thing to design rather than to arrive at by looping.
+
+      Through `record.delete` for `nodeActions`' reason — it is guarded by the host, so a keystroke
+      asks before it destroys anything. Which is also what makes the key safe to offer at all: there
+      is no undo behind it.
+    */
+    onDeleteSelection: {
+      $if: {
+        condition: { $: 'event.recordId' },
+        then: { $action: 'record.delete', args: [{ $: 'event.recordType' }, { $: 'event.recordId' }] },
+      },
+    },
     /*
       Clearing on a background click, and only then.
 
@@ -1285,6 +2732,36 @@ const canvas: SchemaNode = {
     nodeActions: [
       { id: 'accept', icon: 'check', title: 'Keep this', when: { 'data.pending': true }, tone: 'positive' },
       { id: 'reject', icon: 'x', title: 'Discard this', when: { 'data.pending': true }, tone: 'danger' },
+      /*
+        How this card looks, on the card — colour, shape, and how large its content is drawn.
+
+        Presentation per placement, and it lives in the header with the other things you do *to* a
+        card rather than in the inspector, which is about what the record says. Host controls named
+        by `control`, so this stays JSON; each reads its value off the placement's data and reports
+        through `onNodeAction` with a `value`. Not on a suggestion: a card nobody has agreed to
+        offers the decision and nothing else.
+      */
+      {
+        id: 'color',
+        control: 'color',
+        title: 'Colour',
+        value: { from: 'data.canvasColor' },
+        when: { 'data.pending': { exists: false } },
+      },
+      {
+        id: 'cardShape',
+        control: 'shape',
+        title: 'Shape',
+        value: { from: 'data.canvasCardShape' },
+        when: { 'data.pending': { exists: false } },
+      },
+      {
+        id: 'contentScale',
+        control: 'scale',
+        title: 'Content size',
+        value: { from: 'data.canvasContentScale' },
+        when: { 'data.pending': { exists: false } },
+      },
       {
         id: 'delete',
         icon: 'trash',
@@ -1320,7 +2797,68 @@ const canvas: SchemaNode = {
           then: { $action: 'record.delete', args: [{ $: 'event.recordType' }, { $: 'event.recordId' }] },
         },
       },
+      /*
+        The three presentation controls, through one action that takes the field name — the action's
+        id IS the placement field. A moving control previews without writing, so a slider shows its
+        result before the drag ends and the card never jumps; a settled one writes.
+      */
+      {
+        $if: {
+          condition: { $: "event.action in ['color', 'cardShape', 'contentScale'] && event.preview" },
+          then: {
+            $action: 'recordStore.previewCardStyle',
+            args: [{ $: 'event.recordId' }, { $: 'event.action' }, { $: 'event.value' }],
+          },
+        },
+      },
+      {
+        $if: {
+          condition: { $: "event.action in ['color', 'cardShape', 'contentScale'] && !event.preview" },
+          then: {
+            $action: 'recordStore.setCardStyle',
+            args: [CALL, { $: 'event.recordId' }, { $: 'event.action' }, { $: 'event.value' }],
+          },
+        },
+      },
+      /*
+        Picking a colour turns the lenses off.
+
+        A card's own colour is hidden while a lens is on, so a picker whose result stayed invisible
+        would read as broken. Choosing one is a statement that this card's colour matters more than
+        the reading right now; the key is one click away for whoever wants the reading back.
+      */
+      {
+        $if: {
+          condition: { $: `event.action == 'color' && !event.preview && !(${NO_LENS})` },
+          then: { $action: 'routeStore.setParam', args: [LENS_PARAM, 'none'] },
+        },
+      },
     ],
+  },
+  /*
+    The way in, under the canvas's own sentence.
+
+    This is the landing route, so it is the screen on which "there is no call yet" is most often
+    read — and until now the only door out of it was a button in the corner and a panel somebody can
+    close. The other two routes put one under their gate; the canvas could not, because its
+    placeholder is drawn by `GraphView` from a string rather than by a node this template owns.
+
+    A slot is how a node hands a component something rendered: the renderer resolves it and spreads
+    it onto the component's props, so the button lands *inside* the graph's own centred box. Which is
+    the point — it stays under the sentence at every size, through every panel opening and closing,
+    with nothing here positioning anything. A button floated over the canvas would have to be lined
+    up against a box it cannot measure, and would be the second thing over the canvas besides.
+
+    Gated, because that box answers two questions. `empty` says one sentence when there is no call
+    and another when a call has produced nothing yet, and only the first is an invitation to start
+    one — offering a new call to somebody already reading one is answering a question they did not
+    ask. The same condition the other two routes gate their gates on, so all three agree.
+  */
+  slots: {
+    emptyAction: {
+      type: '$if',
+      props: { condition: { $: `!(${CALL_EXPR})` }, then: startCallButton('md') },
+    },
   },
 };
 
@@ -1355,7 +2893,17 @@ const canvasBody: Omit<RouteSchema, 'path'> = {
   $localState: {
     inspecting: { type: 'string', initial: '', syncParam: 'card' },
     inspectingType: { type: 'string', initial: '', syncParam: 'cardType' },
+    // Making things and opening notes — see `WorkshopCards`.
+    ...CARD_LOCALS,
   },
+  /*
+    The space's key, which the canvas builds its colour rules from — see `lensNodeRules`.
+
+    On the route rather than the template root: local scope resets at a route boundary, since each
+    route is rendered through its own pass with nothing inherited, so a query hoisted to the root
+    would validate and then resolve to nothing here. Each of the three pages declares its own.
+  */
+  $queries: { typeStyles: TYPE_STYLES_QUERY },
   /*
     The canvas itself, always — never a placeholder standing in front of it.
 
@@ -1389,6 +2937,10 @@ const canvasBody: Omit<RouteSchema, 'path'> = {
       the entity it draws connections from, so a new `Relationship` arrives on its own.
     */
     recordFormModal(),
+    // What goes here, a new note, and the selected note opened — see `WorkshopCards`.
+    newThingChooser(CALL),
+    newNoteModal(CALL),
+    editNoteModal,
   ],
 };
 
@@ -1418,24 +2970,34 @@ const canvasRoute: RouteSchema = { path: '/canvas', ...canvasBody };
  * What a route shows when it has nothing to be about.
  *
  * Two situations, and they are not the same one: nobody has chosen a call, or this call has not been
- * given whatever the page draws. Each says its own sentence, and only the second offers an action —
- * so the icon is gradient where there is something to do and flat where there is not, since a dead
- * end that looks like an invitation is worse than one that looks like a dead end.
+ * given whatever the page draws. Each says its own sentence, and only the second offers a button.
+ *
+ * Neither is a dead end, which is why the icon is gradient in both. The usual rule — gradient where
+ * there is something to do, flat where there is not — turns on whether the reader can get out of the
+ * state, not on whether this page happens to carry the control: a call is chosen in the calls panel,
+ * from every route, so "choose a call" is an invitation with its affordance one panel away rather
+ * than a wall. Drawn flat it read as a failure, on the one screen every reader of this template sees
+ * first.
+ *
+ * `flex: '1'` is what centres it. The gate is the whole page when it shows, so it takes the height
+ * the route was given and sits in the middle of it — a placeholder pinned under the nav pill with a
+ * screen of nothing below reads as content that failed to load. Every box between here and the root
+ * passes the height down the same way; see the routes.
  *
  * Distinct from `emptyState`, which is the answer to "this list is empty": that sentence is about
  * content, this one is about the *address*, and a page with no subject has not asked a question yet.
- * Both routes that hang off a call need it — the tasks list, and now the calendar — so the icon is a
+ * Both routes that hang off a call need it — the kanban, and now the calendar — so the icon is a
  * parameter and the shape is shared. Kept local to this template rather than lifted into the kit: it
  * has two callers in one file, and the extraction threshold is three.
  */
 function callGate(icon: string, message: string, action?: SchemaNode): SchemaNode {
   return {
     type: 'Column',
-    props: { width: '100%', ax: 'center', ay: 'center', gap: '400', p: '600' },
+    props: { width: '100%', flex: '1', ax: 'center', ay: 'center', gap: '400', p: '600' },
     children: [
       {
         type: 'we-icon',
-        props: { name: icon, size: 'xl', ...(action ? { gradient: 'primary' } : { color: 'text-faint' }) },
+        props: { name: icon, size: 'xl', gradient: 'primary' },
       },
       {
         type: 'we-text',
@@ -1447,14 +3009,98 @@ function callGate(icon: string, message: string, action?: SchemaNode): SchemaNod
   };
 }
 
-const tasksRoute: RouteSchema = {
-  path: '/tasks',
+/**
+ * Room for the nav pill above the content, and room to breathe below it.
+ *
+ * On the branch that draws content, and not on the route, which is what makes the three pages line
+ * up. A gate centres itself in the box it is given, so vertical padding on the route moved its
+ * midpoint down by half the difference between the two — 16px, against a canvas whose placeholder
+ * centres in the whole route because the canvas has no padding to speak of. Small enough to look
+ * like nothing in a screenshot and exactly big enough to read as a jump when somebody clicks
+ * between Canvas, Kanban and Calendar.
+ *
+ * Horizontal padding stays on the route, where it applies to both branches: it shifts nothing
+ * vertically, and outside the measure column is where it belongs, so the content is the full
+ * measure wide rather than the measure less its gutters.
+ *
+ * The top is the bar's own bottom edge plus a gap, not a token that comes close to it. It was
+ * `pt: '900'` — 64px, against pills that end at 68 — so the kanban's first column and the calendar's
+ * month header both started *under* the chrome they were meant to clear, by four pixels and by more
+ * under a theme that adds to control heights. See `CHROME_BOTTOM`, which is where that arithmetic
+ * now lives.
+ *
+ * The gap over it is `500` rather than the `300` `chromeReserve` adds for panels, and the difference
+ * is deliberate. A panel snapped to the top is a floating card with an edge and a shadow of its own,
+ * and twelve pixels of daylight reads as one object clearing another; a route's content *is* the
+ * page, so at the same distance the kanban's first column and the calendar's month header looked
+ * tucked under the pills rather than starting below them. Content wants more room from chrome than
+ * chrome wants from chrome.
+ */
+const ROUTE_BAND = { pt: `calc(${CHROME_BOTTOM} + var(--we-space-500))`, pb: '600' } as const;
+
+const kanbanRoute: RouteSchema = {
+  path: '/kanban',
   type: 'Column',
-  props: { width: '100%', minHeight: '100%', ax: 'center', px: '400', pt: '900', pb: '600' },
+  /*
+    A press anywhere on the page lets go of the selected card — unless it was a press on a card.
+
+    A press on a card reaches here too, after the card has selected itself, so the card marks the
+    press as its own and this reads the mark rather than second-guessing the event. The inspector is a
+    panel outside this tree, so working in it never deselects what it is showing.
+
+    Both parameters, not only the card. A type left behind with no card is the state that once opened
+    an arbitrary task in the inspector — see the `when` on its query — and a selection that is gone
+    should leave nothing to be misread.
+  */
+  $localState: { pressedCard: { type: 'boolean', initial: false } },
+  props: {
+    width: '100%',
+    minHeight: '100%',
+    ax: 'center',
+    px: '400',
+    onClick: [
+      {
+        $if: {
+          condition: { $: 'local.pressedCard' },
+          then: { $setLocal: 'pressedCard', value: false },
+          else: {
+            $if: {
+              condition: { $: 'routeStore.params.card' },
+              then: [
+                { $action: 'routeStore.setParam', args: ['card', null] },
+                { $action: 'routeStore.setParam', args: ['cardType', null] },
+              ],
+            },
+          },
+        },
+      },
+    ],
+  },
   children: [
     {
       type: 'Column',
-      props: { width: '100%', maxWidth: 'var(--we-layout-lg)', gap: '400' },
+      /*
+        `flex: '1'`, so the measure column is as tall as the route rather than as tall as what is in
+        it. It costs the board nothing — a Column's children stack from the top whatever height the
+        box has — and it is the link that lets `callGate` centre itself, which it cannot do inside a
+        box that shrink-wraps an icon and a sentence.
+
+        And no `maxWidth`, which is the one place this route parts company with the calendar beside
+        it. A measure is for prose and for grids that reflow: cap them and a wide window gets a
+        comfortable column instead of a stretched one. A board does neither. Its columns are a fixed
+        300px each by design — a kanban column is a fixed width everywhere it appears, and a column
+        that grew to a sixth of a 2560px screen would be a card gallery, not a column — so the cap
+        was not deciding how wide a column is, only how many of them fit. `var(--we-layout-lg)` is
+        1200px, which is three columns and the edge of a fourth, on a screen with room for six; the
+        rest were reachable only through the board's own horizontal scroll, with the space they
+        wanted sitting empty on either side of the page.
+
+        So the board takes the width the route was given and `overflowX` on its own row stays the
+        answer for the case that actually needs it — more columns than any screen holds. `px` on the
+        route still keeps it off the window edges, and the gate inside centres itself whatever the
+        box is, so the empty state is unchanged.
+      */
+      props: { width: '100%', flex: '1', gap: '400' },
       children: [
         {
           type: '$if',
@@ -1479,7 +3125,13 @@ const tasksRoute: RouteSchema = {
             condition: CALL,
             then: {
               type: 'Column',
-              props: { width: '100%', gap: '400' },
+              /*
+                `flex: '1'` and no `ROUTE_BAND`, for the same reason as the route above: the "no board
+                yet" gate below centres in this box, and it should land exactly where the "no call"
+                gate does. The band goes on the branches that draw from the top — the board and its
+                spinner.
+              */
+              props: { width: '100%', flex: '1' },
               /*
                 Which board this call calls its own, if any — its `board` relation rather than "the
                 first board parented to it". A call may hold several; one of them is the one
@@ -1495,21 +3147,87 @@ const tasksRoute: RouteSchema = {
                   type: '$if',
                   props: {
                     condition: { $: 'first(local.callRow).board.id' },
-                    then: taskBoard({
-                      // The call's own board, which gathers from the call — a fact the board carries,
-                      // so nothing here has to say so.
-                      boardId: { $: 'first(local.callRow).board.id' },
-                      // Who ran the pass that wrote it — the provenance question this template is
-                      // built around, and the reason its cards carry a byline where a space's board
-                      // does not.
-                      byline: true,
-                      empty: emptyState({
-                        icon: 'check-square',
-                        label: 'work',
-                        message:
-                          'Nothing from this call yet. Cards appear here as the conversation commits to things — or add one to a column.',
-                      }),
-                    }),
+                    then: {
+                      type: 'Column',
+                      props: { width: '100%', ...ROUTE_BAND },
+                      children: [
+                        taskBoard({
+                          // The call's own board, which gathers from the call — a fact the board carries,
+                          // so nothing here has to say so.
+                          boardId: { $: 'first(local.callRow).board.id' },
+                          /*
+                            No `bg`, so a card is `surface` — and the key's lenses stop at the canvas.
+
+                            This route used to pass `recordFill`, on the argument that three pages about
+                            one call should never disagree about what a colour means. The argument was
+                            sound and its premise was not: neither lens says anything here.
+
+                            **Kind** is a *constant* on a board. `recordFill` takes the kind as a literal
+                            and a board holds only tasks, so the expression answered the same colour for
+                            every card on the page — a tint over the whole board rather than a key, and
+                            the default lens besides, so this is what the route looked like out of the
+                            box. **State** is the column: a bound column IS its state, so colouring by it
+                            restates the heading in a second alphabet. Its residual case — a lane and the
+                            Unplaced column, where the column says nothing — is real and is not worth a
+                            mechanism, since the card already carries a state badge there (`showState`).
+
+                            A card somebody coloured on the canvas loses that colour here, which is the
+                            one thing given up. It was already invisible: `recordFill` read the freeform
+                            colour only with both lenses off, and the lens defaults to kind. Nothing on
+                            screen changes for a reader who never touched the key.
+
+                            If per-card colour is wanted on a board later it needs a picker *here* —
+                            colouring is a `nodeActions` affordance on a graph node, so a card that never
+                            reached the canvas has no placement and no way to be given one. That is the
+                            work, not this expression.
+                          */
+                          /*
+                        Which cards a model proposed from the conversation — the provenance question
+                        this template is built around. A mark on the card and a line in its people
+                        hovercard, rather than the author's name in heading type: on an extracted task
+                        the author is whichever member's node ran the pass, not who proposed the work.
+                        The call's own `extracted` relation says which, and arrives as ids on the row.
+                      */
+                          extracted: 'card.id in first(local.callRow).extracted',
+                          /*
+                            And who is doing it — the other half of the same question. A call commits
+                            people to things as often as it commits to things, and a board that could
+                            only say what was agreed and not by whom was half an answer. The filter above
+                            it rides in `?who=` beside `?call=`, so a link to this page can be "what Ana
+                            took on in this call".
+                          */
+                          people: true,
+                          /*
+                            Pressing a card selects it, the way pressing one on the canvas does: the
+                            same two parameters, so the inspector opens it and the canvas focuses it if
+                            you go there. Editing is the inspector's — its pencil unlocks the fields —
+                            rather than a second editor on the card.
+
+                            A press only ever selects. It used to let go of a card already selected, and
+                            a press on the faces or the move menu is a press on the card too, so opening
+                            either deselected the card behind the menu. Letting go is a press anywhere
+                            else on the page — see `pressedCard` on the route.
+
+                            The type first, and only then the card, so the inspector's query never asks
+                            about a card under the wrong type for the instant between the two writes.
+                          */
+                          select: {
+                            selected: 'routeStore.params.card',
+                            onSelect: [
+                              { $setLocal: 'pressedCard', value: true },
+                              { $action: 'routeStore.setParam', args: ['cardType', 'TaskBlock'] },
+                              { $action: 'routeStore.setParam', args: ['card', { $: 'card.id' }] },
+                            ],
+                          },
+                          empty: emptyState({
+                            icon: 'check-square',
+                            label: 'work',
+                            message:
+                              'Nothing from this call yet. Cards appear here as the conversation commits to things — or add one to a column.',
+                          }),
+                        }),
+                      ],
+                    },
                     /*
                       "No board yet" is an answer, and it is only given once the call record has
                       answered. Before that the same spinner the board itself shows holds the place,
@@ -1522,20 +3240,147 @@ const tasksRoute: RouteSchema = {
                         then: callGate(
                           'kanban',
                           'This call has no board yet. Making one arranges the work it produced — it never moves anything.',
+                          // Dressed like `startCallButton('md')`, the control the other gate carries.
                           {
                             type: 'we-button',
-                            props: { onClick: { $action: 'spaceStore.openBoardFor', args: [CALL, 'This call'] } },
-                            children: ['Make a board for this call'],
+                            props: {
+                              gap: '200',
+                              mt: '400',
+                              onClick: { $action: 'spaceStore.openBoardFor', args: [CALL, 'This call'] },
+                            },
+                            children: [{ type: 'we-icon', props: { name: 'kanban' } }, 'Make a board for this call'],
                           },
                         ),
-                        else: taskBoardLoading,
+                        else: { type: 'Column', props: { width: '100%', ...ROUTE_BAND }, children: [taskBoardLoading] },
                       },
                     },
                   },
                 },
               ],
             },
-            else: callGate('kanban', 'Choose a call to see the work it produced.'),
+            else: callGate(
+              'kanban',
+              'Start or choose a call. The work it commits to appears here as cards on a board.',
+              startCallButton('md'),
+            ),
+          },
+        },
+      ],
+    },
+  ],
+};
+
+/**
+ * Who is on each event — the same host function the board's cards read, over the calendar's own
+ * involvement query.
+ */
+const ON_EVENTS = 'involvement({ rows: local.involvements, types: spaceStore.involvementTypes, me: me.did })';
+
+/** Whether anybody chosen in the people filter is going to, or might go to, the event named. */
+const MATCHES = (as: string) => `${ON_EVENTS}.byNode[${as}.id].dids.exists(d, d in local.calendarPeople)`;
+
+/** Somebody is chosen, so the calendar is being read by people at all. */
+const FILTERING = 'count(local.calendarPeople)';
+
+/**
+ * The events to draw: all of them, or — hiding — only the ones somebody chosen is on.
+ *
+ * Every list and every cell reads this rather than `local.events`, so the grid and the list under it
+ * cannot disagree about what is on a day. Dimming leaves the list whole and fades rows instead, which
+ * is what keeps a busy week looking busy.
+ */
+const VISIBLE_EVENTS = `(${FILTERING} && local.calendarShow == 'hide') ? local.events.filter(e, ${MATCHES('e')}) : local.events`;
+
+/** Faded, for an event nobody chosen is on while the filter dims. */
+const DIMMED = (as: string) => `${FILTERING} && local.calendarShow == 'dim' && !(${MATCHES(as)})`;
+
+/**
+ * The answers somebody can give to an event — going, maybe, not going, and whatever this community
+ * has added — as the space names them.
+ */
+const ANSWERS = `spaceStore.offeredInvolvementTypes.filter(k, k.reflexive && ('EventBlock' in k.appliesTo || !count(k.appliesTo)))`;
+
+/**
+ * Answering an invitation, and who else has.
+ *
+ * One button per answer, the chosen one filled; pressing it again takes the answer back, which is
+ * the first thing anybody tries. Only ever this agent's own answer — `respondTo` writes nobody
+ * else's — and one per event, so pressing Maybe after Going replaces it.
+ *
+ * The roster is who said they are coming, and a count of who might. Not `participants`, which is a
+ * different fact: who was in a call is something a machine saw, and who said they would come is
+ * something a person stated. Reading one as the other would tell somebody a meeting they skipped was
+ * one they attended.
+ */
+const rsvp: SchemaNode = {
+  type: 'Row',
+  props: { width: '100%', gap: '300', ay: 'center', wrap: true },
+  children: [
+    {
+      type: 'Row',
+      props: { gap: '100', ay: 'center' },
+      children: [
+        {
+          type: '$each',
+          props: { items: { $: ANSWERS }, as: 'answer' },
+          children: [
+            {
+              type: 'we-button',
+              props: {
+                size: 'xs',
+                variant: { $: `${ON_EVENTS}.answers[event.id] == answer.slug ? 'secondary' : 'ghost'` },
+                onClick: {
+                  $action: 'spaceStore.respondTo',
+                  args: [{ $: 'event.id' }, { $: `${ON_EVENTS}.answers[event.id] == answer.slug ? '' : answer.slug` }],
+                },
+              },
+              children: [
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: 'answer.icon' },
+                    then: { type: 'we-icon', props: { name: { $: 'answer.icon' } } },
+                  },
+                },
+                { $: 'answer.name' },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    {
+      type: 'Row',
+      props: { gap: '300', ay: 'center', ml: 'auto' },
+      children: [
+        {
+          type: '$if',
+          props: {
+            condition: { $: `count(${ON_EVENTS}.byNode[event.id].committed)` },
+            then: peopleRow({
+              items: { $: `${ON_EVENTS}.byNode[event.id].committed` },
+              dids: true,
+              noun: 'going',
+              nounPlural: 'going',
+              max: 5,
+              size: 'xs',
+              minHeight: '24px',
+            }),
+          },
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $: `count(${ON_EVENTS}.byNode[event.id].interested)` },
+            then: {
+              type: 'we-text',
+              props: {
+                variant: 'footnote',
+                color: 'text-muted',
+                whiteSpace: 'nowrap',
+                text: { $: `\`\${count(${ON_EVENTS}.byNode[event.id].interested)} maybe\`` },
+              },
+            },
           },
         },
       ],
@@ -1551,27 +3396,189 @@ const tasksRoute: RouteSchema = {
  * Both read the hoisted `events`, so the grid and the list can never disagree about what is there.
  *
  * A row says when, what, and who is coming: extraction writes a title and a date off what was said,
- * and `participants` is how anybody answers it afterwards.
+ * and each member's own answer — going, maybe, not going — is how anybody responds to it afterwards.
+ * See `rsvp` for why that is an involvement and not `participants`.
  */
 const eventList: SchemaNode = {
   type: 'Column',
   props: { width: '100%', gap: '300' },
+  // On this node rather than on the route, so the flag sits with the button and the modal that use
+  // it. `day` and `events` are declared above and still read through — an inner declaration merges
+  // with the outer one rather than replacing it.
+  $localState: { newEventOpen: { type: 'boolean', initial: false } },
   children: [
     {
-      type: 'we-text',
-      props: {
-        variant: 'label',
-        color: 'text-muted',
-        textTransform: 'uppercase',
-        letterSpacing: 'wide',
-        text: { $: "local.day ? local.day : 'Coming up'" },
-      },
+      type: 'Row',
+      props: { width: '100%', ay: 'center', gap: '300' },
+      children: [
+        /*
+          The heading, and the one thing it must not be: the key the grid matches on.
+
+          A cell's date is `YYYY-MM-DD` because `startsWith` needs it to be, and printing that
+          straight out made the list under the calendar announce itself as "2026-09-11" —
+          machine-readable, and the only place in the route where a reader is asked to parse one.
+          `we-timestamp` says the same day in their own language. Year omitted: the grid directly
+          above is already headed with the month and year, and a heading that repeats its parent is
+          noise.
+
+          `+ 'T00:00'` is not decoration. A bare `YYYY-MM-DD` is parsed as UTC midnight, so west of
+          Greenwich it formats as the day BEFORE the one that was clicked — the heading and the rows
+          under it would disagree about which day this is. The suffix makes it a local time, which is
+          what a calendar cell means by a date, and what `startDate` already is.
+
+          The typography props rather than `we-text`'s `variant`/`uppercase` shorthands, which are
+          that element's own and not part of the DS layers a timestamp inherits — `label` is
+          fontSize 200 at medium.
+        */
+        {
+          type: '$if',
+          props: {
+            condition: { $: 'local.day' },
+            then: {
+              type: 'we-timestamp',
+              props: {
+                value: { $: "local.day + 'T00:00'" },
+                weekday: 'long',
+                day: 'numeric',
+                month: 'long',
+                fontSize: '200',
+                fontWeight: 'medium',
+                color: 'text-muted',
+                textTransform: 'uppercase',
+                letterSpacing: 'wide',
+              },
+            },
+            else: {
+              type: 'we-text',
+              props: {
+                variant: 'label',
+                color: 'text-muted',
+                textTransform: 'uppercase',
+                letterSpacing: 'wide',
+                text: 'Coming up',
+              },
+            },
+          },
+        },
+        /*
+          Adding one by hand, which is the other way an event gets here.
+
+          Only with a day chosen, and that is the whole design rather than a restriction: the day
+          IS the date, so the form asks for a time and never for a date somebody has already
+          picked. Unanchored — "Coming up" — there would be nothing to create against, and a
+          button that opened a form asking for the full date would be a second, differently-shaped
+          composer for the same record.
+
+          `ml: 'auto'` rather than `ax: 'between'` on the row: the heading changes width as the
+          date does, and `between` would walk the button a few pixels left and right from one day
+          to the next.
+        */
+        {
+          type: '$if',
+          props: {
+            condition: { $: 'local.day' },
+            then: {
+              type: 'we-button',
+              props: {
+                size: 'sm',
+                variant: 'secondary',
+                ml: 'auto',
+                onClick: { $setLocal: 'newEventOpen', value: true },
+              },
+              children: [{ type: 'we-icon', props: { name: 'plus' } }, 'Add event'],
+            },
+          },
+        },
+      ],
     },
+    /*
+      The composer.
+
+      `record.create` rather than the block composer, for the reason the other bare-record forms
+      here give: an event is a title, a time and a line of context, so putting it through a block
+      editor would ask for a document nobody wants to write.
+
+      Parented to the call, which is the part that cannot be left out. Every surface of this
+      template reads its records through `anchorScope(CALL)` — `CollectionBlock` → `children` —
+      so an event created unparented is written into the space and then shows up on no screen in
+      this template, including the calendar it was just added from. `we://children` is that
+      relation's predicate.
+
+      The drafts are declared on the modal, so closing discards them; a draft declared on the page
+      would have to be cleared by hand on every exit, and the one somebody forgets is the one that
+      re-opens holding last time's title.
+    */
+    formModal({
+      open: { $: 'local.newEventOpen' },
+      close: { $setLocal: 'newEventOpen', value: false },
+      title: 'New event',
+      size: 'sm',
+      localState: {
+        draftTitle: { type: 'string', initial: '' },
+        // A default, so the form is submittable the moment a title is typed. Mid-morning rather
+        // than midnight: an event with no time said is a daytime one, and `00:00` reads as a
+        // mistake somebody has to correct rather than as an answer.
+        draftTime: { type: 'string', initial: '09:00' },
+        draftDescription: { type: 'string', initial: '' },
+      },
+      children: [
+        {
+          // Which day this is going on, since the form never asks. Same formatting as the heading
+          // it was opened from, including the `T00:00` that keeps it off the day before.
+          type: 'Row',
+          props: { gap: '200', ay: 'center' },
+          children: [
+            { type: 'we-icon', props: { name: 'calendar', size: 'xs', color: 'text-muted' } },
+            {
+              type: 'we-timestamp',
+              props: {
+                value: { $: "local.day + 'T00:00'" },
+                weekday: 'long',
+                day: 'numeric',
+                month: 'long',
+                fontSize: '200',
+                color: 'text-muted',
+              },
+            },
+          ],
+        },
+        field({ name: 'draftTitle', label: 'What is it?', placeholder: 'Design review', props: { autofocus: true } }),
+        field({ name: 'draftTime', label: 'Time', props: { type: 'time' } }),
+        field({
+          name: 'draftDescription',
+          label: 'Notes',
+          control: 'textarea',
+          placeholder: 'Optional — what it is for, what to bring',
+        }),
+      ],
+      // What the model requires, less the date the day already answers. A precondition rather than
+      // validation rules: nothing about a title or a time is judgeable here beyond being there.
+      disabled: { $: '!local.draftTitle || !local.draftTime' },
+      // The time is deliberately absent: it arrives already filled in, so including it would make
+      // the guard fire on a form nobody has touched — which is the failure mode that teaches people
+      // to click through the dialog.
+      discardWhen: { $: 'local.draftTitle || local.draftDescription' },
+      submitLabel: 'Add event',
+      submit: {
+        $action: 'record.create',
+        args: [
+          'EventBlock',
+          {
+            title: { $: 'local.draftTitle' },
+            // The chosen day and the typed time, assembled into the `YYYY-MM-DDTHH:mm` that
+            // extraction also writes — which is what lets the grid's `startsWith` match both.
+            startDate: { $: "local.day + 'T' + local.draftTime" },
+            description: { $: 'local.draftDescription' },
+          },
+          { parent: { id: CALL, predicate: 'we://children' } },
+        ],
+      },
+    }),
     {
       type: '$if',
       props: {
         condition: {
-          $: 'count(local.day ? filter(local.events, { startDate: { startsWith: local.day } }) : local.events)',
+          $: `count(local.day ? filter(${VISIBLE_EVENTS}, { startDate: { startsWith: local.day } }) : ${VISIBLE_EVENTS})`,
         },
         then: {
           type: 'Column',
@@ -1581,67 +3588,100 @@ const eventList: SchemaNode = {
               type: '$each',
               props: {
                 items: {
-                  $: 'local.day ? filter(local.events, { startDate: { startsWith: local.day } }) : local.events',
+                  $: `local.day ? filter(${VISIBLE_EVENTS}, { startDate: { startsWith: local.day } }) : ${VISIBLE_EVENTS}`,
                 },
                 as: 'event',
               },
               children: [
                 {
-                  type: 'Row',
+                  type: 'Column',
                   props: {
                     width: '100%',
-                    ay: 'center',
                     gap: '300',
+                    /*
+                      `surface`, and no lens — see the board's card for the argument, which lands
+                      harder here.
+
+                      Kind is a constant on a calendar for the same reason it is on a board: every row
+                      is an `EventBlock`, so colouring by kind painted the whole list one tint. State
+                      is worse than redundant. An event has no status, so `recordFill` was called
+                      without one and the state lens fell through to plain — meaning turning it on
+                      *removed* what colour the rows had and greyed every one of them. A lens that
+                      only ever subtracts is not a reading.
+                    */
                     bg: 'surface',
                     r: '400',
                     border: '1px solid border',
                     p: '400',
+                    opacity: { $: `(${DIMMED('event')}) ? 0.35 : 1` },
+                    transition: 'opacity 200 ease-in-out',
                   },
                   children: [
-                    { type: 'we-icon', props: { name: 'calendar', color: 'accent-text' } },
                     {
-                      type: 'Column',
-                      props: { flex: '1', gap: '100' },
+                      type: 'Row',
+                      props: { width: '100%', ay: 'center', gap: '300' },
                       children: [
-                        { type: 'we-text', props: { fontWeight: 'semibold', text: { $: 'event.title' } } },
+                        { type: 'we-icon', props: { name: 'calendar', color: 'accent-text' } },
                         {
-                          type: '$if',
-                          props: {
-                            // The place's name, not the place. Hydrated by the `include` on the
-                            // query above; tested on the name rather than the record, since a
-                            // location that has arrived without one has nothing to print.
-                            condition: { $: 'event.location.name' },
-                            then: {
-                              type: 'Row',
-                              props: { gap: '100', ay: 'center' },
-                              children: [
-                                { type: 'we-icon', props: { size: 'xs', name: 'map-pin', color: 'text-faint' } },
-                                {
-                                  type: 'we-text',
-                                  props: {
-                                    variant: 'footnote',
-                                    color: 'text-muted',
-                                    truncate: true,
-                                    text: { $: 'event.location.name' },
-                                  },
+                          type: 'Column',
+                          props: { flex: '1', gap: '100' },
+                          children: [
+                            { type: 'we-text', props: { fontWeight: 'semibold', text: { $: 'event.title' } } },
+                            {
+                              type: '$if',
+                              props: {
+                                // The place's name, not the place. Hydrated by the `include` on the
+                                // query above; tested on the name rather than the record, since a
+                                // location that has arrived without one has nothing to print.
+                                condition: { $: 'event.location.name' },
+                                then: {
+                                  type: 'Row',
+                                  props: { gap: '100', ay: 'center' },
+                                  children: [
+                                    { type: 'we-icon', props: { size: 'xs', name: 'map-pin', color: 'text-faint' } },
+                                    {
+                                      type: 'we-text',
+                                      props: {
+                                        variant: 'footnote',
+                                        color: 'text-muted',
+                                        truncate: true,
+                                        text: { $: 'event.location.name' },
+                                      },
+                                    },
+                                  ],
                                 },
-                              ],
+                              },
                             },
+                          ],
+                        },
+                        {
+                          type: 'we-timestamp',
+                          props: {
+                            value: { $: 'event.startDate' },
+                            color: 'text-muted',
+                            /*
+                          What the heading does not already say.
+
+                          On a chosen day the date IS the heading a reader arrived through, so
+                          repeating it on every row underneath says nothing — the row is only asked
+                          when in the day. "Coming up" spans weeks, though, and there the time alone
+                          is unreadable: three rows saying 14:00 are three different afternoons with
+                          no way to tell which is tomorrow. So the date parts appear exactly when the
+                          heading stops carrying them.
+
+                          An empty string rather than a ternary to nothing: `we-timestamp` assembles
+                          its `Intl` options by truthiness, so a blank part is simply left out.
+                        */
+                            weekday: { $: "local.day ? '' : 'short'" },
+                            day: { $: "local.day ? '' : 'numeric'" },
+                            month: { $: "local.day ? '' : 'short'" },
+                            hour: '2-digit',
+                            minute: '2-digit',
                           },
                         },
                       ],
                     },
-                    {
-                      type: 'we-timestamp',
-                      props: {
-                        value: { $: 'event.startDate' },
-                        color: 'text-muted',
-                        // The date is already the heading a reader arrived through, so the row says
-                        // the part that is not: when in the day.
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      },
-                    },
+                    rsvp,
                   ],
                 },
               ],
@@ -1661,7 +3701,7 @@ const eventList: SchemaNode = {
             Tuesday. Two situations, so two sentences.
           */
           message: {
-            $: "local.day ? 'Nothing on this day.' : 'Nothing from this call yet. Events appear here as the conversation settles on dates.'",
+            $: `(${FILTERING} && count(local.events)) ? 'Nobody chosen is going to anything here.' : local.day ? 'Nothing on this day.' : 'Nothing from this call yet. Events appear here as the conversation settles on dates.'`,
           },
         }),
       },
@@ -1672,13 +3712,13 @@ const eventList: SchemaNode = {
 /**
  * The events, as a month.
  *
- * The counterpart to the tasks list, and the same argument: a conversation produces two kinds of
+ * The counterpart to the kanban, and the same argument: a conversation produces two kinds of
  * commitment, one with a date on it and one without, and neither stops mattering because the meeting
  * ended. So this is one call's events, scoped and gated exactly as the board is — the whole point of
  * this template being that every surface answers about the call the address names.
  *
  * This paragraph used to argue the opposite, that a calendar asks "what is coming" and so belongs to
- * the community rather than to a recording. That reading is a good one and it has a home: the Events
+ * the community rather than to a recording. That reading is a good one and it has a home: the Calendar
  * section, which is unscoped and a click away. What it cannot be is *this* page, sharing a nav strip
  * and a `?call=` with three surfaces that mean something narrower — the argument survived the
  * scoping and outlived it by long enough to make an ungated month look deliberate.
@@ -1701,20 +3741,21 @@ const eventList: SchemaNode = {
  * but position 0. It is a `filter()` over the month's own hoisted query rather than a `$query` per
  * cell: one subscription sifted 42 times, against 42 subscriptions for rows already in hand.
  */
-const eventsRoute: RouteSchema = {
-  path: '/events',
+const calendarRoute: RouteSchema = {
+  path: '/calendar',
   type: 'Column',
-  props: { width: '100%', minHeight: '100%', ax: 'center', px: '400', pt: '900', pb: '600' },
+  props: { width: '100%', minHeight: '100%', ax: 'center', px: '400' },
   children: [
     {
       type: 'Column',
-      props: { width: '100%', maxWidth: 'var(--we-layout-lg)', gap: '400' },
+      // `flex: '1'` for the same reason it is on the kanban route's measure column — see there.
+      props: { width: '100%', maxWidth: 'var(--we-layout-lg)', flex: '1', gap: '400' },
       children: [
         {
           type: '$if',
           props: {
             /*
-              No call, no calendar — the same gate the tasks list keeps, and it was missing here.
+              No call, no calendar — the same gate the kanban keeps, and it was missing here.
 
               A scope whose anchor does not resolve is DROPPED rather than refused, and pruning
               WIDENS: with nothing selected this route quietly asked for every `EventBlock` in the
@@ -1723,23 +3764,30 @@ const eventsRoute: RouteSchema = {
               of somebody else's meetings looks exactly like a month full of this call's.
 
               The gate is outside the node that declares the query, so the question is never asked
-              rather than asked and discarded. The space-wide reading is not lost: it is the Events
+              rather than asked and discarded. The space-wide reading is not lost: it is the Calendar
               section, a click away and unscoped, exactly as the space-wide board is.
             */
             condition: CALL,
             then: {
               type: 'Column',
-              props: { width: '100%', gap: '400' },
+              props: { width: '100%', gap: '400', ...ROUTE_BAND },
               $localState: {
                 // Paging is arithmetic on an offset, so every source reads the same offset and the template
                 // only ever adds to it.
                 monthOffset: { type: 'number', initial: 0 },
                 // The day a reader has picked, as `YYYY-MM-DD`, or empty for the whole month.
                 day: { type: 'string', initial: '' },
+                /*
+                  The people filter's two halves, split the way the board splits them: who is chosen
+                  rides in the address, since "what Ana is going to" is a thing a link can point at,
+                  and whether the rest are dimmed or hidden stays on this device.
+                */
+                calendarPeople: { type: 'array', initial: [], syncParam: 'who' },
+                calendarShow: { type: 'string', initial: 'dim', persist: 'calendar.show' },
               },
               $queries: {
                 /*
-                  Scoped to the call this workshop is about, exactly as the tasks list is — and for the
+                  Scoped to the call this workshop is about, exactly as the kanban is — and for the
                   reason given there: every other surface of this template answers about the call the
                   address names, so a list that quietly widened to the whole space was the odd one out.
                   The `$if` above is what makes the scope trustworthy: an anchor that does not resolve is
@@ -1758,6 +3806,9 @@ const eventsRoute: RouteSchema = {
                   limit: 200,
                   include: { location: true },
                 },
+                // Who said they are coming to what. Space-wide, for the board's reason: an answer is
+                // not a child of anything, and there are as many as people have given.
+                involvements: { entity: 'Involvement' },
               },
               children: [
                 // ── The month, with the way through them either side ──────────────────
@@ -1817,6 +3868,19 @@ const eventsRoute: RouteSchema = {
                     },
                   ],
                 },
+
+                // ── Whose calendar this is being read as ─────────────────────────────
+                peopleFilter({
+                  people: 'calendarPeople',
+                  show: 'calendarShow',
+                  // Whoever has answered an event this call produced, the viewer first.
+                  faces: {
+                    $: 'involvement({ rows: local.involvements, types: spaceStore.involvementTypes, me: me.did, nodes: local.events.map(e, e.id) }).dids',
+                  },
+                  matched: { $: `count(local.events.filter(e, ${MATCHES('e')}))` },
+                  total: { $: 'count(local.events)' },
+                  noun: 'event',
+                }),
 
                 // ── The grid ──────────────────────────────────────────────────────────
                 {
@@ -1918,7 +3982,9 @@ const eventsRoute: RouteSchema = {
                                 {
                                   type: '$each',
                                   props: {
-                                    items: { $: 'filter(local.events, { startDate: { startsWith: cell.date } }, 2)' },
+                                    items: {
+                                      $: `filter(${VISIBLE_EVENTS}, { startDate: { startsWith: cell.date } }, 2)`,
+                                    },
                                     as: 'mark',
                                   },
                                   children: [
@@ -1935,6 +4001,7 @@ const eventsRoute: RouteSchema = {
                                         // does not read as part of the month being looked at.
                                         bg: { $: "cell.inMonth ? 'accent-muted' : 'surface-sunken'" },
                                         color: { $: "cell.inMonth ? 'accent-text' : 'text-muted'" },
+                                        opacity: { $: `(${DIMMED('mark')}) ? 0.35 : 1` },
                                       },
                                     },
                                   ],
@@ -1945,7 +4012,7 @@ const eventsRoute: RouteSchema = {
                                   type: '$if',
                                   props: {
                                     condition: {
-                                      $: 'count(filter(local.events, { startDate: { startsWith: cell.date } })) > 2',
+                                      $: `count(filter(${VISIBLE_EVENTS}, { startDate: { startsWith: cell.date } })) > 2`,
                                     },
                                     then: {
                                       type: 'we-text',
@@ -1954,7 +4021,7 @@ const eventsRoute: RouteSchema = {
                                         color: 'text-faint',
                                         px: '100',
                                         text: {
-                                          $: '`+${count(filter(local.events, { startDate: { startsWith: cell.date } })) - 2} more`',
+                                          $: `\`+\${count(filter(${VISIBLE_EVENTS}, { startDate: { startsWith: cell.date } })) - 2} more\``,
                                         },
                                       },
                                     },
@@ -1973,7 +4040,11 @@ const eventsRoute: RouteSchema = {
                 eventList,
               ],
             },
-            else: callGate('calendar', 'Choose a call to see the events it produced.'),
+            else: callGate(
+              'calendar',
+              'Start or choose a call. The dates it settles on appear here as a month.',
+              startCallButton('md'),
+            ),
           },
         },
       ],
@@ -2005,6 +4076,11 @@ export const workshopTemplate: TemplateSchema = {
       tallest child is one control, and that is what makes one band cover both. `top` stacks across
       every contributor and spans the full width, so the left-hand pill needs no term of its own.
 
+      The same sum the routes clear the bar with, and the only reason it is spelt twice: the shell
+      wants a number here, so the theme's control-height offset — which `CHROME_BOTTOM` carries and
+      a number cannot — is the term this one is missing. It rounds up rather than down, which is the
+      right direction for a reservation.
+
       The width describes the *centred* bar alone — it is what decides whether the module rail has
       to drop below it, and the rail is a column at top right that a left-hand pill cannot reach.
       Generous on purpose: over-reporting costs a rail that moves earlier than it had to, and
@@ -2020,7 +4096,7 @@ export const workshopTemplate: TemplateSchema = {
 
       It was: the transcript and the readout were declared `route: 'canvas'`, on the argument that a
       task list does not need a transcript beside it. True, and beside the point — crossing to the
-      tasks list *unregistered* both panels, so their scroll position, their subscriptions and
+      kanban *unregistered* both panels, so their scroll position, their subscriptions and
       wherever they had been dragged were destroyed and rebuilt on the way back. Panels that survive
       navigation is the whole difference between a panel and a region of a page; scoping them by
       route gave that up to save a column of context nobody minded.
@@ -2073,15 +4149,20 @@ export const workshopTemplate: TemplateSchema = {
         // of single words.
         min: { width: 260 },
         /*
-          Two shares against one, so the transcript takes about two thirds of the column.
+          Half the column each, and exactly half: the two share a base (both `sm`) and a grow, and
+          a lane divides base-plus-slack, so equal bases with equal shares come out equal.
 
-          It was `1` against a `0`, which does not mean "most of it" — it means *all* the spare room,
-          because a member with no grow keeps its base and nothing else. On a tall window that left
-          the extraction panel at its minimum with a transcript towering over it. Grow is a ratio of
-          the *slack*, so this is approximate rather than exactly two thirds, and the taller the
-          column the closer it gets.
+          It was two shares against one, for a transcript that took about two thirds. That starved
+          the readout, which is where a pass's findings, its failures and the Extract button all
+          live — the half of the column somebody acts on, where the transcript is the half they
+          glance at.
+
+          Written rather than left to the default of 1, because the pair is the point and a bare
+          entry would not say so. Before that it was `1` against a `0`, which does not mean "most of
+          it" — it means *all* the spare room, since a member with no grow keeps its base and
+          nothing else.
         */
-        grow: 2,
+        grow: 1,
       },
       {
         id: 'extraction',
@@ -2109,8 +4190,8 @@ export const workshopTemplate: TemplateSchema = {
         band: 0,
         order: 1,
         size: 'sm',
-        // One share to the transcript's two. Not `0`, which pins it to its base and gives the
-        // transcript every pixel of the slack — a column that reads as one panel and one strip.
+        // The transcript's equal — see there. Not `0`, which pins it to its base and gives the
+        // transcript every pixel of the slack: a column that reads as one panel and one strip.
         grow: 1,
       },
       /*
@@ -2120,9 +4201,88 @@ export const workshopTemplate: TemplateSchema = {
         discovers — and its empty state is a sentence rather than a blank box, so an unused one says
         what it is for.
       */
-      { id: 'inspector', node: inspectorPanel, title: 'Inspector', snap: 'right', order: 0, size: 'sm', grow: 1 },
-      { id: 'calls', node: callsPanel, title: 'Calls', snap: 'right', order: 1, size: 'sm', open: false },
-      { id: 'call', module: 'call', snap: 'right', order: 2, size: 'sm', open: false },
+      /*
+        Above the calls list, the two of them one sidebar down the right — the mirror of the
+        transcript and the readout on the left.
+
+        Displacing, with a shared `band`, for the left lane's reason: they meet flush, cost the
+        canvas their width once, and stop covering its right-hand edge. Floating, they sat over the
+        canvas's own cards, and the key in the corner then sat over them.
+
+        Half the column each, and exactly half: equal bases (both `sm`) and equal grows. That only
+        holds while these two are the lane. The key and the call window were in it too, which made
+        it four-way and put a short inspector over a long list.
+      */
+      {
+        id: 'inspector',
+        node: inspectorPanel,
+        title: 'Inspector',
+        snap: 'right',
+        displace: true,
+        band: 0,
+        order: 0,
+        size: 'sm',
+        grow: 1,
+      },
+      /*
+        No `open` here, though it stood as `open: false` for a long time and read as "placed, not
+        shown". Nothing has ever honoured that on an authored panel — `open` suppresses a *module*
+        launcher, and this panel has none — so the flag described a behaviour this template did not
+        have, which is why the validator now says so.
+
+        Open is also what it should be. This list is the only way to choose a call that has finished:
+        the corner names the current one and the page gates start a new one, and neither picks from
+        the archive. A panel carrying the one act nothing else offers should not begin hidden.
+      */
+      // The inspector's lane-mate — see there.
+      {
+        id: 'calls',
+        node: callsPanel,
+        title: 'Calls',
+        snap: 'right',
+        displace: true,
+        band: 0,
+        order: 1,
+        size: 'sm',
+        grow: 1,
+      },
+      /*
+        The key, open, floating in the top-right corner on its own.
+
+        Open, for the inspector's reason: a lens somebody has to find before the colours mean
+        anything is a lens nobody turns on. Not a tab behind Calls, because a space template cannot
+        bring a tab forward — `raiseDock` is host layout — so a key stacked behind the calls list
+        would be one nobody could get back to from inside the template. Closed, it comes back with
+        the picker's "Reset layout", like every authored panel.
+
+        A corner rather than a third seat in the right-hand column. It is a legend: glanced at while
+        the canvas is being read, the way a map's key sits over the map, and not a peer of the two
+        panels somebody works in. In the column it also took a third of the height from both.
+
+        `box` because no named size is this shape — a `sm` is 16:9, and a list of kinds is tall and
+        narrow. 250 × 510 of content, plus the host's frame: 2px of border across, and a 33px
+        titlebar with the border down. The corner clears `chromeReserve`, which is centred.
+      */
+      {
+        id: 'key',
+        node: keyPanel({ call: CALL, callExpr: CALL_EXPR, extracted: EXTRACTED.$ }),
+        title: 'Key',
+        snap: 'top-right',
+        box: { width: 252, height: 545 },
+      },
+      /*
+        The call window: placed, not opened, bottom-centre when a call opens it.
+
+        `open: false` is load-bearing — see `startCallButton`. Where it lands is still this entry's to
+        say, because a declaration outranks the module's own opening bid whenever the module does
+        open it: at the start of a call, not on entering the space.
+
+        Along the bottom as a strip, rather than beside the column it was in, because a row of faces
+        is wide and low and every other panel here is tall. 860 × 176 of stage, plus the same frame
+        as the key. A floating panel alone on an edge is not divided, so it keeps this width rather
+        than stretching along the bottom.
+      */
+      { id: 'call', module: 'call', snap: 'bottom', box: { width: 862, height: 211 }, open: false },
     ],
   },
   type: 'Column',
@@ -2151,8 +4311,8 @@ export const workshopTemplate: TemplateSchema = {
     */
     { path: '/', redirect: './canvas' },
     canvasRoute,
-    tasksRoute,
-    eventsRoute,
+    kanbanRoute,
+    calendarRoute,
     {
       path: '*',
       type: 'Column',

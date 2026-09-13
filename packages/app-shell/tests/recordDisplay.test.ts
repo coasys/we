@@ -67,6 +67,32 @@ describe('displayFor', () => {
     expect(display.fields.map((f) => f.name)).toEqual(['status', 'link', 'attachment']);
   });
 
+  it('heads a card with what names the record, not with its one required field', () => {
+    /*
+      `displayFor` used to pick "the first required string" over the *shown* field list, which is
+      how a code block came to be headed by its entire code body with its actual title on the
+      summary line beneath it, and a link by its URL. It asks `namePropertyOf` now — see its
+      docblock, and `recordName.test.ts` for the rule.
+    */
+    const code = CORE_MANIFEST.entities.CodeBlock;
+    expect(displayFor({ entity: 'CodeBlock', schema: code, authorable: false }).title).toBe('title');
+
+    const link = CORE_MANIFEST.entities.LinkBlock;
+    expect(displayFor({ entity: 'LinkBlock', schema: link, authorable: false }).title).toBe('title');
+  });
+
+  it('names a composed document, which declares no fields to ask for', () => {
+    // A note goes through the composer rather than a form, so it has no `authoring` list — and the
+    // old guess searched only that list, leaving it nameless while `title` sat right there. The
+    // panel then said "Untitled" over a card the canvas had labelled from its text.
+    const collection = CORE_MANIFEST.entities.CollectionBlock;
+    const display = displayFor({ entity: 'CollectionBlock', schema: collection, authorable: false });
+    expect(display.title).toBe('title');
+    expect(display.summary).toBe('description');
+    // Still no field rows: what a note says is its content, not a list of properties.
+    expect(display.fields.filter((f) => f.kind !== 'relation')).toEqual([]);
+  });
+
   it('answers with empty roles rather than guessing wrongly', () => {
     const numbers: EntitySchema = { properties: { x: { type: 'number' }, y: { type: 'number' } }, relations: {} };
     const display = displayFor({ entity: 'Point', schema: numbers, authorable: true });

@@ -1540,3 +1540,45 @@ describe('selecting an edge', () => {
     expect(events).toEqual([{ type: 'selectionChange', ids: [] }]);
   });
 });
+
+describe('restarting the same graph keeps the arrangement', () => {
+  it('keeps positions, pins and the selection when the seeds return the nodes on screen', async () => {
+    /*
+      A spec change restarts the graph, and a restart reset everything before reading the seeds —
+      so a canvas whose pending list moved as a pass settled restarted every few seconds, every
+      card snapped back, and a card being dragged fell out of the hand holding it. What decides is
+      what the seeds return: the same nodes is the same graph with newer data, which is a refresh.
+    */
+    const seed = mutableSeed(['seed-0', 'seed-1']);
+    const registry = new PluginRegistry({ seeds: [seed], layouts });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+    await engine.start();
+    engine.resize(800, 600);
+    engine.pin('seed-0', { x: 123, y: 456 });
+    engine.select(['seed-1']);
+
+    seed.rows.push('seed-2');
+    await engine.start();
+
+    expect(engine.store.nodeCount).toBe(3);
+    expect(engine.getPositions().get('seed-0')).toMatchObject({ x: 123, y: 456 });
+    expect(engine.isPinned('seed-0')).toBe(true);
+    expect(engine.getSelection()).toEqual(['seed-1']);
+  });
+
+  it('starts clean when the seeds return a different graph', async () => {
+    const seed = mutableSeed(['seed-0', 'seed-1']);
+    const registry = new PluginRegistry({ seeds: [seed], layouts });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+    await engine.start();
+    engine.resize(800, 600);
+    engine.pin('seed-0', { x: 123, y: 456 });
+
+    seed.rows = ['other-0', 'other-1'];
+    await engine.start();
+
+    expect(engine.store.hasNode('seed-0')).toBe(false);
+    expect(engine.store.nodeCount).toBe(2);
+    expect(engine.isPinned('seed-0')).toBe(false);
+  });
+});

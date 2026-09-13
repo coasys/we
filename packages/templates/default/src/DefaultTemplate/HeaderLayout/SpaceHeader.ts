@@ -136,8 +136,10 @@ export const spaceHeader: SchemaNode = {
  * `--we-scrollbar-width` is in the sum because the views strip scrolls, and a scrollbar is drawn
  * *inside* the box it belongs to: without the allowance the bar would clip the bottom of every
  * button the moment a space had more views than fit. Reserved unconditionally, since nothing can
- * ask "is it overflowing right now?" — 6px of slack on a bar that is not scrolling is a far better
- * trade than a bar that clips when it is.
+ * ask "is it overflowing right now?" — a few pixels of slack on a bar that is not scrolling is a far
+ * better trade than a bar that clips when it is. The token rather than its value, so the bar follows
+ * a theme that makes the scrollbar chunkier, and followed the width changing under it when the thumb
+ * gained its inset.
  */
 export const NAV_BAR_HEIGHT =
   'calc(var(--we-component-height-md) + var(--we-theme-control-height-offset, 0px) + var(--we-scrollbar-width) + 2 * var(--we-space-400) + 1px)';
@@ -306,12 +308,12 @@ export const spaceNavBar: SchemaNode = {
 
                 No `scrollbarWidth` here, deliberately. Hiding it left the overflow reachable only
                 by a horizontal gesture most mice cannot make, which is the same as unreachable —
-                and the app already styles scrollbars globally to a themed 6px
+                and the app already styles scrollbars globally to a themed, slim one
                 (`::-webkit-scrollbar` in app-shell's index.scss), so the bar this shows is the one
                 every other scroll region in WE shows. Setting the standard `scrollbar-width`
                 property instead would opt Chromium out of those pseudo-element rules and make this
-                the one scrollbar in the app that looks different. The bar's height reserves the
-                6px — see NAV_BAR_HEIGHT.
+                the one scrollbar in the app that looks different. The bar's height reserves its
+                room — see NAV_BAR_HEIGHT.
               */
                   type: 'Row',
                   props: {

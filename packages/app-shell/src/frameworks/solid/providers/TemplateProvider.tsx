@@ -1,5 +1,6 @@
+import { boardOptimism } from '@shared/boardOptimism';
 import { datasetAddressedBy } from '@shared/datasetIdentity';
-import { queryIRFlag } from '@shared/queryIRFlag';
+import { involvementOptimism } from '@shared/involvementOptimism';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { resolveParts, resolvePartsInRoutes } from '@shared/registries/moduleParts';
 import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry';
@@ -7,6 +8,11 @@ import { onSlotRegistryChanged, slotRegistry } from '@shared/registries/slotRegi
 import { provideTemplateBag } from '@shared/registries/templateBag';
 import { buildTemplateBag, CHROME_TIER, SPACE_TIER } from '@shared/registries/templateSurface';
 import { hostSourceBag } from '@shared/sources';
+
+/** A relation comes back as ids or as hydrated rows; read either, the way `arrangedBoard` does. */
+const idOf = (entry: unknown): string =>
+  typeof entry === 'string' ? entry : String((entry as { id?: unknown } | null)?.id ?? '');
+
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
 import {
   useAccountStore,
@@ -279,7 +285,6 @@ export default function TemplateProvider() {
       set: (name: string, value: string | null, options?: { push?: boolean }) =>
         routeStore.setParam(name, value, options),
     },
-    $useQueryIR: queryIRFlag.enabled, // reactive; default from the seed, live-toggled via testStore
     // Template-facing vocabulary (templates read `$me.did`), as opposed to the renderer-facing
     // bindings below: the renderer never reads `$me` itself, it resolves like any `$store` path.
     $me: sessionStore.me,
@@ -345,7 +350,86 @@ export default function TemplateProvider() {
     decides what its templates can reach, and a module could contribute its own. Plain data rather
     than a memo, because a source is a pure function and there is nothing here to react to.
   */
-  stores.$sources = hostSourceBag();
+  /*
+    The sources, with the board's own wrapped so it draws what has been dragged but not yet stored.
+
+    The wrap is here and not in `arrangedBoard` because that function is pure and tested as such —
+    it takes the overlay as an argument and knows nothing about where one comes from. This is the
+    only place that has both the registry and the app's state, which is the same reason the bag is
+    assembled here at all.
+
+    Two things happen per call. The overlay goes in, which is what makes a dropped card appear in its
+    new column on the tick of the drop; and the columns just drawn are reported back, which is what
+    lets the store stop standing in for an arrangement the data has caught up with. Reporting from
+    *here* rather than where the rows arrive is the rule `pendingWrites` records for the canvas: a
+    read landing is not the same moment as the thing being drawn from it, and clearing on the read
+    put the old value back for the whole window in between.
+
+    Deferred to a microtask because this runs inside a memo, and writing a signal during a render is
+    how a re-entrancy bug starts.
+  */
+  const sources = hostSourceBag();
+  const arrangedBoardSource = sources.arrangedBoard;
+  stores.$sources = {
+    ...sources,
+    arrangedBoard: (options: unknown) => {
+      const given = (options ?? {}) as { columns?: unknown; board?: unknown };
+      const view = arrangedBoardSource({
+        ...given,
+        pending: boardOptimism.overlay(),
+        // Who is on each card, including a tick nobody's subscription has carried back yet — a
+        // filter that ignored it would dim the card somebody was just assigned to.
+        pendingInvolvements: involvementOptimism.overlay(),
+      });
+
+      const rows = new Map<string, readonly string[]>();
+      const note = (record: unknown, relation: 'arranges' | 'children') => {
+        const row = record as { id?: string; arranges?: unknown; children?: unknown } | null;
+        if (!row?.id) return;
+        const value = relation === 'arranges' ? row.arranges : row.children;
+        if (Array.isArray(value)) rows.set(`${row.id}.${relation}`, value.map(idOf));
+      };
+      for (const column of (Array.isArray(given.columns) ? given.columns : []) as unknown[]) note(column, 'arranges');
+      note(given.board, 'children');
+      note(given.board, 'arranges');
+
+      // A card's state is held as an arrangement of one, so it settles through the same lookup —
+      // `<cardId>.status` against what the pool actually says the record's state is.
+      for (const record of (Array.isArray((given as { records?: unknown }).records)
+        ? (given as { records: unknown[] }).records
+        : []) as unknown[]) {
+        const row = record as { id?: string; status?: unknown } | null;
+        if (row?.id) rows.set(`${row.id}.status`, [String(row.status ?? '')]);
+      }
+
+      queueMicrotask(() => boardOptimism.settle((id, relation) => rows.get(`${id}.${relation}`)));
+      const involvementRows = (given as { involvements?: unknown }).involvements;
+      if (Array.isArray(involvementRows)) {
+        queueMicrotask(() => involvementOptimism.settleFromRows(involvementRows));
+      }
+      return view;
+    },
+    /*
+      Who is on what, with the answers somebody gave and the data has not carried back yet — the
+      same two halves as the board above, for the same reason. The rows the view was drawn from are
+      reported, so a hold is released the moment they have overtaken it rather than when the write's
+      promise settles.
+    */
+    // The picker's ticks, from the same held answers — a member ticked in the menu stays ticked
+    // through the round trip rather than unticking for a second and ticking again.
+    involvementMenu: (options: unknown) => {
+      const given = (options ?? {}) as { rows?: unknown };
+      const entries = sources.involvementMenu({ ...given, pending: involvementOptimism.overlay() });
+      queueMicrotask(() => involvementOptimism.settleFromRows(given.rows));
+      return entries;
+    },
+    involvement: (options: unknown) => {
+      const given = (options ?? {}) as { rows?: unknown };
+      const view = sources.involvement({ ...given, pending: involvementOptimism.overlay() });
+      queueMicrotask(() => involvementOptimism.settleFromRows(given.rows));
+      return view;
+    },
+  };
 
   const BINDING_KEYS = [
     '$getEntity',

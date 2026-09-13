@@ -15,7 +15,7 @@
  * rendering. The other three modules still declare their fragments inline; this is the shape they
  * should move to.
  */
-import { emptyState, panelShell, sectionLabel } from '@we/schema-kit';
+import { emptyState, panelScroll, panelShell, sectionLabel } from '@we/schema-kit';
 import { type SchemaNode, type SchemaProp } from '@we/schema-shared';
 import { expr } from '@we/schema-shared';
 
@@ -907,46 +907,113 @@ const proposalEditor: SchemaNode = {
  * record that was mostly right.
  */
 /**
- * A heading's trailing pair: how many, and whether the list under it is open.
+ * A section's name, the size of what is under it, and the control that folds it — one row.
  *
- * The two lists of cards can each run to a screenful, and the panel scrolls as one thing now — so
- * without a way to fold one, reaching the readings under a long list of suggestions means scrolling
- * past all of them every time. The count is what tells you whether folding it is worth it.
+ * The lists here can each run to a screenful and the panel scrolls as one thing, so without a way
+ * to fold one, reaching the readings under a long list of suggestions means scrolling past all of
+ * them every time. The count is what tells you whether folding is worth it.
  *
- * The caret is a real button rather than a clickable heading, because `sectionLabel` draws a label
- * and a label is not a control. Icon-only, so it says its own name.
+ * ## The whole row is the button, not the caret
+ *
+ * It was the caret alone, on the reasoning that `sectionLabel` draws a label and a label is not a
+ * control. That is true of the fragment and does not decide this: the label stays a label, and a
+ * *control wraps it*. What the narrow reading cost was a hit target the size of a glyph at the far
+ * end of a row whose obvious target is the word naming the thing — and three headings where the
+ * caret moved and the words did not, which reads as two different kinds of row.
+ *
+ * `bare` is the appearance-free clickable — a real `<button>`, with the keyboard activation and the
+ * role that a `Row` carrying an `onClick` silently loses — so the heading looks exactly as it did.
+ * The hover band is the affordance the caret's own darkening used to be, and it is the row's own
+ * box: no padding is added, so the name stays aligned with the cards underneath it.
+ *
+ * `railGroup` in the template kit is the same shape for the same reason, which is worth knowing
+ * before narrowing this again.
+ *
+ * ## What names it
+ *
+ * Nothing, explicitly: the accessible name comes from the contents, so it is "Logs 3" — the section
+ * and its size, which is what the ARIA disclosure pattern asks a disclosure button to be called. The
+ * caret button it replaces had to be named by hand (`Show the readings`) only because an icon-only
+ * button has nothing to take a name from.
+ *
+ * What neither can say is whether the section is *open*: that wants `aria-expanded`, and a web
+ * component's props are assigned as DOM properties, so no schema can set an attribute `we-button`
+ * does not declare. The caret says it visually. Fixing it properly is a prop on the primitive, which
+ * would also answer for `railGroup` and every openable row in this panel.
  */
-const sectionAside = (opts: {
+const foldingSectionLabel = (opts: {
+  label: string;
+  /**
+   * `neutral` for a section that is not a verdict.
+   *
+   * The other two badges mean something: amber is work waiting on a person, green is work that
+   * landed. A log is neither — it counts how many times the call has been read, which is no more a
+   * status than a timestamp is, and spending a status colour on it would say the readings are
+   * themselves either pending or good.
+   */
   count: string;
-  tone: 'warning' | 'success';
+  tone: 'neutral' | 'warning' | 'success';
   field: string;
-  noun: string;
 }): SchemaNode => ({
-  type: 'Row',
-  props: { ay: 'center', gap: '100' },
+  type: 'we-button',
+  props: {
+    variant: 'bare',
+    width: '100%',
+    // Nothing paints on hover: the pointer is the affordance, and a band the width of the panel
+    // lighting up under the cursor is a lot of movement for a heading somebody is passing over on
+    // the way to the cards. The radius is for the focus ring, which `we-button` draws itself and
+    // which `bare` would otherwise take around a square-cornered full-width row.
+    r: '200',
+    onClick: { $toggleLocal: opts.field },
+  },
   children: [
-    {
-      type: 'we-badge',
-      props: { size: 'xs', variant: opts.tone, appearance: 'solid' },
-      children: [{ $: opts.count }],
-    },
-    {
-      type: 'we-button',
-      props: {
-        variant: 'bare',
-        square: true,
-        color: 'text-faint',
-        hoverProps: { color: 'text-muted' },
-        label: { $: `local.${opts.field} ? 'Hide the ${opts.noun}' : 'Show the ${opts.noun}'` },
-        onClick: { $toggleLocal: opts.field },
+    sectionLabel({
+      label: opts.label,
+      aside: {
+        // `200`, where the label sits `200` from the badge: the caret is a separate thing from the
+        // count, and at `100` the two read as one object with a number in it.
+        type: 'Row',
+        props: { ay: 'center', gap: '200' },
+        children: [
+          {
+            type: 'we-badge',
+            props: {
+              size: 'xs',
+              variant: opts.tone,
+              appearance: 'solid',
+              /*
+                Square at its narrowest, and wider only when the number needs it.
+
+                A badge is sized by its content, so `3` came out as a squat lozenge and `12` as a
+                wider one — every section's chip a different shape, and none of them the round-ish
+                counter a count wants to be. The floor is the badge's own height, written as the
+                same expression `SIZE_DEFAULTS` gives it so a theme's `control-height-offset` moves
+                both together and it cannot go oblong the moment a theme changes density.
+
+                Only a floor: two digits are wider than 24px with the padding an `xs` badge carries,
+                so they grow, which is the half a fixed width would have lost.
+              */
+              minWidth: 'calc(var(--we-component-height-xs) + var(--we-theme-control-height-offset, 0px))',
+            },
+            children: [{ $: opts.count }],
+          },
+          /*
+            A plain icon now, where it used to be a button.
+
+            Not a preference: the row around it is a `<button>`, and a button inside a button is
+            invalid markup — it would also take the press on the way past and toggle twice.
+          */
+          {
+            type: 'we-icon',
+            props: {
+              size: CARET_SIZE,
+              color: 'text-faint',
+              name: { $: `local.${opts.field} ? 'caret-up' : 'caret-down'` },
+            },
+          },
+        ],
       },
-      children: [
-        {
-          type: 'we-icon',
-          props: { size: CARET_SIZE, name: { $: `local.${opts.field} ? 'caret-up' : 'caret-down'` } },
-        },
-      ],
-    },
+    }),
   ],
 });
 
@@ -997,27 +1064,24 @@ const proposals: SchemaNode = {
           // what it holds and folds away when that is too much.
           props: { gap: '200', width: '100%' },
           children: [
-            sectionLabel({
+            /*
+              The count, and nothing beside it.
+
+              A warning glyph sat here for a commit, moved up from the cards where there had been one
+              apiece. One was better than eight, and none is better still: the heading already says
+              "Awaiting your call", which is the whole meaning, and a triangle beside those words
+              puts an alarm on a queue that is an ordinary part of using the panel.
+
+              `solid` rather than the default `soft`. A soft badge is a tint, and a tint of the
+              warning hue against a panel is dark enough that the number inside it stopped being the
+              thing you noticed. It is also now the only thing carrying the tone, which is the other
+              reason it has to be the strong version.
+            */
+            foldingSectionLabel({
               label: 'Awaiting your call',
-              /*
-                The count, and nothing beside it.
-
-                A warning glyph sat here for a commit, moved up from the cards where there had been
-                one apiece. One was better than eight, and none is better still: the heading already
-                says "Awaiting your call", which is the whole meaning, and a triangle beside those
-                words puts an alarm on a queue that is an ordinary part of using the panel.
-
-                `solid` rather than the default `soft`. A soft badge is a tint, and a tint of the
-                warning hue against a panel is dark enough that the number inside it stopped being
-                the thing you noticed. It is also now the only thing carrying the tone, which is the
-                other reason it has to be the strong version.
-              */
-              aside: sectionAside({
-                count: `count(${PROPOSALS})`,
-                tone: 'warning',
-                field: 'proposalsOpen',
-                noun: 'suggestions',
-              }),
+              count: `count(${PROPOSALS})`,
+              tone: 'warning',
+              field: 'proposalsOpen',
             }),
             collapsible('proposalsOpen', {
               type: 'Grid',
@@ -1769,7 +1833,6 @@ const extractionHistory: SchemaNode = {
       type: 'Column',
       props: { gap: '200', width: '100%' },
       $localState: {
-        historyOpen: { type: 'boolean', initial: false },
         /*
       Which stored passes are open, and which halves of each.
 
@@ -1784,66 +1847,33 @@ const extractionHistory: SchemaNode = {
       },
       children: [
         /*
-          A name over the readings, in the treatment every other region here wears.
+          A name over the readings, folding them away, in the treatment every other region here
+          wears.
 
-          Without it the collapsed "4 readings of this call" was a bare line between the chips and
-          the results, belonging to neither. Inside the gate above rather than over it, so a call
-          nobody has read shows no heading rather than a heading with nothing under it.
+          Inside the gate above rather than over it, so a call nobody has read shows no heading
+          rather than a heading with nothing under it.
+
+          The fold used to be one level lower, on a row reading "4 readings of this call" that sat
+          under this heading and carried its own caret. Two rows of chrome over one list, and the
+          count said twice what the badge now says once — while this section was the only one of the
+          three whose heading did nothing, so the panel had two ways of folding a list depending on
+          which list it was. The row is gone with the caret it existed for: what it said that the
+          heading does not is "of this call", which is true of every word in this panel.
         */
-        sectionLabel({ label: 'Logs' }),
-        {
+        foldingSectionLabel({ label: 'Logs', count: 'count(local.passes)', tone: 'neutral', field: 'logsOpen' }),
+        collapsible('logsOpen', {
           type: 'Column',
           props: { gap: '200', width: '100%' },
           children: [
             {
-              type: 'we-button',
-              props: { variant: 'bare', width: '100%', onClick: { $toggleLocal: 'historyOpen' } },
+              type: '$each',
+              props: { items: { $: 'local.passes' }, as: 'pass' },
               children: [
                 {
-                  type: 'Row',
-                  props: { ay: 'center', gap: '200', width: '100%' },
-                  children: [
-                    { type: 'we-icon', props: { size: 'sm', name: 'sparkle', color: 'text-faint' } },
-                    {
-                      type: 'we-text',
-                      props: { variant: 'footnote', color: 'text-muted', flex: '1', textAlign: 'left' },
-                      children: [
-                        {
-                          $: "`${count(local.passes)} ${plural(count(local.passes), 'reading', 'readings')} of this call`",
-                        },
-                      ],
-                    },
-                    {
-                      type: 'we-icon',
-                      props: {
-                        size: 'xs',
-                        color: 'text-muted',
-                        name: { $: "local.historyOpen ? 'caret-up' : 'caret-down'" },
-                      },
-                    },
-                  ],
-                },
-              ],
-            },
-            {
-              type: '$if',
-              props: {
-                condition: { $: 'local.historyOpen' },
-                enterTransition: { type: 'reveal', duration: 200 },
-                exitTransition: { type: 'reveal', duration: 160 },
-                then: {
                   type: 'Column',
-                  props: { gap: '200', width: '100%' },
+                  props: { gap: '100', width: '100%' },
                   children: [
-                    {
-                      type: '$each',
-                      props: { items: { $: 'local.passes' }, as: 'pass' },
-                      children: [
-                        {
-                          type: 'Column',
-                          props: { gap: '100', width: '100%' },
-                          children: [
-                            /*
+                    /*
                               Clickable only where there is something under it.
 
                               A bare button is the appearance-free clickable, so an openable row and
@@ -1852,33 +1882,29 @@ const extractionHistory: SchemaNode = {
                               press to a record written before the exchange was stored, and answer it
                               with an empty box.
                             */
-                            {
-                              type: '$if',
-                              props: {
-                                condition: { $: HISTORY_OPENABLE },
-                                then: {
-                                  type: 'we-button',
-                                  props: {
-                                    variant: 'bare',
-                                    width: '100%',
-                                    onClick: { $toggleLocalIn: 'openHistoryPasses', value: { $: 'pass.id' } },
-                                  },
-                                  children: [historyRow],
-                                },
-                                else: historyRow,
-                              },
-                            },
-                            historyPassDetail,
-                          ],
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $: HISTORY_OPENABLE },
+                        then: {
+                          type: 'we-button',
+                          props: {
+                            variant: 'bare',
+                            width: '100%',
+                            onClick: { $toggleLocalIn: 'openHistoryPasses', value: { $: 'pass.id' } },
+                          },
+                          children: [historyRow],
                         },
-                      ],
+                        else: historyRow,
+                      },
                     },
+                    historyPassDetail,
                   ],
                 },
-              },
+              ],
             },
           ],
-        },
+        }),
       ],
     },
   },
@@ -3249,7 +3275,21 @@ export const transcriptComposer: SchemaNode = {
     condition: EXTRACTION_SUBJECT,
     then: {
       type: 'Row',
-      props: { gap: '200', ay: 'end', width: '100%' },
+      /*
+        Further from the transcript than the panel's own gap puts it.
+
+        `panelShell` spaces every child of the panel equally, and these are not equal distances: the
+        header names what is below it and wants to sit close to it, while this is a fixture of the
+        surface rather than the last row of the document — see above — and at one gap it read as one
+        more line of the timeline. Widening the panel's gap would have moved the heading off the
+        transcript to fix a boundary three children lower.
+
+        A margin rather than a wrapper, because what is being said is about this element's own
+        relationship to what precedes it, and it leaves with the element: the composer is gated on
+        there being a transcript at all, and a gap held by the container would have stayed behind on
+        a panel with nothing to write into.
+      */
+      props: { gap: '200', ay: 'end', width: '100%', mt: '100' },
       $localState: { message: { type: 'string', initial: '' } },
       children: [
         {
@@ -3342,12 +3382,12 @@ export const transcriptComposer: SchemaNode = {
  * is resolved. So pointing this feed at another call points its rows at that call too, and there is
  * one query in the codebase rather than two that have to agree.
  */
-export const transcriptFeed: SchemaNode = {
-  type: 'we-scroll-area',
+export const transcriptFeed: SchemaNode = panelScroll({
   // Follows the tail while somebody is at the tail, and holds still while they read further
   // up. A live transcript is the case this exists for — and the case that most needs a way back
   // down again, since holding still is otherwise a decision nothing offers to undo.
-  props: { pin: 'end', jump: 'both', flex: '1', minHeight: '0' },
+  pin: 'end',
+  jump: 'both',
   children: [
     {
       type: 'Column',
@@ -3361,7 +3401,7 @@ export const transcriptFeed: SchemaNode = {
       ],
     },
   ],
-};
+});
 
 /**
  * Extraction, as a surface of its own.
@@ -3436,7 +3476,7 @@ export const extractionPanel: SchemaNode = {
       */
         props: {
           condition: { $: 'modules.transcribe.extractable' },
-          then: {
+          then: panelScroll({
             /*
               The panel scrolls as one thing, rather than two lists scrolling inside a fixed frame.
 
@@ -3447,11 +3487,9 @@ export const extractionPanel: SchemaNode = {
 
               One scroller over everything is the shape a docked column wants: the header stays (it is
               `panelShell`'s, outside this), and everything under it moves together. What that costs
-              is that a long list pushes the rest below the fold, which is what the two headings now
-              fold away — see `sectionAside`.
+              is that a long list pushes the rest below the fold, which is what each heading now
+              folds away — see `foldingSectionLabel`.
             */
-            type: 'we-scroll-area',
-            props: { flex: '1', minHeight: '0' },
             children: [
               {
                 type: 'Column',
@@ -3459,11 +3497,16 @@ export const extractionPanel: SchemaNode = {
               A wider gap than the blocks inside each section use.
 
               At `300` every band sat the same distance from its neighbour as a heading sat from the
-              rows under it, so five sections read as one long column of similar things. `400` between
-              sections against `200` inside them is what makes a heading look attached to what it
-              names rather than floating between two lists.
+              rows under it, so five sections read as one long column of similar things. A gap
+              between sections against `200` inside them is what makes a heading look attached to
+              what it names rather than floating between two lists.
+
+              `500` rather than the `400` it was: now that a heading is a full-width control with a
+              focus ring of its own, 16px between the end of one section's cards and the top of the
+              next section's row was not enough to tell which list a heading belonged to at a glance.
+              Three times the inner gap reads as a break; twice it read as a slightly bigger row.
             */
-                props: { width: '100%', gap: '400' },
+                props: { width: '100%', gap: '500' },
                 /*
               Which lists are folded, kept on the device.
 
@@ -3475,6 +3518,17 @@ export const extractionPanel: SchemaNode = {
                 $localState: {
                   proposalsOpen: { type: 'boolean', initial: true, persist: 'transcribe.proposalsOpen' },
                   extractedOpen: { type: 'boolean', initial: true, persist: 'transcribe.extractedOpen' },
+                  /*
+                    Closed to start, where the other two open: the readings are a record of how the
+                    other sections came to say what they say, wanted when something looks wrong and
+                    not otherwise. A call read every few minutes for an hour is sixty rows, and they
+                    now sit above the one section with a decision waiting in it.
+
+                    Declared here beside its siblings rather than on the section, which hides itself
+                    on a call nobody has read — a field declared there would be created and destroyed
+                    with it, and the first reading of a call would open the log somebody had folded.
+                  */
+                  logsOpen: { type: 'boolean', initial: false, persist: 'transcribe.logsOpen' },
                 },
                 /*
               The readings, declared here rather than on the section that draws them.
@@ -3516,7 +3570,6 @@ export const extractionPanel: SchemaNode = {
               which is where that link went.
             */
                   { type: '$if', props: { condition: EXTRACTION_SUBJECT, then: extract } },
-                  proposals,
                   /*
               What the passes did, in full.
 
@@ -3543,6 +3596,21 @@ export const extractionPanel: SchemaNode = {
               call there is no record to hang passes off, so there is nothing to read.
             */
                   extractionHistory,
+                  /*
+              The suggestions, under the machinery that produced them rather than over it.
+
+              The panel reads as what it does, in order: here is what I will look for, here is a
+              pass running, here is every pass so far — and then the two piles of records, the one
+              waiting on you and the one already yours. Read the other way round, a decision sat
+              above the controls that caused it and the log that explains it, so the first thing the
+              panel said was "answer this" and the reason was underneath.
+
+              It costs the suggestions the top of the panel, which they had. What pays for it is that
+              the two sections above are each one line when nothing is happening — a running pass is
+              a strip that only exists while one runs, and the readings are folded by default — so
+              the queue is a heading further down and not a scroll.
+            */
+                  proposals,
                   /*
               What the passes actually wrote, for the call on screen.
 
@@ -3624,20 +3692,17 @@ export const extractionPanel: SchemaNode = {
                                 type: 'Column',
                                 props: { gap: '200', width: '100%' },
                                 children: [
-                                  sectionLabel({
-                                    label: 'Extracted',
-                                    /*
+                                  /*
                                   The same count the suggestions above carry, in the role that says
                                   these are settled rather than waiting. `solid` for the reason that
                                   one is: a tint of the hue against a panel leaves the number
                                   competing with its own background.
                                 */
-                                    aside: sectionAside({
-                                      count: EXTRACTED_COUNT,
-                                      tone: 'success',
-                                      field: 'extractedOpen',
-                                      noun: 'results',
-                                    }),
+                                  foldingSectionLabel({
+                                    label: 'Extracted',
+                                    count: EXTRACTED_COUNT,
+                                    tone: 'success',
+                                    field: 'extractedOpen',
                                   }),
                                   collapsible('extractedOpen', {
                                     type: 'Grid',
@@ -3672,7 +3737,7 @@ export const extractionPanel: SchemaNode = {
                 ],
               },
             ],
-          },
+          }),
           // The same fragment, for the same reason — see the placeholder above.
           else: emptyState({
             icon: 'plugs',

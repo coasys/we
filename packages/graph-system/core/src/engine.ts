@@ -9,6 +9,7 @@
  */
 import type {
   BehaviourContext,
+  CardShape,
   EdgeGeometry,
   ExpandDirection,
   ExpanderContext,
@@ -409,15 +410,6 @@ export class GraphEngine {
    * seed set would leave nodes on screen that nothing can account for.
    */
   async start(): Promise<void> {
-    this.store.clear();
-    this.expansion.reset();
-    this.positions = new Map();
-    // A different graph cannot inherit holds on nodes it does not contain.
-    this.pinnedIds.clear();
-    this.selected.clear();
-    this.status = { loading: false, reloading: false, budgetReached: false, warnings: [] };
-    this.layoutWarnings = [];
-
     /*
       Held across the whole method, not just the seed load.
 
@@ -426,9 +418,41 @@ export class GraphEngine {
       frame in the middle of a load. Held here, `reloading` covers the gap and the renderer never sees
       an empty graph claim to be finished.
     */
+    // What the last graph had to say is not about this one, whichever path the load takes below;
+    // what this load says lands after this and is kept.
+    this.status = { ...this.status, warnings: [] };
     this.beginLoading('reload');
     try {
       const fragment = await this.loadSeeds();
+      if (this.disposed) return;
+
+      /*
+        The same graph, asked for again, keeps its arrangement.
+
+        A spec change restarts the graph, and a restart used to reset everything — positions, pins,
+        the selection, the camera — before it had even read the seeds. Right when the spec names a
+        different graph. Wrong, and visibly so, when it names the same one with a detail changed: a
+        canvas whose list of pending suggestions moved as a pass settled restarted every few
+        seconds, every card snapped back to its stored place, the camera refitted, and a card being
+        dragged fell out of the hand holding it. What decides is not the spec but what the seeds
+        return: if any node on screen is among them, this is the graph the reader is looking at with
+        newer data behind it, which is exactly what `refresh` is for — so it takes that path, and
+        every hold survives. No survivors is a different graph, and it starts clean with a fit.
+      */
+      if (fragment.nodes.some((node) => this.store.hasNode(node.id))) {
+        await this.reconcile(fragment);
+        return;
+      }
+
+      this.store.clear();
+      this.expansion.reset();
+      this.positions = new Map();
+      // A different graph cannot inherit holds on nodes it does not contain.
+      this.pinnedIds.clear();
+      this.selected.clear();
+      this.status = { ...this.status, budgetReached: false };
+      this.layoutWarnings = [];
+
       this.store.merge(fragment);
       this.expansion.attribute(
         SEED_OPENER,
@@ -486,7 +510,14 @@ export class GraphEngine {
   private async refreshOnce(): Promise<void> {
     const fragment = await this.loadSeeds();
     if (this.disposed) return;
+    await this.reconcile(fragment);
+  }
 
+  /**
+   * Fold a freshly read fragment into the graph on screen, keeping everything the reader has done to
+   * it. The body of a refresh, and of a restart that turned out to be the same graph — see `start`.
+   */
+  private async reconcile(fragment: { nodes: GraphNode[]; edges: GraphEdge[] }): Promise<void> {
     const nodes = this.trimToBudget(fragment.nodes);
     const seedNodes = new Set(nodes.map((n) => n.id));
     const seedEdges = new Set(fragment.edges.map((e) => e.id));
@@ -1067,7 +1098,13 @@ export class GraphEngine {
     return { ...node, data: { ...node.data, ...patch } };
   }
 
-  private hitArea(rawNode: GraphNode): { radius: number; halfWidth?: number; halfHeight?: number } {
+  private hitArea(rawNode: GraphNode): {
+    radius: number;
+    halfWidth?: number;
+    halfHeight?: number;
+    shape?: CardShape;
+    z?: number;
+  } {
     const node = this.overlaid(rawNode);
     // Resolved through `nodeVisual` — the same function the renderer paints from — rather than read
     // off the raw style rules. Deriving it separately is how a card ended up with an 18px hit spot in
@@ -1077,11 +1114,22 @@ export class GraphEngine {
     // Metrics are deliberately not resolved here: they change what a node *means*, not where it is,
     // and a hit area that moved when a metric finished computing would be worse than a stale one.
     const visual = nodeVisual(node, resolveStyle(node, this.spec.nodeStyle), NO_METRICS);
+    // Stacking travels with the hit area so picking agrees with what is drawn in front.
+    const z = visual.z !== undefined ? { z: visual.z } : {};
     if (visual.shape === 'card' && visual.width && visual.height) {
-      return { radius: visual.size, halfWidth: visual.width / 2, halfHeight: visual.height / 2 };
+      // The outline comes with the box. Picking stays on the box deliberately — a forgiving hit area
+      // is right, and a triangle whose corners could not be clicked would be a worse trade than a
+      // line that met one — but routing wants the shape, which is what `cardShape` carries.
+      return {
+        radius: visual.size,
+        halfWidth: visual.width / 2,
+        halfHeight: visual.height / 2,
+        shape: visual.cardShape,
+        ...z,
+      };
     }
     // A few pixels of slack, so a mark is grabbable at its edge rather than only inside it.
-    return { radius: visual.size + 4 };
+    return { radius: visual.size + 4, ...z };
   }
 
   /**
@@ -1091,12 +1139,21 @@ export class GraphEngine {
    * convenience: on a 45° approach a circle of radius r is r away and a square of half-extent r is
    * r√2, so treating every node as a box would push every diagonal arrow 40% too far out.
    */
-  private clearanceFor(node: GraphNode | undefined): number | EdgeClearance {
-    const gap = 6;
+  /**
+   * How far short of a node's centre an edge stops — its hit area, plus a standoff.
+   *
+   * The standoff is for the end an arrowhead points at: the head lands on the node's edge and the
+   * line stops before it, so the node is pointed *at* rather than run into. At the source there is
+   * no head, so the same standoff was a line starting a few pixels clear of the card it leaves —
+   * a gap that read as the line not being attached. Callers pass `0` for that end.
+   */
+  private clearanceFor(node: GraphNode | undefined, gap = 6): number | EdgeClearance {
     if (!node) return 14 + gap;
     const area = this.hitArea(node);
     if (area.halfWidth === undefined || area.halfHeight === undefined) return area.radius + gap;
-    return { halfWidth: area.halfWidth + gap, halfHeight: area.halfHeight + gap };
+    // The standoff travels with the box rather than inside it: a shape cannot be inflated by adding
+    // to its half-extents, since that moves its sides and its corners by different amounts.
+    return { halfWidth: area.halfWidth, halfHeight: area.halfHeight, shape: area.shape, gap };
   }
 
   /**
@@ -1169,7 +1226,8 @@ export class GraphEngine {
           // A loose end stands off nothing — the point IS the end, so any clearance would leave the
           // line trailing the cursor by a gap that reads as lag.
           looseTo ? 0 : this.clearanceFor(targetNode),
-          looseFrom ? 0 : this.clearanceFor(sourceNode),
+          // No standoff where the line leaves: it should touch the card it comes from.
+          looseFrom ? 0 : this.clearanceFor(sourceNode, 0),
           // A loose end has no side, whatever the fields still say: the end is a point, and pinning
           // it to an axis would send the line off north from wherever the cursor happens to be.
           { source: looseFrom ? undefined : anchors.source, target: looseTo ? undefined : anchors.target },
@@ -1505,7 +1563,8 @@ export class GraphEngine {
       normaliseCurve(style.curve),
       0,
       landing ? this.clearanceFor(this.store.node(target!)) : 0,
-      this.clearanceFor(source),
+      // The gesture's line leaves its card the way a finished edge does — touching it.
+      this.clearanceFor(source, 0),
     );
   }
 

@@ -95,22 +95,31 @@ describe('a floating panel is glass', () => {
    * never is. Nothing failed in either direction, because a role that resolves is a role that
    * paints; this is the assertion instead.
    */
-  it('paints the page, not a well and not a card', () => {
+  it('paints the chrome, not a well and not a card', () => {
     const bg = (surface!.bg as { $: string }).$;
 
     // The *roles* named, not the string: the glass branch legitimately reads the theme's
     // `--we-theme-surface-opacity`, which is a knob rather than a surface.
     expect(bg).not.toContain('--we-role-surface');
     expect(bg).not.toMatch(/'surface(-\w+)?'/);
-    expect(bg).toContain('--we-role-page');
-    expect(bg).toContain("'page'");
+    /*
+      `chrome`, where this used to say `page`.
+
+      A panel is the app's own ground extended, which is what the role means — and while the two
+      were one role it was also the colour of the template docked beside it, so the frame's border
+      was the only thing between them. Naming the ground is the point of the assertion either way:
+      a panel that paints `surface` reads as a card floating on the page, which is the thing this
+      was written to stop.
+    */
+    expect(bg).toContain('--we-role-chrome');
+    expect(bg).toContain("'chrome'");
   });
 
   it('carries the titlebar with it, so the card is one piece of glass', () => {
     // The titlebar is the box with a bottom border and a move handle under it.
     const bar = props.find((p) => p.borderBottom === '1px solid border' && p.bg !== undefined);
     expect(gateOf(bar!.bg)?.then).toContain('color-mix');
-    expect(gateOf(bar!.bg)?.else).toBe("'page'");
+    expect(gateOf(bar!.bg)?.else).toBe("'chrome'");
   });
 });
 

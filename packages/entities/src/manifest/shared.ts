@@ -19,6 +19,12 @@ import type { EntitySchema } from '@we/backend-shared';
  * failing, but it is work spent to learn that. They opt out explicitly, which is the whole reason
  * the opt-out exists.
  *
+ * `participants` is **membership a machine observed** — who was in a call — and must not be used for
+ * intent a person stated. An assignment or an RSVP is an `Involvement`, which carries the author,
+ * the date and the community's word for the kind that a bag of DIDs cannot. See `WeNode.participants`.
+ * The showcase Events template predates that and still RSVPs through `setAttending`; moving it onto
+ * `respondTo` is outstanding, not a second way to do the same thing.
+ *
  * Worth noticing as a modelling gap rather than a wart: `target: ''` is currently doing two jobs —
  * "any record" and "not a record at all" — and only the second wants opting out. If a third such
  * relation appears, that is the point to give the manifest a way to say which.

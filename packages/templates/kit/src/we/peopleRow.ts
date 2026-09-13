@@ -32,6 +32,12 @@ export interface PeopleRowOptions {
    * neither the count nor any font metric.
    */
   minHeight?: string;
+  /**
+   * The colour behind the row, as a CSS colour — `var(--we-role-surface)` on a card — so overlapping
+   * faces are edged in it and read as separate. Omit where the faces sit on something without one
+   * colour; see `AvatarStack.edge`.
+   */
+  edge?: string;
   /** Extra props on the outer Row — margins, mostly. */
   rowProps?: Record<string, SchemaProp>;
 }
@@ -87,7 +93,12 @@ export function peopleRow(opts: PeopleRowOptions): SchemaNode {
                 : expr`${opts.items}.map(m, { image: m.avatar, hash: m.did })`,
               max: opts.max ?? 5,
               size: opts.size ?? 'sm',
-              ring: '0 0 0 2px var(--we-ring-color)',
+              /*
+                No ring. This used to pass `var(--we-ring-color)` — the theme's focus colour — as the
+                gap between faces, so every roster wore a permanent accent ring nobody chose. The gap
+                is `edge` now, in the colour the caller says the row sits on.
+              */
+              ...(opts.edge ? { edge: opts.edge } : {}),
             },
           },
           ...(opts.noun

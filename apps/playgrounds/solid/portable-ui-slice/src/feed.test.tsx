@@ -8,7 +8,6 @@
  */
 import { render } from '@solidjs/testing-library';
 import { createInMemoryBackend, type Row } from '@we/backend-inmemory';
-import { createSignal } from 'solid-js';
 import { describe, expect, it } from 'vitest';
 
 import { feedTemplate } from './feedTemplate';
@@ -69,38 +68,38 @@ describe('portable-ui harness — real design-system components over a non-AD4M 
     expect(container.textContent).toContain('Graph databases');
   });
 
-  it('renders identically with the QueryIR routing enabled ($useQueryIR)', async () => {
-    // Flag on → createQuerySignal round-trips each query through compileQuery → irToFlatQuery
-    // before hitting the backend. The feed must render exactly the same (proves the live IR path).
+  /*
+    These two replace a pair that flipped `$useQueryIR` on and off and asserted the feed rendered the
+    same either way. There is no longer an either: every query compiles to the IR and is lowered by
+    the backend's own adapter, so the tests above already exercise that path and the interesting
+    question has moved. It is now what happens to a host that supplies no adapter — which used to
+    render a perfectly good feed down the raw-dialect path, and so could ship against a backend whose
+    capabilities nothing had ever consulted.
+  */
+  it('renders through the adapter the backend supplies — there is no unrouted path', async () => {
     const backend = seed();
-    const stores = { ...backend.stores, $useQueryIR: true };
-    const { container } = render(() => <RenderSchema node={feedTemplate} stores={stores} registry={registry} />);
+    expect(backend.stores.$queryAdapter).toBeDefined();
+
+    const { container } = render(() => <RenderSchemaWrapper backend={backend} />);
     await tick();
 
-    const text = container.textContent ?? '';
-    expect(text).toContain('Graph theory');
-    expect(text).toContain('Cooking');
-    expect(text).not.toContain('Weather');
+    expect(container.textContent).toContain('Graph theory');
   });
 
-  it('re-routes live when $useQueryIR flips (reactive accessor, no remount)', async () => {
-    // $useQueryIR as a reactive accessor — flipping it must re-run the query effect (route through the
-    // IR) without a remount, exactly like the live toggle on the Queries test page.
+  it('refuses, rather than falling back, when the host supplies no adapter', async () => {
     const backend = seed();
-    const [useIR, setUseIR] = createSignal(false);
-    const stores = { ...backend.stores, $useQueryIR: useIR };
+    const { $queryAdapter: _dropped, ...withoutAdapter } = backend.stores as Record<string, unknown>;
+    void _dropped;
+    const reported: string[] = [];
+    const stores = { ...withoutAdapter, $onError: (msg: string) => reported.push(msg) };
+
     const { container } = render(() => <RenderSchema node={feedTemplate} stores={stores} registry={registry} />);
     await tick();
-    // flag off → legacy path → correct
-    expect(container.textContent).toContain('Graph theory');
-    expect(container.textContent).not.toContain('Weather');
 
-    // flip on → query effect re-runs, routes through the IR → still correct, no reload
-    setUseIR(true);
-    await tick();
-    expect(container.textContent).toContain('Graph theory');
-    expect(container.textContent).toContain('Cooking');
-    expect(container.textContent).not.toContain('Weather');
+    // Nothing rendered, and a reason given that names the missing binding rather than blaming the
+    // query — the whole point of removing the fallback is that this case stops being invisible.
+    expect(container.textContent).not.toContain('Graph theory');
+    expect(reported.join(' ')).toContain('$queryAdapter');
   });
 });
 

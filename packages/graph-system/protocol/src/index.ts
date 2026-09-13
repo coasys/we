@@ -28,6 +28,7 @@ export {
   propertyAddress,
   resourceAddress,
 } from './address';
+export { CARD_SILHOUETTES, cardSilhouette } from './style';
 export type { GraphEdge, GraphFragment, GraphNode, GraphValue } from './graph';
 export type {
   EntityShape,

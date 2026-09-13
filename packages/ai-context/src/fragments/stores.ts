@@ -355,6 +355,15 @@ export const storeEntries: StoreEntry[] = [
         properties: ['id', 'name', 'slug', 'semantic', 'color', 'retired', 'defined'],
       },
       taskStatesLoaded: { type: 'boolean' },
+      involvementTypes: {
+        type: 'array',
+        properties: ['id', 'name', 'slug', 'semantic', 'reflexive', 'appliesTo', 'icon', 'color', 'retired', 'defined'],
+      },
+      offeredInvolvementTypes: {
+        type: 'array',
+        properties: ['id', 'name', 'slug', 'semantic', 'reflexive', 'appliesTo', 'icon', 'color', 'retired', 'defined'],
+      },
+      involvementTypesLoaded: { type: 'boolean' },
       unreadNodeIds: { type: 'array' },
       myMentions: { type: 'array', properties: ['id', 'author', 'createdAt'] },
     },
@@ -383,8 +392,14 @@ export const storeEntries: StoreEntry[] = [
       'createSignalType',
       'setSignalTypeRetired',
       'createTaskState',
+      'updateTaskState',
       'setTaskStateRetired',
       'reorderTaskStates',
+      'setInvolvement',
+      'respondTo',
+      'createInvolvementType',
+      'updateInvolvementType',
+      'setInvolvementTypeRetired',
       'upsertSignal',
       'navigateToSpace',
       'openRecordRef',
@@ -435,6 +450,7 @@ export const storeEntries: StoreEntry[] = [
       extractionNeedsIdentity: { type: 'boolean' },
       relationshipTargets: { type: 'array', properties: ['label', 'value'] },
       identityOptions: { type: 'array', properties: ['label', 'value'] },
+      nameOptions: { type: 'array', properties: ['label', 'value'] },
       hintEditor: {
         type: 'object',
         properties: ['entity', 'classHint', 'defaultClassHint', 'rows', 'customized'],
@@ -451,6 +467,7 @@ export const storeEntries: StoreEntry[] = [
       'cancelShapeWizard',
       'setShapeField',
       'setIdentityMember',
+      'setNameMember',
       'addProperty',
       'addRelationship',
       'removeMember',
@@ -998,6 +1015,11 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '{ id, name, slug, semantic, color, retired, defined }[] — the same list without the withdrawn ones. What a state picker or a new board column should offer',
         taskStatesLoaded:
           'boolean — the space has been asked for its states. An empty list is otherwise indistinguishable from "not fetched yet"; gate an empty state on it',
+        involvementTypes:
+          '{ id, name, slug, semantic, reflexive, appliesTo, icon, color, retired, defined }[] — the kinds of part a person can have in a record: "Assigned" and "Reviewing" on a task, "Going", "Maybe" and "Not going" on an event, plus whatever this community has named. Its own if it has named any, otherwise those defaults. `slug` is what Involvement.kind holds. `semantic` is the closed meaning underneath the name — responsible, reviewing, committed, interested, declined — so a board still finds the assignee after "Assigned" is renamed. `reflexive` kinds are an agent\u2019s own answer, which nobody else may give, and an agent holds one per record. `appliesTo` is the entity names the kind is offered on, empty for all — filter with `\'TaskBlock\' in kind.appliesTo || !count(kind.appliesTo)`. Includes withdrawn kinds; offer offeredInvolvementTypes. Read who holds them through the `involvement` host function',
+        offeredInvolvementTypes:
+          '{ id, name, slug, semantic, reflexive, appliesTo, icon, color, retired, defined }[] — the same list without the withdrawn ones. What an assign menu or an RSVP control should offer',
+        involvementTypesLoaded: 'boolean — the space has been asked for its kinds of involvement',
         templateOverrideOptions:
           '{ label, value }[] — options for the per-space template override picker: "Use the space\u2019s default" (space-default), "Use my default" (agent-default), then every template. Each of the first two names what it resolves to. Pre-built because a schema can map a store array into options but cannot prepend one, and without those entries overriding would be one-way',
         themeOverrideOptions: '{ label, value }[] — the same, for themes',
@@ -1077,9 +1099,9 @@ export function generateStoresText(entries: StoreEntry[]): string {
         reorderBoardColumns:
           '(boardId: string, orderedIds: string[]): the order this board reads its columns in. Pair with we-sortable\u2019s onReorder and pass { $: "arg.detail" }',
         arrangeColumn:
-          '(columnId: string, orderedIds: string[]): records the order somebody dragged one column\u2019s cards into \u2014 the column\u2019s `arranges`, an ordered relation, so two people rearranging at once converge instead of one write discarding the other. Pair with we-sortable\u2019s onReorder',
+          '(columnId: string, orderedIds: string[], columnOrder?: string[]): records the order somebody dragged one column\u2019s cards into \u2014 the column\u2019s `arranges`, an ordered relation, so two people rearranging at once converge instead of one write discarding the other. Pair with we-sortable\u2019s onReorder. Where the column shows only some of its cards \u2014 a people filter hiding the rest, one person\u2019s row \u2014 pass the column\u2019s whole order as columnOrder (arrangedBoard\u2019s contents[col].order): the moved cards go back into their own slots and the hidden ones keep theirs, where without it every hidden card would drop to the bottom of the column for everybody',
         moveCardToColumn:
-          '(fromColumnId: string, toColumnId: string, cardId: string, orderedIds?: string[]): moves a card between columns \u2014 and writes its state when the column it joins names one, which is what makes \u201cdone is done\u201d true on every board. A lane writes no state. One transaction, so no reader sees the card in two columns. Pass orderedIds \u2014 we-sortable\u2019s `arg.detail.ids`, the target column\u2019s whole new order \u2014 to seat the card where it was dropped; without it the card appends. An empty fromColumnId means the card came from nowhere on this board \u2014 Unplaced, or a picker',
+          '(fromColumnId: string, toColumnId: string, cardId: string, orderedIds?: string[], toSlug?: string, columnOrder?: string[]): moves a card between columns \u2014 and writes its state when the column it joins names one, which is what makes \u201cdone is done\u201d true on every board. A lane writes no state. One transaction, so no reader sees the card in two columns. Pass orderedIds \u2014 we-sortable\u2019s `arg.detail.ids`, the target column\u2019s whole new order \u2014 to seat the card where it was dropped; without it the card appends. An empty fromColumnId means the card came from nowhere on this board \u2014 Unplaced, or a picker. Pass toSlug — the state the target column stands for, which the board already has on screen — and the card is drawn in its new column the instant it is dropped rather than a round trip later: the store cannot know that state without reading the column, and until it does the card cannot be drawn there at all. A hint for the drawing only; the write reads the column itself, so a stale one costs a frame and never a wrong write. columnOrder is the target column\u2019s whole order, for a drop into a column showing only part of itself \u2014 see arrangeColumn',
         addTaskToColumn:
           '(columnId: string, title: string, anchorId?: string): makes a task straight into a column, parented to the board\u2019s anchor when there is one so every other scoped surface finds it. A bound column also gives it that column\u2019s state',
         updateSpaceImage:
@@ -1090,8 +1112,20 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(signalTypeId: string, retired: boolean): withdraws a signal type from use, or brings it back. Never deletes the signals given with it — a signal names its type by record id while templates resolve it by slug, so DELETING a type strands every reaction ever given and re-creating one with the same slug does not restore them. Retiring is the reversible version: the type stops being offered, existing counts keep working, and un-retiring brings everything back. Filter the offered list with OFFERED_SIGNAL_TYPES from @we/template-kit; leave find()-by-slug unfiltered so history still resolves',
         createTaskState:
           '(config: { name, semantic?, color?, icon? }): names a state this community\u2019s work moves through — "Blocked", "In review". The counterpart to createSignalType one concept along. The defaults stay virtual beside it; a name whose slug matches a default adopts that default rather than sitting beside it. The space\u2019s own board gains a column for the new state in the same act. Slug derived from the name; it is what tasks store, so it is not editable afterwards',
+        updateTaskState:
+          '(slug: string, updates: { name?, icon?, color?, semantic? }): changes a state the community already has — what it is called, the glyph and colour it is drawn with, and what the rest of the app reads it as. The counterpart createTaskState had no pair for, and the only way a state gets a colour after it is made: the three defaults ship without one. An empty string CLEARS a field, which is how a colour goes back to the template’s default without deleting the state. The slug is deliberately absent — every task stores it, so changing it would leave the work holding a word nothing defines; renaming is what `name` is for and it carries. By slug, so editing a default adopts it',
         setTaskStateRetired:
           '(slug: string, retired: boolean): withdraws a state from use, or brings it back. Never touches the work sitting in it — a task names its state by slug, so deleting the state would leave the work holding a word nothing defines. The same decision setSignalTypeRetired makes. By slug, so a default can be withdrawn: doing so writes its record, which is the moment a default becomes the community\u2019s own',
+        setInvolvement:
+          '(nodeId: string, agent: string, kind: string, on: boolean): puts somebody on a record as a kind one member says about another — assigning a task, asking for a review — or takes them off. `on` is the state wanted rather than a toggle, so a menu passes the opposite of the tick it shows and a double press cannot undo itself. Every copy of the pair goes on removal. A reflexive kind is routed to respondTo, and refused for anybody but the agent it is about. Pair with a DropdownMenu of toggle entries: `onSelect: { $action: "spaceStore.setInvolvement", args: [{ $: "card.id" }, { $: "arg.id" }, "assignee", { $: "!arg.checked" }] }`',
+        respondTo:
+          '(nodeId: string, kind: string): gives this agent\u2019s own answer to a record — "going", "maybe", "not-going" — replacing any other answer it held there, in one transaction. Pass an empty kind to withdraw the answer. Refuses a kind that is not reflexive. Shown on the click, before the write lands',
+        createInvolvementType:
+          '(config: { name, semantic?, reflexive?, appliesTo?, icon?, color? }): names a kind of part a person can have — "Shepherd", "Second pair of eyes". `appliesTo` is entity names joined with commas. `reflexive` is fixed once made. A name whose slug matches a default adopts it',
+        updateInvolvementType:
+          '(slug: string, updates: { name?, icon?, color?, semantic?, appliesTo? }): changes a kind the community already has. The slug and `reflexive` are absent — every involvement stores the one, and changing the other would rewrite who said what. An empty string clears a field. By slug, so editing a default adopts it',
+        setInvolvementTypeRetired:
+          '(slug: string, retired: boolean): withdraws a kind from use, or brings it back, without touching anybody who holds it',
         reorderTaskStates:
           '(orderedSlugs: string[]): sets the order this community reads its states in — which is the order of a board\u2019s columns. An ordered relation rather than a number on each state, so two people reordering at once converge instead of one write discarding the other. A state the order does not mention still appears, after the ones it does. Slugs, because a default has no id until it is placed in an order, which adopts it. Key the rows by slug and pair with we-sortable\u2019s onReorder, passing { $: "arg.detail" }',
         unreadNodeIds:
@@ -1144,7 +1178,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         creatableEntities:
           "{ label, value, icon, group }[] — models a person can create an instance of here, ready for a we-select: this space's own models first, then WE's built-in content types. A model appears here by declaring `authoring` in the manifest, or by being a shape this community defined",
         displays:
-          "Record<entity, RecordDisplay> — how to show an instance of each creatable model, keyed by entity name and derived from its declaration: { entity, label, icon, title, summary, media, fields[] }, where title/summary/media name the properties playing those roles ('' when none does) and each field is { name, label, kind, role, options }. kind is one of text, longText, number, boolean, date, datetime, color, url, image, file, json; role is title, summary, media or detail. `options` is the values a field is allowed to hold where the model closes the set (a task's status), empty otherwise — count() it to tell a state worth drawing as a we-badge from free text, and map it into a we-select rather than offering a text box that accepts a word the model does not know. Index it by a row's type — { $: 'recordStore.displays[row.type]' } — and render the fields with $each; see \"A record of any type\" in the patterns",
+          "Record<entity, RecordDisplay> — how to show an instance of each creatable model, keyed by entity name and derived from its declaration: { entity, label, icon, title, summary, media, fields[] }, where title/summary/media name the properties playing those roles ('' when none does) and each field is { name, label, kind, role, options, vocabulary }. kind is one of text, longText, number, boolean, date, datetime, color, url, image, file, json; role is title, summary, media or detail. `options` is the values a field is allowed to hold where the model closes the set (a task's status), empty otherwise — count() it to tell a state worth drawing as a we-badge from free text, and map it into a we-select rather than offering a text box that accepts a word the model does not know. `vocabulary` names the community list a value is a slug of ('taskState' for a task's status, looked up in spaceStore.taskStates for its name and colour), empty otherwise. Index it by a row's type — { $: 'recordStore.displays[row.type]' } — and render the fields with $each; see \"A record of any type\" in the patterns",
         recordDraft:
           "the open form's draft ({ entity, label, icon, fields[] }) or null while closed — its non-nullness is what mounts the modal. Each field is { name, label, control, required, options, placeholder, value }, derived from the model's own declaration, so a form exists for a model nobody wrote a form for",
         recordDraftDirty:
@@ -1178,6 +1212,12 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(nodeId: string, field: string, value): shows a presentation change without writing it — for a slider that reports while it moves. Pair with setCardStyle on release; both go through the same pending map so the card never jumps',
         setTypeColor:
           "(canvas: string, nodeType: string, color): sets the colour every card of one type is drawn in, on one canvas — the canvas's key, made writable. An empty colour clears it",
+        dropOnCanvas:
+          "(canvas: string, payload): puts something dragged in from elsewhere onto a canvas where it landed. Takes the graph's onDrop payload as it arrives. Refuses, with a toast, a record from another space (this canvas draws only its own dataset) and anything that is not a record here — an agent, a space",
+        updateRecordField:
+          "(entity: string, id: string, field: string, value): changes one property of one record — the inspector's edit mode. Takes the field name so one action serves every control; the value is coerced by the field's declared kind and a control's { detail } is unwrapped. An empty string is not written, so a text field cannot be cleared this way",
+        setSpaceTypeColor:
+          "(spaceId: string, nodeType: string, color): sets the colour every card of one type is drawn in across the whole space — the community's key, which a canvas falls back to where it has no colour of its own for that type. Pass spaceStore.currentSpace.id. Read the result back with a TypeStyle query scoped { anchor: 'Space', via: 'typeStyles', anchorId: spaceStore.currentSpace.id }. An empty colour clears it",
         createOnCanvas:
           '(canvas: string, x?: number, y?: number): opens the create form and places whatever it makes onto that canvas, at the point given. Pair with the graph’s onCanvasDoubleClick',
         createCardOnCanvas:
@@ -1186,6 +1226,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(entity?): opens the create form — on that model, or on the first offered one. Clears any pending connection',
         connectNodes:
           "(link): opens the form on a Relationship joining two records. Takes the graph's onEdgeCreate payload as it arrives",
+        connectNodesNow:
+          "(link): writes the Relationship straight away, with no label and no kind, and answers with its id. The same onEdgeCreate payload; the choice between this and connectNodes is the template's. Ask first where the claim is the point (a knowledge map); write first where the arrangement is (a canvas beside a live call), and let the words be added in an inspector afterwards. Pair it with an onSuccess that selects the new line — a connection nobody is shown is a connection nobody knows is a record",
         setRecordEntity: '(entity): switches which model is being created, discarding what was typed',
         setRecordField:
           '(name, value): sets one field. Takes the field name, so one action serves every control — which is the only shape that works when the fields come from data',
@@ -1222,6 +1264,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           "{ label, value }[] — what a relationship may point at here, ready for a we-select: this space's own models, then block types, then other apps' models. Core infrastructure entities are deliberately absent",
         identityOptions:
           '{ label, value }[] — "None" plus every named property of the open draft, for the identity picker. Built in the store because a schema can map options but cannot prepend one',
+        nameOptions:
+          '{ label, value }[] — "Work it out" plus every named property of the open draft, for the naming-field picker. A different first entry from identityOptions on purpose: no identity means no dedup key, where no naming field means the name is DERIVED (a property called name or title, else whichever string is required or first) — there is no such thing as a record with no name',
         hintEditor:
           'the hint editor state ({ entity, classHint, defaultClassHint, rows: { name, predicate, hint, defaultHint }[], customized }) or null while closed — non-nullness mounts the hint editor modal',
         hintBusy: 'boolean — the hint editor is loading or saving',
@@ -1242,6 +1286,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
         setShapeField: "(field: 'name' | 'description' | 'icon' | 'classHint', value): sets one top-level draft field",
         setIdentityMember:
           "(rowId): chooses which member identifies duplicates for AI extraction; 'none' clears it. At most one, which is why it is a picker rather than a per-row flag",
+        setNameMember:
+          "(rowId): chooses which member NAMES an instance — the heading on a card, the caption on a canvas, the label on a drag chip; 'none' returns it to being worked out. Not the same question as setIdentityMember: a dedup key may be a composite nobody would recognise (an event's is its title and day joined), where this is the one short string every surface shows when it has room for one line",
         setExtractable:
           '(on: boolean): allows or refuses an AI extraction pass writing instances of the open draft. Its own action rather than a setShapeField case, because the value is a boolean and that field takes strings',
         addProperty: '(): appends an empty property (scalar field) row to the draft',
