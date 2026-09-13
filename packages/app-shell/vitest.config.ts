@@ -33,6 +33,8 @@ const SOLID_TESTS = [
   // alone cannot show. Nothing renders, but the node project resolves solid-js to its SSR build,
   // where `createEffect` does nothing at all — so the test passes there for the wrong reason.
   'tests/datasetIdentity.test.ts',
+  // Renders a card's faces through the real renderer, components and host functions.
+  'tests/cardPeopleLive.test.tsx',
 ];
 
 export default defineConfig({

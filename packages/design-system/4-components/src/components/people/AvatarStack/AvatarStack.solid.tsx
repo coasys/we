@@ -1,7 +1,7 @@
 export type * from './AvatarStack.types';
 
 import { tokenVar } from '@we/design-utils';
-import { createMemo, For, Show } from 'solid-js';
+import { createMemo, Index, Show } from 'solid-js';
 
 import type { AvatarInfo, AvatarStackProps } from './AvatarStack.types';
 
@@ -45,28 +45,34 @@ export function AvatarStack(props: AvatarStackProps) {
 
   return (
     <div style={{ display: 'flex', 'align-items': 'center', ...props.styles }}>
-      <For each={visible()}>
+      {/*
+        By position, not by object. The avatars arrive as a list built fresh by an expression, so every
+        recompute is a list of new objects; a `For` keyed on them replaced every face each time — a
+        card's faces were rebuilt whenever anybody's involvement anywhere on the board changed, and a
+        ring could be seen to blink. Each slot keeps its element and follows whoever is in it now.
+      */}
+      <Index each={visible()}>
         {(avatar, i) => (
           <div
             style={{
               display: 'flex',
-              'margin-left': i() > 0 ? overlapPx() : '0',
+              'margin-left': i > 0 ? overlapPx() : '0',
               'flex-shrink': '0',
             }}
           >
             <we-avatar
-              image={avatar.image ?? ''}
-              hash={avatar.hash ?? ''}
-              initials={avatar.initials ?? ''}
-              icon={avatar.icon ?? ''}
+              image={avatar().image ?? ''}
+              hash={avatar().hash ?? ''}
+              initials={avatar().initials ?? ''}
+              icon={avatar().icon ?? ''}
               size={props.size ?? 'xs'}
-              prop:ringColor={avatar.tone || ''}
+              prop:ringColor={avatar().tone || ''}
               prop:ringWidth={props.ringWidth ?? ''}
               prop:edgeColor={props.edge ?? ''}
             />
           </div>
         )}
-      </For>
+      </Index>
       {/*
         The overflow count.
 

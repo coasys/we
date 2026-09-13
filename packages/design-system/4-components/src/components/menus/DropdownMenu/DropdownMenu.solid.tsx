@@ -1,4 +1,13 @@
-import { Accessor, children as resolveChildren, createMemo, createSignal, Index, type JSX, Show } from 'solid-js';
+import {
+  Accessor,
+  children as resolveChildren,
+  createMemo,
+  createSignal,
+  Index,
+  type JSX,
+  Show,
+  untrack,
+} from 'solid-js';
 
 export type * from './DropdownMenu.types';
 import type {
@@ -268,7 +277,8 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
   };
 
   const renderBody = (getEntry: () => SolidDropdownMenuEntry) => {
-    const entry = getEntry();
+    // Read once, untracked: the caller rebuilds this only when the entry's kind changes.
+    const entry = untrack(getEntry);
 
     if (entry.type === 'divider') {
       return renderDivider();
@@ -311,7 +321,25 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
       const entry = getEntry();
       return Boolean(entry) && !('hidden' in entry && entry.hidden) && matches(entry);
     });
-    return <Show when={present()}>{renderBody(getEntry)}</Show>;
+    /*
+      Built once per kind of entry, not once per entry object.
+
+      The body used to be built inside the `Show`, and it reads the entry to decide what to draw — so
+      that read was tracked by the `Show`, and every time `items` was recomputed (a new array of new
+      objects, which is every time a menu built from data re-derives) every row was thrown away and
+      built again. On screen that was the hovered row's background fading out and back in a second
+      after a press, when the data caught up; underneath it was worse — a row replaced between the
+      press and the release takes the click with it, so a quick second press sometimes did nothing.
+
+      Keyed on the kind instead: a toggle stays the same element while its label, tick and face
+      follow the entry through the accessor, and only a position that stops being a toggle is rebuilt.
+    */
+    const kind = createMemo(() => (present() ? (getEntry()?.type ?? 'action') : undefined));
+    return (
+      <Show when={kind()} keyed>
+        {(_kind) => renderBody(getEntry)}
+      </Show>
+    );
   };
 
   /*
