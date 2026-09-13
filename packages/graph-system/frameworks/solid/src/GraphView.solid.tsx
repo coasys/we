@@ -558,8 +558,24 @@ export function GraphView(props: GraphViewProps) {
     return engine.getSelectedEdge();
   });
 
+  /*
+    Rebuilt when the behaviour specs change by value, and never otherwise.
+
+    A behaviour is stateful — `drag-node` holds the card being dragged, `select` the press it is
+    waiting to see released — so building a fresh set drops whatever gesture is under way. And a
+    re-read of `props.behaviours` is not evidence that anything changed: the schema renderer hands a
+    component all its props through one memo, so *any* prop moving re-runs every read of every other.
+    On the workshop's canvas that meant a card let go of mid-drag whenever the pending suggestions
+    or the lens rules re-resolved — frozen wherever it was, with no `onNodeDragEnd` to save it.
+
+    The key is a string, so its memo stops propagation when nothing changed; the build reads the
+    specs untracked, since the key has already said everything about them worth reacting to. An
+    armed `connect-nodes` still rebuilds when its `armed` flips, which is the change that matters.
+  */
+  const behaviourKey = createMemo(() => JSON.stringify(props.behaviours ?? DEFAULT_BEHAVIOURS));
   const behaviours = createMemo<Behaviour[]>(() => {
-    const specs = props.behaviours ?? DEFAULT_BEHAVIOURS;
+    behaviourKey();
+    const specs = untrack(() => props.behaviours ?? DEFAULT_BEHAVIOURS);
     return specs.flatMap((spec) => {
       const id = typeof spec === 'string' ? spec : spec.type;
       const options = typeof spec === 'string' ? undefined : spec.options;
