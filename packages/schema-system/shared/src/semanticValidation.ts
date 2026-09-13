@@ -1087,9 +1087,7 @@ function checkTokenValue(
   // $query token — the entity is checked against the manifest's known models.
   if ('$query' in obj && typeof obj.$query === 'object' && obj.$query !== null) {
     const query = obj.$query as Record<string, unknown>;
-    if (typeof query.entity === 'string' && entityIsCheckable(query)) {
-      checkEntityRef(query.entity, `${path}.$query.entity`, ctx, errors);
-    }
+    if (entityIsCheckable(query)) checkEntityRefs(query.entity, `${path}.$query.entity`, ctx, errors);
     checkQueryInternals(query, `${path}.$query`, ctx, state, errors);
   }
 
@@ -1165,7 +1163,7 @@ function checkHoistedQueries(
     if (!query || typeof query !== 'object') continue;
     const q = query as Record<string, unknown>;
     const qPath = `${path}.$queries.${name}`;
-    if (typeof q.entity === 'string' && entityIsCheckable(q)) checkEntityRef(q.entity, `${qPath}.entity`, ctx, errors);
+    if (entityIsCheckable(q)) checkEntityRefs(q.entity, `${qPath}.entity`, ctx, errors);
     checkQueryInternals(q, qPath, ctx, state, errors);
   }
 }
@@ -1326,6 +1324,19 @@ function checkActionRef(ref: string, path: string, ctx: ValidationContext, error
  */
 function entityIsCheckable(query: Record<string, unknown>): boolean {
   return query.dataset === undefined;
+}
+
+/**
+ * Check the names a query's `entity` spells out: one name, or each name of a literal list — a query
+ * over several entities is only as valid as each one it asks. An expression is not checkable here,
+ * which is the cost the docs name for writing one.
+ */
+function checkEntityRefs(entity: unknown, path: string, ctx: ValidationContext, errors: ValidationError[]): void {
+  if (typeof entity === 'string') return checkEntityRef(entity, path, ctx, errors);
+  if (!Array.isArray(entity)) return;
+  entity.forEach((name, index) => {
+    if (typeof name === 'string') checkEntityRef(name, `${path}[${index}]`, ctx, errors);
+  });
 }
 
 function checkEntityRef(name: string, path: string, ctx: ValidationContext, errors: ValidationError[]): void {

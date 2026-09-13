@@ -56,7 +56,8 @@ const zActionToken = z
 // `where`/`order`/`include`/`limit` are the concise DSL; the compiler maps them to the IR. No AD4M
 // vocab (`model`/`perspective`) — templates author neutral.
 const zQuery = z.object({
-  entity: z.string().min(1),
+  // A name, a list of names (one query over all of them), or an expression answering with either.
+  entity: z.union([z.string().min(1), z.array(z.string().min(1)), z.record(z.string(), z.unknown())]),
   where: z.record(z.string(), z.unknown()).optional(),
   order: z.record(z.string(), z.unknown()).optional(),
   /*

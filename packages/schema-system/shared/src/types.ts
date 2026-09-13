@@ -383,8 +383,14 @@ export type QueryToken = {
      *
      * Prefer a literal wherever the type IS known: the validator can say nothing about a name it
      * only sees at runtime, and a typo in an expression fails as a silently empty list.
+     *
+     * A **list** — literal, or an expression answering with one — asks the same question of every
+     * entity in it and answers with one list: each row tagged with the entity it came from under
+     * `__subjectClass`, a record two entities share listed once, and `order` and `limit` applied to
+     * the whole. An empty list is an answer (loaded, no rows), not a wait. `offset` is refused.
+     * See `combineEntityRows` in `@we/backend-shared`.
      */
-    entity: string | Record<string, unknown>;
+    entity: string | string[] | Record<string, unknown>;
     where?: Record<string, unknown>;
     order?: Record<string, unknown>;
     /**
@@ -490,7 +496,8 @@ export type CallLocalToken = { $callLocal: string };
 /** Descriptor returned by the shared resolver — pure data, no framework effects */
 export type QueryDescriptor = {
   /**
-   * The entity to query, as authored: a name, or an expression that answers with one.
+   * The entity to query, as authored: a name, a list of names, or an expression that answers with
+   * either.
    *
    * `unknown` rather than `string` because this resolver is pure and an expression can only be
    * evaluated against stores and a row's bindings, which the framework layer holds. Every other

@@ -114,6 +114,8 @@ export type { AdapterCapabilities, AggregateFn, Disposition, CapabilityGap, Quer
 export { compileQuery, irToFlatQuery } from './queryCompiler';
 export type { FlatQuery, CompileResult } from './queryCompiler';
 export { routeQuery } from './queryRouting';
+export { combineEntityRows, entityNamesOf } from './queryUnion';
+export type { EntityRows } from './queryUnion';
 export type { QueryDiagnostic, QueryRouting } from './queryRouting';
 export { executeQueryIR } from './queryEngine';
 export type { Row, InMemoryDataset, InMemoryRelation } from './queryEngine';

@@ -1045,10 +1045,10 @@ describe('the workshop’s key', () => {
     expect(key).toContain('"args":[{"$":"state.slug"},{"color":""}]');
     // Naming a state is Settings' business; the key only ever changes one that exists.
     expect(key).not.toContain('createTaskState');
-    // The same picker the vocabulary uses, tokens first, on every row of the key: the two canvas
-    // rows, the kind rows (both lists that make them up), and a state's.
+    // The same picker the vocabulary uses, tokens first, on every row of the key: the three canvas
+    // rows, a kind's, and a state's.
     const pickers = key.split('"type":"we-color-picker","props":{"tokens":true').length - 1;
-    expect(pickers).toBe(6);
+    expect(pickers).toBe(5);
   });
 
   it('turns each lens on from the heading of the section it governs, and hides the rest', () => {
@@ -1098,12 +1098,13 @@ describe('the workshop’s key', () => {
       `Relationship` is one of the models a call can extract, and the kinds come from that list — so
       it was offered a colour in the Kinds section, where picking one changed nothing at all: the
       canvas seed takes relationships as `connections` and draws them as lines, and a line has no
-      fill. Its colour is the Connections row now, and both lists that make up the kinds skip it.
+      fill. Its colour is the Connections row now: the query for what extraction wrote does not ask
+      for it, and the kinds list skips it again for a placement that names it.
     */
     const key = panel('key');
 
-    expect(key).toContain(`kind != '${LINK_ENTITY}'`);
-    expect(key).toContain(`placement.nodeType != '${LINK_ENTITY}'`);
+    expect(key).toContain(`targets.map(t, t.entity)).filter(k, k != '${LINK_ENTITY}')"`);
+    expect(key).toContain(`local.placements.map(p, p.nodeType)).filter(k, k != '${LINK_ENTITY}')`);
   });
 
   it('says what is missing rather than listing a key about nothing', () => {
@@ -1331,14 +1332,30 @@ describe('the workshop’s canvas', () => {
     /*
       Not every kind the space has: what extraction may write for this call, where a record of it
       exists, and whatever has been placed — a note, a dropped record, a shape — each once.
+
+      One query over every extractable kind rather than one per kind inside the loop. Each of those
+      answered its own row and nothing outside could read them, so the key could not tell a canvas
+      with nothing on it from one with cards, and the sentence for the empty one never showed.
     */
     const key = panel('key');
 
     expect(key).not.toContain('shapeStore.extractionCandidates');
-    expect(key).toContain('"found":{"entity":{"$":"kind"}');
-    expect(key).toContain('placement.nodeType != prev.nodeType');
+    expect(key).not.toContain('"found":{"entity":{"$":"kind"}');
+    expect(key).not.toContain('placement.nodeType != prev.nodeType');
+    expect(key).toContain('"onCall":{"entity":{"$":"(modules.transcribe.extractionFor[');
+    expect(key).toContain('distinct(local.onCall.map(r, r.__subjectClass), local.placements.map(p, p.nodeType))');
     expect(key).toContain("'CollectionBlock' ? 'Note'");
     expect(KIND_DEFAULTS.CollectionBlock).toBe('#ffea9f');
+  });
+
+  it('says so when there are no kinds yet, once it knows', () => {
+    // Both halves answered and empty, rather than either not yet asked — a call with cards on it
+    // must not flash the sentence while its queries are still out.
+    const key = panel('key');
+
+    expect(key).toContain('"condition":{"$":"local.onCallLoaded && local.placementsLoaded && !count(distinct(');
+    expect(key).toContain('No kinds yet. They appear here as cards land on the canvas — double-click it to add one.');
+    expect(key).not.toContain('Nothing on the canvas yet. Double-click it to add something.');
   });
 });
 

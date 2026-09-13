@@ -445,6 +445,7 @@ Nothing is ever added to the grammar above: a new capability is a function here,
 registers (listed last). Wrong-typed input answers with the empty value of its kind, never an error.
   Lists:
     count(items) — How many entries a list has. Anything that is not a list counts as 0.  e.g. count(spaceStore.members)
+    distinct(...lists) — The entries of every list given, each once, in the order first seen. Records compare by `id`, other values by value. Anything that is not a list contributes nothing.  e.g. distinct(local.found.map(r, r.__subjectClass), local.placements.map(p, p.nodeType))
     filter(items, where, limit?) — The entries matching a where-object — the same grammar $query takes. `limit` keeps the first N. Prefer the comprehension `items.filter(x, …)` when the test is not a where-object.  e.g. filter(spaceStore.members, { role: 'admin' }, 5)
     find(items, where?) — The first entry matching a where-object, or undefined. Without `where`, the first entry. Read a field off the result directly: `find(…).id` is undefined when nothing matched.  e.g. find(local.signalTypes, { slug: 'like' }).id
     first(items) — The first entry of a list, or undefined when it is empty.  e.g. first(local.posts).title
@@ -597,6 +598,33 @@ runtime, so a typo fails as a silently empty list rather than as an error — an
 resolved yet reads as "not ready", so the query simply waits. Note the counts of such a set cannot
 be totalled: each group is its own subscription and a schema cannot sum a list of queries whose
 length it does not know, so put a count inside each group rather than above them.
+
+entity may also be a LIST of names — literal, or an expression answering with one — which asks the
+same question of every entity in it and answers with ONE list. Reach for it when the rows belong
+together rather than in a group per model: a mixed feed, "what did this call produce", "which kinds
+are on this canvas", or anything whose total or emptiness you need to read above the rows.
+{
+  "$queries": {
+    "produced": {
+      "entity": { "$": "shapeStore.extractionCandidates" },
+      "scope": { "anchor": "CollectionBlock", "via": "children", "anchorId": { "$": "local.callId" } },
+      "order": { "createdAt": "desc" },
+      "limit": 50
+    }
+  }
+}
+- Every row carries the entity it came from as __subjectClass — { "$": "row.__subjectClass" } — the
+  same key a polymorphic include already sets, so recordStore.displays[row.__subjectClass] draws it.
+- order and limit apply to the WHOLE list, not to each entity. offset is refused.
+- A record two entities both answer with (an abstract model and a concrete one) is listed once, as
+  the first entity in the list.
+- Nothing is shown, and local.<name>Loaded stays false, until every entity has answered once.
+- An EMPTY list is an answer: loaded, no rows. So { "$": "local.producedLoaded && !count(local.produced)" }
+  is a sound empty-state condition even when the list of kinds is computed.
+- One entity that cannot be read is reported and counts as having no rows; the others still show.
+- A literal list is checked name by name, like a literal name.
+To read the distinct kinds out of it, or merge them with kinds from another list, use distinct():
+{ "$": "distinct(local.produced.map(r, r.__subjectClass), local.placements.map(p, p.nodeType))" }
 
 Backend-neutral identity & dataset refs — prefer these over backend-store paths inside $query and conditions:
 - currentDataset — the currently active dataset (an AD4M perspective, in the AD4M backend). Use as a dataset value.

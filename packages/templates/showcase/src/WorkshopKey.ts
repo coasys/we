@@ -385,7 +385,7 @@ export interface KeyRowOptions {
  *
  * One shape for every row — the two canvas colours, each kind, each state — so the panel reads as a
  * single list rather than as three lists with three spacings. The rows carry their own room above and
- * below rather than the lists spacing them; see `kindRows` for why that is load-bearing there.
+ * below rather than the lists spacing them, so a list is a plain column whatever it is built from.
  */
 export function keyRow(opts: KeyRowOptions): SchemaNode {
   const glyph: SchemaNode = { type: 'we-icon', props: { size: 'xs', color: 'text-muted', name: opts.icon } };
@@ -537,8 +537,7 @@ const canvasRows: SchemaNode = {
 /**
  * One kind, with the picker that sets its colour for the whole space.
  *
- * `kind` is an expression naming the kind, because the rows come from two lists bound to different
- * names — see `kindRows`.
+ * `kind` is an expression naming the kind — the name the list of kinds binds, in `kindRows`.
  */
 function kindRow(kind: string): SchemaNode {
   return keyRow({
@@ -564,80 +563,55 @@ function kindRow(kind: string): SchemaNode {
 /**
  * The kinds on this canvas, each once — not every kind the space has.
  *
- * Two lists make up "on the canvas". What extraction may write for this call, kept only where a
- * record of it exists, since a kind the call is listening for and has never produced is not on
- * anything. And whatever has been *placed*, which is how a note, a dropped record or a shape this
- * community defined gets here — listed by the placements' own `nodeType`, ordered so the `$prev`
- * grouping yields each kind once, and skipping the ones the first list already named.
+ * Two sources make up "on the canvas". What extraction wrote for this call — the `onCall` query in
+ * `keyPanel`, one question over every kind extraction may write, answering with only the records
+ * that exist, each tagged with its kind. And whatever has been *placed*, which is how a note, a
+ * dropped record or a shape this community defined gets here. `distinct` makes the two one list.
  *
- * The first list asks one small query per kind, with the kind as the entity — the documented shape
- * for a type the template was not written for. Cheap: `limit: 1`, and there are a handful.
+ * This was a query per kind inside an `$each`, and a second list read with the `$prev` grouping
+ * trick to skip what the first had named. It answered the rows correctly and could not answer the
+ * one question under them — *is there anything here at all?* — because each kind's answer lived in
+ * its own scope, where nothing outside the loop could read it. So the sentence for an empty canvas
+ * was gated on the extraction targets instead, which are nearly always set, and a call with nothing
+ * on it showed a lens that switched on over a blank space.
  */
-function kindRows(opts: { call: Record<string, unknown>; extracted: string }): SchemaNode {
-  return {
-    type: 'Column',
-    /*
-      No `gap`. Each kind in the first list is wrapped in a node that holds its query, and that
-      node renders whether or not the row inside it does — so a gap here spaced the empty ones as
-      if they were rows, and every kind the call listens for but has not produced was a blank line.
-      The rows carry their own room instead, and an empty wrapper is zero height and costs nothing.
-    */
-    props: { width: '100%' },
-    children: [
-      {
-        type: '$each',
-        props: { items: { $: opts.extracted }, as: 'kind' },
-        children: [
-          {
-            type: 'Column',
-            props: { width: '100%' },
-            $queries: { found: { entity: { $: 'kind' }, scope: anchorScope(opts.call), limit: 1 } },
-            children: [
-              {
-                type: '$if',
-                props: {
-                  // `LINK_ENTITY` is in this list and is not a card — see its docblock.
-                  condition: {
-                    $: `kind != '${LINK_ENTITY}' && (count(local.found) || kind in local.placements.map(p, p.nodeType))`,
-                  },
-                  then: kindRow('kind'),
-                },
-              },
-            ],
-          },
-        ],
-      },
-      {
-        type: '$each',
-        props: { items: { $: 'local.placements' }, as: 'placement' },
-        children: [
-          {
-            type: '$if',
-            props: {
-              condition: {
-                $:
-                  `placement.nodeType != prev.nodeType && placement.nodeType != '${LINK_ENTITY}'` +
-                  ` && !(placement.nodeType in (${opts.extracted}))`,
-              },
-              then: kindRow('placement.nodeType'),
+const KINDS = `distinct(local.onCall.map(r, r.__subjectClass), local.placements.map(p, p.nodeType)).filter(k, k != '${LINK_ENTITY}')`;
+
+const kindRows: SchemaNode = {
+  type: 'Column',
+  props: { width: '100%' },
+  children: [
+    {
+      type: '$each',
+      props: { items: { $: KINDS }, as: 'kind' },
+      children: [kindRow('kind')],
+    },
+    {
+      type: '$if',
+      props: {
+        // Both answered and neither holds a kind: "loaded and empty", never "not asked yet".
+        condition: { $: `local.onCallLoaded && local.placementsLoaded && !count(${KINDS})` },
+        then: {
+          /*
+            Faded in late, the way the kit's empty state is. The extraction targets this reads are
+            themselves loaded after the panel mounts, and until they are the query has no kinds to
+            ask about — an answer, and an empty one — so without the delay the sentence would blink
+            on every open of a call that does have cards.
+          */
+          type: '$animate',
+          props: { enterTransition: { type: 'fade', duration: 200, delay: 400 } },
+          children: [
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-faint', py: '100' },
+              children: ['No kinds yet. They appear here as cards land on the canvas — double-click it to add one.'],
             },
-          },
-        ],
-      },
-      {
-        type: '$if',
-        props: {
-          condition: { $: `!count(local.placements) && !count(${opts.extracted})` },
-          then: {
-            type: 'we-text',
-            props: { variant: 'footnote', color: 'text-faint', py: '100' },
-            children: ['Nothing on the canvas yet. Double-click it to add something.'],
-          },
+          ],
         },
       },
-    ],
-  };
-}
+    },
+  ],
+};
 
 /**
  * What a pick and a reset on a state row write.
@@ -722,8 +696,24 @@ export function keyPanel(opts: { call: Record<string, unknown>; callExpr: string
   return {
     type: 'Column',
     props: { width: '100%', height: '100%', p: '300', gap: '300', overflow: 'hidden' },
-    // The key's own subscriptions: what is placed here, for the kinds list — see `kindRows`.
-    $queries: { typeStyles: TYPE_STYLES_QUERY, placements: placementsQuery(opts.call) },
+    /*
+      The key's own subscriptions: what is placed here, and what extraction wrote here — the two
+      halves of the kinds list, see `kindRows`.
+
+      `onCall` is one query over every kind this call extracts, less `LINK_ENTITY`, which is a line
+      rather than a card. Only its kinds are read, but a kind is only known from a record of it, and
+      `limit` applies to the whole answer, so it has to be room for every record rather than one.
+    */
+    $queries: {
+      typeStyles: TYPE_STYLES_QUERY,
+      placements: placementsQuery(opts.call),
+      onCall: {
+        entity: { $: `(${opts.extracted}).filter(k, k != '${LINK_ENTITY}')` },
+        scope: anchorScope(opts.call),
+        limit: 200,
+        when: opts.call,
+      },
+    },
     children: [
       /*
         No aside. The lenses used to be a pair of buttons here — see `lensSwitch` for why each one is
@@ -782,7 +772,7 @@ export function keyPanel(opts: { call: Record<string, unknown>; callExpr: string
                     lens: 'kind',
                     label: 'Kinds',
                     help: 'A colour per kind of thing on the canvas, kept on the space — so a canvas made tomorrow opens coloured like this one. It says nothing anywhere else.',
-                    body: kindRows(opts),
+                    body: kindRows,
                   }),
                   lensSection({
                     lens: 'state',

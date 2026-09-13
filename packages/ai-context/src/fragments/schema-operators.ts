@@ -299,6 +299,33 @@ resolved yet reads as "not ready", so the query simply waits. Note the counts of
 be totalled: each group is its own subscription and a schema cannot sum a list of queries whose
 length it does not know, so put a count inside each group rather than above them.
 
+entity may also be a LIST of names — literal, or an expression answering with one — which asks the
+same question of every entity in it and answers with ONE list. Reach for it when the rows belong
+together rather than in a group per model: a mixed feed, "what did this call produce", "which kinds
+are on this canvas", or anything whose total or emptiness you need to read above the rows.
+{
+  "$queries": {
+    "produced": {
+      "entity": { "$": "shapeStore.extractionCandidates" },
+      "scope": { "anchor": "CollectionBlock", "via": "children", "anchorId": { "$": "local.callId" } },
+      "order": { "createdAt": "desc" },
+      "limit": 50
+    }
+  }
+}
+- Every row carries the entity it came from as __subjectClass — { "$": "row.__subjectClass" } — the
+  same key a polymorphic include already sets, so recordStore.displays[row.__subjectClass] draws it.
+- order and limit apply to the WHOLE list, not to each entity. offset is refused.
+- A record two entities both answer with (an abstract model and a concrete one) is listed once, as
+  the first entity in the list.
+- Nothing is shown, and local.<name>Loaded stays false, until every entity has answered once.
+- An EMPTY list is an answer: loaded, no rows. So { "$": "local.producedLoaded && !count(local.produced)" }
+  is a sound empty-state condition even when the list of kinds is computed.
+- One entity that cannot be read is reported and counts as having no rows; the others still show.
+- A literal list is checked name by name, like a literal name.
+To read the distinct kinds out of it, or merge them with kinds from another list, use distinct():
+{ "$": "distinct(local.produced.map(r, r.__subjectClass), local.placements.map(p, p.nodeType))" }
+
 Backend-neutral identity & dataset refs — prefer these over backend-store paths inside $query and conditions:
 - currentDataset — the currently active dataset (an AD4M perspective, in the AD4M backend). Use as a dataset value.
   A host store's dataset accessor (e.g. \`dataset: 'datasetStore.marketplaceDataset'\`) works as a dataset value too.

@@ -580,3 +580,129 @@ describe('$query when', () => {
     expect(el()).toEqual([true, [{ id: 't1' }]]);
   });
 });
+
+describe('$query over several entities', () => {
+  /*
+    `entity: ['TaskBlock', 'EventBlock']` — one question over records of more than one kind. Backends
+    answer an entity at a time, so the renderer asks each and puts the answers together; these pin
+    the parts a template relies on: every row says what it is, nothing shows until every kind has
+    answered, the list is ordered and limited as a whole, and "no kinds" is an answer.
+  */
+  it('combines each entity’s answer, tagged, once every one has answered', async () => {
+    let answerTasks: ((rows: unknown[]) => void) | null = null;
+    const tasks = {
+      subscribe: vi.fn((cb: (rows: unknown[]) => void) => {
+        answerTasks = cb;
+        return new Promise<unknown[]>(() => {});
+      }),
+      dispose: vi.fn(),
+    };
+    const events = createMockBuilder();
+    const Task = { query: vi.fn(() => tasks), findAll: vi.fn() };
+    const Event = { query: vi.fn(() => events), findAll: vi.fn() };
+    const stores = {
+      $currentDataset: () => ({ uuid: 'test-perspective' }),
+      $getEntity: (name: string) => (name === 'TaskBlock' ? Task : Event),
+    };
+
+    const node: SchemaNode = {
+      type: 'DataDisplay',
+      $queries: {
+        found: { entity: ['TaskBlock', 'EventBlock'], order: { at: 'asc' }, limit: 2, subscribe: true },
+      },
+      props: { data: { $: '[local.foundLoaded, local.found.map(r, [r.id, r.__subjectClass])]' } },
+    };
+
+    const { container } = render(() => <RenderSchema node={node} stores={asStores(stores)} registry={registry} />);
+    await tick();
+    const el = () => JSON.parse(container.querySelector('[data-testid="data"]')?.textContent ?? '[]');
+
+    // Each entity was asked with the query's own options; the events have answered and the tasks
+    // have not, so nothing is shown and nothing claims to be loaded.
+    expect(Task.query).toHaveBeenCalledOnce();
+    expect((Event.query.mock.calls[0] as unknown[])[1]).toMatchObject({ order: { at: 'asc' }, limit: 2 });
+    events.push([{ id: 'e1', at: 2 }]);
+    await tick();
+    expect(el()).toEqual([false, []]);
+
+    answerTasks!([
+      { id: 't1', at: 3 },
+      { id: 't2', at: 1 },
+    ]);
+    await tick();
+    expect(el()).toEqual([
+      true,
+      [
+        ['t2', 'TaskBlock'],
+        ['e1', 'EventBlock'],
+      ],
+    ]);
+
+    // A later push from one entity re-combines with the other's last answer.
+    events.push([{ id: 'e0', at: 0 }]);
+    await tick();
+    expect(el()).toEqual([
+      true,
+      [
+        ['e0', 'EventBlock'],
+        ['t2', 'TaskBlock'],
+      ],
+    ]);
+  });
+
+  it('answers an empty list as loaded and empty, asking nothing', async () => {
+    const getEntity = vi.fn();
+    const stores = { $currentDataset: () => ({ uuid: 'p1' }), $getEntity: getEntity };
+    const node: SchemaNode = {
+      type: 'DataDisplay',
+      $localState: { kinds: { type: 'array', initial: [] } },
+      $queries: { found: { entity: { $: 'local.kinds' } } },
+      props: { data: { $: '[local.foundLoaded, local.found]' } },
+    };
+
+    const { container } = render(() => <RenderSchema node={node} stores={asStores(stores)} registry={registry} />);
+    await tick();
+
+    expect(getEntity).not.toHaveBeenCalled();
+    expect(JSON.parse(container.querySelector('[data-testid="data"]')?.textContent ?? '[]')).toEqual([true, []]);
+  });
+
+  it('keeps the entities it can read when one fails', async () => {
+    const onError = vi.fn();
+    const Task = { query: vi.fn(), findAll: vi.fn(() => Promise.resolve([{ id: 't1' }])) };
+    const Event = { query: vi.fn(), findAll: vi.fn(() => Promise.reject(new Error('no such shape'))) };
+    const stores = {
+      $currentDataset: () => ({ uuid: 'p1' }),
+      $getEntity: (name: string) => (name === 'TaskBlock' ? Task : Event),
+      $onError: onError,
+    };
+    const node: SchemaNode = {
+      type: 'DataDisplay',
+      props: { data: { $query: { entity: ['TaskBlock', 'EventBlock'], subscribe: false } } },
+    };
+
+    const { container } = render(() => <RenderSchema node={node} stores={asStores(stores)} registry={registry} />);
+    await tick();
+
+    expect(JSON.parse(container.querySelector('[data-testid="data"]')?.textContent ?? '[]')).toEqual([
+      { id: 't1', __subjectClass: 'TaskBlock' },
+    ]);
+    expect(onError).toHaveBeenCalledWith(expect.stringContaining('"EventBlock" failed: no such shape'));
+  });
+
+  it('refuses an offset, rather than paging a union wrongly', async () => {
+    const onError = vi.fn();
+    const Task = { query: vi.fn(), findAll: vi.fn(() => Promise.resolve([])) };
+    const stores = { $currentDataset: () => ({ uuid: 'p1' }), $getEntity: () => Task, $onError: onError };
+    const node: SchemaNode = {
+      type: 'DataDisplay',
+      props: { data: { $query: { entity: ['TaskBlock', 'EventBlock'], offset: 20, subscribe: false } } },
+    };
+
+    render(() => <RenderSchema node={node} stores={asStores(stores)} registry={registry} />);
+    await tick();
+
+    expect(Task.findAll).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledWith(expect.stringContaining('cannot take an offset'));
+  });
+});

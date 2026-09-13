@@ -1,5 +1,5 @@
 import type { EntityClass, FlatQuery, QueryAdapter, RendererStores } from '@we/backend-shared';
-import { routeQuery } from '@we/backend-shared';
+import { combineEntityRows, entityNamesOf, routeQuery } from '@we/backend-shared';
 import type {
   LocalFieldMeta,
   LocalStateField,
@@ -75,16 +75,23 @@ function deepResolveTokens(
  * arrangement `where` and `order` have always had; `entity` was the one part of a query a template
  * had to know before it ran.
  *
- * Answers `''` for anything that does not resolve to a name, which callers must treat as **not
- * yet** rather than as an error: a store read is empty for the first frames after a mount and
- * permanently on a host that does not carry it, exactly as with an unresolved `where` operand.
+ * A **list** of names is a query over all of them — see `entityNamesOf` in `@we/backend-shared` for
+ * what counts as one, and `runQuery` for how it is asked. An empty list has answered: "no kinds" is
+ * a result.
+ *
+ * Answers `undefined` for anything that does not resolve to a name or a list, which callers must
+ * treat as **not yet** rather than as an error: a store read is empty for the first frames after a
+ * mount and permanently on a host that does not carry it, exactly as with an unresolved `where`
+ * operand.
  *
  * Call it inside the effect, so the read is tracked and the query re-runs when the name changes.
  */
-function resolveEntityName(entity: unknown, stores: RendererStores, context: Record<string, unknown>): string {
-  if (typeof entity === 'string') return entity;
-  const resolved = deepResolveTokens(entity, stores, context);
-  return typeof resolved === 'string' ? resolved : '';
+function resolveEntityNames(
+  entity: unknown,
+  stores: RendererStores,
+  context: Record<string, unknown>,
+): { names: string[]; union: boolean } | undefined {
+  return entityNamesOf(typeof entity === 'string' ? entity : deepResolveTokens(entity, stores, context));
 }
 
 /**
@@ -257,6 +264,159 @@ function reportRoutingRefusal(stores: RendererStores, message: string): void {
 }
 
 /**
+ * Ask the backend one query, over one entity or several, and hand back rows each time they change.
+ *
+ * Shared by the list path and `$single`, which differ only in what they do with the rows. Must be
+ * called inside the effect: it registers its own cleanup, so a re-run disposes the subscriptions or
+ * cancels the reads it started.
+ *
+ * ## One entity
+ *
+ * Exactly the path there has always been: route, then `query().subscribe` or `findAll`. A failure is
+ * the caller's `onError`, and a model the dataset lacks or a refused route means nothing runs.
+ *
+ * ## Several
+ *
+ * Backends answer one entity at a time, so each is asked separately and the answers are combined by
+ * `combineEntityRows` — tagged with the class each came from, de-duplicated, then ordered and
+ * limited as a whole. Nothing is emitted until every entity has answered once: a list that filled in
+ * kind by kind would flash as incomplete, and `Loaded` would turn true over a partial answer.
+ *
+ * One entity that cannot be read is reported and counts as having no rows, rather than taking the
+ * others down with it — the same choice the graph's seeds make, where a canvas that cannot read one
+ * of its types keeps the rest.
+ *
+ * `offset` is refused. Paging a union correctly means fetching `offset + limit` from every entity to
+ * find one page, which is a cost to design for when something needs it, not one to pay silently.
+ *
+ * Returns `false` when nothing was started (already reported), so the caller can clear its rows.
+ */
+function runQuery(request: {
+  names: string[];
+  union: boolean;
+  dataset: unknown;
+  options: Record<string, unknown>;
+  subscribe: boolean | undefined;
+  stores: RendererStores;
+  onRows: (rows: Record<string, unknown>[]) => void;
+  onError: (entity: string, err: unknown) => void;
+}): boolean {
+  const { names, union, dataset, options, stores } = request;
+  const getEntity = stores.$getEntity;
+  const getEntitiesForPerspective = stores.$getEntitiesForPerspective;
+  if (!getEntity) return false;
+
+  if (union && options.offset != null) {
+    reportRoutingRefusal(
+      stores,
+      `Query on ${names.map((name) => `"${name}"`).join(', ')} cannot take an offset: a query over several ` +
+        'entities is ordered and limited as a whole, and paging one is not supported yet.',
+    );
+    return false;
+  }
+
+  const plans: { entity: string; Model: EntityClass; queryOptions: Record<string, unknown> }[] = [];
+  for (const entity of names) {
+    // Dataset-scoped model lookup: prefer a dataset-specific dynamic model, fall back to the global
+    // registry. The dataset stays opaque here: the host derives whatever key its per-dataset model
+    // registry needs, since only it knows the concrete handle type.
+    const dynamicCls = getEntitiesForPerspective ? getEntitiesForPerspective(entity, dataset) : undefined;
+    let Model: EntityClass;
+    try {
+      Model = dynamicCls ?? getEntity(entity);
+    } catch {
+      stores.$onError?.(`Model "${entity}" is not available in this perspective`);
+      if (union) continue;
+      return false;
+    }
+    // Every query goes through the neutral IR and the backend's own adapter. Fail loud: a gap renders
+    // nothing and reports, rather than handing the backend a dialect its adapter never agreed to read.
+    const queryOptions = routeForBackend(entity, options, stores.$queryAdapter, stores);
+    if (queryOptions === null) {
+      if (union) continue;
+      return false;
+    }
+    plans.push({ entity, Model, queryOptions });
+  }
+
+  // AD4M model instances expose `id` as a prototype getter, not an own enumerable
+  // property, so Solid's reconcile({ key: 'id' }) cannot find it for keyed diffing.
+  // Without normalisation, every subscription update destroys and recreates all
+  // <For> entries (reconcile treats them as new), causing visible DOM flashes.
+  const normalise = (results: readonly unknown[]): Record<string, unknown>[] =>
+    results.map((r) => {
+      const rec = r as Record<string, unknown>;
+      return { id: rec.id, ...rec };
+    });
+
+  const answered = new Map<string, readonly unknown[]>();
+  const take = (entity: string, results: readonly unknown[]) => {
+    answered.set(entity, results);
+    if (answered.size < plans.length) return;
+    request.onRows(
+      union
+        ? combineEntityRows(
+            plans.map((plan) => ({ entity: plan.entity, rows: answered.get(plan.entity) ?? [] })),
+            { order: options.order as Record<string, unknown> | undefined, limit: options.limit },
+          )
+        : normalise(results),
+    );
+  };
+  const fail = (entity: string, err: unknown) => {
+    if (!union) return request.onError(entity, err);
+    reportQueryError(stores, entity, err);
+    take(entity, []);
+  };
+
+  // Several entities of which none could be asked — or a list that named none — have answered.
+  if (plans.length === 0) {
+    request.onRows([]);
+    return true;
+  }
+
+  if (request.subscribe) {
+    for (const { entity, Model, queryOptions } of plans) {
+      const builder = Model.query(dataset, queryOptions) as {
+        subscribe: (cb: (results: unknown[]) => void) => Promise<unknown[]>;
+        dispose: () => void;
+      };
+      builder
+        .subscribe((results) => take(entity, results))
+        .then((initial) => take(entity, initial))
+        .catch((err: unknown) => fail(entity, err));
+      onCleanup(() => builder.dispose());
+    }
+  } else {
+    // The effect re-runs when any reactive dep changes — perspective swap,
+    // resolved params, etc.  When that happens (or the component unmounts)
+    // the previous findAll may still be in flight against a slow query.
+    // An AbortController scoped to this iteration tells the executor to
+    // drop the JSON reply for the stale query instead of paying its
+    // serialise + WebSocket + deserialise cost.
+    //
+    // ad4m's `Ad4mModel.findAll` accepts `options?: { signal?: AbortSignal }`
+    // as the 3rd argument and forwards it through `perspective.modelQuery`
+    // to the executor's `request.cancel` machinery.
+    const controller = new AbortController();
+    onCleanup(() => controller.abort());
+    for (const { entity, Model, queryOptions } of plans) {
+      (Model.findAll(dataset, queryOptions, { signal: controller.signal }) as Promise<unknown[]>)
+        .then((results) => {
+          if (controller.signal.aborted) return;
+          take(entity, results);
+        })
+        .catch((err: unknown) => {
+          // AbortError = a newer effect run or unmount cancelled this query.
+          // Silently drop — no UI state to update, the new run handles it.
+          if (isAbort(err)) return;
+          fail(entity, err);
+        });
+    }
+  }
+  return true;
+}
+
+/**
  * How one to-many relation changed between two pushes, in a line — or nothing, if it did not.
  *
  * Membership and order are reported apart because they mean different things and are fixed in
@@ -302,10 +462,9 @@ function createQuerySignal(
     // over a memo of the backend ports, so these reads are reactive. A query
     // mounted before the backend connects (a reload straight into a data route)
     // re-runs and subscribes when the bindings land — previously it was stranded
-    // with an empty result until a route change happened to remount it.
-    const getEntity = stores.$getEntity;
-    const getEntitiesForPerspective = stores.$getEntitiesForPerspective;
-    if (!getEntity) {
+    // with an empty result until a route change happened to remount it. `runQuery` reads the rest
+    // of them, synchronously, inside this same effect.
+    if (!stores.$getEntity) {
       setItems(reconcile([]));
       return;
     }
@@ -332,8 +491,8 @@ function createQuerySignal(
 
     // Read inside the effect, so a name that comes from an expression re-runs the query when it
     // changes — and so a name that is not there yet is a frame to wait through, not a failure.
-    const entity = resolveEntityName(descriptor.entity, stores, context);
-    if (!entity) {
+    const entities = resolveEntityNames(descriptor.entity, stores, context);
+    if (!entities) {
       setItems(reconcile([]));
       return;
     }
@@ -349,21 +508,6 @@ function createQuerySignal(
         setLoaded(false);
         return;
       }
-    }
-
-    // Dataset-scoped model lookup: prefer a dataset-specific dynamic model, fall back to the global
-    // registry.
-    // The dataset stays opaque here: the host derives whatever key its per-dataset model registry
-    // needs, since only it knows the concrete handle type.
-    const dynamicCls = getEntitiesForPerspective ? getEntitiesForPerspective(entity, p) : undefined;
-    let Model: EntityClass;
-    try {
-      Model = dynamicCls ?? getEntity(entity);
-    } catch {
-      const onError = stores.$onError;
-      onError?.(`Model "${entity}" is not available in this perspective`);
-      setItems(reconcile([]));
-      return;
     }
 
     const resolvedParams = deepResolveTokens(descriptor.params, stores, context) as Record<string, unknown>;
@@ -386,80 +530,30 @@ function createQuerySignal(
       ...resolvedParams,
       ...(resolvedInclude !== undefined && { include: resolvedInclude }),
     };
-    // Every query goes through the neutral IR and the backend's own adapter. Fail loud: a gap renders
-    // nothing and reports, rather than handing the backend a dialect its adapter never agreed to read.
-    const queryOptions = routeForBackend(entity, rawOptions, stores.$queryAdapter, stores);
-    if (queryOptions === null) {
-      setItems(reconcile([]));
-      return;
-    }
-
-    // AD4M model instances expose `id` as a prototype getter, not an own enumerable
-    // property, so Solid's reconcile({ key: 'id' }) cannot find it for keyed diffing.
-    // Without normalisation, every subscription update destroys and recreates all
-    // <For> entries (reconcile treats them as new), causing visible DOM flashes.
-    const normalise = (results: unknown[]): unknown[] =>
-      results.map((r) => {
-        const rec = r as Record<string, unknown>;
-        return { id: rec.id, ...rec };
-      });
-
-    if (descriptor.subscribe) {
-      const builder = Model.query(p, queryOptions) as {
-        subscribe: (cb: (results: unknown[]) => void) => Promise<unknown[]>;
-        dispose: () => void;
-      };
-      // Development only, and only what changed — see `logSubscriptionDiff`.
-      let seen: unknown[] | null = null;
-      builder
-        .subscribe((results) => {
-          const rows = normalise(results);
-          logSubscriptionDiff(String(entity), seen, rows);
+    // Development only, and only what changed — see `logSubscriptionDiff`.
+    const label = entities.names.join(' + ');
+    let seen: unknown[] | null = null;
+    const started = runQuery({
+      ...entities,
+      dataset: p,
+      options: rawOptions,
+      subscribe: descriptor.subscribe,
+      stores,
+      onRows: (rows) => {
+        if (descriptor.subscribe) {
+          logSubscriptionDiff(label, seen, rows);
           seen = rows;
-          setItems(reconcile(rows, { key: 'id', merge: true }));
-          setLoaded(true);
-        })
-        .then((initial) => {
-          const rows = normalise(initial);
-          logSubscriptionDiff(String(entity), seen, rows);
-          seen = rows;
-          setItems(reconcile(rows, { key: 'id', merge: true }));
-          setLoaded(true);
-        })
-        .catch((err) => {
-          setItems(reconcile([]));
-          setLoaded(true);
-          reportQueryError(stores, entity, err);
-        });
-      onCleanup(() => builder.dispose());
-    } else {
-      // The effect re-runs when any reactive dep changes — perspective swap,
-      // resolved params, etc.  When that happens (or the component unmounts)
-      // the previous findAll may still be in flight against a slow query.
-      // An AbortController scoped to this iteration tells the executor to
-      // drop the JSON reply for the stale query instead of paying its
-      // serialise + WebSocket + deserialise cost.
-      //
-      // ad4m's `Ad4mModel.findAll` accepts `options?: { signal?: AbortSignal }`
-      // as the 3rd argument and forwards it through `perspective.modelQuery`
-      // to the executor's `request.cancel` machinery.
-      const controller = new AbortController();
-      onCleanup(() => controller.abort());
-      (Model.findAll(p, queryOptions, { signal: controller.signal }) as Promise<unknown[]>)
-        .then((results) => {
-          if (controller.signal.aborted) return;
-          setItems(reconcile(normalise(results), { key: 'id', merge: true }));
-          setLoaded(true);
-        })
-        .catch((err) => {
-          // AbortError = a newer effect run or unmount cancelled this query.
-          // Silently drop — no UI state to update, the new run handles it.
-          if (isAbort(err)) return;
-          setItems(reconcile([]));
-          setLoaded(true);
-          reportQueryError(stores, entity, err);
-        });
-    }
+        }
+        setItems(reconcile(rows, { key: 'id', merge: true }));
+        setLoaded(true);
+      },
+      onError: (entity, err) => {
+        setItems(reconcile([]));
+        setLoaded(true);
+        reportQueryError(stores, entity, err);
+      },
+    });
+    if (!started) setItems(reconcile([]));
   });
 
   /*
@@ -917,9 +1011,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
         createEffect(() => {
           // Read inside the effect — reactive, so a mount before the backend
           // connects self-heals when the bindings land (see createQuerySignal).
-          const getEntityFn = stores.$getEntity;
-          const getEntitiesForPerspective = stores.$getEntitiesForPerspective;
-          if (!getEntityFn) {
+          if (!stores.$getEntity) {
             setHasItem(false);
             return;
           }
@@ -942,19 +1034,8 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
 
           // Same as `createQuerySignal`: read inside the effect so an expression re-runs the query,
           // and treat a name that has not resolved yet as a frame to wait through.
-          const entity = resolveEntityName(descriptor.entity, stores, effectiveContext);
-          if (!entity) {
-            setHasItem(false);
-            return;
-          }
-
-          const dynamicCls = getEntitiesForPerspective ? getEntitiesForPerspective(entity, p) : undefined;
-          let Model: EntityClass;
-          try {
-            Model = dynamicCls ?? getEntityFn(entity);
-          } catch {
-            const onError = stores.$onError;
-            onError?.(`Model "${entity}" is not available in this perspective`);
+          const entities = resolveEntityNames(descriptor.entity, stores, effectiveContext);
+          if (!entities) {
             setHasItem(false);
             return;
           }
@@ -980,60 +1061,32 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
             ...resolvedParams,
             ...(resolvedInclude !== undefined && { include: resolvedInclude }),
           };
-          // Routed exactly as the list path is. Handing options straight to the backend would skip
-          // capability planning entirely — no fail-loud on a genuine gap, no `degraded` warning, and
-          // on a non-AD4M backend it would pass a dialect the adapter never agreed to read.
-          const queryOptions = routeForBackend(entity, rawOptions, stores.$queryAdapter, stores);
-          if (queryOptions === null) {
-            setHasItem(false);
-            return;
-          }
-
-          const handleResults = (results: unknown[]) => {
-            if (results.length === 0) {
+          // Routed exactly as the list path is, by the same runner. Handing options straight to the
+          // backend would skip capability planning entirely — no fail-loud on a genuine gap, no
+          // `degraded` warning, and on a non-AD4M backend it would pass a dialect the adapter never
+          // agreed to read. Over several entities it is the first row of the combined, ordered list.
+          const started = runQuery({
+            ...entities,
+            dataset: p,
+            options: rawOptions,
+            subscribe: descriptor.subscribe,
+            stores,
+            onRows: (rows) => {
+              if (rows.length === 0) {
+                setHasItem(false);
+              } else {
+                // Rows arrive with `id` already copied off the prototype, so the store proxy has a
+                // stable id for $profile.id action args.
+                setItem(reconcile(rows[0], { merge: true }));
+                setHasItem(true);
+              }
+            },
+            onError: (entity, err) => {
               setHasItem(false);
-            } else {
-              const r0 = results[0] as Record<string, unknown>;
-              // AD4M model instances expose `id` as a prototype getter, not an own enumerable
-              // property, so plain spread / Object.keys misses it. Explicitly read it first
-              // so the store proxy has a stable id for $profile.id action args.
-              const plain: Record<string, unknown> = { id: r0.id, ...r0 };
-              setItem(reconcile(plain, { merge: true }));
-              setHasItem(true);
-            }
-          };
-
-          if (descriptor.subscribe) {
-            const builder = Model.query(p, queryOptions) as {
-              subscribe: (cb: (results: unknown[]) => void) => Promise<unknown[]>;
-              dispose: () => void;
-            };
-            builder
-              .subscribe(handleResults)
-              .then(handleResults)
-              .catch((err: unknown) => {
-                setHasItem(false);
-                reportQueryError(stores, entity, err);
-              });
-            onCleanup(() => builder.dispose());
-          } else {
-            // Same abort discipline as the list-path createQuerySignal: the
-            // effect re-runs on perspective swap / param change, and any
-            // in-flight findAll from the previous run should be cancelled so
-            // we don't pay its serialise + transit + deserialise tax.
-            const controller = new AbortController();
-            onCleanup(() => controller.abort());
-            (Model.findAll(p, queryOptions, { signal: controller.signal }) as Promise<unknown[]>)
-              .then((results) => {
-                if (controller.signal.aborted) return;
-                handleResults(results);
-              })
-              .catch((err) => {
-                if (isAbort(err)) return;
-                setHasItem(false);
-                reportQueryError(stores, entity, err);
-              });
-          }
+              reportQueryError(stores, entity, err);
+            },
+          });
+          if (!started) setHasItem(false);
         });
       }
     }

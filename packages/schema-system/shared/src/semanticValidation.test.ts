@@ -357,3 +357,24 @@ describe('"open" on a panel that supplies its own node', () => {
     expect(result.valid).toBe(true);
   });
 });
+
+describe('a query over several entities', () => {
+  it('checks each name in a literal list, and points at the one that is wrong', () => {
+    const node: SchemaNode = {
+      type: 'Column',
+      $queries: { found: { entity: ['TaskBlock', 'EvntBlock'] } },
+    };
+    const errors = check(node).errors.filter((e) => e.severity === 'error');
+    expect(errors.map((e) => e.message)).toEqual(['Unknown model "EvntBlock" in $query. Did you mean "EventBlock"?']);
+    expect(errors[0].path).toContain('entity[1]');
+  });
+
+  it('leaves an expression answering with a list to runtime', () => {
+    const node: SchemaNode = {
+      type: 'Column',
+      $localState: { kinds: { type: 'array', initial: [] } },
+      $queries: { found: { entity: { $: 'local.kinds' } } },
+    };
+    expect(messages(node, 'error')).toEqual([]);
+  });
+});

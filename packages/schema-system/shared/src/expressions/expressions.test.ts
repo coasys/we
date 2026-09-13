@@ -153,6 +153,31 @@ describe('evaluation', () => {
     expect(run('{ a: 1 }.map(x, x.a)', roots)).toBe(1);
   });
 
+  it('lists each value once, across every list given', () => {
+    // The key's question: the kinds extraction wrote, and the kinds somebody placed, each once.
+    const roots = {
+      found: [{ __subjectClass: 'TaskBlock' }, { __subjectClass: 'EventBlock' }, { __subjectClass: 'TaskBlock' }],
+      placements: [{ nodeType: 'NoteBlock' }, { nodeType: 'EventBlock' }],
+    };
+    expect(run('distinct(found.map(r, r.__subjectClass), placements.map(p, p.nodeType))', roots)).toEqual([
+      'TaskBlock',
+      'EventBlock',
+      'NoteBlock',
+    ]);
+    // Records by id, so two reads of one record are one entry.
+    expect(
+      run('distinct(a, b).map(r, r.v)', {
+        a: [{ id: 1, v: 'x' }],
+        b: [
+          { id: 1, v: 'y' },
+          { id: 2, v: 'z' },
+        ],
+      }),
+    ).toEqual(['x', 'z']);
+    expect(run('distinct(nothing, [1, 1, 2])')).toEqual([1, 2]);
+    expect(run('distinct()')).toEqual([]);
+  });
+
   it('calls host sources after the built-ins', () => {
     const e = env({}, { calendarMonth: (options) => [(options as { month: number }).month] });
     expect(evaluateExpression(parseExpression('calendarMonth({ month: 8 })'), e)).toEqual([8]);
