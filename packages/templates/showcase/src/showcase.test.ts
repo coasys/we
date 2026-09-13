@@ -1547,3 +1547,21 @@ describe('the inspector’s connections', () => {
     expect(JSON.stringify(workshop)).toContain('"focus":{"$":"routeStore.params.card"}');
   });
 });
+
+describe('the workshop inspector’s people', () => {
+  const workshop = showcase.workshopTemplate as Schema & { meta?: { panels?: TemplatePanel[] } };
+  const inspector = JSON.stringify(workshop.meta?.panels?.find((panel) => panel.id === 'inspector'));
+
+  it('names everyone on the selected record by part, with the card’s own picker', () => {
+    expect(inspector).toContain('involvementMenu({ node: row.id');
+    expect(inspector).toContain('"$action":"spaceStore.setInvolvement"');
+    // Your own answer is withdrawn, never somebody else's.
+    expect(inspector).toContain('"$action":"spaceStore.respondTo","args":[{"$":"row.id"},""]');
+    expect(inspector).toContain('!holder.reflexive || holder.did == me.did');
+  });
+
+  it('says where the record came from, which a card’s face no longer does', () => {
+    expect(inspector).toContain('row.id in first(local.inspectedCall).extracted');
+    expect(inspector).toContain('Extracted from the conversation');
+  });
+});

@@ -1358,6 +1358,215 @@ const linkEnds: SchemaNode = {
   ],
 };
 
+/** Who is on the record in the inspector — the `involvement` host function over the panel's own query. */
+const ON_ROW =
+  'involvement({ rows: local.involvements, types: spaceStore.involvementTypes, me: me.did }).byNode[row.id]';
+
+/** The kinds of part this record's entity is offered — a task's Assigned and Reviewing, an event's answers. */
+const ROW_KINDS = `spaceStore.offeredInvolvementTypes.filter(k, ${CARD_TYPE} in k.appliesTo || !count(k.appliesTo))`;
+
+/**
+ * Everyone on the selected record, by part, by name — the detail view a card's faces stand in for.
+ *
+ * A card has room for three faces and a hovercard; this is where every part is read at once and each
+ * person is named without hovering. Grouped by kind in the community's words, each person with the
+ * face and ring the card gives them. The picker is the card's own (`involvementMenu`), so the two
+ * cannot offer different choices; an × takes somebody off a part anybody may give, and your own
+ * answer to an event is withdrawn the same way — nobody else's.
+ *
+ * Then where the record came from, which is history and so lives here and in the card's hovercard,
+ * never on its face: extracted from the conversation — by whose node — or added by somebody, and when.
+ *
+ * Shown only for an entity somebody can be on, which is every entity a kind applies to.
+ */
+const peopleSection: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: `!(${IS_RELATIONSHIP}) && count(${ROW_KINDS})` },
+    then: {
+      type: 'Column',
+      props: { gap: '200', pt: '200', borderTop: '1px solid border' },
+      children: [
+        {
+          type: 'Row',
+          props: { gap: '200', ay: 'center', width: '100%' },
+          children: [
+            sectionCaption('People'),
+            {
+              type: 'Row',
+              props: { ml: 'auto' },
+              children: [
+                {
+                  type: '$if',
+                  props: {
+                    // An event's answers have their own buttons on the calendar; the picker is for parts
+                    // one member gives another, and an entity with none of those has nothing to pick.
+                    condition: { $: `count(${ROW_KINDS}.filter(k, !k.reflexive))` },
+                    then: {
+                      type: 'DropdownMenu',
+                      props: {
+                        triggerIcon: 'user-plus',
+                        triggerTitle: 'Who is on this',
+                        triggerVariant: 'ghost',
+                        size: 'xs',
+                        itemSize: 'sm',
+                        placement: 'bottom-end',
+                        searchable: true,
+                        searchPlaceholder: 'Find a member',
+                        items: {
+                          $: `involvementMenu({ node: row.id, entity: ${CARD_TYPE}, rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.did, said: row.assignee })`,
+                        },
+                        onSelect: {
+                          $action: 'spaceStore.setInvolvement',
+                          args: [{ $: 'row.id' }, { $: 'arg.id' }, { $: 'arg.kind' }, { $: '!arg.checked' }],
+                        },
+                      },
+                    },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+        {
+          type: '$each',
+          props: {
+            items: { $: `${ROW_KINDS}.filter(k, count(${ON_ROW}.people.filter(p, p.kind == k.slug)))` },
+            as: 'part',
+          },
+          children: [
+            {
+              type: 'Column',
+              props: { gap: '100' },
+              children: [
+                { type: 'we-text', props: { variant: 'footnote', color: 'text-muted', text: { $: 'part.name' } } },
+                {
+                  type: '$each',
+                  props: { items: { $: `${ON_ROW}.people.filter(p, p.kind == part.slug)` }, as: 'holder' },
+                  children: [
+                    {
+                      type: 'Row',
+                      props: { gap: '200', ay: 'center', width: '100%' },
+                      children: [
+                        {
+                          type: 'AvatarStack',
+                          props: {
+                            size: 'xs',
+                            avatars: {
+                              $: '[{ image: find(profileStore.profiles, { did: holder.did }).avatar, hash: holder.did, tone: holder.tone }]',
+                            },
+                          },
+                        },
+                        {
+                          type: 'we-text',
+                          props: {
+                            fontSize: '200',
+                            flex: '1',
+                            minWidth: '0',
+                            truncate: true,
+                            text: {
+                              $: "holder.did == me.did ? find(profileStore.profiles, { did: holder.did }).name + ' (you)' : find(profileStore.profiles, { did: holder.did }).name",
+                            },
+                          },
+                        },
+                        {
+                          type: '$if',
+                          props: {
+                            // Anybody may take somebody off an assignment; only you may withdraw your own answer.
+                            condition: { $: '!holder.reflexive || holder.did == me.did' },
+                            then: {
+                              type: 'we-tooltip',
+                              props: {
+                                content: { $: "holder.reflexive ? 'Withdraw your answer' : 'Take them off this'" },
+                              },
+                              children: [
+                                {
+                                  type: 'we-button',
+                                  props: {
+                                    variant: 'ghost',
+                                    size: 'xs',
+                                    square: true,
+                                    label: { $: "holder.reflexive ? 'Withdraw your answer' : 'Take them off this'" },
+                                    onClick: {
+                                      $if: {
+                                        condition: { $: 'holder.reflexive' },
+                                        then: { $action: 'spaceStore.respondTo', args: [{ $: 'row.id' }, ''] },
+                                        else: {
+                                          $action: 'spaceStore.setInvolvement',
+                                          args: [{ $: 'row.id' }, { $: 'holder.did' }, { $: 'holder.kind' }, false],
+                                        },
+                                      },
+                                    },
+                                  },
+                                  children: [{ type: 'we-icon', props: { name: 'x', color: 'text-faint' } }],
+                                },
+                              ],
+                            },
+                          },
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $: `!count(${ON_ROW}.people)` },
+            then: {
+              type: 'we-text',
+              props: {
+                variant: 'footnote',
+                color: 'text-faint',
+                text: {
+                  $: "row.assignee ? `Nobody yet — the conversation named “${row.assignee}”.` : 'Nobody is on this yet.'",
+                },
+              },
+            },
+          },
+        },
+        {
+          type: '$agent',
+          props: { did: { $: 'row.author' }, as: 'author' },
+          children: [
+            {
+              type: 'Row',
+              props: { gap: '100', ay: 'center', wrap: true },
+              children: [
+                {
+                  type: 'we-icon',
+                  props: {
+                    name: { $: "row.id in first(local.inspectedCall).extracted ? 'sparkle' : 'pencil-simple-line'" },
+                    size: 'xs',
+                    color: 'text-faint',
+                  },
+                },
+                {
+                  type: 'we-text',
+                  props: {
+                    variant: 'footnote',
+                    color: 'text-faint',
+                    text: {
+                      $: "row.id in first(local.inspectedCall).extracted ? `Extracted from the conversation · run by ${author.name}` : `Added by ${author.did == me.did ? 'you' : author.name}`",
+                    },
+                  },
+                },
+                {
+                  type: 'we-timestamp',
+                  props: { value: { $: 'row.createdAt' }, relative: true, fontSize: '100', color: 'text-faint' },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
 /** The connection section for whatever is selected — a card's connections, or a line's two ends. */
 const connectionsSection: SchemaNode = {
   type: '$if',
@@ -1486,6 +1695,13 @@ const inspectorPanel: SchemaNode = {
       limit: 1,
       when: { $: `${CARD_ID} && ${IS_RELATIONSHIP}` },
     },
+    /*
+      Who is on the selected record — see `peopleSection`. Space-wide, for the board's reason: an
+      involvement is not a child of anything. Not asked for a line, which has nobody on it.
+    */
+    involvements: { entity: 'Involvement', when: { $: `${CARD_ID} && !(${IS_RELATIONSHIP})` } },
+    // The call's own record, for which of its records a model proposed — see `peopleSection`.
+    inspectedCall: { entity: 'CollectionBlock', where: { id: CALL }, limit: 1, when: CALL },
   },
   children: [
     panelHeader({
@@ -1777,6 +1993,9 @@ const inspectorPanel: SchemaNode = {
                     */
                     relationshipKind,
                     emptyFields,
+                    // After the record's own fields and before its connections: who is on this record
+                    // is about the record, and connections are about other records.
+                    peopleSection,
                     // After the disclosure: that is about this record's own fields, and connections
                     // are about other records.
                     connectionsSection,
