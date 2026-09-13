@@ -203,4 +203,34 @@ describe('a menu about people', () => {
     menu.search('ana');
     expect(menu.labels()).toEqual(['Reviewing', 'Ana Ruiz']);
   });
+
+  it('sets a group heading apart from the entries under it', () => {
+    const menu = mount(() => (
+      <DropdownMenu
+        triggerLabel="Assign"
+        items={[
+          {
+            type: 'group',
+            id: 'assigned',
+            label: 'Assigned',
+            items: [{ type: 'toggle', id: 'ana', label: 'Ana Ruiz', checked: false }],
+          },
+        ]}
+      />
+    ));
+    const text = (label: string) =>
+      menu
+        .rows()
+        .find((row) => row.textContent?.trim() === label)!
+        .querySelector('we-text') as HTMLElement & {
+        uppercase?: boolean;
+        fontSize?: string;
+      };
+    const uppercase = (el: ReturnType<typeof text>) => el.uppercase === true || el.hasAttribute('uppercase');
+    const fontSize = (el: ReturnType<typeof text>) => el.fontSize ?? el.getAttribute('fontSize');
+    // Small capitals for "Assigned"; a name under it stays a name.
+    expect(uppercase(text('Assigned'))).toBe(true);
+    expect(fontSize(text('Assigned'))).toBe('100');
+    expect(uppercase(text('Ana Ruiz'))).toBe(false);
+  });
 });

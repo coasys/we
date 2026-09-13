@@ -215,6 +215,13 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
     );
   };
 
+  /*
+   * A group's heading is set small, in capitals and spaced out, so it reads as the name of what
+   * follows rather than as one more entry. Beside a list of people especially: "Reviewing" and
+   * "Ana" are both a capitalised word in the same size, and only the caret told them apart.
+   * Written out on both headings rather than spread from one shared object: spread onto a custom
+   * element, `uppercase` arrived and `fontSize` did not.
+   */
   const renderGroup = (getGroup: () => DropdownMenuGroup & { items: SolidDropdownMenuEntry[] }) => {
     // Through the accessor throughout, for the reason spelled out above `renderActionItem`.
     // Open while somebody is searching: a match inside a closed group is a match nobody can see.
@@ -233,14 +240,18 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
             prop:hoverProps={{ color: 'neutral-500' }}
           >
             <we-icon name={collapsed() ? 'caret-right' : 'caret-down'} size="xs" />
-            <we-text>{getGroup().label}</we-text>
+            <we-text fontSize="100" fontWeight="semibold" letterSpacing="wide" uppercase>
+              {getGroup().label}
+            </we-text>
           </we-menu-item>
         </Show>
 
         {/* Non-collapsible header */}
         <Show when={getGroup().collapsible === false}>
           <we-menu-item color="text-muted" cursor="default" pointerEvents="none">
-            <we-text>{getGroup().label}</we-text>
+            <we-text fontSize="100" fontWeight="semibold" letterSpacing="wide" uppercase>
+              {getGroup().label}
+            </we-text>
           </we-menu-item>
         </Show>
 
