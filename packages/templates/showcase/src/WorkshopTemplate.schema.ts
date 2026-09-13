@@ -3416,15 +3416,20 @@ export const workshopTemplate: TemplateSchema = {
         // of single words.
         min: { width: 260 },
         /*
-          Two shares against one, so the transcript takes about two thirds of the column.
+          Half the column each, and exactly half: the two share a base (both `sm`) and a grow, and
+          a lane divides base-plus-slack, so equal bases with equal shares come out equal.
 
-          It was `1` against a `0`, which does not mean "most of it" — it means *all* the spare room,
-          because a member with no grow keeps its base and nothing else. On a tall window that left
-          the extraction panel at its minimum with a transcript towering over it. Grow is a ratio of
-          the *slack*, so this is approximate rather than exactly two thirds, and the taller the
-          column the closer it gets.
+          It was two shares against one, for a transcript that took about two thirds. That starved
+          the readout, which is where a pass's findings, its failures and the Extract button all
+          live — the half of the column somebody acts on, where the transcript is the half they
+          glance at.
+
+          Written rather than left to the default of 1, because the pair is the point and a bare
+          entry would not say so. Before that it was `1` against a `0`, which does not mean "most of
+          it" — it means *all* the spare room, since a member with no grow keeps its base and
+          nothing else.
         */
-        grow: 2,
+        grow: 1,
       },
       {
         id: 'extraction',
@@ -3452,8 +3457,8 @@ export const workshopTemplate: TemplateSchema = {
         band: 0,
         order: 1,
         size: 'sm',
-        // One share to the transcript's two. Not `0`, which pins it to its base and gives the
-        // transcript every pixel of the slack — a column that reads as one panel and one strip.
+        // The transcript's equal — see there. Not `0`, which pins it to its base and gives the
+        // transcript every pixel of the slack: a column that reads as one panel and one strip.
         grow: 1,
       },
       /*
@@ -3463,7 +3468,29 @@ export const workshopTemplate: TemplateSchema = {
         discovers — and its empty state is a sentence rather than a blank box, so an unused one says
         what it is for.
       */
-      { id: 'inspector', node: inspectorPanel, title: 'Inspector', snap: 'right', order: 0, size: 'sm', grow: 1 },
+      /*
+        Above the calls list, the two of them one sidebar down the right — the mirror of the
+        transcript and the readout on the left.
+
+        Displacing, with a shared `band`, for the left lane's reason: they meet flush, cost the
+        canvas their width once, and stop covering its right-hand edge. Floating, they sat over the
+        canvas's own cards, and the key in the corner then sat over them.
+
+        Half the column each, and exactly half: equal bases (both `sm`) and equal grows. That only
+        holds while these two are the lane. The key and the call window were in it too, which made
+        it four-way and put a short inspector over a long list.
+      */
+      {
+        id: 'inspector',
+        node: inspectorPanel,
+        title: 'Inspector',
+        snap: 'right',
+        displace: true,
+        band: 0,
+        order: 0,
+        size: 'sm',
+        grow: 1,
+      },
       /*
         No `open` here, though it stood as `open: false` for a long time and read as "placed, not
         shown". Nothing has ever honoured that on an authored panel — `open` suppresses a *module*
@@ -3474,26 +3501,55 @@ export const workshopTemplate: TemplateSchema = {
         the corner names the current one and the page gates start a new one, and neither picks from
         the archive. A panel carrying the one act nothing else offers should not begin hidden.
       */
-      { id: 'calls', node: callsPanel, title: 'Calls', snap: 'right', order: 1, size: 'sm' },
+      // The inspector's lane-mate — see there.
+      {
+        id: 'calls',
+        node: callsPanel,
+        title: 'Calls',
+        snap: 'right',
+        displace: true,
+        band: 0,
+        order: 1,
+        size: 'sm',
+        grow: 1,
+      },
       /*
-        The key, open and in its own seat.
+        The key, open, floating in the top-right corner on its own.
 
         Open, for the inspector's reason: a lens somebody has to find before the colours mean
-        anything is a lens nobody turns on. Its own seat rather than a tab behind Calls, because a
-        space template cannot bring a tab forward — `raiseDock` is host layout — so a key stacked
-        behind the calls list would be one nobody could get back to from inside the template. Closed,
-        it comes back with the picker's "Reset layout", like every authored panel.
+        anything is a lens nobody turns on. Not a tab behind Calls, because a space template cannot
+        bring a tab forward — `raiseDock` is host layout — so a key stacked behind the calls list
+        would be one nobody could get back to from inside the template. Closed, it comes back with
+        the picker's "Reset layout", like every authored panel.
+
+        A corner rather than a third seat in the right-hand column. It is a legend: glanced at while
+        the canvas is being read, the way a map's key sits over the map, and not a peer of the two
+        panels somebody works in. In the column it also took a third of the height from both.
+
+        `box` because no named size is this shape — a `sm` is 16:9, and a list of kinds is tall and
+        narrow. 250 × 510 of content, plus the host's frame: 2px of border across, and a 33px
+        titlebar with the border down. The corner clears `chromeReserve`, which is centred.
       */
       {
         id: 'key',
         node: keyPanel({ call: CALL, callExpr: CALL_EXPR, extracted: EXTRACTED.$ }),
         title: 'Key',
-        snap: 'right',
-        order: 2,
-        size: 'sm',
-        grow: 1,
+        snap: 'top-right',
+        box: { width: 252, height: 545 },
       },
-      { id: 'call', module: 'call', snap: 'right', order: 3, size: 'sm', open: false },
+      /*
+        The call window: placed, not opened, bottom-centre when a call opens it.
+
+        `open: false` is load-bearing — see `startCallButton`. Where it lands is still this entry's to
+        say, because a declaration outranks the module's own opening bid whenever the module does
+        open it: at the start of a call, not on entering the space.
+
+        Along the bottom as a strip, rather than beside the column it was in, because a row of faces
+        is wide and low and every other panel here is tall. 860 × 176 of stage, plus the same frame
+        as the key. A floating panel alone on an edge is not divided, so it keeps this width rather
+        than stretching along the bottom.
+      */
+      { id: 'call', module: 'call', snap: 'bottom', box: { width: 862, height: 211 }, open: false },
     ],
   },
   type: 'Column',

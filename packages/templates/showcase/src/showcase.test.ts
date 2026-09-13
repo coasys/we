@@ -771,6 +771,51 @@ describe('the workshop’s left-hand lane', () => {
   it('gives the transcript a floor, since below it the text is a column of single words', () => {
     expect(left.find((panel) => panel.id === 'transcript')?.min?.width).toBeGreaterThan(0);
   });
+
+  it('splits the column evenly — the same base and the same share each', () => {
+    // A lane divides base-plus-slack, so only equal bases with equal grows come out half and half.
+    expect(new Set(left.map((panel) => panel.size)).size).toBe(1);
+    expect(left.map((panel) => panel.grow)).toEqual([1, 1]);
+  });
+});
+
+describe('the workshop’s right-hand column', () => {
+  const workshop = showcase.workshopTemplate as Schema & { meta?: { panels?: TemplatePanel[] } };
+  const right = (workshop.meta?.panels ?? []).filter((panel) => panel.snap === 'right');
+
+  it('is one sidebar cut in two — both displacing, sharing a band', () => {
+    expect(right.every((panel) => panel.displace && panel.band === 0)).toBe(true);
+  });
+
+  it('is the inspector over the calls list, half each, and nothing else', () => {
+    /*
+      The pattern of the left-hand lane, mirrored. Anything else snapped here joins the column and
+      takes a share of both — the key and the call window both did — so the membership is asserted
+      and not just the order.
+    */
+    expect([...right].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map((panel) => panel.id)).toEqual([
+      'inspector',
+      'calls',
+    ]);
+    expect(new Set(right.map((panel) => panel.size)).size).toBe(1);
+    expect(right.map((panel) => panel.grow)).toEqual([1, 1]);
+  });
+});
+
+describe('the workshop’s call window', () => {
+  const workshop = showcase.workshopTemplate as Schema & { meta?: { panels?: TemplatePanel[] } };
+  const call = workshop.meta?.panels?.find((panel) => panel.module === 'call');
+
+  it('is placed but not opened, so entering the space never starts a call', () => {
+    // Opening a module's panel invokes its launcher, and the call module's launcher joins a call.
+    expect(call?.open).toBe(false);
+  });
+
+  it('opens bottom-centre as a strip, when a call opens it', () => {
+    expect(call?.snap).toBe('bottom');
+    expect(call?.displace).toBeFalsy();
+    expect(call?.box?.width).toBeGreaterThan(call?.box?.height ?? Infinity);
+  });
 });
 
 describe('the workshop template’s three placeholders', () => {
@@ -866,20 +911,22 @@ describe('the workshop’s key', () => {
     JSON.stringify((workshop.routes ?? []).find((entry) => entry.path === path) as unknown as SchemaNode);
   const panel = (id: string) => JSON.stringify(workshop.meta?.panels?.find((entry) => entry.id === id));
 
-  it('is a panel, open, on the right', () => {
+  it('is a panel, open, floating in the top-right corner', () => {
     /*
-      Closable, surviving the move between three pages, and competing for the right edge with the
-      inspector and the calls list — the three tests the panel contract sets. Open, for the
-      inspector's reason: a lens somebody has to find first is a lens nobody turns on. Its own seat
-      rather than a tab: a space template cannot bring a tab forward.
+      Closable and surviving the move between three pages — the tests the panel contract sets. Open,
+      for the inspector's reason: a lens somebody has to find first is a lens nobody turns on. In a
+      corner rather than the right-hand column: a legend over the canvas, not a third seat taking
+      height from the two panels beside it — and not a tab, which a space template cannot bring
+      forward.
     */
     const key = workshop.meta?.panels?.find((entry) => entry.id === 'key');
 
     expect(key?.node).toBeDefined();
-    expect(key?.snap).toBe('right');
+    expect(key?.snap).toBe('top-right');
     expect(key?.open).toBeUndefined();
-    const seatmates = (workshop.meta?.panels ?? []).filter((p) => p.snap === 'right' && p.order === key?.order);
-    expect(seatmates).toHaveLength(1);
+    // A corner cannot displace, and a legend is tall and narrow where every named size is 16:9.
+    expect(key?.displace).toBeFalsy();
+    expect(key?.box?.height).toBeGreaterThan(key?.box?.width ?? Infinity);
   });
 
   it('keeps the lenses in the address, and every navigation carries them', () => {
