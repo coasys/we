@@ -1098,7 +1098,13 @@ export class GraphEngine {
     return { ...node, data: { ...node.data, ...patch } };
   }
 
-  private hitArea(rawNode: GraphNode): { radius: number; halfWidth?: number; halfHeight?: number; shape?: CardShape } {
+  private hitArea(rawNode: GraphNode): {
+    radius: number;
+    halfWidth?: number;
+    halfHeight?: number;
+    shape?: CardShape;
+    z?: number;
+  } {
     const node = this.overlaid(rawNode);
     // Resolved through `nodeVisual` — the same function the renderer paints from — rather than read
     // off the raw style rules. Deriving it separately is how a card ended up with an 18px hit spot in
@@ -1108,6 +1114,8 @@ export class GraphEngine {
     // Metrics are deliberately not resolved here: they change what a node *means*, not where it is,
     // and a hit area that moved when a metric finished computing would be worse than a stale one.
     const visual = nodeVisual(node, resolveStyle(node, this.spec.nodeStyle), NO_METRICS);
+    // Stacking travels with the hit area so picking agrees with what is drawn in front.
+    const z = visual.z !== undefined ? { z: visual.z } : {};
     if (visual.shape === 'card' && visual.width && visual.height) {
       // The outline comes with the box. Picking stays on the box deliberately — a forgiving hit area
       // is right, and a triangle whose corners could not be clicked would be a worse trade than a
@@ -1117,10 +1125,11 @@ export class GraphEngine {
         halfWidth: visual.width / 2,
         halfHeight: visual.height / 2,
         shape: visual.cardShape,
+        ...z,
       };
     }
     // A few pixels of slack, so a mark is grabbable at its edge rather than only inside it.
-    return { radius: visual.size + 4 };
+    return { radius: visual.size + 4, ...z };
   }
 
   /**

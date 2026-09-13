@@ -285,6 +285,12 @@ export function nodeVisual(node: GraphNode, style: NodeStyle, metrics: MetricVal
     if (style.content !== undefined) visual.content = style.content;
     if (style.contentMinZoom !== undefined) visual.contentMinZoom = style.contentMinZoom;
   }
+  if (style.z !== undefined) {
+    // Only when it says something: an absent `z` and a zero are the same order, and leaving the field
+    // off keeps every graph that never stacks anything drawing exactly as it did.
+    const z = Math.round(resolveNumber(style.z, node, metrics, 0));
+    if (z) visual.z = z;
+  }
   if (style.borderColor !== undefined) visual.borderColor = style.borderColor;
   if (style.borderWidth !== undefined) visual.borderWidth = style.borderWidth;
   if (style.opacity !== undefined) visual.opacity = style.opacity;

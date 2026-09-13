@@ -116,6 +116,15 @@ export interface NodeStyle {
    * post on another canvas can be shown at another scale.
    */
   contentScale?: StyleValue<number>;
+  /**
+   * Stacking order among nodes: higher is drawn in front, and is what a press on an overlap picks.
+   * Default 0, and ties keep the order the graph already had.
+   *
+   * A style rather than a layout concern because on a canvas it is presentation a person chose per
+   * card — "this photo goes on top of that note" — and it is kept beside the card's colour and size.
+   * Rounded to a whole number, since that is all a stacking order can be.
+   */
+  z?: StyleValue<number>;
   opacity?: number;
   labelColor?: string;
   labelSize?: number;

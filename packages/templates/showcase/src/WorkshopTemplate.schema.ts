@@ -2367,6 +2367,8 @@ const canvas: SchemaNode = {
           // on its placement, and shown whatever lens is on: neither is a colour.
           cardShape: { from: 'data.canvasCardShape' },
           contentScale: { from: 'data.canvasContentScale' },
+          // Which card is in front where two overlap — a fact about the arrangement, like its size.
+          z: { from: 'data.canvasZ' },
         },
       },
       /*

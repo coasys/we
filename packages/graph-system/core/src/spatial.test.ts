@@ -27,6 +27,17 @@ describe('SpatialIndex', () => {
     expect(index.hitTest({ x: 86, y: 0 })).toEqual([]);
   });
 
+  it('picks the card drawn in front over one whose centre is nearer', () => {
+    const index = new SpatialIndex();
+    index.rebuild([
+      { id: 'beneath', x: 0, y: 0, radius: 10, halfWidth: 85, halfHeight: 64 },
+      { id: 'over', x: 100, y: 0, radius: 10, halfWidth: 85, halfHeight: 64, z: 2 },
+    ]);
+
+    // Nearer the lower card's centre, but on the overlap the upper card covers.
+    expect(index.hitTest({ x: 40, y: 0 })).toEqual(['over', 'beneath']);
+  });
+
   it('cells scale with the largest node so big nodes are not missed', () => {
     const index = new SpatialIndex();
     // A node much larger than the default cell: the 3×3 sweep only works

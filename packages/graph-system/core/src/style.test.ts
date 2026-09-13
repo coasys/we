@@ -156,6 +156,12 @@ describe('field references', () => {
     ).toBe(4);
   });
 
+  it('reads a stacking order as a whole number, and leaves an unset one off', () => {
+    expect(nodeVisual(card({ z: 2.6 }), { shape: 'card', z: { from: 'data.z' } }, NO_METRICS).z).toBe(3);
+    expect(nodeVisual(card({ z: -1 }), { shape: 'card', z: { from: 'data.z' } }, NO_METRICS).z).toBe(-1);
+    expect('z' in nodeVisual(card({ z: 0 }), { shape: 'card', z: { from: 'data.z' } }, NO_METRICS)).toBe(false);
+  });
+
   it('keeps a card big enough to grab', () => {
     const visual = nodeVisual(card({ w: 2 }), { shape: 'card', width: { from: 'data.w' } }, NO_METRICS);
     expect(visual.width).toBeGreaterThanOrEqual(40);

@@ -229,14 +229,36 @@
 //
 // Zero-size means there is no box to be widened, and absolute children make the dot's centre exactly
 // the node's coordinates whatever the label does.
-.we-graph__node {
+//
+// `.we-graph__chrome` is the same anchor for a selected node's handles and action bar, which are
+// drawn in a layer after the nodes rather than inside one — see `.we-graph__nodes`.
+.we-graph__node,
+.we-graph__chrome {
   position: absolute;
   top: 0;
   left: 0;
   width: 0;
   height: 0;
   pointer-events: none;
+}
 
+/*
+  Every node, in one stacking context.
+
+  A node is positioned by a transform, and a transform makes it a stacking context: whatever it holds
+  is stacked as one unit with it, so a node's `z-index` orders it among the other nodes and nothing
+  inside it can rise past a sibling. `isolation` gives the whole set a context of its own as well, so a
+  card with a high `z` still sits below the chrome layer that follows — the selection's handles and
+  its action bar are above every card, whatever order the cards are in.
+*/
+.we-graph__nodes {
+  position: absolute;
+  inset: 0;
+  isolation: isolate;
+  pointer-events: none;
+}
+
+.we-graph__chrome {
   /*
     Where a connect dot sits and how big its target is — in screen pixels, since both are constant
     on screen whatever the camera is doing.
@@ -258,7 +280,7 @@
   clear, and a bar lifted over a dot that is not there is a bar that has drifted away from its card
   for no reason.
 */
-.we-graph__node--connectable {
+.we-graph__chrome--connectable {
   /*
     Clear of the dot's whole target, not of the disc painted inside it.
 
@@ -829,8 +851,9 @@
  * finger expects at every zoom.
  *
  * `bottom: 100%` was the obvious spelling and it put the row in the middle of the card.
- * `.we-graph__node` is a zero-size anchor point — every visible part of a node positions itself
- * against it, and the card is centred there — so a percentage resolved against nothing and left the
+ * `.we-graph__chrome` is a zero-size anchor point at the node's position, as `.we-graph__node` is —
+ * every visible part of a node positions itself against one, and the card is centred there — so a
+ * percentage resolved against nothing and left the
  * strip at the anchor. Its top-left is half the width left and half the height up, which is how the
  * resize handles reach their edges too.
  */
