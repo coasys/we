@@ -1374,10 +1374,8 @@ const ROW_KINDS = `spaceStore.offeredInvolvementTypes.filter(k, ${CARD_TYPE} in 
  * cannot offer different choices; an × takes somebody off a part anybody may give, and your own
  * answer to an event is withdrawn the same way — nobody else's.
  *
- * Then where the record came from, which is history and so lives here and in the card's hovercard,
- * never on its face: extracted from the conversation — by whose node — or added by somebody, and when.
- *
- * Shown only for an entity somebody can be on, which is every entity a kind applies to.
+ * Shown only for an entity somebody can be on, which is every entity a kind applies to. Where the
+ * record came from is not here — see `originLine`, which is about the record rather than its people.
  */
 const peopleSection: SchemaNode = {
   type: '$if',
@@ -1528,6 +1526,27 @@ const peopleSection: SchemaNode = {
             },
           },
         },
+      ],
+    },
+  },
+};
+
+/**
+ * Where the selected record came from — extracted from the conversation, and on whose node, or added
+ * by somebody — and when.
+ *
+ * Its own line at the foot of the record rather than the last line of People: it is about the record,
+ * not about who is on it, and on a card it lives on the extracted mark for the same reason. A line
+ * joining two cards has no origin worth a sentence, so it is not asked.
+ */
+const originLine: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: `!(${IS_RELATIONSHIP})` },
+    then: {
+      type: 'Column',
+      props: { pt: '200', borderTop: '1px solid border' },
+      children: [
         {
           type: '$agent',
           props: { did: { $: 'row.author' }, as: 'author' },
@@ -1999,6 +2018,8 @@ const inspectorPanel: SchemaNode = {
                     // After the disclosure: that is about this record's own fields, and connections
                     // are about other records.
                     connectionsSection,
+                    // Last: where this record came from, which is history rather than content.
+                    originLine,
                     /*
                       No "Open full record". There was a ghost button here that navigated to
                       `<space>/record/<type>?id=<id>` — the record page the host appends to every

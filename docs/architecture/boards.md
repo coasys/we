@@ -269,8 +269,8 @@ A board with `people` also reads the `Involvement` records — one person's part
   card's right edge. By what a kind _means_ rather than its slug, so "Assigned" renamed to "Owner"
   still draws as the assignee. A reviewer is ringed in red (`TONE_BY_SEMANTIC`), which is the whole
   of how the two are told apart. The stack is the picker's trigger; a card with nobody on it shows a
-  dashed empty face in the same place. Hovering names each part and its people, and where the card
-  came from.
+  dashed empty face in the same place. Hovering a stack names the people in that stack and their
+  part — each stack has its own hovercard.
 - **A filter above the board**: a row of faces for the people on a card here, you first — press to
   narrow, press again to let go — ending in a chip that opens every member, searchable. How the rest
   are drawn is its own small control beside it:
@@ -284,7 +284,8 @@ A board with `people` also reads the `Involvement` records — one person's part
 The decisions that look arbitrary from the code:
 
 **The creator is not on a card.** Every board that has settled this puts only whoever is on the work
-on a card's face; who made it is history, and lives in the hovercard and the inspector. On an
+on a card's face; who made it is history, and lives on the extracted mark's tooltip and at the foot of the
+inspector. On an
 extracted card the author is whichever member's node ran the pass, not who proposed the work, so the
 name was false as well as prominent — an `extracted` mark says what is true.
 

@@ -302,10 +302,52 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
                   type: '$if',
                   props: {
                     condition: { $: opts.extracted },
+                    /*
+                      Where the card came from, on the mark that makes a reader ask.
+
+                      It used to be the last line of the people hovercard, which is about who is on the
+                      work — a different question. The sparkle is what says this card is unusual, so it
+                      is where the answer is: extracted from the conversation, on whose node, and when.
+                      A card somebody added by hand has nothing unusual to explain, and says nothing.
+                    */
                     then: {
                       type: 'we-tooltip',
-                      props: { content: 'Extracted from the conversation' },
-                      children: [{ type: 'we-icon', props: { name: 'sparkle', size: 'xs', color: 'text-muted' } }],
+                      props: { placement: 'top' },
+                      children: [
+                        {
+                          // A native element carries the slot — see `peopleTooltip` for why a Column cannot.
+                          type: 'div',
+                          slot: 'content',
+                          children: [
+                            {
+                              type: '$agent',
+                              props: { did: { $: `${as}.author` }, as: 'author' },
+                              children: [
+                                {
+                                  type: 'Row',
+                                  props: { gap: '100', ay: 'center', wrap: true },
+                                  children: [
+                                    {
+                                      type: 'we-text',
+                                      props: {
+                                        fontSize: '200',
+                                        text: {
+                                          $: "`Extracted from the conversation · run by ${author.did == me.did ? 'you' : author.name}`",
+                                        },
+                                      },
+                                    },
+                                    {
+                                      type: 'we-timestamp',
+                                      props: { value: { $: `${as}.createdAt` }, relative: true, fontSize: '200' },
+                                    },
+                                  ],
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                        { type: 'we-icon', props: { name: 'sparkle', size: 'xs', color: 'text-muted' } },
+                      ],
                     },
                   },
                 } as SchemaNode,
@@ -411,9 +453,7 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
               },
               ...(opts.actions ? [opts.actions] : []),
               // Last, at the card's right edge — where every board puts whoever is on the work.
-              ...(opts.peopleOf
-                ? [cardPeople(as, opts.peopleOf, opts.extracted, opts.bg ? undefined : 'var(--we-role-surface)')]
-                : []),
+              ...(opts.peopleOf ? [cardPeople(as, opts.peopleOf, opts.bg ? undefined : 'var(--we-role-surface)')] : []),
             ],
           },
         ],
@@ -437,21 +477,101 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
  *
  * Rather than a separate icon beside them: the thing you want to change is the thing you press, and a
  * card with nobody on it shows a dashed empty face in the same place, so unowned work is visible
- * while scanning and assigning it is one press. The picker is `involvementMenu` — see there for its
- * order, the "Assign to me" and "named in the conversation" entries, and why reviewers start closed.
+ * while scanning and assigning it is one press. Both stacks are one trigger — two would leave a card
+ * with no reviewer nothing to press to ask for one. The picker is `involvementMenu`.
  *
- * ## Hovering says what each face is
+ * ## Hovering a stack says what that stack is
  *
- * A face alone names a person and not why they are there, which is the question a reader has. The
- * hovercard lists each part with its people, then where the card came from: extracted from the
- * conversation or added by somebody, by whom, and when.
+ * A face alone names a person and not why they are there. Each stack has its own hovercard — the
+ * assignees' lists who is doing it, the reviewers' who is checking it — rather than one card over
+ * both, so what a reader points at is what they are told about. Where the card came from is not here:
+ * that is about the card, and is on its extracted mark.
  */
-function cardPeople(as: string, entity: string, extracted?: string, edge?: string): SchemaNode {
+function cardPeople(as: string, entity: string, edge?: string): SchemaNode {
   const on = ON(as);
   const faces = `${on}.people.filter(p, !p.reflexive)`;
   const doing = `${on}.people.filter(p, !p.reflexive && p.semantic != 'reviewing')`;
   const checking = `${on}.people.filter(p, !p.reflexive && p.semantic == 'reviewing')`;
   const face = (did: string) => `find(profileStore.profiles, { did: ${did} })`;
+
+  /** A tooltip whose content is nodes — see `peopleTooltip` for why the slot is on a native div. */
+  const hovercard = (content: SchemaNode[], trigger: SchemaNode): SchemaNode => ({
+    type: 'we-tooltip',
+    props: { placement: 'top' },
+    children: [
+      {
+        type: 'div',
+        slot: 'content',
+        children: [{ type: 'Column', props: { gap: '300', minWidth: '160px', textAlign: 'left' }, children: content }],
+      },
+      trigger,
+    ],
+  });
+
+  /** One stack's people, under the name of each part they hold — usually one part, in the community's words. */
+  const roster = (people: string): SchemaNode => ({
+    type: '$each',
+    props: {
+      items: { $: `spaceStore.involvementTypes.filter(k, count(${people}.filter(p, p.kind == k.slug)))` },
+      as: 'part',
+    },
+    children: [
+      {
+        type: 'Column',
+        props: { gap: '100' },
+        children: [
+          {
+            type: 'we-text',
+            props: { variant: 'footnote', uppercase: true, color: 'text-muted', text: { $: 'part.name' } },
+          },
+          {
+            type: '$each',
+            props: { items: { $: `${people}.filter(p, p.kind == part.slug)` }, as: 'holder' },
+            children: [
+              {
+                type: 'Row',
+                props: { gap: '200', ay: 'center' },
+                children: [
+                  {
+                    // A stack of one, so the ring comes from the same tone the card's stack uses.
+                    type: 'AvatarStack',
+                    props: {
+                      size: 'xs',
+                      avatars: { $: `[{ image: ${face('holder.did')}.avatar, hash: holder.did, tone: holder.tone }]` },
+                    },
+                  },
+                  {
+                    type: 'we-text',
+                    props: {
+                      fontSize: '200',
+                      text: { $: `holder.did == me.did ? 'You' : ${face('holder.did')}.name` },
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  });
+
+  const stack = (people: string, max: number): SchemaNode => ({
+    type: '$if',
+    props: {
+      condition: { $: `count(${people})` },
+      then: hovercard([roster(people)], {
+        type: 'AvatarStack',
+        props: {
+          size: 'xs',
+          max,
+          ...(edge ? { edge } : {}),
+          avatars: { $: `${people}.map(p, { image: ${face('p.did')}.avatar, hash: p.did, tone: p.tone })` },
+        },
+      }),
+    },
+  });
+
   return {
     type: 'DropdownMenu',
     props: {
@@ -472,197 +592,50 @@ function cardPeople(as: string, entity: string, extracted?: string, edge?: strin
     },
     children: [
       {
-        type: 'we-tooltip',
-        props: { placement: 'top' },
-        children: [
-          {
-            // A native element carries the slot — see `peopleTooltip` for why a Column cannot.
-            type: 'div',
-            slot: 'content',
-            children: [
+        type: '$if',
+        props: {
+          condition: { $: `count(${faces})` },
+          /*
+            Two stacks, not one: who is doing it, then who is checking it. One stack drew somebody in
+            both parts once — a stack shows each person once — so being assigned *and* reviewing read
+            as only one of them without hovering. Three doers and two checkers before a count, so a
+            busy card does not grow wide. Edged in the card's own colour where the card is plain; a
+            board with its own card colours gets no edge rather than a wrong one.
+          */
+          then: {
+            type: 'Row',
+            props: { gap: '200', ay: 'center' },
+            children: [stack(doing, 3), stack(checking, 2)],
+          },
+          // Nobody on it: a dashed empty face where the faces would be, which is also the way in.
+          else: hovercard(
+            [
               {
-                type: 'Column',
-                props: { gap: '300', minWidth: '180px', textAlign: 'left' },
-                children: [
-                  {
-                    type: '$each',
-                    props: {
-                      items: {
-                        $: `spaceStore.involvementTypes.filter(k, count(${on}.people.filter(p, p.kind == k.slug && !p.reflexive)))`,
-                      },
-                      as: 'part',
-                    },
-                    children: [
-                      {
-                        type: 'Column',
-                        props: { gap: '100' },
-                        children: [
-                          {
-                            type: 'we-text',
-                            props: {
-                              variant: 'footnote',
-                              uppercase: true,
-                              color: 'text-muted',
-                              text: { $: 'part.name' },
-                            },
-                          },
-                          {
-                            type: '$each',
-                            props: { items: { $: `${on}.people.filter(p, p.kind == part.slug)` }, as: 'holder' },
-                            children: [
-                              {
-                                type: 'Row',
-                                props: { gap: '200', ay: 'center' },
-                                children: [
-                                  {
-                                    // A stack of one, so the ring comes from the same tone the card's stack uses.
-                                    type: 'AvatarStack',
-                                    props: {
-                                      size: 'xs',
-                                      avatars: {
-                                        $: `[{ image: ${face('holder.did')}.avatar, hash: holder.did, tone: holder.tone }]`,
-                                      },
-                                    },
-                                  },
-                                  {
-                                    type: 'we-text',
-                                    props: {
-                                      fontSize: '200',
-                                      text: { $: `holder.did == me.did ? 'You' : ${face('holder.did')}.name` },
-                                    },
-                                  },
-                                ],
-                              },
-                            ],
-                          },
-                        ],
-                      },
-                    ],
+                type: 'we-text',
+                props: {
+                  fontSize: '200',
+                  text: {
+                    $: `${as}.assignee ? \`Nobody yet — the conversation named “\${${as}.assignee}”\` : 'Nobody is on this yet'`,
                   },
-                  {
-                    type: '$if',
-                    props: {
-                      condition: { $: `!count(${faces})` },
-                      then: {
-                        type: 'we-text',
-                        props: {
-                          fontSize: '200',
-                          color: 'text-muted',
-                          text: {
-                            $: `${as}.assignee ? \`Nobody yet — the conversation named “\${${as}.assignee}”\` : 'Nobody is on this yet'`,
-                          },
-                        },
-                      },
-                    },
-                  },
-                  {
-                    // Where the card came from — the history a face on the card used to stand in for.
-                    type: '$agent',
-                    props: { did: { $: `${as}.author` }, as: 'author' },
-                    children: [
-                      {
-                        type: 'Row',
-                        props: { gap: '100', ay: 'center', wrap: true, pt: '200', borderTop: '1px solid border' },
-                        children: [
-                          {
-                            type: 'we-text',
-                            props: {
-                              variant: 'footnote',
-                              color: 'text-muted',
-                              text: {
-                                $: `(${extracted ?? 'false'}) ? \`Extracted from the conversation · run by \${author.name}\` : \`Added by \${author.did == me.did ? 'you' : author.name}\``,
-                              },
-                            },
-                          },
-                          {
-                            type: 'we-timestamp',
-                            props: {
-                              value: { $: `${as}.createdAt` },
-                              relative: true,
-                              fontSize: '100',
-                              color: 'text-muted',
-                            },
-                          },
-                        ],
-                      },
-                    ],
-                  },
-                ],
+                },
               },
             ],
-          },
-          {
-            type: '$if',
-            props: {
-              condition: { $: `count(${faces})` },
-              /*
-                Two stacks, not one: who is doing it, then who is checking it. One stack drew somebody
-                in both parts once — a stack shows each person once — so being assigned *and*
-                reviewing read as only one of them without hovering. Side by side, position says the
-                part and the amber ring on the second stack confirms it. Three doers and two checkers
-                before a count, so a busy card does not grow wide.
-
-                Edged in the card's own colour where the card is plain, so overlapping faces read as
-                separate; a board with its own card colours gets no edge rather than a wrong one.
-              */
-              then: {
-                type: 'Row',
-                props: { gap: '200', ay: 'center' },
-                children: [
-                  {
-                    type: '$if',
-                    props: {
-                      condition: { $: `count(${doing})` },
-                      then: {
-                        type: 'AvatarStack',
-                        props: {
-                          size: 'xs',
-                          max: 3,
-                          ...(edge ? { edge } : {}),
-                          avatars: {
-                            $: `${doing}.map(p, { image: ${face('p.did')}.avatar, hash: p.did, tone: p.tone })`,
-                          },
-                        },
-                      },
-                    },
-                  },
-                  {
-                    type: '$if',
-                    props: {
-                      condition: { $: `count(${checking})` },
-                      then: {
-                        type: 'AvatarStack',
-                        props: {
-                          size: 'xs',
-                          max: 2,
-                          ...(edge ? { edge } : {}),
-                          avatars: {
-                            $: `${checking}.map(p, { image: ${face('p.did')}.avatar, hash: p.did, tone: p.tone })`,
-                          },
-                        },
-                      },
-                    },
-                  },
-                ],
+            {
+              type: 'Row',
+              props: {
+                width: 'var(--we-avatar-size-xs)',
+                height: 'var(--we-avatar-size-xs)',
+                r: 'avatar',
+                border: '1px dashed border-strong',
+                ax: 'center',
+                ay: 'center',
+                color: 'text-faint',
+                hoverProps: { borderColor: 'text-muted', color: 'text-muted' },
               },
-              // Nobody on it: a dashed empty face where the faces would be, which is also the way in.
-              else: {
-                type: 'Row',
-                props: {
-                  width: 'var(--we-avatar-size-xs)',
-                  height: 'var(--we-avatar-size-xs)',
-                  r: 'avatar',
-                  border: '1px dashed border-strong',
-                  ax: 'center',
-                  ay: 'center',
-                  color: 'text-faint',
-                  hoverProps: { borderColor: 'text-muted', color: 'text-muted' },
-                },
-                children: [{ type: 'we-icon', props: { name: 'plus', size: '10px' } }],
-              },
+              children: [{ type: 'we-icon', props: { name: 'plus', size: '10px' } }],
             },
-          },
-        ],
+          ),
+        },
       },
     ],
   };

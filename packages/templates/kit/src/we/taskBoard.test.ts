@@ -136,6 +136,18 @@ describe('a board read by who is on the work', () => {
     expect(json).not.toContain('spaceStore.setInvolvement');
   });
 
+  it('gives each stack a hovercard of its own, and keeps where the card came from off them', () => {
+    const extracted = JSON.stringify(
+      taskBoard({ boardId: { $: 'local.boardId' }, empty: { type: 'Column' }, people: true, extracted: 'card.x' }),
+    );
+    // One hovercard per stack, each listing only its own people.
+    expect(extracted.match(/"slot":"content"/g)?.length).toBeGreaterThanOrEqual(3);
+    expect(extracted).toContain("p.semantic == 'reviewing').filter(p, p.kind == part.slug)");
+    // Provenance is the extracted mark's to say, never a people hovercard's.
+    expect(extracted).toContain('Extracted from the conversation · run by');
+    expect(extracted).not.toContain('Added by');
+  });
+
   it('offers the people on this board as faces, and the mode as its own control', () => {
     expect(text).toContain('.involved');
     expect(text).toContain('"triggerTitle":"How the others are shown"');
