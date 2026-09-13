@@ -161,6 +161,57 @@ describe('manual layout', () => {
     expect(result.positions.get('a')).toMatchObject({ x: 5, y: 5 });
   });
 
+  it('keeps holding the drop while re-reads still carry the old coordinate', () => {
+    // A refresh for some unrelated write can land before this drop's own write does.
+    const layout = manualLayout();
+    layout.init(input([node('a', { x: 42, y: 84 })]));
+    layout.fix?.('a', { x: 5, y: 5 });
+
+    layout.init(input([node('a', { x: 42, y: 84 })]));
+    const result = layout.init(input([node('a', { x: 42, y: 84 })]));
+
+    expect(result.positions.get('a')).toMatchObject({ x: 5, y: 5 });
+  });
+
+  it('lets a peer move a card this agent has already dragged', () => {
+    /*
+      The regression. The hold used to outlive its write for the life of the page, so once
+      somebody had dragged a card their canvas drew their drop point whatever the data said next —
+      and two people who had both touched it each saw their own arrangement until a reload.
+    */
+    const layout = manualLayout();
+    layout.init(input([node('a', { x: 42, y: 84 })]));
+    layout.fix?.('a', { x: 5, y: 5 });
+    // This agent's write lands…
+    layout.init(input([node('a', { x: 5, y: 5 })]));
+    // …and then a peer moves the same card.
+    const result = layout.init(input([node('a', { x: 300, y: 400 })]));
+
+    expect(result.positions.get('a')).toMatchObject({ x: 300, y: 400 });
+  });
+
+  it('gives way to a peer write that lands before its own', () => {
+    // Both dragged at once: whatever the data settles on is what both canvases show.
+    const layout = manualLayout();
+    layout.init(input([node('a', { x: 42, y: 84 })]));
+    layout.fix?.('a', { x: 5, y: 5 });
+
+    const result = layout.init(input([node('a', { x: 300, y: 400 })]));
+
+    expect(result.positions.get('a')).toMatchObject({ x: 300, y: 400 });
+  });
+
+  it('gives way once a card dragged out of the tray has a placement', () => {
+    const layout = manualLayout();
+    layout.init(input([node('a')]));
+    layout.fix?.('a', { x: 5, y: 5 });
+    expect(layout.init(input([node('a')])).positions.get('a')).toMatchObject({ x: 5, y: 5 });
+
+    const result = layout.init(input([node('a', { x: 6, y: 7 })]));
+
+    expect(result.positions.get('a')).toMatchObject({ x: 6, y: 7 });
+  });
+
   it('parks an unplaced node where the reader is looking, not at the origin', () => {
     // The origin is the one place guaranteed to be wrong: it is wherever the camera is not, so a
     // card created while panned elsewhere appeared to vanish.

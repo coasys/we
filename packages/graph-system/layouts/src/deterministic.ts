@@ -280,7 +280,30 @@ function trayPosition(input: LayoutInput, index: number, gap: number): Point {
 
 export function manualLayout(rawOptions?: Record<string, unknown>): Layout {
   const options = { xField: 'x', yField: 'y', gap: 160, ...(rawOptions as ManualLayoutOptions) };
-  const pinned = new Map<string, Point>();
+  /*
+    A drag held over the stored coordinate — until the stored coordinate moves.
+
+    A hold that outlived its write was the bug: once somebody dragged a card, their canvas drew their
+    drop point for the life of the page, whatever the data said afterwards. A peer moving the same
+    card was written, synced, re-read and then overruled here, so two people who had both touched it
+    each saw their own arrangement until a reload.
+
+    So each hold remembers the coordinate it was made over (`over`), and the data wins the moment a
+    read brings a different one — which is this agent's own write landing, or somebody else's. Until
+    then it holds, which is what keeps a drop from snapping back for the round trip. `over` is
+    `undefined` for a hold made on a node no run has read yet: the next run records what it finds
+    rather than taking it as a change.
+  */
+  const pinned = new Map<string, { at: Point; over: Point | null | undefined }>();
+  /** The coordinate each node carried on the last run — `null` for one that carried none. */
+  let stored = new Map<string, Point | null>();
+
+  const coordinateOf = (node: LayoutInput['nodes'][number]): Point | null => {
+    const x = Number(node.data?.[options.xField]);
+    const y = Number(node.data?.[options.yField]);
+    return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+  };
+  const sameCoordinate = (a: Point | null, b: Point | null) => (a && b ? a.x === b.x && a.y === b.y : a === b);
   /*
     Nodes this layout parked itself, so a later run can tell its own work from somebody else's.
 
@@ -304,17 +327,23 @@ export function manualLayout(rawOptions?: Record<string, unknown>): Layout {
       let unplaced = 0;
       let fromData = 0;
       let reused = 0;
+      const seen = new Map<string, Point | null>();
 
       for (const node of input.nodes) {
-        const override = pinned.get(node.id);
-        if (override) {
-          positions.set(node.id, { ...override, fixed: true });
+        const coordinate = coordinateOf(node);
+        seen.set(node.id, coordinate);
+
+        const hold = pinned.get(node.id);
+        if (hold && hold.over === undefined) hold.over = coordinate;
+        if (hold && sameCoordinate(hold.over ?? null, coordinate)) {
+          positions.set(node.id, { ...hold.at, fixed: true });
           continue;
         }
-        const x = Number(node.data?.[options.xField]);
-        const y = Number(node.data?.[options.yField]);
-        if (Number.isFinite(x) && Number.isFinite(y)) {
-          positions.set(node.id, { x, y, fixed: true });
+        // The stored coordinate moved under the hold: somebody's write landed, so the data answers.
+        if (hold) pinned.delete(node.id);
+
+        if (coordinate) {
+          positions.set(node.id, { ...coordinate, fixed: true });
           // It has a coordinate of its own now — somebody dragged it — so this layout is no longer
           // the reason it is where it is. Forgetting keeps the set from growing for the life of the
           // canvas and from excusing a genuine no-op later.
@@ -334,6 +363,7 @@ export function manualLayout(rawOptions?: Record<string, unknown>): Layout {
         parked.add(node.id);
         unplaced += 1;
       }
+      stored = seen;
 
       /*
         Say so only when this layout genuinely did nothing.
@@ -365,7 +395,9 @@ export function manualLayout(rawOptions?: Record<string, unknown>): Layout {
     fix(id, at) {
       // Held in the layout rather than written back: persisting a position is a data mutation, and
       // the template decides whether a drag is worth writing (a canvas saves it, an explorer does not).
-      if (at) pinned.set(id, at);
+      // Every move of a drag re-holds over what was last read, so a peer's write that lands mid-drag
+      // becomes the baseline rather than tearing the card out of the hand on the next run.
+      if (at) pinned.set(id, { at, over: stored.get(id) });
       else pinned.delete(id);
     },
   };
