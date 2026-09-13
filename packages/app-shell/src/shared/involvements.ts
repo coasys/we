@@ -141,6 +141,8 @@ export interface InvolvementDeps {
   hold?: (nodeId: string, agent: string, kind: string, on: boolean) => void;
   /** Withdraw a held involvement — the write failed, so what is on screen is a lie. */
   release?: (nodeId: string, agent: string, kind: string) => void;
+  /** A write behind a hold has returned — see `involvementOptimism`'s "Nothing settles while a write is still going". */
+  done?: (nodeId: string, agent: string, kind: string) => void;
 }
 
 export interface InvolvementActions {
@@ -149,7 +151,25 @@ export interface InvolvementActions {
 }
 
 export function createInvolvementActions(deps: InvolvementDeps): InvolvementActions {
-  const { dataset, me, types, notify, hold, release } = deps;
+  const { dataset, me, types, notify, hold, release, done } = deps;
+
+  /*
+    One write at a time per pair, in the order they were pressed.
+
+    On, off and on again in quick succession were three writes racing: the "off" looked for the row
+    before the "on" had created it, found nothing to delete, and returned — then the "on" landed, and
+    the data said on while the screen had been told off. Chained, each write reads what the one
+    before it left.
+  */
+  const queues = new Map<string, Promise<void>>();
+  const inOrder = (queue: string, write: () => Promise<void>): Promise<void> => {
+    const next = (queues.get(queue) ?? Promise.resolve()).then(write, write);
+    queues.set(queue, next);
+    void next.finally(() => {
+      if (queues.get(queue) === next) queues.delete(queue);
+    });
+    return next;
+  };
 
   /** Every involvement this agent holds on this node — one query on the agent, narrowed by node here. */
   async function heldBy(p: DatasetProxy, nodeId: string, agent: string): Promise<Involvement[]> {
@@ -183,22 +203,25 @@ export function createInvolvementActions(deps: InvolvementDeps): InvolvementActi
       return;
     }
     hold?.(nodeId, agent, kind, on);
-    try {
-      const matching = (await heldBy(p, nodeId, agent)).filter((row) => row.kind === kind);
-      if (on && !matching.length) {
-        await Involvement.create(p, { agent, kind, node: [nodeId] } as never);
-      } else if (!on && matching.length) {
-        // Every copy, not the first: a duplicate left by two members pressing at once must not
-        // survive the person who meant to remove it.
-        await runEntityTransaction(p, async (tx) => {
-          for (const row of matching) await row.delete(tx.batchId);
-        });
+    await inOrder(`${nodeId}\u0000${agent}\u0000${kind}`, async () => {
+      try {
+        const matching = (await heldBy(p, nodeId, agent)).filter((row) => row.kind === kind);
+        if (on && !matching.length) {
+          await Involvement.create(p, { agent, kind, node: [nodeId] } as never);
+        } else if (!on && matching.length) {
+          // Every copy, not the first: a duplicate left by two members pressing at once must not
+          // survive the person who meant to remove it.
+          await runEntityTransaction(p, async (tx) => {
+            for (const row of matching) await row.delete(tx.batchId);
+          });
+        }
+        done?.(nodeId, agent, kind);
+      } catch (error) {
+        release?.(nodeId, agent, kind);
+        console.error('SpaceStore: could not update who is on that', error);
+        notify('Could not save that');
       }
-    } catch (error) {
-      release?.(nodeId, agent, kind);
-      console.error('SpaceStore: could not update who is on that', error);
-      notify('Could not save that');
-    }
+    });
   }
 
   /**
@@ -222,22 +245,30 @@ export function createInvolvementActions(deps: InvolvementDeps): InvolvementActi
       return;
     }
     for (const slug of answers) hold?.(nodeId, self, slug, slug === kind);
-    try {
-      const held = (await heldBy(p, nodeId, self)).filter((row) => answers.has(row.kind));
-      const stale = held.filter((row) => row.kind !== kind);
-      const already = held.some((row) => row.kind === kind);
-      if (!stale.length && (already || !kind)) return;
-      await runEntityTransaction(p, async (tx) => {
-        for (const row of stale) await row.delete(tx.batchId);
-        if (kind && !already) {
-          await Involvement.create(p, { agent: self, kind, node: [nodeId] } as never, { batchId: tx.batchId } as never);
+    await inOrder(`${nodeId}\u0000${self}\u0000answer`, async () => {
+      try {
+        const held = (await heldBy(p, nodeId, self)).filter((row) => answers.has(row.kind));
+        const stale = held.filter((row) => row.kind !== kind);
+        const already = held.some((row) => row.kind === kind);
+        if (stale.length || (!already && kind)) {
+          await runEntityTransaction(p, async (tx) => {
+            for (const row of stale) await row.delete(tx.batchId);
+            if (kind && !already) {
+              await Involvement.create(
+                p,
+                { agent: self, kind, node: [nodeId] } as never,
+                { batchId: tx.batchId } as never,
+              );
+            }
+          });
         }
-      });
-    } catch (error) {
-      for (const slug of answers) release?.(nodeId, self, slug);
-      console.error('SpaceStore: could not save that answer', error);
-      notify('Could not save your answer');
-    }
+        for (const slug of answers) done?.(nodeId, self, slug);
+      } catch (error) {
+        for (const slug of answers) release?.(nodeId, self, slug);
+        console.error('SpaceStore: could not save that answer', error);
+        notify('Could not save your answer');
+      }
+    });
   }
 
   return { setInvolvement, respond };

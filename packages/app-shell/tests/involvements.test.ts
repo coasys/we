@@ -130,6 +130,7 @@ describe('a write shown before it lands', () => {
 
   it('stays up across a draw that has not caught up, and goes once the data moves', () => {
     involvementOptimism.ports.hold('t1', ME, 'assignee', true);
+    involvementOptimism.ports.done('t1', ME, 'assignee');
     involvementOptimism.settle(() => false);
     involvementOptimism.settle(() => false);
     expect(involvementOptimism.overlay()).toHaveLength(1);
@@ -140,14 +141,63 @@ describe('a write shown before it lands', () => {
   it('goes when somebody else overtakes it, rather than waiting for data that will never agree', () => {
     // Held as off, seen as on at the first draw; then the pair moves — but not to what was written.
     involvementOptimism.ports.hold('t1', ANA, 'assignee', false);
+    involvementOptimism.ports.done('t1', ANA, 'assignee');
     involvementOptimism.settle(() => true);
     expect(involvementOptimism.overlay()).toHaveLength(1);
     // A peer's own write landing counts as an answer later than ours.
     involvementOptimism.ports.hold('t1', ME, 'reviewer', true);
+    involvementOptimism.ports.done('t1', ME, 'reviewer');
     involvementOptimism.settle((_node, agent) => agent === ANA);
     involvementOptimism.settle((_node, agent) => agent === ANA);
     involvementOptimism.settle(() => false);
     expect(involvementOptimism.overlay().map((h) => h.agent)).toEqual([ME]);
+  });
+
+  it('takes no answer from a surface whose query has not answered yet', () => {
+    /*
+      The inspector mounting mid-write read an empty list and released a hold on the card: an off
+      hold read as agreed with, and the card drew the stale row for the rest of the round trip.
+    */
+    const held = [{ node: 't1', agent: ME, kind: 'assignee' }];
+    involvementOptimism.ports.hold('t1', ME, 'assignee', false);
+    involvementOptimism.ports.done('t1', ME, 'assignee');
+    involvementOptimism.settleFromRows(held);
+    involvementOptimism.settleFromRows([]);
+    involvementOptimism.settleFromRows(undefined);
+    expect(involvementOptimism.overlay()).toHaveLength(1);
+    // The removal coming back is what releases it.
+    involvementOptimism.settleFromRows([{ node: 't2', agent: ME, kind: 'assignee' }]);
+    expect(involvementOptimism.overlay()).toHaveLength(0);
+  });
+
+  it('stands through on, off and on again until the last write returns', () => {
+    /*
+      The first press's echo arriving while the third is on screen read as the data having moved,
+      and the card blinked back to the first answer before the later writes caught it up.
+    */
+    const hold = (on: boolean) => involvementOptimism.ports.hold('t1', ME, 'reviewer', on);
+    const done = () => involvementOptimism.ports.done('t1', ME, 'reviewer');
+    const rows = (present: boolean) =>
+      present ? [{ node: 't1', agent: ME, kind: 'reviewer' }] : [{ node: 't9', agent: ME, kind: 'assignee' }];
+    hold(true);
+    involvementOptimism.settleFromRows(rows(false));
+    hold(false);
+    hold(true);
+    done(); // the on landed
+    involvementOptimism.settleFromRows(rows(true));
+    done(); // the off landed
+    involvementOptimism.settleFromRows(rows(false));
+    expect(involvementOptimism.overlay()).toEqual([expect.objectContaining({ kind: 'reviewer', on: true })]);
+    done(); // the last on landed, and the rows say so
+    involvementOptimism.settleFromRows(rows(true));
+    expect(involvementOptimism.overlay()).toHaveLength(0);
+  });
+
+  it('keeps a later press when an earlier write fails', () => {
+    involvementOptimism.ports.hold('t1', ME, 'reviewer', true);
+    involvementOptimism.ports.hold('t1', ME, 'reviewer', false);
+    involvementOptimism.ports.release('t1', ME, 'reviewer');
+    expect(involvementOptimism.overlay()).toEqual([expect.objectContaining({ on: false })]);
   });
 
   it('is withdrawn when the write is refused', () => {
@@ -215,6 +265,23 @@ describe('the writes', () => {
     await Fake.create({}, { agent: ANA, kind: 'assignee', node: ['t2'] });
     await actions().setInvolvement('t1', ANA, 'assignee', false);
     expect(table.map((r) => r.node)).toEqual(['t2']);
+  });
+
+  it('writes quick presses in order, so the last one is what is stored', async () => {
+    // Not awaited between presses, as a person double-clicking does not wait.
+    const a = actions();
+    await Promise.all([
+      a.setInvolvement('t1', ME, 'reviewer', true),
+      a.setInvolvement('t1', ME, 'reviewer', false),
+      a.setInvolvement('t1', ME, 'reviewer', true),
+    ]);
+    expect(table.map((r) => [r.agent, r.kind])).toEqual([[ME, 'reviewer']]);
+    await Promise.all([
+      a.setInvolvement('t1', ME, 'reviewer', false),
+      a.setInvolvement('t1', ME, 'reviewer', true),
+      a.setInvolvement('t1', ME, 'reviewer', false),
+    ]);
+    expect(table).toEqual([]);
   });
 
   it('refuses to answer for somebody else', async () => {
