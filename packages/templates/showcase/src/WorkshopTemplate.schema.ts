@@ -2447,7 +2447,13 @@ const kanbanRoute: RouteSchema = {
             condition: CALL,
             then: {
               type: 'Column',
-              props: { width: '100%', gap: '400', ...ROUTE_BAND },
+              /*
+                `flex: '1'` and no `ROUTE_BAND`, for the same reason as the route above: the "no board
+                yet" gate below centres in this box, and it should land exactly where the "no call"
+                gate does. The band goes on the branches that draw from the top — the board and its
+                spinner.
+              */
+              props: { width: '100%', flex: '1' },
               /*
                 Which board this call calls its own, if any — its `board` relation rather than "the
                 first board parented to it". A call may hold several; one of them is the one
@@ -2463,55 +2469,61 @@ const kanbanRoute: RouteSchema = {
                   type: '$if',
                   props: {
                     condition: { $: 'first(local.callRow).board.id' },
-                    then: taskBoard({
-                      // The call's own board, which gathers from the call — a fact the board carries,
-                      // so nothing here has to say so.
-                      boardId: { $: 'first(local.callRow).board.id' },
-                      /*
-                        No `bg`, so a card is `surface` — and the key's lenses stop at the canvas.
+                    then: {
+                      type: 'Column',
+                      props: { width: '100%', ...ROUTE_BAND },
+                      children: [
+                        taskBoard({
+                          // The call's own board, which gathers from the call — a fact the board carries,
+                          // so nothing here has to say so.
+                          boardId: { $: 'first(local.callRow).board.id' },
+                          /*
+                            No `bg`, so a card is `surface` — and the key's lenses stop at the canvas.
 
-                        This route used to pass `recordFill`, on the argument that three pages about
-                        one call should never disagree about what a colour means. The argument was
-                        sound and its premise was not: neither lens says anything here.
+                            This route used to pass `recordFill`, on the argument that three pages about
+                            one call should never disagree about what a colour means. The argument was
+                            sound and its premise was not: neither lens says anything here.
 
-                        **Kind** is a *constant* on a board. `recordFill` takes the kind as a literal
-                        and a board holds only tasks, so the expression answered the same colour for
-                        every card on the page — a tint over the whole board rather than a key, and
-                        the default lens besides, so this is what the route looked like out of the
-                        box. **State** is the column: a bound column IS its state, so colouring by it
-                        restates the heading in a second alphabet. Its residual case — a lane and the
-                        Unplaced column, where the column says nothing — is real and is not worth a
-                        mechanism, since the card already carries a state badge there (`showState`).
+                            **Kind** is a *constant* on a board. `recordFill` takes the kind as a literal
+                            and a board holds only tasks, so the expression answered the same colour for
+                            every card on the page — a tint over the whole board rather than a key, and
+                            the default lens besides, so this is what the route looked like out of the
+                            box. **State** is the column: a bound column IS its state, so colouring by it
+                            restates the heading in a second alphabet. Its residual case — a lane and the
+                            Unplaced column, where the column says nothing — is real and is not worth a
+                            mechanism, since the card already carries a state badge there (`showState`).
 
-                        A card somebody coloured on the canvas loses that colour here, which is the
-                        one thing given up. It was already invisible: `recordFill` read the freeform
-                        colour only with both lenses off, and the lens defaults to kind. Nothing on
-                        screen changes for a reader who never touched the key.
+                            A card somebody coloured on the canvas loses that colour here, which is the
+                            one thing given up. It was already invisible: `recordFill` read the freeform
+                            colour only with both lenses off, and the lens defaults to kind. Nothing on
+                            screen changes for a reader who never touched the key.
 
-                        If per-card colour is wanted on a board later it needs a picker *here* —
-                        colouring is a `nodeActions` affordance on a graph node, so a card that never
-                        reached the canvas has no placement and no way to be given one. That is the
-                        work, not this expression.
-                      */
-                      // Who ran the pass that wrote it — the provenance question this template is
-                      // built around, and the reason its cards carry a byline where a space's board
-                      // does not.
-                      byline: true,
-                      /*
-                        And who is doing it — the other half of the same question. A call commits
-                        people to things as often as it commits to things, and a board that could
-                        only say what was agreed and not by whom was half an answer. The filter above
-                        it rides in `?who=` beside `?call=`, so a link to this page can be "what Ana
-                        took on in this call".
-                      */
-                      people: true,
-                      empty: emptyState({
-                        icon: 'check-square',
-                        label: 'work',
-                        message:
-                          'Nothing from this call yet. Cards appear here as the conversation commits to things — or add one to a column.',
-                      }),
-                    }),
+                            If per-card colour is wanted on a board later it needs a picker *here* —
+                            colouring is a `nodeActions` affordance on a graph node, so a card that never
+                            reached the canvas has no placement and no way to be given one. That is the
+                            work, not this expression.
+                          */
+                          // Who ran the pass that wrote it — the provenance question this template is
+                          // built around, and the reason its cards carry a byline where a space's board
+                          // does not.
+                          byline: true,
+                          /*
+                            And who is doing it — the other half of the same question. A call commits
+                            people to things as often as it commits to things, and a board that could
+                            only say what was agreed and not by whom was half an answer. The filter above
+                            it rides in `?who=` beside `?call=`, so a link to this page can be "what Ana
+                            took on in this call".
+                          */
+                          people: true,
+                          empty: emptyState({
+                            icon: 'check-square',
+                            label: 'work',
+                            message:
+                              'Nothing from this call yet. Cards appear here as the conversation commits to things — or add one to a column.',
+                          }),
+                        }),
+                      ],
+                    },
                     /*
                       "No board yet" is an answer, and it is only given once the call record has
                       answered. Before that the same spinner the board itself shows holds the place,
@@ -2524,13 +2536,18 @@ const kanbanRoute: RouteSchema = {
                         then: callGate(
                           'kanban',
                           'This call has no board yet. Making one arranges the work it produced — it never moves anything.',
+                          // Dressed like `startCallButton('md')`, the control the other gate carries.
                           {
                             type: 'we-button',
-                            props: { onClick: { $action: 'spaceStore.openBoardFor', args: [CALL, 'This call'] } },
-                            children: ['Make a board for this call'],
+                            props: {
+                              gap: '200',
+                              mt: '400',
+                              onClick: { $action: 'spaceStore.openBoardFor', args: [CALL, 'This call'] },
+                            },
+                            children: [{ type: 'we-icon', props: { name: 'kanban' } }, 'Make a board for this call'],
                           },
                         ),
-                        else: taskBoardLoading,
+                        else: { type: 'Column', props: { width: '100%', ...ROUTE_BAND }, children: [taskBoardLoading] },
                       },
                     },
                   },

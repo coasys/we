@@ -865,7 +865,25 @@ describe('the workshop template’s three placeholders', () => {
         theme's offset — because the alternative is pinning a number that is exactly the kind of
         number this replaced.
       */
-      const band = (content?.props ?? {}) as Record<string, unknown>;
+      /*
+        The kanban asks one more question before it has content: whether the call has a board. Its
+        "no board yet" gate centres in the call branch, so that branch must be unpadded and take the
+        height too, and the band moves down onto the board and the spinner.
+      */
+      let banded = content;
+      if (path === '/kanban') {
+        const props = (content?.props ?? {}) as Record<string, unknown>;
+        for (const key of ['p', 'py', 'pt', 'pb']) {
+          expect(props[key], `${path} call branch.${key}`).toBeUndefined();
+        }
+        expect(props.flex, `${path} call branch.flex`).toBe('1');
+        const hasBoard = (content?.children as SchemaNode[])[0].props as { then?: SchemaNode; else?: SchemaNode };
+        const loaded = hasBoard.else?.props as { else?: SchemaNode };
+        expect((loaded.else?.props as Record<string, unknown>)?.pt, `${path} spinner band`).toBeDefined();
+        banded = hasBoard.then;
+      }
+
+      const band = (banded?.props ?? {}) as Record<string, unknown>;
       expect(String(band.pt), path).toContain('var(--we-component-height-md)');
       expect(String(band.pt), path).toContain('var(--we-theme-control-height-offset, 0px)');
       expect(band.pb, path).toBe('600');
