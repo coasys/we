@@ -1,4 +1,5 @@
-import { Accessor, createMemo, createSignal, Index, Show } from 'solid-js';
+import { avatarToneRing } from '@we/tokens';
+import { Accessor, children as resolveChildren, createMemo, createSignal, Index, type JSX, Show } from 'solid-js';
 
 export type * from './DropdownMenu.types';
 import type {
@@ -19,6 +20,14 @@ type SolidDropdownMenuEntry =
   | { type: 'divider' };
 type SolidDropdownMenuProps = Omit<DropdownMenuProps, 'items'> & {
   items: SolidDropdownMenuEntry[];
+  /**
+   * What to press, when it is not a button with a glyph and a word — a stack of faces, say.
+   *
+   * Drawn inside a bare `we-button`, so it is still focusable and still opens on Enter; given, it
+   * replaces `triggerIcon`/`triggerLabel`, and `triggerTitle` becomes its accessible name rather than
+   * a tooltip, since content rich enough to be a trigger usually brings a tooltip of its own.
+   */
+  children?: JSX.Element;
 };
 
 /**
@@ -59,6 +68,9 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
   const closeMenu = () => {
     popoverRef?.removeAttribute('open');
   };
+
+  // Resolved once: reading `props.children` twice would build the trigger twice.
+  const customTrigger = resolveChildren(() => props.children);
 
   const handleAction = (item: DropdownMenuAction) => {
     if (item.disabled) return;
@@ -126,6 +138,25 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
 
   const metrics = () => ITEM_SIZES[props.itemSize ?? props.size ?? 'md'];
 
+  /** What leads an entry: its face if it is a person, otherwise its glyph. */
+  const leading = (getItem: () => { icon?: string; avatar?: DropdownMenuAction['avatar'] }) => (
+    <Show
+      when={getItem().avatar}
+      fallback={
+        <Show when={getItem().icon}>
+          <we-icon name={getItem().icon!} size={metrics().icon} />
+        </Show>
+      }
+    >
+      <we-avatar
+        size="xs"
+        image={getItem().avatar?.image ?? ''}
+        hash={getItem().avatar?.hash ?? ''}
+        ring={getItem().avatar?.tone ? avatarToneRing(getItem().avatar!.tone as never) : undefined}
+      />
+    </Show>
+  );
+
   /*
     Every binding reads through the accessor, rather than off a snapshot taken once.
 
@@ -151,9 +182,7 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
         gap={metrics().gap}
         fontSize={metrics().fontSize}
       >
-        <Show when={getItem().icon}>
-          <we-icon name={getItem().icon!} size={metrics().icon} />
-        </Show>
+        {leading(getItem)}
         <we-text fontSize={metrics().fontSize}>{getItem().label}</we-text>
         <Show when={getItem().selected}>
           <we-icon name="check" size="xs" weight="bold" color="accent" ml="auto" />
@@ -176,12 +205,10 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
         gap={metrics().gap}
         fontSize={metrics().fontSize}
       >
-        <Show when={getItem().icon}>
-          <we-icon name={getItem().icon!} size={metrics().icon} />
-        </Show>
+        {leading(getItem)}
         <we-text fontSize={metrics().fontSize}>{getItem().label}</we-text>
         <Show when={checked()}>
-          <we-icon name="check" size="xs" weight="bold" color="accent" />
+          <we-icon name="check" size="xs" weight="bold" color="accent" ml="auto" />
         </Show>
       </we-menu-item>
     );
@@ -189,7 +216,8 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
 
   const renderGroup = (getGroup: () => DropdownMenuGroup & { items: SolidDropdownMenuEntry[] }) => {
     // Through the accessor throughout, for the reason spelled out above `renderActionItem`.
-    const collapsed = createMemo(() => isGroupCollapsed(getGroup()));
+    // Open while somebody is searching: a match inside a closed group is a match nobody can see.
+    const collapsed = createMemo(() => isGroupCollapsed(getGroup()) && !query().trim());
     const groupItems = createMemo(() => getGroup().items);
 
     return (
@@ -342,10 +370,19 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
         round: slot assignment considers a shadow host's *direct* children, so whichever element is
         outermost is the one that has to carry `slot`.
       */}
-      <Show when={props.triggerTitle} fallback={trigger('trigger')}>
-        <we-tooltip slot="trigger" content={props.triggerTitle!} placement="bottom">
-          {trigger('')}
-        </we-tooltip>
+      <Show
+        when={!customTrigger()}
+        fallback={
+          <we-button slot="trigger" variant="bare" size={props.size} aria-label={props.triggerTitle}>
+            {customTrigger()}
+          </we-button>
+        }
+      >
+        <Show when={props.triggerTitle} fallback={trigger('trigger')}>
+          <we-tooltip slot="trigger" content={props.triggerTitle!} placement="bottom">
+            {trigger('')}
+          </we-tooltip>
+        </Show>
       </Show>
 
       <we-menu slot="content">

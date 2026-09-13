@@ -128,3 +128,58 @@ describe('a searchable menu', () => {
     expect(host!.querySelector('we-input')).toBeNull();
   });
 });
+
+describe('a menu about people', () => {
+  it('draws a face for an entry that is a person, ringed in its tone', () => {
+    mount(() => (
+      <DropdownMenu
+        triggerLabel="Assign"
+        items={[
+          { type: 'toggle', id: 'ana', label: 'Ana', checked: true, avatar: { hash: 'did:ana' } },
+          { type: 'toggle', id: 'ben', label: 'Ben', checked: false, avatar: { hash: 'did:ben', tone: 'danger' } },
+        ]}
+      />
+    ));
+    const faces = [...host!.querySelectorAll('we-menu-item we-avatar')] as (HTMLElement & {
+      hash?: string;
+      ring?: string;
+    })[];
+    expect(faces.map((f) => f.hash)).toEqual(['did:ana', 'did:ben']);
+    expect(faces[0].ring).toBeFalsy();
+    expect(faces[1].ring).toBeTruthy();
+  });
+
+  it('opens with whatever it is given to press, still inside a button', () => {
+    mount(() => (
+      <DropdownMenu triggerTitle="Who is on this" items={[{ id: 'a', label: 'A' }]}>
+        <span data-testid="faces">AB</span>
+      </DropdownMenu>
+    ));
+    const trigger = host!.querySelector('we-button[slot="trigger"]') as HTMLElement;
+    expect(trigger.querySelector('[data-testid="faces"]')).not.toBeNull();
+    expect(trigger.getAttribute('aria-label')).toBe('Who is on this');
+    // Its own content brings its own hover; the title is a name, not a second tooltip.
+    expect(host!.querySelector('we-tooltip[slot="trigger"]')).toBeNull();
+  });
+
+  it('opens a closed group while a search is looking inside it', () => {
+    const menu = mount(() => (
+      <DropdownMenu
+        triggerLabel="Assign"
+        searchable
+        items={[
+          {
+            type: 'group',
+            id: 'reviewing',
+            label: 'Reviewing',
+            collapsed: true,
+            items: [{ type: 'toggle', id: 'ana', label: 'Ana Ruiz', checked: false }],
+          },
+        ]}
+      />
+    ));
+    expect(menu.labels()).toEqual(['Reviewing']);
+    menu.search('ana');
+    expect(menu.labels()).toEqual(['Reviewing', 'Ana Ruiz']);
+  });
+});

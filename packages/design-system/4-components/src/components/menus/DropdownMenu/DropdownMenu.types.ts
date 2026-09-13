@@ -1,4 +1,5 @@
 import type { Placement } from '@we/design-types';
+import type { AvatarTone } from '@we/tokens';
 
 /**
  * Base properties shared by actionable menu items.
@@ -7,6 +8,14 @@ interface MenuItemBase {
   id: string;
   label: string;
   icon?: string;
+  /**
+   * A face instead of a glyph, for an entry that is a person — a member in a picker.
+   *
+   * `hash` seeds the identicon a face without a picture draws, so pass the DID. `tone` rings it in
+   * one of the avatar tones, which is how a picker says which people already hold a role without a
+   * second glyph beside the name. Wins over `icon` where both are given.
+   */
+  avatar?: { image?: string; hash?: string; tone?: AvatarTone | '' };
   disabled?: boolean;
   /**
    * Leave the entry out while true — the way a schema makes an item conditional.
