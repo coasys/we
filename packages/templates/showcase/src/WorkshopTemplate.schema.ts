@@ -3108,6 +3108,28 @@ const kanbanRoute: RouteSchema = {
                             took on in this call".
                           */
                           people: true,
+                          /*
+                        Pressing a card selects it, the way pressing one on the canvas does: the same
+                        two parameters, so the inspector opens it and the canvas focuses it if you go
+                        there. Editing is the inspector's — its pencil unlocks the fields — rather than a
+                        second editor on the card. Pressing the selected card again lets it go.
+
+                        The type first, and only then the card, so the inspector's query never asks
+                        about a card under the wrong type for the instant between the two writes.
+                      */
+                          select: {
+                            selected: 'routeStore.params.card',
+                            onSelect: [
+                              { $action: 'routeStore.setParam', args: ['cardType', 'TaskBlock'] },
+                              {
+                                $if: {
+                                  condition: { $: 'card.id == routeStore.params.card' },
+                                  then: { $action: 'routeStore.setParam', args: ['card', null] },
+                                  else: { $action: 'routeStore.setParam', args: ['card', { $: 'card.id' }] },
+                                },
+                              },
+                            ],
+                          },
                           empty: emptyState({
                             icon: 'check-square',
                             label: 'work',

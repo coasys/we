@@ -154,3 +154,31 @@ describe('a board read by who is on the work', () => {
     expect(text).toContain('"triggerTitle":"Everyone in this space"');
   });
 });
+
+describe('selecting a card, and adding a column', () => {
+  const select = {
+    selected: 'routeStore.params.card',
+    onSelect: { $action: 'routeStore.setParam', args: ['card', { $: 'card.id' }] },
+  };
+  const selectable = JSON.stringify(taskBoard({ boardId: { $: 'local.boardId' }, empty: { type: 'Column' }, select }));
+
+  it('selects on a press and draws the selected card in the accent', () => {
+    expect(selectable).toContain('"onClick":{"$action":"routeStore.setParam","args":["card",{"$":"card.id"}]}');
+    expect(selectable).toContain("(card.id == routeStore.params.card) ? '1px solid accent'");
+    // And a board that selects nothing has no press to answer.
+    expect(json).not.toContain('routeStore.params.card');
+  });
+
+  it('offers a new column after the last one, and in the empty state, never under the board', () => {
+    expect(json).toContain('"label":"Add column"');
+    expect(json).not.toContain('Columns are this board’s own');
+    expect(json.match(/"\$setLocal":"addColumnOpen","value":true/g)?.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('draws nobody on a card as a dashed face the size of a real one', () => {
+    const people = JSON.stringify(
+      taskBoard({ boardId: { $: 'local.boardId' }, empty: { type: 'Column' }, people: true }),
+    );
+    expect(people).toContain('"name":"user-circle-dashed","size":"var(--we-avatar-size-xs)"');
+  });
+});

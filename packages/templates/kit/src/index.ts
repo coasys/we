@@ -49,7 +49,7 @@ export type { MediaGridOptions } from './lists/mediaGrid.ts';
 export { ANCHOR_ID, ANCHOR_PARAM, anchorBanner, anchorParent, anchorScope } from './we/anchor.ts';
 export type { AnchorBannerOptions } from './we/anchor.ts';
 export { moveTaskMenu, PENDING, taskBoard, taskBoardLoading, taskCard } from './we/taskBoard.ts';
-export type { TaskBoardOptions, TaskCardOptions } from './we/taskBoard.ts';
+export type { CardSelection, TaskBoardOptions, TaskCardOptions } from './we/taskBoard.ts';
 export { adminSection } from './we/adminSection.ts';
 export type { AdminSectionOptions } from './we/adminSection.ts';
 export { agentByline } from './we/agentByline.ts';

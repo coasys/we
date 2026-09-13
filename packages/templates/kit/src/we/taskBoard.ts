@@ -143,6 +143,22 @@ export interface TaskCardOptions {
    * people on it. Needs the board's involvement query in scope, which `taskBoard` declares.
    */
   peopleOf?: string;
+  /**
+   * Pressing the card selects it — see {@link TaskBoardOptions.select}. Omit for a card that is not
+   * selectable.
+   */
+  select?: CardSelection;
+}
+
+/** How a card is selected: which card is, and what pressing one does. */
+export interface CardSelection {
+  /** An expression for the id of the selected card, or empty — `routeStore.params.card`. */
+  selected: string;
+  /**
+   * What pressing a card does, with the card in scope under its context key. Usually writes where
+   * `selected` reads, and clears it when the card pressed is the one already selected.
+   */
+  onSelect: SchemaProp;
 }
 
 /**
@@ -162,6 +178,10 @@ export const PENDING = 'modules.transcribe.pendingIds';
 /** What the proposal on the card in scope says — its staged values, as one line. */
 const proposalSummary = (as: string) => `find(modules.transcribe.pendingProposals, { id: ${as}.id }).summary`;
 
+/** Whether the card in scope is the selected one, as expression source — `false` where nothing selects. */
+const selectedExpr = (opts: TaskCardOptions, as: string) =>
+  opts.select ? `(${as}.id == ${opts.select.selected})` : 'false';
+
 /**
  * One task, as a card.
  *
@@ -179,8 +199,17 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
       bg: opts.bg ?? 'surface',
       r: '300',
       p: '300',
-      // A suggestion looks like one: dimmed, with a dashed edge, the way the canvas draws it.
-      border: { $: `(${pending}) ? '1px dashed border-strong' : '1px solid border'` },
+      /*
+        A suggestion looks like one: dimmed, with a dashed edge, the way the canvas draws it. A
+        selected card takes the accent — what selected means everywhere else, and in the people filter
+        beside it — as its border and a one-pixel ring outside it, which together read as two pixels
+        without the border growing and nudging the column.
+      */
+      border: {
+        $: `${selectedExpr(opts, as)} ? '1px solid accent' : (${pending}) ? '1px dashed border-strong' : '1px solid border'`,
+      },
+      ring: { $: `${selectedExpr(opts, as)} ? '0 0 0 1px var(--we-role-accent)' : ''` },
+      ...(opts.select ? { cursor: 'pointer', onClick: opts.select.onSelect } : {}),
       /*
         Faded further for a card the people filter does not match. Well below a suggestion's 0.75, so
         the two never read as one state; above zero, so the board's shape is still legible through it,
@@ -620,19 +649,12 @@ function cardPeople(as: string, entity: string, edge?: string): SchemaNode {
                 },
               },
             ],
+            // A dashed empty face, the size of a real one, so an unowned card reads as a place a person goes.
+            // The colour and its hover on a row the icon inherits from: an icon has no hover state of its own.
             {
               type: 'Row',
-              props: {
-                width: 'var(--we-avatar-size-xs)',
-                height: 'var(--we-avatar-size-xs)',
-                r: 'avatar',
-                border: '1px dashed border-strong',
-                ax: 'center',
-                ay: 'center',
-                color: 'text-faint',
-                hoverProps: { borderColor: 'text-muted', color: 'text-muted' },
-              },
-              children: [{ type: 'we-icon', props: { name: 'plus', size: '10px' } }],
+              props: { color: 'text-faint', hoverProps: { color: 'text-muted' } },
+              children: [{ type: 'we-icon', props: { name: 'user-circle-dashed', size: 'var(--we-avatar-size-xs)' } }],
             },
           ),
         },
@@ -714,6 +736,14 @@ export interface TaskBoardOptions {
    * being pointed at. Off by default — a board of posts has nobody assigned to anything.
    */
   people?: boolean;
+  /**
+   * Pressing a card selects it, and the selected card is drawn in the accent.
+   *
+   * The board does not know what selection is *for* — the workshop's inspector reads it from the
+   * address, which is also what the canvas writes — so the caller says where the selection lives and
+   * what pressing a card does. Omit for a board with nothing to show a selected card in.
+   */
+  select?: CardSelection;
 }
 
 /**
@@ -828,6 +858,7 @@ function boardCard(opts: TaskBoardOptions, showState: string, from: string): Sch
         showState,
         pending: `card.id in (${PENDING})`,
         dimmed: `card.id in ${VIEW}.dimmed`,
+        ...(opts.select ? { select: opts.select } : {}),
         ...(opts.people ? { peopleOf: opts.entity ?? 'TaskBlock' } : {}),
       });
 }
@@ -1200,6 +1231,42 @@ function unplacedColumn(opts: TaskBoardOptions): SchemaNode {
 }
 
 /**
+ * The way to add a column: a square "+" just after the last one.
+ *
+ * Where the column it makes will appear, which is what every board that has settled this does, and
+ * which is why it is not in the controls above the board — those are about how the board is read, and
+ * this changes what the board is. It used to sit under the board with a sentence about states and
+ * lanes; the sentence is the add-column form's to say, where somebody is choosing between the two.
+ *
+ * `pt` lines it up with a column's heading, which sits inside the trough's own padding.
+ */
+function addColumnButton(pt: string): SchemaNode {
+  return {
+    type: 'Column',
+    props: { pt, flexShrink: '0' },
+    children: [
+      {
+        type: 'we-tooltip',
+        props: { content: 'Add column' },
+        children: [
+          {
+            type: 'we-button',
+            props: {
+              variant: 'secondary',
+              size: 'xs',
+              square: true,
+              label: 'Add column',
+              onClick: { $setLocal: 'addColumnOpen', value: true },
+            },
+            children: [{ type: 'we-icon', props: { name: 'plus' } }],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+/**
  * A column's heading on its own, for a board laid out a row per person — where the cards live in the
  * rows below and the heading is drawn once, above all of them.
  *
@@ -1265,6 +1332,7 @@ function personRows(opts: TaskBoardOptions): SchemaNode {
               { type: '$each', props: { items: { $: `${VIEW}.columns` }, as: 'col' }, children: [columnHead(opts)] },
             ],
           },
+          addColumnButton('200'),
         ],
       },
       {
@@ -1573,6 +1641,8 @@ export function taskBoard(opts: TaskBoardOptions): SchemaNode {
                           },
                         ],
                       },
+                      // After the last column and before Unplaced, which is not one of the board's own.
+                      addColumnButton('300'),
                       // Outside the sortable, because it is not one of the board's columns: it has no
                       // record and no id to reorder, and inside it looked draggable and did nothing.
                       ...(opts.lanesOnly ? [] : [unplacedColumn(opts)]),
@@ -1580,36 +1650,23 @@ export function taskBoard(opts: TaskBoardOptions): SchemaNode {
                   },
                 },
               },
-              else: opts.empty,
+              // A board with no columns has no last column to add after, so the empty state offers it.
+              else: {
+                type: 'Column',
+                props: { width: '100%', ax: 'center', gap: '300' },
+                children: [
+                  opts.empty,
+                  {
+                    type: 'we-button',
+                    props: { variant: 'secondary', size: 'sm', onClick: { $setLocal: 'addColumnOpen', value: true } },
+                    children: [{ type: 'we-icon', props: { name: 'plus' } }, 'Add column'],
+                  },
+                ],
+              },
             },
           },
           else: taskBoardLoading,
         },
-      },
-      {
-        type: 'Row',
-        props: { width: '100%', gap: '300', ay: 'center' },
-        children: [
-          {
-            type: 'we-button',
-            props: { variant: 'ghost', size: 'sm', onClick: { $setLocal: 'addColumnOpen', value: true } },
-            children: [
-              { type: 'we-icon', props: { name: 'plus' } },
-              { type: 'we-text', children: ['Add column'] },
-            ],
-          },
-          ...(opts.lanesOnly
-            ? []
-            : [
-                {
-                  type: 'we-text',
-                  props: { variant: 'footnote', color: 'text-faint' },
-                  children: [
-                    'Columns are this board’s own. States everyone shares are named in Settings → Vocabulary.',
-                  ],
-                },
-              ]),
-        ],
       },
     ],
   };
