@@ -349,8 +349,24 @@ function runQuery(request: {
       return { id: rec.id, ...rec };
     });
 
+  /*
+    Whether this run has been superseded — the effect re-ran, or the node unmounted.
+
+    A subscription answers twice over: once through the callback, and once more when `subscribe()`
+    resolves with the initial rows. Neither is withdrawn by `dispose()`. So a query torn down before its
+    first answer arrived — a selection let go of a moment after it was made, a `when` turning falsy —
+    had that answer land afterwards and write the rows its successor had just cleared: the inspector
+    went on showing a card nobody had selected any more, until something else re-ran it. Every answer
+    is checked against this rather than trusting the backend to stop calling.
+  */
+  let stale = false;
+  onCleanup(() => {
+    stale = true;
+  });
+
   const answered = new Map<string, readonly unknown[]>();
   const take = (entity: string, results: readonly unknown[]) => {
+    if (stale) return;
     answered.set(entity, results);
     if (answered.size < plans.length) return;
     request.onRows(
@@ -363,6 +379,7 @@ function runQuery(request: {
     );
   };
   const fail = (entity: string, err: unknown) => {
+    if (stale) return;
     if (!union) return request.onError(entity, err);
     reportQueryError(stores, entity, err);
     take(entity, []);

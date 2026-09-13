@@ -579,6 +579,102 @@ describe('$query when', () => {
     await tick();
     expect(el()).toEqual([true, [{ id: 't1' }]]);
   });
+
+  /*
+    The other direction: a selection let go of. The inspector asks for the record a URL parameter
+    names, gated on that parameter; clearing it must empty the list rather than leave the last
+    record's rows standing — and must not re-ask with the id pruned, which would answer with any
+    record at all.
+  */
+  it('empties when the condition turns falsy again, and asks nothing further', async () => {
+    const builder = createMockBuilder();
+    const Task = { query: vi.fn(() => builder), findAll: vi.fn() };
+    const [params, setParams] = createSignal<Record<string, string>>({ card: 't1' });
+    const stores = {
+      $currentDataset: () => ({ uuid: 'test-perspective' }),
+      $getEntity: () => Task,
+      routeStore: {
+        get params() {
+          return params();
+        },
+      },
+    };
+
+    const node: SchemaNode = {
+      type: 'DataDisplay',
+      $queries: {
+        card: {
+          entity: 'Task',
+          where: { id: { $: 'routeStore.params.card' } },
+          limit: 1,
+          when: { $: 'routeStore.params.card' },
+        },
+      },
+      props: { data: { $: '[local.cardLoaded, local.card]' } },
+    };
+
+    const { container } = render(() => <RenderSchema node={node} stores={asStores(stores)} registry={registry} />);
+    await tick();
+    builder.push([{ id: 't1' }]);
+    await tick();
+    const el = () => JSON.parse(container.querySelector('[data-testid="data"]')?.textContent ?? '[]');
+    expect(el()).toEqual([true, [{ id: 't1' }]]);
+
+    setParams({});
+    await tick();
+    expect(el()).toEqual([false, []]);
+    expect(Task.query).toHaveBeenCalledTimes(1);
+    expect(builder.dispose).toHaveBeenCalled();
+  });
+
+  /*
+    The same, with the answer arriving late — which is the order it happens in against a real backend,
+    where a record is a round trip away. Pressing a card and letting go of it before the first answer
+    came back left the answer to land on a query that no longer existed, and the inspector showed the
+    card anyway.
+  */
+  it('ignores an answer that arrives after the condition turned falsy', async () => {
+    let resolveInitial: ((rows: unknown[]) => void) | null = null;
+    let pushRows: ((rows: unknown[]) => void) | null = null;
+    const builder = {
+      subscribe: vi.fn((cb: (rows: unknown[]) => void) => {
+        pushRows = cb;
+        return new Promise<unknown[]>((resolve) => {
+          resolveInitial = resolve;
+        });
+      }),
+      dispose: vi.fn(),
+    };
+    const Task = { query: vi.fn(() => builder), findAll: vi.fn() };
+    const [params, setParams] = createSignal<Record<string, string>>({ card: 't1' });
+    const stores = {
+      $currentDataset: () => ({ uuid: 'test-perspective' }),
+      $getEntity: () => Task,
+      routeStore: {
+        get params() {
+          return params();
+        },
+      },
+    };
+
+    const node: SchemaNode = {
+      type: 'DataDisplay',
+      $queries: { card: { entity: 'Task', limit: 1, when: { $: 'routeStore.params.card' } } },
+      props: { data: { $: 'local.card' } },
+    };
+
+    const { container } = render(() => <RenderSchema node={node} stores={asStores(stores)} registry={registry} />);
+    await tick();
+    expect(Task.query).toHaveBeenCalledTimes(1);
+
+    setParams({});
+    await tick();
+    resolveInitial!([{ id: 't1' }]);
+    pushRows!([{ id: 't1', status: 'done' }]);
+    await tick();
+
+    expect(container.querySelector('[data-testid="data"]')?.textContent).toBe('[]');
+  });
 });
 
 describe('$query over several entities', () => {
