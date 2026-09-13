@@ -48,7 +48,11 @@ function rewriteKnockoutGlobalEval() {
 export default defineConfig({
   plugins: [solid(), rewriteKnockoutGlobalEval()],
   assetsInclude: ['**/*.glb'],
-  base: './',
+  // Absolute, because the packaged app is served over HTTP from the root of the launcher server and
+  // routes are client-side. A relative base resolves `./assets/…` against the current URL, so a
+  // reload at `/space/<id>/about` asked for `/space/<id>/assets/…`, got index.html back from the
+  // SPA fallback, and refused it as a module script.
+  base: '/',
   resolve: {
     alias: {
       '@': resolve(import.meta.dirname, 'src'),

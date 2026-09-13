@@ -27,7 +27,7 @@ import { createBlocks } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
 import { EdgeRoute, getEntity, Placement, PREDICATES, runEntityTransaction, TypeStyle } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
-import { PLACEMENT_UNSET } from '@we/graph-expanders';
+import { PLACEMENT_UNSET, resolvePlacement } from '@we/graph-expanders';
 import { Accessor, batch, createContext, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
 import { routeWrite } from '../../../shared/edgeRoute';
@@ -100,6 +100,38 @@ async function createPlacement(
     { nodeType, x: at.x, y: at.y, node: [nodeId] } as never,
     { parent, ...(batchId ? { batchId } : {}) } as never,
   );
+}
+
+/**
+ * The placement a canvas draws for one node — the row a write to that card has to land on.
+ *
+ * Chosen by `resolvePlacement`, the canvas seed's own rule, rather than by `find`. Two people placing
+ * the same card before either placement syncs leave two rows, and a writer taking the first while
+ * the canvas drew another sent every later drag to a row nobody saw: the card snapped back, for
+ * everyone, however often it was moved.
+ *
+ * The rows it outranks are deleted. They were never drawn, so nothing visible is lost, and the pick
+ * is a function of the rows alone — every peer holding the same rows keeps the same one, so two
+ * peers tidying at once cannot each delete the other's survivor. Only rows at the survivor's own
+ * tier go: a placement for another breakpoint is not a duplicate of it.
+ */
+async function drawnPlacement(
+  dataset: unknown,
+  parent: { id: string; predicate: string },
+  nodeId: string,
+): Promise<{ id: string } | undefined> {
+  const existing = (await Placement.findAll(dataset as never, { parent } as Record<string, unknown>)) as {
+    id: string;
+    node?: string;
+    tier?: string;
+  }[];
+  const rows = existing.filter((row) => row.node === nodeId);
+  const drawn = resolvePlacement(rows);
+  if (!drawn) return undefined;
+  for (const row of rows) {
+    if (row !== drawn && (row.tier ?? '') === (drawn.tier ?? '')) await Placement.delete(dataset as never, row.id);
+  }
+  return drawn;
 }
 
 export interface RecordStore {
@@ -737,12 +769,7 @@ export function RecordStoreProvider(props: ParentProps) {
     const parent = { id: canvas, predicate: PREDICATES.CHILDREN };
 
     try {
-      const existing = (await Placement.findAll(dataset.handle, { parent } as Record<string, unknown>)) as {
-        id: string;
-        node?: string;
-      }[];
-
-      const already = existing.find((row) => row.node === nodeId);
+      const already = await drawnPlacement(dataset.handle, parent, nodeId);
       if (already) {
         await Placement.update(dataset.handle, already.id, { x, y });
         return;
@@ -783,10 +810,7 @@ export function RecordStoreProvider(props: ParentProps) {
     // on the round trip. Dropped again below if the write turns out not to be possible.
     hold(nodeId, patch);
     try {
-      const existing = (await Placement.findAll(dataset.handle, {
-        parent: { id: canvas, predicate: PREDICATES.CHILDREN },
-      } as Record<string, unknown>)) as { id: string; node?: string }[];
-      const already = existing.find((row) => row.node === nodeId);
+      const already = await drawnPlacement(dataset.handle, { id: canvas, predicate: PREDICATES.CHILDREN }, nodeId);
       if (!already) {
         drop(nodeId);
         toastService.error('Drag this onto the canvas first — how a card looks is saved with where it sits.');

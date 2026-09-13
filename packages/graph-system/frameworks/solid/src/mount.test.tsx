@@ -213,6 +213,26 @@ describe('GraphView delete key', () => {
     expect(document.activeElement).toBe(surface);
   });
 
+  it('marks a press’s focus as the pointer’s, so the ring is kept for the keyboard', () => {
+    /*
+      The focus is scripted, and Chromium carries the last focus's modality over to a scripted one —
+      so on a freshly loaded page the same press drew a ring round the whole canvas that it drew
+      nowhere else. The class is what the stylesheet reads instead; blur clears it, so tabbing back
+      in is keyboard focus again.
+    */
+    const surface = surfaceOf(mount({ onDeleteSelection: () => undefined }));
+    const marked = () => surface.classList.contains('we-graph__surface--pointer-focus');
+
+    surface.focus();
+    expect(marked()).toBe(false);
+
+    surface.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    expect(marked()).toBe(true);
+
+    surface.blur();
+    expect(marked()).toBe(false);
+  });
+
   it('says nothing when nothing is selected, and nothing about any other key', () => {
     /*
       Two silences worth pinning. A press with an empty selection has nothing to report — firing with

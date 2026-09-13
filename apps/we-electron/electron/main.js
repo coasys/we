@@ -384,8 +384,14 @@ function startAppServer() {
       }),
     );
 
+    /*
+      `root` rather than an absolute path. Without one, `send` checks every segment of the path for
+      a dotfile and answers 404 — and a running AppImage is mounted under `/tmp/.mount_WE-…`, so
+      every deep link (a reload anywhere but `/`) came back "Not Found". With `root`, only the part
+      below it is checked, which is how `express.static` above already behaves.
+    */
     launcherApp.use((req, res) => {
-      res.sendFile(join(launcherDir, 'index.html'));
+      res.sendFile('index.html', { root: launcherDir });
     });
 
     launcherApp.listen(9080, () => {

@@ -64,7 +64,17 @@
     outline: none;
   }
 
-  &:focus-visible {
+  /*
+    Not `:focus-visible` alone, because the surface is focused from script and the browser's answer
+    for a scripted focus depends on history this element has no part in.
+
+    Chromium carries the modality of the last focus over to a scripted one: after some earlier click
+    had focused something, a press here drew no ring, but on a freshly loaded page — nothing focused
+    by pointer yet — the very same press drew one round the whole canvas. So the press says so
+    itself (`--pointer-focus`, cleared on blur) and the ring is kept for focus that arrived any
+    other way.
+  */
+  &:focus-visible:not(.we-graph__surface--pointer-focus) {
     outline: 2px solid var(--we-ring-color);
     outline-offset: -2px;
   }

@@ -885,6 +885,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     loadSpaceTemplates: WIRING,
     refreshSpaceTemplates: action('appearance'),
     clearSpaceTemplates: WIRING,
+    // The host's own sequencing — whether a route guard may act yet — not something a template reads.
+    spaceTemplatePending: WIRING,
     getTemplateRecord: WIRING,
   },
 

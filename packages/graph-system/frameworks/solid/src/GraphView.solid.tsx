@@ -395,6 +395,9 @@ export function GraphView(props: GraphViewProps) {
    */
   const [gesturing, setGesturing] = createSignal<string | null>(null);
 
+  /** The surface was focused by a press rather than by the keyboard — see its `classList`. */
+  const [pointerFocused, setPointerFocused] = createSignal(false);
+
   /**
    * True only while `focus` is selecting something — see the effect that applies it.
    *
@@ -2130,6 +2133,14 @@ export function GraphView(props: GraphViewProps) {
       <div
         class="we-graph__surface"
         /*
+          Whether the focus the surface holds came from a press — see `:focus-visible` in the
+          stylesheet for why that is decided here rather than left to the browser.
+
+          Cleared on blur, so reaching the canvas again by tabbing shows the ring.
+        */
+        classList={{ 'we-graph__surface--pointer-focus': pointerFocused() }}
+        onBlur={() => setPointerFocused(false)}
+        /*
           Focusable only where the delete key is bound — see `onDeleteSelection`.
 
           A graph with no answer for the key has no reason to be a tab stop, and making every one of
@@ -2149,6 +2160,7 @@ export function GraphView(props: GraphViewProps) {
             fills its container. In a template where the graph sits below the fold, a click on a card
             would otherwise jump the page.
           */
+          setPointerFocused(true);
           (event.currentTarget as HTMLElement).focus?.({ preventScroll: true });
           dispatch('onPointerDown', event);
         }}

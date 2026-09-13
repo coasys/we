@@ -852,6 +852,22 @@ export default function TemplateProvider() {
     if (!datasetAddressedBy(datasetStore.currentDataset(), segments[1])) return;
 
     /*
+      Only once the space has settled which template it renders with.
+
+      On a deep link or a reload the space's own template is fetched, and until it arrives the agent's
+      default stands in for it. Reading the stand-in's sections, this took a Workshop address —
+      `/space/<id>/canvas?call=…` — for a section the space did not have and rewrote it to the
+      default's first, `/about`. Nothing on screen showed it: the space's template arrived, remounted
+      the router against the address as it still stood, and the discarded router's navigation landed
+      in `history` afterwards. The page drew the canvas under an address saying `/about`, until the
+      next parameter write rebuilt the query from that address and dropped the call.
+
+      The template's routes are read below as well, so waiting here also means they are the right
+      ones. Re-runs when it settles, since reading the accessor tracks it.
+    */
+    if (templateStore.spaceTemplatePending()) return;
+
+    /*
       Only for a template whose sections these are.
 
       Now that the host mounts every template under the space prefix, a self-routing template's own

@@ -160,12 +160,31 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
    * any number of boards, all of them its children; one of them is the one it points at.
    *
    * One transaction, so nobody sees a board with no columns between the writes.
+   *
+   * ## The columns are made first, and handed to the board as it is created
+   *
+   * Not written onto it afterwards. A record created in a batch cannot be read back until the batch
+   * commits — the executor stages it out of every query — and a relation write by id starts with
+   * exactly that read. So `setRelation(board.id, 'children', …)` inside this transaction found no
+   * board, did nothing, and said nothing: every board came out pointed at by its call and holding no
+   * columns, while three column records sat in the space with nothing pointing at them. The columns
+   * themselves are only *named* by the board's create, never read, so making them first is safe.
    */
   async function createBoard(title: string, parentId?: string, options?: CreateBoardOptions): Promise<string> {
     const p = dataset(options?.dataset);
     if (!p || !title.trim()) return '';
     try {
       return await runEntityTransaction(p, async (tx) => {
+        // Sequential rather than parallel: the order they are made in is the board's own.
+        const columns: string[] = [];
+        for (const state of offeredStates()) {
+          const column = await CollectionBlock.create(
+            p,
+            { kind: 'column', mode: 'feed', title: '', slug: state.slug, type: '' },
+            { batchId: tx.batchId },
+          );
+          columns.push(column.id);
+        }
         const board = await CollectionBlock.create(
           p,
           {
@@ -176,21 +195,11 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
             // An untyped to-one is written as a one-element list at creation, the way `Placement`
             // writes `node`: the generated class exposes no setter for a relation with no target.
             ...(options?.gathers ? { gathers: [options.gathers] } : {}),
+            // In the order made, which is the community's order — see the note above on why here.
+            ...(columns.length ? { children: columns } : {}),
           } as never,
           { batchId: tx.batchId },
         );
-        // Sequential rather than parallel: the columns have to exist before `setChildren` can name
-        // them in order, and their order is the board's own.
-        const columns: string[] = [];
-        for (const state of offeredStates()) {
-          const column = await CollectionBlock.create(
-            p,
-            { kind: 'column', mode: 'feed', title: '', slug: state.slug, type: '' },
-            { batchId: tx.batchId },
-          );
-          columns.push(column.id);
-        }
-        if (columns.length) await CollectionBlock.setRelation(p, board.id, 'children', columns, tx.batchId);
         if (parentId) {
           const parent = await CollectionBlock.findOne(p, { where: { id: parentId } });
           // A parent that has gone leaves the board loose rather than failing the create: the board

@@ -72,8 +72,14 @@ export class GraphStore {
    * from its author and from its topic is one node — and the later arrival usually knows *less*
    * (a relation target comes back as a bare id). So a node that is already resolved is never
    * downgraded to a placeholder, and known fields survive an emptier repeat.
+   *
+   * `replaceData` is for a fragment that is a fresh read of the nodes it names rather than another
+   * sighting of them — a refresh of the seeds. There the absence of a key is information: the canvas
+   * seed writes `pending: true` only while a card is a suggestion, and leaves it out once somebody
+   * accepts it. Merged, the old `true` outlived the acceptance and the card stayed faded until the
+   * graph was remounted. A placeholder in such a fragment still merges, since it knows nothing.
    */
-  merge(fragment: GraphFragment): StoreChange {
+  merge(fragment: GraphFragment, options: { replaceData?: boolean } = {}): StoreChange {
     const addedNodes: string[] = [];
     const addedEdges: string[] = [];
 
@@ -84,7 +90,7 @@ export class GraphStore {
         addedNodes.push(node.id);
         continue;
       }
-      this.nodesById.set(node.id, mergeNode(existing, node));
+      this.nodesById.set(node.id, mergeNode(existing, node, options.replaceData === true));
     }
 
     for (const edge of fragment.edges) {
@@ -179,13 +185,19 @@ export class GraphStore {
  * instance itself was loaded — and getting it backwards makes nodes flicker into placeholders as the
  * graph grows, which reads as data loss.
  */
-function mergeNode(existing: GraphNode, incoming: GraphNode): GraphNode {
+function mergeNode(existing: GraphNode, incoming: GraphNode, replaceData = false): GraphNode {
   const resolved = existing.unresolved !== true || incoming.unresolved !== true;
+  const data =
+    replaceData && incoming.unresolved !== true
+      ? incoming.data
+      : existing.data || incoming.data
+        ? { ...existing.data, ...incoming.data }
+        : undefined;
   return {
     ...existing,
     ...incoming,
     label: incoming.label ?? existing.label,
-    data: existing.data || incoming.data ? { ...existing.data, ...incoming.data } : undefined,
+    data,
     unresolved: resolved ? undefined : true,
   };
 }

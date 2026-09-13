@@ -113,6 +113,25 @@ const styles = css`
     --we-text-margin: 0 0 1em 0;
   }
 
+  /*
+    Truncation has to be allowed to happen.
+
+    Clipping the inner box was never enough in a row, and a row is where truncation is almost always
+    asked for. A flex item's automatic minimum size is its content, and the content of a nowrap line
+    is the whole line — so the host refused to be narrower than its text, the ellipsis never
+    appeared, and the row either ran off its container or took the room out of a sibling that could
+    give it up. The extraction readout did both: its label pushed past the panel while the elapsed
+    clock beside it folded "1:23" onto two lines. Only a handful of the call sites had patched it
+    with a minWidth: '0' of their own.
+
+    Overflow on the host rather than min-width: 0, because a scroll container's automatic
+    minimum is zero while its min-width stays the author's: a minWidth prop, at any tier, still
+    wins. The host's own overflow is not a DS prop, so nothing else writes it.
+  */
+  :host([truncate]) {
+    overflow: hidden;
+  }
+
   :host([truncate]) [part='base'] {
     overflow: hidden !important;
     text-overflow: ellipsis;
