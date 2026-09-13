@@ -1584,6 +1584,19 @@ describe('the workshop inspector’s people', () => {
     expect(inspector.indexOf('Extracted from the conversation')).toBeLessThan(inspector.indexOf('involvementMenu('));
   });
 
+  it('wraps where the record came from at words, with the glyph on its first line', () => {
+    // One text holding the time inline, not three items in a wrapping row that broke between them.
+    expect(inspector).toContain(
+      '{"type":"we-timestamp","props":{"value":{"$":"row.createdAt"},"relative":true,"fontSize":"100"}}]}',
+    );
+    expect(inspector).toContain('"height":"1lh"');
+  });
+
+  it('keeps the same gap under every section caption, with the captions a step fainter', () => {
+    expect(inspector).toContain('"props":{"ml":"auto","fontSize":"100","height":"1lh","ay":"center"}');
+    expect(inspector).toContain('"props":{"gap":"200","ay":"center","opacity":0.75}');
+  });
+
   it('offers no assignee text box beside the People section that answers it', () => {
     expect(inspector).toContain("f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes");
   });

@@ -1207,13 +1207,19 @@ function endButton(opts: { id: string; type: string; icon: string; name: string;
   };
 }
 
-/** A section's caption, with a count beside it where the count is worth reading. */
+/**
+ * A section's caption, with a count beside it where the count is worth reading.
+ *
+ * Uppercase, and a step fainter than the faintest text role, so a section's name reads apart from
+ * the properties under it and from a placeholder sentence like "Nobody is on this yet", which is
+ * already `text-faint`. There is no role below that one, so the step is opacity — it follows the
+ * theme either way, where a scale position would fix it to one theme's idea of grey.
+ */
 function sectionCaption(label: string, count?: string): SchemaNode {
   return {
     type: 'Row',
-    props: { gap: '200', ay: 'center' },
+    props: { gap: '200', ay: 'center', opacity: 0.75 },
     children: [
-      // Uppercase, so a section's name reads apart from the properties and names under it.
       {
         type: 'we-text',
         props: { variant: 'footnote', uppercase: true, letterSpacing: 'wide', color: 'text-faint' },
@@ -1401,16 +1407,25 @@ const peopleSection: SchemaNode = {
     condition: { $: `!(${IS_RELATIONSHIP}) && count(${ROW_KINDS})` },
     then: {
       type: 'Column',
-      props: { gap: '200', pt: '200', borderTop: '1px solid border' },
+      // The same gap under the caption as Connections has; the parts below keep a wider one.
+      props: { gap: '100', pt: '200', borderTop: '1px solid border' },
       children: [
         {
           type: 'Row',
           props: { gap: '200', ay: 'center', width: '100%' },
           children: [
             sectionCaption('People'),
+            /*
+              One caption line tall, with the picker centred on it and spilling over either side.
+
+              The button is the size of the header's pencil, which is taller than a footnote; left in
+              flow it made this caption row that tall, so People stood further from its first line
+              than Connections does from its own. Held to the caption's line, the two sections share
+              one rhythm and the button keeps the size it is pressed at.
+            */
             {
               type: 'Row',
-              props: { ml: 'auto' },
+              props: { ml: 'auto', fontSize: '100', height: '1lh', ay: 'center' },
               children: [
                 {
                   type: '$if',
@@ -1446,80 +1461,88 @@ const peopleSection: SchemaNode = {
           ],
         },
         {
-          type: '$each',
-          props: {
-            items: { $: `${ROW_KINDS}.filter(k, count(${ON_ROW}.people.filter(p, p.kind == k.slug)))` },
-            as: 'part',
-          },
+          type: 'Column',
+          props: { gap: '200' },
           children: [
             {
-              type: 'Column',
-              props: { gap: '100' },
+              type: '$each',
+              props: {
+                items: { $: `${ROW_KINDS}.filter(k, count(${ON_ROW}.people.filter(p, p.kind == k.slug)))` },
+                as: 'part',
+              },
               children: [
-                { type: 'we-text', props: { variant: 'footnote', color: 'text-muted', text: { $: 'part.name' } } },
                 {
-                  type: '$each',
-                  props: { items: { $: `${ON_ROW}.people.filter(p, p.kind == part.slug)` }, as: 'holder' },
+                  type: 'Column',
+                  props: { gap: '100' },
                   children: [
+                    { type: 'we-text', props: { variant: 'footnote', color: 'text-muted', text: { $: 'part.name' } } },
                     {
-                      type: 'Row',
-                      props: { gap: '200', ay: 'center', width: '100%' },
+                      type: '$each',
+                      props: { items: { $: `${ON_ROW}.people.filter(p, p.kind == part.slug)` }, as: 'holder' },
                       children: [
                         {
-                          type: 'AvatarStack',
-                          props: {
-                            size: 'xs',
-                            avatars: {
-                              $: '[{ image: find(profileStore.profiles, { did: holder.did }).avatar, hash: holder.did, tone: holder.tone }]',
-                            },
-                          },
-                        },
-                        {
-                          type: 'we-text',
-                          props: {
-                            fontSize: '200',
-                            flex: '1',
-                            minWidth: '0',
-                            truncate: true,
-                            text: {
-                              $: "holder.did == me.did ? find(profileStore.profiles, { did: holder.did }).name + ' (you)' : find(profileStore.profiles, { did: holder.did }).name",
-                            },
-                          },
-                        },
-                        {
-                          type: '$if',
-                          props: {
-                            // Anybody may take somebody off an assignment; only you may withdraw your own answer.
-                            condition: { $: '!holder.reflexive || holder.did == me.did' },
-                            then: {
-                              type: 'we-tooltip',
+                          type: 'Row',
+                          props: { gap: '200', ay: 'center', width: '100%' },
+                          children: [
+                            {
+                              type: 'AvatarStack',
                               props: {
-                                content: { $: "holder.reflexive ? 'Withdraw your answer' : 'Take them off this'" },
+                                size: 'xs',
+                                avatars: {
+                                  $: '[{ image: find(profileStore.profiles, { did: holder.did }).avatar, hash: holder.did, tone: holder.tone }]',
+                                },
                               },
-                              children: [
-                                {
-                                  type: 'we-button',
+                            },
+                            {
+                              type: 'we-text',
+                              props: {
+                                fontSize: '200',
+                                flex: '1',
+                                minWidth: '0',
+                                truncate: true,
+                                text: {
+                                  $: "holder.did == me.did ? find(profileStore.profiles, { did: holder.did }).name + ' (you)' : find(profileStore.profiles, { did: holder.did }).name",
+                                },
+                              },
+                            },
+                            {
+                              type: '$if',
+                              props: {
+                                // Anybody may take somebody off an assignment; only you may withdraw your own answer.
+                                condition: { $: '!holder.reflexive || holder.did == me.did' },
+                                then: {
+                                  type: 'we-tooltip',
                                   props: {
-                                    variant: 'ghost',
-                                    size: 'xs',
-                                    square: true,
-                                    label: { $: "holder.reflexive ? 'Withdraw your answer' : 'Take them off this'" },
-                                    onClick: {
-                                      $if: {
-                                        condition: { $: 'holder.reflexive' },
-                                        then: { $action: 'spaceStore.respondTo', args: [{ $: 'row.id' }, ''] },
-                                        else: {
-                                          $action: 'spaceStore.setInvolvement',
-                                          args: [{ $: 'row.id' }, { $: 'holder.did' }, { $: 'holder.kind' }, false],
+                                    content: { $: "holder.reflexive ? 'Withdraw your answer' : 'Take them off this'" },
+                                  },
+                                  children: [
+                                    {
+                                      type: 'we-button',
+                                      props: {
+                                        variant: 'ghost',
+                                        size: 'xs',
+                                        square: true,
+                                        label: {
+                                          $: "holder.reflexive ? 'Withdraw your answer' : 'Take them off this'",
+                                        },
+                                        onClick: {
+                                          $if: {
+                                            condition: { $: 'holder.reflexive' },
+                                            then: { $action: 'spaceStore.respondTo', args: [{ $: 'row.id' }, ''] },
+                                            else: {
+                                              $action: 'spaceStore.setInvolvement',
+                                              args: [{ $: 'row.id' }, { $: 'holder.did' }, { $: 'holder.kind' }, false],
+                                            },
+                                          },
                                         },
                                       },
+                                      children: [{ type: 'we-icon', props: { name: 'x', color: 'text-faint' } }],
                                     },
-                                  },
-                                  children: [{ type: 'we-icon', props: { name: 'x', color: 'text-faint' } }],
+                                  ],
                                 },
-                              ],
+                              },
                             },
-                          },
+                          ],
                         },
                       ],
                     },
@@ -1527,23 +1550,23 @@ const peopleSection: SchemaNode = {
                 },
               ],
             },
-          ],
-        },
-        {
-          type: '$if',
-          props: {
-            condition: { $: `!count(${ON_ROW}.people)` },
-            then: {
-              type: 'we-text',
+            {
+              type: '$if',
               props: {
-                variant: 'footnote',
-                color: 'text-faint',
-                text: {
-                  $: "row.assignee ? `Nobody yet — the conversation named “${row.assignee}”.` : 'Nobody is on this yet.'",
+                condition: { $: `!count(${ON_ROW}.people)` },
+                then: {
+                  type: 'we-text',
+                  props: {
+                    variant: 'footnote',
+                    color: 'text-faint',
+                    text: {
+                      $: "row.assignee ? `Nobody yet — the conversation named “${row.assignee}”.` : 'Nobody is on this yet.'",
+                    },
+                  },
                 },
               },
             },
-          },
+          ],
         },
       ],
     },
@@ -1570,31 +1593,44 @@ const originLine: SchemaNode = {
           type: '$agent',
           props: { did: { $: 'row.author' }, as: 'author' },
           children: [
+            /*
+              The glyph beside one run of text, which wraps at words.
+
+              It was three flex items in a wrapping row — the glyph, the whole sentence, the time — so
+              a narrow panel wrapped *items*: the sentence dropped under the glyph as one block, and
+              the time under that. One text holding the time inline lets the browser break between
+              words, and the glyph sits in a box one line tall so it centres on the first line
+              whatever the theme's type scale is.
+            */
             {
               type: 'Row',
-              props: { gap: '100', ay: 'center', wrap: true },
+              props: { gap: '100', ay: 'start' },
               children: [
                 {
-                  type: 'we-icon',
-                  props: {
-                    name: { $: "row.id in first(local.inspectedCall).extracted ? 'sparkle' : 'pencil-simple-line'" },
-                    size: 'xs',
-                    color: 'text-faint',
-                  },
+                  type: 'Row',
+                  props: { fontSize: '100', height: '1lh', ay: 'center', flexShrink: '0' },
+                  children: [
+                    {
+                      type: 'we-icon',
+                      props: {
+                        name: {
+                          $: "row.id in first(local.inspectedCall).extracted ? 'sparkle' : 'pencil-simple-line'",
+                        },
+                        size: 'xs',
+                        color: 'text-faint',
+                      },
+                    },
+                  ],
                 },
                 {
                   type: 'we-text',
-                  props: {
-                    variant: 'footnote',
-                    color: 'text-faint',
-                    text: {
-                      $: "row.id in first(local.inspectedCall).extracted ? `Extracted from the conversation · run by ${author.name}` : `Added by ${author.did == me.did ? 'you' : author.name}`",
+                  props: { variant: 'footnote', color: 'text-faint', flex: '1', minWidth: '0' },
+                  children: [
+                    {
+                      $: "row.id in first(local.inspectedCall).extracted ? `Extracted from the conversation · run by ${author.name} · ` : `Added by ${author.did == me.did ? 'you' : author.name} · `",
                     },
-                  },
-                },
-                {
-                  type: 'we-timestamp',
-                  props: { value: { $: 'row.createdAt' }, relative: true, fontSize: '100', color: 'text-faint' },
+                    { type: 'we-timestamp', props: { value: { $: 'row.createdAt' }, relative: true, fontSize: '100' } },
+                  ],
                 },
               ],
             },
