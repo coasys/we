@@ -60,8 +60,13 @@ export interface InvolvementOptions {
   rows?: InvolvementRowInput[] | null;
   /** `spaceStore.involvementTypes` — withdrawn kinds included, since somebody may still hold one. */
   types?: InvolvementKindInput[] | null;
-  /** The viewer's DID, for `answers`. */
+  /** The viewer's DID, for `answers`, and to lead `dids` when they are in it. */
   me?: string | null;
+  /**
+   * Only these records count towards `dids` — the people on a board's cards, or a month's events.
+   * `byNode` still answers for every record. Omit for everyone on anything.
+   */
+  nodes?: string[] | null;
   pending?: readonly PendingInvolvement[] | null;
 }
 
@@ -74,7 +79,22 @@ export interface PersonOn {
   reflexive: boolean;
   icon: string;
   color: string;
+  /**
+   * The avatar tone a face is ringed in for this part — `''` for none. See {@link TONE_BY_SEMANTIC}.
+   */
+  tone: string;
 }
+
+/**
+ * Which ring a face wears for the part it has, by meaning — one table, so a card, a picker and a
+ * roster ring the same person the same way.
+ *
+ * Only reviewing is marked. The assignee is who a card is *about*, and plain is how the eye reads
+ * "this person"; a reviewer beside them is the one worth telling apart at a glance, and a coloured
+ * ring does that without a second glyph. Danger's red because a review waiting on somebody is the
+ * thing on a board most likely to be holding work up.
+ */
+export const TONE_BY_SEMANTIC: Record<string, string> = { reviewing: 'danger' };
 
 export interface NodeInvolvement {
   people: PersonOn[];
@@ -96,7 +116,10 @@ export interface InvolvementView {
   byNode: Record<string, NodeInvolvement>;
   /** The viewer's own reflexive answer to each record — `going`, `maybe`, … — or absent. */
   answers: Record<string, string>;
-  /** Everyone involved in anything here, in the order they first appear, declined excluded. */
+  /**
+   * Everyone involved in anything here — or in `nodes`, when given — declined excluded. In the order
+   * they first appear, except that the viewer leads when they are in it.
+   */
   dids: string[];
 }
 
@@ -141,6 +164,7 @@ export function involvement(options: InvolvementOptions | null | undefined): Inv
     options?.pending,
   );
   const me = options?.me ?? '';
+  const counted = Array.isArray(options?.nodes) ? new Set(options.nodes) : null;
 
   const byNode: Record<string, NodeInvolvement> = {};
   const answers: Record<string, string> = {};
@@ -178,11 +202,12 @@ export function involvement(options: InvolvementOptions | null | undefined): Inv
       reflexive: Boolean(type?.reflexive),
       icon: type?.icon ?? '',
       color: type?.color ?? '',
+      tone: TONE_BY_SEMANTIC[semantic] ?? '',
     });
     if (!entry[semantic].includes(did)) entry[semantic].push(did);
     if (semantic !== 'declined') {
       if (!entry.dids.includes(did)) entry.dids.push(did);
-      if (!seenEveryone.has(did)) {
+      if ((!counted || counted.has(node)) && !seenEveryone.has(did)) {
         seenEveryone.add(did);
         everyone.push(did);
       }
@@ -195,5 +220,7 @@ export function involvement(options: InvolvementOptions | null | undefined): Inv
   const rank = (semantic: string) => SEMANTIC_KEYS.indexOf(semantic as InvolvementSemantic);
   for (const entry of Object.values(byNode)) entry.people.sort((a, b) => rank(a.semantic) - rank(b.semantic));
 
+  const mine = everyone.indexOf(me);
+  if (mine > 0) everyone.unshift(...everyone.splice(mine, 1));
   return { byNode, answers, dids: everyone };
 }

@@ -427,6 +427,14 @@ export default function TemplateProvider() {
       reported, so a hold is released the moment they have overtaken it rather than when the write's
       promise settles.
     */
+    // The picker's ticks, from the same held answers — a member ticked in the menu stays ticked
+    // through the round trip rather than unticking for a second and ticking again.
+    involvementMenu: (options: unknown) => {
+      const given = (options ?? {}) as { rows?: unknown };
+      const entries = sources.involvementMenu({ ...given, pending: involvementOptimism.overlay() });
+      queueMicrotask(() => involvementOptimism.settle(observeInvolvements(given.rows)));
+      return entries;
+    },
     involvement: (options: unknown) => {
       const given = (options ?? {}) as { rows?: unknown };
       const view = sources.involvement({ ...given, pending: involvementOptimism.overlay() });

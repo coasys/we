@@ -504,6 +504,11 @@ describe('a board read by who is on the work', () => {
     expect(view.rowCounts[BEN]).toBe(1);
   });
 
+  it('names everyone on a card here for the filter to offer, the viewer first, nobody declined', () => {
+    const view = arrangedBoard({ ...base, me: BEN });
+    expect(view.involved).toEqual([BEN, ANA]);
+  });
+
   it('gives only the chosen people rows, beside the one for work nobody is on', () => {
     const view = arrangedBoard({ ...base, people: [BEN], show: 'rows' });
     expect(view.rows).toEqual([BEN, NOBODY_ROW]);

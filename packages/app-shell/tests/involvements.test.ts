@@ -17,6 +17,7 @@ import {
   resolveInvolvementTypes,
 } from '../src/shared/involvements';
 import { applyPendingInvolvements, involvement } from '../src/shared/sources/involvement';
+import { involvementMenu } from '../src/shared/sources/involvementMenu';
 
 const ME = 'did:key:me';
 const ANA = 'did:key:ana';
@@ -83,7 +84,8 @@ describe('who is on each record', () => {
   it('leaves somebody who declined out of what a filter matches', () => {
     const view = involvement({ rows, types, me: ME });
     expect(view.byNode.e1.dids).toEqual([ME]);
-    expect(view.dids).toEqual([ANA, ME]);
+    // Everyone on anything, the viewer first since they were named.
+    expect(view.dids).toEqual([ME, ANA]);
   });
 
   it("answers with the viewer's own reply, and nobody else's", () => {
@@ -241,5 +243,84 @@ describe('the writes', () => {
     await actions().setInvolvement('t1', ANA, 'shepherd', true);
     expect(table).toEqual([]);
     expect(notices).toHaveLength(2);
+  });
+});
+
+describe('the people on a card, as faces and as a picker', () => {
+  const types = resolveInvolvementTypes([]);
+  const members = [
+    { did: 'did:key:zed', name: 'Zed' },
+    { did: ANA, name: 'Ana', avatar: 'ana.png' },
+    { did: ME, name: 'Me' },
+    { did: 'did:key:bo', name: 'Bo' },
+  ];
+  const rows = [
+    { node: 't1', agent: 'did:key:zed', kind: 'assignee' },
+    { node: 't1', agent: ANA, kind: 'reviewer' },
+    { node: 't2', agent: ANA, kind: 'assignee' },
+  ];
+
+  it('rings a reviewer and nobody else, so a card and a picker agree who is checking the work', () => {
+    const view = involvement({ rows, types });
+    expect(view.byNode.t1.people.map((p) => [p.did, p.tone])).toEqual([
+      ['did:key:zed', ''],
+      [ANA, 'danger'],
+    ]);
+  });
+
+  it('can count only some records, and leads with the viewer', () => {
+    const everyone = involvement({ rows: [...rows, { node: 't2', agent: ME, kind: 'assignee' }], types, me: ME });
+    expect(everyone.dids[0]).toBe(ME);
+    const justT1 = involvement({ rows, types, nodes: ['t1'] });
+    expect(justT1.dids).toEqual(['did:key:zed', ANA]);
+  });
+
+  it('offers the kinds anybody may give on this entity, holders ticked and first, then the viewer, then by name', () => {
+    const entries = involvementMenu({ node: 't1', entity: 'TaskBlock', rows, types, members, me: ME }) as {
+      type?: string;
+      id: string;
+      label: string;
+      collapsed?: boolean;
+      items?: { id: string; checked: boolean; kind: string; avatar: { tone: string } }[];
+    }[];
+    expect(entries[0]).toMatchObject({ id: ME, kind: 'assignee', label: 'Assign to me' });
+    const [assigned, reviewing] = entries.slice(1);
+    expect(entries.slice(1).map((g) => g.id)).toEqual(['assignee', 'reviewer']);
+    expect(assigned.items!.map((i) => i.id)).toEqual(['did:key:zed', ME, ANA, 'did:key:bo']);
+    expect(assigned.items![0].checked).toBe(true);
+    // Somebody already reviewing keeps the second group open, and wears the reviewer's ring there.
+    expect(reviewing.collapsed).toBe(false);
+    expect(reviewing.items![0]).toMatchObject({ id: ANA, checked: true, avatar: { tone: 'danger' } });
+  });
+
+  it('keeps a kind nobody holds closed, and drops "Assign to me" once the viewer is on it', () => {
+    const entries = involvementMenu({
+      node: 't2',
+      entity: 'TaskBlock',
+      rows: [...rows, { node: 't2', agent: ME, kind: 'assignee' }],
+      types,
+      members,
+      me: ME,
+    }) as { id: string; collapsed?: boolean }[];
+    expect(entries.map((e) => e.id)).toEqual(['assignee', 'reviewer']);
+    expect(entries[1].collapsed).toBe(true);
+  });
+
+  it('never offers an answer somebody gives about themselves, or a kind meant for another entity', () => {
+    const entries = involvementMenu({ node: 'e1', entity: 'EventBlock', rows, types, members, me: ME });
+    expect(entries).toEqual([]);
+  });
+
+  it('still lists somebody who holds a part and has left the space', () => {
+    const entries = involvementMenu({
+      node: 't1',
+      entity: 'TaskBlock',
+      rows,
+      types,
+      members: members.filter((m) => m.did !== 'did:key:zed'),
+      profiles: [{ did: 'did:key:zed', name: 'Zed (left)' }],
+      me: ME,
+    }) as { items?: { label: string; checked: boolean }[] }[];
+    expect(entries[1].items![0]).toMatchObject({ label: 'Zed (left)', checked: true });
   });
 });

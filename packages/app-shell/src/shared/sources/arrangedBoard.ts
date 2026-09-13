@@ -114,6 +114,8 @@ export interface ArrangedBoardOptions {
   people?: string[] | null;
   /** How cards nobody chosen is on are drawn — `dim` (the default), `hide`, or `rows`. See above. */
   show?: string | null;
+  /** The viewer's DID, so `involved` can lead with them. */
+  me?: string | null;
   /** Involvements written and not yet seen — see `involvementOptimism`. Supplied by the host. */
   pendingInvolvements?: readonly PendingInvolvement[] | null;
 }
@@ -236,6 +238,11 @@ export interface ArrangedBoard {
   unboundStates: { slug: string; name: string }[];
   /** How many records the pool held, so a surface can say when a board is large. */
   total: number;
+  /**
+   * Everyone on a card on this board, declined excluded, the viewer first — the faces a people filter
+   * offers inline, since choosing somebody on no card here would filter the board to nothing.
+   */
+  involved: string[];
   /** Whether anybody is chosen, so anything is being filtered at all. */
   filtering: boolean;
   /** How the others are drawn — `dim`, `hide` or `rows`, normalised. */
@@ -390,11 +397,13 @@ export function arrangedBoard(options: ArrangedBoardOptions | null | undefined):
   const people = [...new Set(asRows<string>(options?.people).filter((did) => typeof did === 'string' && did))];
   const filtering = people.length > 0;
   const chosen = new Set(people);
-  const on = involvement({
+  const everyoneOn = involvement({
     rows: options?.involvements ?? null,
     types: options?.kinds ?? null,
     pending: options?.pendingInvolvements ?? null,
-  }).byNode;
+    me: options?.me ?? null,
+  });
+  const on = everyoneOn.byNode;
   const peopleOn = (record: CardRow) => on[record.id]?.dids ?? [];
   const matches = (record: CardRow) => !filtering || peopleOn(record).some((did) => chosen.has(did));
   const hiding = filtering && show !== 'dim';
@@ -407,6 +416,8 @@ export function arrangedBoard(options: ArrangedBoardOptions | null | undefined):
     for (const record of [...cell.arranged, ...cell.unarranged]) onBoard.set(record.id, record);
   }
   for (const record of unplacedAll) onBoard.set(record.id, record);
+  const onThisBoard = new Set<string>();
+  for (const record of onBoard.values()) for (const did of peopleOn(record)) onThisBoard.add(did);
 
   // Rows before hiding, since a row is itself a filter and draws from the whole column.
   const rows: string[] = [];
@@ -476,6 +487,8 @@ export function arrangedBoard(options: ArrangedBoardOptions | null | undefined):
       .filter((s) => s && s.slug && !s.retired && !boundSlugs.has(s.slug))
       .map((s) => ({ slug: s.slug, name: s.name || s.slug })),
     total: records.length,
+    // Everyone's order, narrowed to who is on a card here — so the viewer still leads.
+    involved: everyoneOn.dids.filter((did) => onThisBoard.has(did)),
     filtering,
     show,
     dimmed:
