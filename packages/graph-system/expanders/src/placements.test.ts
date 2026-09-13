@@ -56,9 +56,28 @@ describe('resolvePlacement', () => {
     expect(resolvePlacement([{ x: 1 }, { tier: 'xxl', x: 9 }], 'lg')).toEqual({ x: 1 });
   });
 
-  it('is last-write-wins between equally specific rows', () => {
-    // Two placements at the same specificity is two people dragging the same card, and that is
-    // the answer that conflict already resolves to.
-    expect(resolvePlacement([{ x: 1 }, { x: 2 }])).toEqual({ x: 2 });
+  it('is last-write-wins between equally specific rows, by when each was written', () => {
+    // Two placements at the same specificity is two people placing the same card at once.
+    const older = { id: 'b', x: 1, updatedAt: 1000 };
+    const newer = { id: 'a', x: 2, updatedAt: 2000 };
+    expect(resolvePlacement([older, newer])).toBe(newer);
+    expect(resolvePlacement([newer, older])).toBe(newer);
+  });
+
+  it('reads an ISO timestamp as well as epoch milliseconds', () => {
+    const older = { id: 'b', x: 1, updatedAt: '2026-09-13T10:00:00Z' };
+    const newer = { id: 'a', x: 2, updatedAt: Date.parse('2026-09-13T11:00:00Z') };
+    expect(resolvePlacement([newer, older])).toBe(newer);
+  });
+
+  it('answers the same whatever order a query listed the rows in', () => {
+    /*
+      The regression: the writer updated the first row and the canvas drew the last, so a card with
+      two placements stopped moving — every drag landed on the row nobody drew. Rows no backend
+      timestamps still have to agree, so the id breaks the tie.
+    */
+    const one = { id: 'we://1', x: 1 };
+    const two = { id: 'we://2', x: 2 };
+    expect(resolvePlacement([one, two])).toBe(resolvePlacement([two, one]));
   });
 });

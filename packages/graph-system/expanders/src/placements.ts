@@ -22,8 +22,8 @@
  *   existed is;
  * - a placement naming a tier applies from that width **up**, so `md` still applies at `lg` — the
  *   same min-width cascade `mdUpProps` has, because it is the same ladder;
- * - the most specific applicable one wins, and equally specific rows are last-write-wins, which is
- *   the same answer two people dragging the same card get.
+ * - the most specific applicable one wins, and equally specific rows are last-write-wins by the
+ *   rows' own `updatedAt` (then id), never by where a query happened to list them.
  *
  * A caller that does not know the width passes no tier and gets the tierless placement. That is the
  * honest answer rather than a guess: a seed runs in the data layer and cannot see the box its nodes
@@ -73,6 +73,33 @@ export function placementsFor<T extends PlacementRow>(rows: readonly T[]): Map<s
   return byNode;
 }
 
+/** When a row was last written, as epoch milliseconds — `-Infinity` for a row that does not say. */
+function writtenAt(row: PlacementRow): number {
+  const value = row.updatedAt;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value) {
+    const parsed = Number.isNaN(Number(value)) ? Date.parse(value) : Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return -Infinity;
+}
+
+/**
+ * Whether `row` beats `best` between two equally specific placements.
+ *
+ * Decided by the rows rather than by the order a query returned them in. The order is not something
+ * two readers share, and a writer choosing the first row while a reader drew the last one was how a
+ * card with two placements stopped moving: every drag updated the row nobody drew. Latest write
+ * first — `updatedAt` moves on every update, so whichever row was dragged most recently is the one
+ * shown — and the id after that, so rows no backend timestamps still resolve the same everywhere.
+ */
+function supersedes(row: PlacementRow, best: PlacementRow): boolean {
+  const a = writtenAt(row);
+  const b = writtenAt(best);
+  if (a !== b) return a > b;
+  return String(row.id ?? '') > String(best.id ?? '');
+}
+
 /**
  * The placement that applies, out of everything stored for one node.
  *
@@ -93,9 +120,8 @@ export function resolvePlacement<T extends PlacementRow>(rows: readonly T[], tie
   for (const row of rows) {
     const rung = specificity(row);
     if (rung === undefined || rung > limit) continue;
-    // `>=` rather than `>`: equally specific rows are last-write-wins, matching what two writes
-    // against one card already resolve to.
-    if (rung >= bestRung) {
+    // Equally specific rows are last-write-wins — see `supersedes` for why not by list position.
+    if (rung > bestRung || (rung === bestRung && best !== undefined && supersedes(row, best))) {
       best = row;
       bestRung = rung;
     }
