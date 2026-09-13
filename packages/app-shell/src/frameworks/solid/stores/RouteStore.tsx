@@ -1,6 +1,15 @@
 import { useNavigate } from '@solidjs/router';
 import { SPACE_ROUTE_DEPTH } from '@we/schema-shared';
-import { Accessor, createContext, createMemo, createSignal, onCleanup, ParentProps, useContext } from 'solid-js';
+import {
+  Accessor,
+  createContext,
+  createMemo,
+  createSignal,
+  onCleanup,
+  ParentProps,
+  untrack,
+  useContext,
+} from 'solid-js';
 
 type NavigateFunction = ReturnType<typeof useNavigate>;
 
@@ -108,9 +117,9 @@ export function RouteStoreProvider(props: ParentProps) {
    * URL itself, which this keeps truthful.
    */
   const rememberedSearch = new Map<string, string>();
-  function rememberCurrentSearch() {
+  function rememberCurrentSearch(at?: { pathname: string; search: string }) {
     if (typeof window === 'undefined') return;
-    const { pathname, search } = window.location;
+    const { pathname, search } = at ?? window.location;
     if (search) rememberedSearch.set(pathname, search);
     else rememberedSearch.delete(pathname);
   }
@@ -133,7 +142,9 @@ export function RouteStoreProvider(props: ParentProps) {
   function setCurrentPath(path: string, search?: string) {
     setCurrentPathSignal(path);
     setParamsSignal(readParams(search));
-    rememberCurrentSearch();
+    // What the router reported rather than the address bar, for `setParam`'s reason below.
+    if (search !== undefined) rememberCurrentSearch({ pathname: path, search });
+    else rememberCurrentSearch();
   }
 
   if (typeof window !== 'undefined') {
@@ -143,8 +154,10 @@ export function RouteStoreProvider(props: ParentProps) {
   }
 
   function navigate(to: string, options?: Record<string, unknown>) {
-    // Skip if already on the exact target path (no-op router push)
-    if (window.location.pathname === to) return;
+    // Skip if already on the exact target path (no-op router push). The router's path, not the
+    // address bar's, for `setParam`'s reason below: against a stale bar this refused to go to the
+    // page the bar wrongly named, and let through a navigation to the page already on screen.
+    if ((untrack(currentPath) || window.location.pathname) === to) return;
 
     // A bare path restores that route's remembered query string, so a
     // kept-alive route's URL params survive leaving and returning. An explicit
@@ -158,11 +171,25 @@ export function RouteStoreProvider(props: ParentProps) {
 
   function setParam(name: string, value: string | null, options?: { push?: boolean }) {
     if (typeof window === 'undefined') return;
-    const search = new URLSearchParams(window.location.search);
+    /*
+      Built from what the app is showing, not from the address bar.
+
+      The two should agree, and when they do this changes nothing. When they did not, reading the
+      address bar turned a one-parameter write into a rewrite of the page: a discarded router's
+      navigation had landed in `history` after its replacement mounted, so the bar said `/about` while
+      the canvas was on screen, and clearing the selected card wrote `/about` with no query — taking
+      the call the canvas was about with it. See the section guard in TemplateProvider for how the
+      bar got there. The router's path and the params it last reported are what every reader is
+      rendering against, so they are the state a write should extend.
+
+      The bar's path only before the router has reported one. Untracked, because a write made from
+      inside an effect must not make that effect depend on what it just wrote.
+    */
+    const search = new URLSearchParams(untrack(params));
     if (value === null || value === undefined || value === '') search.delete(name);
     else search.set(name, value);
     const query = search.toString();
-    const url = `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`;
+    const url = `${untrack(currentPath) || window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`;
     // Written through history directly rather than the router: the path is
     // unchanged, so the route tree must not re-resolve — only the params signal
     // moves, and only its readers re-run.
