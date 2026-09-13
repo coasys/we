@@ -264,7 +264,7 @@ describe('the people on a card, as faces and as a picker', () => {
     const view = involvement({ rows, types });
     expect(view.byNode.t1.people.map((p) => [p.did, p.tone])).toEqual([
       ['did:key:zed', ''],
-      [ANA, 'danger'],
+      [ANA, 'warning'],
     ]);
   });
 
@@ -288,12 +288,14 @@ describe('the people on a card, as faces and as a picker', () => {
     expect(entries.slice(1).map((g) => g.id)).toEqual(['assignee', 'reviewer']);
     expect(assigned.items!.map((i) => i.id)).toEqual(['did:key:zed', ME, ANA, 'did:key:bo']);
     expect(assigned.items![0].checked).toBe(true);
-    // Somebody already reviewing keeps the second group open, and wears the reviewer's ring there.
-    expect(reviewing.collapsed).toBe(false);
-    expect(reviewing.items![0]).toMatchObject({ id: ANA, checked: true, avatar: { tone: 'danger' } });
+    // Every group open and closable, and a reviewer wears the reviewer's ring there too.
+    expect(entries.slice(1).every((g) => g.collapsed === false && (g as { collapsible?: boolean }).collapsible)).toBe(
+      true,
+    );
+    expect(reviewing.items![0]).toMatchObject({ id: ANA, checked: true, avatar: { tone: 'warning' } });
   });
 
-  it('keeps a kind nobody holds closed, and drops "Assign to me" once the viewer is on it', () => {
+  it('drops "Assign to me" once the viewer is on it', () => {
     const entries = involvementMenu({
       node: 't2',
       entity: 'TaskBlock',
@@ -303,7 +305,6 @@ describe('the people on a card, as faces and as a picker', () => {
       me: ME,
     }) as { id: string; collapsed?: boolean }[];
     expect(entries.map((e) => e.id)).toEqual(['assignee', 'reviewer']);
-    expect(entries[1].collapsed).toBe(true);
   });
 
   it('never offers an answer somebody gives about themselves, or a kind meant for another entity', () => {

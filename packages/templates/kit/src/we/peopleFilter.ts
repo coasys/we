@@ -183,7 +183,7 @@ export function peopleFilter(opts: PeopleFilterOptions): SchemaNode {
               `'${MODE_ENTRIES[modes[0]].short}'`,
             ),
           },
-          triggerVariant: 'ghost',
+          triggerVariant: 'secondary',
           triggerTitle: 'How the others are shown',
           size: 'sm',
           placement: 'bottom-start',

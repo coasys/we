@@ -48,6 +48,9 @@ export const contextData: ContextData = {
           optional: true,
         },
         { name: 'clickable', type: 'boolean', optional: false, default: 'false' },
+        { name: 'ringColor', type: 'string', optional: false, default: "''" },
+        { name: 'ringWidth', type: 'string', optional: false, default: "''" },
+        { name: 'edgeColor', type: 'string', optional: false, default: "''" },
       ],
     },
     {
@@ -1108,7 +1111,8 @@ export const contextData: ContextData = {
         { name: 'max', type: 'number', optional: true },
         { name: 'size', type: '"xs" | "sm" | "md" | "lg" | "xl" | "xxs" | "xxl"', optional: true },
         { name: 'overlap', type: 'number', optional: true },
-        { name: 'ring', type: 'string', optional: true },
+        { name: 'edge', type: 'string', optional: true },
+        { name: 'ringWidth', type: 'string', optional: true },
         { name: 'styles', type: 'Record<string, string | number>', optional: true },
       ],
       source: 'components',
@@ -3121,7 +3125,7 @@ export const contextData: ContextData = {
     {
       name: 'involvement',
       params: ['options'],
-      doc: 'Who is on each record, from the Involvement rows — { byNode, answers, dids }. byNode[recordId] is { people, dids, responsible, reviewing, committed, interested, declined, pairs }: people are { did, kind, name, semantic, reflexive, icon, color, tone }, assignees first then reviewers and so on, and tone is the avatar ring the part wears ("danger" for reviewing, empty otherwise) — pass it as an AvatarStack avatar’s tone; the five lists are DIDs grouped by what each kind means, so a renamed or added kind still lands in the right one; dids is everyone not declined; pairs is every "did|kind" present, for a menu tick with `in`. answers[recordId] is the viewer’s own reflexive answer (going, maybe, …). Options: rows (an Involvement query), types (spaceStore.involvementTypes), me (me.did, who then leads the top-level dids), nodes (record ids the top-level dids is limited to).',
+      doc: 'Who is on each record, from the Involvement rows — { byNode, answers, dids }. byNode[recordId] is { people, dids, responsible, reviewing, committed, interested, declined, pairs }: people are { did, kind, name, semantic, reflexive, icon, color, tone }, assignees first then reviewers and so on, and tone is the avatar ring the part wears ("warning" for reviewing, empty otherwise) — pass it as an AvatarStack avatar’s tone; the five lists are DIDs grouped by what each kind means, so a renamed or added kind still lands in the right one; dids is everyone not declined; pairs is every "did|kind" present, for a menu tick with `in`. answers[recordId] is the viewer’s own reflexive answer (going, maybe, …). Options: rows (an Involvement query), types (spaceStore.involvementTypes), me (me.did, who then leads the top-level dids), nodes (record ids the top-level dids is limited to).',
       example:
         'involvement({ rows: local.involvements, types: spaceStore.involvementTypes, me: me.did }).byNode[card.id].responsible',
     },

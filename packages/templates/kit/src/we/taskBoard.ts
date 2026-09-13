@@ -335,7 +335,8 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
           },
           {
             type: 'Row',
-            props: { ml: 'auto', gap: '100', ay: 'center' },
+            // `300` between the controls and the faces: at `100` a stack and a button read as touching.
+            props: { ml: 'auto', gap: '300', ay: 'center' },
             children: [
               /*
                 Keep and Discard, on the card, where the work is — the same two the canvas offers and
@@ -410,7 +411,9 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
               },
               ...(opts.actions ? [opts.actions] : []),
               // Last, at the card's right edge — where every board puts whoever is on the work.
-              ...(opts.peopleOf ? [cardPeople(as, opts.peopleOf, opts.extracted)] : []),
+              ...(opts.peopleOf
+                ? [cardPeople(as, opts.peopleOf, opts.extracted, opts.bg ? undefined : 'var(--we-role-surface)')]
+                : []),
             ],
           },
         ],
@@ -426,9 +429,9 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
  *
  * Every board that has settled this puts the assignee at the right end of the card and nobody else
  * on its face: the creator is history, and belongs where history is kept. So: assignees, then
- * reviewers, as one stack of up to three faces and a count for the rest — the stack the call bar and
- * every roster in WE draw. A reviewer wears a coloured ring (the `tone` the host function gives each
- * part), which is the whole of how the two are told apart at a glance; no second glyph.
+ * reviewers, as two stacks side by side — the stack the call bar and every roster in WE draw. A
+ * reviewer wears an amber ring (the `tone` the host function gives each part), drawn inside the face
+ * so a ringed face is the size of the rest; no second glyph.
  *
  * ## Pressing the faces opens the picker
  *
@@ -443,9 +446,11 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
  * hovercard lists each part with its people, then where the card came from: extracted from the
  * conversation or added by somebody, by whom, and when.
  */
-function cardPeople(as: string, entity: string, extracted?: string): SchemaNode {
+function cardPeople(as: string, entity: string, extracted?: string, edge?: string): SchemaNode {
   const on = ON(as);
   const faces = `${on}.people.filter(p, !p.reflexive)`;
+  const doing = `${on}.people.filter(p, !p.reflexive && p.semantic != 'reviewing')`;
+  const checking = `${on}.people.filter(p, !p.reflexive && p.semantic == 'reviewing')`;
   const face = (did: string) => `find(profileStore.profiles, { did: ${did} })`;
   return {
     type: 'DropdownMenu',
@@ -590,14 +595,55 @@ function cardPeople(as: string, entity: string, extracted?: string): SchemaNode 
             type: '$if',
             props: {
               condition: { $: `count(${faces})` },
+              /*
+                Two stacks, not one: who is doing it, then who is checking it. One stack drew somebody
+                in both parts once — a stack shows each person once — so being assigned *and*
+                reviewing read as only one of them without hovering. Side by side, position says the
+                part and the amber ring on the second stack confirms it. Three doers and two checkers
+                before a count, so a busy card does not grow wide.
+
+                Edged in the card's own colour where the card is plain, so overlapping faces read as
+                separate; a board with its own card colours gets no edge rather than a wrong one.
+              */
               then: {
-                type: 'AvatarStack',
-                props: {
-                  size: 'xs',
-                  max: 3,
-                  ring: '0 0 0 2px var(--we-ring-color)',
-                  avatars: { $: `${faces}.map(p, { image: ${face('p.did')}.avatar, hash: p.did, tone: p.tone })` },
-                },
+                type: 'Row',
+                props: { gap: '200', ay: 'center' },
+                children: [
+                  {
+                    type: '$if',
+                    props: {
+                      condition: { $: `count(${doing})` },
+                      then: {
+                        type: 'AvatarStack',
+                        props: {
+                          size: 'xs',
+                          max: 3,
+                          ...(edge ? { edge } : {}),
+                          avatars: {
+                            $: `${doing}.map(p, { image: ${face('p.did')}.avatar, hash: p.did, tone: p.tone })`,
+                          },
+                        },
+                      },
+                    },
+                  },
+                  {
+                    type: '$if',
+                    props: {
+                      condition: { $: `count(${checking})` },
+                      then: {
+                        type: 'AvatarStack',
+                        props: {
+                          size: 'xs',
+                          max: 2,
+                          ...(edge ? { edge } : {}),
+                          avatars: {
+                            $: `${checking}.map(p, { image: ${face('p.did')}.avatar, hash: p.did, tone: p.tone })`,
+                          },
+                        },
+                      },
+                    },
+                  },
+                ],
               },
               // Nobody on it: a dashed empty face where the faces would be, which is also the way in.
               else: {

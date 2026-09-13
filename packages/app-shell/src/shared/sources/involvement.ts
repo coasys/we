@@ -91,10 +91,15 @@ export interface PersonOn {
  *
  * Only reviewing is marked. The assignee is who a card is *about*, and plain is how the eye reads
  * "this person"; a reviewer beside them is the one worth telling apart at a glance, and a coloured
- * ring does that without a second glyph. Danger's red because a review waiting on somebody is the
- * thing on a board most likely to be holding work up.
+ * ring does that without a second glyph.
+ *
+ * Amber, not red, and never the accent. Red is the app's word for something wrong, and a review is
+ * waiting on somebody rather than broken. The accent is what *selected* is drawn in — the people
+ * filter rings a chosen face in it — so a ring meaning a part in the work cannot be that colour, and
+ * a hue picked for assignment would collide with the accent in whichever theme happens to be that
+ * hue. A status tone does not move with a theme's accent.
  */
-export const TONE_BY_SEMANTIC: Record<string, string> = { reviewing: 'danger' };
+export const TONE_BY_SEMANTIC: Record<string, string> = { reviewing: 'warning' };
 
 export interface NodeInvolvement {
   people: PersonOn[];

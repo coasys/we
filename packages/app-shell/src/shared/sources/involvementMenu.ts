@@ -18,9 +18,8 @@
  * - **"Assign to me"**, while the viewer does not already hold the record's first responsible
  *   kind: the commonest thing anybody does in a picker is take the work themselves.
  * - **A group per kind** this entity is offered and anybody may give — not the reflexive ones, which
- *   are a person's own answer and have their own control. The first group is always open; the rest
- *   start closed unless somebody already holds them, so "Reviewing" does not double the list of
- *   members for a card nobody has asked to review. Search opens them.
+ *   are a person's own answer and have their own control. Every group starts open and every group
+ *   can be closed: the list of members is longer for it, and search narrows every group at once.
  * - **Every member with their face**, ringed in the tone their part wears on the card, so the picker
  *   and the card agree about who is reviewing.
  *
@@ -104,7 +103,7 @@ export function involvementMenu(options: InvolvementMenuOptions | null | undefin
   const nameOf = (member: Member) => member.name || `${member.did.slice(0, 16)}…`;
   const byName = [...members.values()].sort((a, b) => nameOf(a).localeCompare(nameOf(b)));
 
-  const groups = kinds.map((kind, index) => {
+  const groups = kinds.map((kind) => {
     const holders = holdersOf(kind.slug);
     const held = new Set(holders);
     const ordered = [
@@ -117,8 +116,8 @@ export function involvementMenu(options: InvolvementMenuOptions | null | undefin
       type: 'group',
       id: kind.slug,
       label: kind.name || kind.slug,
-      collapsible: index > 0,
-      collapsed: index > 0 && holders.length === 0,
+      collapsible: true,
+      collapsed: false,
       items: ordered.map((member) => ({
         type: 'toggle',
         id: member.did,
