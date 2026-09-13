@@ -14,7 +14,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { avatarSeededFillForTest as seededFill, avatarSeededHueForTest as seededHue } from './avatar';
+import { avatarInnerRings, avatarSeededFillForTest as seededFill, avatarSeededHueForTest as seededHue } from './avatar';
 
 describe('what it draws', () => {
   /*
@@ -82,5 +82,32 @@ describe('the generated colour', () => {
     // Three spaces whose initials are all "D" — the case that made the palette necessary.
     const hues = ['design-uuid', 'dev-uuid', 'docs-uuid'].map(seededHue);
     expect(new Set(hues).size).toBe(3);
+  });
+});
+
+describe('a ring on a face', () => {
+  it('is drawn inside the face, so a ringed face is the size an unringed one is', () => {
+    expect(avatarInnerRings({ ringColor: 'warning' })).toBe(
+      'inset 0 0 0 var(--we-avatar-ring-width) var(--we-role-warning)',
+    );
+  });
+
+  it('reads a tone as its colour, and anything else as a colour', () => {
+    expect(avatarInnerRings({ ringColor: 'primary' })).toContain('var(--we-role-accent)');
+    expect(avatarInnerRings({ ringColor: 'rebeccapurple' })).toContain('rebeccapurple');
+  });
+
+  it('takes a thickness of its own', () => {
+    expect(avatarInnerRings({ ringColor: 'danger', ringWidth: '3px' })).toBe('inset 0 0 0 3px var(--we-role-danger)');
+  });
+
+  it('keeps an edge outermost and on top, with the ring inside it', () => {
+    expect(avatarInnerRings({ ringColor: 'warning', edgeColor: 'var(--we-role-surface)' })).toBe(
+      'inset 0 0 0 var(--we-avatar-edge-width) var(--we-role-surface), inset 0 0 0 calc(var(--we-avatar-edge-width) + var(--we-avatar-ring-width)) var(--we-role-warning)',
+    );
+  });
+
+  it('paints nothing when asked for nothing', () => {
+    expect(avatarInnerRings({})).toBe('');
   });
 });

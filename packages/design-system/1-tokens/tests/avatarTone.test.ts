@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { AVATAR_TONE_ROLES, AVATAR_TONES, avatarToneColor, avatarToneLabel, avatarToneRing } from '../src/color';
+import { AVATAR_TONE_ROLES, AVATAR_TONES, avatarToneColor, avatarToneLabel } from '../src/color';
 import { role } from '../src/role';
 
 /**
@@ -54,11 +54,11 @@ describe('avatar tones', () => {
     }
   });
 
-  it('build a ring that takes no part in layout', () => {
-    // A box-shadow rather than a border, so ringing a face never changes the height of its row —
-    // the rail's live ring was a border and grew the row every time a call started.
-    expect(avatarToneRing('success')).toBe('0 0 0 2px var(--we-role-success)');
-    expect(avatarToneRing('danger', '3px')).toBe('0 0 0 3px var(--we-role-danger)');
+  it('give a ring its colour, which the avatar draws inside itself', () => {
+    // The ring used to be a box-shadow built here and painted outside the face; it is `we-avatar`'s
+    // own now, drawn inside, so the token layer only answers what colour a tone is.
+    expect(avatarToneColor('success')).toBe('var(--we-role-success)');
+    expect(avatarToneColor('primary')).toBe('var(--we-role-accent)');
   });
 
   it('return the label as a role name, not a var()', () => {

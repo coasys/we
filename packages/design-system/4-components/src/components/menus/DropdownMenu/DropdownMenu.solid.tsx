@@ -1,4 +1,3 @@
-import { avatarToneRing } from '@we/tokens';
 import { Accessor, children as resolveChildren, createMemo, createSignal, Index, type JSX, Show } from 'solid-js';
 
 export type * from './DropdownMenu.types';
@@ -110,11 +109,13 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
     return typeof item.checked === 'function' ? item.checked() : item.checked;
   };
 
-  const toggleGroup = (groupId: string) => {
-    setGroupStates((prev) => ({
-      ...prev,
-      [groupId]: !prev[groupId],
-    }));
+  /*
+    Flips what is on screen, not what was last remembered. A group nobody has touched has no entry
+    here, so flipping the entry turned "unset" into "collapsed" — which a group that started collapsed
+    already was, and the first press did nothing. Its declared default is part of what is on screen.
+  */
+  const toggleGroup = (group: DropdownMenuGroup) => {
+    setGroupStates((prev) => ({ ...prev, [group.id]: !isGroupCollapsed(group) }));
   };
 
   const isGroupCollapsed = (group: DropdownMenuGroup): boolean => {
@@ -152,7 +153,7 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
         size="xs"
         image={getItem().avatar?.image ?? ''}
         hash={getItem().avatar?.hash ?? ''}
-        ring={getItem().avatar?.tone ? avatarToneRing(getItem().avatar!.tone as never) : undefined}
+        prop:ringColor={getItem().avatar?.tone ?? ''}
       />
     </Show>
   );
@@ -225,7 +226,7 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
         {/* Collapsible header */}
         <Show when={getGroup().collapsible !== false}>
           <we-menu-item
-            on:select={() => !getGroup().disabled && toggleGroup(getGroup().id)}
+            on:select={() => !getGroup().disabled && toggleGroup(getGroup())}
             opacity={getGroup().disabled ? 0.5 : 1}
             cursor={getGroup().disabled ? 'not-allowed' : 'pointer'}
             color="text-faint"
@@ -373,7 +374,17 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
       <Show
         when={!customTrigger()}
         fallback={
-          <we-button slot="trigger" variant="bare" size={props.size} aria-label={props.triggerTitle}>
+          <we-button
+            slot="trigger"
+            variant="bare"
+            size={props.size}
+            // A flex box rather than an inline one, so it is as tall as what is in it: inline, it sat
+            // on a line of text and took that line's height, which stood a 24px stack of faces taller
+            // than the 24px buttons beside it.
+            display="flex"
+            ay="center"
+            aria-label={props.triggerTitle}
+          >
             {customTrigger()}
           </we-button>
         }

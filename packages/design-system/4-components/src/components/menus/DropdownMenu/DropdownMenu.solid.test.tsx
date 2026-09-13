@@ -142,11 +142,11 @@ describe('a menu about people', () => {
     ));
     const faces = [...host!.querySelectorAll('we-menu-item we-avatar')] as (HTMLElement & {
       hash?: string;
-      ring?: string;
+      ringColor?: string;
     })[];
     expect(faces.map((f) => f.hash)).toEqual(['did:ana', 'did:ben']);
-    expect(faces[0].ring).toBeFalsy();
-    expect(faces[1].ring).toBeTruthy();
+    expect(faces[0].ringColor).toBeFalsy();
+    expect(faces[1].ringColor).toBe('danger');
   });
 
   it('opens with whatever it is given to press, still inside a button', () => {
@@ -160,6 +160,27 @@ describe('a menu about people', () => {
     expect(trigger.getAttribute('aria-label')).toBe('Who is on this');
     // Its own content brings its own hover; the title is a name, not a second tooltip.
     expect(host!.querySelector('we-tooltip[slot="trigger"]')).toBeNull();
+  });
+
+  it('opens a group that started closed on the first press', () => {
+    const menu = mount(() => (
+      <DropdownMenu
+        triggerLabel="Assign"
+        items={[
+          {
+            type: 'group',
+            id: 'reviewing',
+            label: 'Reviewing',
+            collapsed: true,
+            items: [{ type: 'toggle', id: 'ana', label: 'Ana Ruiz', checked: false }],
+          },
+        ]}
+      />
+    ));
+    menu.press('Reviewing');
+    expect(menu.labels()).toEqual(['Reviewing', 'Ana Ruiz']);
+    menu.press('Reviewing');
+    expect(menu.labels()).toEqual(['Reviewing']);
   });
 
   it('opens a closed group while a search is looking inside it', () => {
