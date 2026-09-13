@@ -165,6 +165,12 @@ export interface ModuleHostServices {
    * `InterpretationStore` on why the two were conflated and what that showed.
    */
   interpretationDetailShared?: () => boolean;
+  /**
+   * A count that moves whenever the staged suggestions in the current space may have changed —
+   * staged by a pass, or accepted or rejected by anybody. Reactive; see
+   * `ModuleInterpretationAccess.proposalsRevision`.
+   */
+  interpretationProposalsRevision?: () => number;
   /** The profile cache, so a module can put a face to an agent id. See `ModuleIdentityAccess`. */
   identities?: ModuleIdentityAccess;
   /** Naming and reaching spaces, for a module whose state can outlive the space on screen. */
@@ -399,6 +405,9 @@ export function createModuleStoreDeps(framework: {
       // False until the store publishes, which reads as "not shared" — the conservative answer,
       // and the one the footnote it gates should give while the setting is still unknown.
       detailShared: () => services.interpretationDetailShared?.() ?? false,
+      // 0 until the store publishes, and for ever on a backend that cannot report changes — a count
+      // that never moves, which a module reads as "re-read when you otherwise would".
+      proposalsRevision: () => services.interpretationProposalsRevision?.() ?? 0,
       /*
         `target` names the dataset, and an unresolvable one refuses rather than falling through.
 

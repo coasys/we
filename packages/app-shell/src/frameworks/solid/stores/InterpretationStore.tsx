@@ -198,6 +198,9 @@ function labelFor(phase: InterpretationPhase, name: string, mine: boolean, count
   }
 }
 
+/** How long a burst of staged-suggestion changes is gathered before modules are told to re-read. */
+const PROPOSALS_COALESCE_MS = 250;
+
 export function InterpretationStoreProvider(props: ParentProps) {
   const session = useSessionStore();
   const datasetStore = useDatasetStore();
@@ -224,6 +227,14 @@ export function InterpretationStoreProvider(props: ParentProps) {
     that can interpret perfectly well.
   */
   const [capable, setCapable] = createSignal(true);
+  /*
+    Bumped whenever the staged suggestions in this space may have changed, by anybody.
+
+    A count rather than the list because the list is a read a module makes for one conversation at a
+    time, and only it knows which it is showing. What this store can do that a module cannot is hold
+    the subscription for the space's lifetime.
+  */
+  const [proposalsRevision, setProposalsRevision] = createSignal(0);
 
   let relay: InterpretationRelay | null = null;
 
@@ -344,9 +355,36 @@ export function InterpretationStoreProvider(props: ParentProps) {
         console.info('[interpretation] this runtime does not report pass progress', error);
       });
 
+    /*
+      Hear about suggestions being staged and settled, whoever settles them.
+
+      Settling one used to reach only the screen it was settled on. The review list re-read when a
+      pass finished, and accepting is not a pass — so a card one member accepted stayed pending,
+      faded and offering its buttons, on everybody else's canvas until the next extraction ran.
+
+      Coalesced: a pass stages its suggestions in a burst, and accepting a whole record removes
+      several links at once, so an event per link would be a re-read per link.
+    */
+    let stopProposals: (() => void) | undefined;
+    let coalesce: ReturnType<typeof setTimeout> | undefined;
+    void ports.interpretation
+      .onProposalsChanged?.(handle, () => {
+        clearTimeout(coalesce);
+        coalesce = setTimeout(() => setProposalsRevision((n) => n + 1), PROPOSALS_COALESCE_MS);
+      })
+      .then((off) => {
+        stopProposals = off;
+      })
+      .catch((error) => {
+        // Settling still works without it; peers' screens just catch up on the next pass, as before.
+        console.info('[interpretation] this runtime does not report staged-suggestion changes', error);
+      });
+
     onCleanup(() => {
       unwatch();
       stop?.();
+      stopProposals?.();
+      clearTimeout(coalesce);
       local.dispose();
     });
   });
@@ -468,6 +506,7 @@ export function InterpretationStoreProvider(props: ParentProps) {
         synced — and gating an explanation of the *setting* on those showed it with sharing on.
       */
       interpretationDetailShared: () => shareDetail(),
+      interpretationProposalsRevision: () => proposalsRevision(),
       /*
         Whether automatic extraction is on, published for the same reason the sharing one is: a module
         has to be able to *react* to it.

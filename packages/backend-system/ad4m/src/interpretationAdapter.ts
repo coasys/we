@@ -19,7 +19,7 @@
  * Predicates that map to nothing are dropped rather than shown raw: a reviewer cannot make a good
  * accept/reject decision about `we://x_7` and should not be asked to.
  */
-import { Link, LinkQuery, Literal, type PerspectiveProxy } from '@coasys/ad4m';
+import { Link, type LinkExpression, LinkQuery, Literal, type PerspectiveProxy } from '@coasys/ad4m';
 import type {
   DatasetHandle,
   InterpretationActivity,
@@ -36,6 +36,26 @@ import { trace } from '@we/backend-shared';
 import { getEntitiesForPerspective, getEntity, getEntityTargetClass, getRegisteredEntityNames } from '@we/entities';
 
 const proxy = (dataset: DatasetHandle) => dataset as PerspectiveProxy;
+
+/** The link that marks a record as carrying a staged suggestion — the executor's `OVERLAY_KIND_PRED`. */
+const OVERLAY_KIND_PREDICATE = 'ad4m://interp/kind';
+
+/**
+ * Answer `false` where the executor refuses because the suggestion is not staged any more.
+ *
+ * The port promises "whether anything changed", and the executor throws instead. In a shared space
+ * that is the ordinary case rather than an error: two members looking at the same card, or one whose
+ * screen had not caught up, press on a suggestion somebody else already settled — and a throw left
+ * that card impossible to clear from the second screen.
+ */
+async function alreadyResolvedIsFalse(decide: () => Promise<boolean>): Promise<boolean> {
+  try {
+    return await decide();
+  } catch (error) {
+    if (/no overlay on/.test(error instanceof Error ? error.message : String(error))) return false;
+    throw error;
+  }
+}
 
 /**
  * Fallback URI namespace for instances minted without a `parent` to hang them under.
@@ -990,13 +1010,39 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       if (!runtimeSupportsInterpretation(dataset)) throw new Error(UNSUPPORTED);
       const perspective = proxy(dataset);
       await assertEndpointsAreLocal(perspective, id);
-      return perspective.acceptInterpretation(id, property ? await toPredicate(perspective, property) : undefined);
+      const predicate = property ? await toPredicate(perspective, property) : undefined;
+      return alreadyResolvedIsFalse(() => perspective.acceptInterpretation(id, predicate));
     },
 
     async reject(dataset: DatasetHandle, id: string, property?: string): Promise<boolean> {
       if (!runtimeSupportsInterpretation(dataset)) throw new Error(UNSUPPORTED);
       const perspective = proxy(dataset);
-      return perspective.rejectInterpretation(id, property ? await toPredicate(perspective, property) : undefined);
+      const predicate = property ? await toPredicate(perspective, property) : undefined;
+      return alreadyResolvedIsFalse(() => perspective.rejectInterpretation(id, predicate));
+    },
+
+    async onProposalsChanged(dataset: DatasetHandle, cb: () => void): Promise<() => void> {
+      if (!runtimeSupportsInterpretation(dataset)) return () => {};
+      const perspective = proxy(dataset);
+      /*
+        The overlay's `kind` link, and nothing else, is what "staged" means here.
+
+        The engine writes it when it stages a suggestion and removes it once nothing on that record
+        is left to decide — whoever decided, on whichever node. A link removal synced in from a peer
+        publishes on the same subscription as a local one, which is the whole reason this watches
+        links rather than asking the relay: a decision is a fact in the graph, and a peer who was
+        offline when it was made still has to hear about it when the diff arrives.
+      */
+      const onLink = (link: LinkExpression) => {
+        if (link?.data?.predicate === OVERLAY_KIND_PREDICATE) cb();
+        return null;
+      };
+      await perspective.addListener('link-added', onLink);
+      await perspective.addListener('link-removed', onLink);
+      return () => {
+        void perspective.removeListener('link-added', onLink);
+        void perspective.removeListener('link-removed', onLink);
+      };
     },
 
     async watch(dataset: DatasetHandle, request: WatchRequest): Promise<void> {

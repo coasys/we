@@ -280,8 +280,30 @@ export interface InterpretationPort {
   /**
    * Drop a staged suggestion. Rejecting a `'create'` removes the instance; rejecting an `'update'`
    * leaves the existing value alone.
+   *
+   * Like {@link accept}, answers `false` for a suggestion that is no longer staged rather than
+   * throwing — somebody else getting there first is the ordinary case in a shared space.
    */
   reject(dataset: DatasetHandle, id: string, property?: string): Promise<boolean>;
+
+  /**
+   * Hear that the set of staged suggestions may have changed — somebody's pass staged one, or
+   * somebody, anywhere in the neighbourhood, accepted or rejected one.
+   *
+   * ## Why a signal and not the list
+   *
+   * {@link proposals} is a read, and a consumer holding its answer had no way to learn that answer
+   * had gone stale. A pass settling was the only prompt it had, and resolving a suggestion is not a
+   * pass: one member accepting a card left it pending on every other member's screen until the next
+   * extraction or a restart. What changed is cheap to notice and expensive to describe — an overlay
+   * is several links on a backend that stores them — so this says only *that* something did, and
+   * the consumer re-reads whatever it was showing.
+   *
+   * Events arrive in bursts (a pass stages many suggestions at once), so a consumer should coalesce
+   * before re-reading. Returns an unsubscribe. Optional and feature-detected: without it a host
+   * falls back to re-reading when passes settle, which is what it did before this existed.
+   */
+  onProposalsChanged?(dataset: DatasetHandle, cb: () => void): Promise<() => void>;
 
   /**
    * Report passes as they run, rather than only when they finish.

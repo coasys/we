@@ -915,6 +915,32 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     void settleCollection(collectionId() ?? '');
   });
 
+  /*
+    Re-read every conversation on screen when the staged suggestions change — whoever changed them.
+
+    The effect above catches suggestions *arriving*, since a pass settling is when they do. It could
+    not catch them *leaving*: accepting or rejecting one is not a pass, so a card a peer accepted
+    stayed pending here — faded on the canvas, still offering its buttons — until the next extraction
+    or a restart. The host now reports that the set moved, from the graph rather than from the
+    member who moved it, so a reader who was offline at the time still catches up when the change
+    syncs.
+
+    Every key asked about rather than only the call in progress, because `pendingIds` answers from
+    all of them: a card is pending wherever it is drawn, and a list left stale for a call somebody
+    looked at earlier would keep marking it.
+  */
+  let revisionSeen: number | undefined;
+  effect?.(() => {
+    const revision = typeof interpretation?.proposalsRevision === 'function' ? interpretation.proposalsRevision() : 0;
+    // The first read is the baseline, not a change: whatever is on screen was fetched on demand.
+    if (revisionSeen === undefined || revision === revisionSeen) {
+      revisionSeen = revision;
+      return;
+    }
+    revisionSeen = revision;
+    for (const key of proposalsRequested) void loadProposals(key);
+  });
+
   /**
    * What this call extracts, and what else it could — the host's answer, not this module's.
    *

@@ -1636,6 +1636,37 @@ describe('staged suggestions', () => {
     expect(h.store.pendingIds()).toEqual([]);
   });
 
+  it('stops marking a card a peer resolved, when the host says the suggestions moved', async () => {
+    /*
+      Settling a suggestion is not a pass, and a pass settling was the only thing that re-read the
+      list — so a card another member accepted stayed pending on this screen until the next
+      extraction. The host now reports that the staged set moved, and every call on screen is re-read.
+    */
+    let staged = [{ id: 'task-1', kind: 'create', values: {} }];
+    let revision = 0;
+    const port = {
+      available: () => true,
+      runOnCollection: async () => ({ turns: 0, ids: [], proposed: [] }),
+      proposals: async () => staged,
+      proposalsRevision: () => revision,
+      accept: async () => true,
+      reject: async () => true,
+    };
+    const h = harness(inCall, { interpretation: port });
+
+    const byId = h.store.proposalsFor() as { get: (key: string) => unknown[] };
+    byId.get('call-1');
+    await h.settle();
+    expect(h.store.pendingIds()).toEqual(['task-1']);
+
+    // Somebody else accepts it: the graph changes, and the host's count moves.
+    staged = [];
+    revision = 1;
+    await h.settle();
+
+    expect(h.store.pendingIds()).toEqual([]);
+  });
+
   it('offers the waiting suggestions as rows too, for a card that has to read one', async () => {
     /*
       A marker asks "is this waiting?" and takes ids; a card that shows what was proposed has to

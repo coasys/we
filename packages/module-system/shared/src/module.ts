@@ -1355,6 +1355,19 @@ export interface ModuleInterpretationAccess {
    * module explaining "why can't I open this" must ask about the setting, not about the row.
    */
   detailShared: () => boolean;
+  /**
+   * A count that moves whenever the suggestions staged in this space may have changed — a pass
+   * staged some, or somebody, on any node in the neighbourhood, accepted or rejected one.
+   *
+   * Read-only and reactive. It says only *that*, never what: a module holding the answer to
+   * {@link proposals} re-reads whatever it was showing when this moves. Without it a module could
+   * only re-read when a pass settled, and settling a suggestion is not a pass — so a card one member
+   * accepted stayed pending on every other member's screen.
+   *
+   * Optional, so a host that predates it type-checks; absent, or never moving, means "re-read when
+   * you otherwise would".
+   */
+  proposalsRevision?: () => number;
 
   /**
    * Suggestions staged in a dataset, awaiting a human.
@@ -1373,9 +1386,14 @@ export interface ModuleInterpretationAccess {
    * {@link runOnCollection}.
    */
   proposals: (target?: DatasetTarget, collection?: string) => Promise<InterpretationProposal[]>;
-  /** Commit a staged suggestion — the whole record, or one property by name. */
+  /**
+   * Commit a staged suggestion — the whole record, or one property by name.
+   *
+   * Resolves `false` when it is no longer staged, which in a shared space usually means somebody else
+   * settled it first; a module should drop it from view either way.
+   */
   accept: (id: string, property?: string, target?: DatasetTarget) => Promise<boolean>;
-  /** Drop a staged suggestion. */
+  /** Drop a staged suggestion. Resolves `false`, like {@link accept}, when it is no longer staged. */
   reject: (id: string, property?: string, target?: DatasetTarget) => Promise<boolean>;
 }
 
