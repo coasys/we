@@ -49,9 +49,7 @@
 import { field, formModal } from '@we/schema-kit';
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
-import { agentByline } from './agentByline.ts';
 import { peopleFilter } from './peopleFilter.ts';
-import { peopleRow } from './peopleRow.ts';
 
 /** The board record, hydrated one level: its columns, its own arrangement, what it gathers. */
 const BOARD = 'first(local.board)';
@@ -64,7 +62,7 @@ const BOARD = 'first(local.board)';
  * every reader agrees on the answer; each use is its own memo, and the function is cheap.
  */
 const VIEW =
-  'arrangedBoard({ board: first(local.board), columns: local.columns, records: local.pool, states: spaceStore.taskStates, involvements: local.involvements, kinds: spaceStore.involvementTypes, people: local.boardPeople, show: local.boardShow })';
+  'arrangedBoard({ board: first(local.board), columns: local.columns, records: local.pool, states: spaceStore.taskStates, involvements: local.involvements, kinds: spaceStore.involvementTypes, people: local.boardPeople, show: local.boardShow, me: me.did })';
 
 /**
  * Who is on each card — the `involvement` host function over the board's own involvement query.
@@ -106,13 +104,16 @@ export interface TaskCardOptions {
    */
   showState?: string;
   /**
-   * Show who wrote the task.
+   * Whether a model proposed this card from a conversation rather than somebody writing it — an
+   * expression, per row. Omit where nothing on the board is extracted.
    *
-   * Off by default: on a community's own board every card is the community's and a row of identical
-   * faces says nothing. It earns its place where *provenance* is the question — for an extracted
-   * task the author is whichever agent's node ran the pass.
+   * Not the author, which is what this used to show, as a name in the card's own heading type. On an
+   * extracted task the author is whichever member's node happened to run the pass — not who proposed
+   * the work — so a name there claimed something false, and was the most prominent person on the card
+   * besides. A small mark says what is true; who ran the pass is in the people hovercard, with the
+   * rest of where the card came from.
    */
-  byline?: boolean;
+  extracted?: string;
   /**
    * Mark a card that extraction has proposed and nobody has agreed to — an expression, per row.
    *
@@ -279,8 +280,9 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
               },
             },
           },
+          // Without people, the name a conversation said is still the words that were said.
           ...(opts.peopleOf
-            ? cardPeople(as, opts.peopleOf)
+            ? []
             : [
                 {
                   type: '$if',
@@ -294,6 +296,21 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
                   },
                 } as SchemaNode,
               ]),
+          ...(opts.extracted
+            ? [
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: opts.extracted },
+                    then: {
+                      type: 'we-tooltip',
+                      props: { content: 'Extracted from the conversation' },
+                      children: [{ type: 'we-icon', props: { name: 'sparkle', size: 'xs', color: 'text-muted' } }],
+                    },
+                  },
+                } as SchemaNode,
+              ]
+            : []),
           // The card's state, where the caller says the column does not already give it away.
           {
             type: '$if',
@@ -316,7 +333,6 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
               },
             },
           },
-          ...(opts.byline ? [agentByline({ did: { $: `${as}.author` }, as: 'author', avatarSize: 'xxs' })] : []),
           {
             type: 'Row',
             props: { ml: 'auto', gap: '100', ay: 'center' },
@@ -392,8 +408,9 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
                   },
                 },
               },
-              ...(opts.peopleOf ? [assignMenu(as, opts.peopleOf)] : []),
               ...(opts.actions ? [opts.actions] : []),
+              // Last, at the card's right edge — where every board puts whoever is on the work.
+              ...(opts.peopleOf ? [cardPeople(as, opts.peopleOf, opts.extracted)] : []),
             ],
           },
         ],
@@ -402,112 +419,206 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
   };
 }
 
-/** The kinds a menu on this entity offers someone else — assigning, not answering. */
-const assignable = (entity: string) =>
-  `spaceStore.offeredInvolvementTypes.filter(k, !k.reflexive && ('${entity}' in k.appliesTo || !count(k.appliesTo)))`;
-
 /**
- * Who is on a card, drawn from what their part *means*: faces for whoever is responsible, and an eye
- * before whoever is reviewing. By semantic, so "Assigned" renamed to "Owner" still draws here.
+ * The faces on a card, which are also how to change them.
  *
- * And the one bridge from extraction. A pass writes `assignee` as the name somebody said — "James" —
- * because a model cannot know a DID, and until now that name sat on the card connected to nobody.
- * Where it names exactly one member and nobody is on the card yet, the card offers to make it real.
- * Exactly one: two Jameses is a guess, and a guess about who owns work is the wrong one to automate.
- */
-function cardPeople(as: string, entity: string): SchemaNode[] {
-  const candidates = `spaceStore.members.filter(m, lower(m.name) == lower(${as}.assignee) || startsWith(lower(m.name), lower(${as}.assignee) + ' '))`;
-  const kind = `${assignable(entity)}.find(k, k.semantic == 'responsible').slug`;
-  return [
-    {
-      type: '$if',
-      props: {
-        condition: { $: `count(${ON(as)}.responsible)` },
-        then: peopleRow({ items: { $: `${ON(as)}.responsible` }, dids: true, max: 3, size: 'xxs' }),
-      },
-    },
-    {
-      type: '$if',
-      props: {
-        condition: { $: `count(${ON(as)}.reviewing)` },
-        then: {
-          type: 'Row',
-          props: { gap: '100', ay: 'center' },
-          children: [
-            { type: 'we-icon', props: { name: 'eye', size: 'xs', color: 'text-muted' } },
-            peopleRow({ items: { $: `${ON(as)}.reviewing` }, dids: true, max: 3, size: 'xxs' }),
-          ],
-        },
-      },
-    },
-    {
-      type: '$if',
-      props: {
-        condition: { $: `${as}.assignee && !count(${ON(as)}.responsible) && count(${candidates}) == 1 && ${kind}` },
-        then: {
-          type: 'we-tooltip',
-          props: { content: { $: `\`The conversation named \${${as}.assignee}\`` } },
-          children: [
-            {
-              type: 'we-button',
-              props: {
-                variant: 'ghost',
-                size: 'xs',
-                onClick: {
-                  $action: 'spaceStore.setInvolvement',
-                  args: [{ $: `${as}.id` }, { $: `first(${candidates}).did` }, { $: kind }, true],
-                },
-              },
-              children: [
-                { type: 'we-icon', props: { name: 'user-plus' } },
-                { $: `\`Assign \${first(${candidates}).name}?\`` },
-              ],
-            },
-          ],
-        },
-        // A name matching nobody, or several people, is still worth seeing as the words that were said.
-        else: {
-          type: '$if',
-          props: {
-            condition: { $: `${as}.assignee && !count(${ON(as)}.responsible)` },
-            then: {
-              type: 'we-text',
-              props: { fontSize: '200', color: 'text-muted' },
-              children: [{ $: '`@${' + as + '.assignee}`' }],
-            },
-          },
-        },
-      },
-    },
-  ];
-}
-
-/**
- * Put somebody on a card, or take them off — one group per kind this entity offers, each listing the
- * space's members with a tick for who holds it.
+ * ## The one person-shaped thing on a card is whoever is on the work
  *
- * Every entry carries its kind, so the one handler knows which it was: a comprehension cannot attach a
- * handler per row, and the menu reports the row. `!arg.checked` because a toggle reports the state it
- * had before the press, and the store takes the state wanted rather than a flip.
+ * Every board that has settled this puts the assignee at the right end of the card and nobody else
+ * on its face: the creator is history, and belongs where history is kept. So: assignees, then
+ * reviewers, as one stack of up to three faces and a count for the rest — the stack the call bar and
+ * every roster in WE draw. A reviewer wears a coloured ring (the `tone` the host function gives each
+ * part), which is the whole of how the two are told apart at a glance; no second glyph.
+ *
+ * ## Pressing the faces opens the picker
+ *
+ * Rather than a separate icon beside them: the thing you want to change is the thing you press, and a
+ * card with nobody on it shows a dashed empty face in the same place, so unowned work is visible
+ * while scanning and assigning it is one press. The picker is `involvementMenu` — see there for its
+ * order, the "Assign to me" and "named in the conversation" entries, and why reviewers start closed.
+ *
+ * ## Hovering says what each face is
+ *
+ * A face alone names a person and not why they are there, which is the question a reader has. The
+ * hovercard lists each part with its people, then where the card came from: extracted from the
+ * conversation or added by somebody, by whom, and when.
  */
-function assignMenu(as: string, entity: string): SchemaNode {
+function cardPeople(as: string, entity: string, extracted?: string): SchemaNode {
+  const on = ON(as);
+  const faces = `${on}.people.filter(p, !p.reflexive)`;
+  const face = (did: string) => `find(profileStore.profiles, { did: ${did} })`;
   return {
     type: 'DropdownMenu',
     props: {
-      triggerIcon: 'user-plus',
       triggerTitle: 'Who is on this',
       size: 'xs',
       itemSize: 'sm',
+      placement: 'bottom-end',
       searchable: true,
       searchPlaceholder: 'Find a member',
       items: {
-        $: `${assignable(entity)}.map(k, { type: 'group', id: k.slug, label: k.name, collapsible: false, items: spaceStore.members.map(m, { type: 'toggle', id: m.did, kind: k.slug, label: m.did == me.did ? m.name + ' (you)' : m.name, checked: (m.did + '|' + k.slug) in ${ON(as)}.pairs }) })`,
+        $: `involvementMenu({ node: ${as}.id, entity: '${entity}', rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.did, said: ${as}.assignee })`,
       },
+      // A toggle reports the state it had before the press; "Assign to me" carries none, which reads as on.
       onSelect: {
         $action: 'spaceStore.setInvolvement',
         args: [{ $: `${as}.id` }, { $: 'arg.id' }, { $: 'arg.kind' }, { $: '!arg.checked' }],
       },
     },
+    children: [
+      {
+        type: 'we-tooltip',
+        props: { placement: 'top' },
+        children: [
+          {
+            // A native element carries the slot — see `peopleTooltip` for why a Column cannot.
+            type: 'div',
+            slot: 'content',
+            children: [
+              {
+                type: 'Column',
+                props: { gap: '300', minWidth: '180px', textAlign: 'left' },
+                children: [
+                  {
+                    type: '$each',
+                    props: {
+                      items: {
+                        $: `spaceStore.involvementTypes.filter(k, count(${on}.people.filter(p, p.kind == k.slug && !p.reflexive)))`,
+                      },
+                      as: 'part',
+                    },
+                    children: [
+                      {
+                        type: 'Column',
+                        props: { gap: '100' },
+                        children: [
+                          {
+                            type: 'we-text',
+                            props: {
+                              variant: 'footnote',
+                              uppercase: true,
+                              color: 'text-muted',
+                              text: { $: 'part.name' },
+                            },
+                          },
+                          {
+                            type: '$each',
+                            props: { items: { $: `${on}.people.filter(p, p.kind == part.slug)` }, as: 'holder' },
+                            children: [
+                              {
+                                type: 'Row',
+                                props: { gap: '200', ay: 'center' },
+                                children: [
+                                  {
+                                    // A stack of one, so the ring comes from the same tone the card's stack uses.
+                                    type: 'AvatarStack',
+                                    props: {
+                                      size: 'xs',
+                                      avatars: {
+                                        $: `[{ image: ${face('holder.did')}.avatar, hash: holder.did, tone: holder.tone }]`,
+                                      },
+                                    },
+                                  },
+                                  {
+                                    type: 'we-text',
+                                    props: {
+                                      fontSize: '200',
+                                      text: { $: `holder.did == me.did ? 'You' : ${face('holder.did')}.name` },
+                                    },
+                                  },
+                                ],
+                              },
+                            ],
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                  {
+                    type: '$if',
+                    props: {
+                      condition: { $: `!count(${faces})` },
+                      then: {
+                        type: 'we-text',
+                        props: {
+                          fontSize: '200',
+                          color: 'text-muted',
+                          text: {
+                            $: `${as}.assignee ? \`Nobody yet — the conversation named “\${${as}.assignee}”\` : 'Nobody is on this yet'`,
+                          },
+                        },
+                      },
+                    },
+                  },
+                  {
+                    // Where the card came from — the history a face on the card used to stand in for.
+                    type: '$agent',
+                    props: { did: { $: `${as}.author` }, as: 'author' },
+                    children: [
+                      {
+                        type: 'Row',
+                        props: { gap: '100', ay: 'center', wrap: true, pt: '200', borderTop: '1px solid border' },
+                        children: [
+                          {
+                            type: 'we-text',
+                            props: {
+                              variant: 'footnote',
+                              color: 'text-muted',
+                              text: {
+                                $: `(${extracted ?? 'false'}) ? \`Extracted from the conversation · run by \${author.name}\` : \`Added by \${author.did == me.did ? 'you' : author.name}\``,
+                              },
+                            },
+                          },
+                          {
+                            type: 'we-timestamp',
+                            props: {
+                              value: { $: `${as}.createdAt` },
+                              relative: true,
+                              fontSize: '100',
+                              color: 'text-muted',
+                            },
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            type: '$if',
+            props: {
+              condition: { $: `count(${faces})` },
+              then: {
+                type: 'AvatarStack',
+                props: {
+                  size: 'xs',
+                  max: 3,
+                  ring: '0 0 0 2px var(--we-ring-color)',
+                  avatars: { $: `${faces}.map(p, { image: ${face('p.did')}.avatar, hash: p.did, tone: p.tone })` },
+                },
+              },
+              // Nobody on it: a dashed empty face where the faces would be, which is also the way in.
+              else: {
+                type: 'Row',
+                props: {
+                  width: 'var(--we-avatar-size-xs)',
+                  height: 'var(--we-avatar-size-xs)',
+                  r: 'avatar',
+                  border: '1px dashed border-strong',
+                  ax: 'center',
+                  ay: 'center',
+                  color: 'text-faint',
+                  hoverProps: { borderColor: 'text-muted', color: 'text-muted' },
+                },
+                children: [{ type: 'we-icon', props: { name: 'plus', size: '10px' } }],
+              },
+            },
+          },
+        ],
+      },
+    ],
   };
 }
 
@@ -546,8 +657,8 @@ export interface TaskBoardOptions {
   boardId: SchemaProp;
   /** Shown when there is no work here at all. */
   empty: SchemaNode;
-  /** Show the author on each card — see {@link TaskCardOptions.byline}. */
-  byline?: boolean;
+  /** Whether a card was extracted from a conversation, as an expression over `card` — see {@link TaskCardOptions.extracted}. */
+  extracted?: string;
   /** Each card's fill, as an expression over `card` — see {@link TaskCardOptions.bg}. */
   bg?: SchemaProp;
   /**
@@ -693,7 +804,7 @@ function boardCard(opts: TaskBoardOptions, showState: string, from: string): Sch
     ? opts.card('card')
     : taskCard({
         actions: moveTaskMenu(from),
-        byline: opts.byline,
+        extracted: opts.extracted,
         bg: opts.bg,
         showState,
         pending: `card.id in (${PENDING})`,
@@ -1379,6 +1490,7 @@ export function taskBoard(opts: TaskBoardOptions): SchemaNode {
               people: 'boardPeople',
               show: 'boardShow',
               modes: ['dim', 'hide', 'rows'],
+              faces: { $: `${VIEW}.involved` },
               matched: { $: `${VIEW}.matchedCount` },
               total: { $: `${VIEW}.cardCount` },
               noun: 'card',

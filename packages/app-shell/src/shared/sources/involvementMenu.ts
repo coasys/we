@@ -11,8 +11,12 @@
  *
  * ## What it offers
  *
- * - **"Assign to me"** first, while the viewer does not already hold the record's first
- *   responsible kind: the commonest thing anybody does in a picker is take the work themselves.
+ * - **The person the conversation named**, first, when `said` is a name — what an extraction pass
+ *   writes into `TaskBlock.assignee`, since a model cannot know a DID — that matches exactly one
+ *   member, and nobody is doing the work yet. Exactly one: two Jameses is a guess, and a guess about
+ *   who owns work is the wrong thing to make one click away.
+ * - **"Assign to me"**, while the viewer does not already hold the record's first responsible
+ *   kind: the commonest thing anybody does in a picker is take the work themselves.
  * - **A group per kind** this entity is offered and anybody may give — not the reflexive ones, which
  *   are a person's own answer and have their own control. The first group is always open; the rest
  *   start closed unless somebody already holds them, so "Reviewing" does not double the list of
@@ -61,6 +65,8 @@ export interface InvolvementMenuOptions {
   profiles?: Member[] | null;
   /** The viewer's DID. */
   me?: string | null;
+  /** A name somebody said for who should do it — `TaskBlock.assignee`. See above. */
+  said?: string | null;
   pending?: readonly PendingInvolvement[] | null;
 }
 
@@ -130,5 +136,24 @@ export function involvementMenu(options: InvolvementMenuOptions | null | undefin
       ? [{ id: me, kind: doing.slug, label: 'Assign to me', icon: 'user-circle-plus' }]
       : [];
 
-  return [...takeIt, ...groups];
+  const said = (options?.said ?? '').trim().toLowerCase();
+  const named = said
+    ? byName.filter((m) => {
+        const name = (m.name ?? '').toLowerCase();
+        return name === said || name.startsWith(`${said} `);
+      })
+    : [];
+  const suggestion =
+    doing && named.length === 1 && named[0].did !== me && holdersOf(doing.slug).length === 0
+      ? [
+          {
+            id: named[0].did,
+            kind: doing.slug,
+            label: `Assign ${nameOf(named[0])} — named in the conversation`,
+            avatar: { image: named[0].avatar ?? '', hash: named[0].did, tone: '' },
+          },
+        ]
+      : [];
+
+  return [...suggestion, ...takeIt, ...groups];
 }

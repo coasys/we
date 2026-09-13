@@ -187,6 +187,7 @@ const weDomain: Record<string, SchemaNode> = {
     people: 'who',
     show: 'whoMode',
     modes: ['dim', 'hide'],
+    faces: { $: 'spaceStore.memberDids' },
     matched: { $: 'count(local.who)' },
     total: { $: 'count(spaceStore.members)' },
     noun: 'event',

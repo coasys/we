@@ -121,11 +121,24 @@ describe('a board read by who is on the work', () => {
     expect(text).toContain(`"group":{"$":"'board-cards-' + person"}`);
   });
 
-  it('puts faces and an assign menu on the card, assigning by what a kind means', () => {
+  it('draws who is on a card as one stack of three that opens the picker, and never the creator', () => {
     expect(text).toContain('"$action":"spaceStore.setInvolvement"');
-    expect(text).toContain('.responsible');
-    expect(text).toContain("k.semantic == 'responsible'");
+    expect(text).toContain('involvementMenu({');
+    expect(text).toContain('"max":3');
+    // A reviewer is told apart by the ring the host gives the part, not by a second glyph.
+    expect(text).toContain('tone: p.tone');
+    expect(text).not.toContain('"name":"eye"');
+    // Nobody on the card's face but whoever is on the work.
+    expect(text).not.toContain(
+      '"type":"$agent","props":{"did":{"$":"card.author"},"as":"author"},"children":[{"type":"Row","props":{"ay":"center"',
+    );
     // And a board without people keeps the name the conversation said, and nothing else.
     expect(json).not.toContain('spaceStore.setInvolvement');
+  });
+
+  it('offers the people on this board as faces, and the mode as its own control', () => {
+    expect(text).toContain('.involved');
+    expect(text).toContain('"triggerTitle":"How the others are shown"');
+    expect(text).toContain('"triggerTitle":"Everyone in this space"');
   });
 });

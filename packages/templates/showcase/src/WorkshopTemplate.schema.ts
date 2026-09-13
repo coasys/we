@@ -2850,10 +2850,14 @@ const kanbanRoute: RouteSchema = {
                             reached the canvas has no placement and no way to be given one. That is the
                             work, not this expression.
                           */
-                          // Who ran the pass that wrote it — the provenance question this template is
-                          // built around, and the reason its cards carry a byline where a space's board
-                          // does not.
-                          byline: true,
+                          /*
+                        Which cards a model proposed from the conversation — the provenance question
+                        this template is built around. A mark on the card and a line in its people
+                        hovercard, rather than the author's name in heading type: on an extracted task
+                        the author is whichever member's node ran the pass, not who proposed the work.
+                        The call's own `extracted` relation says which, and arrives as ids on the row.
+                      */
+                          extracted: 'card.id in first(local.callRow).extracted',
                           /*
                             And who is doing it — the other half of the same question. A call commits
                             people to things as often as it commits to things, and a board that could
@@ -3516,6 +3520,10 @@ const calendarRoute: RouteSchema = {
                 peopleFilter({
                   people: 'calendarPeople',
                   show: 'calendarShow',
+                  // Whoever has answered an event this call produced, the viewer first.
+                  faces: {
+                    $: 'involvement({ rows: local.involvements, types: spaceStore.involvementTypes, me: me.did, nodes: local.events.map(e, e.id) }).dids',
+                  },
                   matched: { $: `count(local.events.filter(e, ${MATCHES('e')}))` },
                   total: { $: 'count(local.events)' },
                   noun: 'event',

@@ -1375,6 +1375,9 @@ describe('the workshop’s people', () => {
     expect(kanban).toContain('"$action":"spaceStore.setInvolvement"');
     expect(kanban).toContain('"syncParam":"who"');
     expect(kanban).toContain('Row per person');
+    // Where a card came from is a mark and a hovercard line, never the author's name on its face.
+    expect(kanban).toContain('card.id in first(local.callRow).extracted');
+    expect(kanban).toContain('Extracted from the conversation');
   });
 
   it('lets a member answer an event, reading answers rather than the call’s roster', () => {

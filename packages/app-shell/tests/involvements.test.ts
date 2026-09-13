@@ -324,3 +324,28 @@ describe('the people on a card, as faces and as a picker', () => {
     expect(entries[1].items![0]).toMatchObject({ label: 'Zed (left)', checked: true });
   });
 });
+
+describe('the person a conversation named', () => {
+  const types = resolveInvolvementTypes([]);
+  const members = [
+    { did: 'did:key:jw', name: 'James Weir' },
+    { did: 'did:key:jb', name: 'James Brown' },
+    { did: ANA, name: 'Ana Ruiz' },
+    { did: ME, name: 'Me' },
+  ];
+  const menu = (said: string, rows: { node: string; agent: string; kind: string }[] = []) =>
+    involvementMenu({ node: 't1', entity: 'TaskBlock', rows, types, members, me: ME, said }) as {
+      id: string;
+      label: string;
+    }[];
+
+  it('is offered first, by first name or whole name, when exactly one member answers to it', () => {
+    expect(menu('ana')[0]).toMatchObject({ id: ANA, label: 'Assign Ana Ruiz — named in the conversation' });
+    expect(menu('James Weir')[0].id).toBe('did:key:jw');
+  });
+
+  it('is not offered as a guess between two people, or once somebody is doing the work', () => {
+    expect(menu('James')[0].label).toBe('Assign to me');
+    expect(menu('Ana', [{ node: 't1', agent: 'did:key:jw', kind: 'assignee' }])[0].id).not.toBe(ANA);
+  });
+});
