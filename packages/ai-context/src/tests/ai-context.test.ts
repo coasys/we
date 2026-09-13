@@ -50,7 +50,12 @@ describe('extractPrimitives', () => {
   });
 });
 
-describe('extractComponentProps', () => {
+// Both of these build a TypeScript program over a whole package, which is cheap warm and several
+// seconds cold — and CI runs every package's suite at once, so a cold compile under contention
+// passed 5s there while taking under one here. A timeout, not a hang.
+const TYPESCRIPT_PROGRAM_TIMEOUT = 30_000;
+
+describe('extractComponentProps', { timeout: TYPESCRIPT_PROGRAM_TIMEOUT }, () => {
   it('extracts components', () => {
     const components = extractComponentProps(paths.components, 'components');
     expect(components.length).toBeGreaterThan(0);
@@ -102,7 +107,7 @@ describe('extractEntities', () => {
   });
 });
 
-describe('assembleReference', () => {
+describe('assembleReference', { timeout: TYPESCRIPT_PROGRAM_TIMEOUT }, () => {
   it('contains all expected sections', async () => {
     const context = {
       primitives: extractPrimitives(paths.cem),
