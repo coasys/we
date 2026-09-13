@@ -1527,6 +1527,17 @@ describe('the history of what was read', () => {
     );
   });
 
+  it('wraps the running label between words and never squeezes the clock', () => {
+    /*
+      The label was `truncate` with `flex: '1'` and no `minWidth`, so it refused to be narrower than
+      its whole line: it ran off the panel, and the row took the room out of the elapsed clock
+      instead, folding "1:23" onto two lines.
+    */
+    const activity = JSON.stringify(extractionActivity);
+    expect(activity).toContain('{"type":"we-text","props":{"fontSize":"200","flex":"1","minWidth":"0"}');
+    expect(activity).toContain('"flexShrink":"0","whiteSpace":"nowrap"');
+  });
+
   it('leaves finished passes to the durable log, and lists them once', () => {
     /*
       The bug this replaced: the readings appeared twice on a call, once above the "Logs" heading

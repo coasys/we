@@ -107,11 +107,24 @@ const runnerFace: SchemaNode = {
  *
  * The elapsed time renders only while the pass is running — the store returns `''` once it has
  * settled, since a finished pass reports what it did and how long it took stops being the question.
+ *
+ * ## Who gives up room
+ *
+ * The label, and only the label. It wraps between words rather than truncating: "Anna is writing
+ * what she found" is a sentence, and cutting it to "Anna is writing wh…" drops the part that says
+ * what is happening — in a panel narrow enough to need it, a second line costs less than that.
+ * `minWidth: '0'` is what lets it wrap at all; without it a flex item will not be narrower than its
+ * longest line.
+ *
+ * The clock never gives up anything. It was a `we-text` like the label, so when the label refused
+ * to shrink the row took the room out of the clock instead and folded "1:23" onto two lines. It is
+ * an elapsed duration rather than an instant, so `we-timestamp` — which already holds this rule —
+ * is not the element for it; the rule is written out here instead.
  */
 const passRowChildren: SchemaNode[] = [
   phaseIcon,
   runnerFace,
-  { type: 'we-text', props: { fontSize: '200', truncate: true, flex: '1' }, children: [{ $: 'pass.label' }] },
+  { type: 'we-text', props: { fontSize: '200', flex: '1', minWidth: '0' }, children: [{ $: 'pass.label' }] },
   {
     type: '$if',
     props: {
@@ -119,7 +132,13 @@ const passRowChildren: SchemaNode[] = [
       then: {
         // Tabular, so the seconds column does not jitter the row every time it ticks.
         type: 'we-text',
-        props: { fontSize: '200', color: 'text-faint', styles: { fontVariantNumeric: 'tabular-nums' } },
+        props: {
+          fontSize: '200',
+          color: 'text-faint',
+          flexShrink: '0',
+          whiteSpace: 'nowrap',
+          styles: { fontVariantNumeric: 'tabular-nums' },
+        },
         children: [{ $: 'pass.elapsed' }],
       },
       /*
