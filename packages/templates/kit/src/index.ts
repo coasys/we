@@ -48,6 +48,18 @@ export type { MediaGridOptions } from './lists/mediaGrid.ts';
 // WE-domain — these name WE's stores or its agent machinery.
 export { ANCHOR_ID, ANCHOR_PARAM, anchorBanner, anchorParent, anchorScope } from './we/anchor.ts';
 export type { AnchorBannerOptions } from './we/anchor.ts';
+export {
+  answerButton,
+  CHANGED,
+  changesOf,
+  SUGGESTIONS_HIDDEN,
+  SUGGESTIONS_PARAM,
+  suggestedChanges,
+  suggestionsToggle,
+  UNCONFIRMED,
+  withoutHiddenSuggestions,
+} from './we/suggestions.ts';
+export type { SuggestedChangesOptions, SuggestionsToggleOptions } from './we/suggestions.ts';
 export { moveTaskMenu, PENDING, taskBoard, taskBoardLoading, taskCard } from './we/taskBoard.ts';
 export type { CardSelection, TaskBoardOptions, TaskCardOptions } from './we/taskBoard.ts';
 export { adminSection } from './we/adminSection.ts';
@@ -60,7 +72,7 @@ export { RECORD_ROUTE_PATH, recordLink } from './we/recordLink.ts';
 export { marketplaceList } from './we/marketplaceList.ts';
 export type { MarketplaceListOptions } from './we/marketplaceList.ts';
 export { peopleFilter } from './we/peopleFilter.ts';
-export type { PeopleFilterMode, PeopleFilterOptions } from './we/peopleFilter.ts';
+export type { PeopleFilterOptions } from './we/peopleFilter.ts';
 export { peopleRow } from './we/peopleRow.ts';
 export { HAS_OFFERED_SIGNAL_TYPES, OFFERED_SIGNAL_TYPES } from './we/signalTypes.ts';
 export {

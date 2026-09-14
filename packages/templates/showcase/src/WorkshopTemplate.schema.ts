@@ -58,6 +58,8 @@ import type { RouteSchema, SchemaNode, SchemaProp, TemplateSchema } from '@we/sc
 // depends on the former, which re-exports them, and on the latter not at all.
 import {
   anchorScope,
+  answerButton,
+  CHANGED,
   composerModal,
   emptyState,
   field,
@@ -67,8 +69,13 @@ import {
   peopleFilter,
   peopleRow,
   recordFormModal,
+  suggestedChanges,
+  SUGGESTIONS_HIDDEN,
+  suggestionsToggle,
   taskBoard,
   taskBoardLoading,
+  UNCONFIRMED,
+  withoutHiddenSuggestions,
 } from '@we/template-kit';
 
 import {
@@ -1947,6 +1954,50 @@ const inspectorPanel: SchemaNode = {
                       ],
                     },
                     /*
+                      What extraction is waiting on for this record, above what the record says.
+
+                      A draft — a record a pass made — is answered with Keep or Discard, as on its
+                      card. An agreed record with a change suggested is answered here field by field,
+                      old → new: the canvas card is a clipped preview with no room to read a change,
+                      so its "Review suggested change" opens this. Nothing at all for a record with
+                      nothing staged.
+                    */
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $: `row.id in ${UNCONFIRMED}` },
+                        then: {
+                          type: 'Row',
+                          props: {
+                            gap: '200',
+                            ay: 'center',
+                            width: '100%',
+                            p: '200',
+                            r: '300',
+                            border: '1px dashed border-strong',
+                          },
+                          children: [
+                            {
+                              type: 'we-text',
+                              props: { fontSize: '200', color: 'text-muted', flex: '1', minWidth: '0' },
+                              children: ['Extraction proposed this — pending acceptance.'],
+                            },
+                            answerButton({
+                              tone: 'success',
+                              label: 'Accept',
+                              onClick: { $action: 'modules.transcribe.acceptProposal', args: [{ $: 'row.id' }] },
+                            }),
+                            answerButton({
+                              tone: 'danger',
+                              label: 'Reject — removes it',
+                              onClick: { $action: 'modules.transcribe.rejectProposal', args: [{ $: 'row.id' }] },
+                            }),
+                          ],
+                        },
+                      },
+                    },
+                    suggestedChanges({ record: 'row', collapseAfter: 6 }),
+                    /*
                       Reading, or editing — the same fields, as values or as controls.
 
                       Editing draws the fields that hold something as controls by their kind and
@@ -2385,16 +2436,34 @@ const canvas: SchemaNode = {
           the board for the moment its replacement is being queried, and against the incoming call's
           list — empty, nothing having fetched it yet — every one of them flashed as settled.
 
-          `pendingIds` is the union, and asks the question the marker actually means. The panel's
+          The store's lists are unions across calls, and ask the question the marker actually means. The panel's
           review list stays keyed, because "which decisions am I being asked for" *is* about a
           conversation.
         */
-        pending: { $: 'modules.transcribe.pendingIds' },
+        pending: { $: UNCONFIRMED },
+        /*
+          The two kinds of suggestion, told apart — see `suggestions.ts` in the template kit. `pending`
+          is a record a pass made and nobody has kept, which is provisional and faded; `changed` is an
+          agreed record carrying a suggested edit, which is settled and only marked. They were one
+          list, so an agreed card a pass had an opinion about was faded like a draft.
+        */
+        changed: { $: CHANGED },
+        // Put away while the reader hides suggestions — the switch in the key, shared with the board
+        // and the calendar through the address. Changed records are never hidden.
+        hidden: { $: `(${SUGGESTIONS_HIDDEN}) ? ${UNCONFIRMED} : []` },
       },
     },
     // Nothing opens automatically: a card's own blocks are fragments of it, not more cards.
     expansion: { defaultDepth: 0 },
-    layout: { type: 'manual' },
+    /*
+      A card's size, so a card nobody has placed is parked in a slot it fits — the default slot was
+      narrower than a card, which is why new suggestions arrived overlapping — and clear of the cards
+      already on the canvas, including one somebody resized.
+    */
+    layout: {
+      type: 'manual',
+      options: { size: { width: 180, height: 135 }, widthField: 'canvasWidth', heightField: 'canvasHeight' },
+    },
     nodeStyle: [
       {
         /*
@@ -2460,7 +2529,18 @@ const canvas: SchemaNode = {
         matched nothing at all, silently, which is the failure mode a match clause has: no card
         faded and no card offered the decision, on a canvas full of suggestions.
       */
-      { when: { 'data.pending': true }, style: { opacity: 0.5 } },
+      // Dashed as well as faded, as a draft is on the board and in the key: the fade alone read as a
+      // card with a pale colour rather than as one waiting on somebody.
+      {
+        when: { 'data.pending': true },
+        style: { opacity: 0.5, borderStyle: 'dashed', borderColor: 'border-strong', borderWidth: 2 },
+      },
+      /*
+        An agreed card with a change suggested: full strength, and an amber edge. Not faded — the
+        record is not in doubt, only the change is, and the change is read in the inspector. Amber
+        rather than the accent, which is what a *selected* card wears: the two would be one outline.
+      */
+      { when: { 'data.changed': true }, style: { borderColor: 'warning-text', borderWidth: 2 } },
     ],
     /*
       No `connect-nodes`. Connecting is a handle on the card now, not a mode.
@@ -2730,8 +2810,13 @@ const canvas: SchemaNode = {
       in another view.
     */
     nodeActions: [
-      { id: 'accept', icon: 'check', title: 'Keep this', when: { 'data.pending': true }, tone: 'positive' },
-      { id: 'reject', icon: 'x', title: 'Discard this', when: { 'data.pending': true }, tone: 'danger' },
+      { id: 'accept', icon: 'check', title: 'Accept', when: { 'data.pending': true }, tone: 'positive' },
+      { id: 'reject', icon: 'x', title: 'Reject', when: { 'data.pending': true }, tone: 'danger' },
+      /*
+        A suggested change is answered in the inspector, where there is room to read old → new — a card
+        on a canvas is a clipped preview. This opens it on the card.
+      */
+      { id: 'review', icon: 'pencil-simple-line', title: 'Review pending change', when: { 'data.changed': true } },
       /*
         How this card looks, on the card — colour, shape, and how large its content is drawn.
 
@@ -2781,8 +2866,28 @@ const canvas: SchemaNode = {
     onNodeAction: [
       {
         $if: {
+          condition: { $: "event.action == 'review'" },
+          then: [
+            { $setLocal: 'inspecting', value: { $: 'event.recordId' } },
+            { $setLocal: 'inspectingType', value: { $: 'event.recordType' } },
+          ],
+        },
+      },
+      {
+        $if: {
           condition: { $: "event.action == 'accept'" },
-          then: { $action: 'modules.transcribe.acceptProposal', args: [{ $: 'event.recordId' }] },
+          /*
+            Kept, and pinned where it is drawn. A suggestion is parked rather than placed — a placement
+            is shared, and nobody had agreed to the record — so without one a kept card went on being
+            parked, somewhere new on every reload. Keeping it is the moment it joins the arrangement.
+          */
+          then: [
+            { $action: 'modules.transcribe.acceptProposal', args: [{ $: 'event.recordId' }] },
+            {
+              $action: 'recordStore.placeOnCanvas',
+              args: [CALL, { $: 'event.recordId' }, { $: 'event.recordType' }, { $: 'event.x' }, { $: 'event.y' }],
+            },
+          ],
         },
       },
       {
@@ -2881,7 +2986,8 @@ const canvasBody: Omit<RouteSchema, 'path'> = {
     A flex-grown item has a definite used height, so the percentage inside it resolves. This is the
     chain the graph view in `templates/views` uses, and the one the panels above already use.
   */
-  props: { width: '100%', flex: '1', minHeight: '0', overflow: 'hidden' },
+  // `relative` so the hidden-suggestions chip can sit over the canvas's corner.
+  props: { width: '100%', flex: '1', minHeight: '0', overflow: 'hidden', position: 'relative' },
   /*
     `syncParam`, so the inspector panel can read what the canvas selected — see `onNodeClick`.
 
@@ -2919,6 +3025,54 @@ const canvasBody: Omit<RouteSchema, 'path'> = {
   */
   children: [
     canvas,
+    /*
+      That drafts are hidden, said on the canvas itself.
+
+      The switch lives in the key, which is a panel and can be closed — and cards missing with nothing
+      on screen to say why is how a person comes to think extraction lost them. So while they are
+      hidden, a chip in the corner says so and brings them back. No count: the store's list spans every
+      call asked about, and a number that is not this canvas's would be worse than none.
+    */
+    {
+      type: '$if',
+      props: {
+        condition: { $: `(${CALL_EXPR}) && ${SUGGESTIONS_HIDDEN}` },
+        then: {
+          type: 'Row',
+          props: {
+            position: 'absolute',
+            left: '400',
+            bottom: '400',
+            gap: '200',
+            ay: 'center',
+            pl: '300',
+            pr: '100',
+            py: '100',
+            r: 'pill',
+            bg: 'surface-raised',
+            border: '1px solid border',
+            shadow: 'sm',
+          },
+          children: [
+            { type: 'we-icon', props: { name: 'eye-slash', size: 'xs', color: 'text-muted' } },
+            {
+              type: 'we-text',
+              props: { fontSize: '200', color: 'text-muted' },
+              children: ['Pending acceptance hidden'],
+            },
+            {
+              type: 'we-button',
+              props: {
+                size: 'xs',
+                variant: 'ghost',
+                onClick: { $action: 'routeStore.setParam', args: ['suggestions', null] },
+              },
+              children: ['Show'],
+            },
+          ],
+        },
+      },
+    },
     /*
       Where a connection is actually written down.
 
@@ -3197,6 +3351,8 @@ const kanbanRoute: RouteSchema = {
                             took on in this call".
                           */
                           people: true,
+                          // Put away what extraction made and nobody has kept — shared with the canvas and calendar.
+                          suggestions: true,
                           /*
                             Pressing a card selects it, the way pressing one on the canvas does: the
                             same two parameters, so the inspector opens it and the canvas focuses it if
@@ -3283,13 +3439,17 @@ const MATCHES = (as: string) => `${ON_EVENTS}.byNode[${as}.id].dids.exists(d, d 
 const FILTERING = 'count(local.calendarPeople)';
 
 /**
- * The events to draw: all of them, or — hiding — only the ones somebody chosen is on.
+ * The events to draw: all of them, or — hiding — only the ones somebody chosen is on. Less, either
+ * way, what a pass made and nobody has kept while the reader has put suggestions away.
  *
  * Every list and every cell reads this rather than `local.events`, so the grid and the list under it
  * cannot disagree about what is on a day. Dimming leaves the list whole and fades rows instead, which
  * is what keeps a busy week looking busy.
  */
-const VISIBLE_EVENTS = `(${FILTERING} && local.calendarShow == 'hide') ? local.events.filter(e, ${MATCHES('e')}) : local.events`;
+const VISIBLE_EVENTS = `(${FILTERING} && local.calendarShow == 'hide') ? ${withoutHiddenSuggestions('local.events')}.filter(e, ${MATCHES('e')}) : ${withoutHiddenSuggestions('local.events')}`;
+
+/** An event a pass made that nobody has kept — drawn provisional, and put away with the board's switch. */
+const UNCONFIRMED_EVENT = (as: string) => `${as}.id in ${UNCONFIRMED}`;
 
 /** Faded, for an event nobody chosen is on while the filter dims. */
 const DIMMED = (as: string) => `${FILTERING} && local.calendarShow == 'dim' && !(${MATCHES(as)})`;
@@ -3611,9 +3771,10 @@ const eventList: SchemaNode = {
                     */
                     bg: 'surface',
                     r: '400',
-                    border: '1px solid border',
+                    // A draft looks like one, as on the board: dashed, and a little faded.
+                    border: { $: `(${UNCONFIRMED_EVENT('event')}) ? '1px dashed border-strong' : '1px solid border'` },
                     p: '400',
-                    opacity: { $: `(${DIMMED('event')}) ? 0.35 : 1` },
+                    opacity: { $: `(${DIMMED('event')}) ? 0.35 : (${UNCONFIRMED_EVENT('event')}) ? 0.75 : 1` },
                     transition: 'opacity 200 ease-in-out',
                   },
                   children: [
@@ -3626,7 +3787,30 @@ const eventList: SchemaNode = {
                           type: 'Column',
                           props: { flex: '1', gap: '100' },
                           children: [
-                            { type: 'we-text', props: { fontWeight: 'semibold', text: { $: 'event.title' } } },
+                            {
+                              type: 'Row',
+                              props: { gap: '200', ay: 'center', wrap: true },
+                              children: [
+                                { type: 'we-text', props: { fontWeight: 'semibold', text: { $: 'event.title' } } },
+                                {
+                                  type: '$if',
+                                  props: {
+                                    condition: { $: UNCONFIRMED_EVENT('event') },
+                                    then: {
+                                      type: 'we-tooltip',
+                                      props: { content: 'Extraction proposed this — pending acceptance' },
+                                      children: [
+                                        {
+                                          type: 'we-badge',
+                                          props: { size: 'xs', variant: 'warning', appearance: 'solid' },
+                                          children: ['suggested'],
+                                        },
+                                      ],
+                                    },
+                                  },
+                                },
+                              ],
+                            },
                             {
                               type: '$if',
                               props: {
@@ -3679,9 +3863,34 @@ const eventList: SchemaNode = {
                             minute: '2-digit',
                           },
                         },
+                        // Keep or discard a draft where it is — the board's pair, behind the same actions.
+                        {
+                          type: '$if',
+                          props: {
+                            condition: { $: UNCONFIRMED_EVENT('event') },
+                            then: {
+                              type: 'Row',
+                              props: { gap: '100', ay: 'center' },
+                              children: [
+                                answerButton({
+                                  tone: 'success',
+                                  label: 'Accept',
+                                  onClick: { $action: 'modules.transcribe.acceptProposal', args: [{ $: 'event.id' }] },
+                                }),
+                                answerButton({
+                                  tone: 'danger',
+                                  label: 'Reject — removes it',
+                                  onClick: { $action: 'modules.transcribe.rejectProposal', args: [{ $: 'event.id' }] },
+                                }),
+                              ],
+                            },
+                          },
+                        },
                       ],
                     },
                     rsvp,
+                    // What a pass suggests changing about an agreed event, as old → new.
+                    suggestedChanges({ record: 'event', collapseAfter: 3 }),
                   ],
                 },
               ],
@@ -3869,18 +4078,26 @@ const calendarRoute: RouteSchema = {
                   ],
                 },
 
-                // ── Whose calendar this is being read as ─────────────────────────────
-                peopleFilter({
-                  people: 'calendarPeople',
-                  show: 'calendarShow',
-                  // Whoever has answered an event this call produced, the viewer first.
-                  faces: {
-                    $: 'involvement({ rows: local.involvements, types: spaceStore.involvementTypes, me: me.did, nodes: local.events.map(e, e.id) }).dids',
-                  },
-                  matched: { $: `count(local.events.filter(e, ${MATCHES('e')}))` },
-                  total: { $: 'count(local.events)' },
-                  noun: 'event',
-                }),
+                // ── Whose calendar this is being read as, and whether suggestions show ──
+                // The board's header, in the board's order: who, then the switch.
+                {
+                  type: 'Row',
+                  props: { gap: '500', ay: 'center', wrap: true, width: '100%' },
+                  children: [
+                    peopleFilter({
+                      people: 'calendarPeople',
+                      show: 'calendarShow',
+                      // Whoever has answered an event this call produced, the viewer first.
+                      faces: {
+                        $: 'involvement({ rows: local.involvements, types: spaceStore.involvementTypes, me: me.did, nodes: local.events.map(e, e.id) }).dids',
+                      },
+                      matched: { $: `count(local.events.filter(e, ${MATCHES('e')}))` },
+                      total: { $: 'count(local.events)' },
+                      noun: 'event',
+                    }),
+                    suggestionsToggle({ count: `count(local.events.filter(e, ${UNCONFIRMED_EVENT('e')}))` }),
+                  ],
+                },
 
                 // ── The grid ──────────────────────────────────────────────────────────
                 {
@@ -3996,12 +4213,23 @@ const calendarRoute: RouteSchema = {
                                         truncate: true,
                                         px: '100',
                                         r: '200',
-                                        text: { $: 'mark.title' },
+                                        /*
+                                          Too small for the card's full treatment, so each kind of
+                                          suggestion gets the one cue that fits: a draft is dashed and
+                                          faded, as on the board; an agreed event with a change
+                                          suggested keeps its fill and leads with a pencil.
+                                        */
+                                        text: { $: `(mark.id in ${CHANGED} ? '✎ ' : '') + mark.title` },
                                         // Faded for the neighbouring months, so a busy 1st of next month
                                         // does not read as part of the month being looked at.
                                         bg: { $: "cell.inMonth ? 'accent-muted' : 'surface-sunken'" },
                                         color: { $: "cell.inMonth ? 'accent-text' : 'text-muted'" },
-                                        opacity: { $: `(${DIMMED('mark')}) ? 0.35 : 1` },
+                                        border: {
+                                          $: `(${UNCONFIRMED_EVENT('mark')}) ? '1px dashed accent-text' : '1px solid transparent'`,
+                                        },
+                                        opacity: {
+                                          $: `(${DIMMED('mark')}) ? 0.35 : (${UNCONFIRMED_EVENT('mark')}) ? 0.7 : 1`,
+                                        },
                                       },
                                     },
                                   ],
