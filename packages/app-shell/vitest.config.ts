@@ -35,6 +35,8 @@ const SOLID_TESTS = [
   'tests/datasetIdentity.test.ts',
   // Renders a card's faces through the real renderer, components and host functions.
   'tests/cardPeopleLive.test.tsx',
+  // Renders a route through the real router and renderer, reading the surface its layout provides.
+  'tests/routeSurface.test.tsx',
 ];
 
 export default defineConfig({

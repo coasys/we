@@ -20,7 +20,28 @@ import { Navigate, Route } from '@solidjs/router';
 import type { RouteSchema } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import type { JSX, ParentProps } from 'solid-js';
-import { For } from 'solid-js';
+import { createContext, For, useContext } from 'solid-js';
+
+/**
+ * The surface a route's schema measures itself against — the box its template is drawn in.
+ *
+ * A route is rendered through its own `RenderSchema` pass, so it inherits nothing from the template
+ * around it: the render context is a plain object handed to each pass, and `buildRoutes` used to hand
+ * a route only its `$nav`. So `surface.tier` and `surface.width` — documented as answered wherever the
+ * host mounts a schema — read as undefined inside every route, silently: a condition on the tier was
+ * simply never true, which is how a header's labels stayed hidden on the widest board.
+ *
+ * A Solid context rather than another parameter, because the surface is created by the layout the
+ * router renders *into* (`TemplateLayout`), which is below the point the route table is built. Route
+ * components run under that layout's owner, so they can read what it provides.
+ */
+export const RouteSurface = createContext<unknown>();
+
+/** A route pass's render context: its navigation depth, and the surface where there is one. */
+function routeContext(baseDepth: number): Record<string, unknown> {
+  const surface = useContext(RouteSurface);
+  return surface ? { surface, $nav: { baseDepth } } : { $nav: { baseDepth } };
+}
 
 export type ParentStackItem = { node: RouteSchema; fullPath: string; baseDepth: number };
 
@@ -59,7 +80,7 @@ export function buildRoutes(
           node: route,
           stores,
           registry,
-          context: { $nav: { baseDepth } },
+          context: routeContext(baseDepth),
           // Inject outlet + keepAlive children into the { type: '$routes' } slot
           children: (
             <>
@@ -72,7 +93,7 @@ export function buildRoutes(
                     node: kaRoute,
                     stores,
                     registry,
-                    context: { $nav: { baseDepth: kaDepth } },
+                    context: routeContext(kaDepth),
                   });
                   // Active when the URL segment at childDepth-1 matches this route's path segment
                   const segmentIndex = childDepth - 1;
@@ -101,7 +122,7 @@ export function buildRoutes(
             node: meta.node,
             stores,
             registry,
-            context: { $nav: { baseDepth: meta.baseDepth } },
+            context: routeContext(meta.baseDepth),
             children: child as JSX.Element,
           });
         }, layout) as JSX.Element;
@@ -121,13 +142,13 @@ export function buildRoutes(
 
     // Normal leaf route
     const component = () => {
-      const leaf = RenderSchema({ node: route, stores, registry, context: { $nav: { baseDepth } } });
+      const leaf = RenderSchema({ node: route, stores, registry, context: routeContext(baseDepth) });
       return parentStack.reduceRight((child, meta) => {
         return RenderSchema({
           node: meta.node,
           stores,
           registry,
-          context: { $nav: { baseDepth: meta.baseDepth } },
+          context: routeContext(meta.baseDepth),
           children: child as JSX.Element,
         });
       }, leaf) as JSX.Element;
