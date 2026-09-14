@@ -44,10 +44,9 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
     them was the one control whose edge did not answer the pointer.
   */
   hoverProps: { bg: 'surface-sunken-hover', border: '1px solid border-hover' },
-  // Pressed resolves to the same fill as hover, deliberately — a field is clicked INTO, not
-  // pushed, so a distinct pressed step is a flash that snaps back on release. See the note on
-  // the `surfaceSunkenHover` role.
-  activeProps: { bg: 'surface-sunken-hover', border: '1px solid border-hover' },
+  // No pressed state, deliberately — a field is clicked INTO, not pushed, so a distinct pressed step
+  // is a flash that snaps back on release. States compose, so a press shows whatever hover and focus
+  // already say; this once had to repeat hover's values, when a pressed state reset the rest.
   /*
     Focused, the outline *becomes* the ring's inner pixel rather than sitting inside it.
 

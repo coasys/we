@@ -99,19 +99,21 @@ describe('the host-painted fields say the same thing in DS props', () => {
     expect(defaultsOf(ctor).hoverProps).toMatchObject({ bg: 'surface-sunken-hover' });
   });
 
-  it.each(HOST_PAINTED)('%s does not flash on mousedown — press is the hover fill', (_name, ctor) => {
+  it.each(HOST_PAINTED)('%s does not flash on mousedown — it has no pressed state', (_name, ctor) => {
     /*
       A field is clicked INTO, not pushed. Giving it a distinct pressed fill is a flash on mousedown
-      that snaps back on release, because the state order is hover → focus → active: press wins
-      while the button is down and focus takes over when it comes up, one step away. That reads as
-      the control losing its place rather than as feedback, and it is what a separate
-      `surfaceSunkenActive` produced for exactly one commit.
+      that snaps back on release — press wins while the button is down and focus takes over when it
+      comes up — which reads as the control losing its place rather than as feedback, and is what a
+      separate `surfaceSunkenActive` produced for exactly one commit.
 
-      So all three of hover, press and focus resolve to the same fill, and the ring is what says
-      focused. Asserted because "add the missing pressed step" is a plausible-looking change.
+      So a field declares no pressed state at all. States compose, so a press shows the hover fill and
+      the focus ring it already has. It used to repeat hover's values in `activeProps` instead, when a
+      pressed state reset whatever it did not set — and that repeat also painted the hover outline over
+      the focus ring for as long as the button was held. Asserted because "add the missing pressed
+      step" is a plausible-looking change.
     */
-    const defaults = defaultsOf(ctor) as Record<string, { bg?: string }>;
-    expect(defaults.activeProps?.bg).toBe(defaults.hoverProps?.bg);
+    const defaults = defaultsOf(ctor) as Record<string, { bg?: string } | undefined>;
+    expect(defaults.activeProps).toBeUndefined();
     expect(defaults.focusProps?.bg).toBe(defaults.hoverProps?.bg);
   });
 });

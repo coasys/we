@@ -133,8 +133,9 @@ export abstract class OverlayElement extends DesignSystemElement {
           backdrop-filter: blur(var(--we-theme-surface-blur, 0px));
         }
 
-        /* Re-apply color-mix + backdrop-filter for state selectors — without this, the DS-generated
-           hover/active/focus rules win due to higher specificity, snapping back to full opacity.
+        /* Re-apply color-mix + backdrop-filter for each state. The rule above sits in we-overlay, above
+           every state layer, so without these a hoverProps/activeProps/focusProps background would
+           never show on an overlay; and the plain DS state value would skip the surface opacity.
            The focus arm is built from the same shared focusSelector() the DS generator uses, so it
            cannot drift: if it matched a wider set of states than the rule it exists to override, an
            overlay would apply its focus background in situations where the DS applies nothing. */

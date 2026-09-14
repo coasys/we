@@ -27,6 +27,8 @@ const PAGE = `<!doctype html>
 <style>
   /* No arrival fade, so a state is fully applied by the time it is read. Departures already snap. */
   :root { --we-theme-state-duration: 0s; }
+  /* The few roles a check reads, since no theme is loaded: distinct, so no two states can agree by accident. */
+  :root { --we-ring-color: rgb(0, 90, 200); --we-role-border: rgb(200, 200, 200); --we-role-border-hover: rgb(150, 150, 150); }
   body { margin: 0; font: 14px sans-serif; }
   .surface { container: we-surface / inline-size; padding: 8px 0; }
 </style>
@@ -290,6 +292,50 @@ describe('what sits above the variant layers', () => {
     await hover('themed');
     await settled('themed', 'border-bottom-color').toBe('rgb(0, 250, 0)');
     expect(await read('themed', 'border-top-color')).toBe('rgb(250, 0, 0)');
+    await leave();
+  });
+});
+
+describe('what used to be worked around', () => {
+  it('keeps a fitted select at its fitted width, under the pointer and against a breakpoint', async () => {
+    // Fitted by a stylesheet rule again. It was an inline width, because the hover rule used to
+    // re-declare width and a fitted select jumped to full width under the pointer — and an inline
+    // width also beat every breakpoint.
+    const options = [
+      { label: 'One', value: 'one' },
+      { label: 'Two', value: 'two' },
+    ];
+    await mount('fitted', 'we-select', { width: 1000, attrs: { fit: '' }, props: { options, value: 'one' }, text: '' });
+    const width = () => page.evaluate(() => document.getElementById('fitted')!.getBoundingClientRect().width);
+    const fitted = await width();
+    expect(fitted).toBeLessThan(400);
+    await hover('fitted', 'input-wrapper');
+    await expect.poll(width).toBe(fitted);
+    await leave();
+
+    await mount('fitted-wide-at-md', 'we-select', {
+      width: 1000,
+      attrs: { fit: '' },
+      props: { options, value: 'one', mdUpProps: { width: '600px' } },
+      text: '',
+    });
+    await expect
+      .poll(() => page.evaluate(() => document.getElementById('fitted-wide-at-md')!.getBoundingClientRect().width))
+      .toBe(600);
+  });
+
+  it("shows a pressed field its focus ring's edge, not the hover outline", async () => {
+    // A field has no pressed state. It used to repeat hover's values in activeProps, which painted the
+    // hover outline over the focus ring for as long as the button was held.
+    await mount('field', 'we-input', { text: '' });
+    await hover('field', 'input');
+    await settled('field', 'border-top-color').toBe('rgb(150, 150, 150)');
+    await page.mouse.down();
+    await page.evaluate(() => window.harness.frames());
+    const ring = 'rgb(0, 90, 200)';
+    await settled('field', 'border-top-color').toBe(ring);
+    await page.mouse.up();
+    await settled('field', 'border-top-color').toBe(ring);
     await leave();
   });
 });
