@@ -2245,8 +2245,8 @@ export function columnSlots(
  * Three shapes, and which one you get is decided by the placement rather than by a mode the module
  * has to name:
  *
- * - **Maximised** (`size: 'full'`) — covering the content region entirely, and ignoring the
- *   placement: there is no position left to have. Insetting it would leave a content viewport of
+ * - **Maximised** (`size: 'full'`) — covering the whole window, ignoring the placement and every
+ *   other panel: there is no position left to have. Insetting it would leave a content viewport of
  *   zero width.
  * - **Displacing** — flush against its edge, spanning its lane, insetting the content by the lane's
  *   thickness. A lane of one spans the whole edge, which is every arrangement that predates lanes.
@@ -2254,7 +2254,7 @@ export function columnSlots(
  *
  * `occupied` is what other panels — and the editor's rails — have already taken, per edge. It is how
  * two panels sharing an edge end up beside each other rather than on top of one another, and how a
- * floating or maximised one keeps clear of both.
+ * floating one keeps clear of both. A maximised one does not: it takes the whole window.
  */
 export function resolveDock(
   request: DockRequest,
@@ -2308,20 +2308,22 @@ export function resolveDock(
       pieces of chrome stay reachable, painted over the panel rather than beside it, and neither
       lands on anything the panel is recovered with.
 
-      `occupied` is still subtracted, and that line is deliberate. Permanent furniture — the sidebar,
-      the rail — is the app's own and covering it is what "full screen" means. Another *displacing*
-      panel is something the user opened, which is currently shrinking the content for a reason;
-      covering that is losing something rather than filling the screen.
+      `occupied` is ignored too. It used to be subtracted, on the reasoning that a displacing panel is
+      something the user opened and covering it loses something. What it actually produced was a
+      full-screen video with a notes sidebar still standing beside it — "full screen" that was not,
+      depending on which panels happened to displace. Full screen is the whole window, always; the
+      other panels are hidden while it lasts (see `dockGeometry` in the shell store), not lost, and
+      come back exactly where they were when it ends.
     */
     return {
       edge,
       floating: true,
       maximised: true,
       snap: placement.snap,
-      top: px(occupied.top),
-      bottom: px(occupied.bottom),
-      left: px(occupied.left),
-      right: px(occupied.right),
+      top: px(0),
+      bottom: px(0),
+      left: px(0),
+      right: px(0),
       // See `padTop`. The box covers everything; the content still keeps clear of what is painted
       // over it, which after the rails hide is the module bars alone.
       padTop: px(chrome.top),

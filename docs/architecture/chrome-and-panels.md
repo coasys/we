@@ -32,7 +32,7 @@ six placements, which meant a call among three people cost a full-height column 
 | **Floating**   | A card over the content. Takes no room; the content is whole underneath it.                                                                                    |
 | **Snapped**    | Floating, parked at one of eight positions (four corners, four edge centres).                                                                                  |
 | **Displacing** | Spans its lane and insets the content by that lane's thickness. Offered on the four edge-centre snaps only — a rectangular layout cannot flow around a corner. |
-| **Maximised**  | Fills the content region. Floats, so it takes no room from anything.                                                                                           |
+| **Maximised**  | Full screen: the whole window, sidebar included. Every other panel is hidden — never unmounted — until it ends, and the sidebar and rail hide with them.       |
 
 Below `NARROW_VIEWPORT_PX` (900px of window width) displacing is switched off entirely and every
 panel floats. A 440px panel beside a 400px viewport is not two usable things.
@@ -137,7 +137,7 @@ row of it wrong.
 | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | A **displacing** panel vs the chrome at its edge | **The chrome moves.** The rail and the editing bar follow `--we-chrome-<edge>` and slide inwards; the panel takes the edge outright. This is why `RAIL_PX = 0` — a panel reserves nothing for the rail.                                                                     |
 | A **floating** panel vs the same chrome          | **The panel moves.** It publishes no inset, so nothing slides for it, and it has to clear the chrome itself. `DEFAULT_FLOAT_CHROME`, threaded through the floating paths only.                                                                                              |
-| A **maximised** panel                            | Same as floating: it clears the chrome rather than covering it, so its own titlebar controls stay reachable.                                                                                                                                                                |
+| A **maximised** panel                            | **Chrome that stays paints over it.** The sidebar and rail hide; the call bar sits on the `chrome` layer above every panel, centred on the window, and the panel pads its content by the bar's reserve (`padBottom`). Its titlebar is the way out, and Escape.              |
 | Chrome vs a **floating** panel                   | **Nothing moves.** A floating panel takes no room and somebody put it there by hand; chrome that ran away from that decision is worse than an overlap you can see and undo.                                                                                                 |
 | Chrome vs **chrome**                             | **The rail moves.** The rail is pinned to the right of the content and the call bar to its centre, so a wide displacing panel moves the rail by its whole width and the bar by half — and they meet. `railBand` is that one collision, and the only one the shell computes. |
 

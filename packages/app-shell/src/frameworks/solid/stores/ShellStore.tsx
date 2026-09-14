@@ -1421,24 +1421,31 @@ export function ShellStoreProvider(props: ParentProps) {
    * Reservations at an edge sum rather than max, because an anchor is a column: the status panel is
    * mounted below the call bar, not beside it.
    */
-  const moduleChrome = createMemo<{ top: number; bottom: number; width: number }>(() => {
-    // The registration dependency, for the same reason `dockRequests` takes it: a module store read
-    // before its module registers has no accessor to have tracked, and so nothing to re-run for.
-    dockRegistryVersion();
+  const sumReserves = (reserves: (ChromeReserve | undefined)[]) => {
     let top = 0;
     let bottom = 0;
     let width = 0;
-    const add = (box: ChromeReserve | undefined) => {
+    for (const box of reserves) {
       // Heights stack, widths do not: contributions to one anchor are a column.
       top += box?.top ?? 0;
       bottom += box?.bottom ?? 0;
       width = Math.max(width, box?.width ?? 0);
-    };
-    for (const store of Object.values(moduleStores)) {
-      const reserve = (store as Record<string, unknown> | undefined)?.chromeReserve;
-      const value = typeof reserve === 'function' ? (reserve as () => unknown)() : reserve;
-      add(value as ChromeReserve | undefined);
     }
+    return { top, bottom, width };
+  };
+  /** What the modules alone are holding — the chrome on the `chrome` layer, painted over panels. */
+  const moduleReserves = createMemo<{ top: number; bottom: number; width: number }>(() => {
+    // The registration dependency, for the same reason `dockRequests` takes it: a module store read
+    // before its module registers has no accessor to have tracked, and so nothing to re-run for.
+    dockRegistryVersion();
+    return sumReserves(
+      Object.values(moduleStores).map((store) => {
+        const reserve = (store as Record<string, unknown> | undefined)?.chromeReserve;
+        return (typeof reserve === 'function' ? (reserve as () => unknown)() : reserve) as ChromeReserve | undefined;
+      }),
+    );
+  });
+  const moduleChrome = createMemo<{ top: number; bottom: number; width: number }>(() =>
     /*
       And the chrome that is not a module's — a shell template's pinned nav strip, say.
 
@@ -1447,9 +1454,8 @@ export function ShellStoreProvider(props: ParentProps) {
       stopped being alone, and a panel snapped to that corner landed under whatever had joined it.
       A template pinning its own bar is the same failure with a different author.
     */
-    for (const reserve of Object.values(hostChromeReserves)) add(reserve);
-    return { top, bottom, width };
-  });
+    sumReserves([moduleReserves(), ...Object.values(hostChromeReserves)]),
+  );
 
   /**
    * What the module rail has to dodge, which is only ever chrome at the *top*.
@@ -1519,6 +1525,22 @@ export function ShellStoreProvider(props: ParentProps) {
     right: CHROME_RAIL_PX,
     top: moduleChrome().top,
     bottom: moduleChrome().bottom,
+  }));
+
+  /*
+    What a full-screen panel pads its content by: only chrome painted *over* it.
+
+    `floatChrome` also carries the template's own reserve — a workshop's route and call pills — which
+    a card has to clear because the template's header is on screen beside it. A full-screen panel
+    covers that header, so reserving its band left an empty strip across the top of the panel for
+    chrome that was underneath. The modules' bars are on the `chrome` layer and stay over the panel;
+    they are what is left, and the call bar's is zero whenever no call is up.
+  */
+  const fullScreenChrome = createMemo<ContentInset>(() => ({
+    left: 0,
+    right: 0,
+    top: moduleReserves().top,
+    bottom: moduleReserves().bottom,
   }));
 
   /**
@@ -1813,17 +1835,40 @@ export function ShellStoreProvider(props: ParentProps) {
       requests.map((request) => request.id),
       Object.fromEntries(requests.map((request) => [request.id, touched[placementKey(request.id)]])),
     );
+    /*
+      While a panel is full screen, it is the only panel.
+
+      Covering the others was not enough. A displacing sidebar used to be *kept clear of*, so full
+      screen stopped short of it; and even once the box reaches every edge, covering is a stacking
+      question a raise can reopen — the seams and lane grips outrank their own lane on purpose. So the
+      rest are hidden, the way a background tab is: gone from the screen, never unmounted, and back
+      exactly where they were when full screen ends. Two maximised at once is a state a drag can leave
+      behind; the one on top wins.
+    */
+    const fullScreen = requests
+      .filter(
+        (request) => request.edge && (request.size === 'full' || placementOf(request).maximised) && !hidden[request.id],
+      )
+      .reduce<string | null>((top, request) => (top && layers[top] > layers[request.id] ? top : request.id), null);
     const resolved: Record<string, DockGeometry> = {};
     requests.forEach((request, index) => {
-      const box = resolveDock(request, viewport(), occupiedOf(index, requests), floatChrome(), seats[request.id]);
+      const maximised = request.size === 'full' || Boolean(placementOf(request).maximised);
+      const box = resolveDock(
+        request,
+        viewport(),
+        occupiedOf(index, requests),
+        maximised ? fullScreenChrome() : floatChrome(),
+        seats[request.id],
+      );
       const folded = Boolean(placementOf(request).collapsed);
       // Somewhere for the room to go — an open seat elsewhere in the lane. See `canFold`.
       const canCollapse = canFold(box, folded, laneRoom[request.id] ?? false);
+      const eclipsed = fullScreen !== null && request.id !== fullScreen;
       resolved[request.id] = {
         ...box,
         canCollapse,
         collapsed: canCollapse && folded,
-        hidden: hidden[request.id] ?? false,
+        hidden: eclipsed || (hidden[request.id] ?? false),
         settling: settling() === request.id,
         tabs: tabs[request.id] ?? [],
         // Empty rather than absent, so a schema condition reads a string either way.
@@ -1831,7 +1876,9 @@ export function ShellStoreProvider(props: ParentProps) {
         above: above[request.id] ?? '',
         laneAxis: axis[request.id] ?? '',
         layer: layers[request.id],
-        ...(seams[request.id]
+        // The grips between and beside lanes are drawn outside the frame, so hiding the frame does not
+        // hide them — an eclipsed panel simply has none.
+        ...(seams[request.id] && !eclipsed
           ? {
               seam: {
                 top: px(seams[request.id].y),
@@ -1843,7 +1890,7 @@ export function ShellStoreProvider(props: ParentProps) {
               seamLayer: Math.max(layers[request.id] ?? 0, layers[below[request.id]] ?? 0) + 1,
             }
           : {}),
-        ...(laneEdges[request.id]
+        ...(laneEdges[request.id] && !eclipsed
           ? {
               laneEdge: {
                 top: px(laneEdges[request.id].y),
@@ -1907,9 +1954,18 @@ export function ShellStoreProvider(props: ParentProps) {
    */
   createEffect(() => {
     if (typeof document === 'undefined') return;
-    const edges = inset();
+    /*
+      Full screen has no content edges but the window's. The sidebar hides and every other panel is
+      eclipsed (see `dockGeometry`), so chrome still painted over the panel — the call bar — centres
+      on the window rather than on a content box nobody can see.
+    */
+    const fullScreen = panelMaximised();
+    const edges = fullScreen ? { ...NO_INSET } : inset();
     const root = document.documentElement.style;
-    root.setProperty('--we-chrome-left', `calc(var(--we-sidebar-width, ${SIDEBAR_PX}px) + ${edges.left}px)`);
+    root.setProperty(
+      '--we-chrome-left',
+      fullScreen ? '0px' : `calc(var(--we-sidebar-width, ${SIDEBAR_PX}px) + ${edges.left}px)`,
+    );
     root.setProperty('--we-chrome-right', `${edges.right}px`);
     root.setProperty('--we-chrome-top', `${edges.top}px`);
     root.setProperty('--we-chrome-bottom', `${edges.bottom}px`);

@@ -326,16 +326,16 @@ describe('maximised', () => {
     expect(geometry.padBottom).toBeUndefined();
   });
 
-  it('still keeps clear of a panel that has taken room from the content', () => {
-    // The line between the two: permanent furniture is the app's own and covering it is what full
-    // screen means, but another *displacing* panel is something the user opened and is currently
-    // trading content area for. Covering that is losing something rather than filling the screen.
+  it('covers a panel that has taken room from the content, too', () => {
+    // It used to stop short of a displacing panel, which left a "full screen" video with a notes
+    // sidebar standing beside it. Full screen is the whole window whatever else is open; the shell
+    // hides the others while it lasts rather than covering them and hoping nothing is raised.
     const geometry = resolveDock(dock({ placement: placement({ maximised: true }) }), desktop, {
       ...NO_INSET,
       right: 320,
     });
 
-    expect(px(geometry.right)).toBe(320);
+    expect(px(geometry.right)).toBe(0);
     expect(px(geometry.left)).toBe(0);
   });
 
@@ -416,11 +416,11 @@ describe('room another panel has already taken', () => {
     expect(px(clear.left)! + 360).toBeLessThanOrEqual(desktop.width - 440);
   });
 
-  it('keeps a maximised panel clear of it too', () => {
-    // Same region, same answer — which is why full screen needed no separate fix.
+  it('does not keep a maximised panel clear of it', () => {
+    // Full screen is the whole window — see "covers a panel that has taken room" under maximised.
     const geometry = resolveDock(dock({ placement: placement({ maximised: true }) }), desktop, notesDocked);
 
-    expect(geometry.right).toBe('440px');
+    expect(geometry.right).toBe('0px');
   });
 
   it('moves the landing spots themselves, not just where a panel ends up', () => {
