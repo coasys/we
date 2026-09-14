@@ -97,16 +97,30 @@ jobs:
 
       # ── Build AD4M executor ────────────────────────────────────────────
       #
-      # Only the executor binary — not the full AD4M SDK, not the Tauri
-      # launcher, not the languages. The `ad4m` package (cli crate) defines
-      # the `ad4m-executor` binary; `-p ad4m --bin ad4m-executor` builds
-      # exactly that and its transitive deps.
+      # Two stages: snapshot, then the executor binary.
+      #
+      # 1. The Deno V8 snapshot (`CUSTOM_DENO_SNAPSHOT.bin` +
+      #    `CUSTOM_DENO_SNAPSHOT.residual_esm.rs`) is gitignored and must
+      #    be generated before the executor compiles — the lib crate
+      #    `include_bytes!` them. The generator is a separate binary in the
+      #    `rust-executor` package, gated behind the `generate_snapshot`
+      #    feature.
+      #
+      # 2. The executor itself. `-p ad4m --bin ad4m-executor` builds only
+      #    the cli crate and its transitive deps — not the Tauri launcher,
+      #    not the language modules, not the full SDK.
       #
       # V8_FROM_SOURCE on macOS: the coasys/rusty_v8 fork's v150.4.0
       # release only has simdutf prebuilt binaries for x86_64-linux.
       # macOS aarch64 gets a 404, so V8 must build from source there.
-      # This adds ~20 minutes but is the only path that works until
-      # the fork publishes aarch64-apple-darwin simdutf artifacts.
+      # This adds significant time but is the only path that works
+      # until the fork publishes aarch64-apple-darwin simdutf artifacts.
+
+      - name: Generate Deno snapshot
+        run: cargo run --release --features generate_snapshot --bin generate_snapshot
+        working-directory: ${{ github.workspace }}/../ad4m/rust-executor
+        env:
+          V8_FROM_SOURCE: ${{ matrix.platform == 'mac' && '1' || '' }}
 
       - name: Build AD4M executor
         run: cargo build --release -p ad4m --bin ad4m-executor
