@@ -28,7 +28,7 @@
  * are — see `fieldEditor`.
  */
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
-import { composerModal } from '@we/template-kit';
+import { composerModal, sectionLabel } from '@we/template-kit';
 
 /** The locals a canvas route declares for these. All ephemeral: nothing here survives a reload. */
 export const CARD_LOCALS = {
@@ -40,11 +40,44 @@ export const CARD_LOCALS = {
   noteOpen: { type: 'boolean', initial: false },
 } as const;
 
-/** What a double-click on empty canvas does: remember the point, and ask what goes there. */
-export const askWhatGoesHere: SchemaProp[] = [
-  { $setLocal: 'newAt', value: { $: 'event' } },
-  { $setLocal: 'chooserOpen', value: true },
-];
+/**
+ * What a double-click on empty canvas does: remember the point, and ask what goes there.
+ *
+ * Only when there is a call to put it on. Every choice writes against the call — a placement on its
+ * canvas, a card in it — so with none on screen the chooser opened onto a list of things that could
+ * only fail. Asked when the double-click lands rather than gated on the canvas, which is drawn either
+ * way.
+ */
+export function askWhatGoesHere(call: { $: string }): SchemaProp {
+  return {
+    $if: {
+      condition: call,
+      then: [
+        { $setLocal: 'newAt', value: { $: 'event' } },
+        { $setLocal: 'chooserOpen', value: true },
+      ],
+    },
+  };
+}
+
+/**
+ * The kinds of thing the chooser leads with, in this order, ahead of everything else it offers.
+ *
+ * Tasks and events are what a meeting mostly produces, so they are the ones reached for; the rest
+ * keep the order `creatableEntities` gives them. Named rather than sorted by a flag because the
+ * choice is this canvas's — another picker over the same list has its own reasons.
+ */
+const LEADING_KINDS = ['TaskBlock', 'EventBlock'];
+
+/**
+ * `creatableEntities`, the leading kinds first. The names are merged with `distinct`, dropped where
+ * the space does not offer them, and looked back up — so a leading kind a space cannot make is left
+ * out rather than listed.
+ */
+const CHOOSER_KINDS =
+  `distinct([${LEADING_KINDS.map((kind) => `'${kind}'`).join(', ')}], recordStore.creatableEntities.map(k, k.value))` +
+  '.filter(n, recordStore.creatableEntities.exists(k, k.value == n))' +
+  '.map(n, find(recordStore.creatableEntities, { value: n }))';
 
 /** One choice in the chooser: an icon and a name, the full width, opening to the left. */
 function choice(icon: string | { $: string }, label: string | { $: string }, onClick: SchemaProp): SchemaNode {
@@ -61,9 +94,9 @@ function choice(icon: string | { $: string }, label: string | { $: string }, onC
 /**
  * "What goes here?" — a note, or a record of any model this space can make.
  *
- * Note first, because it is the thing most canvases are mostly made of. Then
- * `recordStore.creatableEntities`: the space's own models, then WE's built-in ones, each with the
- * icon its declaration carries. Picking a record opens the generic form through `createOnCanvas`,
+ * Note first, because it is the thing most canvases are mostly made of. Then, under a heading,
+ * `recordStore.creatableEntities` led by tasks and events (see `LEADING_KINDS`), each with the icon
+ * its declaration carries. Picking a record opens the generic form through `createOnCanvas`,
  * which remembers the canvas and the point, and then switches the form to the chosen model — two
  * actions, because the first opens on whatever model is offered first and the second is the one
  * that says which. Nothing is written until the form is submitted.
@@ -88,12 +121,16 @@ export function newThingChooser(call: SchemaProp): SchemaNode {
                 type: '$if',
                 props: {
                   condition: { $: 'count(recordStore.creatableEntities)' },
-                  then: { type: 'we-divider' },
+                  then: {
+                    type: 'Column',
+                    props: { gap: '200', width: '100%', pt: '100' },
+                    children: [{ type: 'we-divider' }, sectionLabel({ label: 'Block types' })],
+                  },
                 },
               },
               {
                 type: '$each',
-                props: { items: { $: 'recordStore.creatableEntities' }, as: 'kind' },
+                props: { items: { $: CHOOSER_KINDS }, as: 'kind' },
                 children: [
                   choice({ $: "kind.icon ? kind.icon : 'cube'" }, { $: 'kind.label' }, [
                     close,

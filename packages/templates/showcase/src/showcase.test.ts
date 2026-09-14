@@ -1250,10 +1250,14 @@ describe('the workshop’s canvas', () => {
       whichever is offered first. Nothing is written until the form is submitted.
     */
     expect(canvas).toContain('"canvas-double-click"');
+    // Only with a call on screen: every choice writes against it, so without one the chooser offered
+    // a list of things that could only fail.
     expect(canvas).toContain(
-      '"onCanvasDoubleClick":[{"$setLocal":"newAt","value":{"$":"event"}},{"$setLocal":"chooserOpen","value":true}]',
+      `"onCanvasDoubleClick":{"$if":{"condition":{"$":"${CALL_EXPR}"},"then":[{"$setLocal":"newAt","value":{"$":"event"}},{"$setLocal":"chooserOpen","value":true}]}}`,
     );
-    expect(canvas).toContain('recordStore.creatableEntities');
+    // Tasks, then events, then the rest in the store's order — under a heading below the note.
+    expect(canvas).toContain("distinct(['TaskBlock', 'EventBlock'], recordStore.creatableEntities.map(k, k.value))");
+    expect(canvas).toContain('"Block types"');
     expect(canvas).toContain(
       `"$action":"recordStore.createOnCanvas","args":[{"$":"${CALL_EXPR}"},{"$":"local.newAt.x"},{"$":"local.newAt.y"}]`,
     );

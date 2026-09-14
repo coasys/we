@@ -2641,7 +2641,7 @@ const canvas: SchemaNode = {
       },
     },
     // Double-click empty canvas to make something there — see `newThingChooser`.
-    onCanvasDoubleClick: askWhatGoesHere,
+    onCanvasDoubleClick: askWhatGoesHere(CALL),
     /*
       Something dragged in from the Pocket, or from anywhere else, lands where it was dropped.
 
