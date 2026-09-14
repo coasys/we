@@ -181,6 +181,22 @@ jobs:
       # and resolves the executor path into `seed-extra-resources.json`,
       # which electron-builder reads to copy the binary into the package.
 
+      # plist@3.1.0 calls DOMParser.parseFromString(xml) without a
+      # mimeType argument.  The project overrides @xmldom/xmldom to
+      # >=0.9.12 (security), which requires the second argument.
+      # Patch the installed module so electron-builder can parse
+      # Electron's Info.plist on macOS.
+      - name: Patch plist for xmldom 0.9 compatibility (macOS)
+        if: matrix.platform == 'mac'
+        run: |
+          PLIST_PARSE=$(find node_modules -path '*/plist/lib/parse.js' -print -quit)
+          if [ -n "$PLIST_PARSE" ]; then
+            sed -i '' 's/parser\.parseFromString(xmlInput)/parser.parseFromString(xmlInput, "application\/xml")/' "$PLIST_PARSE"
+            echo "Patched $PLIST_PARSE"
+          else
+            echo "::warning::plist/lib/parse.js not found — patch skipped"
+          fi
+
       - name: Package Electron app
         run: pnpm electron:build
         working-directory: apps/we-electron
