@@ -94,6 +94,12 @@ export interface NodeStyle {
   borderColor?: string;
   borderWidth?: number;
   /**
+   * `dashed` for a node that stands for something not yet settled — a suggestion nobody has kept.
+   * Default `solid`. A line style rather than a colour because the difference is a state, and a card
+   * keeps whatever fill a key gives it either way.
+   */
+  borderStyle?: 'solid' | 'dashed';
+  /**
    * `circle` and `rect` draw in both DOM and canvas modes; `template` requires DOM.
    *
    * `card` is the post-it: a sized box with the label *inside* it, wrapped, rather than a mark with a

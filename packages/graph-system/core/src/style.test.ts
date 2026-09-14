@@ -75,6 +75,12 @@ describe('style resolution', () => {
     expect(visual.borderColor).toBeDefined();
   });
 
+  it('carries a dashed border through to what is drawn, and says nothing when unset', () => {
+    // A suggestion nobody has kept is drawn dashed on a canvas, as it is on a board.
+    expect(nodeVisual(belief, { borderStyle: 'dashed', borderWidth: 1 }, NO_METRICS).borderStyle).toBe('dashed');
+    expect(nodeVisual(belief, {}, NO_METRICS).borderStyle).toBeUndefined();
+  });
+
   it('falls back to the type when a node has no label', () => {
     const visual = nodeVisual({ id: 'x', kind: 'entity', type: 'Task' }, {}, NO_METRICS);
     expect(visual.label).toBe('Task');

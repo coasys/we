@@ -101,6 +101,22 @@ export interface CanvasSeedOptions {
    * rest. The seed's job is only to make the distinction expressible.
    */
   pending?: string[];
+  /**
+   * Record ids that are agreed and carry a **suggested change** — a staged edit to a record a person
+   * already owns, as distinct from a suggestion of the whole record (`pending`).
+   *
+   * Read onto the matching node's data as `changed: true`. Kept apart from `pending` because the two
+   * want opposite drawings: a suggested record is provisional and may be faded, an agreed one with a
+   * change pending is not in doubt and must look like the settled record it is.
+   */
+  changed?: string[];
+  /**
+   * Record ids to leave off the canvas altogether — no card, and no line to or from one.
+   *
+   * For a reader narrowing what is shown ("hide what nobody has agreed to"), where a style rule is
+   * not enough: a card at zero opacity still takes a press and keeps its connections drawn.
+   */
+  hidden?: string[];
   limit?: number;
 }
 
@@ -244,11 +260,12 @@ export function canvasSeed(): SeedSource {
 
         A set rather than the array, because it is asked once per row and a canvas holds hundreds.
       */
-      const pending = new Set(
-        Array.isArray(options.pending)
-          ? options.pending.filter((id): id is string => typeof id === 'string' && id !== '')
-          : [],
-      );
+      const idSet = (ids: unknown) =>
+        new Set(Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string' && id !== '') : []);
+      const pending = idSet(options.pending);
+      const changed = idSet(options.changed);
+      /** Left off entirely — see `hidden` in the options. */
+      const hidden = idSet(options.hidden);
 
       /*
         Placements *are* the membership: which records are on this canvas, of what type, and where.
@@ -314,7 +331,8 @@ export function canvasSeed(): SeedSource {
       const nodes: GraphNode[] = [];
       const seen = new Set<string>();
       /** Record ids on this canvas, so a connection can be checked for having both ends here. */
-      const placed = new Set<string>([...placedIds.values()].flat());
+      // Less what is hidden, so a connection to a card nobody can see is not drawn either.
+      const placed = new Set<string>([...placedIds.values()].flat().filter((id) => !hidden.has(id)));
       /** Record id → its entity name, so a connection's endpoints can be addressed. */
       const typeOf = new Map<string, string>();
       for (const [entity, ids] of placedIds) for (const id of ids) typeOf.set(id, entity);
@@ -373,6 +391,7 @@ export function canvasSeed(): SeedSource {
           // placed one, which is the one carrying a position.
           if (seen.has(node.id)) continue;
           seen.add(node.id);
+          if (typeof row.id === 'string' && hidden.has(row.id)) continue;
           const at = typeof row.id === 'string' ? positions.get(row.id) : undefined;
           /*
             Coordinates land in `data`, where the `manual` layout reads them.
@@ -391,6 +410,7 @@ export function canvasSeed(): SeedSource {
             // are the two states — an explicit `false` on every other card would make "not pending"
             // a value a rule could accidentally match on.
             ...(typeof row.id === 'string' && pending.has(row.id) ? { pending: true } : {}),
+            ...(typeof row.id === 'string' && changed.has(row.id) ? { changed: true } : {}),
             ...(at ? { ...at.style, x: at.x, y: at.y } : {}),
           };
           nodes.push({ ...node, data });

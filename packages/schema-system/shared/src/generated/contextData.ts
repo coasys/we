@@ -1425,7 +1425,7 @@ export const contextData: ContextData = {
         { name: 'nodeActions', type: 'NodeAction[]', optional: true },
         {
           name: 'onNodeAction',
-          type: '((payload: { action: string; id: string; recordId?: string; recordType?: string; value?: unknown; preview?: boolean; }) => void)',
+          type: '((payload: { action: string; id: string; recordId?: string; recordType?: string; value?: unknown; preview?: boolean; x: number; y: number; }) => void)',
           optional: true,
         },
         { name: 'focus', type: 'string', optional: true },

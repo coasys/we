@@ -27,6 +27,7 @@ export interface NodeVisual {
   color: string;
   borderColor?: string;
   borderWidth?: number;
+  borderStyle?: 'solid' | 'dashed';
   opacity?: number;
   label?: string;
   labelColor?: string;

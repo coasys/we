@@ -83,6 +83,18 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
           description:
             'Record ids whose card stands for a suggestion nobody has agreed to yet — an extraction pass can stage a whole record, so it is on the canvas and answers every query the accepted ones do. Read onto the matching node as `data.pending`, for a style rule or a node action to pick up with `{ when: { "data.pending": true } }` — the `data.` prefix is required, since a bare key reads a node field rather than seeded data, and matches nothing here. Ids rather than a query because only the capability that staged them knows which they are.',
         },
+        {
+          name: 'changed',
+          type: 'string[]',
+          description:
+            'Record ids that are agreed but carry a suggested change — a staged edit to something a person already owns. Read onto the matching node as `data.changed`. Separate from `pending` because it wants the opposite drawing: the record is settled, so mark it rather than fade it.',
+        },
+        {
+          name: 'hidden',
+          type: 'string[]',
+          description:
+            'Record ids to leave off the canvas entirely — no card, and no connection to or from one. For narrowing what is shown (hiding suggestions nobody has agreed to), where an opacity rule would still leave the card pressable and its lines drawn.',
+        },
         { name: 'limit', type: 'number', description: 'Rows per type. Default 200.' },
       ],
       example: `{ "source": "canvas", "options": { "canvas": { "$": "local.canvasId" } } }`,
@@ -192,8 +204,21 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       options: [
         { name: 'xField', type: 'string', description: 'Node data field holding x. Default "x".' },
         { name: 'yField', type: 'string', description: 'Node data field holding y. Default "y".' },
+        {
+          name: 'size',
+          type: '{ width: number; height: number }',
+          description:
+            'The box a card takes. A node with no stored position is parked in the view, in the first slot clear of every card already there — pass the card size so slots do not overlap. Absent means a 160-sided square.',
+        },
+        {
+          name: 'widthField',
+          type: 'string',
+          description: 'Node data field holding a resized card’s own width, so parking keeps clear of it.',
+        },
+        { name: 'heightField', type: 'string', description: 'The same, for height.' },
+        { name: 'margin', type: 'number', description: 'Clear space around a parked card. Default 24 with `size`.' },
       ],
-      example: `{ "type": "manual" }`,
+      example: `{ "type": "manual", "options": { "size": { "width": 180, "height": 135 } } }`,
     },
 
     // ─── Presentation ──────────────────────────────────────────────────────────

@@ -362,6 +362,12 @@ export interface GraphViewProps {
     value?: unknown;
     /** The control is still moving — show the value, do not write it yet. */
     preview?: boolean;
+    /**
+     * Where the node is, in world units — so an action can pin a card where it is drawn. A parked
+     * card has no stored position, and accepting one should not send it somewhere else on reload.
+     */
+    x: number;
+    y: number;
   }) => void;
   /**
    * A record the interface wants shown: selected, and brought into view if it is off screen.
