@@ -116,17 +116,45 @@ jobs:
       # This adds significant time but is the only path that works
       # until the fork publishes aarch64-apple-darwin simdutf artifacts.
 
+      # Retry wrapper: AD4M's build.rs downloads alliance.dna with bare
+      # curl (no --retry). A transient GitHub 504 kills a 40-minute build.
+      # Retrying the cargo command itself is safe — build.rs skips the
+      # download when the file already exists in OUT_DIR.
       - name: Generate Deno snapshot
-        run: cargo run --release --features generate_snapshot --bin generate_snapshot
         working-directory: ${{ github.workspace }}/../ad4m/rust-executor
         env:
           V8_FROM_SOURCE: ${{ matrix.platform == 'mac' && '1' || '' }}
+        run: |
+          for attempt in 1 2 3; do
+            echo "::group::Attempt $attempt"
+            if cargo run --release --features generate_snapshot --bin generate_snapshot; then
+              echo "::endgroup::"
+              exit 0
+            fi
+            echo "::endgroup::"
+            echo "⚠️ Attempt $attempt failed"
+            [ "$attempt" -lt 3 ] && sleep 15
+          done
+          echo "::error::Snapshot generation failed after 3 attempts"
+          exit 1
 
       - name: Build AD4M executor
-        run: cargo build --release -p ad4m --bin ad4m-executor
         working-directory: ${{ github.workspace }}/../ad4m
         env:
           V8_FROM_SOURCE: ${{ matrix.platform == 'mac' && '1' || '' }}
+        run: |
+          for attempt in 1 2 3; do
+            echo "::group::Attempt $attempt"
+            if cargo build --release -p ad4m --bin ad4m-executor; then
+              echo "::endgroup::"
+              exit 0
+            fi
+            echo "::endgroup::"
+            echo "⚠️ Attempt $attempt failed"
+            [ "$attempt" -lt 3 ] && sleep 15
+          done
+          echo "::error::Executor build failed after 3 attempts"
+          exit 1
 
       # ── Build WE ──────────────────────────────────────────────────────
 
