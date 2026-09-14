@@ -135,11 +135,12 @@ const styles = css`
   /*
     Truncated, in every state.
 
-    This is an attribute-gated rule on the base, and the generated state rules are kept below that
-    specificity on purpose (see the state selectors in 'shared/helpers.ts'). They used to outrank it:
+    This is an attribute-gated rule in the base layer. The generated state rules used to outrank it:
     a hover resolved 'white-space' to its initial 'normal', the line unwrapped onto two, and every row
     under it moved. 'overflow' once carried '!important' against the same rule, which fixed one
-    property of the three this block needs; with the cause gone, none of them needs it.
+    property of the three this block needs. Breakpoints and states now sit in cascade layers above
+    this one and roll back whatever they do not set (see "Cascade layers" in 'shared/helpers.ts'), so
+    none can undo it — while one that does set 'whiteSpace' still wins, as an explicit ask should.
   */
   :host([truncate]) [part='base'] {
     overflow: hidden;

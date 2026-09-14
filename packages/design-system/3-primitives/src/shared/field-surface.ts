@@ -71,10 +71,8 @@ export function fieldSurface(
     }
 
     /*
-      Focus outranks hover and a state rule falls back to the *base* value for whatever it does not
-      set, so the fill is restated here. Silence would not mean "keep what hover did", it would mean
-      "return to rest" — and the field would drop back to its resting fill at the moment the ring
-      arrived.
+      The fill is set here as well as on hover because focus outlasts the pointer: a field clicked
+      into and then left would otherwise drop to its resting fill with the ring still on it.
     */
     ${focus} {
       background: var(--we-role-surface-sunken-hover);

@@ -53,15 +53,16 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
 
     Two things are going on here and they are easy to conflate.
 
-    **Why focus mentions the border at all.** A state rule declares every property in the set and
-    falls back to the *base* value for whatever the state does not set, so a property hover lifted
-    is put back down by any state that outranks hover and stays quiet about it — and focus outranks
-    hover. Silence here did not mean "keep what hover did", it meant "return to rest", and the field
-    faded back to its dim resting outline at the moment the ring arrived.
+    **Why focus sets the fill and the border itself.** Focus outlasts the pointer and hover does not,
+    so what a focused field looks like has to come from focus: without these, clicking into a field
+    and moving the pointer away would drop it back to its resting fill with the ring still on it.
+    (Focus once had to say them for a worse reason too — a state reset whatever it did not set, so
+    the moment the ring arrived it put hover's lifted outline back down. States compose now; see
+    "Cascade layers" in `shared/helpers.ts`.)
 
-    **Why it takes the ring's colour, and why the ring is 1px.** Restating `border-strong` fixed the
-    dimming and left a worse artefact: a grey line inside a blue one, two indicators where there is
-    one thing to say. Painting the border in the ring colour and adding a single pixel outside it
+    **Why it takes the ring's colour, and why the ring is 1px.** A `border-strong` outline under the
+    ring left a worse artefact: a grey line inside a blue one, two indicators where there is one thing
+    to say. Painting the border in the ring colour and adding a single pixel outside it
     reads as *one* 2px perimeter — the resting line thickened and recoloured, which is what a field
     gaining focus actually does.
 
