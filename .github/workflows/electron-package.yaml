@@ -1,0 +1,123 @@
+# Packages the Electron desktop app for Linux and macOS.
+#
+# Separate from the CI workflow (build.yaml) because packaging needs the AD4M executor
+# binary, which means checking out a second repository and compiling ~2000 Rust crates.
+# CI should stay fast and focused on the code under test; packaging is a release concern.
+#
+# Produces unsigned artifacts. Code signing (Apple Developer ID, notarisation) is a
+# follow-up — the certificates are not yet configured as repository secrets.
+name: Electron Package
+
+on:
+  push:
+    branches: [dev]
+  pull_request:
+    paths:
+      - 'apps/we-electron/**'
+      - 'we-seed.json'
+      - '.github/workflows/electron-package.yaml'
+  workflow_dispatch:
+
+concurrency:
+  group: electron-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+          - os: macos-latest
+            platform: mac
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      # ── Source ──────────────────────────────────────────────────────────
+
+      - name: Check out WE
+        uses: actions/checkout@v7
+
+      # AD4M checked out as a sibling so `we-seed.json`'s relative
+      # `"executorPath": "../ad4m/target/release/ad4m-executor"` resolves
+      # without any path rewriting.
+      #
+      # Manual clone rather than `actions/checkout` with `path: ../ad4m`:
+      # the checkout action documents `path` as "under $GITHUB_WORKSPACE",
+      # and going above it with `../` works in practice but is not
+      # guaranteed across runner versions. A shallow clone is faster anyway.
+      - name: Check out AD4M
+        run: git clone --depth 1 --branch dev https://github.com/coasys/ad4m.git "${GITHUB_WORKSPACE}/../ad4m"
+
+      # ── WE toolchain (Node + pnpm) ────────────────────────────────────
+
+      - uses: ./.github/actions/setup
+
+      # ── AD4M executor toolchain ────────────────────────────────────────
+      #
+      # The executor embeds a Deno runtime, a Holochain conductor, and a
+      # V8 isolate. Building it needs Rust and cmake (for V8/openssl).
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.86.0'
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-registry-${{ matrix.platform }}
+          restore-keys: cargo-registry-${{ matrix.platform }}
+
+      - name: Install system dependencies (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake protobuf-compiler libfuse2
+
+      - name: Install system dependencies (macOS)
+        if: matrix.platform == 'mac'
+        run: brew install cmake protobuf
+
+      # ── Build AD4M executor ────────────────────────────────────────────
+      #
+      # Only the executor binary — not the full AD4M SDK, not the Tauri
+      # launcher, not the languages. The `ad4m` package (cli crate) defines
+      # the `ad4m-executor` binary; `-p ad4m --bin ad4m-executor` builds
+      # exactly that and its transitive deps.
+
+      - name: Build AD4M executor
+        run: cargo build --release -p ad4m --bin ad4m-executor
+        working-directory: ${{ github.workspace }}/../ad4m
+
+      # ── Build WE ──────────────────────────────────────────────────────
+
+      - name: Build WE packages
+        run: NODE_OPTIONS='--max-old-space-size=8192' pnpm build
+
+      # ── Package ────────────────────────────────────────────────────────
+      #
+      # `electron:build` runs vite build + electron-builder.
+      # `generate-seed-config.cjs` runs as a `preelectron:build` script
+      # and resolves the executor path into `seed-extra-resources.json`,
+      # which electron-builder reads to copy the binary into the package.
+
+      - name: Package Electron app
+        run: pnpm electron:build
+        working-directory: apps/we-electron
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: WE-electron-${{ matrix.platform }}
+          path: |
+            apps/we-electron/dist-electron/*.AppImage
+            apps/we-electron/dist-electron/*.dmg
+            apps/we-electron/dist-electron/*.zip
+          retention-days: 14
