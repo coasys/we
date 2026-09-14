@@ -162,6 +162,10 @@ verify by giving the host a literal pixel height and confirming content actually
 — don't assume a "definite height + `overflow:auto` on an inner div" combination works
 without checking.
 
+All of the above is about the **base** rules, which is the only place specificity still
+decides. Breakpoints and states work differently — see the next section — and a component's
+own rule is never undone by one.
+
 The two selectors above are the _only_ ones the generated stylesheet touches. CSS
 targeting any other shadow part (`[part='trigger']`, `[part='arrow']`,
 `[part='backdrop']`, `[part='listbox']`, custom classes, pseudo-elements, etc.) is
@@ -183,6 +187,36 @@ Safe to hardcode in a component's own `static styles` (not DS-covered, or not on
 - **Size-specific CSS custom properties** for density-cascade vars (see above)
 
 **Never** use `:host([variant='...'])` or `:host([size='...'])` CSS selectors to directly set DS-covered properties (bg, color, padding, fontSize, etc.) — those belong in the JS maps. **Exception:** setting CSS custom properties (e.g. `--we-button-size-padding-x`) via host selectors is fine — that feeds the cascade rather than bypassing it.
+
+## Cascade Layers
+
+Every primitive's shadow root is arranged in cascade layers, lowest first:
+
+| Layer                                                 | Holds                                                             |
+| ----------------------------------------------------- | ----------------------------------------------------------------- |
+| `we-base`                                             | The component's own `static styles`, and the generated base rules |
+| `we-tier-sm` / `we-tier-md` / `we-tier-lg`            | `smUpProps` / `mdUpProps` / `lgUpProps`                           |
+| `we-state-hover` / `-focus` / `-active` / `-disabled` | `hoverProps` / `focusProps` / `activeProps` / `disabledProps`     |
+| `we-overlay`                                          | `OverlayElement`'s surface rules                                  |
+
+Inside `we-base` nothing has changed: component rules and generated base rules resolve by
+specificity and order, as described above. Every declaration in a tier or state layer is
+`prop: var(--we-{name}-{variant}-{prop}, revert-layer)`, so a breakpoint or a state changes only
+what it names and rolls back to the layer below for everything else. That is what lets a hover
+leave a truncated label's `white-space` alone, keep a breakpoint's `display`, and combine with a
+focus ring instead of erasing it. Two states that set the same property resolve in the order
+above; a state beats a breakpoint.
+
+The tier and state rules match only `:host([data-we-tiers])` / `:host([data-we-states])`, which
+`updateAllCustomVars` writes when an element's merged props include a bag of that kind. An
+element with none carries no variant rules, so `revert-layer` costs it nothing.
+
+**The rule for authors: nothing may be adopted into a primitive's shadow root outside a layer.**
+A rule outside every layer beats every layer, so it would override every breakpoint and state on
+that component. `static styles` are moved into `we-base` for you as Lit finalizes them — write
+them as normal, with no `@layer` of your own. Anything adopted another way (as `OverlayElement`
+does) must be wrapped in a named layer after `DS_LAYER_ORDER`. `src/cascade.browser.test.ts`
+checks every registered primitive for this.
 
 ## Static `getDefaultProps()`
 
