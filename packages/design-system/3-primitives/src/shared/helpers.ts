@@ -26,12 +26,14 @@ import {
   resolveFontWeight,
   resolveLineHeight,
   TIER_PROP_KEYS,
+  tierDeclCSS,
+  tierQuery,
   tierRulesCSS,
   tokenVar,
   warnIfUnsurfaced,
   zIndexVar,
 } from '@we/design-utils';
-import type { Tier } from '@we/tokens';
+import { type Tier, TIERS } from '@we/tokens';
 
 /**
  * Design System CSS Helpers
@@ -913,6 +915,9 @@ export function getStaticDSStyles(
   if (l.has('flex')) baseSpecs.push(...baseFlex);
   if (l.has('typography')) baseSpecs.push(...BASE_TYPOGRAPHY);
 
+  /** Each state's selectors, kept for the breakpoint copies emitted after the tiers — see below. */
+  const stateRules: { state: ElementState; host?: string; base?: string }[] = [];
+
   // ── State selectors ──
   if (l.has('state')) {
     for (const state of ELEMENT_STATES) {
@@ -934,6 +939,7 @@ export function getStaticDSStyles(
         const sel =
           state === 'disabled' ? ':host([disabled])' : `:host(:${state === 'focus' ? 'focus-within' : state})`;
         styles.push(`${sel} { ${lines.join('\n    ')} }`);
+        stateRules.push({ state, host: sel });
       }
 
       // Base state
@@ -941,13 +947,36 @@ export function getStaticDSStyles(
         const lines: string[] = [];
         if (l.has('visual')) lines.push(`transition: var(${sp}transition, var(${p}transition, ${STATE_TRANSITION}));`);
         lines.push(joinStateDecls(sp, p, baseSpecs));
-        const sel =
+        const state_ =
           state === 'disabled'
             ? `[part='base']:disabled, [part='base'][aria-disabled='true']`
             : state === 'focus'
               ? focusSelector(`[part='base']`, `:not(:disabled):not([aria-disabled='true'])`)
               : `[part='base']:${state}:not(:disabled):not([aria-disabled='true'])`;
+        /*
+          A state rule must never undo what a component does on purpose.
+
+          Every declaration here is `prop: var(state, var(base))`, and when neither variable is set that
+          is invalid at computed-value time — the property falls to its initial value. That is harmless
+          against the base rule it overrides, which says the same thing, and destructive against a
+          component's own attribute-gated rule: `:host([truncate]) [part='base'] { white-space: nowrap }`.
+          The state selector used to be `[part='base']:hover:not(:disabled):not([aria-disabled='true'])`
+          — specificity 0,4,0, above that rule's 0,3,0 — so hovering a truncated `we-text` reset
+          `white-space` to `normal` and the label unwrapped onto a second line, pushing everything under
+          it down. It was patched once with `!important` on `overflow`, which fixed the one property the
+          report named and left the class of bug in place.
+
+          So the state goes inside `:where()` and the selector is anchored at a fixed 0,2,0. That is
+          still above the base rule and the breakpoint rules (0,1,0), so `hoverProps` beats the resting
+          value and a tier cannot erase a hover; and it is below any `:host([attr]) [part='base']`
+          (0,3,0), so a component's own mode — truncated, a code block, a bare button — survives every
+          state. The anchor is `:host`, which is true of every element in this shadow root.
+        */
+        const sel = `:host [part='base']:where(${state_})`;
         styles.push(`${sel} { ${lines.join('\n    ')} }`);
+        const existing = stateRules.find((rule) => rule.state === state);
+        if (existing) existing.base = sel;
+        else stateRules.push({ state, base: sel });
       }
     }
   }
@@ -969,6 +998,35 @@ export function getStaticDSStyles(
   */
   if (hostSpecs.length > 0) styles.push(tierRulesCSS(':host', p, hostSpecs));
   if (baseSpecs.length > 0) styles.push(tierRulesCSS(`[part='base']`, p, baseSpecs));
+
+  /*
+    ── States, at each breakpoint ──
+
+    A state rule falls back to the *base* value for everything it does not set — `var(hover, var(base))`
+    — and it outranks the breakpoint rules, so under the pointer an element dropped whatever its tier
+    had decided. Harmless while nothing varied by tier; not once something did. A header label that is
+    `display: none` until `mdUpProps` shows it vanished on hover, which took the hover away, which
+    brought it back — a label flashing as fast as the browser could repaint it.
+
+    So each state is emitted again inside each tier's query, falling back through that tier's chain
+    rather than to the base: `var(hover, var(md, var(sm, var(base))))`. Same selectors, so the same
+    specificity as the plain state rules; later, so at a width a tier matches, the tier-aware copy is
+    the one that applies. Ascending, so the widest matching tier wins, as it does for the tiers.
+  */
+  if (stateRules.length > 0) {
+    const tierChain = (tier: Exclude<Tier, 'base'>, spec: PropSpec) =>
+      tierDeclCSS(tier, p, spec).slice(spec[0].length + 2, -1);
+    const decls = (tier: Exclude<Tier, 'base'>, state: ElementState, specs: PropSpec[]) =>
+      specs.map((spec) => `${spec[0]}: var(${p}${state}-${spec[1]}, ${tierChain(tier, spec)});`).join(' ');
+    for (const tier of TIERS.slice(1) as Exclude<Tier, 'base'>[]) {
+      const rules: string[] = [];
+      for (const rule of stateRules) {
+        if (rule.host && hostSpecs.length > 0) rules.push(`${rule.host} { ${decls(tier, rule.state, hostSpecs)} }`);
+        if (rule.base && baseSpecs.length > 0) rules.push(`${rule.base} { ${decls(tier, rule.state, baseSpecs)} }`);
+      }
+      styles.push(`${tierQuery(tier)} { ${rules.join(' ')} }`);
+    }
+  }
 
   return styles.join('\n');
 }

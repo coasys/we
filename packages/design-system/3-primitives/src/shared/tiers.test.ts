@@ -14,8 +14,8 @@ import { getStaticDSStyles } from './helpers';
 describe('getStaticDSStyles — tier queries', () => {
   const button = getStaticDSStyles('button');
 
-  it('emits one query per tier, for the host and for [part=base]', () => {
-    expect(button.match(/@container we-surface/g)?.length).toBe(6);
+  it('emits one query per tier, for the host and for [part=base], and one for the states at each tier', () => {
+    expect(button.match(/@container we-surface/g)?.length).toBe(9);
     expect(button).toContain("@container we-surface (min-width: 900px) { [part='base']");
     expect(button).toContain('@container we-surface (min-width: 900px) { :host');
   });
@@ -24,6 +24,26 @@ describe('getStaticDSStyles — tier queries', () => {
     // Cascade-through: something set only in smUpProps still applies at lg. And the base arm keeps
     // the component's own token fallback, or an lgUpProps mentioning one prop would blank the rest.
     expect(button).toContain('gap: var(--we-button-lg-gap, var(--we-button-md-gap, var(--we-button-sm-gap,');
+  });
+
+  it('has a state fall back to the tier it is at, not to the base', () => {
+    /*
+      A state rule falls back to the base value for what it does not set, and outranks the tier rules.
+      A label hidden until mdUpProps showed it vanished under the pointer, which ended the hover and
+      brought it back — flashing. At each tier the states are emitted again, falling back through that
+      tier's chain.
+    */
+    const md = button
+      .split('\n')
+      .find((line) => line.startsWith('@container we-surface (min-width: 900px)') && line.includes(':where('));
+    expect(md).toBeDefined();
+    expect(md).toContain(
+      'display: var(--we-button-hover-display, var(--we-button-md-display, var(--we-button-sm-display, var(--we-button-display',
+    );
+    // After the plain tier rules, so at a matching width the tier-aware state copy is the one applied.
+    expect(button.lastIndexOf(':where(')).toBeGreaterThan(
+      button.indexOf("@container we-surface (min-width: 1200px) { [part='base']"),
+    );
   });
 
   it('comes after the state selectors, so a tier wins over a hover at equal specificity', () => {

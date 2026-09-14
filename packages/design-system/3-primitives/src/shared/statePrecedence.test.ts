@@ -90,3 +90,31 @@ describe('we-input, the component that found this', () => {
     );
   });
 });
+
+describe('a state never undoes what a component does on purpose', () => {
+  /*
+    The bug this pins: a truncated \`we-text\` unwrapped onto two lines on hover. Every state rule
+    declares \`prop: var(state, var(base))\`, which with neither set falls to the property's initial
+    value — and the hover selector (0,4,0) outranked \`:host([truncate]) [part='base']\` (0,3,0), so
+    \`white-space\` went back to \`normal\` under the pointer. The same held for a code block's
+    \`white-space: pre\` and a bare button's \`overflow\`.
+
+    Specificity is not something a unit test can resolve without a browser, so this asserts the
+    shape that sets it: every base state rule is \`:host [part='base']:where(…)\` — 0,2,0, above the
+    base and breakpoint rules (0,1,0) and below any attribute-gated component rule (0,3,0).
+  */
+  const css = getStaticDSStyles('text');
+  const stateRules = css
+    .split('\n')
+    .filter((line) => line.includes("[part='base']") && /:(hover|focus-visible|active|disabled)/.test(line))
+    // The per-tier copies are one line per query; their selectors are checked through the plain ones.
+    .filter((line) => !line.startsWith('@container'));
+
+  it('emits the states for a component that has them', () => {
+    expect(stateRules.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('keeps every base state rule at the anchored specificity', () => {
+    for (const rule of stateRules) expect(rule.trimStart().startsWith(":host [part='base']:where(")).toBe(true);
+  });
+});
