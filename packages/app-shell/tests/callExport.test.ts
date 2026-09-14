@@ -116,7 +116,7 @@ describe('the extraction log', () => {
     expect(log).toContain('- Space default: TaskBlock, EventBlock');
     expect(log).toContain('Anna, 2026-09-14T11:00:00.000Z: Ship it Friday');
     expect(log).toContain('### TaskBlock: `task-1`');
-    expect(log).toContain('- Awaiting a decision: yes');
+    expect(log).toContain('- Awaiting a decision: yes — made by extraction, not kept yet');
     expect(log).toContain('### New TaskBlock: `task-1`');
     // A pass from before prompts were stored says so rather than showing an empty fence.
     expect(log).toContain('#### Prompt\n\n_Not recorded._');

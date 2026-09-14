@@ -145,7 +145,8 @@ function parseTargets(raw: string | undefined): string[] {
 export function formatExtractionLog(input: ExtractionLogInput): string {
   const title = input.callTitle?.trim() || 'Untitled call';
   const passes = [...input.passes].sort((a, b) => isoOf(a.createdAt).localeCompare(isoOf(b.createdAt)));
-  const pendingIds = new Set(input.proposals.map((proposal) => proposal.id));
+  // What is waiting on each record, by kind: a record extraction made, or a change to an agreed one.
+  const waiting = new Map(input.proposals.map((proposal) => [proposal.id, proposal.kind]));
   const out: string[] = [];
 
   out.push(
@@ -223,7 +224,7 @@ export function formatExtractionLog(input: ExtractionLogInput): string {
     out.push(
       `### ${recordTypeOf(record) ?? 'Record'}${id ? `: \`${id}\`` : ''}`,
       '',
-      `- Awaiting a decision: ${pendingIds.has(id) ? 'yes' : 'no'}`,
+      `- Awaiting a decision: ${waiting.get(id) === 'create' ? 'yes — made by extraction, not kept yet' : waiting.get(id) === 'update' ? 'yes — a change to it is suggested' : 'no'}`,
       ...(typeof fields.author === 'string' ? [`- Author: ${input.nameFor(fields.author)}`] : []),
       '',
       fenced(JSON.stringify(fields, null, 2), 'json'),

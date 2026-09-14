@@ -749,6 +749,23 @@ describe('the extraction panel', () => {
     expect(json).toContain('recordStore.displays[item.__subjectClass].title');
   });
 
+  it('asks about a new record and a change to an agreed one as two different questions', () => {
+    /*
+      One list drew a change a pass suggested to somebody's task as a draft of the task, offered
+      Keep and Discard on it, and showed only the new value. The changes are their own group now:
+      the record as it is, each change as old → new, applied or dismissed per field.
+    */
+    expect(json).toContain(".filter(p, p.kind != 'update')");
+    expect(json).toContain(".filter(p, p.kind == 'update')");
+    expect(json).toContain('"children":["Pending changes"]');
+    expect(json).toContain('"$action":"modules.transcribe.applyChange"');
+    expect(json).toContain('"$action":"modules.transcribe.dismissChange"');
+    // The old half comes from the record itself, asked for by id once the model is known.
+    expect(json).toContain('"current":{"entity":{"$":"proposal.entity"},"where":{"id":{"$":"proposal.id"}}');
+    // An agreed record with a change suggested still counts as extracted.
+    expect(json).not.toContain('modules.transcribe.pendingIds');
+  });
+
   it('reads what a call produced through the provenance link, in one subscription', () => {
     /*
       The question "what did this call produce" is unaskable through `children`: it holds the
@@ -761,7 +778,9 @@ describe('the extraction panel', () => {
       put beside the heading at all.
     */
     expect(json).toContain('"include":{"extracted":{"order":{"createdAt":"desc"}}}');
-    expect(json).toContain('first(local.extractedFrom).extracted.filter(r, !(r.id in modules.transcribe.pendingIds))');
+    expect(json).toContain(
+      'first(local.extractedFrom).extracted.filter(r, !(r.id in modules.transcribe.unconfirmedIds))',
+    );
     // Keyed on the class each row turned out to be. Not `item.type`, which is a real property on a
     // CollectionBlock and so means something else on some of the rows a call can hold.
     expect(json).toContain('recordStore.displays[item.__subjectClass]');
@@ -797,7 +816,7 @@ describe('the extraction panel', () => {
       ['success', 'check'],
       ['danger', 'x'],
     ]) {
-      expect(json).toContain(`"r":"full","label":"${tone === 'success' ? 'Keep' : 'Discard'} this"`);
+      expect(json).toContain(`"r":"full","label":"${tone === 'success' ? 'Accept' : 'Reject'}"`);
       /*
         The status foreground at rest, the fill on hover — the canvas's rule, and its reason: at this
         size the icon *is* the button, so it must stay legible against the surface behind it, and
@@ -836,10 +855,10 @@ describe('the extraction panel', () => {
       before answering — so it sits apart, as a mark, with the words behind a tooltip.
     */
     const pencil = json.indexOf('"name":"pencil-simple"');
-    const keep = json.indexOf('"label":"Keep this"');
+    const keep = json.indexOf('"label":"Accept"');
 
     expect(pencil).toBeLessThan(keep);
-    expect(json).toContain('"content":"Edit before keeping"');
+    expect(json).toContain('"content":"Edit before accepting"');
     expect(json).toContain('"content":"Stop editing"');
     expect(json).not.toContain('"Edit"]');
     expect(json).not.toContain('"Cancel"]');
@@ -872,7 +891,7 @@ describe('the extraction panel', () => {
       community's own colour. Here it is one line among several.
     */
     expect(json).not.toContain("last(field.options) ? 'success'");
-    // The one badge left is the count beside "Awaiting your call", which is a number and not a
+    // The one badge left is the count beside "Pending acceptance", which is a number and not a
     // state. Left open at the end rather than closing the props object: what is being pinned is
     // that the badge is the count's, and it should not have to be rewritten when the count's chip
     // gains a size or a colour.
@@ -903,7 +922,7 @@ describe('the extraction panel', () => {
       say one thing eight times and crowd the titles they sit beside.
 
       Nothing is left relying on colour alone, which is what the rule actually asks. Each section
-      says in words what its cards are — "Awaiting your call", "Extracted" — and every card on
+      says in words what its cards are — "Pending acceptance", "Pending changes", "Extracted" — and every card on
       screen sits under one of those headings.
     */
     // The card's own former shape. `we-alert` still draws the two genuine alerts in this panel — a
@@ -1078,7 +1097,7 @@ describe('the extraction panel', () => {
     const heading = (label: string) =>
       JSON.stringify({ ...SECTION_LABEL_PROPS, flex: '1' }) + `,"children":["${label}"]`;
 
-    for (const label of ['Things to extract', 'Logs', 'Awaiting your call', 'Extracted']) {
+    for (const label of ['Things to extract', 'Logs', 'Pending acceptance', 'Pending changes', 'Extracted']) {
       expect(json).toContain(heading(label));
     }
     expect(json).not.toContain('Things to extract:');
@@ -1112,7 +1131,7 @@ describe('the extraction panel', () => {
       on exactly the right question.
     */
     expect(json).toContain(
-      '"condition":{"$":"count(first(local.extractedFrom).extracted.filter(r, !(r.id in modules.transcribe.pendingIds)))"}',
+      '"condition":{"$":"count(first(local.extractedFrom).extracted.filter(r, !(r.id in modules.transcribe.unconfirmedIds)))"}',
     );
   });
 
@@ -1583,7 +1602,7 @@ describe('the history of what was read', () => {
       toggle twice. A heading carrying an action — Logs' export — is split into two toggles around
       it, the name and the count, so a field may have two; the name is always one of them.
     */
-    const fields = ['proposalsOpen', 'extractedOpen', 'logsOpen'];
+    const fields = ['proposalsOpen', 'changesListOpen', 'extractedOpen', 'logsOpen'];
     const found: Record<string, string[]> = {};
 
     const walk = (node: unknown): void => {
@@ -1602,7 +1621,8 @@ describe('the history of what was read', () => {
     expect(Object.keys(found).sort()).toEqual([...fields].sort());
 
     for (const [field, label] of [
-      ['proposalsOpen', 'Awaiting your call'],
+      ['proposalsOpen', 'Pending acceptance'],
+      ['changesListOpen', 'Pending changes'],
       ['extractedOpen', 'Extracted'],
       ['logsOpen', 'Logs'],
     ]) {
@@ -1623,12 +1643,14 @@ describe('the history of what was read', () => {
     */
     const chips = json.indexOf('"Things to extract"');
     const logs = json.indexOf('"Logs"');
-    const awaiting = json.indexOf('"Awaiting your call"');
+    const awaiting = json.indexOf('"Pending acceptance"');
+    const changes = json.indexOf('"Pending changes"');
     const extracted = json.indexOf('"Extracted"');
 
     expect(chips).toBeGreaterThan(-1);
     expect(logs).toBeGreaterThan(chips);
     expect(awaiting).toBeGreaterThan(logs);
-    expect(extracted).toBeGreaterThan(awaiting);
+    expect(changes).toBeGreaterThan(awaiting);
+    expect(extracted).toBeGreaterThan(changes);
   });
 });

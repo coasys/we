@@ -93,6 +93,8 @@ export type ExtractStatus = 'idle' | 'running' | 'done' | 'error';
 export interface ProposalField {
   /** The model's own property name — what an edit writes to, so it must not be prettified. */
   name: string;
+  /** The name for a person to read — `dueDate` as "Due date". Derived, since a proposal carries no labels. */
+  label: string;
   /** Ready to print: stringified and bounded. See {@link MAX_SUMMARY_VALUE}. */
   value: string;
 }
@@ -165,7 +167,21 @@ const cut = (text: string, limit: number) => (text.length > limit ? `${text.slic
 function fieldsOf(values: Record<string, unknown>): ProposalField[] {
   const named = SUMMARY_FIELDS.filter((field) => values[field] !== undefined && values[field] !== '');
   const rest = Object.keys(values).filter((field) => !SUMMARY_FIELDS.includes(field));
-  return [...named, ...rest].map((name) => ({ name, value: cut(String(values[name]), MAX_SUMMARY_VALUE) }));
+  return [...named, ...rest].map((name) => ({
+    name,
+    label: labelOf(name),
+    value: cut(String(values[name]), MAX_SUMMARY_VALUE),
+  }));
+}
+
+/** `dueDate` → "Due date". A proposal names fields as the model does; a change line is read by a person. */
+function labelOf(name: string): string {
+  const words = name
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .trim()
+    .toLowerCase();
+  return words ? words[0].toUpperCase() + words.slice(1) : name;
 }
 
 function summarise(fields: ProposalField[]): string {
@@ -863,6 +879,51 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * is still waiting.
    */
   const pendingIds = (): string[] => allProposals().map((p) => p.id);
+
+  /**
+   * Records a pass **made** that nobody has kept yet — `create` proposals, by id.
+   *
+   * The narrower half of {@link pendingIds}, and the one that means "not agreed". The record is in the
+   * graph from the moment the pass ran, so it is drawn wherever records of its kind are; whether it
+   * should look provisional, or be shown at all, is this question.
+   */
+  const unconfirmedIds = (): string[] =>
+    allProposals()
+      .filter((p) => p.kind === 'create')
+      .map((p) => p.id);
+
+  /**
+   * Agreed records a pass has **suggested changing** — `update` proposals, by id.
+   *
+   * The other half, and never provisional: the record is somebody's, the executor would not overwrite
+   * what a person owns, so it staged the change beside it instead. A surface marks these rather than
+   * fading them, and a "hide suggestions" never hides one.
+   */
+  const changedIds = (): string[] =>
+    allProposals()
+      .filter((p) => p.kind === 'update')
+      .map((p) => p.id);
+
+  /**
+   * Take one resolved field off a suggestion, and the suggestion with it once nothing is left.
+   *
+   * Locally rather than by re-reading, for `forgetProposal`'s reason. Fields a surface never showed
+   * — a proposed value equal to what the record already holds — stay on the row, so the record keeps
+   * its marker until the whole suggestion is applied or dismissed; see `applyAllChanges`.
+   */
+  function forgetField(id: string, field: string): void {
+    const next: Record<string, ProposalView[]> = {};
+    for (const [key, rows] of Object.entries(proposalsByCall())) {
+      next[key] = rows
+        .map((p) => {
+          if (p.id !== id) return p;
+          const fields = p.fields.filter((f) => f.name !== field);
+          return { ...p, fields, summary: summarise(fields) };
+        })
+        .filter((p) => p.fields.length > 0);
+    }
+    setProposalsByCall(next);
+  }
 
   /** Drop a resolved suggestion from wherever it was listed — see `acceptProposal`. */
   function forgetProposal(id: string): void {
@@ -2170,6 +2231,13 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      */
     pendingProposals: allProposals,
     /**
+     * Records a pass made that nobody has kept — draw them as provisional, and let a reader hide them.
+     * See {@link pendingIds} for why this is a union across calls rather than keyed by one.
+     */
+    unconfirmedIds,
+    /** Agreed records carrying a suggested change — mark them, never fade or hide them. */
+    changedIds,
+    /**
      * The same, for the call this agent is in.
      *
      * Nothing in this repo reads it any more — both surfaces that did now name the call they are
@@ -2395,6 +2463,24 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     setProposalField: (name: string, value: string) => setProposalDraft({ ...proposalDraft(), [name]: value }),
     /** Close the open draft, discarding what was typed. */
     cancelProposalEdit: () => closeProposalEdit(),
+    /**
+     * Apply one suggested change to an agreed record: the staged value becomes the real one.
+     *
+     * Per field, because a suggested change is often half right — the new due date, but not the
+     * reassignment that came with it. The executor accepts a single property of an overlay, so the
+     * rest stays staged for a separate answer.
+     */
+    applyChange: async (id: string, field: string) => {
+      if (!interpretation) return;
+      await interpretation.accept(id, field, callTarget());
+      forgetField(id, field);
+    },
+    /** Dismiss one suggested change, leaving the record's value as it was. */
+    dismissChange: async (id: string, field: string) => {
+      if (!interpretation) return;
+      await interpretation.reject(id, field, callTarget());
+      forgetField(id, field);
+    },
     rejectProposal: async (id: string) => {
       if (!interpretation) return;
       await interpretation.reject(id, undefined, callTarget());

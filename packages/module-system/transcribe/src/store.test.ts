@@ -1409,8 +1409,8 @@ describe('staged suggestions', () => {
     await h.store.extract();
 
     expect(h.store.proposals()[0].fields).toEqual([
-      { name: 'title', value: 'One' },
-      { name: 'status', value: 'todo' },
+      { name: 'title', label: 'Title', value: 'One' },
+      { name: 'status', label: 'Status', value: 'todo' },
     ]);
   });
 
@@ -1634,6 +1634,49 @@ describe('staged suggestions', () => {
     await h.store.rejectProposal('task-1');
 
     expect(h.store.pendingIds()).toEqual([]);
+  });
+
+  it('tells a record nobody has kept apart from an agreed one with a change suggested', async () => {
+    // One list of ids made an accepted task a pass merely had an opinion about look like a draft,
+    // and a "hide suggestions" built on it would have hidden agreed work.
+    const i = interpreterWith([
+      { id: 'task-new', kind: 'create', entity: 'TaskBlock', values: { title: 'New' } },
+      { id: 'task-old', kind: 'update', entity: 'TaskBlock', values: { dueDate: '2026-09-15' } },
+    ]);
+    const h = harness(inCall, { interpretation: i.port });
+    await h.say('hello');
+    await h.store.extract();
+
+    expect(h.store.unconfirmedIds()).toEqual(['task-new']);
+    expect(h.store.changedIds()).toEqual(['task-old']);
+    expect(h.store.pendingIds()).toEqual(['task-new', 'task-old']);
+    expect(h.store.proposals()[1].fields[0]).toEqual({ name: 'dueDate', label: 'Due date', value: '2026-09-15' });
+  });
+
+  it('applies or dismisses one suggested change at a time, keeping the rest staged', async () => {
+    const calls: Array<[string, string, string | undefined]> = [];
+    const i = interpreterWith([
+      { id: 'task-old', kind: 'update', entity: 'TaskBlock', values: { dueDate: '2026-09-15', assignee: 'Ana' } },
+    ]);
+    const port = {
+      ...i.port,
+      accept: async (id: string, property?: string) => (calls.push(['accept', id, property]), true),
+      reject: async (id: string, property?: string) => (calls.push(['reject', id, property]), true),
+    };
+    const h = harness(inCall, { interpretation: port });
+    await h.say('hello');
+    await h.store.extract();
+
+    await h.store.applyChange('task-old', 'dueDate');
+    expect(h.store.proposals()[0].fields.map((f) => f.name)).toEqual(['assignee']);
+    expect(h.store.changedIds()).toEqual(['task-old']);
+
+    await h.store.dismissChange('task-old', 'assignee');
+    expect(calls).toEqual([
+      ['accept', 'task-old', 'dueDate'],
+      ['reject', 'task-old', 'assignee'],
+    ]);
+    expect(h.store.changedIds()).toEqual([]);
   });
 
   it('stops marking a card a peer resolved, when the host says the suggestions moved', async () => {
