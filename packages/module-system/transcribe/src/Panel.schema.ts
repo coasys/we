@@ -954,66 +954,87 @@ const foldingSectionLabel = (opts: {
   count: string;
   tone: 'neutral' | 'warning' | 'success';
   field: string;
-}): SchemaNode => ({
-  type: 'we-button',
-  props: {
-    variant: 'bare',
-    width: '100%',
-    // Nothing paints on hover: the pointer is the affordance, and a band the width of the panel
-    // lighting up under the cursor is a lot of movement for a heading somebody is passing over on
-    // the way to the cards. The radius is for the focus ring, which `we-button` draws itself and
-    // which `bare` would otherwise take around a square-cornered full-width row.
-    r: '200',
-    onClick: { $toggleLocal: opts.field },
-  },
+  /**
+   * A control about the whole section — Logs' export — drawn between the name and the count.
+   *
+   * The heading is a `<button>` and a button inside a button is invalid markup that would also
+   * toggle the section on the way past, so with an action the heading splits in two: the name, and
+   * the count with its caret, each its own bare button folding the same section. The action sits in
+   * the gap between them, beside the number it exports.
+   */
+  action?: SchemaNode;
+}): SchemaNode => {
+  const toggle = (children: SchemaNode[], extra: Record<string, unknown> = {}): SchemaNode => ({
+    type: 'we-button',
+    props: {
+      variant: 'bare',
+      // Nothing paints on hover: the pointer is the affordance, and a band the width of the panel
+      // lighting up under the cursor is a lot of movement for a heading somebody is passing over on
+      // the way to the cards. The radius is for the focus ring, which `we-button` draws itself and
+      // which `bare` would otherwise take around a square-cornered full-width row.
+      r: '200',
+      onClick: { $toggleLocal: opts.field },
+      ...extra,
+    },
+    children,
+  });
+
+  if (!opts.action) {
+    return toggle([sectionLabel({ label: opts.label, aside: foldingCount(opts) })], { width: '100%' });
+  }
+  return {
+    type: 'Row',
+    props: { ay: 'center', gap: '200', width: '100%' },
+    children: [
+      toggle([sectionLabel({ label: opts.label })], { flex: '1', minWidth: '0' }),
+      opts.action,
+      // Named for what it does: its contents are a number and a caret, which say nothing read aloud.
+      toggle([foldingCount(opts)], { label: `Show or hide ${opts.label.toLowerCase()}` }),
+    ],
+  };
+};
+
+/** The count and the caret at the end of a folding heading. */
+const foldingCount = (opts: { count: string; tone: 'neutral' | 'warning' | 'success'; field: string }): SchemaNode => ({
+  // `200`, where the label sits `200` from the badge: the caret is a separate thing from the
+  // count, and at `100` the two read as one object with a number in it.
+  type: 'Row',
+  props: { ay: 'center', gap: '200' },
   children: [
-    sectionLabel({
-      label: opts.label,
-      aside: {
-        // `200`, where the label sits `200` from the badge: the caret is a separate thing from the
-        // count, and at `100` the two read as one object with a number in it.
-        type: 'Row',
-        props: { ay: 'center', gap: '200' },
-        children: [
-          {
-            type: 'we-badge',
-            props: {
-              size: 'xs',
-              variant: opts.tone,
-              appearance: 'solid',
-              /*
-                Square at its narrowest, and wider only when the number needs it.
+    {
+      type: 'we-badge',
+      props: {
+        size: 'xs',
+        variant: opts.tone,
+        appearance: 'solid',
+        /*
+          Square at its narrowest, and wider only when the number needs it.
 
-                A badge is sized by its content, so `3` came out as a squat lozenge and `12` as a
-                wider one — every section's chip a different shape, and none of them the round-ish
-                counter a count wants to be. The floor is the badge's own height, written as the
-                same expression `SIZE_DEFAULTS` gives it so a theme's `control-height-offset` moves
-                both together and it cannot go oblong the moment a theme changes density.
+          A badge is sized by its content, so `3` came out as a squat lozenge and `12` as a
+          wider one — every section's chip a different shape, and none of them the round-ish
+          counter a count wants to be. The floor is the badge's own height, written as the
+          same expression `SIZE_DEFAULTS` gives it so a theme's `control-height-offset` moves
+          both together and it cannot go oblong the moment a theme changes density.
 
-                Only a floor: two digits are wider than 24px with the padding an `xs` badge carries,
-                so they grow, which is the half a fixed width would have lost.
-              */
-              minWidth: 'calc(var(--we-component-height-xs) + var(--we-theme-control-height-offset, 0px))',
-            },
-            children: [{ $: opts.count }],
-          },
-          /*
-            A plain icon now, where it used to be a button.
-
-            Not a preference: the row around it is a `<button>`, and a button inside a button is
-            invalid markup — it would also take the press on the way past and toggle twice.
-          */
-          {
-            type: 'we-icon',
-            props: {
-              size: CARET_SIZE,
-              color: 'text-faint',
-              name: { $: `local.${opts.field} ? 'caret-up' : 'caret-down'` },
-            },
-          },
-        ],
+          Only a floor: two digits are wider than 24px with the padding an `xs` badge carries,
+          so they grow, which is the half a fixed width would have lost.
+        */
+        minWidth: 'calc(var(--we-component-height-xs) + var(--we-theme-control-height-offset, 0px))',
       },
-    }),
+      children: [{ $: opts.count }],
+    },
+    /*
+      A plain icon, not a button: the heading around it is a `<button>`, and a button inside a
+      button is invalid markup — it would also take the press on the way past and toggle twice.
+    */
+    {
+      type: 'we-icon',
+      props: {
+        size: CARET_SIZE,
+        color: 'text-faint',
+        name: { $: `local.${opts.field} ? 'caret-up' : 'caret-down'` },
+      },
+    },
   ],
 });
 
@@ -1870,7 +1891,36 @@ const extractionHistory: SchemaNode = {
           which list it was. The row is gone with the caret it existed for: what it said that the
           heading does not is "of this call", which is true of every word in this panel.
         */
-        foldingSectionLabel({ label: 'Logs', count: 'count(local.passes)', tone: 'neutral', field: 'logsOpen' }),
+        foldingSectionLabel({
+          label: 'Logs',
+          count: 'count(local.passes)',
+          tone: 'neutral',
+          field: 'logsOpen',
+          /*
+            Every pass on this call, as one file — the prompts and responses in full, the transcript
+            they read, what they wrote and what is still waiting — for handing to somebody, or a
+            model, working out why a call extracted what it did. Every member's passes, as this list
+            shows them, and all of them rather than the fifty drawn here.
+          */
+          action: {
+            type: 'we-tooltip',
+            props: { content: 'Export the extraction log' },
+            children: [
+              {
+                type: 'we-button',
+                props: {
+                  // The transcript panel's export, the same size: one act, two panels.
+                  variant: 'ghost',
+                  size: 'sm',
+                  square: true,
+                  label: 'Export the extraction log',
+                  onClick: { $action: 'spaceStore.exportExtractionLog', args: [EXTRACTION_SUBJECT] },
+                },
+                children: [{ type: 'we-icon', props: { name: 'download' } }],
+              },
+            ],
+          },
+        }),
         collapsible('logsOpen', {
           type: 'Column',
           props: { gap: '200', width: '100%' },
@@ -3817,6 +3867,38 @@ export const panel: SchemaNode = {
         type: 'Row',
         props: { gap: '200', ay: 'center' },
         children: [
+          /*
+            Take the transcript with you — the calls list has offered this all along, and the panel
+            reading the transcript is where somebody is when they want it.
+
+            Only once there is one: the subject is the transcript's own record, which exists from the
+            first thing said, so a call nobody has spoken in offers nothing to download rather than a
+            button that answers with a warning. Live or looked back at alike — the file is the shared
+            record, not this agent's microphone.
+          */
+          {
+            type: '$if',
+            props: {
+              condition: SUBJECT,
+              then: {
+                type: 'we-tooltip',
+                props: { content: 'Export the transcript' },
+                children: [
+                  {
+                    type: 'we-button',
+                    props: {
+                      variant: 'ghost',
+                      size: 'sm',
+                      square: true,
+                      label: 'Export the transcript',
+                      onClick: { $action: 'spaceStore.exportCallTranscript', args: [SUBJECT] },
+                    },
+                    children: [{ type: 'we-icon', props: { name: 'download' } }],
+                  },
+                ],
+              },
+            },
+          },
           {
             /*
               Recording is about the call you are *in*, so the control is only offered there. A call

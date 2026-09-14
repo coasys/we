@@ -408,6 +408,7 @@ export const storeEntries: StoreEntry[] = [
       'copyGuestLink',
       'getSubgroupMessages',
       'exportCallTranscript',
+      'exportExtractionLog',
       'setModuleEnabled',
       'setModuleInstalled',
       'setModuleVisible',
@@ -1155,6 +1156,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           "(subgroupId: string): messages belonging to one of Flux's conversation subgroups, fetched on demand. A dialect query against a foreign schema rather than a WE model, so it goes through the backend's interop surface instead of $query — which is why it is a store method and not a relation you can drill into",
         exportCallTranscript:
           "(callId: string): writes the call's transcript to a .txt file (one line per utterance: name, timestamp, text) and downloads it. Read-only and client-side — it reads the shared record and writes to the caller's own device",
+        exportExtractionLog:
+          "(callId: string): writes everything extraction did with the call to a Markdown file and downloads it — the settings it ran under, the transcript once, every member's passes with their prompts and responses verbatim, the records written as they are stored now, and the suggestions still awaiting a decision. For handing to a person or a model investigating the extraction. Read-only and client-side, like exportCallTranscript",
         setModuleInstalled:
           '(moduleId: string, installed: boolean): turns a module on or off for this agent in every space. Personal — writes AgentSettings.installedModules in the root dataset, so no other member sees it',
         setModuleVisible:

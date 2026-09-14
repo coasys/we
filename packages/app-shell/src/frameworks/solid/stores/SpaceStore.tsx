@@ -9,6 +9,7 @@ import {
 } from '@shared/callExtraction';
 import { datasetAddressedBy } from '@shared/datasetIdentity';
 import { buildGuestLink } from '@shared/guestLink';
+import { exportFileName, formatExtractionLog, type PassEntry, transcriptLine } from '@shared/interpretation/callExport';
 import { containmentPredicate, gatherTranscriptTurns, type TurnRecord } from '@shared/interpretation/transcriptTurns';
 import { involvementOptimism } from '@shared/involvementOptimism';
 import {
@@ -63,6 +64,7 @@ import {
   reconcileBlocks,
 } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
+import { saveFile, type SaveOutcome } from '@we/design-utils';
 import {
   AGENT_DEFAULT,
   CallExtraction,
@@ -878,6 +880,13 @@ export interface SpaceStore {
    * imperative action instead of something a template can express.
    */
   exportCallTranscript: (callId: string) => Promise<void>;
+  /**
+   * Write everything extraction did with a call to a Markdown file and download it: the settings it
+   * ran under, the transcript once, every pass (every member's) with its prompt and response verbatim,
+   * the records it wrote as they are stored now, and the suggestions still waiting on a decision.
+   * Made to be handed to a person or a model investigating why a call extracted what it did.
+   */
+  exportExtractionLog: (callId: string) => Promise<void>;
   removeSpaceFromGlobal: (spaceUuid: string) => Promise<void>;
   updateSpaceInCache: (dataset: AppDataset, updates: Partial<Space>) => void;
 
@@ -2291,96 +2300,153 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
   }
 
+  /**
+   * A call's transcript, through the same gather extraction runs on rather than a second reading of
+   * the same shape. What a turn is — which entities can be one, which rows are too broken to keep,
+   * and the ordering that makes a transcript a transcript rather than a bag of sentences — is one
+   * decision, and an export that answered it differently would disagree with what the model was shown.
+   */
+  async function callTranscript(p: DatasetProxy, callId: string) {
+    const modelFor = (entity: string) => getEntitiesForPerspective(entity, p);
+    const predicate = containmentPredicate(modelFor, datasetStore.currentDatasetEntities());
+    const turns = predicate
+      ? await gatherTranscriptTurns(
+          {
+            modelFor: (entity) => modelFor(entity) as TurnRecord | undefined,
+            handle: p,
+            containmentPredicate: predicate,
+          },
+          callId,
+        )
+      : [];
+    return { turns, predicate };
+  }
+
+  /**
+   * A label for each of these agents, fetched first.
+   *
+   * Asked for before labelling any of them: the cache is populated as a side effect of rendering
+   * people, so relying on it alone exports whoever happens to be on screen by name and everybody else
+   * as a raw DID. `fetchProfile` no-ops on a profile it holds and dedupes concurrent calls.
+   *
+   * The DID is the fallback rather than the cache's own `name`, which falls back to "Anonymous".
+   * That is right on screen, where a face tells one unnamed peer from another, and wrong in a file,
+   * where the label is all there is: three unnamed speakers would be three identical lines. The cache
+   * is keyed on the bare DID, so a prefixed one is stripped to match.
+   */
+  async function labelsFor(dids: string[]): Promise<(did: string) => string> {
+    await Promise.all([...new Set(dids)].map((did) => profileStore.fetchProfile(did).catch(() => undefined)));
+    return (did: string): string => {
+      const profile = profileStore.profiles().find((entry) => entry.did === did.replace('did://', ''));
+      return profile ? displayName(profile, did) : did;
+    };
+  }
+
+  /**
+   * What a save came to, said once for both exports.
+   *
+   * Only a file actually written earns a success message — `saveFile` knows, where the download
+   * link these used to click did not, and announced success before the reader had chosen anywhere.
+   * A cancelled dialog says nothing, and a plain download is confirmed by the browser's own UI.
+   */
+  function reportSave(outcome: SaveOutcome, saved: string, empty: string): void {
+    if (outcome === 'saved') toastService.success(saved);
+    else if (outcome === 'empty') toastService.warning(empty);
+  }
+
+  /*
+    Both exports name the file before anything else and gather the content inside `saveFile`. The
+    order is the point: a browser opens a save dialog only while the click that asked for it is still
+    being handled, and gathering a transcript or a log can outlast that. The title is one small read.
+  */
   async function exportCallTranscript(callId: string): Promise<void> {
     const dataset = datasetStore.currentDataset();
-    if (!dataset) return;
+    if (!dataset || !callId) return;
     const p = dataset.handle;
     try {
-      // The same gather extraction runs on, rather than a second reading of the same shape. What a
-      // turn is — which entities can be one, which rows are too broken to keep, and the ordering
-      // that makes a transcript a transcript rather than a bag of sentences — is one decision, and
-      // an export that answered it differently would disagree with what the model was shown.
-      const modelFor = (entity: string) => getEntitiesForPerspective(entity, p);
-      const predicate = containmentPredicate(modelFor, datasetStore.currentDatasetEntities());
-      const turns = predicate
-        ? await gatherTranscriptTurns(
-            {
-              modelFor: (entity) => modelFor(entity) as TurnRecord | undefined,
-              handle: p,
-              containmentPredicate: predicate,
-            },
-            callId,
-          )
-        : [];
-
-      // Ask for the speakers this transcript actually names before labelling any of them. The cache
-      // is populated as a side effect of rendering people — members, peers, bylines — so relying on
-      // it alone exports whoever happens to be on screen by name and everybody else as a raw DID.
-      // `fetchProfile` no-ops on a profile it already holds and dedupes concurrent calls, so asking
-      // for all of them costs a round trip only for the ones genuinely missing.
-      const speakers = [...new Set(turns.map((turn) => turn.speaker))];
-      await Promise.all(speakers.map((did) => profileStore.fetchProfile(did).catch(() => undefined)));
-
-      // A speaker's label the way the byline renders it: their display name, else their DID. The
-      // cache is keyed on the bare DID — `fetchProfile` strips the scheme on the way in — so a
-      // prefixed author has to be stripped here too or it would never match what was just fetched.
-      //
-      // Re-derived with the DID as the fallback rather than reading the cache's own `name`, which
-      // falls back to "Anonymous". That is right on screen, where a face sits beside the label and
-      // tells one unnamed peer from another — and wrong in a text file, where it is all there is:
-      // three unnamed speakers would come out as three identical "Anonymous" lines, and a
-      // transcript that cannot tell its speakers apart is not a transcript.
-      const nameFor = (did: string): string => {
-        const profile = profileStore.profiles().find((entry) => entry.did === did.replace('did://', ''));
-        return profile ? displayName(profile, did) : did;
-      };
-
-      /*
-        A text file has no badges, so what is not speech has to say so in words.
-
-        Every line here reads as a quotation — a name, a time, and what they said — and two kinds of
-        line in a transcript are not: one somebody typed into it, and one a human has since mended.
-        Unmarked they would both pass as verbatim, in the artefact most likely to be quoted back or
-        filed somewhere, and long after anybody remembers which was which.
-
-        Marked only where there is something to say. `spoken`, and a turn from before the field
-        existed, are the silent case — an annotation on every line would be noise on the ordinary
-        one, and the reader's assumption is already right there.
-      */
-      const mark = (turn: { source?: string }): string =>
-        turn.source === 'typed' ? ' (typed)' : turn.source === 'corrected' ? ' (corrected)' : '';
-      const lines = turns.map((turn) => `${nameFor(turn.speaker)}, ${turn.timestamp}${mark(turn)}: ${turn.text}`);
-
-      if (!lines.length) {
-        toastService.warning('This call has no transcript to export.');
-        return;
-      }
-
-      // Name the file after the call, falling back to a generic name, then stamp it with the export
-      // time so successive exports of the same call don't overwrite each other.
       const call = await CollectionBlock.findOne(p, { where: { id: callId } });
-      const rawName = (call?.title ?? '').trim();
-      const slug =
-        rawName
-          .replace(/[^\p{L}\p{N}\-_ ]/gu, '')
-          .trim()
-          .replace(/\s+/g, '-') || 'call-transcript';
-      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const filename = `${slug}-${stamp}.txt`;
-
-      const blob = new Blob([`${lines.join('\n')}\n`], { type: 'text/plain;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement('a');
-      anchor.href = url;
-      anchor.download = filename;
-      document.body.appendChild(anchor);
-      anchor.click();
-      document.body.removeChild(anchor);
-      URL.revokeObjectURL(url);
-      toastService.success('Transcript exported.');
+      const outcome = await saveFile({
+        name: exportFileName(call?.title, 'call-transcript', 'txt'),
+        type: 'text/plain;charset=utf-8',
+        content: async () => {
+          const { turns } = await callTranscript(p, callId);
+          if (!turns.length) return null;
+          const nameFor = await labelsFor(turns.map((turn) => turn.speaker));
+          return `${turns.map((turn) => transcriptLine(turn, nameFor)).join('\n')}\n`;
+        },
+      });
+      reportSave(outcome, 'Transcript exported.', 'This call has no transcript to export.');
     } catch (error) {
       console.error('SpaceStore: exportCallTranscript failed', error);
       toastService.error('Could not export the transcript.');
+    }
+  }
+
+  /**
+   * Everything extraction did with one call, as one Markdown file — see `formatExtractionLog`.
+   *
+   * Every member's passes, not only this agent's: the prompts and responses are stored on the shared
+   * record, so this exports what the panel already shows. Read in full rather than through the
+   * panel's query, which is capped for drawing and an hour of automatic extraction outruns.
+   */
+  async function exportExtractionLog(callId: string): Promise<void> {
+    const dataset = datasetStore.currentDataset();
+    if (!dataset || !callId) return;
+    const p = dataset.handle;
+    try {
+      const exportedAt = new Date();
+      const titled = await CollectionBlock.findOne(p, { where: { id: callId } });
+      const outcome = await saveFile({
+        name: exportFileName(titled?.title, 'call', 'md', exportedAt).replace(/\.md$/, '-extraction-log.md'),
+        type: 'text/markdown;charset=utf-8',
+        content: async () => {
+          const call = await CollectionBlock.findOne(p, {
+            where: { id: callId },
+            /*
+              `polymorphic` said here rather than trusted to the declaration. `extracted` names no
+              target class — a pass writes whatever models the call looks for — and the class this
+              store reads through did not carry the flag, so the executor refused to hydrate it.
+            */
+            include: { extractionPasses: true, extracted: { polymorphic: true } },
+          } as never);
+          const row = call as unknown as { title?: string; extractionPasses?: unknown; extracted?: unknown } | null;
+          const passes = (Array.isArray(row?.extractionPasses) ? row.extractionPasses : []) as PassEntry[];
+          const records = Array.isArray(row?.extracted) ? (row.extracted as unknown[]) : [];
+          if (!passes.length) return null;
+
+          const { turns, predicate } = await callTranscript(p, callId);
+          // Scoped to this call, as the review list is; best effort, since a log without the waiting
+          // suggestions is still the log.
+          const port = session.backendPorts()?.interpretation;
+          const proposals =
+            port && predicate ? await port.proposals(p, { parent: { id: callId, predicate } }).catch(() => []) : [];
+          const authors = records.map((record) => (record as { author?: unknown }).author);
+          const nameFor = await labelsFor(
+            [...turns.map((turn) => turn.speaker), ...passes.map((pass) => pass.author), ...authors].filter(
+              (did): did is string => typeof did === 'string' && did !== '',
+            ),
+          );
+
+          return formatExtractionLog({
+            callId,
+            callTitle: row?.title,
+            spaceName: currentSpace()?.name,
+            exportedAt,
+            callTargets: extractionTargetsForCall(callId),
+            spaceTargets: extractionTargets(),
+            autoInterpret: autoInterpretForCall(callId),
+            transcript: turns,
+            passes,
+            records,
+            proposals,
+            nameFor,
+          });
+        },
+      });
+      reportSave(outcome, 'Extraction log exported.', 'No extraction has run on this call yet.');
+    } catch (error) {
+      console.error('SpaceStore: exportExtractionLog failed', error);
+      toastService.error('Could not export the extraction log.');
     }
   }
 
@@ -4613,6 +4679,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     copyGuestLink,
     getSubgroupMessages,
     exportCallTranscript,
+    exportExtractionLog,
     removeSpaceFromGlobal,
     updateSpaceInCache,
 

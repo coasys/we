@@ -7379,6 +7379,7 @@
         "copyGuestLink",
         "getSubgroupMessages",
         "exportCallTranscript",
+        "exportExtractionLog",
         "removeSpaceFromGlobal"
       ]
     },

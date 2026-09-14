@@ -1578,12 +1578,13 @@ describe('the history of what was read', () => {
       button" is a statement about which node the handler sits on — a search of the serialised panel
       would pass just as happily with the caret button back and the row inert around it.
 
-      Exactly one `we-button` inside each: the caret cannot go back to being its own, because a
+      Exactly one `we-button` inside each toggle: the caret cannot go back to being its own, because a
       button nested in a button is invalid markup and would take the press on the way past and
-      toggle twice.
+      toggle twice. A heading carrying an action — Logs' export — is split into two toggles around
+      it, the name and the count, so a field may have two; the name is always one of them.
     */
     const fields = ['proposalsOpen', 'extractedOpen', 'logsOpen'];
-    const found: Record<string, string> = {};
+    const found: Record<string, string[]> = {};
 
     const walk = (node: unknown): void => {
       if (!node || typeof node !== 'object') return;
@@ -1592,7 +1593,7 @@ describe('the history of what was read', () => {
       const field = (n.props?.onClick as { $toggleLocal?: string } | undefined)?.$toggleLocal;
       if (field && fields.includes(field)) {
         expect(n.type, `${field} is toggled from a ${n.type}`).toBe('we-button');
-        found[field] = JSON.stringify(node);
+        (found[field] ??= []).push(JSON.stringify(node));
       }
       Object.values(n).forEach(walk);
     };
@@ -1605,8 +1606,8 @@ describe('the history of what was read', () => {
       ['extractedOpen', 'Extracted'],
       ['logsOpen', 'Logs'],
     ]) {
-      expect(found[field]).toContain(`"${label}"`);
-      expect(found[field].match(/"type":"we-button"/g)).toHaveLength(1);
+      expect(found[field].some((toggle) => toggle.includes(`"${label}"`))).toBe(true);
+      for (const toggle of found[field]) expect(toggle.match(/"type":"we-button"/g)).toHaveLength(1);
     }
   });
 

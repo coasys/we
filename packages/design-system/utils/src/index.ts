@@ -1,10 +1,12 @@
 import type { DesignSystemProps, FlexDirection } from '@we/design-types';
 import { font, radius, role, semanticValues, shadow, space, type Tier, TIERS } from '@we/tokens';
 
+import { dataUriToBlob } from './saveFile';
 import { tierQuery } from './surface';
 
 export * from './color';
 export * from './safeHref';
+export * from './saveFile';
 export * from './surface';
 export * from './tiling';
 
@@ -914,18 +916,6 @@ export function isBgImageFaded(props: Pick<DesignSystemProps, 'bgImage' | 'bgIma
 // URLs are never revoked — the number of *distinct* images used in a session is small enough
 // that this is a non-issue in practice; revisit with an LRU + revokeObjectURL if that changes.
 const bgImageObjectUrlCache = new Map<string, string>();
-
-function dataUriToBlob(dataUri: string): Blob {
-  const commaIndex = dataUri.indexOf(',');
-  const header = dataUri.slice(0, commaIndex);
-  const base64 = dataUri.slice(commaIndex + 1).replace(/\s+/g, '');
-  const mimeMatch = /^data:([^;]+)/.exec(header);
-  const mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return new Blob([bytes], { type: mime });
-}
 
 /**
  * Resolves a bgImage value to something safe to embed in CSS. Data URIs get converted to a

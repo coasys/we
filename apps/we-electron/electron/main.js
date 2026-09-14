@@ -2,11 +2,11 @@ import { execSync, spawn } from 'child_process';
 import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, shell } from 'electron';
 import contextMenu from 'electron-context-menu';
 import express from 'express';
-import { existsSync, readdirSync, readFileSync, rmSync } from 'fs';
+import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import http from 'http';
 import net from 'net';
 import { homedir } from 'os';
-import { dirname, join } from 'path';
+import { basename, dirname, extname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -656,6 +656,38 @@ ipcMain.handle('executor-restart', () => restartExecutorAndReload());
  * the one place that can turn "somewhere to put it" into something it can use. A renderer file
  * picker cannot: the File it yields carries no path.
  */
+/*
+  Save a file the renderer has produced — every download in the app, when running here.
+
+  The renderer's own ways out are both worse on a desktop: a download link drops the file in
+  Downloads with no say and no answer, and Chromium's save picker needs a file-system permission
+  this app refuses to every page (see the permission handlers). So the dialog is the main process's
+  own, and so is the write — to the path that dialog returned and nothing else, which is what keeps
+  an IPC channel that writes files from being one that writes *any* file.
+
+  Resolves true once written, false when the dialog was closed.
+*/
+ipcMain.handle('save-file', async (_event, { name, bytes } = {}) => {
+  if (typeof name !== 'string' || !(bytes instanceof Uint8Array))
+    throw new Error('save-file: a name and bytes are required');
+  const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
+  // A name only — a renderer-supplied path would choose the folder for the reader.
+  const fileName = basename(name) || 'download';
+  const extension = extname(fileName).slice(1);
+  const result = await dialog.showSaveDialog(parent, {
+    defaultPath: join(app.getPath('downloads'), fileName),
+    filters: extension
+      ? [
+          { name: extension.toUpperCase(), extensions: [extension] },
+          { name: 'All files', extensions: ['*'] },
+        ]
+      : [],
+  });
+  if (result.canceled || !result.filePath) return false;
+  writeFileSync(result.filePath, bytes);
+  return true;
+});
+
 ipcMain.handle('executor-choose-file', async (_event, { save, defaultName } = {}) => {
   const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
   const options = { defaultPath: defaultName, filters: [{ name: 'JSON', extensions: ['json'] }] };

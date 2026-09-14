@@ -2982,6 +2982,7 @@ export const contextData: ContextData = {
         'copyGuestLink',
         'getSubgroupMessages',
         'exportCallTranscript',
+        'exportExtractionLog',
         'removeSpaceFromGlobal',
       ],
     },
