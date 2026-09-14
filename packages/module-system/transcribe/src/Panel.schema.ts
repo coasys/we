@@ -1124,7 +1124,9 @@ const proposals: SchemaNode = {
                       children: [
                         {
                           type: 'Column',
-                          props: { gap: '200', width: '100%' },
+                          // `flex` so it fills the card: a grid row is as tall as its tallest card, and
+                          // the others are stretched to match — see the answer row's `mt`.
+                          props: { gap: '200', width: '100%', flex: '1' },
                           children: [
                             /*
                               What kind of thing is being offered, in the model's own words and icon.
@@ -1247,13 +1249,21 @@ const proposals: SchemaNode = {
                                     `ay: 'end'` rather than centre: the details wrap to as many lines
                                     as they need, and the answer belongs at the foot of the card
                                     however tall the left-hand side turns out to be.
+
+                                    And `flex: '1'` for the same promise across cards. Full screen
+                                    lays them out as a grid, whose rows stretch every card to the
+                                    tallest one's height; without it a short card's answer sat
+                                    wherever its content ended, partway up the card. The row takes the
+                                    spare height so the answer can reach the corner — and only the
+                                    answer: the details keep to the top (`alignSelf`), under the title
+                                    they describe, rather than dropping to the foot with it.
                                   */
                               type: 'Row',
-                              props: { gap: '200', ax: 'between', ay: 'end', width: '100%' },
+                              props: { gap: '200', ax: 'between', ay: 'end', width: '100%', flex: '1' },
                               children: [
                                 {
                                   type: 'Column',
-                                  props: { flex: '1', minWidth: '0', gap: '100' },
+                                  props: { flex: '1', minWidth: '0', gap: '100', alignSelf: 'start' },
                                   children: [
                                     {
                                       // Not while the editor is open: those fields are the same
