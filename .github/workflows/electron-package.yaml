@@ -59,7 +59,9 @@ jobs:
       # ── AD4M executor toolchain ────────────────────────────────────────
       #
       # The executor embeds a Deno runtime, a Holochain conductor, and a
-      # V8 isolate. Building it needs Rust and cmake (for V8/openssl).
+      # V8 isolate. Building it needs Rust, cmake (for openssl), and on
+      # macOS a V8 source build (the coasys/rusty_v8 fork does not publish
+      # prebuilt simdutf binaries for aarch64-apple-darwin).
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -75,15 +77,23 @@ jobs:
           key: cargo-registry-${{ matrix.platform }}
           restore-keys: cargo-registry-${{ matrix.platform }}
 
+      # Linux: alsa-sys needs libasound2-dev; AppImage needs libfuse2.
       - name: Install system dependencies (Linux)
         if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake protobuf-compiler libfuse2
+          sudo apt-get install -y cmake protobuf-compiler libasound2-dev libfuse2
 
+      # macOS: ninja is needed for V8 source build.
       - name: Install system dependencies (macOS)
         if: matrix.platform == 'mac'
-        run: brew install cmake protobuf
+        run: brew install cmake protobuf ninja
+
+      - name: Install Python (macOS)
+        if: matrix.platform == 'mac'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
       # ── Build AD4M executor ────────────────────────────────────────────
       #
@@ -91,10 +101,18 @@ jobs:
       # launcher, not the languages. The `ad4m` package (cli crate) defines
       # the `ad4m-executor` binary; `-p ad4m --bin ad4m-executor` builds
       # exactly that and its transitive deps.
+      #
+      # V8_FROM_SOURCE on macOS: the coasys/rusty_v8 fork's v150.4.0
+      # release only has simdutf prebuilt binaries for x86_64-linux.
+      # macOS aarch64 gets a 404, so V8 must build from source there.
+      # This adds ~20 minutes but is the only path that works until
+      # the fork publishes aarch64-apple-darwin simdutf artifacts.
 
       - name: Build AD4M executor
         run: cargo build --release -p ad4m --bin ad4m-executor
         working-directory: ${{ github.workspace }}/../ad4m
+        env:
+          V8_FROM_SOURCE: ${{ matrix.platform == 'mac' && '1' || '' }}
 
       # ── Build WE ──────────────────────────────────────────────────────
 
