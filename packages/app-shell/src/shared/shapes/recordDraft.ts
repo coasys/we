@@ -132,6 +132,15 @@ function fieldFrom(name: string, property: PropertySchema): RecordField {
  * different affordance — see the relationship work — and a picker over every instance in a space
  * would be the wrong one anyway.
  */
+/**
+ * Whether a built-in entity belongs in a "create something" picker: it has a form, and it is not made
+ * somewhere more specific — see `authoring.offered` in the manifest. Shapes a community defined are
+ * always offered and never ask this.
+ */
+export function offeredForCreation(schema: EntitySchema): boolean {
+  return Boolean(schema.authoring?.fields.length) && schema.authoring?.offered !== false;
+}
+
 export function fieldsFor(schema: EntitySchema, authorable: boolean): RecordField[] {
   const names = schema.authoring?.fields ?? (authorable ? Object.keys(schema.properties) : []);
   return names.flatMap((name) => {

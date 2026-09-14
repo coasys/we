@@ -59,7 +59,10 @@ export const Relationship: CoreEntityDef = {
     extractable: true,
     // `sourceType`/`targetType` are absent: they are set from what was connected, not typed by hand,
     // and so is `relationshipTypeId` — the form offers the kinds this community has named.
-    authoring: { fields: ['label', 'description'] },
+    //
+    // Not `offered`: a connection is drawn between two records, never picked from a list of things
+    // to create — a picker would open this form with two endpoints nobody had chosen.
+    authoring: { fields: ['label', 'description'], offered: false },
     properties: {
       /**
        * What makes two mentions the same connection — the pair and the label, joined.

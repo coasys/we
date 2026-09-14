@@ -37,6 +37,7 @@ import { displayFor, modelLabel, type RecordDisplay } from '../../../shared/shap
 import {
   asEntityName,
   emptyRecordDraft,
+  offeredForCreation,
   type RecordDraft,
   recordDraftErrors,
   recordDraftFields,
@@ -445,7 +446,9 @@ export function RecordStoreProvider(props: ParentProps) {
    */
   const coreEntities = createMemo<CreatableEntity[]>(() =>
     Object.entries(CORE_MANIFEST.entities)
-      .filter(([name, entity]) => entity.authoring?.fields.length && name !== RELATIONSHIP)
+      // By declaration rather than by name — `Relationship` was the one name, and `RelationshipType`
+      // the one it missed. See `authoring.offered`.
+      .filter(([, entity]) => offeredForCreation(entity))
       .map(([name]) => ({ label: modelLabel(name), value: name, icon: BLOCK_ICONS[name] ?? 'cube', group: 'Built in' }))
       .sort((a, b) => a.label.localeCompare(b.label)),
   );
