@@ -253,6 +253,47 @@ describe('two true states compose', () => {
   });
 });
 
+describe('what sits above the variant layers', () => {
+  it("still draws an overlay's surface in each state", async () => {
+    // OverlayElement's surface rules live in `we-overlay`, above every state: they replace how the DS
+    // paints an overlay's fill, and must keep doing so under the pointer.
+    const expected = (color: string) =>
+      page.evaluate((c) => {
+        const probe = document.createElement('div');
+        probe.style.background = `color-mix(in srgb, ${c} 100%, transparent)`;
+        document.body.append(probe);
+        const value = getComputedStyle(probe).backgroundColor;
+        probe.remove();
+        return value;
+      }, color);
+    await mount('overlay', 'we-modal', {
+      props: { bg: 'rgb(10, 20, 30)', hoverProps: { bg: 'rgb(30, 20, 10)' }, hideclosebutton: true },
+      text: 'Modal body',
+    });
+    expect(await read('overlay', 'background-color')).toBe(await expected('rgb(10, 20, 30)'));
+    await hover('overlay');
+    await settled('overlay', 'background-color').toBe(await expected('rgb(30, 20, 10)'));
+    await leave();
+    await page.evaluate(() => document.getElementById('overlay')?.remove());
+  });
+
+  it('lets a theme styling a part from outside keep winning', async () => {
+    // Themes reach primitives through ::part() from the document, which outranks anything inside the
+    // shadow root whatever layer it is in — the layers change nothing about that.
+    await page.addStyleTag({ content: '.themed::part(base) { border-top-color: rgb(250, 0, 0); }' });
+    await mount('themed', 'we-badge', {
+      attrs: { class: 'themed' },
+      props: { border: '2px solid rgb(0, 0, 250)', hoverProps: { border: '2px solid rgb(0, 250, 0)' } },
+      text: 'Badge',
+    });
+    expect(await read('themed', 'border-top-color')).toBe('rgb(250, 0, 0)');
+    await hover('themed');
+    await settled('themed', 'border-bottom-color').toBe('rgb(0, 250, 0)');
+    expect(await read('themed', 'border-top-color')).toBe('rgb(250, 0, 0)');
+    await leave();
+  });
+});
+
 describe('a breakpoint changes only what it names', () => {
   it('carries a smaller tier up through the wider ones', async () => {
     await mount('cascade', 'we-text', { width: 1300, props: { smUpProps: { color: 'rgb(0, 90, 0)' } } });
