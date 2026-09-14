@@ -116,6 +116,19 @@ jobs:
       # This adds significant time but is the only path that works
       # until the fork publishes aarch64-apple-darwin simdutf artifacts.
 
+      # The executor embeds `rust-executor/dapp/dist/` via `include_dir!`
+      # at compile time — a React app that serves as the AD4M launcher UI.
+      # That directory is gitignored and normally built by `pnpm build-libs`
+      # (turbo), which needs the full AD4M JS workspace installed.
+      #
+      # WE does not use this UI — it has its own frontend — so the executor
+      # binary just needs the directory to exist for `include_dir!` to
+      # succeed. A placeholder index.html satisfies the macro.
+      - name: Create dapp/dist placeholder
+        run: |
+          mkdir -p "${GITHUB_WORKSPACE}/../ad4m/rust-executor/dapp/dist"
+          echo '<html><body>AD4M</body></html>' > "${GITHUB_WORKSPACE}/../ad4m/rust-executor/dapp/dist/index.html"
+
       # Retry wrapper: AD4M's build.rs downloads alliance.dna with bare
       # curl (no --retry). A transient GitHub 504 kills a 40-minute build.
       # Retrying the cargo command itself is safe — build.rs skips the
