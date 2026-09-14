@@ -719,6 +719,12 @@ function updateCustomVars(
   );
   setProperty(el, `${prefix}text-decoration`, props.textDecoration);
   setProperty(el, `${prefix}text-transform`, props.textTransform);
+  // Declared by the static sheet from the same spec table and, until these two lines, never written:
+  // `whiteSpace` and `overflowWrap` typechecked, validated and did nothing on every primitive, while
+  // the same props worked on a Column. (`font-style` is in the table too, and is not a prop — a
+  // component writes `--we-<name>-font-style` from its own CSS, as `we-text`'s `italic` does.)
+  setProperty(el, `${prefix}white-space`, props.whiteSpace);
+  setProperty(el, `${prefix}overflow-wrap`, props.overflowWrap);
 }
 
 export function updateAllCustomVars(
