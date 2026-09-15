@@ -1989,6 +1989,33 @@ export function SpaceStoreProvider(props: ParentProps) {
     const ds = datasetStore.datasets().find((d) => datasetAddressedBy(d, spaceId));
 
     /*
+      Back to the space you are standing in, from an overlay in front of it: close the overlay, and go
+      nowhere.
+
+      Settings, profile and about are drawn over the space without touching its address, so the space
+      is still exactly where it was underneath. Navigating as well sent it to its own root — for a
+      self-routing template that is a different screen, and what somebody had selected lives in the
+      address it left. The workshop's call is `?call=`, so returning from a profile page dropped the
+      call, and every panel about it went blank until it was chosen again.
+
+      Only from an overlay, and only for the space already on screen. Clicking the current space with
+      nothing in front of it still goes to its root, which is how the sidebar takes you home, and a
+      caller naming a view knows where it wants to be.
+    */
+    const segs = routeStore.segments();
+    if (
+      shellStore.activeShellView() &&
+      !view &&
+      ds &&
+      datasetStore.currentDataset()?.id === ds.id &&
+      segs[0] === 'space' &&
+      datasetAddressedBy(ds, segs[1] ?? '')
+    ) {
+      shellStore.closeShellView();
+      return;
+    }
+
+    /*
       Switching only when the space is actually changing — the same guard the route effect below
       carries, and missing here.
 
@@ -2020,7 +2047,6 @@ export function SpaceStoreProvider(props: ParentProps) {
       it has, and gating on the *source's* switches would refuse to carry a section the reader is
       looking at merely because they had hidden it somewhere else.
     */
-    const segs = routeStore.segments();
     const here = segs[0] === 'space' ? (segs[2] ?? '') : '';
     const carried = routableViews().some((v) => v.segment === here) ? here : '';
     /*
