@@ -1334,7 +1334,7 @@ function personRows(opts: TaskBoardOptions): SchemaNode {
                   },
                   {
                     type: 'Column',
-                    props: { gap: '050', flex: '1', minWidth: '0' },
+                    props: { flex: '1', minWidth: '0' },
                     children: [
                       {
                         type: 'we-text',

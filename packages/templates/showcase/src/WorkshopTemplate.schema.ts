@@ -911,7 +911,7 @@ const relationshipKind: SchemaNode = {
             condition: { $: KIND_OF_LINK },
             then: {
               type: 'Column',
-              props: { gap: '050', py: '100', borderTop: '1px solid border' },
+              props: { py: '100', borderTop: '1px solid border' },
               children: [
                 { type: 'we-text', props: { variant: 'footnote', color: 'text-faint' }, children: ['Kind'] },
                 {
@@ -2071,7 +2071,7 @@ const inspectorPanel: SchemaNode = {
                               children: [
                                 {
                                   type: 'Column',
-                                  props: { gap: '050', py: '100', borderTop: '1px solid border' },
+                                  props: { py: '100', borderTop: '1px solid border' },
                                   children: [
                                     {
                                       type: 'we-text',
@@ -4147,7 +4147,6 @@ const calendarRoute: RouteSchema = {
                                 // Seven to a row, by width rather than by a grid the schema cannot express.
                                 width: 'calc(14.28% - 6px)',
                                 minHeight: '92px',
-                                gap: '050',
                                 p: '100',
                                 r: '300',
                                 cursor: 'pointer',

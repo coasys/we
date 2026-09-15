@@ -23,7 +23,7 @@ export function LocationDisplay(props: LocationDisplayProps) {
   return (
     <Row class="we-location-block" gap="300" ay="center" p="300" border="1px solid border" r="300">
       <we-icon name="map-pin" size="sm" flex="none" />
-      <Column gap="50" flex="1">
+      <Column flex="1">
         <Show when={mapsUrl()} fallback={<we-text variant="label">{props.name || 'Unknown Location'}</we-text>}>
           <we-link href={mapsUrl()} target="_blank" textDecoration="none" color="accent">
             <we-text variant="label">{props.name || 'Unknown Location'}</we-text>
