@@ -173,6 +173,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     bootState: state('session'),
     bootError: state('session'),
     passwordError: state('session'),
+    loginError: state('session'),
     loginLoading: state('session'),
     createAgentError: state('session'),
     createAgentLoading: state('session'),

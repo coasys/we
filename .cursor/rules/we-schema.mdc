@@ -2763,7 +2763,8 @@ SessionStore:
 - State:
   - bootState: string — 'initialising' | 'login' | 'createAgent' | 'finishing' | 'ready' | 'error'
   - bootError: string — why the boot failed, when bootState is 'error'. Empty otherwise
-  - passwordError: boolean — true after a failed unlock attempt
+  - passwordError: boolean — true after an unlock the backend refused. Not set when it merely timed out; see loginError
+  - loginError: string — why the last sign-in failed when the password was not the problem (the backend took too long to finish), ready to display. Empty otherwise, and never set together with passwordError. Show it where passwordError’s message goes: { $: "sessionStore.passwordError ? 'Incorrect password' : sessionStore.loginError" }
   - loginLoading: boolean
   - createAgentError: string — the backend message from a failed agent creation, or empty
   - createAgentLoading: boolean

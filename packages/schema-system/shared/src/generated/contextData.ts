@@ -2658,6 +2658,7 @@ export const contextData: ContextData = {
         bootState: { type: 'string' },
         bootError: { type: 'string' },
         passwordError: { type: 'boolean' },
+        loginError: { type: 'string' },
         loginLoading: { type: 'boolean' },
         createAgentError: { type: 'string' },
         createAgentLoading: { type: 'boolean' },

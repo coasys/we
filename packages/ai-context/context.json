@@ -6835,6 +6835,9 @@
         "passwordError": {
           "type": "boolean"
         },
+        "loginError": {
+          "type": "string"
+        },
         "loginLoading": {
           "type": "boolean"
         },

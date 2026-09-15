@@ -4,18 +4,28 @@
  * `client.neighbourhood.*`, and `client.agent.*` calls the app shell's stores previously made
  * directly. Datasets are perspectives; shared datasets are neighbourhoods.
  */
-import { Ad4mClient, Perspective, type PerspectiveProxy } from '@coasys/ad4m';
-import type {
-  AgentIdentity,
-  AgentSessionPort,
-  DatasetChangeHandlers,
-  DatasetLifecyclePort,
-  DatasetRef,
+import { Ad4mClient, Perspective, type PerspectiveProxy, RpcError } from '@coasys/ad4m';
+import {
+  type AgentIdentity,
+  type AgentSessionPort,
+  type DatasetChangeHandlers,
+  type DatasetLifecyclePort,
+  type DatasetRef,
+  SessionTimeoutError,
 } from '@we/backend-shared';
 
 import { ensureFileStorageLanguage } from './agentHelpers';
 
 const SCHEME = 'neighbourhood://';
+
+/**
+ * How long past the client's own RPC timeout an unlock or generate is still waited for.
+ *
+ * That timeout (30s) abandons the reply, not the work. The executor carries on starting Holochain
+ * and loading languages, then announces the result with an `agent-status-changed` event — so a
+ * 408 on these two calls means "still going", and a cold start can legitimately outlast 30s.
+ */
+const SESSION_SETTLE_MS = 150_000;
 
 function toRef(p: PerspectiveProxy): DatasetRef {
   return {
@@ -147,6 +157,48 @@ export function createAd4mAgentSession(backendClient: unknown): AgentSessionPort
    * latched on success.
    */
   let fileStorageReady = false;
+
+  /*
+    Calls waiting out a timed-out generate/unlock. One listener for the port's lifetime rather than
+    one per call, because AD4M's listener API has no detach.
+
+    The event is the signal, not `agent.status()`: status reports unlocked the moment the wallet
+    opens, before Holochain and the languages are up, and the executor only publishes this event at
+    the end of the handler. Polling status would carry on into a session that is not ready.
+  */
+  const settleWaiters = new Set<() => void>();
+  client.agent.addAgentStatusChangedListener((status) => {
+    if (!(status as { isUnlocked?: unknown } | undefined)?.isUnlocked) return;
+    for (const settle of [...settleWaiters]) settle();
+  });
+
+  /**
+   * Run a generate/unlock, and wait for the executor to finish it when the reply times out.
+   *
+   * The waiter is registered before the call: the event lands whenever the executor finishes, which
+   * can be after the reply was abandoned but before this code would otherwise be listening. A refusal
+   * (wrong password, an agent that already exists) is rethrown as it came.
+   */
+  async function settleSessionCall(call: () => Promise<unknown>): Promise<void> {
+    let settle!: () => void;
+    const settled = new Promise<void>((resolve) => (settle = resolve));
+    settleWaiters.add(settle);
+    try {
+      await call();
+    } catch (err) {
+      if (!(err instanceof RpcError && err.status === 408)) throw err;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const expired = new Promise<'expired'>((resolve) => {
+        timer = setTimeout(() => resolve('expired'), SESSION_SETTLE_MS);
+      });
+      const outcome = await Promise.race([settled.then(() => 'settled' as const), expired]);
+      clearTimeout(timer);
+      if (outcome === 'expired') throw new SessionTimeoutError(err.message);
+    } finally {
+      settleWaiters.delete(settle);
+    }
+  }
+
   async function ensureFileStorage(): Promise<void> {
     if (fileStorageReady) return;
     try {
@@ -172,12 +224,12 @@ export function createAd4mAgentSession(backendClient: unknown): AgentSessionPort
      * same call, matching what `unlock(password, true)` does on the returning-agent path.
      */
     async generate(password) {
-      await client.agent.generate(password);
+      await settleSessionCall(() => client.agent.generate(password));
       await ensureFileStorage();
     },
 
     async unlock(password) {
-      await client.agent.unlock(password, true);
+      await settleSessionCall(() => client.agent.unlock(password, true));
       await ensureFileStorage();
     },
 
