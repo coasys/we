@@ -813,8 +813,7 @@ function tabStrip(id: string): SchemaNode {
                     The accent fill itself, with its own foreground, rather than `accent-muted`: muted is
                     a tint toward the ground, so in a dark theme it came out darker than the resting
                     tab's `control-surface` — a flash that dimmed the thing it was pointing at. The name
-                    takes `on-accent` for the moment it is on the fill, through the move handle's own
-                    colour properties, which the text inherits across its shadow root.
+                    takes `on-accent` for the moment it is on the fill — set on the text itself, below.
 
                     No fill on hover. The name brightening under the pointer is the move handle's, and
                     `surface-hover` on top of it darkened a tab into the titlebar behind it.
@@ -828,22 +827,6 @@ function tabStrip(id: string): SchemaNode {
                   */
                   transition: {
                     $: `${landed} ? 'background-color 400 ease' : 'background-color calc(var(--we-transition-500) * 3) ease'`,
-                  },
-                  styles: {
-                    /*
-                      The tab showing is at full strength at rest, not only under the pointer.
-
-                      Pressing a background tab brings a different frame forward, with its own titlebar and
-                      its own copy of the strip — so the tab under the pointer is a new element, and it came
-                      in at the faint resting colour and eased up to the hover one: the name dimmed on the
-                      click and brightened again. Held bright, the tab you just chose is already the colour
-                      it would be hovered, and there is nothing to ease. It also says which tab is showing,
-                      which the fill alone says quietly.
-                    */
-                    '--we-move-handle-color': {
-                      $: `${landed} ? 'var(--we-role-on-accent)' : tab.active ? 'var(--we-role-text)' : 'initial'`,
-                    },
-                    '--we-move-handle-active-color': { $: `${landed} ? 'var(--we-role-on-accent)' : 'initial'` },
                   },
                 },
                 children: [
@@ -871,7 +854,31 @@ function tabStrip(id: string): SchemaNode {
                     children: [
                       {
                         type: 'we-text',
-                        props: { variant: 'footnote', truncate: true, maxWidth: '120px' },
+                        props: {
+                          variant: 'footnote',
+                          truncate: true,
+                          maxWidth: '120px',
+                          /*
+                            On the text, not through the move handle's colour properties, so it can fade
+                            with the fill. The handle eases its own colour in a fixed 120ms, and a name
+                            that switched to `on-accent` in that while the fill took 400 to arrive and
+                            1.5s to leave read as the two coming apart. Set here, the text takes the
+                            fill's own timing.
+
+                            The tab showing is at full strength at rest, not only under the pointer.
+                            Pressing a background tab brings a different frame forward, with its own
+                            titlebar and its own copy of the strip — so the tab under the pointer is a
+                            new element, and it came in at the faint resting colour and eased up to the
+                            hover one: the name dimmed on the click and brightened again. Held bright,
+                            there is nothing to ease. The others inherit the handle's faint-to-bright
+                            hover as before, at the handle's own pace — which is why the slow timing is
+                            the active tab's alone: the flash is always on the tab showing.
+                          */
+                          color: { $: `${landed} ? 'on-accent' : tab.active ? 'text' : null` },
+                          transition: {
+                            $: `tab.active ? (${landed} ? 'color 400 ease' : 'color calc(var(--we-transition-500) * 3) ease') : null`,
+                          },
+                        },
                         children: [{ $: 'tab.title' }],
                       },
                     ],
