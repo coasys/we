@@ -10,27 +10,31 @@
 import { createAd4mInterpretationPort } from '@we/backend-ad4m';
 import { describe, expect, it } from 'vitest';
 
-type Listener = (link: { data: { predicate?: string } }) => null;
-
 function perspective(decide: () => Promise<boolean>) {
-  const listeners = new Map<string, Set<Listener>>();
+  let resultCb: (() => void) | null = null;
+  let disposed = false;
   return {
-    listeners,
-    emit(type: 'link-added' | 'link-removed', predicate: string) {
-      for (const cb of listeners.get(type) ?? []) cb({ data: { predicate } });
+    /** Simulate the executor pushing a subscription update. */
+    pushResult() {
+      if (!disposed && resultCb) resultCb();
+    },
+    get disposed() {
+      return disposed;
     },
     handle: {
       runInterpretation: () => undefined,
       interpretationOverlays: async () => [],
       acceptInterpretation: decide,
       rejectInterpretation: decide,
-      addListener: async (type: string, cb: Listener) => {
-        if (!listeners.has(type)) listeners.set(type, new Set());
-        listeners.get(type)!.add(cb);
-      },
-      removeListener: async (type: string, cb: Listener) => {
-        listeners.get(type)?.delete(cb);
-      },
+      subscribeQuery: async (_query: string) => ({
+        onResult(cb: () => void) {
+          resultCb = cb;
+        },
+        dispose() {
+          disposed = true;
+          resultCb = null;
+        },
+      }),
     } as never,
   };
 }
@@ -59,19 +63,27 @@ describe('a decision somebody else already made', () => {
 describe('hearing that the staged suggestions moved', () => {
   const port = createAd4mInterpretationPort();
 
-  it('fires for the overlay marker coming or going, and for nothing else', async () => {
+  it('fires every time the executor pushes a subscription update', async () => {
+    const p = perspective(async () => true);
+    let heard = 0;
+    await port.onProposalsChanged!(p.handle, () => heard++);
+
+    p.pushResult();
+    p.pushResult();
+    expect(heard).toBe(2);
+  });
+
+  it('stops firing after the cleanup function runs', async () => {
     const p = perspective(async () => true);
     let heard = 0;
     const off = await port.onProposalsChanged!(p.handle, () => heard++);
 
-    p.emit('link-added', 'ad4m://interp/kind');
-    p.emit('link-removed', 'ad4m://interp/kind');
-    p.emit('link-removed', 'we://title');
-    expect(heard).toBe(2);
+    p.pushResult();
+    expect(heard).toBe(1);
 
     off();
-    await Promise.resolve();
-    p.emit('link-removed', 'ad4m://interp/kind');
-    expect(heard).toBe(2);
+    p.pushResult();
+    expect(heard).toBe(1);
+    expect(p.disposed).toBe(true);
   });
 });
