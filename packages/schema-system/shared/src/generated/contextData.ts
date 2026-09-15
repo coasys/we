@@ -2806,7 +2806,6 @@ export const contextData: ContextData = {
         'toggleDockDisplace',
         'toggleCollapseDock',
         'toggleStowLane',
-        'peekDock',
         'revealDock',
         'breakOut',
         'returnHome',

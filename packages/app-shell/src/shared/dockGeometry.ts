@@ -536,8 +536,7 @@ export function looseSeats(panels: readonly { placement: FloatPlacement; index: 
  * panel dragged out of position 0 of one edge and dropped in the middle keeps saying `order: 0`
  * about a lane it is not in. `seat` goes for the same reason and one more: it is the one coordinate
  * whose staleness would be *visible*, fusing this card into a stack it has just been pulled out of.
- * `stowed` too: a card peeking out of a strip and dragged away is a card, not a strip with one tab
- * gone missing.
+ * `stowed` too: a strip is a place in a lane like any other, and a card is in none.
  */
 export function unlaned(placement: FloatPlacement, snap: SnapPoint | null): FloatPlacement {
   const { band: _band, order: _order, home: _home, seat: _seat, stowed: _stowed, ...rest } = placement;
@@ -867,13 +866,14 @@ export const PANEL_CHROME = { x: FRAME_BORDER_PX, y: TITLE_BAR_PX + FRAME_BORDER
 export const COLLAPSED_PX = TITLE_BAR_PX + FRAME_BORDER_PX;
 
 /**
- * How thick a lane is while it is collapsed to its edge — the strip of tabs it becomes.
+ * How thick a lane is while it is collapsed to its edge — the strip naming its panels.
  *
- * Wide enough for a line of vertical text and a button's hit area, and no wider: the point of
- * collapsing a column is to hand its room to the content, and every pixel the strip keeps is one it
- * did not hand back.
+ * An `xs` control's height plus the strip's padding and its border either side, so the open glyph at
+ * its head fits without clipping, and no wider: the point of collapsing a column is to hand its room
+ * to the content, and every pixel the strip keeps is one it did not hand back. It was 28, which left
+ * 18px inside for a 24px control.
  */
-export const STRIP_PX = 28;
+export const STRIP_PX = 34;
 
 /**
  * How narrow a displacing lane's edge has to be dragged before letting go collapses it to its strip.
@@ -972,14 +972,9 @@ export interface DockGeometry {
   canCollapse?: boolean;
   /**
    * In a lane collapsed to its edge — see {@link FloatPlacement.stowed}. The frame is hidden, as a
-   * background tab's is, unless {@link peeking}; the lane's strip is what is on screen instead.
+   * background tab's is; the lane's strip is what is on screen instead.
    */
   stowed?: boolean;
-  /**
-   * A stowed panel shown over the content beside its strip, for as long as somebody is looking at
-   * it. Floating while it lasts, so it reads as a card and costs the content nothing.
-   */
-  peeking?: boolean;
   /**
    * Whether this panel's titlebar offers to collapse its lane to the edge. Only the lane's first
    * member offers it, since the lane — not the panel — is what goes: a column has no header of its
@@ -987,9 +982,8 @@ export interface DockGeometry {
    */
   canStow?: boolean;
   /**
-   * The strip a stowed lane becomes, published on its first member for the frame to draw — one tab
-   * per panel in the lane, `active` on the one peeking. Drawn outside every frame, because every
-   * frame in the lane is hidden.
+   * The strip a stowed lane becomes, published on its first member for the frame to draw — one name
+   * per panel in the lane. Drawn outside every frame, because every frame in the lane is hidden.
    */
   strip?: { top: string; left: string; width: string; height: string; vertical: boolean; tabs: DockTab[] };
   /**
@@ -1980,48 +1974,6 @@ export function stripBox(edge: Exclude<DockEdge, null>, viewport: Viewport, occu
     y: edge === 'top' ? region.top : viewport.height - region.bottom - STRIP_PX,
     w: region.width,
     h: STRIP_PX,
-  };
-}
-
-/**
- * Where a stowed panel appears while somebody peeks at it: a card beside its strip, over the content.
- *
- * As thick as the lane was when it was open, so the panel looks like itself rather than a preview of
- * itself, and along the full length of the strip less a card's margin — it is the column coming out
- * for a moment, not a popover. It floats, so it clears the chrome a float clears (the call bar along
- * the bottom, the rail on the right) and costs the content nothing.
- */
-export function peekBox(
-  edge: Exclude<DockEdge, null>,
-  strip: Rect,
-  placement: FloatPlacement,
-  viewport: Viewport,
-  chrome: ContentInset = DEFAULT_FLOAT_CHROME,
-): Rect {
-  const vertical = edge === 'left' || edge === 'right';
-  /*
-    The chrome between the strip and the content is on the card's side of the strip, so it is
-    stepped over rather than covered: the module rail stands just inboard of a right-hand strip and
-    the call bar just inboard of a bottom one, and a card laid flush against either strip would put
-    its own titlebar controls underneath them.
-  */
-  if (vertical) {
-    const room = Math.max(MIN_FLOAT_PX, viewport.width - strip.w - chrome.left - chrome.right - DOCK_GAP_PX * 2);
-    const w = clamp(thicknessOf(placement, edge), Math.min(MIN_DOCK_PX, room), room);
-    return {
-      x: edge === 'left' ? strip.x + strip.w + chrome.left + DOCK_GAP_PX : strip.x - chrome.right - DOCK_GAP_PX - w,
-      y: strip.y + chrome.top + DOCK_GAP_PX,
-      w,
-      h: Math.max(MIN_FLOAT_PX, strip.h - chrome.top - chrome.bottom - DOCK_GAP_PX * 2),
-    };
-  }
-  const room = Math.max(MIN_FLOAT_PX, viewport.height - strip.h - chrome.top - chrome.bottom - DOCK_GAP_PX * 2);
-  const h = clamp(thicknessOf(placement, edge), Math.min(MIN_DOCK_PX, room), room);
-  return {
-    x: strip.x + chrome.left + DOCK_GAP_PX,
-    y: edge === 'top' ? strip.y + strip.h + chrome.top + DOCK_GAP_PX : strip.y - chrome.bottom - DOCK_GAP_PX - h,
-    w: Math.max(MIN_FLOAT_PX, strip.w - chrome.left - chrome.right - DOCK_GAP_PX * 2),
-    h,
   };
 }
 

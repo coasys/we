@@ -241,13 +241,16 @@ describe('putting a lane away to its edge', () => {
     expect(JSON.stringify(button)).toContain('shellStore.toggleStowLane');
   });
 
-  it('draws the strip from outside the frame, with a tab that peeks each panel', () => {
+  it('draws the strip from outside the frame, as one button that opens the lane', () => {
     const strip = gatedOn(frame, geo('strip'));
+    const text = JSON.stringify(strip);
 
     expect(strip).toBeDefined();
-    expect(JSON.stringify(strip)).toContain('shellStore.peekDock');
-    // And the way back open, on the strip itself — the lane's titlebars are all hidden.
-    expect(JSON.stringify(strip)).toContain('shellStore.toggleStowLane');
+    // The whole strip is the way back — the lane's titlebars are all hidden — and there is no way to
+    // pull one panel out of it on its own.
+    expect(text.match(/"type":"we-button"/g)).toHaveLength(1);
+    expect(text).toContain('shellStore.toggleStowLane');
+    expect(text).not.toContain('peekDock');
   });
 });
 
@@ -255,8 +258,8 @@ describe('the displace control, by where the panel is', () => {
   const frame = dockFrame(entry as unknown as DockEntry, { type: 'Column' });
   const items = menuItems(frame);
 
-  it('is a titlebar button only while the panel floats and is not peeking', () => {
-    expect(gatedOn(frame, `${geo('floating')} && !${geo('peeking')}`)).toBeDefined();
+  it('is a titlebar button only while the panel floats', () => {
+    expect(gatedOn(frame, geo('floating'))).toBeDefined();
   });
 
   it('is a position-menu toggle, hidden while floating, once the panel docks', () => {

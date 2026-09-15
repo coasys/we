@@ -4054,7 +4054,7 @@ export function SpaceStoreProvider(props: ParentProps) {
 
   /**
    * Whether a panel is open and nobody can see it — behind another tab of its stack, folded to its
-   * bar, or in a lane collapsed to its edge and not the one peeking out.
+   * bar, or in a lane collapsed to its edge.
    *
    * Asked of the shell's resolved geometry rather than re-derived, because the shell is what decides
    * all three. Not eclipsed-by-full-screen: the rail hides while a panel is maximised, so no rail
@@ -4064,9 +4064,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (!dockId) return false;
     const geometry = shellStore.dockGeometry()[dockId];
     if (!geometry?.edge || geometry.home) return false;
-    return Boolean(
-      (geometry.hidden && !geometry.stowed) || geometry.collapsed || (geometry.stowed && !geometry.peeking),
-    );
+    return Boolean(geometry.hidden || geometry.collapsed || geometry.stowed);
   }
 
   /**

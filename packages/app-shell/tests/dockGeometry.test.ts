@@ -60,7 +60,6 @@ import {
   occupiedFor,
   PANEL_CHROME,
   PANEL_LAYER_BASE,
-  peekBox,
   placementFromDeclaration,
   RAIL_TOP_PX,
   railBand,
@@ -2114,11 +2113,10 @@ describe('a lane thinner than any panel may be dragged', () => {
 });
 
 /**
- * A lane collapsed to its edge — a strip of tabs, and a card that peeks out of it.
+ * A lane collapsed to its edge — a strip naming the panels in it.
  *
  * The way a sidebar gets out of the way when nothing beside it can take a fold's room. The lane
- * shrinks to `STRIP_PX` and the content takes the rest; each panel is a tab on the strip, and pressing
- * one shows the panel as a card beside it.
+ * shrinks to `STRIP_PX` and the content takes the rest.
  */
 describe('a lane collapsed to its edge', () => {
   const stowed = (over: Partial<FloatPlacement> = {}) =>
@@ -2153,24 +2151,6 @@ describe('a lane collapsed to its edge', () => {
     expect(top.h).toBe(STRIP_PX);
     expect(top.y).toBe(0);
     expect(top.x + top.w).toBe(desktop.width - 400);
-  });
-
-  it('peeks a panel out beside the strip at the lane’s own thickness', () => {
-    const strip = stripBox('left', desktop);
-    const peek = peekBox('left', strip, stowed(), desktop, NO_INSET);
-
-    expect(peek.x).toBe(strip.x + strip.w + DOCK_GAP_PX);
-    expect(peek.w).toBe(360);
-  });
-
-  it('steps a right-hand peek over the rail rather than putting its titlebar under it', () => {
-    const strip = stripBox('right', desktop);
-    const chrome = { ...NO_INSET, right: CHROME_RAIL_PX, bottom: BOTTOM_CHROME_PX };
-    const peek = peekBox('right', strip, stowed({ snap: 'right' }), desktop, chrome);
-
-    expect(peek.x + peek.w).toBe(strip.x - CHROME_RAIL_PX - DOCK_GAP_PX);
-    // And clears the call bar along the bottom, as any floating card does.
-    expect(peek.y + peek.h).toBeLessThanOrEqual(desktop.height - BOTTOM_CHROME_PX);
   });
 
   it('is left behind by a panel dragged out of it', () => {

@@ -43,7 +43,6 @@ import {
   nearEdge,
   NO_INSET,
   occupiedFor,
-  peekBox,
   placementFromDeclaration,
   railBand,
   type Rect,
@@ -74,7 +73,6 @@ import {
 import {
   DOCK_CONTENT_ATTR,
   DOCK_FRAME_ATTR,
-  DOCK_STRIP_ATTR,
   dockFrame,
   dockRegistry,
   dockTitle,
@@ -599,26 +597,18 @@ export interface ShellStore {
    */
   toggleCollapseDock: (id: string) => void;
   /**
-   * Collapse the whole displacing lane this panel is in down to a strip of tabs at its edge, or put
-   * it back.
+   * Collapse the whole displacing lane this panel is in down to a strip naming its panels at its
+   * edge, or put it back.
    *
    * The way to get a sidebar out of the way when there is nothing beside it to take a fold's room —
    * which a lone sidebar never has. Every panel keeps its place, its size, which tab is showing and
    * whether it is folded; the content is hidden, never unmounted. `dockGeometry[id].canStow` says
-   * whether the titlebar offers it.
+   * whether the titlebar offers it, and a press anywhere on the strip opens the lane again.
    */
   toggleStowLane: (id: string) => void;
   /**
-   * Show one panel of a collapsed lane over the content, beside its strip — or, with `''`, stop.
-   *
-   * What a strip's tab does. Pressing the same tab again, pressing anywhere outside the panel, and
-   * Escape all put it back. The lane stays collapsed throughout; `toggleStowLane` is how it opens
-   * for good.
-   */
-  peekDock: (id: string) => void;
-  /**
    * Put an open panel where it can be seen, whatever is in the way: bring its tab to the front of its
-   * stack, unfold it, and peek it out of a collapsed lane. A panel that is closed is left alone.
+   * stack, unfold it, and open the lane it is collapsed into. A panel that is closed is left alone.
    *
    * What the module rail calls instead of the module's own launcher when the panel it would toggle is
    * open but out of sight — otherwise the button reads as lit, and pressing it closes a panel
@@ -994,25 +984,6 @@ export function ShellStoreProvider(props: ParentProps) {
       requestAnimationFrame(() => setSettling((was) => (was === id ? '' : was)));
     else setSettling('');
   };
-
-  /**
-   * The panel peeking out of a collapsed lane, or null — see `peekDock`.
-   *
-   * Not persisted, and not part of a layout: a peek is somebody glancing at a panel, and a reload that
-   * came back with one hanging over the content would be showing them something they had moved on
-   * from.
-   */
-  const [peeked, setPeeked] = createSignal<string | null>(null);
-  /**
-   * The peek a press outside just put away, and when — so the click that press becomes does not bring
-   * it straight back.
-   *
-   * The press that lands on the module rail's button for the peeking panel is outside the panel, so it
-   * closes the peek on the way down; by the time the button's click arrives the panel is concealed
-   * again, and the rail's answer to a concealed panel is to reveal it. Pressing a lit button to put a
-   * panel away would re-open it every time. See `revealDock`.
-   */
-  let peekDismissed: { id: string; at: number } | null = null;
 
   /**
    * The tab that has just arrived at the front of its stack, while it flashes — see `DockTab.landed`.
@@ -1624,12 +1595,6 @@ export function ShellStoreProvider(props: ParentProps) {
   if (typeof window !== 'undefined') {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || event.defaultPrevented) return;
-      // A peek first: it is the smaller mode, and the one somebody most recently stepped into.
-      if (peeked()) {
-        event.preventDefault();
-        setPeeked(null);
-        return;
-      }
       const maximised = dockRequests().filter(
         (request) => request.edge && (request.size === 'full' || placementOf(request).maximised),
       );
@@ -1639,26 +1604,6 @@ export function ShellStoreProvider(props: ParentProps) {
     };
     window.addEventListener('keydown', onKeyDown);
     onCleanup(() => window.removeEventListener('keydown', onKeyDown));
-
-    /*
-      A press anywhere but the peeking panel or its strip puts the peek away.
-
-      A peek is a glance, and every surface that offers one — a hidden sidebar sliding out, an
-      auto-hidden tool window — closes when you go back to what you were doing. Capture phase, so a
-      control that stops propagation (a drag handle, a canvas) cannot keep it open by accident. The
-      strip is excluded because pressing its tabs is how a peek moves between panels, and a popover
-      opened from inside the panel is still inside it: the top layer promotes without reparenting.
-    */
-    const onPointerDown = (event: PointerEvent) => {
-      const id = peeked();
-      if (!id || !(event.target instanceof Element)) return;
-      const escaped = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(id) : id;
-      if (event.target.closest(`[${DOCK_FRAME_ATTR}="${escaped}"], [${DOCK_STRIP_ATTR}]`)) return;
-      peekDismissed = { id, at: now() };
-      setPeeked(null);
-    };
-    window.addEventListener('pointerdown', onPointerDown, true);
-    onCleanup(() => window.removeEventListener('pointerdown', onPointerDown, true));
   }
 
   /**
@@ -1824,9 +1769,6 @@ export function ShellStoreProvider(props: ParentProps) {
     const stowed: Record<string, Rect> = {};
     /** A stowed lane's strip and its tabs, on the lane's first member. */
     const strips: Record<string, { box: Rect; vertical: boolean; tabs: DockTab[] }> = {};
-    /** The box a stowed panel takes while it is the one peeking. */
-    const peeks: Record<string, Rect> = {};
-    const peeking = peeked();
     const landed = landedTab();
     const titleOf = (id: string) => {
       const entry = dockRegistry.get(id);
@@ -1885,21 +1827,17 @@ export function ShellStoreProvider(props: ParentProps) {
         /*
           A lane put away whole is a strip, and nothing about it needs dividing.
 
-          Every member shares the strip as its box — hidden, as a background tab is, so a peek or an
-          unstow brings back exactly what was there. One tab per panel, seats flattened in lane order:
-          a stack's other tabs are panels too, and the strip is the only place they can be reached
-          from while the lane is closed. The seat structure itself is untouched, which is what lets
-          the lane come back with the same tab in front.
+          Every member shares the strip as its box — hidden, as a background tab is, so opening the
+          lane brings back exactly what was there. One name per panel, seats flattened in lane order:
+          a stack's other tabs are panels too, and the strip is where somebody reads what they put
+          away. The seat structure itself is untouched, which is what lets the lane come back with
+          the same tab in front.
         */
         if (group.displacing && group.members.every((member) => member.placement.stowed)) {
           const box = stripBox(edge, viewport(), occupied);
-          const strip = ids.map((id) => ({ id, title: titleOf(id), active: id === peeking, landed: id === landed }));
+          const strip = ids.map((id) => ({ id, title: titleOf(id), active: false, landed: false }));
           strips[ids[0]] = { box, vertical, tabs: stableStrip(`strip:${ids[0]}`, strip) };
-          for (const member of group.members) {
-            const id = requests[member.index].id;
-            stowed[id] = box;
-            if (id === peeking) peeks[id] = peekBox(edge, box, member.placement, viewport(), floatChrome());
-          }
+          for (const member of group.members) stowed[requests[member.index].id] = box;
           continue;
         }
 
@@ -2046,7 +1984,6 @@ export function ShellStoreProvider(props: ParentProps) {
       canStow,
       stowed,
       strips,
-      peeks,
     };
   });
 
@@ -2054,7 +1991,7 @@ export function ShellStoreProvider(props: ParentProps) {
     const requests = dockRequests();
     const { seats, below, above, axis, lanes, seams, laneEdges, hidden, follows, tabs, laneRoom, ...lanesAway } =
       laneSeating();
-    const { canStow, stowed, strips, peeks } = lanesAway;
+    const { canStow, stowed, strips } = lanesAway;
     const pendingStow = stowPending();
     const pendingLane = pendingStow ? (lanes[pendingStow] ?? [pendingStow]) : [];
     const px = (n: number) => `${Math.round(n)}px`;
@@ -2136,34 +2073,28 @@ export function ShellStoreProvider(props: ParentProps) {
       };
 
       /*
-        In a lane put away to its edge: the strip's box while hidden, a card beside the strip while
-        peeking.
+        In a lane put away to its edge: hidden, at the strip's box.
 
-        The hidden box is the strip rather than nothing, because the drag targets are built from the
-        boxes — a new lane dropped against this edge goes beside the strip, which is where the lane
-        actually is. The peek is floating, so it is glass and a card like any other, and its titlebar
-        offers the pin (`canStow`) that opens the lane for good.
+        The box is the strip rather than nothing, because the drag targets are built from the boxes —
+        a new lane dropped against this edge goes beside the strip, which is where the lane actually
+        is. Folded or not, nothing of the panel is on screen, so it reports neither.
       */
       const away = stowed[request.id];
       if (away) {
-        const peek = peeks[request.id];
-        const shown = peek ?? away;
         const strip = strips[request.id];
         resolved[request.id] = {
           edge: box.edge,
           snap: box.snap,
-          floating: Boolean(peek),
-          top: px(shown.y),
-          left: px(shown.x),
-          width: px(shown.w),
-          height: px(shown.h),
+          floating: false,
+          top: px(away.y),
+          left: px(away.x),
+          width: px(away.w),
+          height: px(away.h),
           stowed: true,
-          peeking: Boolean(peek),
-          canStow: Boolean(peek),
-          // Folded or not, a panel somebody asked to look at shows what is in it.
+          canStow: false,
           canCollapse: false,
           collapsed: false,
-          hidden: eclipsed || !peek,
+          hidden: true,
           settling: settling() === request.id,
           tabs: [],
           below: '',
@@ -3301,8 +3232,6 @@ export function ShellStoreProvider(props: ParentProps) {
         second half the bar is open — see `toggleMaximiseDock`.
       */
       const clickedFolded = Boolean(dragOrigin && !dragTravelled && !insert && !snap && dockGeometry()[id]?.collapsed);
-      // A panel carried away from its strip is no longer peeking out of it.
-      if (dragTravelled && peeked() === id) setPeeked(null);
       dragTravelled = false;
 
       dragOrigin = null;
@@ -3904,7 +3833,6 @@ export function ShellStoreProvider(props: ParentProps) {
       // sent to another edge leaves its strip too: it arrives as itself, not as a strip of one.
       const { stowed: _stowed, ...onEdge } = placement;
       writePlacement(id, edgeOfSnap(snap) ? { ...onEdge, snap, displace: stays } : unlaned(placement, snap));
-      if (peeked() === id) setPeeked(null);
     },
 
     breakOut: (panelId, x, y) => {
@@ -3999,43 +3927,28 @@ export function ShellStoreProvider(props: ParentProps) {
       // Stowed panels resolve with an empty `laneAxis`; the lane itself is still in `lanes`.
       const members = laneSeating().lanes[id] ?? [id];
       if (geometry.stowed) {
-        // No raise: a panel pinned from a peek was raised when the peek began, and one opened from the
-        // strip's own button leaves each seat showing the tab it showed before it was put away.
+        // No raise: each seat comes back showing the tab it showed before it was put away.
         setLaneStowed(members, false);
-        setPeeked(null);
         return;
       }
       if (!geometry.canStow) return;
       setLaneStowed(members, true);
     },
 
-    peekDock: (id) => {
-      if (!id || peeked() === id) {
-        setPeeked(null);
-        return;
-      }
-      if (!dockGeometry()[id]?.stowed) return;
-      setPeeked(id);
-      // A peek is a touch, like a tab being pressed: the panel paints over whatever it opens beside,
-      // and it is the tab that shows in its seat when the lane opens again.
-      raise(id);
-    },
-
     revealDock: (id) => {
       const request = dockRequests().find((entry) => entry.id === id);
       if (!request?.edge) return;
       const before = dockGeometry()[id];
-      // The click whose press just put this panel's peek away — see `peekDismissed`. It was a press to
-      // hide it, and it has.
-      if (before?.stowed && peekDismissed?.id === id && now() - peekDismissed.at < 600) {
-        peekDismissed = null;
-        return;
-      }
       // Out of sight before this, including closed a moment ago — a panel already in front, pressed
       // again, has nothing to point at.
       const wasOutOfSight = !before?.edge || Boolean(before.hidden || before.collapsed || before.stowed);
+      /*
+        A collapsed lane opens whole. There is no showing one panel of it on its own: that was a peek,
+        and a panel floating out of a strip looked like the arrangement had come apart. First, so the
+        fold and the raise below act on the lane as it will be on screen.
+      */
+      if (before?.stowed) setLaneStowed(laneSeating().lanes[id] ?? [id], false);
       if (placementOf(request).collapsed) setSeatFolded(id, false);
-      if (before?.stowed) setPeeked(id);
       raise(id);
       // A tab brought to the front of a stack flashes, so the change is findable in a frame that did
       // not move. A panel alone has nothing beside it to be confused with.
@@ -4052,7 +3965,6 @@ export function ShellStoreProvider(props: ParentProps) {
       // A panel that stops taking room has no strip to be in, and coming back should not find one.
       const { stowed: _stowed, ...rest } = placement;
       writePlacement(id, { ...rest, displace: !placement.displace });
-      if (peeked() === id) setPeeked(null);
     },
   };
 

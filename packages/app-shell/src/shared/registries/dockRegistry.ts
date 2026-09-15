@@ -203,11 +203,6 @@ export function dockGeometryPath(id: string, field: string): string {
  */
 export const DOCK_FRAME_ATTR = 'data-we-dock-frame';
 export const DOCK_CONTENT_ATTR = 'data-we-dock-content';
-/**
- * Marks a stowed lane's strip, so a press on it is not read as a press *outside* the panel peeking
- * from it — pressing another tab moves the peek, it does not end it. See `peekDock`.
- */
-export const DOCK_STRIP_ATTR = 'data-we-dock-strip';
 
 /**
  * When a panel is glass: floating over the app, and not filling it.
@@ -620,7 +615,7 @@ function foldedName(entry: DockEntry): SchemaNode {
 }
 
 /**
- * The glyphs for putting a lane away, one per edge, and the pin that brings it back.
+ * The glyphs for putting a lane away, one per edge — and, reversed, for taking it back out.
  *
  * Written as `icon:` entries rather than inline in the expression that picks one, because the icon
  * bundler collects names it can see as values — see `positionMenu` for the day that mattered — and an
@@ -631,20 +626,16 @@ const STOW_ICONS = {
   right: { icon: 'caret-double-right' },
   top: { icon: 'caret-double-up' },
   bottom: { icon: 'caret-double-down' },
-  pin: { icon: 'push-pin' },
 } as const;
 
 /**
- * Collapse this panel's lane to a strip of tabs at its edge — or, while the panel is peeking out of
- * one, open the lane again.
+ * Collapse this panel's lane to a strip at its edge. The strip itself is the way back — see
+ * `laneStrip`.
  *
  * Only on the lane's first titlebar (see `canStow`), because it acts on the column rather than the
  * panel: a button on every titlebar that put three panels away would be a surprise on two of them.
  * The chevrons point at the edge the lane goes to, which is what says "the whole column" rather than
  * "this panel" — a fold's caret points up.
- *
- * Peeking, the same place holds a pin: the one way to keep what you are looking at, where every other
- * gesture puts it back.
  */
 function stowButton(id: string): SchemaNode {
   const geo = (field: string) => dockGeometryPath(id, field);
@@ -656,10 +647,7 @@ function stowButton(id: string): SchemaNode {
       condition: { $: geo('canStow') },
       then: {
         type: 'we-tooltip',
-        props: {
-          content: { $: `${geo('peeking')} ? 'Keep open' : 'Collapse to edge'` },
-          placement: 'bottom',
-        },
+        props: { content: 'Collapse to edge', placement: 'bottom' },
         children: [
           {
             type: 'we-button',
@@ -672,7 +660,7 @@ function stowButton(id: string): SchemaNode {
             children: [
               {
                 type: 'we-icon',
-                props: { name: { $: `${geo('peeking')} ? '${STOW_ICONS.pin.icon}' : (${edgeIcon})` } },
+                props: { name: { $: edgeIcon } },
               },
             ],
           },
@@ -868,14 +856,11 @@ function displaceButton(id: string): SchemaNode {
     docked panel has least need of as a button: dragging the titlebar off the edge already stops it
     taking room, and that is how people undock. A floating card is the opposite case — the button is
     how it *starts* taking room, and there is space for it. See the `displace` entry in `positionMenu`.
-
-    Not while peeking out of a strip either: that card floats only for as long as somebody is looking,
-    and it already takes room — as the lane it belongs to — which the pin beside it is the way back to.
   */
   return {
     type: '$if',
     props: {
-      condition: { $: `${dockGeometryPath(id, 'floating')} && !${dockGeometryPath(id, 'peeking')}` },
+      condition: { $: dockGeometryPath(id, 'floating') },
       then: displaceControl(id, place),
     },
   };
@@ -1298,9 +1283,7 @@ function grips(id: string): SchemaNode[] {
     would restore to was gone, and for a panel whose dock thickness falls back to the card, so was the
     size it would dock at.
   */
-  // Nor a peek, which is a glance at a lane's panel at the lane's own thickness: resizing it would write
-  // a card size onto a panel that has no card to be, and the lane is resized by opening it.
-  const grippable = `!${geo('maximised')} && ${geo('floating')} && !${geo('peeking')}`;
+  const grippable = `!${geo('maximised')} && ${geo('floating')}`;
 
   /*
     A boundary in a lane belongs to both panels, so neither of them draws it.
@@ -1506,36 +1489,33 @@ function laneOuterEdge(id: string): SchemaNode {
 }
 
 /**
- * The strip a stowed lane becomes: a tab per panel, and the way back open.
+ * The strip a stowed lane becomes: the names of the panels put away, and one way back — the strip.
  *
  * Drawn from outside every frame, as the seams and the lane's edge are, because every frame in the
  * lane is hidden while it is stowed — and published on the lane's first member alone, so one strip is
  * drawn however many panels are in it. See `DockGeometry.strip`.
  *
- * ## Tabs you press, not a hover
+ * ## One target, the whole strip
  *
- * Pressing a tab peeks that panel out beside the strip; pressing it again, or anywhere else, puts it
- * back. Not on hover, which is what some applications do and what this deliberately is not: the left
- * edge already opens the app's sidebar under a passing pointer, a second hover target beside it would
- * fight it, and a touchscreen has no hover to offer. A tab is visible, keyboard-reachable, and means
- * the same wherever the strip is.
+ * A press anywhere on it opens the lane. The names used to be tabs of their own, each popping its
+ * panel out as a card beside the strip — easy to hit by accident on a strip this thin, and a panel
+ * floating out of a collapsed column read as the arrangement having come apart. A strip is a column
+ * put away, and the only thing to do with one is take it back out, so the whole of it is that
+ * button: a real `<button>`, keyboard-reachable, rather than a clickable box.
  *
- * Vertical text down a side, read top to bottom — the auto-hide tabs every docking IDE draws. Set as
- * `writing-mode` on a wrapper, which the text inherits through its own shadow root; there is no
- * design-system prop for it, and rotating with a transform would leave the box the wrong shape.
+ * Laid out from the head — down a side from the top, along the top or bottom from the left — with
+ * the open glyph first, because the collapse button it undoes sat at the head of the column. Faint
+ * until pointed at, the same as a folded bar's name, so the two ways of putting a panel away read as
+ * one family; pointing lifts the whole strip, since the whole strip is what a press would open.
  *
- * The open button leads the strip, above the names, because the collapse button it undoes sat at the
- * head of the column — the way back is where the way in was. The names are faint until pointed at,
- * the same as a folded bar's, so the two ways of putting a panel away read as one family.
+ * Vertical text down a side, read top to bottom — the collapsed tool windows every docking IDE draws.
+ * Set as `writing-mode` on a wrapper, which the text inherits through its own shadow root; there is
+ * no design-system prop for it, and rotating with a transform would leave the box the wrong shape.
  */
 function laneStrip(id: string): SchemaNode {
   const geo = (field: string) => dockGeometryPath(id, field);
   const vertical = geo('strip.vertical');
   const edge = geo('edge');
-  // Tooltips open toward the content, which is the side of the strip with room.
-  const toward = {
-    $: `${edge} == 'left' ? 'right' : ${edge} == 'right' ? 'left' : ${edge} == 'top' ? 'bottom' : 'top'`,
-  };
   const openIcon = `${edge} == 'left' ? '${STOW_ICONS.right.icon}' : ${edge} == 'right' ? '${STOW_ICONS.left.icon}' : ${edge} == 'top' ? '${STOW_ICONS.bottom.icon}' : '${STOW_ICONS.top.icon}'`;
 
   return {
@@ -1550,10 +1530,6 @@ function laneStrip(id: string): SchemaNode {
           left: { $: geo('strip.left') },
           width: { $: geo('strip.width') },
           height: { $: geo('strip.height') },
-          direction: { $: `${vertical} ? 'column' : 'row'` },
-          ay: 'center',
-          gap: '100',
-          p: '100',
           bg: 'chrome',
           /*
             All the way round, as every panel frame is. Only the side facing the content had one, and on
@@ -1563,61 +1539,43 @@ function laneStrip(id: string): SchemaNode {
           border: '1px solid border',
           overflow: 'hidden',
           zIndex: { $: geo('layer') },
-          [DOCK_STRIP_ATTR]: id,
         },
         children: [
           {
-            type: 'we-tooltip',
-            props: { content: 'Open', placement: toward },
+            type: 'we-button',
+            props: {
+              variant: 'bare',
+              size: 'xs',
+              width: '100%',
+              height: '100%',
+              label: 'Open',
+              color: 'text-faint',
+              hoverProps: { color: 'text', bg: 'surface-hover' },
+              onClick: { $action: 'shellStore.toggleStowLane', args: [id] },
+            },
             children: [
               {
-                type: 'we-button',
+                type: 'Column',
                 props: {
-                  size: 'xs',
-                  square: true,
-                  variant: 'ghost',
-                  onClick: { $action: 'shellStore.toggleStowLane', args: [id] },
-                },
-                children: [{ type: 'we-icon', props: { name: { $: openIcon } } }],
-              },
-            ],
-          },
-          {
-            type: '$each',
-            props: { items: { $: geo('strip.tabs') }, as: 'tab' },
-            children: [
-              {
-                type: 'we-tooltip',
-                props: {
-                  content: { $: 'tab.active ? `Hide ${tab.title}` : `Show ${tab.title}`' },
-                  placement: toward,
+                  width: '100%',
+                  height: '100%',
+                  direction: { $: `${vertical} ? 'column' : 'row'` },
+                  // `ax` and `ay` are the screen's axes whichever way the strip runs: centred across
+                  // it, and packed from its head along it.
+                  ax: { $: `${vertical} ? 'center' : 'start'` },
+                  ay: { $: `${vertical} ? 'start' : 'center'` },
+                  gap: '300',
+                  p: '200',
                 },
                 children: [
+                  { type: 'we-icon', props: { name: { $: openIcon } } },
                   {
-                    type: 'we-button',
-                    props: {
-                      size: 'xs',
-                      variant: { $: "tab.landed || tab.active ? 'secondary' : 'ghost'" },
-                      height: { $: `${vertical} ? 'auto' : null` },
-                      py: { $: `${vertical} ? '200' : null` },
-                      px: { $: `${vertical} ? '0' : null` },
-                      width: { $: `${vertical} ? '100%' : null` },
-                      /*
-                        Faint at rest and full strength under the pointer — a folded bar's name, which
-                        takes its colours from the move handle. Replacing ghost's hover rather than
-                        adding to it, so a name answers the pointer the way the bar's does and not with
-                        a fill the bar does not have. The tab peeking is lit throughout.
-                      */
-                      color: { $: "tab.landed || tab.active ? null : 'text-faint'" },
-                      hoverProps: { color: 'text' },
-                      onClick: { $action: 'shellStore.peekDock', args: [{ $: 'tab.id' }] },
-                    },
+                    type: '$each',
+                    props: { items: { $: geo('strip.tabs') }, as: 'tab' },
                     children: [
                       {
                         type: 'Column',
                         props: {
-                          ax: 'center',
-                          ay: 'center',
                           maxHeight: '180px',
                           maxWidth: '180px',
                           styles: { 'writing-mode': { $: `${vertical} ? 'vertical-rl' : 'horizontal-tb'` } },

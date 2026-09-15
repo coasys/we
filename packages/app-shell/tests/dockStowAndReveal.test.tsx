@@ -80,7 +80,7 @@ describe('bringing a hidden panel into sight', () => {
     expect(geometry[A].tabs?.find((tab) => tab.id === A)).toMatchObject({ active: true, landed: true });
   });
 
-  it('peeks a panel out of a lane collapsed to its edge', () => {
+  it('opens a lane collapsed to its edge, with the panel asked for in front', () => {
     openBoth('left');
     const shell = mountShellStore();
     stack(shell, 'left');
@@ -88,7 +88,10 @@ describe('bringing a hidden panel into sight', () => {
 
     shell.revealDock(A);
 
-    expect(shell.dockGeometry()[A]).toMatchObject({ stowed: true, peeking: true, hidden: false });
+    const geometry = shell.dockGeometry();
+    expect(geometry[A].stowed).toBeFalsy();
+    expect(geometry[B].stowed).toBeFalsy();
+    expect(geometry[A].hidden).toBe(false);
   });
 });
 
@@ -123,33 +126,19 @@ describe('a lane collapsed to its edge', () => {
     expect(strip?.tabs.map((tab) => tab.id).sort()).toEqual([A, B].sort());
   });
 
-  it('peeks one panel at a time, and puts the peek away on a second press', () => {
+  it('opens again as a whole, with each seat showing the tab it showed before', () => {
     openBoth('left');
     const shell = mountShellStore();
     stack(shell, 'left');
     shell.toggleStowLane(B);
 
-    shell.peekDock(A);
-    expect(shell.dockGeometry()[A]).toMatchObject({ peeking: true, floating: true, hidden: false });
-    // Still collapsed: a peek costs the content nothing.
-    expect(shell.contentInset().left).toBe(STRIP_PX);
-
-    shell.peekDock(A);
-    expect(shell.dockGeometry()[A]).toMatchObject({ peeking: false, hidden: true });
-  });
-
-  it('opens again from the pin, with the panel that was peeking in front', () => {
-    openBoth('left');
-    const shell = mountShellStore();
-    stack(shell, 'left');
-    shell.toggleStowLane(B);
-    shell.peekDock(A);
-
+    // What a press anywhere on the strip calls, on the lane's first member.
     shell.toggleStowLane(A);
 
     const geometry = shell.dockGeometry();
-    expect(geometry[A].stowed).toBeFalsy();
-    expect(geometry[A].hidden).toBe(false);
+    expect(geometry[A].stowed || geometry[B].stowed).toBeFalsy();
+    expect(geometry[B].hidden).toBe(false);
+    expect(geometry[A].hidden).toBe(true);
     expect(shell.contentInset().left).toBeGreaterThan(STRIP_PX);
   });
 });

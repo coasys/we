@@ -141,17 +141,18 @@ which tab shows, whether it is folded — so opening the lane brings back exactl
 Gestures that take a panel out of its lane (a drag off it, a snap elsewhere, turning displacing off)
 drop the flag; a drop into a stowed lane is not offered, and joining one some other way opens it.
 
-Pressing a tab **peeks** that panel (`peekDock`): a floating card beside the strip at the lane's own
-thickness, stepping over the chrome between (`peekBox`). The same tab, a press anywhere else, or
-Escape put it away; the lane stays collapsed and the content keeps its room. The peeking card's
-titlebar carries a pin where the chevrons were, which opens the lane for good, and the strip has its
-own open button. Tabs rather than hover, deliberately: the left edge already opens the sidebar under a
-passing pointer, and a touchscreen has no hover.
+The strip is **one button**: a press anywhere on it opens the whole lane. It leads with the open
+glyph and then names every panel in the lane, laid out from its head — from the top down a side, from
+the left along the top or bottom — faint until pointed at, like a folded bar's name. There is no
+opening one panel on its own. That was tried as a peek, a card sliding out beside the strip, and it
+was easy to trigger by accident on a strip this thin, and a panel floating out of a collapsed column
+read as the arrangement having come apart.
 
 ### Bringing a panel into sight
 
 A panel can be open and out of sight three ways: behind another tab of its seat, folded, or in a
-collapsed lane. `revealDock` undoes whichever it is — brings the tab to the front, unfolds, peeks —
+collapsed lane. `revealDock` undoes whichever it is — opens the lane, unfolds, brings the tab to the
+front —
 and flashes the tab when it came forward in a stack (`DockTab.landed`), because the frame did not
 move and which tab is lit is the only change on screen. A drop into a seat flashes the same way.
 
