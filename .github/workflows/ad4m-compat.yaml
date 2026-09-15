@@ -29,10 +29,26 @@ name: AD4M compatibility
 # human reading the log and knowing the codebase. It also means a long-red `dev` no longer
 # blinds this job — it keeps answering about the last thing that worked.
 
+# Deactivated: the nightly now runs on CircleCI (`.circleci/config.yml`,
+# workflow `nightly-ad4m-compat`), 03:00 UTC, on the self-hosted
+# `coasys/marvin-we` pool. Two of these running would file and close the same
+# tracking issue against each other.
+#
+# Only the schedule is removed. `workflow_dispatch` stays, and everything the
+# manual path does still works: this remains the way to run a WE branch against
+# an AD4M branch carrying an unpublished API, and it is the fallback if the
+# runner host is unavailable.
+#
+# Note for whoever reactivates this: the CircleCI translation does *not* yet
+# reproduce the control below — testing the last commit green on `dev` rather
+# than HEAD — because it needs run history that project did not have on day one.
+# The reasoning for why that control exists is in the header above, and is worth
+# reading before deciding which of the two should own this job long-term.
+#
+# To reactivate, restore:
+#   schedule:
+#     - cron: '0 3 * * *'
 on:
-  schedule:
-    # 03:00 UTC daily — after AD4M's working day, before WE's.
-    - cron: '0 3 * * *'
   workflow_dispatch:
     inputs:
       ad4m_branch:

@@ -1,0 +1,515 @@
+version: 2.1
+
+# CircleCI translation of `.github/workflows/build.yaml` (and the nightly
+# `ad4m-compat.yaml`), running on Coasys's self-hosted machine runner.
+#
+# Why this exists alongside the GitHub Actions workflows: WE's tests are going to
+# need a real AD4M executor, and a hosted runner cannot have one. The runner host
+# is a physical box that already builds AD4M, so it can hold an executor, a
+# Holochain conductor and a bootstrap server between jobs. This file is step one —
+# the same checks GitHub Actions already runs, running there instead.
+#
+# WE has its own resource class, `coasys/marvin-we`, with four runner instances
+# and their own working directories. It shared `coasys/marvin` with AD4M for
+# exactly one afternoon, which was enough to show why it should not: the two
+# projects landed in the same directory, so each one's cleanup destroyed the
+# other's cached build tree. Same hardware, separate pools.
+#
+#
+# ## What a self-hosted machine runner changes
+#
+# **No `docker:` executor.** Machine runners only support `machine: true`; a
+# `docker:` executor needs CircleCI's *container* runner (Kubernetes). Every job
+# below therefore runs directly on the host, as the `marvin` user, sharing that
+# user's toolchains.
+#
+# **The working directory persists.** The runner is configured with
+# `cleanup_working_directory: false`, so a job starts in the previous job's
+# directory rather than a fresh one. That is the single biggest fidelity risk in
+# this translation, because `build.yaml`'s drift check is `git status --porcelain`
+# — on a hosted runner the tree is pristine by construction, here it is not. See
+# `clean_checkout` below.
+#
+# **No `actions/*`.** `setup-node` and `pnpm/action-setup` become `nvm` and
+# `corepack`.
+#
+# **Nothing here uses CircleCI network storage.** `save_cache`,
+# `persist_to_workspace` and `store_artifacts` all upload to CircleCI and are
+# billed even when the compute is free — so a self-hosted runner that used them
+# would quietly be the expensive kind of free. Every job in this file runs on the
+# same physical host, which makes all three unnecessary:
+#
+#   - the pnpm store already lives in `~/.local/share/pnpm/store`, outside the
+#     repository, so it survives `git clean` and every job finds it warm. That is
+#     `actions/cache` done by not needing one.
+#   - build output moves between jobs through `$CI_ARTIFACT_DIR`, a local
+#     directory keyed by `$CIRCLE_SHA1` — the same mechanism AD4M's config uses
+#     to hand its binaries between jobs, for the same reason.
+#
+# Keep it that way. If a job ever needs to publish something a human downloads
+# from the CircleCI UI, that is the one case worth paying for, and it should be
+# an explicit decision rather than a habit.
+#
+#
+# ## What has no equivalent and is a project setting instead
+#
+# `concurrency: cancel-in-progress` — CircleCI expresses this as the project's
+# "Auto-cancel redundant workflows" toggle (Project Settings → Advanced), not in
+# config. It must be turned on to match the GitHub behaviour.
+
+# ---------------------------------------------------------------------------
+# Executor
+# ---------------------------------------------------------------------------
+
+executors:
+  marvin:
+    machine: true
+    resource_class: coasys/marvin-we
+
+# ---------------------------------------------------------------------------
+# Commands — the composite actions from `.github/actions/`
+# ---------------------------------------------------------------------------
+
+commands:
+  clean_checkout:
+    description: >
+      Check out the commit under test into a tree with no leftovers from the
+      previous job that used this directory.
+    steps:
+      # A machine runner reuses its working directory, and CircleCI's `checkout`
+      # only resets *tracked* files. Two failure modes follow, and the first one
+      # is silent:
+      #
+      #   - `build`'s drift check reads `git status --porcelain`, which reports
+      #     untracked files. A file some earlier job left behind is indistinguishable
+      #     from one this build generated, so the check fails on somebody else's
+      #     mess — or, worse, a genuinely drifting build passes because the file
+      #     was already there and unchanged.
+      #   - Stale `dist/` output from a previous commit makes a build that no
+      #     longer produces a file look like it still does.
+      #
+      # `git clean -xffd` removes untracked *and* ignored files, which is what a
+      # hosted runner gets for free. It costs a `node_modules` reinstall per job —
+      # paid back by the pnpm store cache below, which survives because it lives
+      # in the runner's home directory rather than the repository.
+      #
+      # The second `f` is load-bearing and was learned the hard way, back when
+      # this pool was shared with AD4M: its jobs leave `.hc-toolchain/` behind,
+      # and that directory contains its own `.git`. A single `-f` *skips nested
+      # repositories* ("Skipping repository .hc-toolchain/src"), so the tree
+      # stayed dirty and the guard below correctly refused to run the drift check
+      # against it.
+      #
+      # The dedicated resource class removes that particular neighbour, but the
+      # `-ff` stays: WE's own tooling is free to write a nested repo into an
+      # ignored directory at any point, and this guard should not have to be
+      # rediscovered the day it does.
+      - run:
+          name: Reset working directory
+          command: |
+            if [ -d .git ] && ! git rev-parse --git-dir >/dev/null 2>&1; then
+              echo "Corrupted .git directory — removing so checkout can clone fresh."
+              rm -rf .git
+            fi
+            if [ -d .git ]; then
+              git clean -xffd || true
+            fi
+      - checkout
+      - run:
+          name: Verify the tree is clean before anything runs
+          command: |
+            git clean -xffd
+            DIRT="$(git status --porcelain)"
+            if [ -n "$DIRT" ]; then
+              echo "Working tree is not clean after checkout — the drift check below cannot be trusted."
+              echo "$DIRT"
+              exit 1
+            fi
+
+  setup:
+    description: >
+      Node, pnpm, a warm pnpm store and a frozen install — the translation of
+      `.github/actions/setup`.
+    steps:
+      # The GitHub action reads `node-version-file: .nvmrc`; nvm reads the same
+      # file natively, so the version stays declared in exactly one place.
+      #
+      # `nvm install` is a no-op when the version is already present, so this
+      # costs nothing on a warm host and self-heals a cold one.
+      - run:
+          name: Node from .nvmrc
+          command: |
+            export NVM_DIR="$HOME/.nvm"
+            # shellcheck disable=SC1091
+            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" --no-use
+            nvm install >/dev/null
+            NODE_BIN_DIR="$(dirname "$(nvm which "$(cat .nvmrc)")")"
+            echo "export PATH=\"$NODE_BIN_DIR:\$PATH\"" >> "$BASH_ENV"
+            # shellcheck disable=SC1090
+            . "$BASH_ENV"
+            echo "Node: $(node --version)   (.nvmrc: $(cat .nvmrc))"
+
+      # `pnpm/action-setup` with no `version` reads the repo's `packageManager`
+      # field. corepack does the same thing from the same field, so CI resolves
+      # dependencies with exactly the pnpm a developer's machine uses.
+      - run:
+          name: pnpm from packageManager
+          command: |
+            corepack enable
+            corepack prepare --activate
+            echo "pnpm: $(pnpm --version)   (packageManager: $(node -p "require('./package.json').packageManager"))"
+
+      # No `restore_cache`/`save_cache`, deliberately. The GitHub workflow caches
+      # the pnpm content-addressable store because a hosted runner starts empty;
+      # this one does not. The store lives in the runner user's home directory,
+      # not the repository, so `git clean -xffd` above cannot reach it and it is
+      # already warm — uploading it to CircleCI would cost money to replace a
+      # directory that is sitting on the same disk.
+      - run:
+          name: Install dependencies
+          command: |
+            echo "pnpm store: $(pnpm store path --silent)"
+            pnpm install --frozen-lockfile
+
+  restore_build:
+    description: >
+      Unpack the tarball the Build job produced — the translation of
+      `.github/actions/restore-build`.
+    steps:
+      # Must run *after* `setup`, not before: `pnpm install` writes into the same
+      # package directories, and the build output is what should win. Same ordering
+      # constraint the composite action documents.
+      #
+      # Read from local disk rather than a CircleCI workspace: every job runs on
+      # this one host, so the tarball never needs to leave it.
+      - run:
+          name: Unpack build outputs
+          command: |
+            STASH="${CI_ARTIFACT_DIR:-/var/lib/ci-artifacts}/we/${CIRCLE_SHA1}"
+            if [ ! -f "$STASH/build-outputs.tar.gz" ]; then
+              echo "No build output at $STASH — did the build job run on this host?"
+              exit 1
+            fi
+            tar -xzf "$STASH/build-outputs.tar.gz"
+            echo "Restored $(tar -tzf "$STASH/build-outputs.tar.gz" | wc -l) paths from $STASH."
+
+# ---------------------------------------------------------------------------
+# Jobs — one per GitHub Actions job, same names, same order
+# ---------------------------------------------------------------------------
+
+jobs:
+  lint:
+    executor: marvin
+    steps:
+      - clean_checkout
+      - setup
+      - run:
+          name: Lint
+          command: NODE_OPTIONS='--max-old-space-size=8192' pnpm lint
+      - run:
+          name: Lint CSS
+          command: pnpm lint:css
+      - run:
+          name: Check formatting
+          command: pnpm format:check
+      - run:
+          name: Check source-shipping consumers
+          command: pnpm check:source-consumers
+
+  build:
+    executor: marvin
+    steps:
+      - clean_checkout
+      - setup
+      - run:
+          name: Build
+          command: NODE_OPTIONS='--max-old-space-size=8192' pnpm build
+
+      # Unchanged in intent from `build.yaml`: whole-tree `--porcelain`, no
+      # exclusions. `clean_checkout` above is what makes it mean the same thing
+      # here as it does on a hosted runner.
+      - run:
+          name: Check generated files are committed
+          command: |
+            DRIFT="$(git status --porcelain)"
+            if [ -n "$DRIFT" ]; then
+              echo "The build changed tracked files — run \`pnpm build\` and commit the regenerated output."
+              echo "$DRIFT"
+              git diff --stat
+              exit 1
+            fi
+
+      # Derived from `git status --ignored` rather than a path list, for the same
+      # reason the GitHub workflow gives: the outputs are not only `dist/`
+      # directories, and a hand-listed set would miss the next generator.
+      #
+      # `upload-artifact` → a directory on this host. The tarball is read by this
+      # pipeline's own downstream jobs and by nothing else afterwards — which is
+      # what the GitHub side expresses as `retention-days: 1`, and what the sweep
+      # below does without paying CircleCI to hold it.
+      - run:
+          name: Package build outputs
+          command: |
+            STASH="${CI_ARTIFACT_DIR:-/var/lib/ci-artifacts}/we/${CIRCLE_SHA1}"
+            mkdir -p "$STASH"
+            git status --porcelain --ignored=traditional \
+              | awk '$1 == "!!" { print $2 }' \
+              | grep -vE '(^|/)node_modules/$' \
+              > build-outputs.txt
+            echo "Packaging $(wc -l < build-outputs.txt) paths:"
+            cat build-outputs.txt
+            tar -czf "$STASH/build-outputs.tar.gz" -T build-outputs.txt
+            rm build-outputs.txt
+            echo "Stashed at $STASH"
+
+      # Same one-day sweep AD4M's config runs, so the stash cannot grow forever.
+      - run:
+          name: Sweep build stashes older than a day
+          command: |
+            ROOT="${CI_ARTIFACT_DIR:-/var/lib/ci-artifacts}/we"
+            find "$ROOT" -maxdepth 1 -mindepth 1 -mtime +1 -exec rm -rf {} + 2>/dev/null || true
+
+  typecheck:
+    executor: marvin
+    steps:
+      - clean_checkout
+      - setup
+      - restore_build
+      - run:
+          name: Typecheck
+          command: pnpm typecheck
+
+  test:
+    executor: marvin
+    steps:
+      - clean_checkout
+      - setup
+      - restore_build
+      - run:
+          name: Test
+          command: pnpm test
+      # Reported rather than gated, and non-fatal so a package without the
+      # reporter cannot fail the run — `continue-on-error: true` upstream.
+      - run:
+          name: Coverage
+          command: pnpm --filter @we/app-shell test -- --coverage.enabled --coverage.reporter=text-summary || true
+
+  rust:
+    executor: marvin
+    steps:
+      # No `setup`: the generator is plain Node with no imports outside the
+      # standard library, so this job needs neither `pnpm install` nor the
+      # workspace — which is why it stays independent of Build.
+      - clean_checkout
+      - run:
+          name: Node from .nvmrc
+          command: |
+            export NVM_DIR="$HOME/.nvm"
+            # shellcheck disable=SC1091
+            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" --no-use
+            nvm install >/dev/null
+            echo "export PATH=\"$(dirname "$(nvm which "$(cat .nvmrc)")"):\$PATH\"" >> "$BASH_ENV"
+
+      # rustfmt for the toolchain the crate pins, which is not the default one.
+      # The channel is read out of `rust-toolchain.toml` rather than written here,
+      # so this cannot drift from the pin it exists to serve.
+      - run:
+          name: Install rustfmt for the pinned toolchain
+          working_directory: apps/we-tauri/src-tauri
+          command: |
+            export PATH="$HOME/.cargo/bin:$PATH"
+            CHANNEL="$(sed -n 's/^ *channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)"
+            if [ -z "$CHANNEL" ]; then
+              echo "could not read [toolchain] channel from rust-toolchain.toml"
+              exit 1
+            fi
+            echo "Pinned Rust channel: $CHANNEL"
+            rustup toolchain install "$CHANNEL" --component rustfmt --profile minimal
+
+      # `src-tauri/src/generated/` is gitignored and rustfmt follows `mod`
+      # declarations, so without this it stops at "failed to resolve mod `generated`".
+      - run:
+          name: Generate the seed-derived sources
+          command: node apps/we-tauri/scripts/generate-seed-config.cjs
+
+      # `rustfmt` directly, not `cargo fmt`: `src-tauri/Cargo.toml` is gitignored
+      # and generated, so `cargo metadata` has nothing to read. Formatting is a
+      # property of the source text, not of a dependency graph.
+      - run:
+          name: Check formatting
+          command: |
+            export PATH="$HOME/.cargo/bin:$PATH"
+            FILES="$(git ls-files -- apps/we-tauri/src-tauri | grep '\.rs$')"
+            COUNT="$(printf '%s\n' "$FILES" | grep -c . || true)"
+            if [ "$COUNT" -lt 1 ]; then
+              echo "no Rust sources found to format-check"
+              exit 1
+            fi
+            echo "Checking $COUNT files"
+            printf '%s\n' "$FILES" | xargs rustfmt --check --edition 2021
+
+  schemas:
+    executor: marvin
+    steps:
+      - clean_checkout
+      - setup
+      - restore_build
+      - run:
+          name: Validate schemas
+          command: pnpm validate:schemas
+
+  # -------------------------------------------------------------------------
+  # Nightly: is unreleased AD4M about to break WE?
+  #
+  # Translation of `ad4m-compat.yaml`. Deliberately not a gate — it compiles
+  # against a branch, so its result depends on when it runs and on what somebody
+  # pushed to another repository.
+  #
+  # Two things the GitHub version does that this one does not yet:
+  #
+  #   - **The control.** Upstream resolves "the last commit green on `dev`" from
+  #     the Actions API and tests that, so a failure is attributable to AD4M by
+  #     construction. The CircleCI equivalent needs this project's own run history,
+  #     which does not exist until this config has been running for a while. Until
+  #     then it tests `dev` HEAD and says so, which is upstream's documented
+  #     `controlled=false` fallback.
+  #   - **The tracking issue.** `gh issue create/edit/close` needs a token with
+  #     `issues: write`. That is a project environment variable (`GH_TOKEN`), not
+  #     something this file can provide; without it the job reports into the build
+  #     log only.
+  # -------------------------------------------------------------------------
+  ad4m-compat:
+    executor: marvin
+    steps:
+      - clean_checkout
+      - run:
+          name: Node from .nvmrc
+          command: |
+            export NVM_DIR="$HOME/.nvm"
+            # shellcheck disable=SC1091
+            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" --no-use
+            nvm install >/dev/null
+            echo "export PATH=\"$(dirname "$(nvm which "$(cat .nvmrc)")"):\$PATH\"" >> "$BASH_ENV"
+      - run:
+          name: pnpm from packageManager
+          command: |
+            corepack enable
+            corepack prepare --activate
+
+      - run:
+          name: Clone AD4M
+          command: |
+            BRANCH="${AD4M_BRANCH:-dev}"
+            if ! git ls-remote --exit-code --heads https://github.com/coasys/ad4m.git "$BRANCH" >/dev/null 2>&1; then
+              echo "No such AD4M branch: $BRANCH"
+              exit 1
+            fi
+            rm -rf ad4m
+            git clone --depth 1 --single-branch --branch "$BRANCH" https://github.com/coasys/ad4m.git ad4m
+            echo "AD4M $BRANCH at $(cd ad4m && git rev-parse HEAD)"
+
+      # ad4m's monorepo uses object-format `pnpm.overrides`, which pnpm v10
+      # rejects — so its install runs via `pnpm@9`, leaving the activated binary
+      # on the version WE uses.
+      - run:
+          name: Install & build AD4M packages
+          command: |
+            set -o pipefail
+            cd ad4m
+            npx -y pnpm@9.15.0 install --no-frozen-lockfile 2>&1 | tee -a ../compat.log
+            cd core && npx -y pnpm@9.15.0 exec tsc && npx -y pnpm@9.15.0 run bundle && cd ..
+            cd connect && npx -y pnpm@9.15.0 run build && cd ..
+
+      # Point the workspace at the source build. This is why the install below
+      # cannot be frozen — and why this rewrite lives in a job whose verdict gates
+      # nothing.
+      - run:
+          name: Override AD4M packages with local builds
+          command: |
+            node -e "
+              const pkg = require('./package.json');
+              pkg.pnpm = pkg.pnpm || {};
+              pkg.pnpm.overrides = pkg.pnpm.overrides || {};
+              pkg.pnpm.overrides['@coasys/ad4m'] = 'file:./ad4m/core';
+              pkg.pnpm.overrides['@coasys/ad4m-connect'] = 'file:./ad4m/connect';
+              require('fs').writeFileSync('./package.json', JSON.stringify(pkg, null, 2) + '\n');
+            "
+      - run:
+          name: Install WE dependencies
+          command: |
+            set -o pipefail
+            pnpm install --no-frozen-lockfile 2>&1 | tee -a compat.log
+      - run:
+          name: Clear build caches for linked SDK
+          command: |
+            rm -rf node_modules/.cache
+            find . -name '.vite' -type d -path '*/node_modules/.vite' -not -path './ad4m/*' -exec rm -rf {} + 2>/dev/null || true
+
+      # Build, typecheck and test only. Lint and the generated-file check answer
+      # questions about WE's own source that the required build already answered.
+      - run:
+          name: Build
+          command: |
+            set -o pipefail
+            NODE_OPTIONS='--max-old-space-size=8192' pnpm build 2>&1 | tee -a compat.log
+      - run:
+          name: Typecheck
+          command: |
+            set -o pipefail
+            pnpm typecheck 2>&1 | tee -a compat.log
+      - run:
+          name: Test
+          command: |
+            set -o pipefail
+            pnpm test 2>&1 | tee -a compat.log
+
+      # The lines a reader wants, out of a log whose first two thousand lines are
+      # install chatter.
+      - run:
+          name: Report
+          when: on_fail
+          command: |
+            echo "### WE does not build against AD4M ${AD4M_BRANCH:-dev}"
+            echo
+            if [ -f compat.log ] && grep -qE 'error TS[0-9]+|ERR_PNPM|FAIL |✗ |AssertionError' compat.log; then
+              grep -E 'error TS[0-9]+|ERR_PNPM|FAIL |✗ |AssertionError' compat.log | head -25
+            elif [ -f compat.log ]; then
+              tail -25 compat.log
+            else
+              echo "(no log captured — the failure happened before the build started)"
+            fi
+            echo
+            echo "Full log kept on the runner at: ${CI_ARTIFACT_DIR:-/var/lib/ci-artifacts}/we/compat-${CIRCLE_SHA1}.log"
+            cp compat.log "${CI_ARTIFACT_DIR:-/var/lib/ci-artifacts}/we/compat-${CIRCLE_SHA1}.log" 2>/dev/null || true
+
+# ---------------------------------------------------------------------------
+# Workflows
+# ---------------------------------------------------------------------------
+
+workflows:
+  # Mirrors `build.yaml`: lint and rust need nothing built; typecheck, test and
+  # schemas take the build's *result* as a workspace rather than rebuilding it.
+  ci:
+    jobs:
+      - lint
+      - build
+      - rust
+      - typecheck:
+          requires: [build]
+      - test:
+          requires: [build]
+      - schemas:
+          requires: [build]
+
+  # `on: schedule` at 03:00 UTC. Scheduled *pipelines* (the modern replacement for
+  # this block) are created through the API against a project that already exists,
+  # so this stays here until the project has run once.
+  nightly-ad4m-compat:
+    triggers:
+      - schedule:
+          cron: '0 3 * * *'
+          filters:
+            branches:
+              only: [dev]
+    jobs:
+      - ad4m-compat

@@ -5,10 +5,26 @@
 # history.
 name: CI
 
+# Deactivated: these checks now run on CircleCI (`.circleci/config.yml`), on the
+# self-hosted `coasys/marvin-we` pool. Running both would mean every push paying
+# twice for the same six answers, and two check lists to read on every PR.
+#
+# Deactivated rather than deleted, and the distinction is deliberate: everything
+# below — why there are five jobs and not one, why the drift check has no
+# exclusions, why the build outputs are derived from `git status --ignored`
+# rather than a path list — is the reasoning the CircleCI translation was built
+# from. Deleting the file would delete the argument and keep only the result.
+#
+# `workflow_dispatch` stays so this can be run by hand: if CircleCI or the runner
+# host is ever unavailable, this is the fallback, and a fallback that has never
+# been runnable is not one.
+#
+# To reactivate, restore:
+#   push:
+#     branches: [dev]
+#   pull_request:
 on:
-  push:
-    branches: [dev]
-  pull_request:
+  workflow_dispatch:
 
 # One run per branch/PR — a second push cancels the in-flight run instead of
 # duplicating the work.
