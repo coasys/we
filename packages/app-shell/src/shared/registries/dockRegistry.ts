@@ -813,7 +813,7 @@ function tabStrip(id: string): SchemaNode {
                     The accent fill itself, with its own foreground, rather than `accent-muted`: muted is
                     a tint toward the ground, so in a dark theme it came out darker than the resting
                     tab's `control-surface` — a flash that dimmed the thing it was pointing at. The name
-                    takes `on-accent` for the moment it is on the fill — set on the text itself, below.
+                    keeps its own colour throughout — see the text, below.
 
                     No fill on hover. The name brightening under the pointer is the move handle's, and
                     `surface-hover` on top of it darkened a tab into the titlebar behind it.
@@ -859,25 +859,21 @@ function tabStrip(id: string): SchemaNode {
                           truncate: true,
                           maxWidth: '120px',
                           /*
-                            On the text, not through the move handle's colour properties, so it can fade
-                            with the fill. The handle eases its own colour in a fixed 120ms, and a name
-                            that switched to `on-accent` in that while the fill took 400 to arrive and
-                            1.5s to leave read as the two coming apart. Set here, the text takes the
-                            fill's own timing.
+                            The tab showing is at full strength at rest, not only under the pointer, and
+                            stays that colour through a flash — only the fill changes.
 
-                            The tab showing is at full strength at rest, not only under the pointer.
-                            Pressing a background tab brings a different frame forward, with its own
-                            titlebar and its own copy of the strip — so the tab under the pointer is a
-                            new element, and it came in at the faint resting colour and eased up to the
-                            hover one: the name dimmed on the click and brightened again. Held bright,
-                            there is nothing to ease. The others inherit the handle's faint-to-bright
-                            hover as before, at the handle's own pace — which is why the slow timing is
-                            the active tab's alone: the flash is always on the tab showing.
+                            Held bright because pressing a background tab brings a different frame
+                            forward, with its own titlebar and its own copy of the strip: the tab under
+                            the pointer is a new element, and it came in at the faint resting colour and
+                            eased up to the hover one, so the name dimmed on the click and brightened
+                            again. The others inherit the handle's faint-to-bright hover.
+
+                            Unchanged through a flash because every way of recolouring it looked wrong: on
+                            `on-accent` through the handle it switched in the handle's fixed 120ms while
+                            the fill took 400 to arrive and 1.5s to leave, and on its own timing the two
+                            still read as separate fades.
                           */
-                          color: { $: `${landed} ? 'on-accent' : tab.active ? 'text' : null` },
-                          transition: {
-                            $: `tab.active ? (${landed} ? 'color 400 ease' : 'color calc(var(--we-transition-500) * 3) ease') : null`,
-                          },
+                          color: { $: "tab.active ? 'text' : null" },
                         },
                         children: [{ $: 'tab.title' }],
                       },
