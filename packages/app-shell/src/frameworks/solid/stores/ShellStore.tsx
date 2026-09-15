@@ -1281,8 +1281,41 @@ export function ShellStoreProvider(props: ParentProps) {
     }
   };
 
+  /**
+   * The panels coming back out of a strip, for the first frame they are on screen — see
+   * `DockGeometry.emerging`.
+   *
+   * Two frames rather than `settling`'s one: the contents have to be *painted* at zero before the
+   * fade can have somewhere to start, and a flag cleared on the next frame can land before the first
+   * paint of the box that was hidden until now.
+   */
+  const [emerging, setEmerging] = createSignal<readonly string[]>([]);
+  /**
+   * The panels easing open out of a strip — see `DockGeometry.opening`. Held for longer than the frame's
+   * 300 transition, so a theme that slows its animations down does not have the contents let go and
+   * squeeze in the last stretch; holding it a little past the end costs nothing, since by then the
+   * frame is already the size the contents are laid out at.
+   */
+  const [opening, setOpening] = createSignal<readonly string[]>([]);
+  let openingTimer: ReturnType<typeof setTimeout> | undefined;
+  onCleanup(() => {
+    if (openingTimer !== undefined) clearTimeout(openingTimer);
+  });
+  const emerge = (ids: readonly string[]) => {
+    setEmerging(ids);
+    setOpening(ids);
+    if (openingTimer !== undefined) clearTimeout(openingTimer);
+    openingTimer = setTimeout(() => {
+      openingTimer = undefined;
+      setOpening((was) => (was === ids ? [] : was));
+    }, 700);
+    if (typeof requestAnimationFrame !== 'function') return setEmerging([]);
+    requestAnimationFrame(() => requestAnimationFrame(() => setEmerging((was) => (was === ids ? [] : was))));
+  };
+
   /** Collapse every panel of a lane to its strip, or bring them all back. See `toggleStowLane`. */
   const setLaneStowed = (ids: readonly string[], on: boolean) => {
+    if (!on) emerge(ids);
     for (const memberId of ids) {
       const member = dockRequests().find((entry) => entry.id === memberId);
       if (!member) continue;
@@ -2036,6 +2069,8 @@ export function ShellStoreProvider(props: ParentProps) {
         collapsed: canCollapse && folded,
         hidden: eclipsed || (hidden[request.id] ?? false),
         settling: settling() === request.id,
+        emerging: emerging().includes(request.id),
+        opening: opening().includes(request.id),
         tabs: tabs[request.id] ?? [],
         // Empty rather than absent, so a schema condition reads a string either way.
         below: below[request.id] ?? '',

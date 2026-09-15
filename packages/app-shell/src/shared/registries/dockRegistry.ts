@@ -28,7 +28,7 @@
 import type { DockContribution } from '@we/module-shared';
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
-import type { SnapPoint } from '../dockGeometry';
+import { COLLAPSED_PX, FRAME_BORDER_PX, type SnapPoint } from '../dockGeometry';
 import { createRegistry } from './createRegistry';
 
 export interface DockEntry extends DockContribution {
@@ -215,6 +215,32 @@ export const DOCK_CONTENT_ATTR = 'data-we-dock-content';
  * A displacing panel is opaque for the reason it has no radius and no shadow: it has *taken* its
  * room rather than borrowed it, so it meets the content edge to edge and is not on top of anything.
  */
+/**
+ * The size a panel's insides are laid out at: at least the box it is heading for.
+ *
+ * A frame moves between boxes by easing its own width and height, and whatever is inside re-lays
+ * itself out at every step of the way — so a column opening out of its strip showed its contents
+ * crushed into 34px and unfolding from there, text wrapping a word per line. Laid out at the size the
+ * frame is *going to* be, from the first frame, the contents stay still and the frame uncovers them,
+ * like a drawer; the frame's `overflow: hidden` clips what has not been uncovered yet.
+ *
+ * Only while a lane is opening out of its strip (`opening`), which is the one move that starts from a
+ * box too small to lay anything out in. The rest of the time the contents fill the frame as they always
+ * have: the height here is the frame less a titlebar of known height, and a theme that makes the
+ * titlebar taller would otherwise clip the bottom few pixels of every panel at rest. The geometry's
+ * `width` and `height` are the target, because the easing is CSS: the props hold where the box is
+ * going, and the element is somewhere on the way.
+ *
+ * Less the frame's border, and for the height the titlebar too, since this is the box *inside* them.
+ * A placement that anchors both edges rather than stating a size has no target to hold, and gets none.
+ */
+const laidOutAt = (id: string, axis: 'width' | 'height', less: number) => {
+  const target = dockGeometryPath(id, axis);
+  const opening = dockGeometryPath(id, 'opening');
+  const rest = axis === 'height' ? "'0'" : 'null';
+  return { $: `${opening} && ${target} ? \`calc(\${${target}} - ${less}px)\` : ${rest}` };
+};
+
 const isGlass = (id: string) => `${dockGeometryPath(id, 'floating')} && !${dockGeometryPath(id, 'maximised')}`;
 
 /*
@@ -415,9 +441,20 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
                 type: 'Column',
                 props: {
                   flex: '1',
-                  minHeight: '0',
+                  // Zero when nothing says otherwise, which is what lets `flex: 1` shrink it; the box the
+                  // frame is growing into when something does. See `laidOutAt`.
+                  minHeight: laidOutAt(entry.id, 'height', COLLAPSED_PX),
+                  minWidth: laidOutAt(entry.id, 'width', FRAME_BORDER_PX),
                   width: '100%',
                   overflow: 'hidden',
+                  /*
+                    Faded in as a collapsed lane opens — the contents are uncovered at their full size
+                    (above) and arrive with a fade rather than appearing wholesale. `emerging` is true
+                    for the first frame the panel is back on screen, so the fade has a zero to start
+                    from. A token duration, so a theme's speed and reduced motion still decide.
+                  */
+                  opacity: { $: `${dockGeometryPath(entry.id, 'emerging')} ? 0 : 1` },
+                  transition: 'opacity 300 ease',
                   [DOCK_CONTENT_ATTR]: entry.id,
                   /*
                     Room for chrome painted over a maximised panel — see `padTop` in dockGeometry.
@@ -525,6 +562,8 @@ function titleBar(entry: DockEntry): SchemaNode {
     type: 'Row',
     props: {
       width: '100%',
+      // Its controls stay put while the frame grows, rather than squeezing and wrapping. See `laidOutAt`.
+      minWidth: laidOutAt(entry.id, 'width', FRAME_BORDER_PX),
       flex: '0 0 auto',
       ay: 'center',
       gap: '100',

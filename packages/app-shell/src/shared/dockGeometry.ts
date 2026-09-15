@@ -987,6 +987,16 @@ export interface DockGeometry {
    */
   strip?: { top: string; left: string; width: string; height: string; vertical: boolean; tabs: DockTab[] };
   /**
+   * Back on screen this frame from a lane collapsed to its edge — what the frame fades its contents in
+   * from. True for one frame, like {@link settling}.
+   */
+  emerging?: boolean;
+  /**
+   * Easing open out of a lane's strip, for as long as the move lasts — what holds the contents at the
+   * size the frame is heading for, so they are uncovered rather than unfolded from 34px.
+   */
+  opening?: boolean;
+  /**
    * Letting go of the resize drag in progress would collapse this panel's lane to its strip — it has
    * been pulled past {@link STOW_DRAG_PX}. What dims the lane while the drag says so.
    */

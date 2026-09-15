@@ -137,6 +137,8 @@ describe('a lane collapsed to its edge', () => {
 
     const geometry = shell.dockGeometry();
     expect(geometry[A].stowed || geometry[B].stowed).toBeFalsy();
+    // Held at their full size and faded in while the frame eases open — see `laidOutAt`.
+    expect(geometry[B]).toMatchObject({ opening: true, emerging: true });
     expect(geometry[B].hidden).toBe(false);
     expect(geometry[A].hidden).toBe(true);
     expect(shell.contentInset().left).toBeGreaterThan(STRIP_PX);

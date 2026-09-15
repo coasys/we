@@ -148,6 +148,12 @@ opening one panel on its own. That was tried as a peek, a card sliding out besid
 was easy to trigger by accident on a strip this thin, and a panel floating out of a collapsed column
 read as the arrangement having come apart.
 
+Opening eases the frame out from the strip's width, and contents re-laid out at every step of that
+arrive crushed and unfold. For as long as a lane is opening (`opening`) its panels' titlebars and
+contents are held at the size the frame is heading for (`laidOutAt`), so the frame uncovers them like a
+drawer, and the contents fade in from the first frame they are back (`emerging`). Scoped to that move:
+at rest a panel's contents fill its frame as they always have.
+
 ### Bringing a panel into sight
 
 A panel can be open and out of sight three ways: behind another tab of its seat, folded, or in a

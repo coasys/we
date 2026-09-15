@@ -269,3 +269,23 @@ describe('the displace control, by where the panel is', () => {
     expect(displace?.onToggle).toEqual({ $action: 'shellStore.toggleDockDisplace', args: [entry.id] });
   });
 });
+
+/**
+ * A column opening out of its strip is uncovered, not unfolded.
+ *
+ * The frame eases from the strip's 34px to its full size, and contents re-laid out at every step of
+ * that showed crushed and wrapping. While a lane opens they are held at the size the frame is heading
+ * for, and faded in.
+ */
+describe('a panel opening out of its strip', () => {
+  const text = JSON.stringify(dockFrame(entry as unknown as DockEntry, { type: 'Column' }));
+
+  it('lays its contents out at the target size only while it is opening', () => {
+    const minWidth = `${geo('opening')} && ${geo('width')} ? \`calc(\${${geo('width')}} - 2px)\` : null`;
+    expect(text).toContain(JSON.stringify(minWidth).slice(1, -1));
+  });
+
+  it('fades its contents in from the first frame it is back', () => {
+    expect(text).toContain(JSON.stringify(`${geo('emerging')} ? 0 : 1`).slice(1, -1));
+  });
+});
