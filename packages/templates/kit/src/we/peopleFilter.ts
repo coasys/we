@@ -313,6 +313,12 @@ function showChoice(show: string): SchemaNode {
           // `sm`, the size of the header's other controls: an `xs` button draws its icon at 12px, which
           // beside a 16px switch glyph read as a smaller, lesser control.
           size: 'sm',
+          /*
+            The size's height less the group's border, so the whole control is one `sm` control tall.
+            At the size's own height the border took it to 34px, the tallest thing in the header — so
+            choosing somebody made the header 2px taller and moved the whole board down with it.
+          */
+          height: 'calc(var(--we-component-height-sm) + var(--we-theme-control-height-offset, 0px) - 2px)',
           gap: '0',
           label,
           variant: {
@@ -329,7 +335,8 @@ function showChoice(show: string): SchemaNode {
   });
   return {
     type: 'Row',
-    props: { gap: '050', ay: 'center', p: '050', r: '300', border: '1px solid border' },
+    // No padding: the buttons are sized to fill the border exactly, and any inset would grow the box again.
+    props: { ay: 'center', r: '300', border: '1px solid border' },
     children: [
       option('dim', 'circle-half', 'Dim', 'Fade the cards nobody chosen is on'),
       option('hide', 'eye-slash', 'Hide', 'Leave out the cards nobody chosen is on'),
