@@ -535,6 +535,28 @@ export const moduleRegistry = {
     }));
   },
 
+  /**
+   * The panel a launcher is about, as a dock id — or null when it is about something else.
+   *
+   * Nothing in the contract says, because it did not need saying while a launcher's only job was to
+   * call its module. It needs saying now that the rail asks "is that panel actually in sight" before
+   * pressing: a lit button whose panel is stacked behind another tab would otherwise close a panel
+   * nobody could see.
+   *
+   * The contract's own names answer it. A keyed launcher is about the dock of that name — the pairing
+   * transcription already uses, `extraction` for `extraction` — and an unkeyed one is about the
+   * module's first dock, which for every module with one panel is the only one. A key naming no dock
+   * is a launcher about something that is not a panel, and the rail treats it as it always did.
+   */
+  dockOfLauncher(definition: ModuleDefinition, launcher: ModuleLauncher): string | null {
+    const docks = definition.docks ?? [];
+    if (launcher.key) {
+      const index = docks.findIndex((dock) => dock.name === launcher.key);
+      return index === -1 ? null : `${definition.id}:${docks[index].name ?? index}`;
+    }
+    return docks.length > 0 ? `${definition.id}:${docks[0].name ?? 0}` : null;
+  },
+
   chromeOnlyStoreMembers(): Record<string, readonly string[]> {
     const out: Record<string, readonly string[]> = {};
     for (const { definition } of moduleRegistry.all()) {

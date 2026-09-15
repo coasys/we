@@ -70,13 +70,13 @@ function hiddenInFullScreen(node: unknown, text: string, inside = false): boolea
 describe('a panel’s titlebar in full screen', () => {
   const frame = dockFrame(entry as unknown as DockEntry, { type: 'Column' } as never);
 
-  it('hides the four controls that would do nothing', () => {
-    // One gate per inert control — fit, fold, displace and the position menu — each on that panel's
-    // own maximised flag. Hidden rather than disabled, which is the choice `fitButton` already makes
-    // for a module publishing no aspect: a control that does nothing is worse than one that is not
-    // there.
+  it('hides the five controls that would do nothing', () => {
+    // One gate per inert control — fit, fold, collapse-to-edge, displace and the position menu — each
+    // on that panel's own maximised flag. Hidden rather than disabled, which is the choice `fitButton`
+    // already makes for a module publishing no aspect: a control that does nothing is worse than one
+    // that is not there.
     const maximised = gates(frame).filter((path) => path === `shellStore.dockPlacement['${entry.id}'].maximised`);
-    expect(maximised).toHaveLength(4);
+    expect(maximised).toHaveLength(5);
 
     // Named, for the one whose tooltip is a plain string — the others write theirs conditionally,
     // so the count above is what covers them.
@@ -179,5 +179,90 @@ describe('a dock whose close takes an argument', () => {
 
   it('leaves a module’s own close exactly as it was', () => {
     expect(JSON.stringify(dockFrame(entry as DockEntry, { type: 'Column' }))).toContain('modules.call.closeStage');
+  });
+});
+
+/** The first node anywhere in the tree whose `$if` condition reads this expression, or undefined. */
+function gatedOn(node: unknown, condition: string): Record<string, unknown> | undefined {
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      const found = gatedOn(item, condition);
+      if (found) return found;
+    }
+    return undefined;
+  }
+  if (!node || typeof node !== 'object') return undefined;
+  const record = node as Record<string, unknown>;
+  const props = record.props as Record<string, unknown> | undefined;
+  if (record.type === '$if' && (props?.condition as { $?: string } | undefined)?.$ === condition) return record;
+  for (const value of Object.values(record)) {
+    if (!value || typeof value !== 'object') continue;
+    const found = gatedOn(value, condition);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+const geo = (field: string) => `shellStore.dockGeometry['${entry.id}'].${field}`;
+
+/**
+ * A folded panel says what it is.
+ *
+ * A panel alone names itself inside its own content, so an open one has no title on its bar. Folding
+ * hides the content, and with it the name — a column of folded panels was a column of identical grips.
+ */
+describe('a folded panel’s titlebar', () => {
+  const titled = { ...entry, title: 'Call stage' } as unknown as DockEntry;
+  const frame = dockFrame(titled, { type: 'Column' });
+
+  it('carries the panel’s name while folded, and only while a strip is not already naming it', () => {
+    const name = gatedOn(frame, `${geo('collapsed')} && count(${geo('tabs')}) < 2`);
+
+    expect(name).toBeDefined();
+    expect(JSON.stringify(name)).toContain('Call stage');
+  });
+
+  it('puts the name inside the grip, so the whole bar still drags', () => {
+    const grip = JSON.stringify(frame).indexOf('"label":"Move panel"');
+    const title = JSON.stringify(frame).indexOf('Call stage');
+
+    expect(grip).toBeGreaterThan(-1);
+    expect(title).toBeGreaterThan(grip);
+  });
+});
+
+describe('putting a lane away to its edge', () => {
+  const frame = dockFrame(entry as unknown as DockEntry, { type: 'Column' });
+
+  it('is offered on the titlebar the geometry says heads the lane', () => {
+    const button = gatedOn(frame, geo('canStow'));
+
+    expect(button).toBeDefined();
+    expect(JSON.stringify(button)).toContain('shellStore.toggleStowLane');
+  });
+
+  it('draws the strip from outside the frame, with a tab that peeks each panel', () => {
+    const strip = gatedOn(frame, geo('strip'));
+
+    expect(strip).toBeDefined();
+    expect(JSON.stringify(strip)).toContain('shellStore.peekDock');
+    // And the way back open, on the strip itself — the lane's titlebars are all hidden.
+    expect(JSON.stringify(strip)).toContain('shellStore.toggleStowLane');
+  });
+});
+
+describe('the displace control, by where the panel is', () => {
+  const frame = dockFrame(entry as unknown as DockEntry, { type: 'Column' });
+  const items = menuItems(frame);
+
+  it('is a titlebar button only while the panel floats and is not peeking', () => {
+    expect(gatedOn(frame, `${geo('floating')} && !${geo('peeking')}`)).toBeDefined();
+  });
+
+  it('is a position-menu toggle, hidden while floating, once the panel docks', () => {
+    const displace = items.find((item) => item.id === 'displace');
+
+    expect(displace?.hidden).toEqual({ $: geo('floating') });
+    expect(displace?.onToggle).toEqual({ $action: 'shellStore.toggleDockDisplace', args: [entry.id] });
   });
 });

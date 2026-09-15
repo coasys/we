@@ -347,7 +347,7 @@ export const storeEntries: StoreEntry[] = [
       },
       moduleLaunchers: {
         type: 'array',
-        properties: ['id', 'icon', 'label', 'active', 'busy'],
+        properties: ['id', 'icon', 'label', 'active', 'busy', 'concealed'],
       },
       taskStates: { type: 'array', properties: ['id', 'name', 'slug', 'semantic', 'color', 'retired', 'defined'] },
       offeredTaskStates: {
@@ -1037,7 +1037,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         moduleInstallSettings:
           "{ id, name, description, icon, installed, surface, switchable }[] — every registered module and whether this agent wants it anywhere. The global Settings → Modules list, and the only place an 'app' or 'capability' module is decided about: a contribution is gated at the layer where it renders, and only 'chrome' renders inside a space. `surface` is derived from what the module contributes. Its per-space counterpart is `modules` on each spaceList row, which carries enabled/installed/visible/active together and lists chrome modules only",
         moduleLaunchers:
-          '{ id, icon, label, active, busy }[] — launchers for the modules enabled here and available in this space; what the host module rail renders. `active` lights the button while the module reports its surface open; `busy` says the module is working in the background — an extraction pass running — and is independent of `active`, so a rail can show work going on behind a closed panel. Pair with { $action: "spaceStore.launchModule", args: [{ $: "mod.id" }] }',
+          '{ id, icon, label, active, busy, concealed }[] — launchers for the modules enabled here and available in this space; what the host module rail renders. `active` is the module reporting its surface open; `concealed` says that panel is open and out of sight — a background tab of a stack, folded to its bar, or in a lane collapsed to its edge — so light the button on `mod.active && !mod.concealed`, since pressing a concealed one brings the panel forward rather than closing it. `busy` says the module is working in the background — an extraction pass running — and is independent of `active`, so a rail can show work going on behind a closed panel. Pair with { $action: "spaceStore.launchModule", args: [{ $: "mod.id" }] }',
       },
       actions: {
         moveChild:
@@ -1420,7 +1420,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         createSpaceOpen:
           'boolean — the create-space modal is open. Shell state because more than one place opens it; bind the modal’s open prop to this and close it with setCreateSpaceOpen',
         dockGeometry:
-          "Record<dockId, DockGeometry> — every registered panel's resolved box (top, left, width, height, edge, mode). Read a field as { $: \"shellStore.dockGeometry['<id>'].<field>\" } — by index, since a dock id holds a colon; the frame a panel is wrapped in binds its geometry this way so a move rewrites props rather than remounting",
+          "Record<dockId, DockGeometry> — every registered panel's resolved box (top, left, width, height, edge, mode) and its state — hidden behind another tab, collapsed to its bar, stowed in a lane collapsed to its edge, peeking out of one, and which of those its titlebar may offer (canCollapse, canStow). Read a field as { $: \"shellStore.dockGeometry['<id>'].<field>\" } — by index, since a dock id holds a colon; the frame a panel is wrapped in binds its geometry this way so a move rewrites props rather than remounting",
         contentInset:
           '{ top, right, bottom, left } in pixels — what the content viewport gives up to panels that displace it. Read it to keep your own fixed chrome clear of docked panels',
         coveredInset:
@@ -1483,7 +1483,13 @@ export function generateStoresText(entries: StoreEntry[]): string {
         toggleDockDisplace:
           '(id: string): makes the panel push the content aside, or stop. A toggle rather than a setter because a menu item reports only that it was clicked',
         toggleCollapseDock:
-          '(id: string): folds a panel down to its titlebar, or opens it again. It keeps its place in its lane and its lane-mates take the room; the content is hidden, never unmounted. Refused where there is nowhere for that room to go — a sidebar alone on its edge, or the last open member of a lane. Read dockPlacement[id].canCollapse',
+          '(id: string): folds a panel, and every tab stacked with it, down to its titlebar — or opens it again. A fold always takes height: down a side lane the lane-mates take the room, and across a top or bottom lane the lane is as thick as its tallest open member, so folding the last one hands the room back to the content. The content is hidden, never unmounted. Refused where there is nowhere for that room to go — a sidebar alone on its edge, or the last open member of a side lane; collapse that lane to its edge instead. Read dockGeometry[id].canCollapse',
+        toggleStowLane:
+          "(id: string): collapses the whole displacing lane this panel is in to a strip of tabs at its edge, or opens it again. Every panel keeps its size, which tab is showing and whether it is folded; the content is hidden, never unmounted. Offered on the lane's first titlebar — read dockGeometry[id].canStow — and from the strip's own open button",
+        peekDock:
+          "(id: string): shows one panel of a collapsed lane over the content beside its strip, or with '' stops. What a strip's tab calls; pressing the same tab, anywhere outside the panel, or Escape puts the peek away, and the lane stays collapsed",
+        revealDock:
+          '(id: string): brings an open panel into sight wherever it is hidden — to the front of its stack, unfolded, or peeking out of a collapsed lane — and flashes its tab when it came forward in a stack. Leaves a closed panel alone. What the module rail does for a panel that is open and concealed, instead of the module\u2019s own toggle',
         breakOut:
           "(panelId: string, x?: number, y?: number): takes a section out of the template and makes it a panel — floating under the pointer when given one, else at the snap its meta.panels entry named. Refused for a section declared `fixed`. Takes the panel's own id, not the dock id",
         returnHome:

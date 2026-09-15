@@ -95,15 +95,72 @@ maximising all touch. Chrome stays above every step — `chromeLayering.test.ts`
 A panel says where usable stops: `DockContribution.min` for a module, `min` on a `meta.panels`
 entry for a section — the one place a declaration writes pixels, because a floor is a fact about
 the content. `floorOf` resolves it per axis over the host's defaults, and every division, drag and
-divider honours it. A panel can be **folded** to its titlebar: its extent becomes the bar, its grow
-zero, its content hidden rather than unmounted.
+divider honours it. A panel can be **folded** to its titlebar: its content is hidden rather than
+unmounted, and the bar shows the panel's name — a panel alone names itself inside its content, which
+folding hides, so a column of folded bars would otherwise be a column of identical grips. Pressing a
+folded bar without dragging opens it; a double-click on it opens it too, rather than going full
+screen.
+
+**A fold always takes height**, on every edge, because the titlebar is always horizontal. Down a side
+lane that is the axis the lane divides, so the fold's extent becomes the bar and its lane-mates take
+the room. Across a top or bottom lane the lane divides the _width_, so a folded member keeps its
+width and becomes a bar against the edge; the lane stays as thick as its tallest **open** member, and
+only when every member has folded does it shrink to a bar and hand the room to the content
+(`laneThickness`, `laneShrunk`). A fold belongs to the **seat**: the titlebar is the seat's, so it
+folds every tab stacked there.
 
 Folding is offered wherever there is **somewhere for the room to go** (`canFold`). A float hands its
-room back to the screen, so it always may. A displacing panel hands it to a lane-mate, so it needs an
-_open_ one — which refuses both a sidebar alone on its edge and the last open member of a lane, each
-of which would otherwise leave the edge at its full width holding nothing but titlebars. An
-already-folded panel may always unfold, or folding the second-to-last member would disable the
-control that undoes it.
+room back to the screen, so it always may. Across a top or bottom lane the last fold is the one that
+hands it back, so there it always may too. Down a side, a displacing panel hands it to a lane-mate, so
+it needs an _open_ one — which refuses both a sidebar alone on its edge and the last open member of a
+lane, each of which would otherwise leave the edge at its full width holding nothing but titlebars.
+Those are what collapsing to the edge is for. An already-folded panel may always unfold, or folding
+the second-to-last member would disable the control that undoes it.
+
+### Collapsing a lane to its edge
+
+A whole displacing lane can be put away (`toggleStowLane`): it becomes a **strip** `STRIP_PX` thick
+against its edge, with one vertical tab per panel in it — every tab of every seat — and the content
+takes the rest. Offered on the lane's first titlebar (`canStow`), as double chevrons pointing at the
+edge, since it acts on the column rather than the panel; and by dragging the lane's inboard edge past
+`STOW_DRAG_PX` and letting go, which dims the lane while the drag says so.
+
+```
+ open                        collapsed to its edge
+ ┌──────────┬──────────┐    ┌──┬───────────────────┐
+ │ Transcr… │          │    │T │                   │
+ │          │ content  │    │r │     content       │
+ ├──────────┤          │    ├──┤                   │
+ │ Notes    │          │    │N │                   │
+ └──────────┴──────────┘    └──┴───────────────────┘
+```
+
+Every member carries `stowed`, so the lane is stowed when all of them are, and it travels through
+saved layouts and resets like any coordinate. Nothing else about a member changes — size, seat,
+which tab shows, whether it is folded — so opening the lane brings back exactly what was there.
+Gestures that take a panel out of its lane (a drag off it, a snap elsewhere, turning displacing off)
+drop the flag; a drop into a stowed lane is not offered, and joining one some other way opens it.
+
+Pressing a tab **peeks** that panel (`peekDock`): a floating card beside the strip at the lane's own
+thickness, stepping over the chrome between (`peekBox`). The same tab, a press anywhere else, or
+Escape put it away; the lane stays collapsed and the content keeps its room. The peeking card's
+titlebar carries a pin where the chevrons were, which opens the lane for good, and the strip has its
+own open button. Tabs rather than hover, deliberately: the left edge already opens the sidebar under a
+passing pointer, and a touchscreen has no hover.
+
+### Bringing a panel into sight
+
+A panel can be open and out of sight three ways: behind another tab of its seat, folded, or in a
+collapsed lane. `revealDock` undoes whichever it is — brings the tab to the front, unfolds, peeks —
+and flashes the tab when it came forward in a stack (`DockTab.landed`), because the frame did not
+move and which tab is lit is the only change on screen. A drop into a seat flashes the same way.
+
+The module rail depends on it. A launcher's action is usually a toggle, so a button lit for a panel
+stacked out of sight used to close a panel nobody could see. `moduleLaunchers` rows carry
+`concealed` (the rail lights on `active && !concealed`), and `launchModule` reveals a concealed panel
+instead of calling the module; a press that opens a panel reveals it too, so a panel reopening into a
+stack comes back in front. Which dock a launcher is about is `moduleRegistry.dockOfLauncher`: the dock
+named by its `key`, or the module's first.
 
 ### Home lanes
 
@@ -180,7 +237,8 @@ A module never positions its own chrome or its own panel. It says what it has an
 
 ## A panel names itself, once, at the top
 
-The host's titlebar carries the move handle and the window controls and draws **no text**. A panel's
+The host's titlebar carries the move handle and the window controls and draws **no text** — except
+the panel's name while it is folded, when the panel's own header is hidden with its content. A panel's
 name is its own to draw — but not its own to design: **open every panel with `panelHeader` or
 `panelShell` from `@we/schema-kit`.**
 

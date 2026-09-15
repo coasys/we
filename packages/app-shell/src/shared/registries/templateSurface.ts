@@ -1031,6 +1031,12 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     fitDock: action('host-layout'),
     toggleDockDisplace: action('host-layout'),
     toggleCollapseDock: action('host-layout'),
+    // A lane put away to a strip at its edge, a glance at one of its panels, and bringing a panel into
+    // sight from wherever it is hidden — the first two are what the strip and the titlebar press, the
+    // third what the module rail does on a panel that is open but out of view.
+    toggleStowLane: action('host-layout'),
+    peekDock: action('host-layout'),
+    revealDock: action('host-layout'),
     breakOut: action('host-layout'),
     returnHome: action('host-layout'),
     stackDock: action('host-layout'),

@@ -138,8 +138,11 @@ const spaceSection: SchemaNode = {
               icon: { $: 'mod.icon' },
               tooltip: { $: 'mod.label' },
               // Highlighted while the module reports itself open, which is what makes the rail read
-              // as a set of tabs rather than a row of buttons.
-              active: { $: 'mod.active' },
+              // as a set of tabs rather than a row of buttons — and only while its panel is in
+              // sight. A lit button says pressing it puts the panel away; for a panel stacked behind
+              // another tab, folded, or collapsed to its edge, pressing brings it forward instead,
+              // and the button should not promise the opposite. See `launchModule`.
+              active: { $: 'mod.active && !mod.concealed' },
               // A spinner while the module has work running behind the panel — an extraction pass
               // somebody else started. This replaced a square in the call bar, which only existed
               // during a call; the rail is where the panel is opened from and outlives the call.

@@ -37,6 +37,9 @@ const SOLID_TESTS = [
   'tests/cardPeopleLive.test.tsx',
   // Renders a route through the real router and renderer, reading the surface its layout provides.
   'tests/routeSurface.test.tsx',
+  // Drives the shell's real dock memos through stacking, folding, collapsing a lane and revealing a
+  // hidden panel — reactive derivations, which the node project's SSR build of solid-js never runs.
+  'tests/dockStowAndReveal.test.tsx',
 ];
 
 export default defineConfig({

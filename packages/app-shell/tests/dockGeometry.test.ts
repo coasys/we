@@ -47,6 +47,7 @@ import {
   insertionSlots,
   laneEdgeBox,
   type LaneMember,
+  laneShrunk,
   laneThickness,
   layerOrder,
   looseSeats,
@@ -59,6 +60,7 @@ import {
   occupiedFor,
   PANEL_CHROME,
   PANEL_LAYER_BASE,
+  peekBox,
   placementFromDeclaration,
   RAIL_TOP_PX,
   railBand,
@@ -79,6 +81,8 @@ import {
   type SnapPoint,
   snapTargetRects,
   snapTargetSize,
+  STRIP_PX,
+  stripBox,
   takenSnaps,
   targetRank,
   unlaned,
@@ -2016,6 +2020,166 @@ describe('a panel folded to its titlebar', () => {
 });
 
 /**
+ * Folding along a top or bottom edge.
+ *
+ * The titlebar is horizontal on every edge, so a fold takes height on every edge — and across a top
+ * or bottom lane that is the lane's own axis rather than the one it divides. It used to fold the
+ * width instead, following the lane: a panel along the top folded to a strip one titlebar *wide*,
+ * holding a horizontal bar and its controls in 35 pixels.
+ */
+describe('a panel folded across a top or bottom lane', () => {
+  const docked = (over: Partial<FloatPlacement> = {}): LaneMember =>
+    placement({ snap: 'top', displace: true, w: 500, h: 300, thicknessY: 300, ...over });
+
+  it('keeps its width and gives up its height, against the edge', () => {
+    const [folded, open] = columnLayout([docked({ collapsed: true }), docked()], 'top', desktop, NO_INSET, undefined, {
+      displacing: true,
+    });
+    const [unfolded] = columnLayout([docked(), docked()], 'top', desktop, NO_INSET, undefined, { displacing: true });
+
+    expect(folded.h).toBe(COLLAPSED_PX);
+    expect(folded.w).toBe(unfolded.w);
+    expect(folded.y).toBe(open.y);
+    expect(open.h).toBe(300);
+  });
+
+  it('sits against the bottom edge when the lane is along the bottom', () => {
+    const bottom = (over: Partial<FloatPlacement> = {}) => docked({ snap: 'bottom', ...over });
+    const [folded, open] = columnLayout(
+      [bottom({ collapsed: true }), bottom()],
+      'bottom',
+      desktop,
+      NO_INSET,
+      undefined,
+      {
+        displacing: true,
+      },
+    );
+
+    expect(folded.y + folded.h).toBe(open.y + open.h);
+  });
+
+  it('holds the lane at its tallest open member until every member has folded', () => {
+    expect(laneThickness([docked({ collapsed: true }), docked({ thicknessY: 260 })], 'top')).toBe(260);
+    expect(laneThickness([docked({ collapsed: true }), docked({ collapsed: true })], 'top')).toBe(COLLAPSED_PX);
+  });
+
+  it('hands the room back to the content once the whole lane has folded', () => {
+    const requests = [
+      dock({ id: 'a', edge: 'top', placement: docked({ band: 0, order: 0, collapsed: true }) }),
+      dock({ id: 'b', edge: 'top', placement: docked({ band: 0, order: 1, collapsed: true }) }),
+    ];
+
+    // Not clamped up to the smallest a lane may be dragged: a bar is the point.
+    expect(contentInset(requests, desktop).top).toBe(COLLAPSED_PX);
+  });
+
+  it('is a bar tall as a lone sidebar along the top', () => {
+    const geometry = resolveDock(dock({ edge: 'top', placement: docked({ collapsed: true }) }), desktop);
+
+    expect(px(geometry.height)).toBe(COLLAPSED_PX);
+  });
+
+  it('is a bar tall as a floating card in a top lane, keeping its share of the width', () => {
+    const card = (over: Partial<FloatPlacement> = {}) => placement({ snap: 'top', displace: false, h: 300, ...over });
+    const [folded, open] = columnLayout([card({ collapsed: true }), card()], 'top', desktop);
+
+    expect(folded.h).toBe(COLLAPSED_PX);
+    expect(folded.w).toBe(open.w);
+  });
+
+  it('leaves a side lane’s thickness alone, where a fold takes the other axis', () => {
+    const side = placement({ snap: 'left', displace: true, thicknessX: 320, collapsed: true });
+
+    expect(laneThickness([side], 'left')).toBe(320);
+  });
+});
+
+describe('a lane thinner than any panel may be dragged', () => {
+  it('is a lane collapsed to its strip, on any edge', () => {
+    expect(laneShrunk([placement({ stowed: true }), placement({ stowed: true })], 'left')).toBe(true);
+  });
+
+  it('is a top or bottom lane folded in every member, and not a side one', () => {
+    const folded = placement({ collapsed: true });
+    expect(laneShrunk([folded, folded], 'top')).toBe(true);
+    expect(laneShrunk([folded, folded], 'left')).toBe(false);
+  });
+
+  it('is not a lane with one member still open or still out', () => {
+    expect(laneShrunk([placement({ stowed: true }), placement()], 'right')).toBe(false);
+    expect(laneShrunk([placement({ collapsed: true }), placement()], 'bottom')).toBe(false);
+    expect(laneShrunk([], 'top')).toBe(false);
+  });
+});
+
+/**
+ * A lane collapsed to its edge — a strip of tabs, and a card that peeks out of it.
+ *
+ * The way a sidebar gets out of the way when nothing beside it can take a fold's room. The lane
+ * shrinks to `STRIP_PX` and the content takes the rest; each panel is a tab on the strip, and pressing
+ * one shows the panel as a card beside it.
+ */
+describe('a lane collapsed to its edge', () => {
+  const stowed = (over: Partial<FloatPlacement> = {}) =>
+    placement({ snap: 'left', displace: true, thicknessX: 360, stowed: true, ...over });
+
+  it('is as thick as its strip, and gives the content the rest', () => {
+    expect(laneThickness([stowed(), stowed()], 'left')).toBe(STRIP_PX);
+
+    const requests = [dock({ id: 'a', edge: 'left', placement: stowed({ band: 0, order: 0 }) })];
+    expect(contentInset(requests, desktop).left).toBe(STRIP_PX);
+  });
+
+  it('is open again the moment one member is not stowed', () => {
+    expect(laneThickness([stowed(), stowed({ stowed: false })], 'left')).toBe(360);
+  });
+
+  it('sits flush against a side edge, spanning it, beside the sidebar', () => {
+    const left = stripBox('left', desktop);
+    expect(left).toEqual({ x: SIDEBAR_PX, y: 0, w: STRIP_PX, h: desktop.height });
+
+    const right = stripBox('right', desktop);
+    expect(right.x + right.w).toBe(desktop.width);
+  });
+
+  it('sits inboard of the lanes outboard of it', () => {
+    expect(stripBox('left', desktop, { ...NO_INSET, left: 320 }).x).toBe(SIDEBAR_PX + 320);
+  });
+
+  it('runs across a top edge, between the side lanes', () => {
+    const top = stripBox('top', desktop, { ...NO_INSET, right: 400 });
+
+    expect(top.h).toBe(STRIP_PX);
+    expect(top.y).toBe(0);
+    expect(top.x + top.w).toBe(desktop.width - 400);
+  });
+
+  it('peeks a panel out beside the strip at the lane’s own thickness', () => {
+    const strip = stripBox('left', desktop);
+    const peek = peekBox('left', strip, stowed(), desktop, NO_INSET);
+
+    expect(peek.x).toBe(strip.x + strip.w + DOCK_GAP_PX);
+    expect(peek.w).toBe(360);
+  });
+
+  it('steps a right-hand peek over the rail rather than putting its titlebar under it', () => {
+    const strip = stripBox('right', desktop);
+    const chrome = { ...NO_INSET, right: CHROME_RAIL_PX, bottom: BOTTOM_CHROME_PX };
+    const peek = peekBox('right', strip, stowed({ snap: 'right' }), desktop, chrome);
+
+    expect(peek.x + peek.w).toBe(strip.x - CHROME_RAIL_PX - DOCK_GAP_PX);
+    // And clears the call bar along the bottom, as any floating card does.
+    expect(peek.y + peek.h).toBeLessThanOrEqual(desktop.height - BOTTOM_CHROME_PX);
+  });
+
+  it('is left behind by a panel dragged out of it', () => {
+    expect(unlaned(stowed({ band: 0 }), null).stowed).toBeUndefined();
+    expect(followSeat(stowed({ tab: 1 }), placement({ snap: 'right', displace: true })).stowed).toBeUndefined();
+  });
+});
+
+/**
  * Seats — several panels in one place, one showing.
  *
  * The overflow valve. Lanes raised how many panels an edge can hold at once; a seat is how it holds
@@ -2845,7 +3009,7 @@ describe('every member of a seat resolves to one box', () => {
 
   it('leaves what belongs to the tab itself alone', () => {
     // Hidden, its place in the strip and its layer are per panel — the *box* is what is shared.
-    const strip = [{ id: 'front', title: 'Transcript', active: true }];
+    const strip = [{ id: 'front', title: 'Transcript', active: true, landed: false }];
     const resolved: Record<string, DockGeometry> = {
       front: seated({ tabs: strip }),
       back: seated({ hidden: true, layer: 204, left: '900px' }),

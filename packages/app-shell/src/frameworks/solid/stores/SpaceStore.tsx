@@ -536,8 +536,17 @@ export interface SpaceStore {
       switchable: boolean;
     }[]
   >;
-  /** Launchers for the modules enabled here — what the module rail renders. */
-  moduleLaunchers: Accessor<{ id: string; icon: string; label: string; active: boolean; busy: boolean }[]>;
+  /**
+   * Launchers for the modules enabled here — what the module rail renders.
+   *
+   * `concealed` is the launcher's panel being open and out of sight: a background tab of a stack,
+   * folded to its bar, or in a lane collapsed to its edge. The rail lights a button only when it is
+   * not, because a lit button says "pressing me puts this away" — and pressing one whose panel is
+   * concealed brings the panel into sight instead. See `launchModule`.
+   */
+  moduleLaunchers: Accessor<
+    { id: string; icon: string; label: string; active: boolean; busy: boolean; concealed: boolean }[]
+  >;
   /**
    * This space's sections, resolved: which view renders at which segment, in the space's own order.
    *
@@ -4037,10 +4046,28 @@ export function SpaceStoreProvider(props: ParentProps) {
             // Background work the module reports — a running pass. Read separately from `active`,
             // since a panel can be shut while its module is busy.
             busy: read(definition.id, launcher.busyWhen, false),
+            concealed: dockConcealed(moduleRegistry.dockOfLauncher(definition, launcher)),
           };
         })
     );
   });
+
+  /**
+   * Whether a panel is open and nobody can see it — behind another tab of its stack, folded to its
+   * bar, or in a lane collapsed to its edge and not the one peeking out.
+   *
+   * Asked of the shell's resolved geometry rather than re-derived, because the shell is what decides
+   * all three. Not eclipsed-by-full-screen: the rail hides while a panel is maximised, so no rail
+   * button is ever pressed in that state to be wrong about it.
+   */
+  function dockConcealed(dockId: string | null): boolean {
+    if (!dockId) return false;
+    const geometry = shellStore.dockGeometry()[dockId];
+    if (!geometry?.edge || geometry.home) return false;
+    return Boolean(
+      (geometry.hidden && !geometry.stowed) || geometry.collapsed || (geometry.stowed && !geometry.peeking),
+    );
+  }
 
   /**
    * Invoke a module's launcher.
@@ -4059,12 +4086,39 @@ export function SpaceStoreProvider(props: ParentProps) {
     const [id] = moduleId.split(':');
     const definition = moduleRegistry.get(id)?.definition;
     if (!definition) return;
-    const action = moduleRegistry.launchersOf(definition).find((entry) => entry.key === moduleId)?.launcher.action;
-    if (!action) return;
+    const launcher = moduleRegistry.launchersOf(definition).find((entry) => entry.key === moduleId)?.launcher;
+    const action = launcher?.action;
+    if (!launcher || !action) return;
+    const dockId = moduleRegistry.dockOfLauncher(definition, launcher);
+
+    /*
+      The panel is open and out of sight: bring it into sight, and do not ask the module.
+
+      The module's action is usually a toggle, and a toggle reads "open" and closes. So a button lit for
+      a panel stacked behind another tab put that panel away when pressed — the one thing the person
+      pressing it could not have wanted, since they could not see it to want it gone. Only the shell
+      knows where the panel is, so the shell answers; the module keeps its one plain action for the
+      cases it can mean something.
+    */
+    if (dockConcealed(dockId)) {
+      shellStore.revealDock(dockId as string);
+      return;
+    }
+
     const store = moduleStores[id] as Record<string, unknown> | undefined;
     const fn = store?.[action];
-    if (typeof fn === 'function') (fn as () => void)();
-    else console.warn(`module "${id}" declares launcher action "${action}" but its store has no such method`);
+    if (typeof fn !== 'function') {
+      console.warn(`module "${id}" declares launcher action "${action}" but its store has no such method`);
+      return;
+    }
+    (fn as () => void)();
+    /*
+      And a panel the press just opened comes to the front of wherever it opened. A panel reopening into
+      a stack otherwise shows only if it happens to be the most recently touched tab there, which it
+      rarely is — it was closed. `revealDock` leaves a panel that is still closed alone, so an action
+      that closed it, or opens it asynchronously, costs nothing here.
+    */
+    if (dockId) shellStore.revealDock(dockId);
   }
 
   /**

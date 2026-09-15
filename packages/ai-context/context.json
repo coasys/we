@@ -7100,6 +7100,9 @@
         "toggleMaximiseDock",
         "toggleDockDisplace",
         "toggleCollapseDock",
+        "toggleStowLane",
+        "peekDock",
+        "revealDock",
         "breakOut",
         "returnHome",
         "stackDock",
@@ -7262,7 +7265,7 @@
         },
         "moduleLaunchers": {
           "type": "array",
-          "properties": ["id", "icon", "label", "active", "busy"]
+          "properties": ["id", "icon", "label", "active", "busy", "concealed"]
         },
         "spaceViews": {
           "type": "array"

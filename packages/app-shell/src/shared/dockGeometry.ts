@@ -302,6 +302,14 @@ export function contains(point: { x: number; y: number }, rect: Rect): boolean {
  * lone sidebar, and it refuses the last open member of a lane of two — fold both and the edge keeps
  * its whole width for two bars, which is the same emptiness arrived at one step later.
  *
+ * **Across a top or bottom lane the answer is always yes**, and the caller says so. A fold takes
+ * height on every edge, and a lane along the top is as thick as its tallest *open* member — so the
+ * last member folding is exactly the fold that hands the room back, where down a side it is the one
+ * that hands it to nobody. The rule is the same question; only the geometry answering it differs.
+ *
+ * A lane that has nobody beside it to take a fold's room is put away whole instead: see
+ * {@link FloatPlacement.stowed}.
+ *
  * `folded` is what keeps the control from trapping somebody: a panel that is already folded may
  * always unfold, whatever the lane looks like around it. Without it, folding the second-to-last
  * member would disable the button that undoes it.
@@ -345,7 +353,8 @@ export function roomElsewhere(seatOpen: readonly boolean[], seat: number): boole
  * next time it displaced, which is the same silent inheritance `insertDock` clears for.
  */
 export function followSeat(mate: FloatPlacement, landed: FloatPlacement): FloatPlacement {
-  const { band: _band, home: _home, seat: _seat, ...rest } = mate;
+  // `stowed` goes with the lane coordinates: a strip is a place, and the mate has left it.
+  const { band: _band, home: _home, seat: _seat, stowed: _stowed, ...rest } = mate;
   const loose = edgeOfSnap(landed.snap) === null;
   return {
     ...rest,
@@ -527,9 +536,11 @@ export function looseSeats(panels: readonly { placement: FloatPlacement; index: 
  * panel dragged out of position 0 of one edge and dropped in the middle keeps saying `order: 0`
  * about a lane it is not in. `seat` goes for the same reason and one more: it is the one coordinate
  * whose staleness would be *visible*, fusing this card into a stack it has just been pulled out of.
+ * `stowed` too: a card peeking out of a strip and dragged away is a card, not a strip with one tab
+ * gone missing.
  */
 export function unlaned(placement: FloatPlacement, snap: SnapPoint | null): FloatPlacement {
-  const { band: _band, order: _order, home: _home, seat: _seat, ...rest } = placement;
+  const { band: _band, order: _order, home: _home, seat: _seat, stowed: _stowed, ...rest } = placement;
   return { ...rest, snap, displace: false };
 }
 
@@ -749,13 +760,33 @@ export interface FloatPlacement {
    * Folded down to its titlebar, content hidden — the way a panel stays where it is while getting
    * out of the way.
    *
-   * Its extent along its lane becomes the titlebar's and its grow becomes zero, so the lane-mates
-   * take the room; the content is hidden rather than unmounted, so a transcript keeps its scroll and
-   * a call keeps its streams. Offered wherever there is somewhere for that room to go — see
-   * {@link canFold}. This is also what `MIN_FLOAT_PX` was silently preventing: a card could not be
-   * dragged down to its own bar.
+   * **Always along the height**, on every edge, because the titlebar is always horizontal. Down a
+   * side lane that is the axis the lane divides, so the fold's extent becomes the bar's, its grow
+   * zero, and the lane-mates take the room. Across a top or bottom lane the lane divides the
+   * *width*, so a fold keeps its width and gives up its height instead: the lane is as thick as its
+   * tallest open member, and only when every member has folded does it shrink to a bar and hand the
+   * room to the content.
+   *
+   * The content is hidden rather than unmounted, so a transcript keeps its scroll and a call keeps
+   * its streams. Offered wherever there is somewhere for that room to go — see {@link canFold}. This
+   * is also what `MIN_FLOAT_PX` was silently preventing: a card could not be dragged down to its own
+   * bar.
    */
   collapsed?: boolean;
+  /**
+   * The whole lane this panel is in has been collapsed to its edge — a strip of tabs, one per panel.
+   *
+   * The counterpart of {@link collapsed} one level up. Folding shrinks a panel inside its lane; this
+   * shrinks the lane inside its edge, which is the only way to get a sidebar out of the way that has
+   * nobody beside it to take a fold's room. Every member carries it, so a lane is stowed when all of
+   * its members are, and the flag travels with them through saved layouts and resets like any other
+   * coordinate.
+   *
+   * Meaningful only for a lane that displaces. A panel that stops displacing — dragged off its edge,
+   * or a window too narrow to give up room — has no strip to be in, so the flag is dropped by every
+   * gesture that takes a panel out of its lane and ignored everywhere else.
+   */
+  stowed?: boolean;
 }
 
 /**
@@ -836,16 +867,42 @@ export const PANEL_CHROME = { x: FRAME_BORDER_PX, y: TITLE_BAR_PX + FRAME_BORDER
 export const COLLAPSED_PX = TITLE_BAR_PX + FRAME_BORDER_PX;
 
 /**
+ * How thick a lane is while it is collapsed to its edge — the strip of tabs it becomes.
+ *
+ * Wide enough for a line of vertical text and a button's hit area, and no wider: the point of
+ * collapsing a column is to hand its room to the content, and every pixel the strip keeps is one it
+ * did not hand back.
+ */
+export const STRIP_PX = 28;
+
+/**
+ * How narrow a displacing lane's edge has to be dragged before letting go collapses it to its strip.
+ *
+ * Below the smallest a lane may be (`MIN_DOCK_PX`), so the ordinary resize range is untouched: the
+ * drag stops shrinking the lane at its floor, and only pulling well past that says "put it away".
+ * The same gesture that closes a side bar in every editor that has one.
+ */
+export const STOW_DRAG_PX = 96;
+
+/**
  * The least a panel may be along one axis: its own floor if it declared one, else the host's.
  *
- * A collapsed panel floors at its titlebar on the axis its lane divides, whatever it declared —
- * folding is the one time a panel is deliberately smaller than usable, since the point is that its
- * content is not showing.
+ * A folded panel floors at its titlebar on the axis it folds along — height, on every edge —
+ * whatever it declared: folding is the one time a panel is deliberately smaller than usable, since
+ * the point is that its content is not showing.
  */
 export function floorOf(min: DockMin | undefined, axis: 'w' | 'h', spanning: boolean, collapsed = false): number {
   if (collapsed) return COLLAPSED_PX;
   const declared = axis === 'w' ? min?.width : min?.height;
   return declared ?? (spanning ? MIN_DOCK_PX : MIN_FLOAT_PX);
+}
+
+/** One entry in a tab strip — a seat's, or a stowed lane's. See {@link DockGeometry.tabs}. */
+export interface DockTab {
+  id: string;
+  title: string;
+  active: boolean;
+  landed: boolean;
 }
 
 /**
@@ -900,8 +957,12 @@ export interface DockGeometry {
    * The seat's members, for the panel that is showing to draw as a strip. Empty for a seat of one.
    * `active` marks this panel's own entry; pressing another is `raiseDock`, which is what decides
    * who shows.
+   *
+   * `landed` marks a tab that has just arrived at the front — dropped into the seat, or brought
+   * there from the rail — for the strip to flash, so the eye finds what changed in a frame that did
+   * not move. True for a moment, then false again.
    */
-  tabs?: { id: string; title: string; active: boolean }[];
+  tabs?: DockTab[];
   /**
    * Folded to its titlebar. The frame hides the content while this is true — hides, never unmounts.
    * See {@link FloatPlacement.collapsed}.
@@ -909,6 +970,33 @@ export interface DockGeometry {
   collapsed?: boolean;
   /** Whether folding is on offer — see {@link canFold}. What greys the titlebar's fold control. */
   canCollapse?: boolean;
+  /**
+   * In a lane collapsed to its edge — see {@link FloatPlacement.stowed}. The frame is hidden, as a
+   * background tab's is, unless {@link peeking}; the lane's strip is what is on screen instead.
+   */
+  stowed?: boolean;
+  /**
+   * A stowed panel shown over the content beside its strip, for as long as somebody is looking at
+   * it. Floating while it lasts, so it reads as a card and costs the content nothing.
+   */
+  peeking?: boolean;
+  /**
+   * Whether this panel's titlebar offers to collapse its lane to the edge. Only the lane's first
+   * member offers it, since the lane — not the panel — is what goes: a column has no header of its
+   * own, and the topmost titlebar is the one that reads as one.
+   */
+  canStow?: boolean;
+  /**
+   * The strip a stowed lane becomes, published on its first member for the frame to draw — one tab
+   * per panel in the lane, `active` on the one peeking. Drawn outside every frame, because every
+   * frame in the lane is hidden.
+   */
+  strip?: { top: string; left: string; width: string; height: string; vertical: boolean; tabs: DockTab[] };
+  /**
+   * Letting go of the resize drag in progress would collapse this panel's lane to its strip — it has
+   * been pulled past {@link STOW_DRAG_PX}. What dims the lane while the drag says so.
+   */
+  stowPending?: boolean;
   /**
    * The boundary between this panel and the next one in its lane, as a box to put a divider in.
    * Absent when there is no next panel. See {@link seamBetween}.
@@ -1852,7 +1940,89 @@ export function arrangeHomeDrop<T extends { placement: FloatPlacement }>(
  * asked, which matters because `occupiedFor`, `contentInset` and the layout each ask separately.
  */
 export function laneThickness(members: FloatPlacement[], edge: Exclude<DockEdge, null>): number {
-  return members.reduce((widest, member) => Math.max(widest, thicknessOf(member, edge)), 0);
+  // Put away whole, the lane is its strip — see `FloatPlacement.stowed`.
+  if (members.length > 0 && members.every((member) => member.stowed)) return STRIP_PX;
+  /*
+    Across a top or bottom edge a fold takes the lane's own axis, so a folded member asks for its bar
+    and nothing more. The largest still wins, so the lane stays as thick as its tallest *open* member
+    and only drops to a bar once every member has folded — which is the moment the room has somewhere
+    to go. Down a side a fold takes the other axis, and the member's thickness is untouched.
+  */
+  const horizontal = edge === 'top' || edge === 'bottom';
+  return members.reduce(
+    (widest, member) => Math.max(widest, horizontal && member.collapsed ? COLLAPSED_PX : thicknessOf(member, edge)),
+    0,
+  );
+}
+
+/**
+ * Where a stowed lane's strip sits — flush to its edge, spanning it, as thick as {@link STRIP_PX}.
+ *
+ * The same box the lane itself would take, measured the same way: a side strip runs the full height
+ * (the sides own the corners, as in `resolveDock`), a top or bottom one clears the side lanes.
+ * `occupied` is what the lanes outboard of this one have taken, exactly as for a lane that is open.
+ */
+export function stripBox(edge: Exclude<DockEdge, null>, viewport: Viewport, occupied: ContentInset = NO_INSET): Rect {
+  const vertical = edge === 'left' || edge === 'right';
+  const region = vertical
+    ? contentRegion(viewport, { ...occupied, top: 0, bottom: 0 })
+    : contentRegion(viewport, occupied);
+  if (vertical) {
+    return {
+      x: edge === 'left' ? region.left : viewport.width - region.right - STRIP_PX,
+      y: region.top,
+      w: STRIP_PX,
+      h: region.height,
+    };
+  }
+  return {
+    x: region.left,
+    y: edge === 'top' ? region.top : viewport.height - region.bottom - STRIP_PX,
+    w: region.width,
+    h: STRIP_PX,
+  };
+}
+
+/**
+ * Where a stowed panel appears while somebody peeks at it: a card beside its strip, over the content.
+ *
+ * As thick as the lane was when it was open, so the panel looks like itself rather than a preview of
+ * itself, and along the full length of the strip less a card's margin — it is the column coming out
+ * for a moment, not a popover. It floats, so it clears the chrome a float clears (the call bar along
+ * the bottom, the rail on the right) and costs the content nothing.
+ */
+export function peekBox(
+  edge: Exclude<DockEdge, null>,
+  strip: Rect,
+  placement: FloatPlacement,
+  viewport: Viewport,
+  chrome: ContentInset = DEFAULT_FLOAT_CHROME,
+): Rect {
+  const vertical = edge === 'left' || edge === 'right';
+  /*
+    The chrome between the strip and the content is on the card's side of the strip, so it is
+    stepped over rather than covered: the module rail stands just inboard of a right-hand strip and
+    the call bar just inboard of a bottom one, and a card laid flush against either strip would put
+    its own titlebar controls underneath them.
+  */
+  if (vertical) {
+    const room = Math.max(MIN_FLOAT_PX, viewport.width - strip.w - chrome.left - chrome.right - DOCK_GAP_PX * 2);
+    const w = clamp(thicknessOf(placement, edge), Math.min(MIN_DOCK_PX, room), room);
+    return {
+      x: edge === 'left' ? strip.x + strip.w + chrome.left + DOCK_GAP_PX : strip.x - chrome.right - DOCK_GAP_PX - w,
+      y: strip.y + chrome.top + DOCK_GAP_PX,
+      w,
+      h: Math.max(MIN_FLOAT_PX, strip.h - chrome.top - chrome.bottom - DOCK_GAP_PX * 2),
+    };
+  }
+  const room = Math.max(MIN_FLOAT_PX, viewport.height - strip.h - chrome.top - chrome.bottom - DOCK_GAP_PX * 2);
+  const h = clamp(thicknessOf(placement, edge), Math.min(MIN_DOCK_PX, room), room);
+  return {
+    x: strip.x + chrome.left + DOCK_GAP_PX,
+    y: edge === 'top' ? strip.y + strip.h + chrome.top + DOCK_GAP_PX : strip.y - chrome.bottom - DOCK_GAP_PX - h,
+    w: Math.max(MIN_FLOAT_PX, strip.w - chrome.left - chrome.right - DOCK_GAP_PX * 2),
+    h,
+  };
 }
 
 /** How thick the divider's target is, centred on the boundary. Wider than the line it draws. */
@@ -2001,15 +2171,36 @@ function divide(bases: number[], grows: number[], available: number, floors: num
 /** A lane member as the layout sees it: a placement, plus the floor and fold the request carries. */
 export type LaneMember = FloatPlacement & { min?: DockMin };
 
-/** A member's base along the lane, and its grow — a collapsed one is its titlebar and wants nothing. */
+/**
+ * A member's base along the lane, and its grow — a folded one is its titlebar and wants nothing.
+ *
+ * Only where the lane divides the height. A fold always takes height, so across a top or bottom
+ * lane — which divides the width — a folded member keeps its share of the width and gives up its
+ * height on the other axis instead. See {@link FloatPlacement.collapsed}.
+ */
 function laneBase(
   member: LaneMember,
   axis: 'w' | 'h',
   spanning: boolean,
 ): { base: number; grow: number; floor: number } {
-  const floor = floorOf(member.min, axis, spanning, member.collapsed);
-  if (member.collapsed) return { base: COLLAPSED_PX, grow: 0, floor };
+  const folded = Boolean(member.collapsed) && axis === 'h';
+  const floor = floorOf(member.min, axis, spanning, folded);
+  if (folded) return { base: COLLAPSED_PX, grow: 0, floor };
   return { base: Math.max(floor, member[axis]), grow: Math.max(0, member.grow ?? 1), floor };
+}
+
+/**
+ * Whether a lane has given up its usual thickness — collapsed to its strip, or, across a top or
+ * bottom edge, folded down to a bar in every member.
+ *
+ * Both are deliberately thinner than {@link MIN_DOCK_PX}, which every other thickness is clamped to.
+ * The clamp exists so a panel cannot be dragged into a sliver; these are the two states where being a
+ * sliver is the whole point, and clamping them would hand back 200px of room nobody is using.
+ */
+export function laneShrunk(members: readonly FloatPlacement[], edge: Exclude<DockEdge, null>): boolean {
+  if (members.length === 0) return false;
+  if (members.every((member) => member.stowed)) return true;
+  return (edge === 'top' || edge === 'bottom') && members.every((member) => member.collapsed);
 }
 
 /**
@@ -2068,7 +2259,11 @@ export function columnLayout(
     const region = vertical
       ? contentRegion(viewport, { ...occupied, top: 0, bottom: 0 })
       : contentRegion(viewport, occupied);
-    const thickness = clamp(laneThickness(members, edge), MIN_DOCK_PX, vertical ? region.width : region.height);
+    const thickness = clamp(
+      laneThickness(members, edge),
+      laneShrunk(members, edge) ? 0 : MIN_DOCK_PX,
+      vertical ? region.width : region.height,
+    );
     const span = vertical ? region.height : region.width;
 
     // No gaps and no chrome: a lane that has taken room from the content meets it edge to edge.
@@ -2081,8 +2276,15 @@ export function columnLayout(
 
     const boxes: Rect[] = [];
     let cursor = vertical ? region.top : region.left;
-    members.forEach((_member, i) => {
+    members.forEach((member, i) => {
       const extent = extents[i];
+      /*
+        A folded member of a top or bottom lane is a bar against the edge, not a band of the lane's
+        full thickness. Anchored to the edge rather than to the content, so it stays where its
+        titlebar was and the room below it is simply empty until its lane-mates fold too — see
+        `laneThickness`, which is what gives that room back.
+      */
+      const h = !vertical && member.collapsed ? Math.min(COLLAPSED_PX, thickness) : thickness;
       boxes.push(
         vertical
           ? {
@@ -2093,9 +2295,9 @@ export function columnLayout(
             }
           : {
               x: cursor,
-              y: edge === 'top' ? region.top : viewport.height - region.bottom - thickness,
+              y: edge === 'top' ? region.top : viewport.height - region.bottom - h,
               w: extent,
-              h: thickness,
+              h,
             },
       );
       cursor += extent;
@@ -2147,7 +2349,11 @@ export function columnLayout(
         h: extent,
       });
     } else {
-      const h = clamp(member.h, MIN_FLOAT_PX, Math.max(MIN_FLOAT_PX, free.height - DOCK_GAP_PX * 2));
+      // Folded, a card along the top or bottom is its bar — the same fold a lone card gets, on the
+      // axis a fold always takes. Its width is still its share of the lane.
+      const h = member.collapsed
+        ? COLLAPSED_PX
+        : clamp(member.h, MIN_FLOAT_PX, Math.max(MIN_FLOAT_PX, free.height - DOCK_GAP_PX * 2));
       boxes.push({
         x: cursor,
         y: edge === 'top' ? free.top + DOCK_GAP_PX : free.top + free.height - h - DOCK_GAP_PX,
@@ -2357,9 +2563,16 @@ export function resolveDock(
       lane's members share one thickness (`laneThickness`), so taking it from the seat is also what
       stops two panels in one lane drawing two different widths of the same sidebar.
     */
+    /*
+      Folded along a top or bottom edge, the panel is its bar — the fold takes height here, which is
+      this lane's own axis, so the declared floor does not apply. A seat has already been given that
+      answer by `columnLayout`; a lane of one has not, and asks here. Down a side a fold takes the
+      other axis and the thickness is untouched.
+    */
+    const foldedAcross = !vertical && Boolean(placement.collapsed);
     const thickness = clamp(
-      seat ? (vertical ? seat.w : seat.h) : thicknessOf(placement, snapEdge),
-      floorOf(request.min, vertical ? 'w' : 'h', true),
+      seat ? (vertical ? seat.w : seat.h) : foldedAcross ? COLLAPSED_PX : thicknessOf(placement, snapEdge),
+      foldedAcross ? 0 : floorOf(request.min, vertical ? 'w' : 'h', true),
       vertical ? region.width : region.height,
     );
 
@@ -2643,7 +2856,9 @@ export function coveredInset(requests: DockRequest[], viewport: Viewport): Conte
     if (placement.maximised || displaces(placement, viewport)) continue;
     const edge = edgeOfSnap(placement.snap);
     if (!edge) continue;
-    covered[edge] = Math.max(covered[edge], thicknessOf(placement, edge));
+    // A card folded along the top or bottom covers its bar, which is the axis this edge is measured on.
+    const across = (edge === 'top' || edge === 'bottom') && placement.collapsed;
+    covered[edge] = Math.max(covered[edge], across ? COLLAPSED_PX : thicknessOf(placement, edge));
   }
 
   return covered;
@@ -2697,11 +2912,12 @@ export function contentInset(requests: DockRequest[], viewport: Viewport): Conte
         lane with 40px left would be handed 200 and overshoot by 160 — which is the bug above, one
         lane later.
       */
-      const wanted = laneThickness(
-        group.members.map((member) => member.placement),
-        edge,
-      );
-      const thickness = Math.min(clamp(wanted, MIN_DOCK_PX, room[axis]), room[axis]);
+      const members = group.members.map((member) => member.placement);
+      const wanted = laneThickness(members, edge);
+      // A lane put away, or folded to a bar across its edge, is thinner than any panel may be dragged
+      // — and the room it gave up is the point. See `laneShrunk`.
+      const floor = laneShrunk(members, edge) ? 0 : MIN_DOCK_PX;
+      const thickness = Math.min(clamp(wanted, floor, room[axis]), room[axis]);
       inset[edge] += thickness;
       room[axis] -= thickness;
     }
