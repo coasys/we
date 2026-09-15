@@ -3410,7 +3410,9 @@ export const captureStatus: SchemaNode = {
         condition: { $: 'modules.transcribe.modelMissing' },
         then: {
           type: 'Column',
-          props: { gap: '200', ay: 'start' },
+          // `ax`, not `ay`: the axes are screen axes whatever the direction, so on a Column `ax` is
+          // the cross axis. Without it the button stretched across the whole panel.
+          props: { gap: '200', ax: 'start' },
           children: [
             {
               type: 'Row',
