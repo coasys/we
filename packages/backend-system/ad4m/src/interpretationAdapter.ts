@@ -19,7 +19,7 @@
  * Predicates that map to nothing are dropped rather than shown raw: a reviewer cannot make a good
  * accept/reject decision about `we://x_7` and should not be asked to.
  */
-import { Link, type LinkExpression, LinkQuery, Literal, type PerspectiveProxy } from '@coasys/ad4m';
+import { Link, LinkQuery, Literal, type PerspectiveProxy } from '@coasys/ad4m';
 import type {
   DatasetHandle,
   InterpretationActivity,
@@ -35,7 +35,48 @@ import type {
 import { trace } from '@we/backend-shared';
 import { getEntitiesForPerspective, getEntity, getEntityTargetClass, getRegisteredEntityNames } from '@we/entities';
 
+import { getForeignShacl } from './perspectiveHelpers';
+
 const proxy = (dataset: DatasetHandle) => dataset as PerspectiveProxy;
+
+// ── predicateNames() cache ──────────────────────────────────────────────────
+//
+// SHACL shapes represent a perspective's schema — they change when a module
+// registers new entity types, not on every link mutation. Caching avoids
+// re-fetching the same shapes on every proposals() call during sync bursts.
+
+/** TTL for cached NameTables, in milliseconds. */
+const PREDICATE_NAMES_TTL_MS = 60_000;
+
+interface CachedNameTables {
+  tables: NameTables;
+  /** Monotonic timestamp (ms) when this entry was stored. */
+  cachedAt: number;
+}
+
+/** perspective UUID → cached result. */
+const predicateNamesCache = new Map<string, CachedNameTables>();
+
+function getCachedPredicateNames(perspectiveUuid: string): NameTables | undefined {
+  const entry = predicateNamesCache.get(perspectiveUuid);
+  if (!entry) return undefined;
+  if (Date.now() - entry.cachedAt > PREDICATE_NAMES_TTL_MS) {
+    predicateNamesCache.delete(perspectiveUuid);
+    return undefined;
+  }
+  return entry.tables;
+}
+
+function setCachedPredicateNames(perspectiveUuid: string, tables: NameTables): void {
+  predicateNamesCache.set(perspectiveUuid, { tables, cachedAt: Date.now() });
+}
+
+/** Invalidate the cache for a perspective — call when its SDNA changes. */
+// Exported for future callers (e.g. SDNA-change listeners); unused within this file.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function invalidatePredicateNamesCache(perspectiveUuid: string): void {
+  predicateNamesCache.delete(perspectiveUuid);
+}
 
 /** The link that marks a record as carrying a staged suggestion — the executor's `OVERLAY_KIND_PRED`. */
 const OVERLAY_KIND_PREDICATE = 'ad4m://interp/kind';
@@ -176,6 +217,9 @@ interface NameTables {
 }
 
 async function predicateNames(perspective: PerspectiveProxy): Promise<NameTables> {
+  const cached = getCachedPredicateNames(perspective.uuid);
+  if (cached) return cached;
+
   const tables: NameTables = { byEntity: new Map(), flat: new Map() };
 
   const absorb = (entity: string, properties: { path?: string; name?: string }[]) => {
@@ -198,17 +242,19 @@ async function predicateNames(perspective: PerspectiveProxy): Promise<NameTables
   // Shapes only this perspective has — a module's entities, or a foreign app's. Best-effort: a
   // failure here costs a proposal its readable field names, which is worth degrading over rather
   // than failing the whole review list for.
+  //
+  // Uses `getAllShacl()` via `getForeignShacl()` — one RPC call instead of N+1 per-shape queries.
+  // A perspective with 4 foreign shapes previously generated ~60 queryLinks round trips per
+  // `proposals()` call; this settles in one.
   try {
-    const native = new Set(getRegisteredEntityNames());
-    for (const shapeName of await perspective.getShaclNames()) {
-      if (native.has(shapeName)) continue; // already covered above, without the round trip
-      const shape = await perspective.getShacl(shapeName);
-      absorb(shapeName, (shape?.properties ?? []) as { path?: string; name?: string }[]);
+    for (const { name, shape } of await getForeignShacl(perspective)) {
+      absorb(name, (shape?.properties ?? []) as { path?: string; name?: string }[]);
     }
   } catch {
     // Leave what we have.
   }
 
+  setCachedPredicateNames(perspective.uuid, tables);
   return tables;
 }
 
@@ -1057,25 +1103,27 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
     async onProposalsChanged(dataset: DatasetHandle, cb: () => void): Promise<() => void> {
       if (!runtimeSupportsInterpretation(dataset)) return () => {};
       const perspective = proxy(dataset);
-      /*
-        The overlay's `kind` link, and nothing else, is what "staged" means here.
 
-        The engine writes it when it stages a suggestion and removes it once nothing on that record
-        is left to decide — whoever decided, on whichever node. A link removal synced in from a peer
-        publishes on the same subscription as a local one, which is the whole reason this watches
-        links rather than asking the relay: a decision is a fact in the graph, and a peer who was
-        offline when it was made still has to hear about it when the diff arrives.
+      /*
+        The overlay's `kind` link (`ad4m://interp/kind`) is what "staged" means. The engine writes
+        it when it stages a suggestion and removes it once nothing on that record remains to decide
+        — whoever decided, on whichever node. A link removal synced in from a peer publishes on
+        the same subscription as a local one, so a peer who was offline still hears about it.
+
+        `subscribeQuery` evaluates a SPARQL query on the executor and pushes an update only when
+        the result set changes. The executor extracts the predicate from the query and skips
+        re-evaluation for link mutations on unrelated predicates — so peer-sync traffic, messages,
+        and presence signals never trigger a proposals() call.
       */
-      const onLink = (link: LinkExpression) => {
-        if (link?.data?.predicate === OVERLAY_KIND_PREDICATE) cb();
-        return null;
-      };
-      await perspective.addListener('link-added', onLink);
-      await perspective.addListener('link-removed', onLink);
-      return () => {
-        void perspective.removeListener('link-added', onLink);
-        void perspective.removeListener('link-removed', onLink);
-      };
+      const sub = await perspective.subscribeQuery(
+        `SELECT ?base ?kind WHERE { ?base <${OVERLAY_KIND_PREDICATE}> ?kind }`,
+      );
+      sub.onResult(() => {
+        // invalidateOverlaysCache() ships with coasys/ad4m#1017 — call when available.
+        (perspective as { invalidateOverlaysCache?: () => void }).invalidateOverlaysCache?.();
+        cb();
+      });
+      return () => sub.dispose();
     },
 
     async watch(dataset: DatasetHandle, request: WatchRequest): Promise<void> {
