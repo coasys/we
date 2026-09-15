@@ -145,6 +145,19 @@ Embedded apps receive AD4M credentials via postMessage. See [`embedding-external
 
 ## Troubleshooting
 
+### Executor Logs
+
+Every executor run is logged to `ad4m.log` in the active account's data directory — `~/.ad4m/ad4m.log`
+for the default account, `~/.ad4m/we-accounts/<slug>/ad4m.log` for one WE created. The path is
+printed at startup (`[main] Executor log: …`).
+
+- The last five runs are kept: `ad4m.log` is the current one, `ad4m.1.log` the one before, down to `ad4m.4.log`.
+- Lines marked `HOST` come from `electron/main.js` — the path and binary it chose, the stale files it
+  cleaned up, the exit code — and sit beside the executor's own output.
+- Each file stops at 50 MB and says so. Raise detail with the per-crate log levels in Settings.
+
+The Tauri host writes the same files by the same rules. See `electron/executorLog.js`.
+
 ### Executor Binary Not Found
 
 Make sure you've built the AD4M executor:

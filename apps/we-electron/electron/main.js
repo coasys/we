@@ -1,4 +1,4 @@
-import { execSync, spawn } from 'child_process';
+import { execSync, spawn, spawnSync } from 'child_process';
 import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, shell } from 'electron';
 import contextMenu from 'electron-context-menu';
 import express from 'express';
@@ -11,6 +11,7 @@ import { fileURLToPath } from 'url';
 import { v4 as uuidv4 } from 'uuid';
 
 import { createAccountRegistry, expandHome } from './accounts.js';
+import { openExecutorLog } from './executorLog.js';
 import {
   allowMediaPermission,
   contentSecurityPolicy,
@@ -41,6 +42,24 @@ let ad4mToken = null;
 let executorProcess = null;
 /** Set while an account switch is tearing the executor down on purpose. */
 let switchingAccount = false;
+/** The current run's log in the account's data directory (see `executorLog.js`), or null. */
+let executorLog = null;
+
+/*
+  This process's own console goes into the executor log too.
+
+  What the host does around a start — the stale socket and LOCK files it removed, the path and binary
+  it chose, the exit code and signal — is exactly what a crash report needs beside the executor's
+  output, and none of it is the executor's to print. Copied rather than redirected, so the terminal
+  in development is unchanged.
+*/
+for (const level of ['log', 'info', 'warn', 'error']) {
+  const original = console[level].bind(console);
+  console[level] = (...args) => {
+    original(...args);
+    executorLog?.host(level, ...args);
+  };
+}
 
 /**
  * The seed's data path — the deployment default, and the account the registry seeds itself with.
@@ -118,19 +137,32 @@ function resolveAd4mDataPath() {
  *
  * `mainnet_seed.seed` is the marker because it is what `init` writes for the executor to consume
  * at runtime; a directory holding it has been through initialisation.
+ *
+ * Its output is captured and written to the terminal and the log both, rather than inherited: a
+ * first run is the one most worth having a record of, and inherited output reaches only a terminal.
  */
-function ensureDataPathInitialised(executorPath, dataPath) {
+function ensureDataPathInitialised(executorPath, dataPath, log) {
   if (existsSync(join(dataPath, 'mainnet_seed.seed'))) return;
 
   console.log('[main] Data path not initialised, running executor init:', dataPath);
-  try {
-    execSync(`"${executorPath}" init --data-path "${dataPath}"`, { stdio: 'inherit' });
-    console.log('[main] Executor init complete');
-  } catch (e) {
+  const result = spawnSync(executorPath, ['init', '--data-path', dataPath], { maxBuffer: 16 * 1024 * 1024 });
+  for (const [output, destination] of [
+    [result.stdout, process.stdout],
+    [result.stderr, process.stderr],
+  ]) {
+    if (!output?.length) continue;
+    destination.write(output);
+    log?.write(output);
+  }
+
+  if (result.error || result.status !== 0) {
     // Surfaced rather than thrown: the executor may still start, and a hard failure here would
     // turn a recoverable state into an app that will not open at all.
-    console.error('[main] Executor init failed — the executor may not start correctly:', e.message);
+    const reason = result.error?.message ?? `exit code ${result.status ?? result.signal}`;
+    console.error('[main] Executor init failed — the executor may not start correctly:', reason);
+    return;
   }
+  console.log('[main] Executor init complete');
 }
 
 /**
@@ -223,6 +255,15 @@ async function startExecutor() {
     // Get AD4M data directory
     const ad4mDataPath = resolveAd4mDataPath();
 
+    // Start this run's log before anything below touches the data directory, so the cleanup it
+    // does is on record. The previous run's file is closed first: rotation renames it, and on
+    // Windows an open file cannot be renamed. Output still arriving from a killed executor goes to
+    // the log it was started with, which is closed, so it cannot land in this run's file.
+    executorLog?.close();
+    executorLog = openExecutorLog(ad4mDataPath);
+    const log = executorLog;
+    if (log) console.log('[main] Executor log:', log.path);
+
     // Kill any surviving ad4m-executor from a previous detached run (survives Ctrl+C).
     // Must happen BEFORE the lair socket / LOCK cleanups so the old process releases
     // its file handles before we delete them — otherwise it just re-acquires them.
@@ -278,7 +319,7 @@ async function startExecutor() {
 
     console.log('Executor path:', executorPath);
 
-    ensureDataPathInitialised(executorPath, ad4mDataPath);
+    ensureDataPathInitialised(executorPath, ad4mDataPath, log);
 
     // Settings the executor reads once, at startup. Off unless asked for: MCP opens a port that
     // serves this agent's data to anything local that speaks the protocol.
@@ -319,13 +360,16 @@ async function startExecutor() {
     executorProcess.stdout?.unref();
     executorProcess.stderr?.unref();
 
-    // Forward executor output to console (prevents EPIPE errors)
+    // Forward executor output to the console (which also prevents EPIPE errors) and to this run's
+    // log. `log`, not `executorLog`: after a restart the latter is the next run's file.
     executorProcess.stdout?.on('data', (data) => {
       process.stdout.write(data);
+      log?.write(data);
     });
 
     executorProcess.stderr?.on('data', (data) => {
       process.stderr.write(data);
+      log?.write(data);
     });
 
     executorProcess.on('error', (err) => {
