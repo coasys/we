@@ -1611,6 +1611,9 @@ function laneStrip(id: string): SchemaNode {
               label: 'Open',
               color: 'text-faint',
               hoverProps: { color: 'text' },
+              // Eased rather than switched, so the names come up as the pointer arrives. A token duration,
+              // so a theme's animation speed and reduced motion still decide.
+              transition: 'color 200 ease',
               onClick: { $action: 'shellStore.toggleStowLane', args: [id] },
             },
             children: [
