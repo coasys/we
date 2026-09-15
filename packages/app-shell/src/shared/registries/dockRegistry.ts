@@ -810,7 +810,7 @@ function tabStrip(id: string): SchemaNode {
                     eye finds it. A token duration, so a theme's animation speed and a reduced-motion
                     setting still decide.
 
-                    The accent fill itself, with its own foreground, rather than `accent-muted`: muted is
+                    The accent fill itself rather than `accent-muted`: muted is
                     a tint toward the ground, so in a dark theme it came out darker than the resting
                     tab's `control-surface` — a flash that dimmed the thing it was pointing at. The name
                     keeps its own colour throughout — see the text, below.
