@@ -633,8 +633,10 @@ const networkMetricsModal: SchemaNode = {
             {
               type: 'we-button',
               props: {
-                variant: 'ghost',
-                loading: { $: 'runtimeStore.loading' },
+                variant: 'secondary',
+                // Disabled rather than spinning: the body already shows the fetch in progress, and a
+                // second spinner in the button said the same thing twice.
+                disabled: { $: 'runtimeStore.loading' },
                 onClick: { $action: 'runtimeStore.loadNetworkMetrics' },
               },
               children: [{ type: 'we-icon', props: { name: 'arrows-clockwise' } }, 'Refresh'],
