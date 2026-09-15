@@ -179,7 +179,11 @@ export function describeModel(model: AiModel, status?: AiModelStatus): AiModelVi
     sourceLabel: SOURCE_LABELS[source.kind],
     detail,
     statusText: source.kind === 'api' ? '' : statusLine(status),
-    ready: source.kind === 'api' || !!status?.loaded,
+    // A transcription model is ready once downloaded. AD4M only ever marks a language model
+    // `loaded` — a Whisper model finishes as downloaded and never loaded — so reading `loaded` alone
+    // left every transcription model unready forever, and the settings page polled its status for as
+    // long as it stayed open.
+    ready: source.kind === 'api' || !!status?.loaded || (model.kind === 'transcription' && !!status?.downloaded),
   };
 }
 

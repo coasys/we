@@ -258,11 +258,15 @@ const modelCard: SchemaNode = {
                   type: 'Row',
                   props: { gap: '200', ay: 'center' },
                   children: [
-                    // Only offered for a model that is not already the one apps get for its kind.
+                    // Only offered for a model that is not already the one apps get for its kind —
+                    // and, for now, only for language models. AD4M saves a default for an LLM and
+                    // silently drops one for any other kind, so on a transcription or embedding
+                    // model the button reported success and changed nothing. Widen the condition
+                    // back to `!model.isDefault` once the executor persists every kind.
                     {
                       type: '$if',
                       props: {
-                        condition: { $: '!model.isDefault' },
+                        condition: { $: "!model.isDefault && model.kind == 'llm'" },
                         then: {
                           type: 'we-button',
                           props: {
