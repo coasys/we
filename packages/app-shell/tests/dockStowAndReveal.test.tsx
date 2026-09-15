@@ -176,4 +176,19 @@ describe('a lane collapsed to its edge', () => {
 
     expect(shell.dockGeometry()[B]).toMatchObject({ hidden: false, contentsFaded: true, layoutWidth: width });
   });
+
+  it('stays anchored to the sides it opens from, so closing eases rather than jumps', () => {
+    // A bottom lane is placed from the bottom; a box placed from the top cannot be transitioned to.
+    registerHostDockStore(STORE, { edge: () => 'bottom', float: () => false });
+    dockRegistry.register({ id: A, moduleId: STORE, edge: 'edge', float: 'float', node: { type: 'div' } });
+    const shell = mountShellStore();
+    expect(shell.dockGeometry()[A].bottom).toBeDefined();
+
+    shell.toggleStowLane(A);
+
+    const away = shell.dockGeometry()[A];
+    expect(away.bottom).toBeDefined();
+    expect(away.top).toBeUndefined();
+    expect(away.height).toBe(`${STRIP_PX}px`);
+  });
 });

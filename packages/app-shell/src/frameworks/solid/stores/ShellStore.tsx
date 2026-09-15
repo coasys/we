@@ -2173,8 +2173,17 @@ export function ShellStoreProvider(props: ParentProps) {
           edge: box.edge,
           snap: box.snap,
           floating: false,
-          top: px(away.y),
-          left: px(away.x),
+          /*
+            Anchored to the same sides the open panel is, so the frame eases between the two boxes.
+
+            A right-hand or bottom lane is placed from the right or the bottom, and this box was placed
+            from the left and the top. A CSS transition cannot run between an offset that is set and one
+            that is not, so closing put the frame's near edge straight at the strip's position and only
+            the size eased — shrinking off the far side of the screen, which read as the lane shutting
+            on the press. Opening happened to look right, moving the other way.
+          */
+          ...(box.edge === 'right' ? { right: px(viewport().width - away.x - away.w) } : { left: px(away.x) }),
+          ...(box.edge === 'bottom' ? { bottom: px(viewport().height - away.y - away.h) } : { top: px(away.y) }),
           width: px(away.w),
           height: px(away.h),
           stowed: true,
@@ -2982,6 +2991,8 @@ export function ShellStoreProvider(props: ParentProps) {
               });
           }
         }
+        // After the drag has let go of the transitions, so the lane eases onto its strip like a press.
+        setDockResizing(false);
         setLaneStowed(members, true);
         setStowPending(null);
       }

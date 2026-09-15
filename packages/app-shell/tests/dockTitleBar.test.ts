@@ -298,6 +298,10 @@ describe('a panel easing in or out of its strip', () => {
     expect(text).toContain(JSON.stringify(`${geo('contentsFaded')} ? 0 : 1`).slice(1, -1));
   });
 
+  it('fades the whole frame while it closes, borders and all', () => {
+    expect(text).toContain(JSON.stringify(`${geo('stowed')} && ${geo('contentsFaded')} ? 0 :`).slice(1, -1));
+  });
+
   it('lays a top or bottom strip out as a row, not a column', () => {
     const strip = gatedOn(dockFrame(entry as unknown as DockEntry, { type: 'Column' }), geo('strip'));
     const layout = gatedOn(strip, geo('strip.vertical'));

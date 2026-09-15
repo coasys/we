@@ -153,7 +153,9 @@ Opening and closing ease the frame between the strip's width and the lane's, and
 at every step of that arrive crushed and unfold, or fold up on the way out. For the length of the move
 a panel's titlebar and contents are held at the lane's open size (`layoutWidth` / `layoutHeight`,
 through `laidOutAt`), so the frame uncovers or covers them like a drawer, and they fade in or out
-(`contentsFaded`); a closing lane stays on screen until it has shrunk onto its strip. While stowed,
+(`contentsFaded`); a closing lane stays on screen until it has shrunk onto its strip, fading whole —
+borders included — and anchored to the same sides as when open, since a right-hand or bottom lane
+placed from the left or top cannot be transitioned to and shut on the press. While stowed,
 each seat keeps its place along the edge at the strip's thickness, so only the thickness ever moves —
 a lane of two used to open its lower panel sliding down from the top of the edge. The strip is layered
 beneath every panel in its lane, which shrink onto it over the top. At rest a panel's

@@ -332,7 +332,7 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
                   when you press it, and one that arrives by drop should not either — the drag was
                   already the animation.
                 */
-                $: `${dockGeometryPath(entry.id, 'settling')} || shellStore.dockResizing ? 'none' : 'top 300 ease, right 300 ease, bottom 300 ease, left 300 ease, width 300 ease, height 300 ease'`,
+                $: `${dockGeometryPath(entry.id, 'settling')} || shellStore.dockResizing ? 'none' : 'top 300 ease, right 300 ease, bottom 300 ease, left 300 ease, width 300 ease, height 300 ease, opacity 300 ease'`,
               },
               /*
                 The panel's own surface. A module's node fills it and need not paint a background, a
@@ -388,8 +388,15 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
               /*
                 Dimmed while a resize has pulled its lane past the point where letting go puts it
                 away — the drag's only way to say so before it happens. See `stowPending`.
+
+                And faded out whole while it shrinks onto its strip: a stowed panel still on screen is
+                one on its way out. Fading only its contents left the frame's borders — the line
+                between two lane-mates above all — standing at full strength until the panel was
+                hidden, and then gone in one frame.
               */
-              opacity: { $: `${dockGeometryPath(entry.id, 'stowPending')} ? 0.5 : 1` },
+              opacity: {
+                $: `${dockGeometryPath(entry.id, 'stowed')} && ${dockGeometryPath(entry.id, 'contentsFaded')} ? 0 : ${dockGeometryPath(entry.id, 'stowPending')} ? 0.5 : 1`,
+              },
               // Rounded and lifted only while floating. A card over the app should read as being on
               // top; a panel that has taken room *from* the app meets it edge to edge, where a radius
               // would leave slivers of background in the corners and a shadow would fall on content
