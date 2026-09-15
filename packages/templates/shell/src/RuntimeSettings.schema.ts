@@ -554,6 +554,107 @@ export const loggingLocalState = {
   newLogLevel: { type: 'string', initial: 'debug' },
 } as const;
 
+/**
+ * The network metrics, in a viewer that can be read.
+ *
+ * Diagnostics are opt-in: the dump is long and means nothing unless something is already wrong, so
+ * it is fetched on the press and never on opening the page. A modal rather than the inline block it
+ * replaced because the dump is hundreds of lines of nested structure — a 200px well gave it a
+ * keyhole, where somebody debugging a sync problem wants to fold away the spaces they are not
+ * asking about and read the one they are.
+ *
+ * The backend has already indented it and turned its hashes into strings (see the port's
+ * `networkMetrics`), so this only has to show it.
+ */
+const networkMetricsModal: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'local.showNetworkMetrics' },
+    then: {
+      type: 'we-modal',
+      props: { size: 'lg', close: { $setLocal: 'showNetworkMetrics', value: false } },
+      children: [
+        {
+          type: 'Row',
+          slot: 'header',
+          props: { gap: '200', ay: 'center' },
+          children: [
+            { type: 'we-icon', props: { name: 'chart-line-up', color: 'text-muted' } },
+            { type: 'we-text', props: { variant: 'heading-md' }, children: ['Network metrics'] },
+          ],
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $: 'runtimeStore.networkMetrics' },
+            then: {
+              type: 'CodeEditor',
+              props: {
+                code: { $: 'runtimeStore.networkMetrics' },
+                language: 'json',
+                // A snapshot of the conductor, not a setting: nothing typed here could be applied.
+                readOnly: true,
+                // The editor's own scroller rather than the modal's, so its fold gutter and search
+                // stay beside the text while it scrolls.
+                maxHeight: '60dvh',
+                styles: { width: '100%' },
+              },
+            },
+            else: {
+              type: '$if',
+              props: {
+                condition: { $: 'runtimeStore.error && !runtimeStore.loading' },
+                then: {
+                  type: 'we-alert',
+                  props: { variant: 'danger' },
+                  children: [{ $: '`Could not get the network metrics: ${runtimeStore.error}`' }],
+                },
+                else: {
+                  type: 'Column',
+                  props: { ax: 'center', ay: 'center', gap: '300', p: '600' },
+                  children: [
+                    { type: 'we-spinner' },
+                    {
+                      type: 'we-text',
+                      props: { color: 'text-muted' },
+                      children: ['Asking the conductor for its metrics…'],
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        },
+        {
+          type: 'Row',
+          slot: 'footer',
+          props: { gap: '200', ax: 'end', wrap: true },
+          children: [
+            {
+              type: 'we-button',
+              props: {
+                variant: 'ghost',
+                loading: { $: 'runtimeStore.loading' },
+                onClick: { $action: 'runtimeStore.loadNetworkMetrics' },
+              },
+              children: [{ type: 'we-icon', props: { name: 'arrows-clockwise' } }, 'Refresh'],
+            },
+            {
+              type: 'we-button',
+              props: {
+                variant: 'primary',
+                disabled: { $: '!runtimeStore.networkMetrics' },
+                onClick: { $action: 'runtimeStore.copyNetworkMetrics' },
+              },
+              children: [{ type: 'we-icon', props: { name: 'copy' } }, 'Copy to clipboard'],
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
 /** Diagnostics and out-of-band peer exchange for the networking layer. */
 export const peerNetwork: SchemaNode = {
   type: '$if',
@@ -562,12 +663,26 @@ export const peerNetwork: SchemaNode = {
     then: adminSection({
       title: 'Peer network',
       icon: 'globe',
-      refresh: 'runtimeStore.loadNetworkMetrics',
+      // No refresh in the heading. It used to be the only way to fetch the metrics, and an unlabelled
+      // icon is not where anybody looks for "show me the network metrics" — they have a button now,
+      // and the rest of the section fetches what it shows when it is opened.
       children: [
         {
           type: 'Row',
           props: { gap: '200', wrap: true },
           children: [
+            {
+              type: 'we-button',
+              props: {
+                size: 'sm',
+                variant: 'secondary',
+                onClick: [
+                  { $setLocal: 'showNetworkMetrics', value: true },
+                  { $action: 'runtimeStore.loadNetworkMetrics' },
+                ],
+              },
+              children: [{ type: 'we-icon', props: { name: 'chart-line-up' } }, 'Get network metrics'],
+            },
             {
               type: 'we-button',
               props: {
@@ -589,25 +704,7 @@ export const peerNetwork: SchemaNode = {
             },
           ],
         },
-        // Diagnostics are opt-in: the blob is long, unformatted, and meaningless unless
-        // something is already wrong.
-        {
-          type: '$if',
-          props: {
-            condition: { $: 'runtimeStore.networkMetrics' },
-            then: {
-              type: 'we-scroll-area',
-              props: { maxHeight: '200px' },
-              children: [
-                {
-                  type: 'we-code',
-                  props: { block: true },
-                  children: [{ $: 'runtimeStore.networkMetrics' }],
-                },
-              ],
-            },
-          },
-        },
+        networkMetricsModal,
         // Manual peer exchange — the escape hatch for when discovery cannot find anyone.
         {
           type: '$if',
@@ -682,11 +779,13 @@ export const peerNetwork: SchemaNode = {
 };
 
 /**
- * Local state the network sections need: two input buffers and a disclosure toggle. Declared by
- * whichever page renders those sections, since `$localState` is scoped to the node that declares it.
+ * Local state the network sections need: two input buffers, a disclosure toggle and the metrics
+ * modal. Declared by whichever page renders those sections, since `$localState` is scoped to the
+ * node that declares it.
  */
 export const networkLocalState = {
   newTrustedAgent: { type: 'string', initial: '' },
   peerInfoText: { type: 'string', initial: '' },
   showPeerExchange: { type: 'boolean', initial: false },
+  showNetworkMetrics: { type: 'boolean', initial: false },
 } as const;

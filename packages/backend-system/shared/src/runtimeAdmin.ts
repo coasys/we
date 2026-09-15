@@ -160,7 +160,13 @@ export interface RuntimeAdminPort {
   untrustAgent?(id: string): Promise<void>;
 
   // ── Peer network ────────────────────────────────────────────────────────────
-  /** A backend-formatted diagnostic blob. Opaque to the shell — displayed, never parsed. */
+  /**
+   * A backend-formatted diagnostic blob. Opaque to the shell — displayed, never parsed.
+   *
+   * Formatted means readable as it stands: indented, with anything only the backend can decode (a
+   * hash that arrived as bytes) already decoded. The shell shows it in a JSON viewer, so JSON is
+   * what reads best, but text that is not JSON is shown as it is.
+   */
   networkMetrics?(): Promise<string>;
   /** Restart the peer-networking layer without restarting the app. */
   restartNetwork?(): Promise<void>;

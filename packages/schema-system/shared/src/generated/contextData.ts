@@ -2637,6 +2637,7 @@ export const contextData: ContextData = {
         'revokeApp',
         'removeApp',
         'loadNetworkMetrics',
+        'copyNetworkMetrics',
         'restartNetwork',
         'loadPeerInfos',
         'addPeerInfos',

@@ -158,6 +158,7 @@ export const storeEntries: StoreEntry[] = [
       'revokeApp',
       'removeApp',
       'loadNetworkMetrics',
+      'copyNetworkMetrics',
       'restartNetwork',
       'loadPeerInfos',
       'addPeerInfos',
@@ -675,7 +676,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
         trustedAgents: 'string[] — trusted peer ids. Empty until loadTrustedAgents() runs',
         authorizedApps:
           'AuthorizedApp[] — external apps holding credentials (id, name, description, url, iconUrl, capabilities, revoked). Empty until loadAuthorizedApps() runs',
-        networkMetrics: 'string — backend diagnostic blob, displayed verbatim. Empty until requested',
+        networkMetrics:
+          'string — backend diagnostic blob, already formatted for reading (indented JSON on AD4M, hashes decoded). Show it in a read-only CodeEditor with language json. Empty until requested, and emptied again while a fetch runs',
         peerInfos: 'string[] — this node peer-discovery records, for out-of-band exchange',
         loading: 'boolean — true while any runtime call is in flight',
         error: 'string — the last runtime error, for display',
@@ -713,6 +715,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
         revokeApp: "(id: string): invalidates an app's tokens, keeping the grant listed",
         removeApp: '(id: string): forgets the grant entirely',
         loadNetworkMetrics: '(): fetches the diagnostic blob',
+        copyNetworkMetrics:
+          '(): copies the loaded metrics to the clipboard, with a toast either way. Takes no text: a copy action names what it copies',
         restartNetwork: '(): restarts the peer-networking layer',
         loadPeerInfos: '(): fetches this node peer-discovery records',
         addPeerInfos: '(text: string): adds pasted peer records (JSON array or one per line)',

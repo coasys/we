@@ -282,6 +282,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     revokeApp: destructive('runtime-admin'),
     removeApp: destructive('runtime-admin'),
     loadNetworkMetrics: action('runtime-admin'),
+    copyNetworkMetrics: action('runtime-admin'),
     restartNetwork: destructive('runtime-admin'),
     loadPeerInfos: action('runtime-admin'),
     addPeerInfos: action('runtime-admin'),

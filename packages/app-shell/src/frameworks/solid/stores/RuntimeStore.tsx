@@ -21,6 +21,7 @@
  * The in-memory backend supplies no runtime port at all, which is the case that keeps this honest.
  */
 import type { ExecutorSettings } from '@shared/platform/types';
+import { copyText } from '@shared/utils';
 import { usePlatform } from '@solid/providers/PlatformProvider';
 import {
   type AiModelForm,
@@ -41,6 +42,7 @@ import type {
   ConsentRequest,
   InstalledLanguage,
 } from '@we/backend-shared';
+import { toastService } from '@we/components/solid';
 import {
   type Accessor,
   batch,
@@ -138,7 +140,10 @@ export interface RuntimeStore {
   loadAuthorizedApps: () => Promise<void>;
   revokeApp: (id: string) => Promise<void>;
   removeApp: (id: string) => Promise<void>;
+  /** Fetch the metrics. Clears what was there first, so a stale snapshot never stands in for this one. */
   loadNetworkMetrics: () => Promise<void>;
+  /** Copy the metrics currently loaded to the clipboard, with a toast either way. */
+  copyNetworkMetrics: () => Promise<void>;
   restartNetwork: () => Promise<void>;
   loadPeerInfos: () => Promise<void>;
   addPeerInfos: (infos: string) => Promise<void>;
@@ -595,9 +600,30 @@ export function RuntimeStoreProvider(props: ParentProps) {
     if ((await run(() => runtime()?.removeApp?.(id))).ok) await loadAuthorizedApps();
   }
 
+  /**
+   * Cleared before the fetch rather than replaced after it. The metrics are a snapshot somebody asked
+   * for in order to see *now*, and the conductor can take seconds to dump them — showing the previous
+   * snapshot meanwhile presents old numbers as the answer to a new question.
+   */
   async function loadNetworkMetrics(): Promise<void> {
+    setNetworkMetrics('');
     const metrics = await run(() => runtime()?.networkMetrics?.());
     if (metrics.ok && metrics.value !== undefined) setNetworkMetrics(metrics.value);
+  }
+
+  /**
+   * Copies the metrics on screen, for pasting into an issue or a chat.
+   *
+   * Takes no text on purpose. A template-reachable "copy this string" would let any template put
+   * words of its choosing on somebody's clipboard behind an innocent-looking button — the address
+   * swap is the classic use — so each copy the app offers names what it copies, as `copyShareLink`
+   * does.
+   */
+  async function copyNetworkMetrics(): Promise<void> {
+    const metrics = networkMetrics();
+    if (!metrics) return;
+    if (await copyText(metrics)) toastService.success('Network metrics copied');
+    else toastService.error('Could not copy the network metrics');
   }
 
   async function restartNetwork(): Promise<void> {
@@ -675,6 +701,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
     revokeApp,
     removeApp,
     loadNetworkMetrics,
+    copyNetworkMetrics,
     restartNetwork,
     loadPeerInfos,
     addPeerInfos,

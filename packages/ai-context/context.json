@@ -6808,6 +6808,7 @@
         "revokeApp",
         "removeApp",
         "loadNetworkMetrics",
+        "copyNetworkMetrics",
         "restartNetwork",
         "loadPeerInfos",
         "addPeerInfos",

@@ -13,13 +13,26 @@ import type { SchemaNode } from '@we/schema-shared';
 export interface AdminSectionOptions {
   title: string;
   icon: string;
-  /** The store action a manual refresh calls — `'runtimeStore.loadTrustedAgents'`. */
-  refresh: string;
+  /**
+   * The store action a manual refresh calls — `'runtimeStore.loadTrustedAgents'`.
+   *
+   * Omit it for a section that shows no backend list of its own, only controls. An icon in the
+   * heading with nothing to reload either does nothing or does something its placement does not say.
+   */
+  refresh?: string;
   children: SchemaNode[];
 }
 
 export function adminSection(opts: AdminSectionOptions): SchemaNode {
   const { title, icon, refresh, children } = opts;
+  const heading: SchemaNode = {
+    type: 'Row',
+    props: { gap: '200', ay: 'center' },
+    children: [
+      { type: 'we-icon', props: { name: icon, color: 'text-muted' } },
+      { type: 'we-text', props: { fontWeight: 'semibold' }, children: [title] },
+    ],
+  };
   return {
     type: 'Column',
     props: { gap: '300' },
@@ -27,26 +40,21 @@ export function adminSection(opts: AdminSectionOptions): SchemaNode {
       {
         type: 'Row',
         props: { gap: '300', ay: 'center', ax: 'between' },
-        children: [
-          {
-            type: 'Row',
-            props: { gap: '200', ay: 'center' },
-            children: [
-              { type: 'we-icon', props: { name: icon, color: 'text-muted' } },
-              { type: 'we-text', props: { fontWeight: 'semibold' }, children: [title] },
-            ],
-          },
-          {
-            type: 'we-button',
-            props: {
-              variant: 'ghost',
-              size: 'sm',
-              onClick: { $action: refresh },
-              loading: { $: 'runtimeStore.loading' },
-            },
-            children: [{ type: 'we-icon', props: { name: 'arrows-clockwise' } }],
-          },
-        ],
+        children: refresh
+          ? [
+              heading,
+              {
+                type: 'we-button',
+                props: {
+                  variant: 'ghost',
+                  size: 'sm',
+                  onClick: { $action: refresh },
+                  loading: { $: 'runtimeStore.loading' },
+                },
+                children: [{ type: 'we-icon', props: { name: 'arrows-clockwise' } }],
+              },
+            ]
+          : [heading],
       },
       ...children,
     ],

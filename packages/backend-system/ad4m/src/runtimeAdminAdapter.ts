@@ -36,6 +36,7 @@ import type {
 } from '@we/backend-shared';
 
 import { type Ad4mCapability, CAP_DOMAIN, CAP_VERB, createCapabilityCheck } from './capabilities';
+import { formatNetworkMetrics } from './networkMetrics';
 
 /**
  * The languages the executor installs for itself and cannot run without.
@@ -517,7 +518,7 @@ export function createAd4mRuntimeAdmin(backendClient: unknown, options: Ad4mRunt
 
     // ── Peer network ──────────────────────────────────────────────────────────
     async networkMetrics() {
-      return client.runtime.getNetworkMetrics();
+      return formatNetworkMetrics(await client.runtime.getNetworkMetrics());
     },
 
     async restartNetwork() {
