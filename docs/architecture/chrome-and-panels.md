@@ -166,7 +166,7 @@ contents fill its frame as they always have.
 A panel can be open and out of sight three ways: behind another tab of its seat, folded, or in a
 collapsed lane. `revealDock` undoes whichever it is — opens the lane, unfolds, brings the tab to the
 front —
-and flashes the tab when it came forward in a stack (`DockTab.landed`), because the frame did not
+and flashes the tab when it came forward in a stack (`DockGeometry.landedTab`), because the frame did not
 move and which tab is lit is the only change on screen. A drop into a seat flashes the same way.
 
 The module rail depends on it. A launcher's action is usually a toggle, so a button lit for a panel

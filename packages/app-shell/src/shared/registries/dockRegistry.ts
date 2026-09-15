@@ -781,6 +781,7 @@ function fitButton(id: string): SchemaNode {
  */
 function tabStrip(id: string): SchemaNode {
   const tabs = dockGeometryPath(id, 'tabs');
+  const landed = `tab.id == ${dockGeometryPath(id, 'landedTab')}`;
 
   return {
     type: '$if',
@@ -818,11 +819,11 @@ function tabStrip(id: string): SchemaNode {
                     No fill on hover. The name brightening under the pointer is the move handle's, and
                     `surface-hover` on top of it darkened a tab into the titlebar behind it.
                   */
-                  bg: { $: "tab.landed ? 'accent' : tab.active ? 'control-surface' : 'transparent'" },
+                  bg: { $: `${landed} ? 'accent' : tab.active ? 'control-surface' : 'transparent'` },
                   transition: 'background-color 400 ease',
                   styles: {
-                    '--we-move-handle-color': { $: "tab.landed ? 'var(--we-role-on-accent)' : 'initial'" },
-                    '--we-move-handle-active-color': { $: "tab.landed ? 'var(--we-role-on-accent)' : 'initial'" },
+                    '--we-move-handle-color': { $: `${landed} ? 'var(--we-role-on-accent)' : 'initial'` },
+                    '--we-move-handle-active-color': { $: `${landed} ? 'var(--we-role-on-accent)' : 'initial'` },
                   },
                 },
                 children: [

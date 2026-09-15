@@ -2989,7 +2989,7 @@ describe('every member of a seat resolves to one box', () => {
 
   it('leaves what belongs to the tab itself alone', () => {
     // Hidden, its place in the strip and its layer are per panel — the *box* is what is shared.
-    const strip = [{ id: 'front', title: 'Transcript', active: true, landed: false }];
+    const strip = [{ id: 'front', title: 'Transcript', active: true }];
     const resolved: Record<string, DockGeometry> = {
       front: seated({ tabs: strip }),
       back: seated({ hidden: true, layer: 204, left: '900px' }),

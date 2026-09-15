@@ -902,7 +902,6 @@ export interface DockTab {
   id: string;
   title: string;
   active: boolean;
-  landed: boolean;
 }
 
 /**
@@ -957,12 +956,19 @@ export interface DockGeometry {
    * The seat's members, for the panel that is showing to draw as a strip. Empty for a seat of one.
    * `active` marks this panel's own entry; pressing another is `raiseDock`, which is what decides
    * who shows.
-   *
-   * `landed` marks a tab that has just arrived at the front — dropped into the seat, or brought
-   * there from the rail — for the strip to flash, so the eye finds what changed in a frame that did
-   * not move. True for a moment, then false again.
    */
   tabs?: DockTab[];
+  /**
+   * The tab in this panel's strip that has just arrived at the front — dropped into the seat, or
+   * brought there from the rail — for the strip to flash, so the eye finds what changed in a frame
+   * that did not move. `''` when none is.
+   *
+   * On the panel rather than on each tab, and that is what lets the flash fade. `$each` keys its rows
+   * by reference, so a flag on the tab objects handed the strip new objects twice per flash — a tab
+   * that arrived lit and left unlit, with nothing to transition from. The tabs stay the same objects;
+   * only this changes.
+   */
+  landedTab?: string;
   /**
    * Folded to its titlebar. The frame hides the content while this is true — hides, never unmounts.
    * See {@link FloatPlacement.collapsed}.

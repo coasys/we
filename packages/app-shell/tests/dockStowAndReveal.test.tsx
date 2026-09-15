@@ -58,12 +58,20 @@ describe('a panel dropped onto another', () => {
   it('lands in front, and its tab flashes', () => {
     openBoth('left');
     const shell = mountShellStore();
+    vi.useFakeTimers();
     stack(shell, 'left');
 
     const geometry = shell.dockGeometry();
     expect(geometry[B].hidden).toBe(false);
     expect(geometry[A].hidden).toBe(true);
-    expect(geometry[B].tabs?.find((tab) => tab.id === B)).toMatchObject({ active: true, landed: true });
+    expect(geometry[B].tabs?.find((tab) => tab.id === B)).toMatchObject({ active: true });
+    // Not lit on the drop itself, which rebuilt the strip — two frames on, so the fill fades in.
+    expect(geometry[B].landedTab).toBe('');
+    vi.advanceTimersByTime(50);
+    expect(shell.dockGeometry()[B].landedTab).toBe(B);
+    // And the same tab objects throughout, which is what lets the fill fade out again.
+    expect(shell.dockGeometry()[B].tabs).toBe(geometry[B].tabs);
+    vi.useRealTimers();
   });
 });
 
@@ -73,11 +81,15 @@ describe('bringing a hidden panel into sight', () => {
     const shell = mountShellStore();
     stack(shell, 'left');
 
+    vi.useFakeTimers();
     shell.revealDock(A);
+    vi.advanceTimersByTime(50);
 
     const geometry = shell.dockGeometry();
     expect(geometry[A].hidden).toBe(false);
-    expect(geometry[A].tabs?.find((tab) => tab.id === A)).toMatchObject({ active: true, landed: true });
+    expect(geometry[A].tabs?.find((tab) => tab.id === A)).toMatchObject({ active: true });
+    expect(geometry[A].landedTab).toBe(A);
+    vi.useRealTimers();
   });
 
   it('opens a lane collapsed to its edge, with the panel asked for in front', () => {

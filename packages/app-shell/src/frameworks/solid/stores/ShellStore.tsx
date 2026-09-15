@@ -986,21 +986,31 @@ export function ShellStoreProvider(props: ParentProps) {
   };
 
   /**
-   * The tab that has just arrived at the front of its stack, while it flashes — see `DockTab.landed`.
+   * The tab that has just arrived at the front of its stack, while it flashes — see
+   * `DockGeometry.landedTab`.
    *
-   * Cleared by a timer rather than the next frame, unlike `settling`: this one is for a person to
-   * notice, so it has to last long enough to be seen and fade on the way out. The fade is the strip's
-   * own transition, which is a theme animation token, so a reduced-motion setting still decides.
+   * Lit two frames after it is asked for, and cleared by a timer. The delay is what lets the flash
+   * fade *in*: a drop or a raise rebuilds the strip (a new member, a new front), and a tab row that
+   * mounts already lit has nothing to transition from. The timer is for a person to notice — long
+   * enough to be seen — and the fade out is the strip's own transition, a theme animation token, so a
+   * reduced-motion setting still decides.
    */
   const [landedTab, setLandedTab] = createSignal('');
   let landedTimer: ReturnType<typeof setTimeout> | undefined;
+  let landedFlash = 0;
   const flashTab = (id: string) => {
     if (landedTimer !== undefined) clearTimeout(landedTimer);
-    setLandedTab(id);
-    landedTimer = setTimeout(() => {
-      landedTimer = undefined;
-      setLandedTab((was) => (was === id ? '' : was));
-    }, 900);
+    const flash = ++landedFlash;
+    const light = () => {
+      if (flash !== landedFlash) return;
+      setLandedTab(id);
+      landedTimer = setTimeout(() => {
+        landedTimer = undefined;
+        setLandedTab((was) => (was === id ? '' : was));
+      }, 900);
+    };
+    if (typeof requestAnimationFrame !== 'function') return light();
+    requestAnimationFrame(() => requestAnimationFrame(light));
   };
   onCleanup(() => {
     if (landedTimer !== undefined) clearTimeout(landedTimer);
@@ -1781,11 +1791,7 @@ export function ShellStoreProvider(props: ParentProps) {
     const same =
       previous?.length === strip.length &&
       previous.every(
-        (tab, i) =>
-          tab.id === strip[i].id &&
-          tab.title === strip[i].title &&
-          tab.active === strip[i].active &&
-          tab.landed === strip[i].landed,
+        (tab, i) => tab.id === strip[i].id && tab.title === strip[i].title && tab.active === strip[i].active,
       );
     if (!same) lastStrips[key] = strip;
     return lastStrips[key];
@@ -1818,7 +1824,6 @@ export function ShellStoreProvider(props: ParentProps) {
     const stowed: Record<string, Rect> = {};
     /** A stowed lane's strip and its tabs, on the lane's first member. */
     const strips: Record<string, { box: Rect; vertical: boolean; tabs: DockTab[] }> = {};
-    const landed = landedTab();
     const titleOf = (id: string) => {
       const entry = dockRegistry.get(id);
       return entry ? dockTitle(entry) : id;
@@ -1855,7 +1860,7 @@ export function ShellStoreProvider(props: ParentProps) {
       const front = seat.reduce((best, index) => (at(requests[index].id) > at(requests[best].id) ? index : best));
       const strip = seat.map((index) => {
         const id = requests[index].id;
-        return { id, title: titleOf(id), active: index === front, landed: id === landed };
+        return { id, title: titleOf(id), active: index === front };
       });
       for (const index of seat) {
         const id = requests[index].id;
@@ -1884,7 +1889,7 @@ export function ShellStoreProvider(props: ParentProps) {
         */
         if (group.displacing && group.members.every((member) => member.placement.stowed)) {
           const box = stripBox(edge, viewport(), occupied);
-          const strip = ids.map((id) => ({ id, title: titleOf(id), active: false, landed: false }));
+          const strip = ids.map((id) => ({ id, title: titleOf(id), active: false }));
           strips[ids[0]] = { box, vertical, tabs: stableStrip(`strip:${ids[0]}`, strip) };
           /*
             Each seat keeps the place along the edge it has open, at the strip's thickness.
@@ -1975,7 +1980,7 @@ export function ShellStoreProvider(props: ParentProps) {
           const front = requests[showing[s].index].id;
           const strip = seat.map((member) => {
             const id = requests[member.index].id;
-            return { id, title: titleOf(id), active: id === front, landed: id === landed };
+            return { id, title: titleOf(id), active: id === front };
           });
           for (const member of seat) {
             const id = requests[member.index].id;
@@ -2122,6 +2127,7 @@ export function ShellStoreProvider(props: ParentProps) {
           ? { layoutWidth: box.width, layoutHeight: box.height, contentsFaded: move.faded }
           : {}),
         tabs: tabs[request.id] ?? [],
+        landedTab: landedTab(),
         // Empty rather than absent, so a schema condition reads a string either way.
         below: below[request.id] ?? '',
         above: above[request.id] ?? '',
