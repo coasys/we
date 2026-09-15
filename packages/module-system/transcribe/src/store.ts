@@ -1991,16 +1991,14 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       return peerRecordersOf(call.id).length > 0;
     },
     /**
-     * Who to name in the notice, joined or merely offered.
+     * The first peer recording this call, for a surface that names who started it.
      *
-     * One agent rather than the list: it is a single line in a call bar, and "Ana is transcribing" is
-     * the part that makes it mean something. Their DID rather than their name, because this module
-     * holds no profiles — the fragment resolves it with `$agent`, the same way the calls list puts a
+     * One agent rather than the list, and their DID rather than their name, because this module
+     * holds no profiles — a fragment resolves it with `$agent`, the same way the calls list puts a
      * face on an utterance.
      *
-     * Empty once no peer is recording any more, which the call bar tests before drawing the notice:
-     * this agent may still be recording after the peer who started it stopped, and a chip reading
-     * " is transcribing" is worse than no chip.
+     * Empty once no peer is recording any more: this agent may still be recording after the peer who
+     * started it stopped, so test it before drawing a name.
      */
     invitedBy: () => {
       const call = myCall();
