@@ -126,3 +126,17 @@ describe('a ring is a claim, so it is only made when somebody asks', () => {
     expect(face(1).edgeColor).toBe('var(--we-role-surface)');
   });
 });
+
+describe('the first face is on top', () => {
+  it('stacks each face under the one before it, and the count under them all', () => {
+    // The lists come ordered by importance, so the first face is the one that has to be whole.
+    const people = ['a', 'b', 'c', 'd'].map((hash) => ({ hash }));
+    mount({ avatars: people, max: 3 });
+
+    const row = host!.firstElementChild as HTMLElement;
+    const layers = Array.from(row.children).map((child) => Number((child as HTMLElement).style.zIndex));
+
+    expect(layers).toEqual([4, 3, 2, 1]);
+    expect(row.style.isolation).toBe('isolate');
+  });
+});
