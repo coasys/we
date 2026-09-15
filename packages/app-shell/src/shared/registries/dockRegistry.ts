@@ -808,10 +808,22 @@ function tabStrip(id: string): SchemaNode {
                     move, so which tab is lit is the only change on screen and the flash is how the
                     eye finds it. A token duration, so a theme's animation speed and a reduced-motion
                     setting still decide.
+
+                    The accent fill itself, with its own foreground, rather than `accent-muted`: muted is
+                    a tint toward the ground, so in a dark theme it came out darker than the resting
+                    tab's `control-surface` — a flash that dimmed the thing it was pointing at. The name
+                    takes `on-accent` for the moment it is on the fill, through the move handle's own
+                    colour properties, which the text inherits across its shadow root.
+
+                    No fill on hover. The name brightening under the pointer is the move handle's, and
+                    `surface-hover` on top of it darkened a tab into the titlebar behind it.
                   */
-                  bg: { $: "tab.landed ? 'accent-muted' : tab.active ? 'control-surface' : 'transparent'" },
+                  bg: { $: "tab.landed ? 'accent' : tab.active ? 'control-surface' : 'transparent'" },
                   transition: 'background-color 400 ease',
-                  hoverProps: { bg: 'surface-hover' },
+                  styles: {
+                    '--we-move-handle-color': { $: "tab.landed ? 'var(--we-role-on-accent)' : 'initial'" },
+                    '--we-move-handle-active-color': { $: "tab.landed ? 'var(--we-role-on-accent)' : 'initial'" },
+                  },
                 },
                 children: [
                   {
