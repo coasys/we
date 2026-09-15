@@ -3328,7 +3328,7 @@ export const transcriptLines: SchemaNode = {
           */
           type: '$if',
           props: {
-            condition: { $: `!(modules.transcribe.pending && (${VIEWING_LIVE_EXPR}))` },
+            condition: { $: `!(modules.transcribe.heard && (${VIEWING_LIVE_EXPR}))` },
             then: {
               type: '$if',
               props: {
@@ -3396,37 +3396,129 @@ export const captureStatus: SchemaNode = {
     */
     note('no-audio', 'microphone-slash', 'Nothing to listen to. Start or join a call and this will follow it.'),
     note('no-backend', 'plugs', 'This backend cannot transcribe — no speech-to-text is reachable from here.'),
-    note(
-      'no-model',
-      'warning',
-      'No transcription model is installed. Add one and transcription will start on its own.',
-      {
-        // Offered only where the section exists. AI administration is node-scoped, so a guest on
-        // somebody else's executor — which includes every web session against a remote host —
-        // has no AI settings to open, and a button that opens Settings to nothing is worse than
-        // no button. The `else` says who can fix it instead.
-        type: '$if',
-        props: {
-          condition: { $: 'runtimeStore.canManageAi' },
-          then: {
-            type: 'we-button',
-            props: {
-              size: 'sm',
-              variant: 'secondary',
-              // The point of naming the reason is that it can be acted on, so the panel goes
-              // there rather than describing where to look.
-              onClick: { $action: 'shellStore.openShellView', args: ['settings', '/ai'] },
+    /*
+      No model, asked of what the store knows about models rather than of the status.
+
+      The status says `no-model` only after somebody pressed record and found nothing. The two other
+      ways to be here say nothing at all: recording that started on its own gives up silently, and a
+      panel opened before any call has never tried. Those are exactly the moments somebody would
+      want the button, so the note follows the fact rather than the attempt.
+    */
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'modules.transcribe.modelMissing' },
+        then: {
+          type: 'Column',
+          props: { gap: '200', ay: 'start' },
+          children: [
+            {
+              type: 'Row',
+              props: { gap: '200', ay: 'start' },
+              children: [
+                { type: 'we-icon', props: { name: 'warning', color: 'text-faint' } },
+                {
+                  type: 'we-text',
+                  props: { variant: 'footnote', color: 'text-muted' },
+                  children: ['No transcription model is installed. Once one is, transcription starts on its own.'],
+                },
+              ],
             },
-            children: ['Open AI settings'],
-          },
-          else: {
-            type: 'we-text',
-            props: { variant: 'footnote', color: 'text-faint' },
-            children: ['Models are configured on the node this app is connected to.'],
-          },
+            {
+              /*
+                One click where this connection may install one — the backend picks the model and
+                the button names its size, since most of a gigabyte is something to say before the
+                press rather than after.
+
+                Otherwise settings where there are settings to open, and a sentence where there are
+                not: AI administration is node-scoped, so a guest on somebody else's executor has no
+                AI section, and a button that opens Settings to nothing is worse than no button.
+              */
+              type: '$if',
+              props: {
+                condition: { $: 'modules.transcribe.canInstallModel' },
+                then: {
+                  type: 'we-button',
+                  props: {
+                    size: 'sm',
+                    variant: 'primary',
+                    loading: { $: 'modules.transcribe.installingModel' },
+                    disabled: { $: 'modules.transcribe.installingModel' },
+                    onClick: { $action: 'modules.transcribe.installModel' },
+                  },
+                  children: [
+                    { type: 'we-icon', props: { name: 'download-simple' } },
+                    { $: 'modules.transcribe.installModelLabel' },
+                  ],
+                },
+                else: {
+                  type: '$if',
+                  props: {
+                    condition: { $: 'runtimeStore.canManageAi' },
+                    then: {
+                      type: 'we-button',
+                      props: {
+                        size: 'sm',
+                        variant: 'secondary',
+                        onClick: { $action: 'shellStore.openShellView', args: ['settings', '/ai'] },
+                      },
+                      children: ['Open AI settings'],
+                    },
+                    else: {
+                      type: 'we-text',
+                      props: { variant: 'footnote', color: 'text-faint' },
+                      children: ['Models are configured on the node this app is connected to.'],
+                    },
+                  },
+                },
+              },
+            },
+          ],
         },
       },
-    ),
+    },
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'modules.transcribe.modelDownloading' },
+        then: {
+          type: 'Column',
+          props: { gap: '200' },
+          children: [
+            {
+              type: 'Row',
+              props: { gap: '200', ay: 'center' },
+              children: [
+                // A glyph rather than a spinner: this part keeps a stable height, and the percentage
+                // beside it is what says the download is moving.
+                { type: 'we-icon', props: { name: 'download-simple', color: 'text-faint' } },
+                {
+                  type: 'we-text',
+                  props: { variant: 'footnote', color: 'text-muted' },
+                  children: [{ $: 'modules.transcribe.modelDownloadText' }],
+                },
+              ],
+            },
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-faint' },
+              children: ['Transcription starts on its own once it has arrived.'],
+            },
+          ],
+        },
+      },
+    },
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'modules.transcribe.installError' },
+        then: {
+          type: 'we-alert',
+          props: { variant: 'warning' },
+          children: [{ $: '`The model could not be installed: ${modules.transcribe.installError}`' }],
+        },
+      },
+    },
     {
       type: '$if',
       props: {
@@ -3476,30 +3568,63 @@ export const pendingUtterance: SchemaNode = {
       is a fragment that will be placed without one. The workshop wrapped it by hand; nothing made
       that obligatory, and nothing would have said so if it had been forgotten.
     */
-    condition: { $: `modules.transcribe.pending && (${VIEWING_LIVE_EXPR})` },
+    /*
+      `heard` rather than `pending`: speech still with the model counts as well as words buffered.
+
+      Between somebody stopping and their words coming back there used to be nothing here at all —
+      a second or several on a CPU in which the panel looked exactly as it would had nobody spoken.
+    */
+    condition: { $: `modules.transcribe.heard && (${VIEWING_LIVE_EXPR})` },
     then: {
       type: 'Column',
       props: { bg: 'accent-muted', r: '300', p: '300', gap: '200' },
       children: [
         {
           type: 'Row',
-          props: { ax: 'between', ay: 'center' },
+          props: { ax: 'between', ay: 'center', minHeight: '24px' },
           children: [
             {
-              type: 'we-text',
-              props: { variant: 'footnote', color: 'text-muted', uppercase: true },
-              children: ['Not saved yet'],
+              type: 'Row',
+              props: { gap: '200', ay: 'center' },
+              children: [
+                {
+                  type: 'we-text',
+                  props: { variant: 'footnote', color: 'text-muted', uppercase: true },
+                  children: [{ $: "modules.transcribe.pending ? 'Not saved yet' : 'Transcribing…'" }],
+                },
+                // Beside the label rather than instead of it, so a line waiting to save and the next
+                // sentence still with the model can both be said at once.
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: 'modules.transcribe.transcribing' },
+                    then: { type: 'we-spinner', props: { size: 'xs', color: 'text-muted' } },
+                  },
+                },
+              ],
             },
             {
               // The buffer flushes on its own; this is for somebody who has stopped talking and
               // wants the line in the record now rather than at the end of the window.
-              type: 'we-button',
-              props: { variant: 'ghost', size: 'xs', onClick: { $action: 'modules.transcribe.flushNow' } },
-              children: ['Save now'],
+              type: '$if',
+              props: {
+                condition: { $: 'modules.transcribe.pending' },
+                then: {
+                  type: 'we-button',
+                  props: { variant: 'ghost', size: 'xs', onClick: { $action: 'modules.transcribe.flushNow' } },
+                  children: ['Save now'],
+                },
+              },
             },
           ],
         },
-        { type: 'we-text', children: [{ $: 'modules.transcribe.pending' }] },
+        {
+          type: '$if',
+          props: {
+            condition: { $: 'modules.transcribe.pending' },
+            then: { type: 'we-text', children: [{ $: 'modules.transcribe.pending' }] },
+          },
+        },
       ],
     },
   },

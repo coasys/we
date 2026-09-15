@@ -11,7 +11,7 @@
  * just the roster the module reads and the two write calls it makes.
  */
 import type { Activity, Peer } from '@we/backend-shared';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createTranscribeStore, TRANSCRIBE_ACTIVITY } from './store';
 
@@ -2203,5 +2203,341 @@ describe('mending a line somebody misheard', () => {
     await h.store.editUtterance('block-1', '   ', 'spoken');
 
     expect(updates).toEqual([]);
+  });
+});
+
+/**
+ * Getting a model onto a node that has none, and waiting for one that is still arriving.
+ *
+ * Both used to fail in ways that looked like something else. A node with no model gave up silently
+ * when recording started on its own, so the panel never offered anything; and a model still
+ * downloading was opened anyway, which on AD4M blocks inside the call and times out with an error
+ * naming nothing.
+ */
+describe('models', () => {
+  const IN_CALL = [peer(ME, { type: 'call', id: CALL, record: RECORD })];
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  interface FakeModel {
+    id: string;
+    name: string;
+    ready: boolean;
+    isDefault: boolean;
+    progress?: number;
+  }
+
+  /** A transcription port whose model list a test can change, and which records what it was asked. */
+  function port(initial: FakeModel[], { offer = true, refuse = false } = {}) {
+    let models = initial;
+    const opened: string[] = [];
+    let installs = 0;
+    return {
+      opened,
+      installs: () => installs,
+      setModels: (next: FakeModel[]) => (models = next),
+      transcription: {
+        available: () => true,
+        models: async () => models,
+        open: async (id: string) => {
+          opened.push(id);
+          return { feed: async () => {}, close: async () => {} };
+        },
+        offeredModel: () => (offer ? { name: 'Whisper small', downloadBytes: 967_000_000 } : null),
+        installOfferedModel: async () => {
+          installs += 1;
+          if (refuse) throw new Error('not permitted');
+          models = [{ id: 'small', name: 'Whisper small', ready: false, isDefault: false, progress: 0 }];
+        },
+      },
+    };
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('knows there is no model as soon as the panel opens, before anybody tries to record', async () => {
+    // The panel is where somebody goes to see whether this works here, so that is where the offer
+    // has to be — not only after a failed attempt to record.
+    const p = port([]);
+    const h = harness([], { transcription: p.transcription });
+
+    h.store.togglePanel();
+    await h.settle();
+
+    expect(h.store.modelMissing()).toBe(true);
+  });
+
+  it('notices a model added elsewhere while the panel says there is none', async () => {
+    vi.useFakeTimers();
+    const p = port([]);
+    const h = harness([], { transcription: p.transcription });
+
+    h.store.togglePanel();
+    h.setPeers([]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.store.modelMissing()).toBe(true);
+
+    p.setModels([{ id: 'base', name: 'Whisper base', ready: true, isDefault: false }]);
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    expect(h.store.modelMissing()).toBe(false);
+  });
+
+  it('names the offered model and its size on the button', () => {
+    const h = harness([], { transcription: port([]).transcription });
+
+    expect(h.store.canInstallModel()).toBe(true);
+    expect(h.store.installModelLabel()).toBe('Download Whisper small (970 MB)');
+  });
+
+  it('offers no install where the backend offers no model', () => {
+    // A guest on somebody else's node: the adapter withholds the offer, and the panel falls back to
+    // settings or a sentence rather than a button that would be refused.
+    const h = harness([], { transcription: port([], { offer: false }).transcription });
+
+    expect(h.store.canInstallModel()).toBe(false);
+    expect(h.store.installModelLabel()).toBe('');
+  });
+
+  it('installs, and reports the download that follows', async () => {
+    const p = port([]);
+    const h = harness([], { transcription: p.transcription });
+
+    await h.store.installModel();
+
+    expect(p.installs()).toBe(1);
+    expect(h.store.modelMissing()).toBe(false);
+    expect(h.store.modelDownloading()).toBe(true);
+    expect(h.store.modelDownloadText()).toBe('Downloading the speech model — 0%');
+  });
+
+  it('says why an install failed, rather than leaving the button to do nothing', async () => {
+    const p = port([], { refuse: true });
+    const h = harness([], { transcription: p.transcription });
+
+    await h.store.installModel();
+
+    expect(h.store.installError()).toBe('not permitted');
+    expect(h.store.installingModel()).toBe(false);
+  });
+
+  it('waits for a model that is still downloading instead of opening it', async () => {
+    const p = port([{ id: 'small', name: 'Whisper small', ready: false, isDefault: true, progress: 42 }]);
+    const h = harness([], { transcription: p.transcription });
+
+    h.store.toggle();
+    await h.settle();
+
+    expect(h.store.status()).toBe('downloading');
+    expect(h.store.modelDownloadText()).toBe('Downloading the speech model — 42%');
+    expect(p.opened).toEqual([]);
+  });
+
+  it('starts recording on its own once the download finishes', async () => {
+    vi.useFakeTimers();
+    const p = port([{ id: 'small', name: 'Whisper small', ready: false, isDefault: true, progress: 10 }]);
+    // In a call, in a space: recording that is waiting has to have somewhere it is waiting to write.
+    const h = harness(IN_CALL, { dataset: () => ({}), transcription: p.transcription });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.store.status()).toBe('downloading');
+
+    p.setModels([{ id: 'small', name: 'Whisper small', ready: true, isDefault: true }]);
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    expect(p.opened).toEqual(['small']);
+  });
+
+  it('picks up a model added while `no-model` was showing, without another press', async () => {
+    // "Once one is, transcription starts on its own" — true of a model added in settings as well as
+    // one installed from the panel.
+    vi.useFakeTimers();
+    const p = port([]);
+    const h = harness(IN_CALL, { dataset: () => ({}), transcription: p.transcription });
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Auto-join gave up quietly; pressing record is what asks the question.
+    h.store.toggle();
+    // The stand-in host re-runs effects on demand, the way a reactive one would when state moves.
+    h.setPeers(IN_CALL);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.store.status()).toBe('no-model');
+
+    p.setModels([{ id: 'base', name: 'Whisper base', ready: true, isDefault: false }]);
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    expect(p.opened).toEqual(['base']);
+  });
+
+  it('lets an auto-join that gave up for want of a model try again after an install', async () => {
+    const p = port([]);
+    const h = harness(IN_CALL, { dataset: () => ({}), transcription: p.transcription });
+    await settle();
+    expect(h.store.enabled()).toBe(false);
+
+    await h.store.installModel();
+    await h.settle();
+
+    expect(h.store.enabled()).toBe(true);
+    expect(h.store.status()).toBe('downloading');
+  });
+});
+
+/**
+ * Saying that speech is with the model.
+ *
+ * Between somebody stopping and their words coming back there is a second or several in which the
+ * panel otherwise looks as it would had nobody spoken at all.
+ */
+describe('transcribing', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('is transcribing from an utterance being sent until its text arrives', () => {
+    const h = harness();
+
+    h.store.markUtteranceSent(16_000);
+    expect(h.store.transcribing()).toBe(true);
+    expect(h.store.heard()).toBe(true);
+
+    h.store.receiveText('hello there');
+    expect(h.store.transcribing()).toBe(false);
+    // Still heard: the words are buffered, not yet in the record.
+    expect(h.store.heard()).toBe(true);
+  });
+
+  it('counts two utterances in flight as two', () => {
+    const h = harness();
+
+    h.store.markUtteranceSent(16_000);
+    h.store.markUtteranceSent(16_000);
+    h.store.receiveText('first');
+
+    expect(h.store.transcribing()).toBe(true);
+  });
+
+  it('stops claiming an utterance that never produced text', () => {
+    // A cough the backend's own gate threw away answers with nothing, and nothing says so.
+    vi.useFakeTimers();
+    const h = harness();
+
+    h.store.markUtteranceSent(16_000);
+    vi.advanceTimersByTime(1_000 + 5_000);
+
+    expect(h.store.transcribing()).toBe(false);
+    expect(h.store.heard()).toBe(false);
+  });
+});
+
+/**
+ * A stream the backend let go of.
+ *
+ * AD4M reaps a stream nobody has fed for thirty seconds, and this module feeds only when somebody
+ * speaks — so any long pause killed transcription for the rest of the call, with the panel still
+ * saying it was listening. Driven through a stand-in audio graph, since this is the listening half
+ * the rest of the file deliberately avoids.
+ */
+describe('a stream the backend dropped', () => {
+  /** The worklet node the store builds, kept so a test can post an utterance through its port. */
+  let nodes: { port: { onmessage: ((event: { data: unknown }) => void) | null } }[];
+
+  beforeEach(() => {
+    nodes = [];
+    vi.stubGlobal(
+      'AudioContext',
+      class {
+        audioWorklet = { addModule: async () => {} };
+        createMediaStreamSource() {
+          return { connect() {}, disconnect() {} };
+        }
+        async close() {}
+      },
+    );
+    vi.stubGlobal(
+      'AudioWorkletNode',
+      class {
+        port = { onmessage: null, postMessage() {}, close() {} };
+        constructor() {
+          nodes.push(this as never);
+        }
+        disconnect() {}
+      },
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const IN_CALL = [peer(ME, { type: 'call', id: CALL, record: RECORD })];
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+  const utterance = () => ({ data: { kind: 'utterance', audio: new Float32Array(1600) } });
+
+  function streams(behaviour: ('fails' | 'works')[]) {
+    const fed: number[] = [];
+    let opens = 0;
+    return {
+      fed,
+      opens: () => opens,
+      transcription: {
+        available: () => true,
+        models: async () => [{ id: 'small', name: 'Whisper small', ready: true, isDefault: true }],
+        open: async () => {
+          const index = opens++;
+          const how = behaviour[index] ?? 'works';
+          if (how === 'fails' && index > 0) throw new Error('model gone');
+          return {
+            feed: async () => {
+              if (how === 'fails') throw new Error('stream not found');
+              fed.push(index);
+            },
+            close: async () => {},
+          };
+        },
+      },
+    };
+  }
+
+  it('reopens the stream and resends the utterance that found it gone', async () => {
+    const s = streams(['fails', 'works']);
+    const h = harness(IN_CALL, { dataset: () => ({}), transcription: s.transcription });
+    await settle();
+    expect(h.store.status()).toBe('listening');
+
+    nodes[0].port.onmessage?.(utterance());
+    await settle();
+
+    expect(s.opens()).toBe(2);
+    expect(s.fed).toEqual([1]);
+    expect(h.store.status()).toBe('listening');
+  });
+
+  it('shares one reopen between utterances that fail together', async () => {
+    const s = streams(['fails', 'works']);
+    const h = harness(IN_CALL, { dataset: () => ({}), transcription: s.transcription });
+    await settle();
+
+    nodes[0].port.onmessage?.(utterance());
+    nodes[0].port.onmessage?.(utterance());
+    await settle();
+
+    expect(s.opens()).toBe(2);
+    expect(s.fed).toEqual([1, 1]);
+    expect(h.store.status()).toBe('listening');
+  });
+
+  it('stops and says so when the stream cannot be reopened', async () => {
+    const s = streams(['fails', 'fails']);
+    const h = harness(IN_CALL, { dataset: () => ({}), transcription: s.transcription });
+    await settle();
+
+    nodes[0].port.onmessage?.(utterance());
+    await settle();
+    await settle();
+
+    expect(h.store.status()).toBe('error');
+    expect(h.store.error()).toContain('could not be reached again');
+    expect(h.store.listening()).toBe(false);
   });
 });

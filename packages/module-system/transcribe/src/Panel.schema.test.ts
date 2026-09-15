@@ -95,7 +95,7 @@ describe('a transcript with nothing in it', () => {
       whether there is a preview — and reversible for nothing: a buffer that never saves takes the
       placeholder's reason with it and the sentence comes back.
     */
-    expect(linesJson).toContain(`!(modules.transcribe.pending && (${VIEWING_LIVE_EXPR}))`);
+    expect(linesJson).toContain(`!(modules.transcribe.heard && (${VIEWING_LIVE_EXPR}))`);
   });
 
   it('waits for the query to answer before asserting emptiness', () => {
@@ -381,7 +381,7 @@ describe('what belongs to the live microphone only', () => {
       it by hand, and nothing would have said so if it had been forgotten.
     */
     expect(JSON.stringify(pendingUtterance)).toContain(
-      'modules.transcribe.pending && (!routeStore.params.call || routeStore.params.call == modules.transcribe.callId)',
+      'modules.transcribe.heard && (!routeStore.params.call || routeStore.params.call == modules.transcribe.callId)',
     );
   });
 

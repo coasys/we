@@ -160,7 +160,7 @@ export function createAd4mBackendPorts(
     schemas: createAd4mSchemaPort(backendClient),
     profiles: createAd4mProfileDirectory(backendClient),
     runtime: createAd4mRuntimeAdmin(backendClient, options),
-    transcription: createAd4mTranscriptionPort(backendClient),
+    transcription: createAd4mTranscriptionPort(backendClient, options),
     languageModel: createAd4mLanguageModelPort(backendClient),
     // Takes no client: interpretation is entirely a per-dataset operation, and every call already
     // carries the dataset handle it needs.
