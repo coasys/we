@@ -1,15 +1,18 @@
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
-/** How a surface draws what nobody chosen is on. `rows` is for a board; a list has nothing to lay out. */
-export type PeopleFilterMode = 'dim' | 'hide' | 'rows';
-
 export interface PeopleFilterOptions {
   /** The `array` local holding the chosen DIDs. Declared by the caller, since what it filters reads it too. */
   people: string;
-  /** The `string` local holding the mode — `dim`, `hide` or `rows`. Declared by the caller. */
+  /**
+   * The `string` local holding how cards nobody chosen is on are drawn — `dim` or `hide`. Declared by
+   * the caller. Only asked once somebody is chosen, since with nobody chosen nothing is either.
+   */
   show: string;
-  /** The modes offered, in order. Defaults to dimming and hiding. */
-  modes?: PeopleFilterMode[];
+  /**
+   * The `boolean` local holding whether the surface lays itself out a row per person. Declared by the
+   * caller; omit on a surface that has no rows to lay out — a calendar.
+   */
+  grouped?: string;
   /**
    * The people worth a face in the row, as a list of DIDs — whoever is on something this surface
    * shows, the viewer first. Everyone else in the space is behind the row's last chip.
@@ -27,12 +30,6 @@ export interface PeopleFilterOptions {
   nounPlural?: string;
 }
 
-const MODE_ENTRIES: Record<PeopleFilterMode, { label: string; short: string; icon: string }> = {
-  dim: { label: 'Dim others', short: 'Dim', icon: 'circle-half' },
-  hide: { label: 'Hide others', short: 'Hide', icon: 'eye-slash' },
-  rows: { label: 'Row per person', short: 'Rows', icon: 'rows' },
-};
-
 const expression = (prop: SchemaProp) => (prop as { $: string }).$;
 
 /**
@@ -49,18 +46,26 @@ const expression = (prop: SchemaProp) => (prop as { $: string }).$;
  * and name, searchable. Somebody chosen from there joins the row while they are chosen, so the row
  * never stops showing the whole filter.
  *
- * ## The mode is its own control
+ * ## Two choices, not one menu
  *
- * Dim, hide, or a row per person is a way of reading, not a choice of who — and most people only ever
- * press faces. So it sits apart, as a small menu labelled with the mode it is in. Dimming is the
- * default and first: a filtered board keeps its shape, and every column still says how loaded it is.
+ * How the others are drawn, and whether the surface is laid out a row per person, used to be one menu
+ * of three — dim, hide, rows — and it did not make sense. With nobody chosen, dim and hide do nothing
+ * at all; with somebody chosen and rows on, rows already leave everyone else out, so dim and hide do
+ * nothing there either. The menu offered a choice that only sometimes existed and never said when.
+ *
+ * So they are two controls, each shown where it means something. **Dim | Hide** is part of the
+ * filter's own readout — "3 of 11 cards · Dim | Hide · ✕" — so it appears with somebody chosen and
+ * leaves with them, and not while rows are on. Two named options rather than a switch, because a switch
+ * called "Hide others" says nothing about what off is. Dimming is first and the default: a filtered
+ * board keeps its shape, and every column still says how loaded it is. **Group by person** is a switch
+ * of its own after the readout, since a layout is worth choosing whoever is chosen.
  *
  * ## One control on every surface that has one
  *
  * The kanban and the calendar both have it, and must agree about what "dim" means and where the
- * choice is made. The caller declares both locals: the people with `syncParam`, since "look at what
- * Ana is on" is a thing a link should carry; the mode with `persist`, since a link should not impose
- * a way of reading.
+ * choice is made. The caller declares the locals: the people with `syncParam`, since "look at what
+ * Ana is on" is a thing a link should carry; how others are drawn and whether rows are on with
+ * `persist`, since a link should not impose a way of reading.
  *
  * ## Why every face is an `AvatarStack` of one
  *
@@ -69,12 +74,10 @@ const expression = (prop: SchemaProp) => (prop as { $: string }).$;
  */
 export function peopleFilter(opts: PeopleFilterOptions): SchemaNode {
   const people = `local.${opts.people}`;
-  const show = `local.${opts.show}`;
   const chosen = `count(${people})`;
   const max = opts.max ?? 6;
   const faces = expression(opts.faces);
   const inline = `filter(${faces}, {}, ${max})`;
-  const modes = opts.modes ?? ['dim', 'hide'];
   const profile = (did: string) => `find(profileStore.profiles, { did: ${did} })`;
 
   /** One face: press to choose or let go, ringed while chosen, faded while somebody else is. */
@@ -109,133 +112,270 @@ export function peopleFilter(opts: PeopleFilterOptions): SchemaNode {
 
   return {
     type: 'Row',
-    props: { gap: '400', ay: 'center', wrap: true },
+    // `500` between one control and the next, where each keeps its own parts at `200`: at `400` the
+    // groups ran together, and a switch read as belonging to the words of the control before it.
+    props: { gap: '500', ay: 'center', wrap: true },
+    children: [
+      /*
+        The faces and what they are filtering to, as one control: "2 of 65 cards · Dim | Hide · ✕" is
+        the readout of the faces beside it, so the two sit at `300` rather than at the `500` that
+        separates one control from the next.
+      */
+      {
+        type: 'Row',
+        props: { gap: '300', ay: 'center', wrap: true },
+        children: [
+          {
+            type: 'Row',
+            props: { gap: '200', ay: 'center' },
+            children: [
+              { type: '$each', props: { items: { $: inline }, as: 'face' }, children: [faceToggle('face')] },
+              // Chosen from the full list and not already a face — so the row always shows the whole filter.
+              {
+                type: '$each',
+                props: { items: { $: `${people}.filter(d, !(d in ${inline}))` }, as: 'face' },
+                children: [faceToggle('face')],
+              },
+              /*
+                A tooltip of its own: the menu's title becomes a tooltip only for its built-in trigger,
+                and this chip is a custom one — a count, or a people glyph, which says nothing on its own.
+              */
+              {
+                type: 'we-tooltip',
+                props: { content: 'Find a member' },
+                children: [
+                  {
+                    type: 'DropdownMenu',
+                    props: {
+                      triggerTitle: 'Find a member',
+                      size: 'sm',
+                      itemSize: 'sm',
+                      placement: 'bottom-start',
+                      searchable: true,
+                      searchPlaceholder: 'Find a member',
+                      items: {
+                        $: `spaceStore.members.map(m, { type: 'toggle', id: m.did, label: m.did == me.did ? m.name + ' (you)' : m.name, checked: m.did in ${people}, avatar: { image: m.avatar, hash: m.did } })`,
+                      },
+                      // A toggle reports before its tick changes; `$toggleLocalIn` adds what is absent and removes what is present.
+                      onSelect: { $toggleLocalIn: opts.people, value: { $: 'arg.id' } },
+                    },
+                    children: [
+                      {
+                        type: 'Row',
+                        props: {
+                          height: 'var(--we-avatar-size-sm)',
+                          minWidth: 'var(--we-avatar-size-sm)',
+                          px: '100',
+                          r: 'pill',
+                          ax: 'center',
+                          ay: 'center',
+                          bg: 'control-surface',
+                          color: 'text-muted',
+                          hoverProps: { color: 'text' },
+                        },
+                        children: [
+                          {
+                            type: '$if',
+                            props: {
+                              condition: { $: `count(${faces}) > ${max}` },
+                              then: {
+                                type: 'we-text',
+                                props: {
+                                  fontSize: '100',
+                                  fontWeight: 'semibold',
+                                  text: { $: `'+' + (count(${faces}) - ${max})` },
+                                },
+                              },
+                              else: { type: 'we-icon', props: { name: 'users-three', size: 'xs' } },
+                            },
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            type: '$if',
+            props: {
+              condition: { $: chosen },
+              then: {
+                type: 'Row',
+                props: { gap: '200', ay: 'center' },
+                children: [
+                  {
+                    type: 'we-text',
+                    props: {
+                      variant: 'footnote',
+                      color: 'text-muted',
+                      whiteSpace: 'nowrap',
+                      text: {
+                        $: `\`\${${expression(opts.matched)}} of \${${expression(opts.total)}} \${plural(${expression(opts.total)}, '${opts.noun}', '${opts.nounPlural ?? `${opts.noun}s`}')}\``,
+                      },
+                    },
+                  },
+                  /*
+                Dim | Hide — only while it does something. Rows on means everyone else's cards are
+                already out of the layout, so the choice would change nothing.
+              */
+                  opts.grouped
+                    ? {
+                        type: '$if',
+                        props: { condition: { $: `!local.${opts.grouped}` }, then: showChoice(opts.show) },
+                      }
+                    : showChoice(opts.show),
+                  {
+                    type: 'we-tooltip',
+                    props: { content: 'Show everyone’s again' },
+                    children: [
+                      {
+                        type: 'we-button',
+                        props: {
+                          variant: 'ghost',
+                          size: 'xs',
+                          square: true,
+                          label: 'Clear the people filter',
+                          onClick: { $setLocal: opts.people, value: [] },
+                        },
+                        children: [{ type: 'we-icon', props: { name: 'x' } }],
+                      },
+                    ],
+                  },
+                ],
+              },
+            },
+          },
+        ],
+      },
+      ...(opts.grouped
+        ? [
+            labelledSwitch({
+              icon: 'rows',
+              label: 'Group by person',
+              checked: `local.${opts.grouped}`,
+              local: opts.grouped,
+            }),
+          ]
+        : []),
+    ],
+  };
+}
+
+/**
+ * A control's name in a header, shown only from the medium tier of the surface it is drawn in — a
+ * board in a narrow docked panel or on a phone is exactly where four labelled controls crowd the row,
+ * and a wide board has room to say what each one is. The icon beside it stays either way, and the
+ * control's tooltip and accessible name carry the words when the text is gone.
+ *
+ * ## CSS, not a branch on `surface.tier`
+ *
+ * It was a `$if` on `surface.tier`, and the labels never appeared at any width. A tier read in an
+ * expression is answered from JavaScript — a resize observer reading a sentinel's computed style — and
+ * inside a route it was not answered at all until the route pass was given the surface; `mdUpProps`
+ * is a container query, answered by the browser wherever there is a surface above, which is the
+ * mechanism the design system asks for whenever what changes is a value rather than a tree.
+ *
+ * The gap before the word is the word's own margin rather than the row's `gap`, because a label at
+ * `display: none` is still a flex item: a row gap would leave the space for it on a narrow header.
+ * Callers put the icon and this in a row with no gap of its own.
+ */
+export function headerLabel(text: string, props: Record<string, unknown> = {}): SchemaNode {
+  return {
+    type: 'we-text',
+    props: {
+      variant: 'label',
+      color: 'text-muted',
+      whiteSpace: 'nowrap',
+      display: 'none',
+      mdUpProps: { display: 'inline', ml: '100' },
+      ...props,
+    },
+    children: [text],
+  };
+}
+
+/**
+ * Dim | Hide, as two options with the chosen one filled — a segmented control, written as two
+ * buttons since the design system has none. Each is an icon and, with room, its word; the tooltip
+ * says what it does either way. Anything that is not `hide` reads as `dim`, the default, so a value
+ * stored by the old menu (`rows`) lands somewhere sensible.
+ */
+function showChoice(show: string): SchemaNode {
+  const option = (value: 'dim' | 'hide', icon: string, label: string, hint: string): SchemaNode => ({
+    type: 'we-tooltip',
+    props: { content: hint },
+    children: [
+      {
+        type: 'we-button',
+        props: {
+          // `sm`, the size of the header's other controls: an `xs` button draws its icon at 12px, which
+          // beside a 16px switch glyph read as a smaller, lesser control.
+          size: 'sm',
+          /*
+            The size's height less the group's border, so the whole control is one `sm` control tall.
+            At the size's own height the border took it to 34px, the tallest thing in the header — so
+            choosing somebody made the header 2px taller and moved the whole board down with it.
+          */
+          height: 'calc(var(--we-component-height-sm) + var(--we-theme-control-height-offset, 0px) - 2px)',
+          gap: '0',
+          label,
+          variant: {
+            $:
+              value === 'hide'
+                ? `local.${show} == 'hide' ? 'secondary' : 'ghost'`
+                : `local.${show} != 'hide' ? 'secondary' : 'ghost'`,
+          },
+          onClick: { $setLocal: show, value },
+        },
+        children: [{ type: 'we-icon', props: { name: icon } }, headerLabel(label, { color: 'inherit' })],
+      },
+    ],
+  });
+  return {
+    type: 'Row',
+    // No padding: the buttons are sized to fill the border exactly, and any inset would grow the box again.
+    props: { ay: 'center', r: '300', border: '1px solid border' },
+    children: [
+      option('dim', 'circle-half', 'Dim', 'Fade the cards nobody chosen is on'),
+      option('hide', 'eye-slash', 'Hide', 'Leave out the cards nobody chosen is on'),
+    ],
+  };
+}
+
+/**
+ * A setting as an icon, its name where there is room, then its switch — the name first, so in a row of
+ * controls it reads as belonging to the switch after it rather than to whatever came before. The
+ * switch's accessible name and a tooltip carry the words when the header is too narrow for them.
+ */
+export function labelledSwitch(opts: { icon: string; label: string; checked: string; local: string }): SchemaNode {
+  return {
+    type: 'we-tooltip',
+    props: { content: opts.label },
     children: [
       {
         type: 'Row',
         props: { gap: '200', ay: 'center' },
         children: [
-          { type: '$each', props: { items: { $: inline }, as: 'face' }, children: [faceToggle('face')] },
-          // Chosen from the full list and not already a face — so the row always shows the whole filter.
           {
-            type: '$each',
-            props: { items: { $: `${people}.filter(d, !(d in ${inline}))` }, as: 'face' },
-            children: [faceToggle('face')],
+            type: 'Row',
+            props: { gap: '0', ay: 'center' },
+            children: [
+              { type: 'we-icon', props: { name: opts.icon, size: 'sm', color: 'text-muted' } },
+              headerLabel(opts.label),
+            ],
           },
           {
-            type: 'DropdownMenu',
+            type: 'we-switch',
             props: {
-              triggerTitle: 'Everyone in this space',
               size: 'sm',
-              itemSize: 'sm',
-              placement: 'bottom-start',
-              searchable: true,
-              searchPlaceholder: 'Find a member',
-              items: {
-                $: `spaceStore.members.map(m, { type: 'toggle', id: m.did, label: m.did == me.did ? m.name + ' (you)' : m.name, checked: m.did in ${people}, avatar: { image: m.avatar, hash: m.did } })`,
-              },
-              // A toggle reports before its tick changes; `$toggleLocalIn` adds what is absent and removes what is present.
-              onSelect: { $toggleLocalIn: opts.people, value: { $: 'arg.id' } },
+              label: opts.label,
+              checked: { $: opts.checked },
+              onChange: { $setLocal: opts.local, value: { $: 'event.detail' } },
             },
-            children: [
-              {
-                type: 'Row',
-                props: {
-                  height: 'var(--we-avatar-size-sm)',
-                  minWidth: 'var(--we-avatar-size-sm)',
-                  px: '100',
-                  r: 'pill',
-                  ax: 'center',
-                  ay: 'center',
-                  bg: 'control-surface',
-                  color: 'text-muted',
-                  hoverProps: { color: 'text' },
-                },
-                children: [
-                  {
-                    type: '$if',
-                    props: {
-                      condition: { $: `count(${faces}) > ${max}` },
-                      then: {
-                        type: 'we-text',
-                        props: {
-                          fontSize: '100',
-                          fontWeight: 'semibold',
-                          text: { $: `'+' + (count(${faces}) - ${max})` },
-                        },
-                      },
-                      else: { type: 'we-icon', props: { name: 'users-three', size: 'xs' } },
-                    },
-                  },
-                ],
-              },
-            ],
           },
         ],
-      },
-      {
-        type: 'DropdownMenu',
-        props: {
-          triggerIcon: 'sliders-horizontal',
-          triggerLabel: {
-            $: modes.reduceRight<string>(
-              (rest, mode) => `${show} == '${mode}' ? '${MODE_ENTRIES[mode].short}' : ${rest}`,
-              `'${MODE_ENTRIES[modes[0]].short}'`,
-            ),
-          },
-          triggerVariant: 'secondary',
-          triggerTitle: 'How the others are shown',
-          size: 'sm',
-          placement: 'bottom-start',
-          items: modes.map((mode) => ({
-            id: `mode-${mode}`,
-            mode,
-            label: MODE_ENTRIES[mode].label,
-            icon: MODE_ENTRIES[mode].icon,
-            selected: { $: `${show} == '${mode}'` },
-          })),
-          onSelect: { $setLocal: opts.show, value: { $: 'arg.mode' } },
-        },
-      },
-      {
-        type: '$if',
-        props: {
-          condition: { $: chosen },
-          then: {
-            type: 'Row',
-            props: { gap: '200', ay: 'center' },
-            children: [
-              {
-                type: 'we-text',
-                props: {
-                  variant: 'footnote',
-                  color: 'text-muted',
-                  whiteSpace: 'nowrap',
-                  text: {
-                    $: `\`\${${expression(opts.matched)}} of \${${expression(opts.total)}} \${plural(${expression(opts.total)}, '${opts.noun}', '${opts.nounPlural ?? `${opts.noun}s`}')}\``,
-                  },
-                },
-              },
-              {
-                type: 'we-tooltip',
-                props: { content: 'Show everyone’s again' },
-                children: [
-                  {
-                    type: 'we-button',
-                    props: {
-                      variant: 'ghost',
-                      size: 'xs',
-                      square: true,
-                      label: 'Clear the people filter',
-                      onClick: { $setLocal: opts.people, value: [] },
-                    },
-                    children: [{ type: 'we-icon', props: { name: 'x' } }],
-                  },
-                ],
-              },
-            ],
-          },
-        },
       },
     ],
   };

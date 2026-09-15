@@ -316,7 +316,7 @@
   height: var(--node-size);
   border-radius: var(--node-radius);
   background: var(--node-color);
-  border: var(--node-border-width) solid var(--node-border);
+  border: var(--node-border-width) var(--node-border-style, solid) var(--node-border);
   overflow: hidden;
   transition: box-shadow 120ms ease-out;
 
@@ -418,7 +418,7 @@
   // For the shapes a radius cannot make — see `nodeClip`. `none` for the rest.
   clip-path: var(--node-clip, none);
   background: var(--node-color);
-  border: var(--node-border-width) solid var(--node-border);
+  border: var(--node-border-width) var(--node-border-style, solid) var(--node-border);
   box-shadow: var(--we-shadow-sm);
   overflow: hidden;
 }

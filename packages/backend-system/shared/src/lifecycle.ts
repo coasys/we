@@ -79,9 +79,32 @@ export interface AgentSessionStatus {
 }
 
 /**
+ * The backend did not finish an agent-session call in time.
+ *
+ * Distinct from a refusal, and the reason it is its own type: a timed-out unlock says nothing about
+ * the password. Reporting it as "Incorrect password" sent people to retype a password that was
+ * right, against a backend that was still starting. Adapters throw this so the shell can tell the
+ * two apart without knowing the backend's transport or its error codes.
+ */
+export class SessionTimeoutError extends Error {
+  constructor(message = 'The backend did not finish in time') {
+    super(message);
+    this.name = 'SessionTimeoutError';
+  }
+}
+
+/** By name as well as by class, so a second copy of this package in a bundle still matches. */
+export function isSessionTimeout(err: unknown): err is SessionTimeoutError {
+  return err instanceof SessionTimeoutError || (err instanceof Error && err.name === 'SessionTimeoutError');
+}
+
+/**
  * The agent session — whether the backend's identity is present and usable, and the create/unlock/
  * lock operations around it. Connection *establishment* stays with the host-supplied connector (it
  * is platform-specific); this port is what the shell needs once a connection exists.
+ *
+ * `generate` and `unlock` reject with {@link SessionTimeoutError} when the backend is still working
+ * after the adapter has waited as long as it will, and with any other error when it refused.
  */
 export interface AgentSessionPort {
   status(): Promise<AgentSessionStatus>;

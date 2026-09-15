@@ -18,6 +18,22 @@
  * cannot honestly answer them.
  */
 
+/**
+ * Peer-discovery records, in the two forms they are needed in.
+ *
+ * `records` are exactly what the backend handed out, and exactly what `addPeerInfos` on another
+ * node takes back. Opaque, and never to be re-serialized: on AD4M each one carries a signature over
+ * its own bytes, so a record reformatted on the way through is a record the receiver rejects.
+ *
+ * `readable` is the same records decoded for a person — indented, with whatever the backend packs
+ * inside them unpacked. Display only; nothing reads it back. Separate from `records` rather than
+ * derived in the shell because only the backend knows what a record contains.
+ */
+export interface PeerRecords {
+  records: string[];
+  readable: string;
+}
+
 /** An external app holding a credential against this agent. */
 export interface AuthorizedApp {
   /** Stable id for this grant — what revoke/remove take. */
@@ -160,12 +176,18 @@ export interface RuntimeAdminPort {
   untrustAgent?(id: string): Promise<void>;
 
   // ── Peer network ────────────────────────────────────────────────────────────
-  /** A backend-formatted diagnostic blob. Opaque to the shell — displayed, never parsed. */
+  /**
+   * A backend-formatted diagnostic blob. Opaque to the shell — displayed, never parsed.
+   *
+   * Formatted means readable as it stands: indented, with anything only the backend can decode (a
+   * hash that arrived as bytes) already decoded. The shell shows it in a JSON viewer, so JSON is
+   * what reads best, but text that is not JSON is shown as it is.
+   */
   networkMetrics?(): Promise<string>;
   /** Restart the peer-networking layer without restarting the app. */
   restartNetwork?(): Promise<void>;
-  /** This node's peer-discovery records, for out-of-band exchange when discovery fails. */
-  peerInfos?(): Promise<string[]>;
+  /** The peer-discovery records this node holds, for out-of-band exchange when discovery fails. */
+  peerInfos?(): Promise<PeerRecords>;
   addPeerInfos?(infos: string[]): Promise<void>;
 
   // ── External apps holding credentials ───────────────────────────────────────

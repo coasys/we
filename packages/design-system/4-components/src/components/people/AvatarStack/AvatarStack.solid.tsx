@@ -44,7 +44,16 @@ export function AvatarStack(props: AvatarStackProps) {
   const sizeVar = () => `var(--we-avatar-size-${props.size ?? 'xs'})`;
 
   return (
-    <div style={{ display: 'flex', 'align-items': 'center', ...props.styles }}>
+    /*
+      The first face on top, each after it tucked behind the one before, and the count at the back.
+
+      The lists this draws are ordered by importance — the viewer first, whoever is responsible
+      before whoever is reviewing — so the face that must be whole is the first. It used to be the
+      reverse by accident: document order put each face over the last, and the count, being the one
+      unpositioned child beside positioned avatars, painted under the last face instead. The order is
+      explicit now, and `isolation` keeps these numbers from competing with anything outside the row.
+    */
+    <div style={{ display: 'flex', 'align-items': 'center', isolation: 'isolate', ...props.styles }}>
       {/*
         By position, not by object. The avatars arrive as a list built fresh by an expression, so every
         recompute is a list of new objects; a `For` keyed on them replaced every face each time — a
@@ -58,6 +67,8 @@ export function AvatarStack(props: AvatarStackProps) {
               display: 'flex',
               'margin-left': i > 0 ? overlapPx() : '0',
               'flex-shrink': '0',
+              position: 'relative',
+              'z-index': String(visible().length - i + 1),
             }}
           >
             <we-avatar
@@ -91,6 +102,8 @@ export function AvatarStack(props: AvatarStackProps) {
             'justify-content': 'center',
             'margin-left': visible().length > 0 ? overlapPx() : '0',
             'flex-shrink': '0',
+            position: 'relative',
+            'z-index': '1',
             width: sizeVar(),
             height: sizeVar(),
             // The avatar group, not a literal circle: this chip sits in the row *as* one of the

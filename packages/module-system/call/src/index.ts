@@ -129,7 +129,14 @@ function contentCentred(edge: 'top' | 'bottom', child: SchemaNode): SchemaNode {
       right: 'var(--we-chrome-right, 0px)',
       [edge]: `calc(${CALL_BAR_INSET} + var(--we-chrome-${edge}, 0px))`,
       transition: [ease('left'), ease('right'), ease(edge)].join(', '),
-      zIndex: 'sticky',
+      /*
+        `chrome`, above every panel — the rung the module rail and the sidebar are on, for the same
+        reason. Panels count up from `sticky` by how recently they were touched, so on `sticky` the
+        bar lost to any panel that had been raised, and maximising raises: a full-screen call hid its
+        own hang-up button. A maximised panel pads its content by this bar's reserve (`padBottom`),
+        so painting over it covers nothing the panel needs.
+      */
+      zIndex: 'chrome',
       pointerEvents: 'none',
     },
     children: [

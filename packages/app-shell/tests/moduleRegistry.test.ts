@@ -663,3 +663,28 @@ describe('supplying a module panel’s contents', () => {
     expect(first).toContain('TemplatePanelBody');
   });
 });
+
+/**
+ * Which panel a rail button is about — what the rail asks before pressing, so a button whose panel is
+ * stacked out of sight brings it forward rather than closing it.
+ */
+describe('the panel a launcher is about', () => {
+  const dock = (name?: string) => ({ edge: 'dockEdge', node: { type: 'Column' }, ...(name ? { name } : {}) });
+  const launcher = (key?: string) => ({ icon: 'note', label: 'Notes', action: 'toggle', ...(key ? { key } : {}) });
+
+  it('is the only dock, for the module with one panel and one button', () => {
+    expect(moduleRegistry.dockOfLauncher(mod({ id: 'notes', docks: [dock()] }), launcher())).toBe('notes:0');
+  });
+
+  it('is the dock of the same name, for a keyed launcher', () => {
+    const definition = mod({ id: 'transcribe', docks: [dock('transcript'), dock('extraction')] });
+
+    expect(moduleRegistry.dockOfLauncher(definition, launcher('extraction'))).toBe('transcribe:extraction');
+    expect(moduleRegistry.dockOfLauncher(definition, launcher())).toBe('transcribe:transcript');
+  });
+
+  it('is nothing, for a module with no panel or a key naming no dock', () => {
+    expect(moduleRegistry.dockOfLauncher(mod({ id: 'x' }), launcher())).toBeNull();
+    expect(moduleRegistry.dockOfLauncher(mod({ id: 'x', docks: [dock('a')] }), launcher('b'))).toBeNull();
+  });
+});

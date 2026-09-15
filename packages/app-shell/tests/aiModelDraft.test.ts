@@ -121,4 +121,12 @@ describe('describeModel', () => {
     expect(view.statusText).toBe('Loaded — ready');
     expect(view.ready).toBe(true);
   });
+
+  it('counts a transcription model ready once downloaded, since AD4M never marks one loaded', () => {
+    // Reading `loaded` alone left every Whisper model unready for good, and the settings page polled
+    // its status for as long as it stayed open.
+    const status = { downloaded: true, loaded: false, progress: 100, status: 'Loaded' };
+    expect(describeModel(model({ kind: 'transcription' }), status).ready).toBe(true);
+    expect(describeModel(model({ kind: 'llm' }), status).ready).toBe(false);
+  });
 });

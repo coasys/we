@@ -348,6 +348,12 @@ export function DatasetStoreProvider(props: ParentProps) {
           if (!port) throw new Error('transcription: this backend cannot transcribe');
           return port.open(modelId, onText, tuning);
         },
+        offeredModel: () => session.backendPorts()?.transcription?.offeredModel?.() ?? null,
+        installOfferedModel: async () => {
+          const install = session.backendPorts()?.transcription?.installOfferedModel;
+          if (!install) throw new Error('transcription: this backend cannot install a model');
+          return install();
+        },
       },
       // Same late read as transcription, but this one answers `available()` honestly — the wrapper is
       // always published, so a module asking "can this node interpret?" has to be told about the

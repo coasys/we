@@ -144,7 +144,14 @@ function RecordCard(props: { node: GraphNode }) {
     })),
   );
 
-  const [card, setCard] = createStore<CanvasCard>({ icon: 'cube', kind: '', title: '', lines: [], prose: [] });
+  const [card, setCard] = createStore<CanvasCard>({
+    icon: 'cube',
+    kind: '',
+    title: '',
+    lines: [],
+    prose: [],
+    pending: false,
+  });
   createComputed(() =>
     setCard(
       reconcile(

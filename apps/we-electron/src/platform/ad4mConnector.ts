@@ -21,6 +21,7 @@ declare global {
       setExecutorSettings: (settings: Partial<ExecutorSettings>) => Promise<ExecutorSettings>;
       restartExecutor: () => Promise<void>;
       chooseFile: (options: { save: boolean; defaultName?: string }) => Promise<string | null>;
+      saveFile: (file: { name: string; type: string; bytes: Uint8Array }) => Promise<boolean>;
     };
   }
 }

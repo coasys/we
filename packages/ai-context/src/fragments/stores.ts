@@ -15,6 +15,7 @@ export const storeEntries: StoreEntry[] = [
       bootState: { type: 'string' },
       bootError: { type: 'string' },
       passwordError: { type: 'boolean' },
+      loginError: { type: 'string' },
       loginLoading: { type: 'boolean' },
       createAgentError: { type: 'string' },
       createAgentLoading: { type: 'boolean' },
@@ -65,6 +66,7 @@ export const storeEntries: StoreEntry[] = [
       canAdminister: { type: 'boolean' },
       canManageTrust: { type: 'boolean' },
       canManageNetwork: { type: 'boolean' },
+      canRestartNetwork: { type: 'boolean' },
       canManageApps: { type: 'boolean' },
       canManageLanguages: { type: 'boolean' },
       canManageAi: { type: 'boolean' },
@@ -124,6 +126,8 @@ export const storeEntries: StoreEntry[] = [
       },
       networkMetrics: { type: 'string' },
       peerInfos: { type: 'array' },
+      peerInfosReadable: { type: 'string' },
+      pending: { type: 'array' },
       loading: { type: 'boolean' },
       error: { type: 'string' },
       pendingConsent: { type: 'object', properties: ['kind', 'title', 'message', 'app', 'peerId'] },
@@ -157,8 +161,10 @@ export const storeEntries: StoreEntry[] = [
       'revokeApp',
       'removeApp',
       'loadNetworkMetrics',
+      'copyNetworkMetrics',
       'restartNetwork',
       'loadPeerInfos',
+      'copyPeerInfos',
       'addPeerInfos',
       'approveConsent',
       'denyConsent',
@@ -347,7 +353,7 @@ export const storeEntries: StoreEntry[] = [
       },
       moduleLaunchers: {
         type: 'array',
-        properties: ['id', 'icon', 'label', 'active', 'busy'],
+        properties: ['id', 'icon', 'label', 'active', 'busy', 'concealed'],
       },
       taskStates: { type: 'array', properties: ['id', 'name', 'slug', 'semantic', 'color', 'retired', 'defined'] },
       offeredTaskStates: {
@@ -408,6 +414,7 @@ export const storeEntries: StoreEntry[] = [
       'copyGuestLink',
       'getSubgroupMessages',
       'exportCallTranscript',
+      'exportExtractionLog',
       'setModuleEnabled',
       'setModuleInstalled',
       'setModuleVisible',
@@ -575,7 +582,10 @@ export function generateStoresText(entries: StoreEntry[]): string {
         me: 'Agent | undefined — the authenticated identity; prefer the $me token in schemas',
         bootState: "string — 'initialising' | 'login' | 'createAgent' | 'finishing' | 'ready' | 'error'",
         bootError: "string — why the boot failed, when bootState is 'error'. Empty otherwise",
-        passwordError: 'boolean — true after a failed unlock attempt',
+        passwordError:
+          'boolean — true after an unlock the backend refused. Not set when it merely timed out; see loginError',
+        loginError:
+          'string — why the last sign-in failed when the password was not the problem (the backend took too long to finish), ready to display. Empty otherwise, and never set together with passwordError. Show it where passwordError’s message goes: { $: "sessionStore.passwordError ? \'Incorrect password\' : sessionStore.loginError" }',
         loginLoading: 'boolean',
         createAgentError: 'string — the backend message from a failed agent creation, or empty',
         createAgentLoading: 'boolean',
@@ -641,6 +651,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
         canAdminister: 'boolean — this backend exposes runtime administration at all',
         canManageTrust: 'boolean — gate the trusted-agents section on this',
         canManageNetwork: 'boolean — gate the peer-network section on this',
+        canRestartNetwork:
+          'boolean — the backend can restart its networking layer, and the restart does something. Gate a restart control on this, not on canManageNetwork',
         canManageApps: 'boolean — gate the authorized-apps section on this',
         canManageLanguages: 'boolean — gate the languages section on this',
         canManageAi: 'boolean — gate the AI section on this',
@@ -670,9 +682,16 @@ export function generateStoresText(entries: StoreEntry[]): string {
         trustedAgents: 'string[] — trusted peer ids. Empty until loadTrustedAgents() runs',
         authorizedApps:
           'AuthorizedApp[] — external apps holding credentials (id, name, description, url, iconUrl, capabilities, revoked). Empty until loadAuthorizedApps() runs',
-        networkMetrics: 'string — backend diagnostic blob, displayed verbatim. Empty until requested',
-        peerInfos: 'string[] — this node peer-discovery records, for out-of-band exchange',
-        loading: 'boolean — true while any runtime call is in flight',
+        networkMetrics:
+          'string — backend diagnostic blob, already formatted for reading (indented JSON on AD4M, hashes decoded). Show it in a read-only CodeEditor with language json. Empty until requested, and emptied again while a fetch runs',
+        peerInfos:
+          "string[] — the peer-discovery records this node holds, exactly as the backend gave them: what copyPeerInfos copies. Opaque — don't display them, show peerInfosReadable",
+        peerInfosReadable:
+          'string — the same records decoded for reading, as indented JSON (on AD4M: agent, space, dates, url, arc, signature). Show it in a read-only CodeEditor with language json. Empty until loadPeerInfos() runs',
+        pending:
+          "string[] — names of the actions with a runtime call in flight. A control's spinner reads its own: { $: \"'loadPeerInfos' in runtimeStore.pending\" }",
+        loading:
+          'boolean — true while any runtime call is in flight. Prefer pending, so a spinner does not light for an unrelated call',
         error: 'string — the last runtime error, for display',
         pendingConsent:
           "ConsentRequest | null — a request awaiting the user's decision (kind: 'capability' | 'trust', title, message, app, peerId)",
@@ -708,9 +727,15 @@ export function generateStoresText(entries: StoreEntry[]): string {
         revokeApp: "(id: string): invalidates an app's tokens, keeping the grant listed",
         removeApp: '(id: string): forgets the grant entirely',
         loadNetworkMetrics: '(): fetches the diagnostic blob',
+        copyNetworkMetrics:
+          '(): copies the loaded metrics to the clipboard, with a toast either way. Takes no text: a copy action names what it copies',
         restartNetwork: '(): restarts the peer-networking layer',
-        loadPeerInfos: '(): fetches this node peer-discovery records',
-        addPeerInfos: '(text: string): adds pasted peer records (JSON array or one per line)',
+        loadPeerInfos:
+          "(): fetches the peer-discovery records this node holds — its own and every peer it knows. Can take tens of seconds on a busy node; show a state on 'loadPeerInfos' in pending",
+        copyPeerInfos:
+          '(): copies the loaded peer records as a JSON array addPeerInfos accepts, with a toast either way',
+        addPeerInfos:
+          '(text: string): adds pasted peer records (JSON array or one per line). Resolves true when added — clear the paste box on result in onSuccess, since onSuccess also fires after a failure',
         approveConsent: '(): grants the pending request',
         denyConsent: '(): declines the pending request',
         dismissConsentSecret: '(): clears the confirmation code display',
@@ -1036,7 +1061,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         moduleInstallSettings:
           "{ id, name, description, icon, installed, surface, switchable }[] — every registered module and whether this agent wants it anywhere. The global Settings → Modules list, and the only place an 'app' or 'capability' module is decided about: a contribution is gated at the layer where it renders, and only 'chrome' renders inside a space. `surface` is derived from what the module contributes. Its per-space counterpart is `modules` on each spaceList row, which carries enabled/installed/visible/active together and lists chrome modules only",
         moduleLaunchers:
-          '{ id, icon, label, active, busy }[] — launchers for the modules enabled here and available in this space; what the host module rail renders. `active` lights the button while the module reports its surface open; `busy` says the module is working in the background — an extraction pass running — and is independent of `active`, so a rail can show work going on behind a closed panel. Pair with { $action: "spaceStore.launchModule", args: [{ $: "mod.id" }] }',
+          '{ id, icon, label, active, busy, concealed }[] — launchers for the modules enabled here and available in this space; what the host module rail renders. `active` is the module reporting its surface open; `concealed` says that panel is open and out of sight — a background tab of a stack, folded to its bar, or in a lane collapsed to its edge — so light the button on `mod.active && !mod.concealed`, since pressing a concealed one brings the panel forward rather than closing it. `busy` says the module is working in the background — an extraction pass running — and is independent of `active`, so a rail can show work going on behind a closed panel. Pair with { $action: "spaceStore.launchModule", args: [{ $: "mod.id" }] }',
       },
       actions: {
         moveChild:
@@ -1155,6 +1180,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           "(subgroupId: string): messages belonging to one of Flux's conversation subgroups, fetched on demand. A dialect query against a foreign schema rather than a WE model, so it goes through the backend's interop surface instead of $query — which is why it is a store method and not a relation you can drill into",
         exportCallTranscript:
           "(callId: string): writes the call's transcript to a .txt file (one line per utterance: name, timestamp, text) and downloads it. Read-only and client-side — it reads the shared record and writes to the caller's own device",
+        exportExtractionLog:
+          "(callId: string): writes everything extraction did with the call to a Markdown file and downloads it — the settings it ran under, the transcript once, every member's passes with their prompts and responses verbatim, the records written as they are stored now, and the suggestions still awaiting a decision. For handing to a person or a model investigating the extraction. Read-only and client-side, like exportCallTranscript",
         setModuleInstalled:
           '(moduleId: string, installed: boolean): turns a module on or off for this agent in every space. Personal — writes AgentSettings.installedModules in the root dataset, so no other member sees it',
         setModuleVisible:
@@ -1176,7 +1203,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
     recordStore: {
       state: {
         creatableEntities:
-          "{ label, value, icon, group }[] — models a person can create an instance of here, ready for a we-select: this space's own models first, then WE's built-in content types. A model appears here by declaring `authoring` in the manifest, or by being a shape this community defined",
+          "{ label, value, icon, group }[] — models a person can create an instance of here, ready for a we-select: this space's own models first, then WE's built-in content types. A model appears here by declaring `authoring` in the manifest (unless it says `offered: false` — made somewhere specific, like a drawn connection or a vocabulary entry), or by being a shape this community defined",
         displays:
           "Record<entity, RecordDisplay> — how to show an instance of each creatable model, keyed by entity name and derived from its declaration: { entity, label, icon, title, summary, media, fields[] }, where title/summary/media name the properties playing those roles ('' when none does) and each field is { name, label, kind, role, options, vocabulary }. kind is one of text, longText, number, boolean, date, datetime, color, url, image, file, json; role is title, summary, media or detail. `options` is the values a field is allowed to hold where the model closes the set (a task's status), empty otherwise — count() it to tell a state worth drawing as a we-badge from free text, and map it into a we-select rather than offering a text box that accepts a word the model does not know. `vocabulary` names the community list a value is a slug of ('taskState' for a task's status, looked up in spaceStore.taskStates for its name and colour), empty otherwise. Index it by a row's type — { $: 'recordStore.displays[row.type]' } — and render the fields with $each; see \"A record of any type\" in the patterns",
         recordDraft:
@@ -1417,7 +1444,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         createSpaceOpen:
           'boolean — the create-space modal is open. Shell state because more than one place opens it; bind the modal’s open prop to this and close it with setCreateSpaceOpen',
         dockGeometry:
-          "Record<dockId, DockGeometry> — every registered panel's resolved box (top, left, width, height, edge, mode). Read a field as { $: \"shellStore.dockGeometry['<id>'].<field>\" } — by index, since a dock id holds a colon; the frame a panel is wrapped in binds its geometry this way so a move rewrites props rather than remounting",
+          "Record<dockId, DockGeometry> — every registered panel's resolved box (top, left, width, height, edge, mode) and its state — hidden behind another tab, collapsed to its bar, stowed in a lane collapsed to its edge, and which of those its titlebar may offer (canCollapse, canStow). Read a field as { $: \"shellStore.dockGeometry['<id>'].<field>\" } — by index, since a dock id holds a colon; the frame a panel is wrapped in binds its geometry this way so a move rewrites props rather than remounting",
         contentInset:
           '{ top, right, bottom, left } in pixels — what the content viewport gives up to panels that displace it. Read it to keep your own fixed chrome clear of docked panels',
         coveredInset:
@@ -1445,6 +1472,9 @@ export function generateStoresText(entries: StoreEntry[]): string {
           'string[] — the arrangements saved for the interface on screen, by name, sorted. The three-rung chain has one user slot; these are how to keep more than one — a “recording” and a “reviewing” for the same template. Empty for an interface with none',
         activeLayout:
           "string — the saved layout the arrangement on screen is, or '' once anything has been moved since. Mark the matching row as selected",
+        panelsHidden:
+          'boolean — somebody has put every panel away at once, from the rail or with Cmd/Ctrl+\\. The panels are also away while a shell overlay (settings, profile, about) is open, which is not this and does not set it. Either way they are hidden, never unmounted, and the content gets the room they took',
+        hasPanels: 'boolean — some panel is open on screen to put away. What the hide-all toggle is gated on',
         layoutDirty:
           'boolean — the interface on screen has been rearranged: one of its panels moved, resized or closed. What a whole-arrangement "reset layout" control is gated on, and not the same question as any layoutPinned entry — a closed panel has no placement, and a panel declared for another route is not among the docks at all. False for an interface declaring no panels',
       },
@@ -1480,7 +1510,13 @@ export function generateStoresText(entries: StoreEntry[]): string {
         toggleDockDisplace:
           '(id: string): makes the panel push the content aside, or stop. A toggle rather than a setter because a menu item reports only that it was clicked',
         toggleCollapseDock:
-          '(id: string): folds a panel down to its titlebar, or opens it again. It keeps its place in its lane and its lane-mates take the room; the content is hidden, never unmounted. Refused where there is nowhere for that room to go — a sidebar alone on its edge, or the last open member of a lane. Read dockPlacement[id].canCollapse',
+          '(id: string): folds a panel, and every tab stacked with it, down to its titlebar — or opens it again. A fold always takes height: down a side lane the lane-mates take the room, and across a top or bottom lane the lane is as thick as its tallest open member, so folding the last one hands the room back to the content. The content is hidden, never unmounted. Refused where there is nowhere for that room to go — a sidebar alone on its edge, or the last open member of a side lane; collapse that lane to its edge instead. Read dockGeometry[id].canCollapse',
+        togglePanelsHidden:
+          '(): puts every panel away at once, or brings them all back exactly as they were — hidden, never unmounted, with the content given their room while they are away. Does nothing while a shell overlay is up, when the panels are away already. Asking for one panel (revealDock, a rail launcher) brings them all back',
+        toggleStowLane:
+          "(id: string): collapses the whole displacing lane this panel is in to a strip at its edge naming its panels, or opens it again. Every panel keeps its size, which tab is showing and whether it is folded; the content is hidden, never unmounted. Offered on the lane's first titlebar — read dockGeometry[id].canStow — and a press anywhere on the strip opens it",
+        revealDock:
+          '(id: string): brings an open panel into sight wherever it is hidden — to the front of its stack, unfolded, or by opening the lane it is collapsed into — and flashes its tab when it came forward in a stack. Leaves a closed panel alone. What the module rail does for a panel that is open and concealed, instead of the module\u2019s own toggle',
         breakOut:
           "(panelId: string, x?: number, y?: number): takes a section out of the template and makes it a panel — floating under the pointer when given one, else at the snap its meta.panels entry named. Refused for a section declared `fixed`. Takes the panel's own id, not the dock id",
         returnHome:

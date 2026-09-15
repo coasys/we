@@ -124,4 +124,24 @@ describe('named tokens of a scale', () => {
     expect(tokenVar('radius', 'recessed')).toBe('var(--we-radius-recessed)');
     expect(spy).toHaveBeenCalledOnce();
   });
+
+  /*
+    A number is not automatically a step. The check used to skip anything with a digit in it, so
+    `gap: '050'` — "half of 100", on a scale that goes 0, 100, 200 — painted no gap and said nothing.
+  */
+  it('reports a number that is not a step of the scale', () => {
+    const spy = warn();
+
+    expect(tokenVar('space', '075', '0', 'gap')).toBe('var(--we-space-075)');
+    expect(spy).toHaveBeenCalledOnce();
+    expect(spy.mock.calls[0]![0]).toContain('The space scale is 0, 100');
+  });
+
+  it('does not report a step that exists', () => {
+    const spy = warn();
+
+    expect(tokenVar('space', '1000')).toBe('var(--we-space-1000)');
+    expect(tokenVar('font-weight', '600')).toBe('var(--we-font-weight-600)');
+    expect(spy).not.toHaveBeenCalled();
+  });
 });

@@ -1,4 +1,5 @@
 import { Column, Row, Search } from '@we/components/solid';
+import { saveFile } from '@we/design-utils';
 import { createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
 import { Portal } from 'solid-js/web';
 
@@ -89,15 +90,15 @@ export function EditingBar() {
   const right = () => `calc(10px + var(--we-chrome-right, 0px) + var(--we-chrome-rail-width, 0px))`;
   const top = () => `calc(10px + var(--we-chrome-top, 0px))`;
 
+  // Through `saveFile`, as every download is: a save dialog where there is one, so the reader
+  // chooses where the template goes. The menu closes on the click, not after the dialog.
   function exportJson() {
-    const blob = new Blob([session.schemaJson()], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `${session.templateName().toLowerCase().replace(/\s+/g, '-')}.json`;
-    anchor.click();
-    URL.revokeObjectURL(url);
     closeDropdowns();
+    void saveFile({
+      name: `${session.templateName().toLowerCase().replace(/\s+/g, '-')}.json`,
+      type: 'application/json',
+      content: session.schemaJson(),
+    }).catch((error) => console.error('EditingBar: could not export the template', error));
   }
 
   async function shareToSpace(uuid: string, name: string) {

@@ -219,6 +219,8 @@ const boardDetail: SchemaNode = {
     // so the fragment needs nothing from this view but the id.
     taskBoard({
       boardId: { $: 'local.boardId' },
+      // Extraction writes tasks onto these boards, so a reader can put away what nobody has kept.
+      suggestions: true,
       empty: emptyState({
         icon: 'check-square',
         label: 'work',

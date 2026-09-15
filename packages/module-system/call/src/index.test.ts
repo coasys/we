@@ -124,6 +124,13 @@ describe('the bar keeps to the screen', () => {
       expect(props(child).pointerEvents).toBe('auto');
     }
   });
+
+  it('paints above every panel, a full-screen call included', () => {
+    // Panels count up from `sticky` by how recently they were touched, and maximising touches. On
+    // `sticky` the bar lost to the full-screen call it controls and the hang-up button went under it.
+    const strips = walk(slotNodes()).filter((node) => props(node).position === 'fixed');
+    for (const strip of strips) expect(props(strip).zIndex).toBe('chrome');
+  });
 });
 
 describe('the compact bar', () => {

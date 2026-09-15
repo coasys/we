@@ -15,7 +15,6 @@ import {
   HOST_LAYOUT_SPECS as HOST_LAYOUT,
   isBgImageFaded,
   joinDeclsCSS as joinDecls,
-  joinStateDeclsCSS as joinStateDecls,
   mapFlexAxes,
   marginKeys,
   paddingKeys,
@@ -26,12 +25,12 @@ import {
   resolveFontWeight,
   resolveLineHeight,
   TIER_PROP_KEYS,
-  tierRulesCSS,
+  tierQuery,
   tokenVar,
   warnIfUnsurfaced,
   zIndexVar,
 } from '@we/design-utils';
-import type { Tier } from '@we/tokens';
+import { type Tier, TIERS } from '@we/tokens';
 
 /**
  * Design System CSS Helpers
@@ -42,6 +41,75 @@ import type { Tier } from '@we/tokens';
  */
 
 const ELEMENT_STATES: ElementState[] = ['hover', 'focus', 'active', 'disabled'];
+
+// ────────────────────────────────────────────
+// Cascade layers
+// ────────────────────────────────────────────
+
+/*
+  How a primitive's shadow root decides between its own CSS, its props, a breakpoint and a state.
+
+  ## What went wrong without layers
+
+  Every generated declaration is `prop: var(--we-x-<prop>)`, and a variable nobody set makes that
+  declaration invalid at computed-value time, which drops the property to its initial value. So the
+  stylesheet could not say "no opinion here". Every rule asserted a value for every property, and
+  whichever rule won specificity decided all of them, including ones it had nothing to say about.
+  A hover rule reset a truncated label's `white-space`. The same rule, outranking a breakpoint, hid
+  a header label under the pointer, which ended the hover and showed it again: flashing. Focus
+  outranking hover put a field's fill back to rest while the ring arrived, and pressing a textarea
+  took its focus ring away. Each was patched where it was found (`!important`, a `:where()`
+  specificity anchor, a copy of every state rule inside every breakpoint query, props restated in
+  `focusProps`) and the class of bug stayed.
+
+  ## The arrangement
+
+      we-base              the component's own CSS, and the base DS rules, exactly as they always
+                           resolved: by specificity and order
+      we-tier-sm/md/lg     one layer per breakpoint, widest last
+      we-state-hover/focus/active/disabled
+                           one layer per state, in that order
+      we-overlay           OverlayElement's surface rules
+
+  Every declaration in a tier or state layer is `prop: var(--we-x-<variant>-<prop>, revert-layer)`.
+  Unset means "roll back to the layer below", so a variant only ever changes what it names. A hover
+  that sets a background leaves `white-space` to whatever the component and the breakpoints said. A
+  focus that sets a ring leaves the hover's background in place when both are true, because they are
+  separate layers and each reverts past only itself.
+
+  States sit above breakpoints, so `hoverProps` beats `mdUpProps` on a property both set, which is
+  what the specificity arrangement used to give.
+
+  ## Why the base layer still uses specificity
+
+  `revert-layer` has a real cost, and it scales with how many declarations actually revert on an
+  element. Measured on real primitives, a base layer written the same way (every one of ~60
+  properties reverting on every element) made mount noticeably slower, while layers on their own cost
+  nothing. So only the variant layers revert, and they only match elements that carry variant props
+  at all (`data-we-states` / `data-we-tiers`, written by `updateAllCustomVars`). An ordinary element
+  pays nothing, and resizing a surface no longer restyles every primitive on it.
+
+  The price is one thing the base layer does not fix: an explicit prop still loses to an
+  attribute-gated rule in a component's own CSS on the same property, as it always has.
+
+  ## The one rule for component authors
+
+  Nothing may be adopted into a primitive's shadow root outside these layers. A rule outside every
+  layer beats every layer, so a component sheet adopted as-is would override every breakpoint and
+  state. `applyDSBehavior` moves a component's `static styles` into `we-base` as they are finalized,
+  which covers the ordinary case with no work. Anything adopted some other way must name a layer.
+*/
+const TIER_LAYERS = TIERS.slice(1).map((tier) => `we-tier-${tier}`);
+const STATE_LAYERS = ELEMENT_STATES.map((state) => `we-state-${state}`);
+
+/** Every cascade layer a primitive's shadow root is arranged in, lowest first. */
+export const DS_LAYERS = ['we-base', ...TIER_LAYERS, ...STATE_LAYERS, 'we-overlay'] as const;
+
+/**
+ * The layer order statement. Placed at the top of every sheet a primitive adopts: order is fixed by
+ * first mention, and a sheet that named `we-overlay` before the others would put it at the bottom.
+ */
+export const DS_LAYER_ORDER = `@layer ${DS_LAYERS.join(', ')};`;
 
 // ────────────────────────────────────────────
 // Component cascade configuration
@@ -651,6 +719,12 @@ function updateCustomVars(
   );
   setProperty(el, `${prefix}text-decoration`, props.textDecoration);
   setProperty(el, `${prefix}text-transform`, props.textTransform);
+  // Declared by the static sheet from the same spec table and, until these two lines, never written:
+  // `whiteSpace` and `overflowWrap` typechecked, validated and did nothing on every primitive, while
+  // the same props worked on a Column. (`font-style` is in the table too, and is not a prop — a
+  // component writes `--we-<name>-font-style` from its own CSS, as `we-text`'s `italic` does.)
+  setProperty(el, `${prefix}white-space`, props.whiteSpace);
+  setProperty(el, `${prefix}overflow-wrap`, props.overflowWrap);
 }
 
 export function updateAllCustomVars(
@@ -661,10 +735,14 @@ export function updateAllCustomVars(
 ) {
   updateCustomVars(el, componentName, props, rawExplicitProps);
   applyInlineStyles(el, props.styles);
+  let hasState = false;
   ELEMENT_STATES.forEach((state) => {
     const stateProps = props[`${state}Props`];
     // State props are always treated as explicit — no DEFAULT_PROPS fill state blocks.
-    if (stateProps && typeof stateProps === 'object') updateCustomVars(el, componentName, stateProps, undefined, state);
+    if (stateProps && typeof stateProps === 'object') {
+      hasState = true;
+      updateCustomVars(el, componentName, stateProps, undefined, state);
+    }
   });
   /*
     Breakpoint tiers, by the same route as the states.
@@ -684,7 +762,22 @@ export function updateAllCustomVars(
   // The one failure this design cannot make unreachable: a query with no container is silently
   // false, so a breakpoint prop outside every surface renders its base value and looks correct.
   if (hasTier) warnIfUnsurfaced(el, `<${el.tagName.toLowerCase()}>`);
+
+  /*
+    What the state and tier layers match on. An element with no state bag carries no state rule at
+    all, so it has nothing to revert and costs what it did before layers; the same for tiers. Written
+    from the merged props, so a state a component's own defaults declare (every button's focus ring)
+    counts. `toggleAttribute` with the value already in place is not a mutation, so this is free on
+    the common update.
+  */
+  el.toggleAttribute(STATES_ATTR, hasState);
+  el.toggleAttribute(TIERS_ATTR, hasTier);
 }
+
+/** Present on a primitive whose props include any state bag (`hoverProps`, `focusProps`, …). */
+export const STATES_ATTR = 'data-we-states';
+/** Present on a primitive whose props include any breakpoint bag (`smUpProps`, …). */
+export const TIERS_ATTR = 'data-we-tiers';
 
 // ────────────────────────────────────────────
 // Static CSS generation (once per component class)
@@ -848,7 +941,10 @@ export function getStaticDSStyles(
     return [spec];
   });
 
-  const styles: string[] = [];
+  // The order statement first, so this sheet agrees with the component's own on what sits where.
+  const styles: string[] = [DS_LAYER_ORDER];
+  /** Everything that resolves the way it always did — by specificity, below every variant. */
+  const base: string[] = [];
 
   // ── Host (:host) ──
   // Transition lives on [part='base'], not :host. The host is the outer positioning shell
@@ -856,7 +952,7 @@ export function getStaticDSStyles(
   // here would add a redundant animation layer for every nested content primitive.
   const hostLines: string[] = [`display: var(${p}host-display, flex);`];
   if (l.has('layout')) hostLines.push(joinDecls(p, HOST_LAYOUT));
-  styles.push(`:host { ${hostLines.join('\n    ')} }`);
+  base.push(`:host { ${hostLines.join('\n    ')} }`);
 
   // ── Base ([part="base"]) ──
   const baseLines: string[] = ['width: 100%;', 'height: 100%;'];
@@ -870,7 +966,7 @@ export function getStaticDSStyles(
 
   const hasBase = l.has('visual') || l.has('layout') || l.has('flex') || l.has('typography');
   if (hasBase) {
-    styles.push(`[part='base'] { ${baseLines.join('\n    ')} }`);
+    base.push(`[part='base'] { ${baseLines.join('\n    ')} }`);
   }
 
   // ── bg-image ──
@@ -890,7 +986,7 @@ export function getStaticDSStyles(
   // staying scoped to "behind this element's own content" — isolation:isolate fixes
   // that with no other visual side effects.
   if (l.has('visual')) {
-    styles.push(
+    base.push(
       `[part='base'] { background-image: var(${p}bg-image, none); background-size: var(${p}bg-image-fit, cover); ` +
         `background-position: var(${p}bg-image-position, center); background-repeat: no-repeat; }\n` +
         `:host([bgimage]) [part='base'] { position: relative; isolation: isolate; }\n` +
@@ -902,8 +998,8 @@ export function getStaticDSStyles(
   }
 
   // The two element layers a variant can address, in the layers this component actually has. Shared
-  // by the state selectors and the tier queries below, so a `we-icon` gets layout props at a
-  // breakpoint and nothing it never accepted in the first place.
+  // by the state layers and the tier layers below, so a `we-icon` gets layout props at a breakpoint
+  // and nothing it never accepted in the first place.
   const hostSpecs: PropSpec[] = [];
   if (l.has('layout')) hostSpecs.push(...HOST_LAYOUT);
 
@@ -913,10 +1009,42 @@ export function getStaticDSStyles(
   if (l.has('flex')) baseSpecs.push(...baseFlex);
   if (l.has('typography')) baseSpecs.push(...BASE_TYPOGRAPHY);
 
-  // ── State selectors ──
+  /*
+    A variant's declarations: what it names, and for everything else, the layer below.
+
+    No fallback chain and no component default here — those live in the base rule, which is exactly
+    where an unset variant rolls back to. `revert-layer` inside a `var()` fallback was checked in
+    Chromium, Firefox, WebKit and Electron's Chromium, shorthands and inherited properties included.
+  */
+  const variantDecls = (prefix: string, specs: PropSpec[]) =>
+    specs.map(([cssProp, varSuffix]) => `${cssProp}: var(${prefix}${varSuffix}, revert-layer);`).join(' ');
+
+  // ── Breakpoint tiers ──
+  //
+  // Not gated on the `state` layer: a `we-icon` accepts layout props and nothing else, and there is
+  // no reason it should not accept them at a breakpoint too.
+  //
+  // The query resolves against the nearest `$surface` — a light-DOM ancestor, several shadow
+  // boundaries up. That works: container selection walks the flat tree, so a rule authored inside
+  // this shadow root matches a container declared outside it. Verified in Chrome and Firefox.
+  //
+  // A tier that sets nothing for a property rolls back to the tier beneath it, which is what makes
+  // something set only in `smUpProps` still apply at `lg`.
+  const tiers: string[] = [];
+  for (const tier of TIERS.slice(1) as Exclude<Tier, 'base'>[]) {
+    const tp = `${p}${tier}-`;
+    const rules: string[] = [];
+    if (hostSpecs.length > 0) rules.push(`:host([${TIERS_ATTR}]) { ${variantDecls(tp, hostSpecs)} }`);
+    if (baseSpecs.length > 0) rules.push(`:host([${TIERS_ATTR}]) [part='base'] { ${variantDecls(tp, baseSpecs)} }`);
+    tiers.push(`@layer we-tier-${tier} { ${tierQuery(tier)} { ${rules.join(' ')} } }`);
+  }
+
+  // ── States ──
+  const states: string[] = [];
   if (l.has('state')) {
     for (const state of ELEMENT_STATES) {
       const sp = `${p}${state}-`;
+      const rules: string[] = [];
 
       // Host state — layout props only, no transition (see :host comment above)
       //
@@ -929,46 +1057,38 @@ export function getStaticDSStyles(
       // position, margin) — focus-driven layout changes are vanishingly rare, and every visual
       // state prop lands on [part='base'], which is corrected below.
       if (hostSpecs.length > 0) {
-        const lines: string[] = [];
-        lines.push(joinStateDecls(sp, p, hostSpecs));
         const sel =
-          state === 'disabled' ? ':host([disabled])' : `:host(:${state === 'focus' ? 'focus-within' : state})`;
-        styles.push(`${sel} { ${lines.join('\n    ')} }`);
+          state === 'disabled'
+            ? `:host([${STATES_ATTR}][disabled])`
+            : `:host([${STATES_ATTR}]:${state === 'focus' ? 'focus-within' : state})`;
+        rules.push(`${sel} { ${variantDecls(sp, hostSpecs)} }`);
       }
 
-      // Base state
       if (baseSpecs.length > 0) {
-        const lines: string[] = [];
-        if (l.has('visual')) lines.push(`transition: var(${sp}transition, var(${p}transition, ${STATE_TRANSITION}));`);
-        lines.push(joinStateDecls(sp, p, baseSpecs));
-        const sel =
+        const state_ =
           state === 'disabled'
             ? `[part='base']:disabled, [part='base'][aria-disabled='true']`
             : state === 'focus'
               ? focusSelector(`[part='base']`, `:not(:disabled):not([aria-disabled='true'])`)
               : `[part='base']:${state}:not(:disabled):not([aria-disabled='true'])`;
-        styles.push(`${sel} { ${lines.join('\n    ')} }`);
+        /*
+          How a state arrives stays in the base layer, ungated. The transition into a state is part of
+          every element that has one — the resting rule's is `0s` so departures snap, and this is the
+          one that gives arrivals their 50ms — so it cannot wait for the element to carry state props.
+          Anchored at 0,2,0 as the state rules were, so it still outranks the resting transition.
+        */
+        if (l.has('visual')) {
+          base.push(
+            `:host [part='base']:where(${state_}) { transition: var(${sp}transition, var(${p}transition, ${STATE_TRANSITION})); }`,
+          );
+        }
+        rules.push(`:host([${STATES_ATTR}]) [part='base']:where(${state_}) { ${variantDecls(sp, baseSpecs)} }`);
       }
+
+      if (rules.length > 0) states.push(`@layer we-state-${state} { ${rules.join(' ')} }`);
     }
   }
 
-  /*
-    ── Breakpoint tiers ──
-
-    Not gated on the `state` layer: a `we-icon` accepts layout props and nothing else, and there is
-    no reason it should not accept them at a breakpoint too. What a tier may *contain* is already
-    bounded by the spec lists above.
-
-    The query resolves against the nearest `$surface` — a light-DOM ancestor, several shadow
-    boundaries up. That works: container selection walks the flat tree, so a rule authored inside
-    this shadow root matches a container declared outside it. Verified in Chrome and Firefox.
-
-    Emitted after the state selectors, so a tier value wins over a state value on the same property
-    at equal specificity — the same ordering the Solid interop stylesheet uses, and for the same
-    reason.
-  */
-  if (hostSpecs.length > 0) styles.push(tierRulesCSS(':host', p, hostSpecs));
-  if (baseSpecs.length > 0) styles.push(tierRulesCSS(`[part='base']`, p, baseSpecs));
-
+  styles.push(`@layer we-base { ${base.join('\n')} }`, ...tiers, ...states);
   return styles.join('\n');
 }

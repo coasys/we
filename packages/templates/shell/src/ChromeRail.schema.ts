@@ -99,6 +99,43 @@ export const CHROME_RAIL_WIDTH = '56px';
  * sitting between the launchers and the pickers — the one place a catch-all does not belong. Its own
  * gate is unchanged: a space to configure, or nothing.
  */
+/**
+ * Put every panel in the space away at once, or bring them all back — also Cmd/Ctrl+\.
+ *
+ * Above the gear, at the foot of the rail: it is about the arrangement of the whole space rather than
+ * any one module, so it does not belong among the launchers. Only while there is a panel open to put
+ * away; a button that did nothing would be worse than none.
+ *
+ * Two buttons behind a condition rather than one with a computed icon and label, because both are
+ * plain strings then — the icon bundler collects icons it can see as values, and a label naming a
+ * backslash is not something to route through an expression's escaping. Lit while the panels are away,
+ * like every other button here that stands for a state. The panels are also away while a shell overlay
+ * is up; that is not this toggle and does not light it.
+ */
+const panelsToggle: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: `${IN_SPACE.$} && (shellStore.hasPanels || shellStore.panelsHidden)` },
+    then: {
+      type: '$if',
+      props: {
+        condition: { $: 'shellStore.panelsHidden' },
+        then: railButton({
+          icon: 'eye',
+          tooltip: 'Show panels (Ctrl+\\)',
+          active: true,
+          onClick: { $action: 'shellStore.togglePanelsHidden' },
+        }),
+        else: railButton({
+          icon: 'eye-slash',
+          tooltip: 'Hide panels (Ctrl+\\)',
+          onClick: { $action: 'shellStore.togglePanelsHidden' },
+        }),
+      },
+    },
+  },
+};
+
 const spaceSettingsLauncher: SchemaNode = {
   type: '$if',
   props: {
@@ -138,8 +175,11 @@ const spaceSection: SchemaNode = {
               icon: { $: 'mod.icon' },
               tooltip: { $: 'mod.label' },
               // Highlighted while the module reports itself open, which is what makes the rail read
-              // as a set of tabs rather than a row of buttons.
-              active: { $: 'mod.active' },
+              // as a set of tabs rather than a row of buttons — and only while its panel is in
+              // sight. A lit button says pressing it puts the panel away; for a panel stacked behind
+              // another tab, folded, or collapsed to its edge, pressing brings it forward instead,
+              // and the button should not promise the opposite. See `launchModule`.
+              active: { $: 'mod.active && !mod.concealed' },
               // A spinner while the module has work running behind the panel — an extraction pass
               // somebody else started. This replaced a square in the call bar, which only existed
               // during a call; the rail is where the panel is opened from and outlives the call.
@@ -322,7 +362,14 @@ export const chromeRail: SchemaNode = {
         order within the launchers is the seed's, so the top of the rail is a deployment's decision
         rather than this file's.
       */
-      children: [spaceSection, dividerAfterLaunchers, designSection, dividerBeforeSettings, spaceSettingsLauncher],
+      children: [
+        spaceSection,
+        dividerAfterLaunchers,
+        designSection,
+        dividerBeforeSettings,
+        panelsToggle,
+        spaceSettingsLauncher,
+      ],
     },
   },
 };

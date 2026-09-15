@@ -40,7 +40,17 @@
  * task card's fill on the board. One policy, two spellings, kept here so they cannot disagree.
  */
 import type { ExpressionToken, SchemaNode, SchemaProp } from '@we/schema-shared';
-import { anchorScope, panelHeader, panelScroll, sectionLabel, stateFill, stateIcon } from '@we/template-kit';
+import {
+  anchorScope,
+  panelHeader,
+  panelScroll,
+  sectionLabel,
+  stateFill,
+  stateIcon,
+  SUGGESTIONS_HIDDEN,
+  suggestionsToggle,
+  UNCONFIRMED,
+} from '@we/template-kit';
 
 /** The query parameter the lenses ride in — `kind`, `state`, `kind,state` or `none`. */
 export const LENS_PARAM = 'colour';
@@ -685,6 +695,66 @@ const ON_CANVAS = "'canvas' in routeStore.segments";
  * page change, which is what makes crossing back instant, and they are the two cheapest queries in
  * the template.
  */
+/**
+ * One row of the suggestions legend: a swatch drawn the way the canvas draws that kind of card, and
+ * its name. The key's own row and the picker's swatch size and corner, so the legend reads as two
+ * more rows of the same list rather than as a differently shaped one.
+ *
+ * A name, not an explanation — a short word like every other row, fitting the panel's default width.
+ * What each state means is the section's help, behind its heading's info glyph.
+ */
+const suggestionRow = (border: string, opacity: number, meaning: string): SchemaNode =>
+  keyRow({
+    mark: {
+      type: 'Column',
+      props: { width: MARK, height: MARK, flexShrink: '0', r: '400', bg: { $: CARD_FILL }, border, opacity },
+    },
+    label: meaning,
+  });
+
+/**
+ * What extraction is waiting on, and whether the drafts show — the canvas's half of the switch the
+ * board and the calendar carry in their headers.
+ *
+ * In the key because the key is where the canvas says what its cards look like, and a dashed faded
+ * card and an amber-edged one are two more things a reader has to be told the meaning of. The switch
+ * is the same one, reading and writing `?suggestions=`, so hiding drafts here hides them on the board.
+ * Counted from what this call extracted (`onCall`), which is what the canvas can hold.
+ *
+ * The legend folds away with the drafts, as a lens's rows do when it is off. The changed row goes
+ * with it although changed cards stay on the canvas — it is one section with one switch, and a
+ * section half-open under a switch that reads "off" is the worse surprise.
+ */
+const suggestionsSection: SchemaNode = {
+  type: 'Column',
+  props: { gap: '300', width: '100%' },
+  children: [
+    sectionLabel({
+      label: 'Suggestions',
+      help: 'Pending acceptance is a record extraction made that nobody has accepted yet: dashed, faded and badged "suggested", and hidden with the switch. A pending change is an accepted record a later pass wants to change: it keeps its colour, gains an amber edge and is never hidden — open it to accept or reject the change.',
+      aside: suggestionsToggle({ count: `count(local.onCall.filter(r, r.id in ${UNCONFIRMED}))`, labelled: false }),
+    }),
+    {
+      type: '$if',
+      props: {
+        condition: { $: `!(${SUGGESTIONS_HIDDEN})` },
+        enterTransition: [
+          { type: 'reveal', duration: 200 },
+          { type: 'fade', duration: 150 },
+        ],
+        then: {
+          type: 'Column',
+          props: { width: '100%' },
+          children: [
+            suggestionRow('2px dashed border-strong', 0.5, 'Pending acceptance'),
+            suggestionRow('2px solid warning-text', 1, 'Pending change'),
+          ],
+        },
+      },
+    },
+  ],
+};
+
 export function keyPanel(opts: { call: Record<string, unknown>; callExpr: string; extracted: string }): SchemaNode {
   /*
     Two things have to be true for the key to mean anything: the canvas is the page on screen, and
@@ -768,6 +838,7 @@ export function keyPanel(opts: { call: Record<string, unknown>; callExpr: string
                       canvasRows,
                     ],
                   },
+                  suggestionsSection,
                   lensSection({
                     lens: 'kind',
                     label: 'Kinds',

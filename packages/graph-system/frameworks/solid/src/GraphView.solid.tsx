@@ -2510,6 +2510,7 @@ export function GraphView(props: GraphViewProps) {
                   '--node-color': color(entry.visual.color, 'primary-500'),
                   '--node-border': color(entry.visual.borderColor, 'transparent'),
                   '--node-border-width': `${entry.visual.borderWidth ?? 0}px`,
+                  '--node-border-style': entry.visual.borderStyle ?? 'solid',
                   '--node-radius': nodeRadius(entry.visual),
                   '--node-clip': nodeClip(entry.visual),
                   '--node-inset': nodeInset(entry.visual),
@@ -2787,6 +2788,8 @@ export function GraphView(props: GraphViewProps) {
                           props.onNodeAction?.({
                             action: action.id,
                             id: entry.node.id,
+                            x: entry.at.x,
+                            y: entry.at.y,
                             ...(at?.kind === 'entity' && { recordId: at.id, recordType: at.type }),
                             ...extra,
                           });

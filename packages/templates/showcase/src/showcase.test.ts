@@ -473,7 +473,9 @@ describe('the workshop template’s call selection', () => {
     */
     const json = JSON.stringify(workshop);
 
-    expect(json).toContain('modules.transcribe.pendingIds');
+    // Only a record a pass made is unsettled; an agreed one with a change suggested is `changed`.
+    expect(json).toContain('"pending":{"$":"modules.transcribe.unconfirmedIds"}');
+    expect(json).toContain('"changed":{"$":"modules.transcribe.changedIds"}');
     /*
       `data.pending`, with the prefix — the thing that was wrong the first time.
 
@@ -482,7 +484,10 @@ describe('the workshop template’s call selection', () => {
       faded, no card offered the decision, on a canvas full of suggestions. Nothing failed, because
       nothing matching is what a clause does when it is right and there is nothing to match.
     */
-    expect(json).toContain('{"when":{"data.pending":true},"style":{"opacity":0.5}}');
+    // Dashed as well as faded, as a draft is on the board and in the key.
+    expect(json).toContain(
+      '{"when":{"data.pending":true},"style":{"opacity":0.5,"borderStyle":"dashed","borderColor":"border-strong","borderWidth":2}}',
+    );
     expect(json).not.toContain('"when":{"pending"');
     /*
       Resolvable from the card itself, so deciding about one you can see does not mean finding its
@@ -495,10 +500,38 @@ describe('the workshop template’s call selection', () => {
     expect(json).toContain('modules.transcribe.rejectProposal');
     // Both halves toned, which is the point of the pair: a red cross beside a grey tick reads as one
     // real decision and one placeholder.
-    expect(json).toContain('"id":"accept","icon":"check","title":"Keep this"');
+    expect(json).toContain('"id":"accept","icon":"check","title":"Accept"');
     expect(json).toContain('"when":{"data.pending":true},"tone":"positive"');
     expect(json).toContain('"when":{"data.pending":true},"tone":"danger"');
     expect(json).toContain('"id":"reject"');
+  });
+
+  it('tells an agreed card with a change suggested apart, and lets a reader put drafts away', () => {
+    /*
+      An agreed record a pass merely had an opinion about used to be faded like a draft. It keeps its
+      look now, with an accent edge and a way into the inspector where the change is answered; and
+      the one switch — in the key here, in the headers of the board and the calendar — hides drafts
+      only, through the address so all three pages agree.
+    */
+    const json = JSON.stringify(workshop);
+
+    // Amber rather than the accent a selected card wears, so the two outlines cannot be confused.
+    expect(json).toContain('{"when":{"data.changed":true},"style":{"borderColor":"warning-text","borderWidth":2}}');
+    expect(json).toContain('"id":"review"');
+    expect(json).toContain(
+      `"hidden":{"$":"(routeStore.params.suggestions == 'hide') ? modules.transcribe.unconfirmedIds : []"}`,
+    );
+    expect(json).toContain('"$action":"modules.transcribe.applyChange"');
+    expect(json).toContain('Pending acceptance hidden');
+    // Parked in slots a card fits, and pinned where it is drawn when kept.
+    expect(json).toContain('"layout":{"type":"manual","options":{"size":{"width":180,"height":135}');
+    expect(json).toContain(
+      `"$action":"recordStore.placeOnCanvas","args":[{"$":"${CALL_EXPR}"},{"$":"event.recordId"},{"$":"event.recordType"},{"$":"event.x"},{"$":"event.y"}]`,
+    );
+    // The calendar reads its events through the same filter the board does.
+    expect(json).toContain(
+      "((routeStore.params.suggestions == 'hide') ? local.events.filter(r, !(r.id in modules.transcribe.unconfirmedIds)) : local.events)",
+    );
   });
 
   it('draws the canvas off the call’s own list of what is being extracted', () => {
@@ -1250,10 +1283,14 @@ describe('the workshop’s canvas', () => {
       whichever is offered first. Nothing is written until the form is submitted.
     */
     expect(canvas).toContain('"canvas-double-click"');
+    // Only with a call on screen: every choice writes against it, so without one the chooser offered
+    // a list of things that could only fail.
     expect(canvas).toContain(
-      '"onCanvasDoubleClick":[{"$setLocal":"newAt","value":{"$":"event"}},{"$setLocal":"chooserOpen","value":true}]',
+      `"onCanvasDoubleClick":{"$if":{"condition":{"$":"${CALL_EXPR}"},"then":[{"$setLocal":"newAt","value":{"$":"event"}},{"$setLocal":"chooserOpen","value":true}]}}`,
     );
-    expect(canvas).toContain('recordStore.creatableEntities');
+    // Tasks, then events, then the rest in the store's order — under a heading below the note.
+    expect(canvas).toContain("distinct(['TaskBlock', 'EventBlock'], recordStore.creatableEntities.map(k, k.value))");
+    expect(canvas).toContain('"Block types"');
     expect(canvas).toContain(
       `"$action":"recordStore.createOnCanvas","args":[{"$":"${CALL_EXPR}"},{"$":"local.newAt.x"},{"$":"local.newAt.y"}]`,
     );
@@ -1374,7 +1411,7 @@ describe('the workshop’s people', () => {
     const kanban = route('/kanban');
     expect(kanban).toContain('"$action":"spaceStore.setInvolvement"');
     expect(kanban).toContain('"syncParam":"who"');
-    expect(kanban).toContain('Row per person');
+    expect(kanban).toContain('Group by person');
     // Where a card came from is a mark and a hovercard line, never the author's name on its face.
     expect(kanban).toContain('card.id in first(local.callRow).extracted');
     // Pressing a card opens it in the inspector through the same parameters the canvas writes.
@@ -1409,10 +1446,10 @@ describe('the workshop’s people', () => {
     const calendar = route('/calendar');
     expect(calendar).toContain('"calendarPeople":{"type":"array","initial":[],"syncParam":"who"}');
     expect(calendar).toContain('"calendarShow":{"type":"string","initial":"dim","persist":"calendar.show"}');
-    expect(calendar).toContain('Dim others');
-    // Hiding is offered; a row per person is a board's layout, and a calendar has no rows to lay out.
-    expect(calendar).toContain('Hide others');
-    expect(calendar).not.toContain('Row per person');
+    expect(calendar).toContain('"children":["Dim"]');
+    // Hiding is offered; grouping by person is a board's layout, and a calendar has no rows to lay out.
+    expect(calendar).toContain('"children":["Hide"]');
+    expect(calendar).not.toContain('Group by person');
   });
 });
 

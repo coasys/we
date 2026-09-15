@@ -30,12 +30,11 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   fontSize: '300',
   color: 'text',
   hoverProps: { bg: 'surface-sunken-hover', border: '1px solid border-hover' },
-  // Pressed resolves to the same fill as hover, deliberately — a field is clicked INTO, not
-  // pushed, so a distinct pressed step is a flash that snaps back on release. See the note on
-  // the `surfaceSunkenHover` role.
-  activeProps: { bg: 'surface-sunken-hover', border: '1px solid border-hover' },
-  // Focus restates the fill because a state rule falls back to the *base* value for anything it
-  // leaves out, and focus outranks hover — see the long note on `we-input`'s own `focusProps`.
+  // No pressed state, deliberately — a field is clicked INTO, not pushed, so a distinct pressed step
+  // is a flash that snaps back on release. States compose, so a press shows whatever hover and focus
+  // already say; this once had to repeat hover's values, when a pressed state reset the rest.
+  // Focus sets the fill itself, so a focused field stays lifted once the pointer has left it — see
+  // the long note on `we-input`'s own `focusProps`.
   focusProps: {
     bg: 'surface-sunken-hover',
     border: '1px solid var(--we-ring-color)',

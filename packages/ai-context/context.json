@@ -3951,7 +3951,7 @@
         },
         {
           "name": "onNodeAction",
-          "type": "((payload: { action: string; id: string; recordId?: string; recordType?: string; value?: unknown; preview?: boolean; }) => void)",
+          "type": "((payload: { action: string; id: string; recordId?: string; recordType?: string; value?: unknown; preview?: boolean; x: number; y: number; }) => void)",
           "optional": true
         },
         {
@@ -6672,6 +6672,9 @@
         "canManageNetwork": {
           "type": "boolean"
         },
+        "canRestartNetwork": {
+          "type": "boolean"
+        },
         "canManageApps": {
           "type": "boolean"
         },
@@ -6754,6 +6757,12 @@
         "peerInfos": {
           "type": "array"
         },
+        "peerInfosReadable": {
+          "type": "string"
+        },
+        "pending": {
+          "type": "array"
+        },
         "loading": {
           "type": "boolean"
         },
@@ -6808,8 +6817,10 @@
         "revokeApp",
         "removeApp",
         "loadNetworkMetrics",
+        "copyNetworkMetrics",
         "restartNetwork",
         "loadPeerInfos",
+        "copyPeerInfos",
         "addPeerInfos",
         "setMcpEnabled",
         "setLogLevel",
@@ -6834,6 +6845,9 @@
         },
         "passwordError": {
           "type": "boolean"
+        },
+        "loginError": {
+          "type": "string"
         },
         "loginLoading": {
           "type": "boolean"
@@ -7064,6 +7078,12 @@
         },
         "activeLayout": {
           "type": "string"
+        },
+        "panelsHidden": {
+          "type": "boolean"
+        },
+        "hasPanels": {
+          "type": "boolean"
         }
       },
       "actions": [
@@ -7100,6 +7120,9 @@
         "toggleMaximiseDock",
         "toggleDockDisplace",
         "toggleCollapseDock",
+        "toggleStowLane",
+        "revealDock",
+        "togglePanelsHidden",
         "breakOut",
         "returnHome",
         "stackDock",
@@ -7262,7 +7285,7 @@
         },
         "moduleLaunchers": {
           "type": "array",
-          "properties": ["id", "icon", "label", "active", "busy"]
+          "properties": ["id", "icon", "label", "active", "busy", "concealed"]
         },
         "spaceViews": {
           "type": "array"
@@ -7379,6 +7402,7 @@
         "copyGuestLink",
         "getSubgroupMessages",
         "exportCallTranscript",
+        "exportExtractionLog",
         "removeSpaceFromGlobal"
       ]
     },

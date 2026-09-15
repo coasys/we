@@ -168,4 +168,16 @@ describe('CANVAS_RECORD_CARD', () => {
       'border-radius: 50%; background: #f8cd51;',
     );
   });
+
+  it('says "suggested" on a draft, floated clear of the shape, and nothing on an agreed card', () => {
+    // A draft on a board and in the calendar carries the badge; the canvas said it by fade alone.
+    const badge = expressions.find((source) => source.startsWith('card.pending ?')) ?? '';
+    expect(evaluate(badge, { card: { pending: true } })).toContain('float: right');
+    expect(evaluate(badge, { card: { pending: false } })).toBe('display: none;');
+    expect(evaluate(badge, { card: { pending: true } })).toContain('var(--we-role-warning)');
+    expect(canvasCard({ type: 'TaskBlock', label: 'x', data: { pending: true }, display: task, states }).pending).toBe(
+      true,
+    );
+    expect(canvasCard({ type: 'TaskBlock', label: 'x', data: {}, display: task, states }).pending).toBe(false);
+  });
 });

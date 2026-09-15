@@ -307,6 +307,14 @@ export function createModuleStoreDeps(framework: {
         if (!port) throw new Error('transcription: this backend cannot transcribe');
         return port.open(modelId, onText, tuning);
       },
+      // Null rather than absent when there is nothing behind the wrapper, so a module asks one
+      // question — "is anything offered" — instead of testing for a member the wrapper always has.
+      offeredModel: () => services.transcription?.offeredModel?.() ?? null,
+      installOfferedModel: async () => {
+        const install = services.transcription?.installOfferedModel;
+        if (!install) throw new Error('transcription: this backend cannot install a model');
+        return install();
+      },
     },
 
     // Binds the dataset as well as forwarding, so a module never handles a dataset handle. The

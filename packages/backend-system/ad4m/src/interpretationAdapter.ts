@@ -281,6 +281,39 @@ function decode(value: unknown): unknown {
 }
 
 /**
+ * What kind of suggestion an overlay is, as the two words it means.
+ *
+ * ## Why this has to decode at all
+ *
+ * The executor documents `kind` as `"create" | "update"`, and stores it as a link like every other
+ * property — whose target is an encoded literal, and for a subject written through `create_subject`
+ * a signed expression envelope (`{ author, timestamp, data, proof }`) inside it. `list_overlays`
+ * decodes the staged *values* and passes `kind` through as the raw link target, so what arrives here
+ * is a `literal:json:…` string that equals neither word.
+ *
+ * Nothing compared it until suggestions were split into records a pass made and changes to agreed
+ * records. Then every comparison failed: no record counted as a draft, so every suggestion on every
+ * board and canvas looked accepted, and no change was ever recognised as one.
+ *
+ * Decoded here, unwrapping the envelope the way the executor's own `parse_literal_value` does, and a
+ * few levels deep in case the envelope's data is itself a literal. Anything that is not `update` is
+ * `create`: provisional is the safe misreading — a draft drawn as a draft — where the other way
+ * round draws a suggestion as agreed, which is the bug this exists to end. Correct against an
+ * executor that already decodes it, too: a bare word passes through untouched.
+ */
+export function overlayKind(raw: unknown): 'create' | 'update' {
+  let value = raw;
+  for (let depth = 0; depth < 3; depth++) {
+    const decoded = decode(value);
+    const unwrapped =
+      decoded && typeof decoded === 'object' && 'data' in decoded ? (decoded as { data: unknown }).data : decoded;
+    if (unwrapped === value) break;
+    value = unwrapped;
+  }
+  return value === 'update' ? 'update' : 'create';
+}
+
+/**
  * Predicates whose value is a *reference* to another record rather than a literal.
  *
  * Only these can point somewhere, so only these need checking. `Relationship`'s two endpoints are
@@ -1002,7 +1035,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
           const name = table.get(predicate) ?? names.flat.get(predicate);
           if (name) values[name] = decode(value);
         }
-        return { id: o.base, kind: o.kind, ...(entity ? { entity } : {}), values };
+        return { id: o.base, kind: overlayKind(o.kind), ...(entity ? { entity } : {}), values };
       });
     },
 

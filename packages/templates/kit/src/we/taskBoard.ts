@@ -50,6 +50,13 @@ import { field, formModal } from '@we/schema-kit';
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
 import { peopleFilter } from './peopleFilter.ts';
+import {
+  answerButton,
+  suggestedChanges,
+  suggestionsToggle,
+  UNCONFIRMED,
+  withoutHiddenSuggestions,
+} from './suggestions.ts';
 
 /** The board record, hydrated one level: its columns, its own arrangement, what it gathers. */
 const BOARD = 'first(local.board)';
@@ -61,8 +68,12 @@ const BOARD = 'first(local.board)';
  * in scope, and the community's states supply names and shapes for headings. One string, reused, so
  * every reader agrees on the answer; each use is its own memo, and the function is cheap.
  */
-const VIEW =
-  'arrangedBoard({ board: first(local.board), columns: local.columns, records: local.pool, states: spaceStore.taskStates, involvements: local.involvements, kinds: spaceStore.involvementTypes, people: local.boardPeople, show: local.boardShow, me: me.did })';
+/*
+  `records` less what nobody has kept, while the reader has hidden it — see `suggestions.ts`. Filtered
+  before the board is worked out rather than after, so every count, the Unplaced column and the people
+  filter agree about what is on the board.
+*/
+const VIEW = `arrangedBoard({ board: first(local.board), columns: local.columns, records: ${withoutHiddenSuggestions('local.pool')}, states: spaceStore.taskStates, involvements: local.involvements, kinds: spaceStore.involvementTypes, people: local.boardPeople, show: local.boardGrouped ? 'rows' : (local.boardShow == 'hide' ? 'hide' : 'dim'), me: me.did })`;
 
 /**
  * Who is on each card — the `involvement` host function over the board's own involvement query.
@@ -115,15 +126,19 @@ export interface TaskCardOptions {
    */
   extracted?: string;
   /**
-   * Mark a card that extraction has proposed and nobody has agreed to — an expression, per row.
+   * Mark a card extraction **made** and nobody has kept — an expression, per row.
    *
-   * A staged record is in the graph, so it answers the board's query exactly as an accepted one
-   * does, and a staged *update* to a record that exists changes nothing about the record until
-   * somebody presses Keep. Without this a suggestion was indistinguishable from a decision, and a
-   * card in Done with a proposal to move it to Blocked simply sat in Done. The canvas marks the same
-   * cards the same way; see {@link PENDING} for the default.
+   * A staged record is in the graph, so it answers the board's query exactly as an accepted one does;
+   * without this a suggestion was indistinguishable from a decision. Drawn provisional — dashed,
+   * faded, "suggested" — with Keep and Discard. Only for records a pass created: an agreed record with
+   * a change suggested is not in doubt and is drawn with `suggestions` instead. See {@link UNCONFIRMED}.
    */
   pending?: string;
+  /**
+   * Show the changes a pass suggested to this card, if it is an agreed record carrying any — as
+   * old → new lines, each applied or dismissed alone. See `suggestedChanges`.
+   */
+  suggestions?: boolean;
   /**
    * The card's fill, as an expression evaluated per row. Defaults to `surface`.
    *
@@ -162,21 +177,16 @@ export interface CardSelection {
 }
 
 /**
- * The records extraction has proposed and nobody has resolved — the transcribe module's list, by id.
+ * Every record with anything staged on it, of either kind — the transcribe module's list, by id.
  *
  * A module namespace resolves to nothing where the module is not installed, and a map over nothing
  * is an empty list, so a board on a deployment without extraction marks nothing and asks nothing.
  *
- * `pendingIds` rather than the flat `proposals` it used to read. That list is the *live* call's, so
- * a board showing a past call marked whatever the current one had staged — and after a restart it
- * marked nothing at all, since nothing fills it until a pass settles or the transcriber adopts a
- * record. Whether anybody has agreed to a record is a fact about the record, true wherever it is
- * drawn, which is what this answers.
+ * Both kinds together, which is almost never the question: a card is provisional only if a pass
+ * *made* it ({@link UNCONFIRMED}), and an agreed card with a change suggested ({@link CHANGED}) is not.
+ * Kept for a surface that genuinely asks "is anything waiting on this record".
  */
 export const PENDING = 'modules.transcribe.pendingIds';
-
-/** What the proposal on the card in scope says — its staged values, as one line. */
-const proposalSummary = (as: string) => `find(modules.transcribe.pendingProposals, { id: ${as}.id }).summary`;
 
 /** Whether the card in scope is the selected one, as expression source — `false` where nothing selects. */
 const selectedExpr = (opts: TaskCardOptions, as: string) =>
@@ -236,7 +246,7 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
               condition: { $: pending },
               then: {
                 type: 'we-tooltip',
-                props: { content: 'Extraction proposed this; nobody has agreed to it yet' },
+                props: { content: 'Extraction proposed this — pending acceptance' },
                 children: [
                   {
                     type: 'we-badge',
@@ -254,23 +264,6 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
             },
           },
         ],
-      },
-      /*
-        The proposal, in its own words. For a staged *update* this is the part that matters: the card
-        shows the record as it is, and this line shows what extraction would change — "status:
-        blocked" under a card sitting in Done — so Keep and Discard are decisions about something a
-        person can see.
-      */
-      {
-        type: '$if',
-        props: {
-          condition: { $: `(${pending}) && ${proposalSummary(as)}` },
-          then: {
-            type: 'we-text',
-            props: { fontSize: '200', color: 'text-muted' },
-            children: [{ $: proposalSummary(as) }],
-          },
-        },
       },
       {
         type: '$if',
@@ -428,54 +421,16 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
                     // accent says "primary action"; a tick that means "yes, this" is green everywhere
                     // else in the app.
                     children: [
-                      {
-                        type: 'we-tooltip',
-                        props: { content: 'Keep this' },
-                        children: [
-                          {
-                            type: 'we-button',
-                            props: {
-                              variant: 'outline',
-                              size: 'xs',
-                              square: true,
-                              r: 'full',
-                              label: 'Keep this',
-                              color: 'success-text',
-                              // The fill on hover, not a tint of it — the canvas's own rule for this
-                              // pair, where `on-success` answers for the contrast the moment the
-                              // background stops being the card's. A tint reads as the button
-                              // acknowledging the pointer rather than as the answer it will give.
-                              hoverProps: { bg: 'success', color: 'on-success', borderColor: 'success' },
-                              onClick: { $action: 'modules.transcribe.acceptProposal', args: [{ $: `${as}.id` }] },
-                            },
-                            children: [{ type: 'we-icon', props: { name: 'check', weight: 'bold' } }],
-                          },
-                        ],
-                      },
-                      {
-                        type: 'we-tooltip',
-                        props: { content: 'Discard this' },
-                        children: [
-                          {
-                            type: 'we-button',
-                            props: {
-                              variant: 'outline',
-                              size: 'xs',
-                              square: true,
-                              r: 'full',
-                              label: 'Discard this',
-                              color: 'danger-text',
-                              // The fill on hover, not a tint of it — the canvas's own rule for this
-                              // pair, where `on-danger` answers for the contrast the moment the
-                              // background stops being the card's. A tint reads as the button
-                              // acknowledging the pointer rather than as the answer it will give.
-                              hoverProps: { bg: 'danger', color: 'on-danger', borderColor: 'danger' },
-                              onClick: { $action: 'modules.transcribe.rejectProposal', args: [{ $: `${as}.id` }] },
-                            },
-                            children: [{ type: 'we-icon', props: { name: 'x', weight: 'bold' } }],
-                          },
-                        ],
-                      },
+                      answerButton({
+                        tone: 'success',
+                        label: 'Accept',
+                        onClick: { $action: 'modules.transcribe.acceptProposal', args: [{ $: `${as}.id` }] },
+                      }),
+                      answerButton({
+                        tone: 'danger',
+                        label: 'Reject — removes it',
+                        onClick: { $action: 'modules.transcribe.rejectProposal', args: [{ $: `${as}.id` }] },
+                      }),
                     ],
                   },
                 },
@@ -487,6 +442,11 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
           },
         ],
       },
+      /*
+        Last, under a rule: what a pass suggests changing about this agreed card. The card above it is
+        drawn exactly as it is, since nothing about the record is in doubt — only the change is.
+      */
+      ...(opts.suggestions ? [suggestedChanges({ record: as })] : []),
     ],
   };
 }
@@ -737,6 +697,15 @@ export interface TaskBoardOptions {
    */
   people?: boolean;
   /**
+   * A switch above the board that puts away what extraction made and nobody has kept, with how many
+   * there are. Agreed cards with a change suggested always show. The choice rides in the address as
+   * `?suggestions=hide`, shared with any other page about the same call — see `suggestions.ts`.
+   *
+   * Every board already draws those records as provisional; this only lets a reader hide them. Offer
+   * it wherever extraction can write onto the board.
+   */
+  suggestions?: boolean;
+  /**
    * Pressing a card selects it, and the selected card is drawn in the accent.
    *
    * The board does not know what selection is *for* — the workshop's inspector reads it from the
@@ -856,7 +825,8 @@ function boardCard(opts: TaskBoardOptions, showState: string, from: string): Sch
         extracted: opts.extracted,
         bg: opts.bg,
         showState,
-        pending: `card.id in (${PENDING})`,
+        pending: `card.id in (${UNCONFIRMED})`,
+        suggestions: true,
         dimmed: `card.id in ${VIEW}.dimmed`,
         ...(opts.select ? { select: opts.select } : {}),
         ...(opts.people ? { peopleOf: opts.entity ?? 'TaskBlock' } : {}),
@@ -1364,7 +1334,7 @@ function personRows(opts: TaskBoardOptions): SchemaNode {
                   },
                   {
                     type: 'Column',
-                    props: { gap: '050', flex: '1', minWidth: '0' },
+                    props: { flex: '1', minWidth: '0' },
                     children: [
                       {
                         type: 'we-text',
@@ -1519,6 +1489,8 @@ export function taskBoard(opts: TaskBoardOptions): SchemaNode {
       */
       boardPeople: { type: 'array', initial: [], ...(opts.people ? { syncParam: 'who' } : {}) },
       boardShow: { type: 'string', initial: 'dim', ...(opts.people ? { persist: 'board.show' } : {}) },
+      // A row per person, or one board — its own choice now, beside rather than inside dim and hide.
+      boardGrouped: { type: 'boolean', initial: false, ...(opts.people ? { persist: 'board.grouped' } : {}) },
     },
     /*
       Three subscriptions for the whole board, read together through `arrangedBoard`.
@@ -1571,17 +1543,35 @@ export function taskBoard(opts: TaskBoardOptions): SchemaNode {
     },
     children: [
       addColumnModal(opts),
-      ...(opts.people
+      /*
+        The board's header: who, then whether suggestions show — in that order, the second after the
+        other controls. One wrapping row, so the switch sits beside the people filter while there is
+        room and drops under it when there is not.
+      */
+      ...(opts.people || opts.suggestions
         ? [
-            peopleFilter({
-              people: 'boardPeople',
-              show: 'boardShow',
-              modes: ['dim', 'hide', 'rows'],
-              faces: { $: `${VIEW}.involved` },
-              matched: { $: `${VIEW}.matchedCount` },
-              total: { $: `${VIEW}.cardCount` },
-              noun: 'card',
-            }),
+            {
+              type: 'Row',
+              props: { gap: '500', ay: 'center', wrap: true, width: '100%' },
+              children: [
+                ...(opts.people
+                  ? [
+                      peopleFilter({
+                        people: 'boardPeople',
+                        show: 'boardShow',
+                        grouped: 'boardGrouped',
+                        faces: { $: `${VIEW}.involved` },
+                        matched: { $: `${VIEW}.matchedCount` },
+                        total: { $: `${VIEW}.cardCount` },
+                        noun: 'card',
+                      }),
+                    ]
+                  : []),
+                ...(opts.suggestions
+                  ? [suggestionsToggle({ count: `count(local.pool.filter(r, r.id in ${UNCONFIRMED}))` })]
+                  : []),
+              ],
+            } as SchemaNode,
           ]
         : []),
       {

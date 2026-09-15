@@ -80,3 +80,11 @@ describe('no divider is stray', () => {
     expect(both, 'no divider gate names both the space and the template').toBeTruthy();
   });
 });
+
+describe('putting every panel away from the rail', () => {
+  it('is offered inside a space, while there is a panel to put away or the panels are away', () => {
+    const all = conditions(chromeRail);
+    expect(all).toContain(`${IN_SPACE} && (shellStore.hasPanels || shellStore.panelsHidden)`);
+    expect(JSON.stringify(chromeRail)).toContain('shellStore.togglePanelsHidden');
+  });
+});

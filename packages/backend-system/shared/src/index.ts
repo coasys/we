@@ -140,6 +140,7 @@ export type {
   DatasetLifecyclePort,
   DatasetRef,
 } from './lifecycle';
+export { isSessionTimeout, SessionTimeoutError } from './lifecycle';
 export { manifestEntries } from './manifestEntry';
 export type { EntityManifestEntry, EntityManifestProperty } from './manifestEntry';
 export { NAME_CANDIDATES, nameFromProperties, namePropertyOf } from './recordName';
@@ -165,6 +166,7 @@ export type {
   AuthorizedApp,
   ConsentRequest,
   InstalledLanguage,
+  PeerRecords,
   RuntimeAdminPort,
   TokenizerSource,
 } from './runtimeAdmin';
@@ -186,7 +188,13 @@ export type {
 } from './recordContract';
 export { RECORD_TYPE_KEY, recordTypeOf } from './recordContract';
 export type { LanguageModelPort } from './languageModel';
-export type { TranscriptionRecord, TranscriptionPort, TranscriptionStream, TranscriptionTuning } from './transcription';
+export type {
+  TranscriptionModelOffer,
+  TranscriptionRecord,
+  TranscriptionPort,
+  TranscriptionStream,
+  TranscriptionTuning,
+} from './transcription';
 export type {
   InterpretationPort,
   InterpretationProposal,

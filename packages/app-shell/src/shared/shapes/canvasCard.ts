@@ -42,6 +42,12 @@ export interface CanvasCard {
   lines: CanvasCardLine[];
   /** The prose — a summary, and any other long text — after the short values, where clipping costs least. */
   prose: CanvasCardLine[];
+  /**
+   * A record extraction made that nobody has kept — the seed's `data.pending`. Drawn with the
+   * "suggested" badge a board card and a calendar event carry, so a draft is said in words on the
+   * canvas too rather than by its fade and dashed edge alone.
+   */
+  pending: boolean;
 }
 
 /** A state as a card needs it: its slug, what the community calls it, and the colour it is drawn in. */
@@ -155,6 +161,7 @@ export function canvasCard(input: CanvasCardInput): CanvasCard {
     title: input.label && input.label !== input.type ? input.label : '',
     lines,
     prose,
+    pending: data.pending === true,
   };
 }
 
@@ -197,14 +204,38 @@ export const CANVAS_RECORD_CARD: SchemaNode = {
     */
     {
       type: 'div',
-      props: { style: 'font-size: 0.8em; letter-spacing: 0.02em; opacity: 0.7; margin-bottom: 0.15em;' },
+      props: { style: 'font-size: 0.8em; letter-spacing: 0.02em; margin-bottom: 0.15em;' },
       children: [
+        /*
+          "suggested", at the header's right end — the badge a draft carries on a board and in the
+          calendar, in the same solid warning fill and ink. Floated rather than pushed by a flex row, for
+          the reason in the doc above: a float still shapes the lines beside it inside a cut card. First
+          in the header so it floats level with the kind.
+
+          A span in `em` rather than `we-badge`. The primitive is a control-height box in pixels, which
+          on a card whose every other size is `em` came out taller than the header row and pushed into
+          the title under it — and did not shrink when the card's content was scaled down. Sized off the
+          header's own text, it is one line of it, and scales with everything else on the card.
+
+          The badge's proportions rather than its pixels: regular weight, a corner about a third of its
+          height — which is what an `xs` badge's 8px radius on 24px comes to — and padding the width of
+          half its text. A pill and bold text read as a different element from the one on the board.
+        */
         {
           type: 'span',
-          props: { style: 'display: inline-flex; vertical-align: -0.15em; margin-inline-end: 0.3em;' },
+          props: {
+            style: {
+              $: "card.pending ? 'float: right; margin-inline-start: 0.4em; padding: 0 0.5em; border-radius: 0.4em; font-size: 0.8em; font-weight: 400; line-height: 1.5; background: var(--we-role-warning); color: var(--we-role-on-warning);' : 'display: none;'",
+            },
+          },
+          children: ['suggested'],
+        },
+        {
+          type: 'span',
+          props: { style: 'display: inline-flex; vertical-align: -0.15em; margin-inline-end: 0.3em; opacity: 0.7;' },
           children: [{ type: 'we-icon', props: { name: { $: 'card.icon' }, size: '1.1em' } }],
         },
-        { type: 'span', children: [{ $: 'card.kind' }] },
+        { type: 'span', props: { style: 'opacity: 0.7;' }, children: [{ $: 'card.kind' }] },
       ],
     },
     { type: 'div', props: { style: 'font-weight: 600;' }, children: [{ $: 'card.title' }] },

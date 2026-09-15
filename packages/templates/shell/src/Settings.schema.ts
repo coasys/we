@@ -98,7 +98,6 @@ const templatesSection: SchemaNode = {
                     { type: 'we-icon', props: { name: { $: 'template.icon' }, size: '20px' } },
                     {
                       type: 'Column',
-                      props: { gap: '50' },
                       children: [
                         {
                           type: 'we-text',

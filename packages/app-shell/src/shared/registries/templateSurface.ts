@@ -173,6 +173,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     bootState: state('session'),
     bootError: state('session'),
     passwordError: state('session'),
+    loginError: state('session'),
     loginLoading: state('session'),
     createAgentError: state('session'),
     createAgentLoading: state('session'),
@@ -235,6 +236,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     canAdminister: state('runtime-admin'),
     canManageTrust: state('runtime-admin'),
     canManageNetwork: state('runtime-admin'),
+    canRestartNetwork: state('runtime-admin'),
     canManageApps: state('runtime-admin'),
     canManageLanguages: state('runtime-admin'),
     canManageAi: state('runtime-admin'),
@@ -251,6 +253,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     authorizedApps: state('runtime-admin'),
     networkMetrics: state('runtime-admin'),
     peerInfos: state('runtime-admin'),
+    peerInfosReadable: state('runtime-admin'),
+    pending: state('runtime-admin'),
     loading: state('runtime-admin'),
     error: state('runtime-admin'),
     canBackUp: state('runtime-admin'),
@@ -281,8 +285,10 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     revokeApp: destructive('runtime-admin'),
     removeApp: destructive('runtime-admin'),
     loadNetworkMetrics: action('runtime-admin'),
+    copyNetworkMetrics: action('runtime-admin'),
     restartNetwork: destructive('runtime-admin'),
     loadPeerInfos: action('runtime-admin'),
+    copyPeerInfos: action('runtime-admin'),
     addPeerInfos: action('runtime-admin'),
     setMcpEnabled: action('runtime-admin'),
     setLogLevel: action('runtime-admin'),
@@ -428,6 +434,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     setAgentMuted: action('content'),
     getSubgroupMessages: action('content'),
     exportCallTranscript: action('content'),
+    exportExtractionLog: action('content'),
     // A board is a collection like a call, and arranging one is content work rather than
     // administration: any member may make one and drag cards on it.
     createBoard: action('content'),
@@ -1030,6 +1037,15 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     fitDock: action('host-layout'),
     toggleDockDisplace: action('host-layout'),
     toggleCollapseDock: action('host-layout'),
+    // A lane put away to a strip at its edge, and bringing a panel into sight from wherever it is
+    // hidden — the first is what the titlebar and the strip press, the second what the module rail
+    // does on a panel that is open but out of view.
+    toggleStowLane: action('host-layout'),
+    revealDock: action('host-layout'),
+    // Every panel put away at once, which the rail's toggle reads and presses.
+    panelsHidden: state('host-layout'),
+    hasPanels: state('host-layout'),
+    togglePanelsHidden: action('host-layout'),
     breakOut: action('host-layout'),
     returnHome: action('host-layout'),
     stackDock: action('host-layout'),

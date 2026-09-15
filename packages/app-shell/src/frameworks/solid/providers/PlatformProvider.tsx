@@ -2,7 +2,8 @@ import type { BackendConnector } from '@shared/backend/types';
 import { initializeIntegrations } from '@shared/initializeIntegrations';
 import { PlatformAdapter } from '@shared/platform/types';
 import { createModuleStoreDeps } from '@shared/registries/moduleHostServices';
-import { createContext, createEffect, createSignal, ParentComponent, useContext } from 'solid-js';
+import { provideFileSaver } from '@we/design-utils';
+import { createContext, createEffect, createSignal, onCleanup, ParentComponent, useContext } from 'solid-js';
 
 import type { WeSeedFile } from '../../../types/seed';
 import { componentRegistry } from '../registries/componentRegistry';
@@ -40,6 +41,10 @@ export const PlatformProvider: ParentComponent<{
       effect: (fn) => createEffect(fn),
     }),
   });
+
+  // Every download in the app goes through `saveFile`; a host with its own save dialog lends it here,
+  // once, rather than to each of the packages that offer a download.
+  if (props.platform.saveFile) onCleanup(provideFileSaver(props.platform.saveFile));
 
   return (
     <PlatformContext.Provider value={props.platform}>

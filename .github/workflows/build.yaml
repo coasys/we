@@ -161,6 +161,13 @@ jobs:
       - name: Test
         run: pnpm test
 
+      # The primitives' cascade, in a real browser. Which rule wins under a pointer at a container
+      # width is the one thing jsdom cannot answer, and every bug in that area passed the unit tests:
+      # a truncated label that unwrapped on hover, a header label that flashed, a focus ring lost
+      # while pressing. Drives the Chrome the runner image already has, so it downloads nothing.
+      - name: Browser tests
+        run: pnpm --filter @we/primitives test:browser
+
       # Coverage has been configured for as long as the tests have and has never run anywhere,
       # which is the same shape as the stylelint gap above it: a number nobody produces is a number
       # nobody can act on. Reported rather than gated — there is no threshold yet, deliberately (see

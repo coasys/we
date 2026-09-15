@@ -9,6 +9,7 @@ import {
 } from '@shared/callExtraction';
 import { datasetAddressedBy } from '@shared/datasetIdentity';
 import { buildGuestLink } from '@shared/guestLink';
+import { exportFileName, formatExtractionLog, type PassEntry, transcriptLine } from '@shared/interpretation/callExport';
 import { containmentPredicate, gatherTranscriptTurns, type TurnRecord } from '@shared/interpretation/transcriptTurns';
 import { involvementOptimism } from '@shared/involvementOptimism';
 import {
@@ -63,6 +64,7 @@ import {
   reconcileBlocks,
 } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
+import { saveFile, type SaveOutcome } from '@we/design-utils';
 import {
   AGENT_DEFAULT,
   CallExtraction,
@@ -425,6 +427,9 @@ const joinErrorMessage = (error: unknown): string =>
     ? 'This is taking longer than expected. The space may still be joining in the background — try again in a minute.'
     : "Couldn't join this space. Check the link and try again.";
 
+/** One button in the module rail. See `SpaceStore.moduleLaunchers`. */
+type LauncherRow = { id: string; icon: string; label: string; active: boolean; busy: boolean; concealed: boolean };
+
 export interface SpaceStore {
   // State
   memberDids: Accessor<string[]>;
@@ -534,8 +539,15 @@ export interface SpaceStore {
       switchable: boolean;
     }[]
   >;
-  /** Launchers for the modules enabled here — what the module rail renders. */
-  moduleLaunchers: Accessor<{ id: string; icon: string; label: string; active: boolean; busy: boolean }[]>;
+  /**
+   * Launchers for the modules enabled here — what the module rail renders.
+   *
+   * `concealed` is the launcher's panel being open and out of sight: a background tab of a stack,
+   * folded to its bar, or in a lane collapsed to its edge. The rail lights a button only when it is
+   * not, because a lit button says "pressing me puts this away" — and pressing one whose panel is
+   * concealed brings the panel into sight instead. See `launchModule`.
+   */
+  moduleLaunchers: Accessor<LauncherRow[]>;
   /**
    * This space's sections, resolved: which view renders at which segment, in the space's own order.
    *
@@ -878,6 +890,13 @@ export interface SpaceStore {
    * imperative action instead of something a template can express.
    */
   exportCallTranscript: (callId: string) => Promise<void>;
+  /**
+   * Write everything extraction did with a call to a Markdown file and download it: the settings it
+   * ran under, the transcript once, every pass (every member's) with its prompt and response verbatim,
+   * the records it wrote as they are stored now, and the suggestions still waiting on a decision.
+   * Made to be handed to a person or a model investigating why a call extracted what it did.
+   */
+  exportExtractionLog: (callId: string) => Promise<void>;
   removeSpaceFromGlobal: (spaceUuid: string) => Promise<void>;
   updateSpaceInCache: (dataset: AppDataset, updates: Partial<Space>) => void;
 
@@ -1965,9 +1984,59 @@ export function SpaceStoreProvider(props: ParentProps) {
     await deleteBlocks(p, collectionId);
   }
 
+  /**
+   * Where somebody last was in each space this session — the screen and its query — by dataset id.
+   *
+   * A space's address carries what is being looked at: the workshop names its call in `?call=`, a view
+   * its sort and filters. Walking to another space and back used to land on the returning space's
+   * root, and for a self-routing template that root redirects to a screen with no query at all — the
+   * call gone, and every panel about it blank. The router remembers a query per path, but under the
+   * screen's path, which is not the one a sidebar click asks for.
+   *
+   * In memory, not persisted: a reload starts from the address, which is what somebody sharing or
+   * bookmarking a space meant by it.
+   */
+  const lastPlaceInSpace = new Map<string, string>();
+  createEffect(() => {
+    const segs = routeStore.segments();
+    const path = routeStore.currentPath();
+    const params = routeStore.params();
+    const ds = datasetStore.currentDataset();
+    if (!ds || segs[0] !== 'space' || !datasetAddressedBy(ds, segs[1] ?? '')) return;
+    const query = new URLSearchParams(params).toString();
+    lastPlaceInSpace.set(ds.id, query ? `${path}?${query}` : path);
+  });
+
   async function navigateToSpace(spaceId: string, view?: string): Promise<void> {
     // spaceId may be a local id or a shared id — no shape-guessing needed with refs.
     const ds = datasetStore.datasets().find((d) => datasetAddressedBy(d, spaceId));
+
+    /*
+      Back to the space you are standing in, from an overlay in front of it: close the overlay, and go
+      nowhere.
+
+      Settings, profile and about are drawn over the space without touching its address, so the space
+      is still exactly where it was underneath. Navigating as well sent it to its own root — for a
+      self-routing template that is a different screen, and what somebody had selected lives in the
+      address it left. The workshop's call is `?call=`, so returning from a profile page dropped the
+      call, and every panel about it went blank until it was chosen again.
+
+      Only from an overlay, and only for the space already on screen. Clicking the current space with
+      nothing in front of it still goes to its root, which is how the sidebar takes you home, and a
+      caller naming a view knows where it wants to be.
+    */
+    const segs = routeStore.segments();
+    if (
+      shellStore.activeShellView() &&
+      !view &&
+      ds &&
+      datasetStore.currentDataset()?.id === ds.id &&
+      segs[0] === 'space' &&
+      datasetAddressedBy(ds, segs[1] ?? '')
+    ) {
+      shellStore.closeShellView();
+      return;
+    }
 
     /*
       Switching only when the space is actually changing — the same guard the route effect below
@@ -1982,6 +2051,10 @@ export function SpaceStoreProvider(props: ParentProps) {
       way; this stops the pointless round trips as well, and keeps the two navigation paths saying
       the same thing.
     */
+    // Asked before the switch below, which makes every space the current one.
+    const arrivingFromHere = Boolean(
+      ds && datasetStore.currentDataset()?.id === ds.id && segs[0] === 'space' && datasetAddressedBy(ds, segs[1] ?? ''),
+    );
     if (ds && datasetStore.currentDataset()?.id !== ds.id) {
       // Pre-load space templates before switching so the template and data arrive together
       await templateStore.preloadSpaceTemplates(ds);
@@ -2001,7 +2074,6 @@ export function SpaceStoreProvider(props: ParentProps) {
       it has, and gating on the *source's* switches would refuse to carry a section the reader is
       looking at merely because they had hidden it somewhere else.
     */
-    const segs = routeStore.segments();
     const here = segs[0] === 'space' ? (segs[2] ?? '') : '';
     const carried = routableViews().some((v) => v.segment === here) ? here : '';
     /*
@@ -2025,6 +2097,18 @@ export function SpaceStoreProvider(props: ParentProps) {
     */
     const section = view ?? (ds && !usesSectionsFor(ds.id) ? '' : carried);
     shellStore.closeShellView();
+    /*
+      Back where you were in it, when you have been in it this session and are arriving from somewhere
+      else — see `lastPlaceInSpace`. Not for the space already on screen, where a click is the way to
+      its root; not for a caller naming a view, which knows where it wants to be; and a space not yet
+      visited still carries the section across, as above.
+    */
+    const returning = ds && !view && !arrivingFromHere ? lastPlaceInSpace.get(ds.id) : undefined;
+    if (returning) {
+      routeStore.navigate(returning);
+      broadcastPerspectiveNavigation(spaceId);
+      return;
+    }
     routeStore.navigate(section ? `${base}/${section}` : base);
     // Notify embedded app iframes (e.g. Flux) after the dataset has switched
     broadcastPerspectiveNavigation(spaceId);
@@ -2291,96 +2375,153 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
   }
 
+  /**
+   * A call's transcript, through the same gather extraction runs on rather than a second reading of
+   * the same shape. What a turn is — which entities can be one, which rows are too broken to keep,
+   * and the ordering that makes a transcript a transcript rather than a bag of sentences — is one
+   * decision, and an export that answered it differently would disagree with what the model was shown.
+   */
+  async function callTranscript(p: DatasetProxy, callId: string) {
+    const modelFor = (entity: string) => getEntitiesForPerspective(entity, p);
+    const predicate = containmentPredicate(modelFor, datasetStore.currentDatasetEntities());
+    const turns = predicate
+      ? await gatherTranscriptTurns(
+          {
+            modelFor: (entity) => modelFor(entity) as TurnRecord | undefined,
+            handle: p,
+            containmentPredicate: predicate,
+          },
+          callId,
+        )
+      : [];
+    return { turns, predicate };
+  }
+
+  /**
+   * A label for each of these agents, fetched first.
+   *
+   * Asked for before labelling any of them: the cache is populated as a side effect of rendering
+   * people, so relying on it alone exports whoever happens to be on screen by name and everybody else
+   * as a raw DID. `fetchProfile` no-ops on a profile it holds and dedupes concurrent calls.
+   *
+   * The DID is the fallback rather than the cache's own `name`, which falls back to "Anonymous".
+   * That is right on screen, where a face tells one unnamed peer from another, and wrong in a file,
+   * where the label is all there is: three unnamed speakers would be three identical lines. The cache
+   * is keyed on the bare DID, so a prefixed one is stripped to match.
+   */
+  async function labelsFor(dids: string[]): Promise<(did: string) => string> {
+    await Promise.all([...new Set(dids)].map((did) => profileStore.fetchProfile(did).catch(() => undefined)));
+    return (did: string): string => {
+      const profile = profileStore.profiles().find((entry) => entry.did === did.replace('did://', ''));
+      return profile ? displayName(profile, did) : did;
+    };
+  }
+
+  /**
+   * What a save came to, said once for both exports.
+   *
+   * Only a file actually written earns a success message — `saveFile` knows, where the download
+   * link these used to click did not, and announced success before the reader had chosen anywhere.
+   * A cancelled dialog says nothing, and a plain download is confirmed by the browser's own UI.
+   */
+  function reportSave(outcome: SaveOutcome, saved: string, empty: string): void {
+    if (outcome === 'saved') toastService.success(saved);
+    else if (outcome === 'empty') toastService.warning(empty);
+  }
+
+  /*
+    Both exports name the file before anything else and gather the content inside `saveFile`. The
+    order is the point: a browser opens a save dialog only while the click that asked for it is still
+    being handled, and gathering a transcript or a log can outlast that. The title is one small read.
+  */
   async function exportCallTranscript(callId: string): Promise<void> {
     const dataset = datasetStore.currentDataset();
-    if (!dataset) return;
+    if (!dataset || !callId) return;
     const p = dataset.handle;
     try {
-      // The same gather extraction runs on, rather than a second reading of the same shape. What a
-      // turn is — which entities can be one, which rows are too broken to keep, and the ordering
-      // that makes a transcript a transcript rather than a bag of sentences — is one decision, and
-      // an export that answered it differently would disagree with what the model was shown.
-      const modelFor = (entity: string) => getEntitiesForPerspective(entity, p);
-      const predicate = containmentPredicate(modelFor, datasetStore.currentDatasetEntities());
-      const turns = predicate
-        ? await gatherTranscriptTurns(
-            {
-              modelFor: (entity) => modelFor(entity) as TurnRecord | undefined,
-              handle: p,
-              containmentPredicate: predicate,
-            },
-            callId,
-          )
-        : [];
-
-      // Ask for the speakers this transcript actually names before labelling any of them. The cache
-      // is populated as a side effect of rendering people — members, peers, bylines — so relying on
-      // it alone exports whoever happens to be on screen by name and everybody else as a raw DID.
-      // `fetchProfile` no-ops on a profile it already holds and dedupes concurrent calls, so asking
-      // for all of them costs a round trip only for the ones genuinely missing.
-      const speakers = [...new Set(turns.map((turn) => turn.speaker))];
-      await Promise.all(speakers.map((did) => profileStore.fetchProfile(did).catch(() => undefined)));
-
-      // A speaker's label the way the byline renders it: their display name, else their DID. The
-      // cache is keyed on the bare DID — `fetchProfile` strips the scheme on the way in — so a
-      // prefixed author has to be stripped here too or it would never match what was just fetched.
-      //
-      // Re-derived with the DID as the fallback rather than reading the cache's own `name`, which
-      // falls back to "Anonymous". That is right on screen, where a face sits beside the label and
-      // tells one unnamed peer from another — and wrong in a text file, where it is all there is:
-      // three unnamed speakers would come out as three identical "Anonymous" lines, and a
-      // transcript that cannot tell its speakers apart is not a transcript.
-      const nameFor = (did: string): string => {
-        const profile = profileStore.profiles().find((entry) => entry.did === did.replace('did://', ''));
-        return profile ? displayName(profile, did) : did;
-      };
-
-      /*
-        A text file has no badges, so what is not speech has to say so in words.
-
-        Every line here reads as a quotation — a name, a time, and what they said — and two kinds of
-        line in a transcript are not: one somebody typed into it, and one a human has since mended.
-        Unmarked they would both pass as verbatim, in the artefact most likely to be quoted back or
-        filed somewhere, and long after anybody remembers which was which.
-
-        Marked only where there is something to say. `spoken`, and a turn from before the field
-        existed, are the silent case — an annotation on every line would be noise on the ordinary
-        one, and the reader's assumption is already right there.
-      */
-      const mark = (turn: { source?: string }): string =>
-        turn.source === 'typed' ? ' (typed)' : turn.source === 'corrected' ? ' (corrected)' : '';
-      const lines = turns.map((turn) => `${nameFor(turn.speaker)}, ${turn.timestamp}${mark(turn)}: ${turn.text}`);
-
-      if (!lines.length) {
-        toastService.warning('This call has no transcript to export.');
-        return;
-      }
-
-      // Name the file after the call, falling back to a generic name, then stamp it with the export
-      // time so successive exports of the same call don't overwrite each other.
       const call = await CollectionBlock.findOne(p, { where: { id: callId } });
-      const rawName = (call?.title ?? '').trim();
-      const slug =
-        rawName
-          .replace(/[^\p{L}\p{N}\-_ ]/gu, '')
-          .trim()
-          .replace(/\s+/g, '-') || 'call-transcript';
-      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const filename = `${slug}-${stamp}.txt`;
-
-      const blob = new Blob([`${lines.join('\n')}\n`], { type: 'text/plain;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement('a');
-      anchor.href = url;
-      anchor.download = filename;
-      document.body.appendChild(anchor);
-      anchor.click();
-      document.body.removeChild(anchor);
-      URL.revokeObjectURL(url);
-      toastService.success('Transcript exported.');
+      const outcome = await saveFile({
+        name: exportFileName(call?.title, 'call-transcript', 'txt'),
+        type: 'text/plain;charset=utf-8',
+        content: async () => {
+          const { turns } = await callTranscript(p, callId);
+          if (!turns.length) return null;
+          const nameFor = await labelsFor(turns.map((turn) => turn.speaker));
+          return `${turns.map((turn) => transcriptLine(turn, nameFor)).join('\n')}\n`;
+        },
+      });
+      reportSave(outcome, 'Transcript exported.', 'This call has no transcript to export.');
     } catch (error) {
       console.error('SpaceStore: exportCallTranscript failed', error);
       toastService.error('Could not export the transcript.');
+    }
+  }
+
+  /**
+   * Everything extraction did with one call, as one Markdown file — see `formatExtractionLog`.
+   *
+   * Every member's passes, not only this agent's: the prompts and responses are stored on the shared
+   * record, so this exports what the panel already shows. Read in full rather than through the
+   * panel's query, which is capped for drawing and an hour of automatic extraction outruns.
+   */
+  async function exportExtractionLog(callId: string): Promise<void> {
+    const dataset = datasetStore.currentDataset();
+    if (!dataset || !callId) return;
+    const p = dataset.handle;
+    try {
+      const exportedAt = new Date();
+      const titled = await CollectionBlock.findOne(p, { where: { id: callId } });
+      const outcome = await saveFile({
+        name: exportFileName(titled?.title, 'call', 'md', exportedAt).replace(/\.md$/, '-extraction-log.md'),
+        type: 'text/markdown;charset=utf-8',
+        content: async () => {
+          const call = await CollectionBlock.findOne(p, {
+            where: { id: callId },
+            /*
+              `polymorphic` said here rather than trusted to the declaration. `extracted` names no
+              target class — a pass writes whatever models the call looks for — and the class this
+              store reads through did not carry the flag, so the executor refused to hydrate it.
+            */
+            include: { extractionPasses: true, extracted: { polymorphic: true } },
+          } as never);
+          const row = call as unknown as { title?: string; extractionPasses?: unknown; extracted?: unknown } | null;
+          const passes = (Array.isArray(row?.extractionPasses) ? row.extractionPasses : []) as PassEntry[];
+          const records = Array.isArray(row?.extracted) ? (row.extracted as unknown[]) : [];
+          if (!passes.length) return null;
+
+          const { turns, predicate } = await callTranscript(p, callId);
+          // Scoped to this call, as the review list is; best effort, since a log without the waiting
+          // suggestions is still the log.
+          const port = session.backendPorts()?.interpretation;
+          const proposals =
+            port && predicate ? await port.proposals(p, { parent: { id: callId, predicate } }).catch(() => []) : [];
+          const authors = records.map((record) => (record as { author?: unknown }).author);
+          const nameFor = await labelsFor(
+            [...turns.map((turn) => turn.speaker), ...passes.map((pass) => pass.author), ...authors].filter(
+              (did): did is string => typeof did === 'string' && did !== '',
+            ),
+          );
+
+          return formatExtractionLog({
+            callId,
+            callTitle: row?.title,
+            spaceName: currentSpace()?.name,
+            exportedAt,
+            callTargets: extractionTargetsForCall(callId),
+            spaceTargets: extractionTargets(),
+            autoInterpret: autoInterpretForCall(callId),
+            transcript: turns,
+            passes,
+            records,
+            proposals,
+            nameFor,
+          });
+        },
+      });
+      reportSave(outcome, 'Extraction log exported.', 'No extraction has run on this call yet.');
+    } catch (error) {
+      console.error('SpaceStore: exportExtractionLog failed', error);
+      toastService.error('Could not export the extraction log.');
     }
   }
 
@@ -3944,37 +4085,72 @@ export function SpaceStoreProvider(props: ParentProps) {
     save: (schema) => templateStore.saveTemplateAs(schema, 'root'),
   });
 
+  /**
+   * The rows the rail was last handed, so a recompute that changes nothing about a button hands back
+   * the same object.
+   *
+   * The rail draws these through `$each`, which keys rows by reference, and this memo now reads the
+   * shell's dock geometry to answer `concealed` — geometry that changes on every frame of a drag and on
+   * every tab flash. Fresh objects each time rebuilt every rail button under the pointer, so a hovered
+   * button lost its hover fill and got it back: a flicker for as long as anything on screen moved.
+   */
+  let lastLaunchers: LauncherRow[] = [];
   const moduleLaunchers = createMemo(() => {
     const on = new Set(activeModules());
-    return (
-      moduleRegistry
-        .all()
-        .filter(({ definition }) => on.has(definition.id))
-        /*
+    const rows: LauncherRow[] = moduleRegistry
+      .all()
+      .filter(({ definition }) => on.has(definition.id))
+      /*
         A module may offer more than one way in, and transcription is why: recording and extraction
         are two surfaces with different lifetimes — one follows this agent's microphone, the other
         follows a pass that may be somebody else's — so one button cannot open both. The key is the
         plain module id for a module with a single launcher, which is every other one, so nothing
         about their rail entries changes.
       */
-        .flatMap(({ definition }) => moduleRegistry.launchersOf(definition).map((entry) => ({ definition, ...entry })))
-        .filter(({ definition, launcher }) => read(definition.id, launcher.availableWhen, true))
-        .map(({ definition, key, launcher }) => {
-          const active = read(definition.id, launcher.activeWhen, false);
-          return {
-            id: key,
-            icon: launcher.icon,
-            // The active label where there is one, so a tooltip cannot describe an act the button has
-            // stopped performing. Most launchers declare none and this is `label` in both states.
-            label: (active && launcher.activeLabel) || launcher.label,
-            active,
-            // Background work the module reports — a running pass. Read separately from `active`,
-            // since a panel can be shut while its module is busy.
-            busy: read(definition.id, launcher.busyWhen, false),
-          };
-        })
-    );
+      .flatMap(({ definition }) => moduleRegistry.launchersOf(definition).map((entry) => ({ definition, ...entry })))
+      .filter(({ definition, launcher }) => read(definition.id, launcher.availableWhen, true))
+      .map(({ definition, key, launcher }) => {
+        const active = read(definition.id, launcher.activeWhen, false);
+        return {
+          id: key,
+          icon: launcher.icon,
+          // The active label where there is one, so a tooltip cannot describe an act the button has
+          // stopped performing. Most launchers declare none and this is `label` in both states.
+          label: (active && launcher.activeLabel) || launcher.label,
+          active,
+          // Background work the module reports — a running pass. Read separately from `active`,
+          // since a panel can be shut while its module is busy.
+          busy: read(definition.id, launcher.busyWhen, false),
+          concealed: dockConcealed(moduleRegistry.dockOfLauncher(definition, launcher)),
+        };
+      });
+    const same = (a: LauncherRow, b: LauncherRow) =>
+      a.id === b.id &&
+      a.icon === b.icon &&
+      a.label === b.label &&
+      a.active === b.active &&
+      a.busy === b.busy &&
+      a.concealed === b.concealed;
+    const stable = rows.map((row) => lastLaunchers.find((previous) => same(previous, row)) ?? row);
+    if (stable.length !== lastLaunchers.length || stable.some((row, i) => row !== lastLaunchers[i]))
+      lastLaunchers = stable;
+    return lastLaunchers;
   });
+
+  /**
+   * Whether a panel is open and nobody can see it — behind another tab of its stack, folded to its
+   * bar, or in a lane collapsed to its edge.
+   *
+   * Asked of the shell's resolved geometry rather than re-derived, because the shell is what decides
+   * all three. Not eclipsed-by-full-screen: the rail hides while a panel is maximised, so no rail
+   * button is ever pressed in that state to be wrong about it.
+   */
+  function dockConcealed(dockId: string | null): boolean {
+    if (!dockId) return false;
+    const geometry = shellStore.dockGeometry()[dockId];
+    if (!geometry?.edge || geometry.home) return false;
+    return Boolean(geometry.hidden || geometry.collapsed || geometry.stowed);
+  }
 
   /**
    * Invoke a module's launcher.
@@ -3993,12 +4169,39 @@ export function SpaceStoreProvider(props: ParentProps) {
     const [id] = moduleId.split(':');
     const definition = moduleRegistry.get(id)?.definition;
     if (!definition) return;
-    const action = moduleRegistry.launchersOf(definition).find((entry) => entry.key === moduleId)?.launcher.action;
-    if (!action) return;
+    const launcher = moduleRegistry.launchersOf(definition).find((entry) => entry.key === moduleId)?.launcher;
+    const action = launcher?.action;
+    if (!launcher || !action) return;
+    const dockId = moduleRegistry.dockOfLauncher(definition, launcher);
+
+    /*
+      The panel is open and out of sight: bring it into sight, and do not ask the module.
+
+      The module's action is usually a toggle, and a toggle reads "open" and closes. So a button lit for
+      a panel stacked behind another tab put that panel away when pressed — the one thing the person
+      pressing it could not have wanted, since they could not see it to want it gone. Only the shell
+      knows where the panel is, so the shell answers; the module keeps its one plain action for the
+      cases it can mean something.
+    */
+    if (dockConcealed(dockId)) {
+      shellStore.revealDock(dockId as string);
+      return;
+    }
+
     const store = moduleStores[id] as Record<string, unknown> | undefined;
     const fn = store?.[action];
-    if (typeof fn === 'function') (fn as () => void)();
-    else console.warn(`module "${id}" declares launcher action "${action}" but its store has no such method`);
+    if (typeof fn !== 'function') {
+      console.warn(`module "${id}" declares launcher action "${action}" but its store has no such method`);
+      return;
+    }
+    (fn as () => void)();
+    /*
+      And a panel the press just opened comes to the front of wherever it opened. A panel reopening into
+      a stack otherwise shows only if it happens to be the most recently touched tab there, which it
+      rarely is — it was closed. `revealDock` leaves a panel that is still closed alone, so an action
+      that closed it, or opens it asynchronously, costs nothing here.
+    */
+    if (dockId) shellStore.revealDock(dockId);
   }
 
   /**
@@ -4613,6 +4816,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     copyGuestLink,
     getSubgroupMessages,
     exportCallTranscript,
+    exportExtractionLog,
     removeSpaceFromGlobal,
     updateSpaceInCache,
 

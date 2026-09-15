@@ -2,6 +2,7 @@ import { focusSelector } from '@we/design-utils';
 import type { LitElement } from 'lit';
 
 import { DesignSystemElement } from './design-system-element';
+import { DS_LAYER_ORDER } from './helpers';
 
 /**
  * Base class for overlay components (modals, drawers, dropdowns) that have:
@@ -11,8 +12,8 @@ import { DesignSystemElement } from './design-system-element';
  * Differs from DesignSystemElement by applying sizing props to [part="base"] instead of :host.
  * This allows width, height, etc. to control the modal/drawer content size, not the backdrop.
  *
- * Uses a separate adopted stylesheet (no !important needed) that wins via cascade order —
- * it's adopted after the DS stylesheet, so at equal specificity the overlay rules win.
+ * Uses a separate adopted stylesheet (no !important needed) in the `we-overlay` cascade layer,
+ * above every layer the DS stylesheet declares, so the overlay rules win in every state.
  *
  * Uses the Popover API (popover="manual") to promote the host to the browser's top layer.
  * This escapes any ancestor CSS containing-block traps — backdrop-filter, transform, filter —
@@ -87,7 +88,14 @@ export abstract class OverlayElement extends DesignSystemElement {
       const componentName = this.tagName.toLowerCase().replace('we-', '');
       const p = `--we-${componentName}-`;
       const sheet = new CSSStyleSheet();
-      sheet.replaceSync(`
+      /*
+        In the top layer, `we-overlay`, above every state and breakpoint: these rules replace how the
+        DS draws an overlay's surface in every state, which is what adopting them last used to buy.
+        Named rather than left outside the layers, where a rule would win the same way — so that
+        nothing a primitive adopts is outside a layer, and that can be checked.
+      */
+      sheet.replaceSync(`${DS_LAYER_ORDER}
+      @layer we-overlay {
         /* Force host to always be full viewport */
         :host([data-we-overlay]) {
           position: fixed;
@@ -125,8 +133,9 @@ export abstract class OverlayElement extends DesignSystemElement {
           backdrop-filter: blur(var(--we-theme-surface-blur, 0px));
         }
 
-        /* Re-apply color-mix + backdrop-filter for state selectors — without this, the DS-generated
-           hover/active/focus rules win due to higher specificity, snapping back to full opacity.
+        /* Re-apply color-mix + backdrop-filter for each state. The rule above sits in we-overlay, above
+           every state layer, so without these a hoverProps/activeProps/focusProps background would
+           never show on an overlay; and the plain DS state value would skip the surface opacity.
            The focus arm is built from the same shared focusSelector() the DS generator uses, so it
            cannot drift: if it matched a wider set of states than the rule it exists to override, an
            overlay would apply its focus background in situations where the DS applies nothing. */
@@ -147,11 +156,12 @@ export abstract class OverlayElement extends DesignSystemElement {
           background: color-mix(in srgb, var(${p}disabled-bg, var(${p}bg, transparent)) calc(var(--we-theme-surface-opacity, 1) * 100%), transparent);
           backdrop-filter: blur(var(--we-theme-surface-blur, 0px));
         }
+      }
       `);
       overlayStyleSheets.set(ctor, sheet);
     }
 
-    // Adopt after the DS stylesheet (last = highest cascade priority)
+    // Adopt after the DS stylesheet; the layer, not the position, is what makes these rules win
     const root = this.shadowRoot;
     if (root) {
       const sheet = overlayStyleSheets.get(ctor)!;

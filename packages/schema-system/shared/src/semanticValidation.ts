@@ -1,5 +1,5 @@
 import { BASE_CLASS_LAYERS, getKeysForLayers, layerKeyMap, tierKeys } from '@we/design-utils';
-import { role } from '@we/tokens';
+import { role, semanticValues, space } from '@we/tokens';
 
 import type { ContextData, StateMemberMeta } from './contextTypes';
 import { checkExpression, ExpressionSyntaxError, isCallTime, isExpressionToken, parseExpression } from './expressions';
@@ -867,6 +867,61 @@ function checkColourValue(propName: string, value: unknown, path: string, errors
 }
 
 /**
+ * A spacing value that is neither a step of the scale, a theme family nor CSS.
+ *
+ * `gap: '050'` reads as "half of 100" and is not a token — the scale starts `0`, `100`, `200`. It
+ * resolved to `var(--we-space-050)`, a variable nothing declares, so the gap was silently zero, and
+ * nothing said so: the prop is typed `SpaceValue`, which classifies as a plain string, and the
+ * runtime's unknown-token warning only fired on names made of letters. Six call sites shipped it,
+ * one of them inside a segmented control whose padding was therefore never there.
+ *
+ * Families are per axis: `p: 'surface'` and `gap: 'control'` resolve, `m: 'surface'` does not.
+ */
+const SPACE_SCALE = new Set(Object.keys(space));
+const PADDING_PROPS = new Set(['p', 'px', 'py', 'pt', 'pr', 'pb', 'pl']);
+const MARGIN_AND_OFFSET_PROPS = new Set(['m', 'mx', 'my', 'mt', 'mr', 'mb', 'ml', 'top', 'right', 'bottom', 'left']);
+const SPACE_FAMILIES = {
+  padding: new Set(Object.keys(semanticValues('padding'))),
+  gap: new Set(Object.keys(semanticValues('gap'))),
+};
+/** The bags whose keys are DS props in their own right, so a `mdUpProps: { gap: '050' }` is caught too. */
+const PROP_BAGS = new Set(['hoverProps', 'activeProps', 'focusProps', 'disabledProps', ...tierKeys]);
+const CSS_KEYWORD_RE = /^(auto|inherit|initial|unset|revert)$/i;
+
+function checkSpaceValue(propName: string, value: unknown, path: string, errors: ValidationError[]): void {
+  const isPadding = PADDING_PROPS.has(propName);
+  if (!isPadding && propName !== 'gap' && !MARGIN_AND_OFFSET_PROPS.has(propName)) return;
+  // A spacing computed by an expression is one of its string literals — `open ? '400' : '050'`.
+  if (isExpressionToken(value)) {
+    for (const literal of value.$.matchAll(/'([^'\\]*)'|"([^"\\]*)"/g)) {
+      checkSpaceValue(propName, literal[1] ?? literal[2], path, errors);
+    }
+    return;
+  }
+  if (typeof value !== 'string') return;
+  const families = isPadding ? SPACE_FAMILIES.padding : propName === 'gap' ? SPACE_FAMILIES.gap : undefined;
+  if (
+    SPACE_SCALE.has(value) ||
+    families?.has(value) ||
+    CSS_LENGTH_RE.test(value) ||
+    CSS_COMPUTED_LENGTH_RE.test(value) ||
+    CSS_KEYWORD_RE.test(value) ||
+    // A shorthand of several lengths is raw CSS, and passes through the resolver untouched.
+    /\s/.test(value.trim())
+  ) {
+    return;
+  }
+  const familyHint = families ? `, a theme family (${[...families].join(', ')})` : '';
+  errors.push({
+    path,
+    message:
+      `"${value}" is not a space token. Use a step of the scale (${[...SPACE_SCALE].join(', ')})${familyHint} ` +
+      `or a CSS length. As written it resolves to var(--we-space-${value}), which nothing declares, so no space is applied.`,
+    severity: 'error',
+  });
+}
+
+/**
  * A string that was a reference in the old spelling — `'$post.title'`, `'$event.detail'`, `'$me.did'`.
  *
  * A plain string is text now, so this would render as the characters themselves — a title reading
@@ -912,6 +967,12 @@ function checkProps(
 
     if (COLOUR_PROPS.has(propName) || BORDER_PROPS.has(propName)) {
       checkColourValue(propName, propValue, propPath, errors);
+    }
+    checkSpaceValue(propName, propValue, propPath, errors);
+    if (PROP_BAGS.has(propName) && propValue && typeof propValue === 'object' && !isTokenObject(propValue)) {
+      for (const [bagProp, bagValue] of Object.entries(propValue)) {
+        checkSpaceValue(bagProp, bagValue, `${propPath}.${bagProp}`, errors);
+      }
     }
 
     // Universal props are always valid
