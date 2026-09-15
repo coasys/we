@@ -1282,40 +1282,56 @@ export function ShellStoreProvider(props: ParentProps) {
   };
 
   /**
-   * The panels coming back out of a strip, for the first frame they are on screen — see
-   * `DockGeometry.emerging`.
+   * A lane easing in or out of its strip — which way, and for which panels.
    *
-   * Two frames rather than `settling`'s one: the contents have to be *painted* at zero before the
-   * fade can have somewhere to start, and a flag cleared on the next frame can land before the first
-   * paint of the box that was hidden until now.
+   * **Opening**, the panels hold their contents at the size the frame is heading for, and fade them
+   * in: `faded` is true until the contents have been painted once at zero, which takes two frames
+   * rather than `settling`'s one, since the box was hidden until now.
+   *
+   * **Closing**, they stay on screen while the frame shrinks onto the strip, holding their contents at
+   * the size they had (`sizes`) and fading them out, and only then are hidden. Without it a lane
+   * vanished on the press and the strip appeared where it had been.
+   *
+   * Held past the frame's 300 transition in both directions: opening, so a theme with slower animation
+   * does not let the contents go and squeeze in the last stretch; closing, for the same reason with the
+   * opposite cost, which is why it is held for less — a closed frame lingering at the strip's size sits
+   * over the strip's names.
    */
-  const [emerging, setEmerging] = createSignal<readonly string[]>([]);
-  /**
-   * The panels easing open out of a strip — see `DockGeometry.opening`. Held for longer than the frame's
-   * 300 transition, so a theme that slows its animations down does not have the contents let go and
-   * squeeze in the last stretch; holding it a little past the end costs nothing, since by then the
-   * frame is already the size the contents are laid out at.
-   */
-  const [opening, setOpening] = createSignal<readonly string[]>([]);
-  let openingTimer: ReturnType<typeof setTimeout> | undefined;
+  const [laneMove, setLaneMove] = createSignal<{
+    ids: readonly string[];
+    closing: boolean;
+    faded: boolean;
+    sizes: Record<string, { width?: string; height?: string }>;
+  } | null>(null);
+  let laneMoveTimer: ReturnType<typeof setTimeout> | undefined;
   onCleanup(() => {
-    if (openingTimer !== undefined) clearTimeout(openingTimer);
+    if (laneMoveTimer !== undefined) clearTimeout(laneMoveTimer);
   });
-  const emerge = (ids: readonly string[]) => {
-    setEmerging(ids);
-    setOpening(ids);
-    if (openingTimer !== undefined) clearTimeout(openingTimer);
-    openingTimer = setTimeout(() => {
-      openingTimer = undefined;
-      setOpening((was) => (was === ids ? [] : was));
-    }, 700);
-    if (typeof requestAnimationFrame !== 'function') return setEmerging([]);
-    requestAnimationFrame(() => requestAnimationFrame(() => setEmerging((was) => (was === ids ? [] : was))));
+  const beginLaneMove = (ids: readonly string[], closing: boolean) => {
+    const geometry = dockGeometry();
+    const sizes = Object.fromEntries(
+      ids.map((id) => [id, { width: geometry[id]?.width, height: geometry[id]?.height }]),
+    );
+    const move = { ids, closing, faded: true, sizes };
+    setLaneMove(move);
+    if (laneMoveTimer !== undefined) clearTimeout(laneMoveTimer);
+    laneMoveTimer = setTimeout(
+      () => {
+        laneMoveTimer = undefined;
+        setLaneMove((was) => (was?.ids === ids ? null : was));
+      },
+      closing ? 340 : 700,
+    );
+    if (closing) return;
+    const unfade = () => setLaneMove((was) => (was?.ids === ids ? { ...was, faded: false } : was));
+    if (typeof requestAnimationFrame !== 'function') return unfade();
+    requestAnimationFrame(() => requestAnimationFrame(unfade));
   };
 
   /** Collapse every panel of a lane to its strip, or bring them all back. See `toggleStowLane`. */
   const setLaneStowed = (ids: readonly string[], on: boolean) => {
-    if (!on) emerge(ids);
+    // Before the write, so a close captures the sizes the panels have open.
+    beginLaneMove(ids, on);
     for (const memberId of ids) {
       const member = dockRequests().find((entry) => entry.id === memberId);
       if (!member) continue;
@@ -1870,7 +1886,38 @@ export function ShellStoreProvider(props: ParentProps) {
           const box = stripBox(edge, viewport(), occupied);
           const strip = ids.map((id) => ({ id, title: titleOf(id), active: false, landed: false }));
           strips[ids[0]] = { box, vertical, tabs: stableStrip(`strip:${ids[0]}`, strip) };
-          for (const member of group.members) stowed[requests[member.index].id] = box;
+          /*
+            Each seat keeps the place along the edge it has open, at the strip's thickness.
+
+            Handing every member the whole strip meant the lane opened in two directions at once: the
+            first panel widened, and the one below it widened *and* slid from the top of the edge down
+            to where it belonged, as though coming out of its own titlebar. Laid out exactly as the open
+            lane is — `columnLayout` over the same members, whose thickness is the strip's now — the
+            only thing that moves in or out is the thickness.
+          */
+          const showing = group.seats.map((seat) =>
+            seat.reduce((best, member) => {
+              const at = (id: string) => touched[placementKey(id)] ?? -1;
+              return at(requests[member.index].id) > at(requests[best.index].id) ? member : best;
+            }),
+          );
+          const boxes =
+            group.seats.length < 2
+              ? [box]
+              : columnLayout(
+                  showing.map((member, s) => ({
+                    ...member.placement,
+                    min: widestMin(group.seats[s].map((held) => requests[held.index].min)),
+                  })),
+                  edge,
+                  viewport(),
+                  occupied,
+                  floatChrome(),
+                  { displacing: true },
+                );
+          group.seats.forEach((seat, s) => {
+            for (const member of seat) stowed[requests[member.index].id] = boxes[s];
+          });
           continue;
         }
 
@@ -2026,6 +2073,7 @@ export function ShellStoreProvider(props: ParentProps) {
       laneSeating();
     const { canStow, stowed, strips } = lanesAway;
     const pendingStow = stowPending();
+    const move = laneMove();
     const pendingLane = pendingStow ? (lanes[pendingStow] ?? [pendingStow]) : [];
     const px = (n: number) => `${Math.round(n)}px`;
     // Activation is keyed the way placements are — by scope — and the layer is asked for by dock id.
@@ -2069,8 +2117,10 @@ export function ShellStoreProvider(props: ParentProps) {
         collapsed: canCollapse && folded,
         hidden: eclipsed || (hidden[request.id] ?? false),
         settling: settling() === request.id,
-        emerging: emerging().includes(request.id),
-        opening: opening().includes(request.id),
+        // Opening out of a strip: laid out at the box it is heading for, and faded in. See `laneMove`.
+        ...(move && !move.closing && move.ids.includes(request.id)
+          ? { layoutWidth: box.width, layoutHeight: box.height, contentsFaded: move.faded }
+          : {}),
         tabs: tabs[request.id] ?? [],
         // Empty rather than absent, so a schema condition reads a string either way.
         below: below[request.id] ?? '',
@@ -2117,6 +2167,8 @@ export function ShellStoreProvider(props: ParentProps) {
       const away = stowed[request.id];
       if (away) {
         const strip = strips[request.id];
+        // Still shrinking onto the strip: on screen, at the size it had, fading out. See `laneMove`.
+        const leaving = move?.closing && move.ids.includes(request.id) ? move.sizes[request.id] : undefined;
         resolved[request.id] = {
           edge: box.edge,
           snap: box.snap,
@@ -2128,8 +2180,10 @@ export function ShellStoreProvider(props: ParentProps) {
           stowed: true,
           canStow: false,
           canCollapse: false,
-          collapsed: false,
-          hidden: true,
+          // A folded panel stays a bar on its way into the strip, rather than showing its contents.
+          collapsed: folded,
+          hidden: eclipsed || !leaving,
+          ...(leaving ? { layoutWidth: leaving.width, layoutHeight: leaving.height, contentsFaded: true } : {}),
           settling: settling() === request.id,
           tabs: [],
           below: '',

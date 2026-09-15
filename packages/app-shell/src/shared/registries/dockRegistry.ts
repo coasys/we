@@ -216,29 +216,25 @@ export const DOCK_CONTENT_ATTR = 'data-we-dock-content';
  * room rather than borrowed it, so it meets the content edge to edge and is not on top of anything.
  */
 /**
- * The size a panel's insides are laid out at: at least the box it is heading for.
+ * The size a panel's insides are laid out at while its frame eases in or out of a lane's strip.
  *
- * A frame moves between boxes by easing its own width and height, and whatever is inside re-lays
- * itself out at every step of the way — so a column opening out of its strip showed its contents
- * crushed into 34px and unfolding from there, text wrapping a word per line. Laid out at the size the
- * frame is *going to* be, from the first frame, the contents stay still and the frame uncovers them,
- * like a drawer; the frame's `overflow: hidden` clips what has not been uncovered yet.
+ * A frame moves between boxes by easing its own width and height, and whatever is inside re-lays itself
+ * out at every step — so a column opening out of its strip showed its contents crushed into 34px and
+ * unfolding from there, text wrapping a word per line, and closing did the same in reverse. Held at the
+ * open size for the length of the move (`layoutWidth` / `layoutHeight`: where it is heading when
+ * opening, where it was when closing), the contents stay still and the frame uncovers or covers them
+ * like a drawer; its `overflow: hidden` clips the rest.
  *
- * Only while a lane is opening out of its strip (`opening`), which is the one move that starts from a
- * box too small to lay anything out in. The rest of the time the contents fill the frame as they always
- * have: the height here is the frame less a titlebar of known height, and a theme that makes the
- * titlebar taller would otherwise clip the bottom few pixels of every panel at rest. The geometry's
- * `width` and `height` are the target, because the easing is CSS: the props hold where the box is
- * going, and the element is somewhere on the way.
+ * Only during that move. The rest of the time the contents fill the frame as they always have: the
+ * height here is the frame less a titlebar of known height, and a theme that makes the titlebar taller
+ * would otherwise clip the bottom few pixels of every panel at rest.
  *
  * Less the frame's border, and for the height the titlebar too, since this is the box *inside* them.
- * A placement that anchors both edges rather than stating a size has no target to hold, and gets none.
  */
 const laidOutAt = (id: string, axis: 'width' | 'height', less: number) => {
-  const target = dockGeometryPath(id, axis);
-  const opening = dockGeometryPath(id, 'opening');
+  const size = dockGeometryPath(id, axis === 'width' ? 'layoutWidth' : 'layoutHeight');
   const rest = axis === 'height' ? "'0'" : 'null';
-  return { $: `${opening} && ${target} ? \`calc(\${${target}} - ${less}px)\` : ${rest}` };
+  return { $: `${size} ? \`calc(\${${size}} - ${less}px)\` : ${rest}` };
 };
 
 const isGlass = (id: string) => `${dockGeometryPath(id, 'floating')} && !${dockGeometryPath(id, 'maximised')}`;
@@ -448,12 +444,11 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
                   width: '100%',
                   overflow: 'hidden',
                   /*
-                    Faded in as a collapsed lane opens — the contents are uncovered at their full size
-                    (above) and arrive with a fade rather than appearing wholesale. `emerging` is true
-                    for the first frame the panel is back on screen, so the fade has a zero to start
-                    from. A token duration, so a theme's speed and reduced motion still decide.
+                    Faded in as a collapsed lane opens and out as it closes — the contents are covered
+                    and uncovered at their full size (above), and fade rather than appear or vanish
+                    wholesale. A token duration, so a theme's speed and reduced motion still decide.
                   */
-                  opacity: { $: `${dockGeometryPath(entry.id, 'emerging')} ? 0 : 1` },
+                  opacity: { $: `${dockGeometryPath(entry.id, 'contentsFaded')} ? 0 : 1` },
                   transition: 'opacity 300 ease',
                   [DOCK_CONTENT_ATTR]: entry.id,
                   /*
@@ -1556,6 +1551,20 @@ function laneStrip(id: string): SchemaNode {
   const vertical = geo('strip.vertical');
   const edge = geo('edge');
   const openIcon = `${edge} == 'left' ? '${STOW_ICONS.right.icon}' : ${edge} == 'right' ? '${STOW_ICONS.left.icon}' : ${edge} == 'top' ? '${STOW_ICONS.bottom.icon}' : '${STOW_ICONS.top.icon}'`;
+  const stripContents = (writingMode: 'vertical-rl' | 'horizontal-tb'): SchemaNode[] => [
+    { type: 'we-icon', props: { name: { $: openIcon } } },
+    {
+      type: '$each',
+      props: { items: { $: geo('strip.tabs') }, as: 'tab' },
+      children: [
+        {
+          type: 'Column',
+          props: { maxHeight: '180px', maxWidth: '180px', styles: { 'writing-mode': writingMode } },
+          children: [{ type: 'we-text', props: { variant: 'label', truncate: true }, children: [{ $: 'tab.title' }] }],
+        },
+      ],
+    },
+  ];
 
   return {
     type: '$if',
@@ -1593,43 +1602,27 @@ function laneStrip(id: string): SchemaNode {
               onClick: { $action: 'shellStore.toggleStowLane', args: [id] },
             },
             children: [
+              /*
+                A column down a side and a row along the top or bottom — two nodes, because a
+                `Column` is a column whatever `direction` it is handed, which laid a top strip's names
+                out down a box 34px tall and hid all but the first. Packed from the head along the
+                strip and centred across it.
+              */
               {
-                type: 'Column',
+                type: '$if',
                 props: {
-                  width: '100%',
-                  height: '100%',
-                  direction: { $: `${vertical} ? 'column' : 'row'` },
-                  // `ax` and `ay` are the screen's axes whichever way the strip runs: centred across
-                  // it, and packed from its head along it.
-                  ax: { $: `${vertical} ? 'center' : 'start'` },
-                  ay: { $: `${vertical} ? 'start' : 'center'` },
-                  gap: '300',
-                  p: '200',
-                },
-                children: [
-                  { type: 'we-icon', props: { name: { $: openIcon } } },
-                  {
-                    type: '$each',
-                    props: { items: { $: geo('strip.tabs') }, as: 'tab' },
-                    children: [
-                      {
-                        type: 'Column',
-                        props: {
-                          maxHeight: '180px',
-                          maxWidth: '180px',
-                          styles: { 'writing-mode': { $: `${vertical} ? 'vertical-rl' : 'horizontal-tb'` } },
-                        },
-                        children: [
-                          {
-                            type: 'we-text',
-                            props: { variant: 'label', truncate: true },
-                            children: [{ $: 'tab.title' }],
-                          },
-                        ],
-                      },
-                    ],
+                  condition: { $: vertical },
+                  then: {
+                    type: 'Column',
+                    props: { width: '100%', height: '100%', ax: 'center', ay: 'start', gap: '300', p: '200' },
+                    children: stripContents('vertical-rl'),
                   },
-                ],
+                  else: {
+                    type: 'Row',
+                    props: { width: '100%', height: '100%', ax: 'start', ay: 'center', gap: '300', p: '200' },
+                    children: stripContents('horizontal-tb'),
+                  },
+                },
               },
             ],
           },

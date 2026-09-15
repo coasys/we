@@ -148,11 +148,14 @@ opening one panel on its own. That was tried as a peek, a card sliding out besid
 was easy to trigger by accident on a strip this thin, and a panel floating out of a collapsed column
 read as the arrangement having come apart.
 
-Opening eases the frame out from the strip's width, and contents re-laid out at every step of that
-arrive crushed and unfold. For as long as a lane is opening (`opening`) its panels' titlebars and
-contents are held at the size the frame is heading for (`laidOutAt`), so the frame uncovers them like a
-drawer, and the contents fade in from the first frame they are back (`emerging`). Scoped to that move:
-at rest a panel's contents fill its frame as they always have.
+Opening and closing ease the frame between the strip's width and the lane's, and contents re-laid out
+at every step of that arrive crushed and unfold, or fold up on the way out. For the length of the move
+a panel's titlebar and contents are held at the lane's open size (`layoutWidth` / `layoutHeight`,
+through `laidOutAt`), so the frame uncovers or covers them like a drawer, and they fade in or out
+(`contentsFaded`); a closing lane stays on screen until it has shrunk onto its strip. While stowed,
+each seat keeps its place along the edge at the strip's thickness, so only the thickness ever moves —
+a lane of two used to open its lower panel sliding down from the top of the edge. At rest a panel's
+contents fill its frame as they always have.
 
 ### Bringing a panel into sight
 

@@ -277,15 +277,26 @@ describe('the displace control, by where the panel is', () => {
  * that showed crushed and wrapping. While a lane opens they are held at the size the frame is heading
  * for, and faded in.
  */
-describe('a panel opening out of its strip', () => {
+describe('a panel easing in or out of its strip', () => {
   const text = JSON.stringify(dockFrame(entry as unknown as DockEntry, { type: 'Column' }));
 
-  it('lays its contents out at the target size only while it is opening', () => {
-    const minWidth = `${geo('opening')} && ${geo('width')} ? \`calc(\${${geo('width')}} - 2px)\` : null`;
+  it('lays its contents out at the size the move names, and fills the frame otherwise', () => {
+    const minWidth = `${geo('layoutWidth')} ? \`calc(\${${geo('layoutWidth')}} - 2px)\` : null`;
+    const minHeight = `${geo('layoutHeight')} ? \`calc(\${${geo('layoutHeight')}} - 35px)\` : '0'`;
     expect(text).toContain(JSON.stringify(minWidth).slice(1, -1));
+    expect(text).toContain(JSON.stringify(minHeight).slice(1, -1));
   });
 
-  it('fades its contents in from the first frame it is back', () => {
-    expect(text).toContain(JSON.stringify(`${geo('emerging')} ? 0 : 1`).slice(1, -1));
+  it('fades its contents while the move says so', () => {
+    expect(text).toContain(JSON.stringify(`${geo('contentsFaded')} ? 0 : 1`).slice(1, -1));
+  });
+
+  it('lays a top or bottom strip out as a row, not a column', () => {
+    const strip = gatedOn(dockFrame(entry as unknown as DockEntry, { type: 'Column' }), geo('strip'));
+    const layout = gatedOn(strip, geo('strip.vertical'));
+    const props = layout?.props as { then: { type: string }; else: { type: string } };
+
+    expect(props.then.type).toBe('Column');
+    expect(props.else.type).toBe('Row');
   });
 });

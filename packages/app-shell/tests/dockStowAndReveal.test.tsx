@@ -6,7 +6,7 @@
  * away is one strip with a tab per panel, and that bringing a hidden panel forward says so.
  */
 import { cleanup, render } from '@solidjs/testing-library';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ShellStore } from '../src/frameworks/solid/stores/ShellStore';
 import { ShellStoreProvider, useShellStore } from '../src/frameworks/solid/stores/ShellStore';
@@ -117,7 +117,11 @@ describe('a lane collapsed to its edge', () => {
     stack(shell, 'left');
 
     expect(shell.dockGeometry()[B].canStow).toBe(true);
+    vi.useFakeTimers();
     shell.toggleStowLane(B);
+    // Once the panels have finished shrinking onto the strip.
+    vi.runAllTimers();
+    vi.useRealTimers();
 
     const geometry = shell.dockGeometry();
     expect(shell.contentInset().left).toBe(STRIP_PX);
@@ -138,9 +142,36 @@ describe('a lane collapsed to its edge', () => {
     const geometry = shell.dockGeometry();
     expect(geometry[A].stowed || geometry[B].stowed).toBeFalsy();
     // Held at their full size and faded in while the frame eases open — see `laidOutAt`.
-    expect(geometry[B]).toMatchObject({ opening: true, emerging: true });
+    expect(geometry[B].layoutWidth).toBe(geometry[B].width);
+    expect(geometry[B].contentsFaded).toBe(true);
     expect(geometry[B].hidden).toBe(false);
     expect(geometry[A].hidden).toBe(true);
     expect(shell.contentInset().left).toBeGreaterThan(STRIP_PX);
+  });
+
+  it('keeps each panel where it sits along the edge, so only the thickness moves', () => {
+    // Two panels one above the other in one lane, rather than stacked in a seat.
+    openBoth('left');
+    const shell = mountShellStore();
+    shell.insertDock(B, 'left', 1, 'lane', 0);
+    const open = shell.dockGeometry();
+
+    shell.toggleStowLane(A);
+    const away = shell.dockGeometry();
+
+    expect(away[B].top).toBe(open[B].top);
+    expect(away[B].height).toBe(open[B].height);
+    expect(away[B].width).toBe(`${STRIP_PX}px`);
+  });
+
+  it('stays on screen while it shrinks onto the strip, holding its open size and fading out', () => {
+    openBoth('left');
+    const shell = mountShellStore();
+    stack(shell, 'left');
+    const width = shell.dockGeometry()[B].width;
+
+    shell.toggleStowLane(B);
+
+    expect(shell.dockGeometry()[B]).toMatchObject({ hidden: false, contentsFaded: true, layoutWidth: width });
   });
 });
