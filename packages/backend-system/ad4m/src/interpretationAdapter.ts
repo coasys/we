@@ -78,44 +78,6 @@ function invalidatePredicateNamesCache(perspectiveUuid: string): void {
   predicateNamesCache.delete(perspectiveUuid);
 }
 
-// ── interpretationOverlays() cache ──────────────────────────────────────────
-//
-// interpretationOverlays() averages 3.4 seconds per call. During a sync burst,
-// proposals() fires repeatedly and each call re-fetches the same overlay list.
-// This cache holds the last result per perspective and gets invalidated when
-// the onProposalsChanged subscription fires — the only event that can change
-// the overlay set.
-
-interface CachedOverlays {
-  overlays: Awaited<ReturnType<PerspectiveProxy['interpretationOverlays']>>;
-  /** Monotonic timestamp (ms) when this entry was stored. */
-  cachedAt: number;
-}
-
-/** perspective UUID → cached overlays. */
-const overlaysCache = new Map<string, CachedOverlays>();
-
-/** Stale after 30 seconds even without a subscription invalidation — safety net. */
-const OVERLAYS_TTL_MS = 30_000;
-
-function getCachedOverlays(perspectiveUuid: string): CachedOverlays['overlays'] | undefined {
-  const entry = overlaysCache.get(perspectiveUuid);
-  if (!entry) return undefined;
-  if (Date.now() - entry.cachedAt > OVERLAYS_TTL_MS) {
-    overlaysCache.delete(perspectiveUuid);
-    return undefined;
-  }
-  return entry.overlays;
-}
-
-function setCachedOverlays(perspectiveUuid: string, overlays: CachedOverlays['overlays']): void {
-  overlaysCache.set(perspectiveUuid, { overlays, cachedAt: Date.now() });
-}
-
-function invalidateOverlaysCache(perspectiveUuid: string): void {
-  overlaysCache.delete(perspectiveUuid);
-}
-
 /** The link that marks a record as carrying a staged suggestion — the executor's `OVERLAY_KIND_PRED`. */
 const OVERLAY_KIND_PREDICATE = 'ad4m://interp/kind';
 
@@ -1064,17 +1026,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       // every render.
       if (!runtimeSupportsInterpretation(dataset)) return [];
       const perspective = proxy(dataset);
-
-      // Reuse cached overlays when the subscription has not fired since the last fetch.
-      // onProposalsChanged invalidates this cache, so repeated calls within a quiet window
-      // skip the expensive RPC.
-      const overlays =
-        getCachedOverlays(perspective.uuid) ??
-        (await (async () => {
-          const fresh = await perspective.interpretationOverlays();
-          setCachedOverlays(perspective.uuid, fresh);
-          return fresh;
-        })());
+      const overlays = await perspective.interpretationOverlays();
       if (!overlays.length) return [];
 
       const wanted = scope ? await scopeFilter(perspective, scope) : () => true;
@@ -1134,7 +1086,8 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
         `SELECT ?base ?kind WHERE { ?base <${OVERLAY_KIND_PREDICATE}> ?kind }`,
       );
       sub.onResult(() => {
-        invalidateOverlaysCache(perspective.uuid);
+        // invalidateOverlaysCache() ships with coasys/ad4m#1017 — call when available.
+        (perspective as { invalidateOverlaysCache?: () => void }).invalidateOverlaysCache?.();
         cb();
       });
       return () => sub.dispose();
