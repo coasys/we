@@ -12,29 +12,27 @@
 # follow-up — the certificates are not yet configured as repository secrets.
 name: Electron Package
 
+# Runs on merge to dev, never on pull requests: a run that has to compile the executor takes
+# hours on macOS, and a pull request would pay that again on every commit pushed to it. To
+# package a branch before merging, run the workflow manually from the Actions tab and pick it.
 on:
   push:
     branches: [dev]
     paths-ignore:
       - '**.md'
       - 'docs/**'
-  pull_request:
-    paths:
-      - 'apps/we-electron/**'
-      - 'we-seed.json'
-      - '.github/workflows/electron-package.yaml'
   workflow_dispatch:
     inputs:
       ad4m_ref:
         description: AD4M branch, tag or commit to build the executor from
         default: dev
 
-# A newer commit on a pull request supersedes the run in flight. On dev the newer run waits
-# instead: a macOS run that has to compile the executor takes hours, and cancelling it on every
-# merge would mean it never finishes — and so never fills the cache that makes later runs fast.
+# A newer run on the same branch waits rather than cancelling the one in flight. Cancelling a
+# macOS run that is compiling the executor on every merge would mean it never finishes — and so
+# never fills the cache that makes later runs fast.
 concurrency:
-  group: electron-package-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: electron-package-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   package:

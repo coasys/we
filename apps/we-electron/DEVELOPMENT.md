@@ -41,12 +41,12 @@ The production build creates:
 
 ### Builds from CI
 
-`.github/workflows/electron-package.yaml` packages both on every push to `dev` and on pull requests
-that touch the Electron app. Download them from the workflow run's **Artifacts** section in the
+`.github/workflows/electron-package.yaml` packages both whenever something merges to `dev`. It does
+not run on pull requests. Download the builds from the workflow run's **Artifacts** section in the
 Actions tab (signed-in GitHub account required); they are kept for 14 days.
 
-To build against a different AD4M branch, run the workflow manually from the Actions tab and set
-`ad4m_ref`.
+To package a branch before it merges, or to build against a different AD4M branch, run the workflow
+manually from the Actions tab: pick the branch, and set `ad4m_ref`.
 
 The macOS build is **unsigned**, so a downloaded copy is quarantined and macOS reports it as
 damaged. Clear the quarantine flag after moving the app to Applications:
