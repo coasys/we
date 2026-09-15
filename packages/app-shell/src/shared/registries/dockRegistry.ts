@@ -1523,15 +1523,19 @@ function laneOuterEdge(id: string): SchemaNode {
  * Vertical text down a side, read top to bottom — the auto-hide tabs every docking IDE draws. Set as
  * `writing-mode` on a wrapper, which the text inherits through its own shadow root; there is no
  * design-system prop for it, and rotating with a transform would leave the box the wrong shape.
+ *
+ * The open button leads the strip, above the names, because the collapse button it undoes sat at the
+ * head of the column — the way back is where the way in was. The names are faint until pointed at,
+ * the same as a folded bar's, so the two ways of putting a panel away read as one family.
  */
 function laneStrip(id: string): SchemaNode {
   const geo = (field: string) => dockGeometryPath(id, field);
   const vertical = geo('strip.vertical');
   const edge = geo('edge');
-  // The side facing the content carries the border, as a displacing panel's frame does.
-  const inboard = (side: 'left' | 'right' | 'top' | 'bottom') => ({
-    $: `${edge} == '${{ left: 'right', right: 'left', top: 'bottom', bottom: 'top' }[side]}' ? '1px solid border' : null`,
-  });
+  // Tooltips open toward the content, which is the side of the strip with room.
+  const toward = {
+    $: `${edge} == 'left' ? 'right' : ${edge} == 'right' ? 'left' : ${edge} == 'top' ? 'bottom' : 'top'`,
+  };
   const openIcon = `${edge} == 'left' ? '${STOW_ICONS.right.icon}' : ${edge} == 'right' ? '${STOW_ICONS.left.icon}' : ${edge} == 'top' ? '${STOW_ICONS.bottom.icon}' : '${STOW_ICONS.top.icon}'`;
 
   return {
@@ -1551,15 +1555,33 @@ function laneStrip(id: string): SchemaNode {
           gap: '100',
           p: '100',
           bg: 'chrome',
-          borderLeft: inboard('left'),
-          borderRight: inboard('right'),
-          borderTop: inboard('top'),
-          borderBottom: inboard('bottom'),
+          /*
+            All the way round, as every panel frame is. Only the side facing the content had one, and on
+            the left that left the strip running straight into the sidebar — two strips of the same
+            ground with nothing between them.
+          */
+          border: '1px solid border',
           overflow: 'hidden',
           zIndex: { $: geo('layer') },
           [DOCK_STRIP_ATTR]: id,
         },
         children: [
+          {
+            type: 'we-tooltip',
+            props: { content: 'Open', placement: toward },
+            children: [
+              {
+                type: 'we-button',
+                props: {
+                  size: 'xs',
+                  square: true,
+                  variant: 'ghost',
+                  onClick: { $action: 'shellStore.toggleStowLane', args: [id] },
+                },
+                children: [{ type: 'we-icon', props: { name: { $: openIcon } } }],
+              },
+            ],
+          },
           {
             type: '$each',
             props: { items: { $: geo('strip.tabs') }, as: 'tab' },
@@ -1568,9 +1590,7 @@ function laneStrip(id: string): SchemaNode {
                 type: 'we-tooltip',
                 props: {
                   content: { $: 'tab.active ? `Hide ${tab.title}` : `Show ${tab.title}`' },
-                  placement: {
-                    $: `${edge} == 'left' ? 'right' : ${edge} == 'right' ? 'left' : ${edge} == 'top' ? 'bottom' : 'top'`,
-                  },
+                  placement: toward,
                 },
                 children: [
                   {
@@ -1582,6 +1602,14 @@ function laneStrip(id: string): SchemaNode {
                       py: { $: `${vertical} ? '200' : null` },
                       px: { $: `${vertical} ? '0' : null` },
                       width: { $: `${vertical} ? '100%' : null` },
+                      /*
+                        Faint at rest and full strength under the pointer — a folded bar's name, which
+                        takes its colours from the move handle. Replacing ghost's hover rather than
+                        adding to it, so a name answers the pointer the way the bar's does and not with
+                        a fill the bar does not have. The tab peeking is lit throughout.
+                      */
+                      color: { $: "tab.landed || tab.active ? null : 'text-faint'" },
+                      hoverProps: { color: 'text' },
                       onClick: { $action: 'shellStore.peekDock', args: [{ $: 'tab.id' }] },
                     },
                     children: [
@@ -1605,23 +1633,6 @@ function laneStrip(id: string): SchemaNode {
                     ],
                   },
                 ],
-              },
-            ],
-          },
-          { type: 'Column', props: { flex: '1' } },
-          {
-            type: 'we-tooltip',
-            props: { content: 'Open', placement: 'bottom' },
-            children: [
-              {
-                type: 'we-button',
-                props: {
-                  size: 'xs',
-                  square: true,
-                  variant: 'ghost',
-                  onClick: { $action: 'shellStore.toggleStowLane', args: [id] },
-                },
-                children: [{ type: 'we-icon', props: { name: { $: openIcon } } }],
               },
             ],
           },
