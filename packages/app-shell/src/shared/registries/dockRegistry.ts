@@ -1552,7 +1552,7 @@ function laneOuterEdge(id: string): SchemaNode {
  * Laid out from the head — down a side from the top, along the top or bottom from the left — with
  * the open glyph first, because the collapse button it undoes sat at the head of the column. Faint
  * until pointed at, the same as a folded bar's name, so the two ways of putting a panel away read as
- * one family; pointing lifts the whole strip, since the whole strip is what a press would open.
+ * one family; pointing brightens every name at once, since the whole strip is what a press would open.
  *
  * Vertical text down a side, read top to bottom — the collapsed tool windows every docking IDE draws.
  * Set as `writing-mode` on a wrapper, which the text inherits through its own shadow root; there is
@@ -1610,7 +1610,7 @@ function laneStrip(id: string): SchemaNode {
               height: '100%',
               label: 'Open',
               color: 'text-faint',
-              hoverProps: { color: 'text', bg: 'surface-hover' },
+              hoverProps: { color: 'text' },
               onClick: { $action: 'shellStore.toggleStowLane', args: [id] },
             },
             children: [
