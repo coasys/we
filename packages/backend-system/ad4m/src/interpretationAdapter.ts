@@ -35,6 +35,8 @@ import type {
 import { trace } from '@we/backend-shared';
 import { getEntitiesForPerspective, getEntity, getEntityTargetClass, getRegisteredEntityNames } from '@we/entities';
 
+import { getForeignShacl } from './perspectiveHelpers';
+
 const proxy = (dataset: DatasetHandle) => dataset as PerspectiveProxy;
 
 /** The link that marks a record as carrying a staged suggestion — the executor's `OVERLAY_KIND_PRED`. */
@@ -198,12 +200,13 @@ async function predicateNames(perspective: PerspectiveProxy): Promise<NameTables
   // Shapes only this perspective has — a module's entities, or a foreign app's. Best-effort: a
   // failure here costs a proposal its readable field names, which is worth degrading over rather
   // than failing the whole review list for.
+  //
+  // Uses `getAllShacl()` via `getForeignShacl()` — one RPC call instead of N+1 per-shape queries.
+  // A perspective with 4 foreign shapes previously generated ~60 queryLinks round trips per
+  // `proposals()` call; this settles in one.
   try {
-    const native = new Set(getRegisteredEntityNames());
-    for (const shapeName of await perspective.getShaclNames()) {
-      if (native.has(shapeName)) continue; // already covered above, without the round trip
-      const shape = await perspective.getShacl(shapeName);
-      absorb(shapeName, (shape?.properties ?? []) as { path?: string; name?: string }[]);
+    for (const { name, shape } of await getForeignShacl(perspective)) {
+      absorb(name, (shape?.properties ?? []) as { path?: string; name?: string }[]);
     }
   } catch {
     // Leave what we have.
