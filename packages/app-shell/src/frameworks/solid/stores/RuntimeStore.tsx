@@ -61,6 +61,11 @@ export interface RuntimeStore {
   canAdminister: Accessor<boolean>;
   canManageTrust: Accessor<boolean>;
   canManageNetwork: Accessor<boolean>;
+  /**
+   * The networking layer can be restarted from here. Separate from `canManageNetwork` because a
+   * backend can offer the diagnostics without a restart that actually does anything.
+   */
+  canRestartNetwork: Accessor<boolean>;
   canManageApps: Accessor<boolean>;
   canManageLanguages: Accessor<boolean>;
   canManageAi: Accessor<boolean>;
@@ -97,7 +102,12 @@ export interface RuntimeStore {
   /** Backend diagnostic blob, displayed verbatim. Empty until requested. */
   networkMetrics: Accessor<string>;
   peerInfos: Accessor<string[]>;
-  /** True while any runtime call is in flight — drives one shared spinner. */
+  /**
+   * The actions with a runtime call in flight, by name — `'loadNetworkMetrics' in runtimeStore.pending`.
+   * What a control's spinner should read, so it spins for its own call and not for everyone's.
+   */
+  pending: Accessor<string[]>;
+  /** True while any runtime call is in flight. Prefer `pending`: a spinner on this lies about which. */
   loading: Accessor<boolean>;
   /** Last runtime error, for display. Cleared at the start of each call. */
   error: Accessor<string>;
@@ -146,7 +156,10 @@ export interface RuntimeStore {
   copyNetworkMetrics: () => Promise<void>;
   restartNetwork: () => Promise<void>;
   loadPeerInfos: () => Promise<void>;
-  addPeerInfos: (infos: string) => Promise<void>;
+  /** Copy the peer records currently loaded, as a JSON array `addPeerInfos` accepts. */
+  copyPeerInfos: () => Promise<void>;
+  /** Add pasted peer records. Resolves whether they were added — clear the paste box on `result`. */
+  addPeerInfos: (infos: string) => Promise<boolean>;
   setMcpEnabled: (enabled: boolean) => Promise<void>;
   /** Set one crate's level. Adds it when it is not already set — one action for both. */
   setLogLevel: (crate: string, level: string) => Promise<void>;
@@ -180,7 +193,8 @@ export function RuntimeStoreProvider(props: ParentProps) {
   const [authorizedApps, setAuthorizedApps] = createSignal<AuthorizedApp[]>([]);
   const [networkMetrics, setNetworkMetrics] = createSignal('');
   const [peerInfos, setPeerInfos] = createSignal<string[]>([]);
-  const [loading, setLoading] = createSignal(false);
+  const [pending, setPending] = createSignal<string[]>([]);
+  const loading = createMemo(() => pending().length > 0);
   const [error, setError] = createSignal('');
   const [consentSecret, setConsentSecret] = createSignal('');
   const [mcpEnabled, setMcpEnabledSignal] = createSignal(false);
@@ -199,6 +213,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
   const canAdminister = createMemo(() => !!runtime());
   const canManageTrust = createMemo(() => !!runtime()?.trustedAgents);
   const canManageNetwork = createMemo(() => !!runtime()?.networkMetrics);
+  const canRestartNetwork = createMemo(() => !!runtime()?.restartNetwork);
   const canManageApps = createMemo(() => !!runtime()?.authorizedApps);
   const canManageLanguages = createMemo(() => !!runtime()?.languages);
   const canManageAi = createMemo(() => !!runtime()?.aiModels);
@@ -259,9 +274,15 @@ export function RuntimeStoreProvider(props: ParentProps) {
   });
 
   /**
-   * Every action runs through here: one loading flag, one error slot, and a guarantee that a
-   * rejected runtime call surfaces as text on the settings page rather than an unhandled rejection
-   * in a console nobody has open.
+   * Every action runs through here: one error slot, a record of what is in flight, and a guarantee
+   * that a rejected runtime call surfaces as text on the settings page rather than an unhandled
+   * rejection in a console nobody has open.
+   *
+   * `key` names the action the call belongs to, so a control can spin for its own call and nothing
+   * else. There used to be a single `loading` flag instead, and every spinner on the settings pages
+   * read it: fetching peer records put a spinner on "Restart networking", which looked for all the
+   * world like a restart that then failed with somebody else's timeout. It was also wrong on its
+   * own terms — two overlapping calls cleared the flag when the first one finished.
    *
    * Reports success separately from the value, rather than folding failure into `undefined`. Half
    * the port's members return void, so `undefined` cannot distinguish "it worked" from "it threw" —
@@ -271,8 +292,8 @@ export function RuntimeStoreProvider(props: ParentProps) {
    */
   type RunResult<T> = { ok: true; value: T | undefined } | { ok: false };
 
-  async function run<T>(fn: () => Promise<T> | undefined): Promise<RunResult<T>> {
-    setLoading(true);
+  async function run<T>(key: string, fn: () => Promise<T> | undefined): Promise<RunResult<T>> {
+    setPending((keys) => [...keys, key]);
     setError('');
     try {
       return { ok: true, value: await fn() };
@@ -291,7 +312,12 @@ export function RuntimeStoreProvider(props: ParentProps) {
       setError(err instanceof Error ? err.message : String(err));
       return { ok: false };
     } finally {
-      setLoading(false);
+      // One occurrence, not every one: the same action can overlap itself (a double-clicked refresh),
+      // and the second call is still running when the first returns.
+      setPending((keys) => {
+        const at = keys.indexOf(key);
+        return at === -1 ? keys : [...keys.slice(0, at), ...keys.slice(at + 1)];
+      });
     }
   }
 
@@ -354,7 +380,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
     const port = runtime();
     if (!request || !port?.approve) return;
 
-    const approval = await run(() => port.approve?.(request));
+    const approval = await run('approveConsent', () => port.approve?.(request));
     const secret = approval.ok ? approval.value : undefined;
     dropHead();
     // Capability approvals return a code the user reads out to the asking app. Trust approvals
@@ -369,7 +395,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
     if (!request) return;
     // Drop it either way: a backend with no `deny` still means the user declined, and leaving the
     // prompt up because the backend has no way to say "no" would trap them on the modal.
-    if (port?.deny) await run(() => port.deny?.(request));
+    if (port?.deny) await run('denyConsent', () => port.deny?.(request));
     dropHead();
   }
 
@@ -394,7 +420,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
   async function writeExecutorSettings(update: Partial<ExecutorSettings>): Promise<void> {
     const host = executorHost();
     if (!host) return;
-    const applied = await run(() => host.setSettings(update));
+    const applied = await run('writeExecutorSettings', () => host.setSettings(update));
     if (!applied.ok || !applied.value) return;
     setMcpEnabledSignal(applied.value.mcpEnabled);
     setMcpPortSignal(applied.value.mcpPort);
@@ -422,18 +448,20 @@ export function RuntimeStoreProvider(props: ParentProps) {
    * visible result of its own.
    */
   async function exportDatabase(): Promise<void> {
-    const path = await run(() => executorHost()?.chooseFile?.({ save: true, defaultName: 'we-backup.json' }));
+    const path = await run('exportDatabase', () =>
+      executorHost()?.chooseFile?.({ save: true, defaultName: 'we-backup.json' }),
+    );
     if (!path.ok || !path.value) return;
     setBackupStatus('Exporting…');
-    const done = await run(() => runtime()?.exportDatabase?.(path.value as string));
+    const done = await run('exportDatabase', () => runtime()?.exportDatabase?.(path.value as string));
     setBackupStatus(done.ok ? `Exported to ${path.value}` : '');
   }
 
   async function importDatabase(): Promise<void> {
-    const path = await run(() => executorHost()?.chooseFile?.({ save: false }));
+    const path = await run('importDatabase', () => executorHost()?.chooseFile?.({ save: false }));
     if (!path.ok || !path.value) return;
     setBackupStatus('Importing…');
-    const done = await run(() => runtime()?.importDatabase?.(path.value as string));
+    const done = await run('importDatabase', () => runtime()?.importDatabase?.(path.value as string));
     // Restart rather than reload: what was imported reaches the app through the backend, and the
     // backend read it into a process that has been running since before the file existed.
     setBackupStatus(done.ok ? 'Imported. Restart the data layer to see it.' : '');
@@ -460,7 +488,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
   // ── AI models ────────────────────────────────────────────────────────────────
 
   async function loadAiModels(): Promise<void> {
-    const models = await run(() => runtime()?.aiModels?.());
+    const models = await run('loadAiModels', () => runtime()?.aiModels?.());
     if (!models.ok || !models.value) return;
     // Statuses arrive separately and asynchronously; describe with what is known now, and let the
     // poll below fill them in. Rendering the list only once every status has landed would hide the
@@ -503,13 +531,13 @@ export function RuntimeStoreProvider(props: ParentProps) {
   }
 
   async function loadAiTasks(): Promise<void> {
-    const tasks = await run(() => runtime()?.aiTasks?.());
+    const tasks = await run('loadAiTasks', () => runtime()?.aiTasks?.());
     if (tasks.ok && tasks.value) setAiTasks(tasks.value);
   }
 
   async function loadAiPresets(kind: AiModelKind): Promise<void> {
     if (aiPresets()[kind]) return;
-    const names = await run(() => runtime()?.aiModelPresets?.(kind));
+    const names = await run('loadAiPresets', () => runtime()?.aiModelPresets?.(kind));
     if (names.ok && names.value) setAiPresets((cache) => ({ ...cache, [kind]: names.value as string[] }));
   }
 
@@ -534,7 +562,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
     const form = aiForm();
     if (!form || !formComplete(form)) return;
     const draft = toDraft(form);
-    const saved = await run(() =>
+    const saved = await run('saveAiModel', () =>
       form.id ? runtime()?.updateAiModel?.(form.id, draft) : runtime()?.addAiModel?.(draft),
     );
     // The form stays open on failure, holding what was typed — the error slot above it says why.
@@ -544,60 +572,60 @@ export function RuntimeStoreProvider(props: ParentProps) {
   }
 
   async function removeAiModel(id: string): Promise<void> {
-    if ((await run(() => runtime()?.removeAiModel?.(id))).ok) await loadAiModels();
+    if ((await run('removeAiModel', () => runtime()?.removeAiModel?.(id))).ok) await loadAiModels();
   }
 
   async function setDefaultAiModel(id: string): Promise<void> {
-    if ((await run(() => runtime()?.setDefaultAiModel?.(id))).ok) await loadAiModels();
+    if ((await run('setDefaultAiModel', () => runtime()?.setDefaultAiModel?.(id))).ok) await loadAiModels();
   }
 
   async function removeAiTask(id: string): Promise<void> {
-    if ((await run(() => runtime()?.removeAiTask?.(id))).ok) await loadAiTasks();
+    if ((await run('removeAiTask', () => runtime()?.removeAiTask?.(id))).ok) await loadAiTasks();
   }
 
   // ── Settings ─────────────────────────────────────────────────────────────────
 
   async function loadLanguages(): Promise<void> {
-    const installed = await run(() => runtime()?.languages?.());
+    const installed = await run('loadLanguages', () => runtime()?.languages?.());
     if (installed.ok && installed.value) setLanguages(installed.value);
   }
 
   async function installLanguage(address: string): Promise<void> {
     const trimmed = address.trim();
     if (!trimmed) return;
-    if ((await run(() => runtime()?.installLanguage?.(trimmed))).ok) await loadLanguages();
+    if ((await run('installLanguage', () => runtime()?.installLanguage?.(trimmed))).ok) await loadLanguages();
   }
 
   async function removeLanguage(address: string): Promise<void> {
-    if ((await run(() => runtime()?.removeLanguage?.(address))).ok) await loadLanguages();
+    if ((await run('removeLanguage', () => runtime()?.removeLanguage?.(address))).ok) await loadLanguages();
   }
 
   async function loadTrustedAgents(): Promise<void> {
-    const agents = await run(() => runtime()?.trustedAgents?.());
+    const agents = await run('loadTrustedAgents', () => runtime()?.trustedAgents?.());
     if (agents.ok && agents.value) setTrustedAgents(agents.value);
   }
 
   async function trustAgent(id: string): Promise<void> {
     const trimmed = id.trim();
     if (!trimmed) return;
-    if ((await run(() => runtime()?.trustAgent?.(trimmed))).ok) await loadTrustedAgents();
+    if ((await run('trustAgent', () => runtime()?.trustAgent?.(trimmed))).ok) await loadTrustedAgents();
   }
 
   async function untrustAgent(id: string): Promise<void> {
-    if ((await run(() => runtime()?.untrustAgent?.(id))).ok) await loadTrustedAgents();
+    if ((await run('untrustAgent', () => runtime()?.untrustAgent?.(id))).ok) await loadTrustedAgents();
   }
 
   async function loadAuthorizedApps(): Promise<void> {
-    const apps = await run(() => runtime()?.authorizedApps?.());
+    const apps = await run('loadAuthorizedApps', () => runtime()?.authorizedApps?.());
     if (apps.ok && apps.value) setAuthorizedApps(apps.value);
   }
 
   async function revokeApp(id: string): Promise<void> {
-    if ((await run(() => runtime()?.revokeApp?.(id))).ok) await loadAuthorizedApps();
+    if ((await run('revokeApp', () => runtime()?.revokeApp?.(id))).ok) await loadAuthorizedApps();
   }
 
   async function removeApp(id: string): Promise<void> {
-    if ((await run(() => runtime()?.removeApp?.(id))).ok) await loadAuthorizedApps();
+    if ((await run('removeApp', () => runtime()?.removeApp?.(id))).ok) await loadAuthorizedApps();
   }
 
   /**
@@ -607,7 +635,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
    */
   async function loadNetworkMetrics(): Promise<void> {
     setNetworkMetrics('');
-    const metrics = await run(() => runtime()?.networkMetrics?.());
+    const metrics = await run('loadNetworkMetrics', () => runtime()?.networkMetrics?.());
     if (metrics.ok && metrics.value !== undefined) setNetworkMetrics(metrics.value);
   }
 
@@ -627,32 +655,53 @@ export function RuntimeStoreProvider(props: ParentProps) {
   }
 
   async function restartNetwork(): Promise<void> {
-    await run(() => runtime()?.restartNetwork?.());
+    await run('restartNetwork', () => runtime()?.restartNetwork?.());
   }
 
   async function loadPeerInfos(): Promise<void> {
-    const infos = await run(() => runtime()?.peerInfos?.());
+    const infos = await run('loadPeerInfos', () => runtime()?.peerInfos?.());
     if (infos.ok && infos.value) setPeerInfos(infos.value);
+  }
+
+  /**
+   * Copies the records `loadPeerInfos` fetched, as the JSON array `addPeerInfos` reads back — so
+   * what one machine copies is exactly what the other pastes. Takes no text, for the reason
+   * `copyNetworkMetrics` gives.
+   */
+  async function copyPeerInfos(): Promise<void> {
+    const infos = peerInfos();
+    if (!infos.length) return;
+    if (await copyText(JSON.stringify(infos))) toastService.success('Peer records copied');
+    else toastService.error('Could not copy the peer records');
   }
 
   /**
    * Takes the pasted blob as one string. Peer infos are exchanged by copy-paste when discovery
    * fails, and what gets pasted is whatever the other machine printed — a JSON array, or one
    * record per line. Accepting both here means the user is not asked to reformat it first.
+   *
+   * Resolves whether the records were added. An `$action`'s `onSuccess` fires whenever the call
+   * settles, and this one never rejects — `run` catches — so a template that cleared the paste box
+   * in `onSuccess` threw away somebody's pasted records on exactly the attempt that failed and they
+   * would want to retry. It reads `result` instead.
    */
-  async function addPeerInfos(infos: string): Promise<void> {
+  async function addPeerInfos(infos: string): Promise<boolean> {
     const parsed = parsePeerInfos(infos);
     if (!parsed.length) {
       setError('Could not read any peer info from that text');
-      return;
+      return false;
     }
-    if ((await run(() => runtime()?.addPeerInfos?.(parsed))).ok) await loadPeerInfos();
+    if (!(await run('addPeerInfos', () => runtime()?.addPeerInfos?.(parsed))).ok) return false;
+    toastService.success(`Added ${parsed.length} peer ${parsed.length === 1 ? 'record' : 'records'}`);
+    await loadPeerInfos();
+    return true;
   }
 
   const store: RuntimeStore = {
     canAdminister,
     canManageTrust,
     canManageNetwork,
+    canRestartNetwork,
     canManageApps,
     canManageLanguages,
     canManageAi,
@@ -676,6 +725,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
     authorizedApps,
     networkMetrics,
     peerInfos,
+    pending,
     loading,
     error,
     pendingConsent,
@@ -704,6 +754,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
     copyNetworkMetrics,
     restartNetwork,
     loadPeerInfos,
+    copyPeerInfos,
     addPeerInfos,
     setMcpEnabled,
     setMcpPort,

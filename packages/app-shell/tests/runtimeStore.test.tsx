@@ -553,6 +553,96 @@ describe('trust settings', () => {
   });
 });
 
+describe('what is in flight', () => {
+  /** A promise the test settles by hand, so a call can be held open mid-flight. */
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((r) => (resolve = r));
+    return { promise, resolve };
+  }
+
+  it('names the action a call belongs to, so one control does not spin for another', async () => {
+    // Fetching peer records put a spinner on "Restart networking" when both read one flag.
+    const infos = deferred<string[]>();
+    const { port } = stubRuntime({ peerInfos: () => infos.promise, restartNetwork: async () => {} });
+    ports = { runtime: port };
+    const store = mount();
+
+    const fetching = store.loadPeerInfos();
+    expect(store.pending()).toEqual(['loadPeerInfos']);
+    expect(store.pending()).not.toContain('restartNetwork');
+
+    infos.resolve(['record']);
+    await fetching;
+    expect(store.pending()).toEqual([]);
+    expect(store.peerInfos()).toEqual(['record']);
+  });
+
+  it('keeps an action in flight until its last overlapping call returns', async () => {
+    // A double-clicked refresh: the single flag cleared when the first call returned, with the second
+    // still running.
+    const first = deferred<string[]>();
+    const second = deferred<string[]>();
+    const pendingCalls = [first, second];
+    const { port } = stubRuntime({ trustedAgents: () => pendingCalls.shift()!.promise });
+    ports = { runtime: port };
+    const store = mount();
+
+    const a = store.loadTrustedAgents();
+    const b = store.loadTrustedAgents();
+    first.resolve([]);
+    await a;
+    expect(store.pending()).toEqual(['loadTrustedAgents']);
+    expect(store.loading()).toBe(true);
+
+    second.resolve([]);
+    await b;
+    expect(store.pending()).toEqual([]);
+    expect(store.loading()).toBe(false);
+  });
+});
+
+describe('exchanging peer records', () => {
+  it('reports a failed add, so the paste box is not cleared on the attempt that failed', async () => {
+    const { port } = stubRuntime({
+      addPeerInfos: async () => {
+        throw new Error('K2SpaceNotFound');
+      },
+      peerInfos: async () => [],
+    });
+    ports = { runtime: port };
+    const store = mount();
+
+    expect(await store.addPeerInfos('["a"]')).toBe(false);
+    expect(store.error()).toBe('K2SpaceNotFound');
+    expect(await store.addPeerInfos('   ')).toBe(false);
+  });
+
+  it('reports a successful add and reloads what the node now holds', async () => {
+    const added: string[][] = [];
+    const { port } = stubRuntime({
+      addPeerInfos: async (infos) => {
+        added.push(infos);
+      },
+      peerInfos: async () => ['mine', 'theirs'],
+    });
+    ports = { runtime: port };
+    const store = mount();
+
+    expect(await store.addPeerInfos('theirs')).toBe(true);
+    expect(added).toEqual([['theirs']]);
+    expect(store.peerInfos()).toEqual(['mine', 'theirs']);
+  });
+
+  it('offers a restart only where the backend has one', () => {
+    ports = { runtime: stubRuntime().port };
+    expect(mount().canRestartNetwork()).toBe(false);
+
+    ports = { runtime: stubRuntime({ restartNetwork: async () => {} }).port };
+    expect(mount().canRestartNetwork()).toBe(true);
+  });
+});
+
 describe('the consent queue', () => {
   it('surfaces a request raised while the app is running', () => {
     const { port, fire } = stubRuntime();

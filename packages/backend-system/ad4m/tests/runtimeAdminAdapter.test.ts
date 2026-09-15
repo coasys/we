@@ -38,6 +38,12 @@ describe('what a connection is allowed to administer', () => {
     expect(port.authorizedApps).toBeDefined();
   });
 
+  it('does not offer a network restart the executor does not perform', () => {
+    // `runtime.restartHolochain` is a no-op on the executor this package pins. Offering it put a
+    // button in settings that reported success and restarted nothing.
+    expect(createAd4mRuntimeAdmin(stubClient()).restartNetwork).toBeUndefined();
+  });
+
   it('withholds node-wide changes from a guest', () => {
     // A hosted or multi-user node: trust, peer networking and languages change something every user
     // of that node shares, and "restart networking" on a shared machine is a control that should not

@@ -2698,6 +2698,7 @@ RuntimeStore:
   - canAdminister: boolean — this backend exposes runtime administration at all
   - canManageTrust: boolean — gate the trusted-agents section on this
   - canManageNetwork: boolean — gate the peer-network section on this
+  - canRestartNetwork: boolean — the backend can restart its networking layer, and the restart does something. Gate a restart control on this, not on canManageNetwork
   - canManageApps: boolean — gate the authorized-apps section on this
   - canManageLanguages: boolean — gate the languages section on this
   - canManageAi: boolean — gate the AI section on this
@@ -2714,7 +2715,8 @@ RuntimeStore:
   - authorizedApps: AuthorizedApp[] — external apps holding credentials (id, name, description, url, iconUrl, capabilities, revoked). Empty until loadAuthorizedApps() runs
   - networkMetrics: string — backend diagnostic blob, already formatted for reading (indented JSON on AD4M, hashes decoded). Show it in a read-only CodeEditor with language json. Empty until requested, and emptied again while a fetch runs
   - peerInfos: string[] — this node peer-discovery records, for out-of-band exchange
-  - loading: boolean — true while any runtime call is in flight
+  - pending: string[] — names of the actions with a runtime call in flight. A control's spinner reads its own: { $: "'loadPeerInfos' in runtimeStore.pending" }
+  - loading: boolean — true while any runtime call is in flight. Prefer pending, so a spinner does not light for an unrelated call
   - error: string — the last runtime error, for display
   - canBackUp: boolean — a database export/import can be offered: the backend writes the file and the host can name one. False on web
   - logLevels: { crate, level }[] — per-crate log levels the user has set, sorted. Empty means the backend own defaults are in use
@@ -2747,8 +2749,9 @@ RuntimeStore:
   - loadNetworkMetrics(): fetches the diagnostic blob
   - copyNetworkMetrics(): copies the loaded metrics to the clipboard, with a toast either way. Takes no text: a copy action names what it copies
   - restartNetwork(): restarts the peer-networking layer
-  - loadPeerInfos(): fetches this node peer-discovery records
-  - addPeerInfos(text: string): adds pasted peer records (JSON array or one per line)
+  - loadPeerInfos(): fetches the peer-discovery records this node holds — its own and every peer it knows. Can take tens of seconds on a busy node; show a state on 'loadPeerInfos' in pending
+  - copyPeerInfos(): copies the loaded peer records as a JSON array addPeerInfos accepts, with a toast either way
+  - addPeerInfos(text: string): adds pasted peer records (JSON array or one per line). Resolves true when added — clear the paste box on result in onSuccess, since onSuccess also fires after a failure
   - setMcpEnabled(enabled: boolean): turns MCP on or off for the backend next start
   - setLogLevel(crate: string, level: string): sets one crate log level — adds it when not already set, so there is no separate add. Levels: error, warn, info, debug, trace
   - removeLogLevel(crate: string): drops an override, returning that crate to the backend default

@@ -209,7 +209,7 @@ const modelForm: SchemaNode = {
               type: 'we-button',
               props: {
                 text: 'Save',
-                loading: { $: 'runtimeStore.loading' },
+                loading: { $: "'saveAiModel' in runtimeStore.pending" },
                 disabled: { $: '!runtimeStore.aiFormComplete' },
                 onClick: { $action: 'runtimeStore.saveAiModel' },
               },

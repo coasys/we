@@ -390,7 +390,7 @@ export const backup: SchemaNode = {
                 text: 'Export',
                 size: 'sm',
                 variant: 'secondary',
-                loading: { $: 'runtimeStore.loading' },
+                loading: { $: "'exportDatabase' in runtimeStore.pending" },
                 onClick: { $action: 'runtimeStore.exportDatabase' },
               },
             },
@@ -400,7 +400,7 @@ export const backup: SchemaNode = {
                 text: 'Import',
                 size: 'sm',
                 variant: 'ghost',
-                loading: { $: 'runtimeStore.loading' },
+                loading: { $: "'importDatabase' in runtimeStore.pending" },
                 onClick: { $action: 'runtimeStore.importDatabase' },
               },
             },
@@ -603,7 +603,7 @@ const networkMetricsModal: SchemaNode = {
             else: {
               type: '$if',
               props: {
-                condition: { $: 'runtimeStore.error && !runtimeStore.loading' },
+                condition: { $: "runtimeStore.error && !('loadNetworkMetrics' in runtimeStore.pending)" },
                 then: {
                   type: 'we-alert',
                   props: { variant: 'danger' },
@@ -636,7 +636,7 @@ const networkMetricsModal: SchemaNode = {
                 variant: 'secondary',
                 // Disabled rather than spinning: the body already shows the fetch in progress, and a
                 // second spinner in the button said the same thing twice.
-                disabled: { $: 'runtimeStore.loading' },
+                disabled: { $: "'loadNetworkMetrics' in runtimeStore.pending" },
                 onClick: { $action: 'runtimeStore.loadNetworkMetrics' },
               },
               children: [{ type: 'we-icon', props: { name: 'arrows-clockwise' } }, 'Refresh'],
@@ -649,6 +649,180 @@ const networkMetricsModal: SchemaNode = {
                 onClick: { $action: 'runtimeStore.copyNetworkMetrics' },
               },
               children: [{ type: 'we-icon', props: { name: 'copy' } }, 'Copy to clipboard'],
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
+/**
+ * Swapping peer records by hand, for when discovery cannot introduce two nodes.
+ *
+ * A modal rather than the inline disclosure it replaced. The disclosure opened under a button that
+ * said "Exchange peer info" and nothing else, into a 120px well of records with no way to copy them
+ * and nothing on screen while they loaded — which on a busy node is up to half a minute of an empty
+ * box. Somebody who pressed it could not tell what it was for, whether it was doing anything, or
+ * what they were meant to do with what appeared.
+ *
+ * Opening it empties the paste box: one field, and the peer's records are still wherever they were
+ * sent from, where a blob left over from last time would be added by mistake. (On open rather than
+ * on close because a modal's `close` takes one handler; only `on…` props take a list.)
+ */
+const peerExchangeModal: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'local.showPeerExchange' },
+    then: {
+      type: 'we-modal',
+      props: { size: 'md', close: { $setLocal: 'showPeerExchange', value: false } },
+      children: [
+        {
+          type: 'Row',
+          slot: 'header',
+          props: { gap: '200', ay: 'center' },
+          children: [
+            { type: 'we-icon', props: { name: 'handshake', color: 'text-muted' } },
+            { type: 'we-text', props: { variant: 'heading-md' }, children: ['Exchange peer info'] },
+          ],
+        },
+        {
+          type: 'Column',
+          props: { gap: '500' },
+          children: [
+            {
+              type: 'we-text',
+              props: { color: 'text-muted' },
+              children: [
+                'Nodes normally find each other through a discovery service. When that cannot connect you and a peer — a blocked network, or a discovery server that is down — you can swap these records by hand instead: send them yours, and add theirs below.',
+              ],
+            },
+            {
+              type: '$if',
+              props: {
+                condition: { $: 'runtimeStore.error && !count(runtimeStore.pending)' },
+                then: { type: 'we-alert', props: { variant: 'danger' }, children: [{ $: 'runtimeStore.error' }] },
+              },
+            },
+            {
+              type: 'Column',
+              props: { gap: '200' },
+              children: [
+                {
+                  type: 'Row',
+                  props: { gap: '300', ay: 'center', ax: 'between', wrap: true },
+                  children: [
+                    {
+                      type: 'Column',
+                      props: { gap: '100' },
+                      children: [
+                        { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Records to send'] },
+                        {
+                          type: 'we-text',
+                          props: { variant: 'footnote', color: 'text-muted' },
+                          children: ["This node's own, and those of any peers it already knows."],
+                        },
+                      ],
+                    },
+                    {
+                      type: 'we-button',
+                      props: {
+                        size: 'sm',
+                        variant: 'secondary',
+                        disabled: { $: '!count(runtimeStore.peerInfos)' },
+                        onClick: { $action: 'runtimeStore.copyPeerInfos' },
+                      },
+                      children: [{ type: 'we-icon', props: { name: 'copy' } }, 'Copy all'],
+                    },
+                  ],
+                },
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: 'count(runtimeStore.peerInfos)' },
+                    // One block per record rather than the whole array as children: the array would
+                    // stringify, and a record reads as a unit this way.
+                    then: {
+                      type: 'we-scroll-area',
+                      props: { maxHeight: '200px' },
+                      children: [
+                        {
+                          type: 'Column',
+                          props: { gap: '200' },
+                          children: [
+                            {
+                              type: '$each',
+                              props: { items: { $: 'runtimeStore.peerInfos' }, as: 'info' },
+                              children: [{ type: 'we-code', props: { block: true }, children: [{ $: 'info' }] }],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                    else: {
+                      type: '$if',
+                      props: {
+                        condition: { $: "'loadPeerInfos' in runtimeStore.pending" },
+                        then: {
+                          type: 'Row',
+                          props: { gap: '300', ay: 'center', p: '400', ax: 'center' },
+                          children: [
+                            { type: 'we-spinner', props: { size: 'sm' } },
+                            {
+                              type: 'we-text',
+                              props: { color: 'text-muted' },
+                              children: ['Fetching records — this can take a while on a busy node…'],
+                            },
+                          ],
+                        },
+                        else: {
+                          type: 'we-text',
+                          props: { variant: 'footnote', color: 'text-muted' },
+                          children: ['No records yet. A node has records once it has joined a shared space.'],
+                        },
+                      },
+                    },
+                  },
+                },
+              ],
+            },
+            {
+              type: 'we-form-field',
+              props: { label: "Your peer's records" },
+              children: [
+                {
+                  type: 'we-textarea',
+                  props: {
+                    rows: 4,
+                    placeholder: 'Paste the records your peer copied…',
+                    value: { $: 'local.peerInfoText' },
+                    onInput: { $setLocal: 'peerInfoText', value: { $: 'event.detail' } },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+        {
+          type: 'Row',
+          slot: 'footer',
+          props: { gap: '200', ax: 'end', wrap: true },
+          children: [
+            {
+              type: 'we-button',
+              props: {
+                variant: 'primary',
+                disabled: { $: "!trim(local.peerInfoText) || 'addPeerInfos' in runtimeStore.pending" },
+                loading: { $: "'addPeerInfos' in runtimeStore.pending" },
+                onClick: {
+                  $action: 'runtimeStore.addPeerInfos',
+                  args: [{ $: 'local.peerInfoText' }],
+                  // `result` is whether they were added; a failed attempt keeps the paste to retry.
+                  onSuccess: [{ $if: { condition: { $: 'result' }, then: { $setLocal: 'peerInfoText', value: '' } } }],
+                },
+              },
+              children: ["Add peer's records"],
             },
           ],
         },
@@ -670,6 +844,11 @@ export const peerNetwork: SchemaNode = {
       // and the rest of the section fetches what it shows when it is opened.
       children: [
         {
+          type: 'we-text',
+          props: { variant: 'footnote', color: 'text-muted' },
+          children: ["For when this node can't reach its peers, or sync seems stuck."],
+        },
+        {
           type: 'Row',
           props: { gap: '200', wrap: true },
           children: [
@@ -688,101 +867,46 @@ export const peerNetwork: SchemaNode = {
             {
               type: 'we-button',
               props: {
-                text: 'Restart networking',
                 size: 'sm',
                 variant: 'secondary',
-                loading: { $: 'runtimeStore.loading' },
-                onClick: { $action: 'runtimeStore.restartNetwork' },
+                onClick: [
+                  { $setLocal: 'peerInfoText', value: '' },
+                  { $setLocal: 'showPeerExchange', value: true },
+                  { $action: 'runtimeStore.loadPeerInfos' },
+                ],
               },
+              children: [{ type: 'we-icon', props: { name: 'handshake' } }, 'Exchange peer info'],
             },
+            // Offered only where the backend's restart does something: a control that spins and
+            // reports success over a no-op is worse than no control.
             {
-              type: 'we-button',
+              type: '$if',
               props: {
-                text: 'Exchange peer info',
-                size: 'sm',
-                variant: 'ghost',
-                onClick: [{ $toggleLocal: 'showPeerExchange' }, { $action: 'runtimeStore.loadPeerInfos' }],
+                condition: { $: 'runtimeStore.canRestartNetwork' },
+                then: {
+                  type: 'we-button',
+                  props: {
+                    size: 'sm',
+                    variant: 'secondary',
+                    loading: { $: "'restartNetwork' in runtimeStore.pending" },
+                    onClick: { $action: 'runtimeStore.restartNetwork' },
+                  },
+                  children: [{ type: 'we-icon', props: { name: 'arrows-clockwise' } }, 'Restart networking'],
+                },
               },
             },
           ],
         },
         networkMetricsModal,
-        // Manual peer exchange — the escape hatch for when discovery cannot find anyone.
-        {
-          type: '$if',
-          props: {
-            condition: { $: 'local.showPeerExchange' },
-            then: {
-              type: 'Column',
-              props: { gap: '200' },
-              children: [
-                {
-                  type: 'we-text',
-                  props: { variant: 'footnote', color: 'text-muted' },
-                  children: [
-                    'Share these records with a peer who cannot find you, and paste theirs below. Only needed when automatic discovery fails.',
-                  ],
-                },
-                // One block per record rather than the whole array as children: the array
-                // would stringify, and each record is separately copyable this way.
-                {
-                  type: 'we-scroll-area',
-                  props: { maxHeight: '120px' },
-                  children: [
-                    {
-                      type: 'Column',
-                      props: { gap: '200' },
-                      children: [
-                        {
-                          type: '$each',
-                          props: { items: { $: 'runtimeStore.peerInfos' }, as: 'info' },
-                          children: [
-                            {
-                              type: 'we-code',
-                              props: { block: true },
-                              children: [{ $: 'info' }],
-                            },
-                          ],
-                        },
-                      ],
-                    },
-                  ],
-                },
-                {
-                  type: 'we-textarea',
-                  props: {
-                    rows: 3,
-                    placeholder: "Paste a peer's info here...",
-                    value: { $: 'local.peerInfoText' },
-                    onInput: { $setLocal: 'peerInfoText', value: { $: 'event.detail' } },
-                  },
-                },
-                {
-                  type: 'we-button',
-                  props: {
-                    text: 'Add peer info',
-                    size: 'sm',
-                    variant: 'secondary',
-                    disabled: { $: '!local.peerInfoText' },
-                    onClick: {
-                      $action: 'runtimeStore.addPeerInfos',
-                      args: [{ $: 'local.peerInfoText' }],
-                      onSuccess: [{ $setLocal: 'peerInfoText', value: '' }],
-                    },
-                  },
-                },
-              ],
-            },
-          },
-        },
+        peerExchangeModal,
       ],
     }),
   },
 };
 
 /**
- * Local state the network sections need: two input buffers, a disclosure toggle and the metrics
- * modal. Declared by whichever page renders those sections, since `$localState` is scoped to the
+ * Local state the network sections need: two input buffers and whether each of the two network
+ * modals is open. Declared by whichever page renders those sections, since `$localState` is scoped to the
  * node that declares it.
  */
 export const networkLocalState = {

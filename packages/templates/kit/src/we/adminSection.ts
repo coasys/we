@@ -7,8 +7,8 @@ import type { SchemaNode } from '@we/schema-shared';
  * than one WE writes, so a manual refresh is not a convenience here — nothing in the app changes
  * these, and there is no subscription to tell us when something else did.
  *
- * WE-domain rather than layout: the spinner reads `runtimeStore.loading`, so a deployment without
- * that store gets a control that never resolves.
+ * WE-domain rather than layout: the spinner reads `runtimeStore.pending` for the refresh action's
+ * name, so a deployment without that store gets a control that never resolves.
  */
 export interface AdminSectionOptions {
   title: string;
@@ -49,7 +49,9 @@ export function adminSection(opts: AdminSectionOptions): SchemaNode {
                   variant: 'ghost',
                   size: 'sm',
                   onClick: { $action: refresh },
-                  loading: { $: 'runtimeStore.loading' },
+                  // Spins for this section's own reload. It read the store-wide flag once, and every
+                  // heading on the page spun whenever anything anywhere was fetching.
+                  loading: { $: `'${refresh.slice(refresh.lastIndexOf('.') + 1)}' in runtimeStore.pending` },
                 },
                 children: [{ type: 'we-icon', props: { name: 'arrows-clockwise' } }],
               },

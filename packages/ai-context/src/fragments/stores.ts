@@ -66,6 +66,7 @@ export const storeEntries: StoreEntry[] = [
       canAdminister: { type: 'boolean' },
       canManageTrust: { type: 'boolean' },
       canManageNetwork: { type: 'boolean' },
+      canRestartNetwork: { type: 'boolean' },
       canManageApps: { type: 'boolean' },
       canManageLanguages: { type: 'boolean' },
       canManageAi: { type: 'boolean' },
@@ -125,6 +126,7 @@ export const storeEntries: StoreEntry[] = [
       },
       networkMetrics: { type: 'string' },
       peerInfos: { type: 'array' },
+      pending: { type: 'array' },
       loading: { type: 'boolean' },
       error: { type: 'string' },
       pendingConsent: { type: 'object', properties: ['kind', 'title', 'message', 'app', 'peerId'] },
@@ -161,6 +163,7 @@ export const storeEntries: StoreEntry[] = [
       'copyNetworkMetrics',
       'restartNetwork',
       'loadPeerInfos',
+      'copyPeerInfos',
       'addPeerInfos',
       'approveConsent',
       'denyConsent',
@@ -647,6 +650,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
         canAdminister: 'boolean — this backend exposes runtime administration at all',
         canManageTrust: 'boolean — gate the trusted-agents section on this',
         canManageNetwork: 'boolean — gate the peer-network section on this',
+        canRestartNetwork:
+          'boolean — the backend can restart its networking layer, and the restart does something. Gate a restart control on this, not on canManageNetwork',
         canManageApps: 'boolean — gate the authorized-apps section on this',
         canManageLanguages: 'boolean — gate the languages section on this',
         canManageAi: 'boolean — gate the AI section on this',
@@ -679,7 +684,10 @@ export function generateStoresText(entries: StoreEntry[]): string {
         networkMetrics:
           'string — backend diagnostic blob, already formatted for reading (indented JSON on AD4M, hashes decoded). Show it in a read-only CodeEditor with language json. Empty until requested, and emptied again while a fetch runs',
         peerInfos: 'string[] — this node peer-discovery records, for out-of-band exchange',
-        loading: 'boolean — true while any runtime call is in flight',
+        pending:
+          "string[] — names of the actions with a runtime call in flight. A control's spinner reads its own: { $: \"'loadPeerInfos' in runtimeStore.pending\" }",
+        loading:
+          'boolean — true while any runtime call is in flight. Prefer pending, so a spinner does not light for an unrelated call',
         error: 'string — the last runtime error, for display',
         pendingConsent:
           "ConsentRequest | null — a request awaiting the user's decision (kind: 'capability' | 'trust', title, message, app, peerId)",
@@ -718,8 +726,12 @@ export function generateStoresText(entries: StoreEntry[]): string {
         copyNetworkMetrics:
           '(): copies the loaded metrics to the clipboard, with a toast either way. Takes no text: a copy action names what it copies',
         restartNetwork: '(): restarts the peer-networking layer',
-        loadPeerInfos: '(): fetches this node peer-discovery records',
-        addPeerInfos: '(text: string): adds pasted peer records (JSON array or one per line)',
+        loadPeerInfos:
+          "(): fetches the peer-discovery records this node holds — its own and every peer it knows. Can take tens of seconds on a busy node; show a state on 'loadPeerInfos' in pending",
+        copyPeerInfos:
+          '(): copies the loaded peer records as a JSON array addPeerInfos accepts, with a toast either way',
+        addPeerInfos:
+          '(text: string): adds pasted peer records (JSON array or one per line). Resolves true when added — clear the paste box on result in onSuccess, since onSuccess also fires after a failure',
         approveConsent: '(): grants the pending request',
         denyConsent: '(): declines the pending request',
         dismissConsentSecret: '(): clears the confirmation code display',

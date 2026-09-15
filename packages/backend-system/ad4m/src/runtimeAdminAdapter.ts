@@ -521,9 +521,15 @@ export function createAd4mRuntimeAdmin(backendClient: unknown, options: Ad4mRunt
       return formatNetworkMetrics(await client.runtime.getNetworkMetrics());
     },
 
-    async restartNetwork() {
-      await client.runtime.restartHolochain();
-    },
+    /*
+      No `restartNetwork`. The executor's `runtime.restartHolochain` handler returns true without
+      restarting anything — its body stopped calling `HolochainService::restart_service()` when the
+      API moved from GraphQL to WebSocket RPC — so offering it here put a button in settings that
+      spun, reported success, and changed nothing. Leaving the member off makes the shell hide the
+      control. Put it back, wrapping `client.runtime.restartHolochain()`, once the executor this
+      package pins restarts the conductor again; expect that call to need a longer timeout than the
+      client's default, since a conductor restart can outlast it.
+    */
 
     async peerInfos() {
       return client.runtime.hcAgentInfos();
