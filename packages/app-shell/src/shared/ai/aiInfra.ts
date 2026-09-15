@@ -1,29 +1,87 @@
 /**
- * aiInfra — the browser-side AI infrastructure: direct Anthropic API access, SSE stream parsing,
- * the schema-mutation tool definition, and prompt assembly.
+ * aiInfra — browser-side AI infrastructure for the WE schema editor.
  *
- * Isolated from the edit-session store on purpose: this file is the complete surface of "the
- * browser calls a model with the user's API key". A backend-executed assistant (the pattern the
- * assistant module introduces, where the executor runs models and writes replies into the
- * dataset) would replace exactly this file — the sessions, panels, and undo history it serves
- * are unaffected. Keep it free of Solid and store imports so that boundary stays real.
+ * All AI requests route through AD4M's OpenAI-compatible endpoint
+ * (`/v1/chat/completions`) with SSE streaming. The executor handles
+ * provider dispatch (Anthropic, Ollama, OpenAI) — WE never calls a
+ * provider directly.
+ *
+ * Also manages the split context system: a compact core prompt (~7K tokens)
+ * plus on-demand context tools the model calls to load schema sections.
+ * Context tools resolve locally in the browser — each returns a pre-compiled
+ * section of the schema reference.
+ *
+ * Isolated from the edit-session store on purpose: this file owns the wire
+ * protocol and the prompt surface. The conversation loop, tool resolution,
+ * and patch application live in `EditorStore`. Keep it free of Solid and
+ * store imports so that boundary stays real.
  */
 import { chatSystemPreamble } from '@shared/prompts/chatSystemPrompt';
 import type { EntityManifestEntry } from '@we/backend-shared';
 
+// ── AD4M connection ──────────────────────────────────────────────────────
+
+/** The connection details needed to reach AD4M's /v1 API surface. */
+export interface Ad4mConnection {
+  /** HTTP base URL of the executor (e.g. `http://localhost:12000`). */
+  baseUrl: string;
+  /** Bearer token for authentication. */
+  token: string;
+}
+
+// ── System prompt (split context) ─────────────────────────────────────────
+
 /**
- * The full system prompt for schema-editing chat.
+ * The compact core system prompt for tool-based AI chat.
  *
- * The schema reference it embeds is ~117 KB of generated text, and it is needed only when a
- * request is actually sent. As a module-level constant it was in the first bytes every visitor
- * downloaded, whether or not they ever opened the assistant. Resolved once, then cached.
+ * Contains the chat preamble + rules, routing, entity models, design tokens,
+ * and a directory of available context tools (~7K tokens total).
+ * Resolved once on first use, then cached.
  */
-let promptLoad: Promise<string> | undefined;
+let corePromptLoad: Promise<string> | undefined;
+
+export function chatCorePrompt(): Promise<string> {
+  corePromptLoad ??= import('@we/ai-context').then(({ coreContext }) => chatSystemPreamble + coreContext);
+  return corePromptLoad;
+}
+
+/**
+ * The full monolithic system prompt (kept for backward compatibility).
+ * Used when context tools are not available (e.g. Anthropic without tool support).
+ */
+let fullPromptLoad: Promise<string> | undefined;
 
 export function chatSystemPrompt(): Promise<string> {
-  promptLoad ??= import('@we/ai-context').then(({ schemaContext }) => chatSystemPreamble + schemaContext);
-  return promptLoad;
+  fullPromptLoad ??= import('@we/ai-context').then(({ schemaContext }) => chatSystemPreamble + schemaContext);
+  return fullPromptLoad;
 }
+
+// ── Context sections (on-demand) ──────────────────────────────────────────
+
+let sectionsLoad: Promise<Record<string, string>> | undefined;
+
+/** Load the context sections map.  Each key matches a context tool name. */
+export function loadContextSections(): Promise<Record<string, string>> {
+  sectionsLoad ??= import('@we/ai-context').then(({ contextSections }) => contextSections);
+  return sectionsLoad;
+}
+
+/** A context tool definition — no parameters, returns section text. */
+interface ContextToolDef {
+  name: string;
+  description: string;
+  parameters: { type: 'object'; properties: Record<string, never> };
+}
+
+let toolDefsLoad: Promise<ContextToolDef[]> | undefined;
+
+/** Load the context tool definitions (provider-neutral format). */
+export function loadContextToolDefs(): Promise<ContextToolDef[]> {
+  toolDefsLoad ??= import('@we/ai-context').then(({ contextToolDefs }) => [...contextToolDefs] as ContextToolDef[]);
+  return toolDefsLoad;
+}
+
+// ── Tool definitions ──────────────────────────────────────────────────────
 
 /** Tool definition for schema mutations (ID-based patching). */
 export const updateSchemaTool = {
@@ -94,7 +152,7 @@ export const updateSchemaTool = {
 
 /**
  * Format external (non-WE) manifest entries into a human-readable text block.
- * WE models are already described in schemaContext so only their names are sent;
+ * WE models already appear in the schema context so only their names get sent;
  * external models need full property descriptions because the AI has no other
  * knowledge of their structure.
  */
@@ -103,8 +161,6 @@ export function formatExternalManifestForPrompt(manifest: EntityManifestEntry[])
   const lines: string[] = ['## External Perspective Models', ''];
   for (const entry of manifest) {
     lines.push(`### ${entry.name}`);
-    // A HasMany relation is a collection of IRIs (type === 'uri' && isCollection).
-    // Scalar properties are everything else (strings, numbers, booleans, or single IRIs).
     const dataProps = entry.properties.filter((p) => !(p.isCollection && p.type === 'uri'));
     const relations = entry.properties.filter((p) => p.isCollection && p.type === 'uri');
     for (const prop of dataProps) {
@@ -128,14 +184,47 @@ export function formatExternalManifestForPrompt(manifest: EntityManifestEntry[])
   return lines.join('\n');
 }
 
+// ── Stream result ────────────────────────────────────────────────────────
+
 export interface StreamResult {
   textContent: string;
   toolCalls: Array<{ id: string; name: string; input: Record<string, unknown> }>;
   stopReason: string;
 }
 
-/** Parse an SSE stream and return extracted text + tool calls + stop reason */
-export async function parseSSEStream(
+// ── Tool format (OpenAI) ─────────────────────────────────────────────────
+
+/**
+ * Build the tools array for the OpenAI-compatible request body.
+ * Combines context tools + update_schema in OpenAI function-calling format.
+ */
+export async function buildTools(): Promise<unknown[]> {
+  const contextDefs = await loadContextToolDefs();
+
+  // OpenAI format: { type: "function", function: { name, description, parameters } }
+  const contextTools = contextDefs.map((def) => ({
+    type: 'function',
+    function: {
+      name: def.name,
+      description: def.description,
+      parameters: def.parameters,
+    },
+  }));
+  const updateSchemaOpenAI = {
+    type: 'function',
+    function: {
+      name: updateSchemaTool.name,
+      description: updateSchemaTool.description,
+      parameters: updateSchemaTool.input_schema,
+    },
+  };
+  return [...contextTools, updateSchemaOpenAI];
+}
+
+// ── OpenAI SSE streaming ─────────────────────────────────────────────────
+
+/** Parse an OpenAI-compatible SSE stream and return extracted text + tool calls + stop reason. */
+export async function parseOpenAISSE(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   onTextDelta: (text: string) => void,
   onToolUseStart?: (textSoFar: string) => void,
@@ -144,13 +233,10 @@ export async function parseSSEStream(
   let buffer = '';
   let textContent = '';
   let stopReason = '';
+  let toolUseNotified = false;
 
-  // Tool use tracking
-  let currentBlockType: 'text' | 'tool_use' | null = null;
-  let currentToolId = '';
-  let currentToolName = '';
-  let toolInputBuffer = '';
-  const toolCalls: Array<{ id: string; name: string; input: Record<string, unknown> }> = [];
+  // Track tool calls by index — arguments stream in pieces across chunks
+  const toolCallBuilders: Map<number, { id: string; name: string; argsBuffer: string }> = new Map();
 
   while (true) {
     const { done, value } = await reader.read();
@@ -162,52 +248,50 @@ export async function parseSSEStream(
 
     for (const line of lines) {
       if (!line.startsWith('data: ')) continue;
-      const data = line.slice(6);
+      const data = line.slice(6).trim();
       if (data === '[DONE]') continue;
 
       try {
-        const event = JSON.parse(data);
+        const chunk = JSON.parse(data);
+        const choice = chunk.choices?.[0];
+        if (!choice) continue;
 
-        switch (event.type) {
-          case 'content_block_start':
-            if (event.content_block?.type === 'text') {
-              currentBlockType = 'text';
-            } else if (event.content_block?.type === 'tool_use') {
-              currentBlockType = 'tool_use';
-              currentToolId = event.content_block.id ?? '';
-              currentToolName = event.content_block.name ?? '';
-              toolInputBuffer = '';
-              onToolUseStart?.(textContent);
-            }
-            break;
+        const delta = choice.delta;
 
-          case 'content_block_delta':
-            if (currentBlockType === 'text' && event.delta?.text) {
-              textContent += event.delta.text;
-              onTextDelta(textContent);
-            } else if (currentBlockType === 'tool_use' && event.delta?.partial_json) {
-              toolInputBuffer += event.delta.partial_json;
-            }
-            break;
+        // Text content delta
+        if (delta?.content) {
+          textContent += delta.content;
+          onTextDelta(textContent);
+        }
 
-          case 'content_block_stop':
-            if (currentBlockType === 'tool_use' && currentToolId) {
-              try {
-                const input = JSON.parse(toolInputBuffer);
-                toolCalls.push({ id: currentToolId, name: currentToolName, input });
-              } catch {
-                // Malformed tool input — will be handled as no tool calls
-                console.error('Failed to parse tool input:', toolInputBuffer.slice(0, 200));
+        // Tool call deltas — streamed incrementally
+        if (delta?.tool_calls) {
+          for (const tc of delta.tool_calls) {
+            const idx = tc.index ?? 0;
+            if (!toolCallBuilders.has(idx)) {
+              // First fragment for this tool call — carries id and function name
+              toolCallBuilders.set(idx, {
+                id: tc.id ?? `tc_${idx}_${Date.now()}`,
+                name: tc.function?.name ?? '',
+                argsBuffer: tc.function?.arguments ?? '',
+              });
+              if (!toolUseNotified) {
+                onToolUseStart?.(textContent);
+                toolUseNotified = true;
+              }
+            } else {
+              // Subsequent fragment — append arguments
+              const builder = toolCallBuilders.get(idx)!;
+              if (tc.function?.arguments) {
+                builder.argsBuffer += tc.function.arguments;
               }
             }
-            currentBlockType = null;
-            break;
+          }
+        }
 
-          case 'message_delta':
-            if (event.delta?.stop_reason) {
-              stopReason = event.delta.stop_reason;
-            }
-            break;
+        // Finish reason
+        if (choice.finish_reason) {
+          stopReason = choice.finish_reason;
         }
       } catch {
         // Skip malformed SSE events
@@ -215,59 +299,151 @@ export async function parseSSEStream(
     }
   }
 
+  // Assemble completed tool calls
+  const toolCalls: Array<{ id: string; name: string; input: Record<string, unknown> }> = [];
+  for (const [, builder] of toolCallBuilders) {
+    try {
+      const input = builder.argsBuffer ? JSON.parse(builder.argsBuffer) : {};
+      toolCalls.push({ id: builder.id, name: builder.name, input });
+    } catch {
+      console.error('[aiInfra] Failed to parse tool arguments:', builder.argsBuffer.slice(0, 200));
+    }
+  }
+
+  // Normalise stop reason to the internal vocabulary
+  if (toolCalls.length > 0 && (stopReason === 'tool_calls' || stopReason === 'stop')) {
+    stopReason = 'tool_use';
+  } else if (stopReason === 'length') {
+    stopReason = 'max_tokens';
+  } else if (stopReason === 'stop' || !stopReason) {
+    stopReason = 'end_turn';
+  }
+
   return { textContent, toolCalls, stopReason };
 }
 
-/** Send a request to Claude and handle the response stream */
-export async function sendClaudeRequest(
-  apiKey: string,
-  claudeMessages: Array<{ role: string; content: unknown }>,
+// ── Provider dispatch (AD4M) ─────────────────────────────────────────────
+
+/**
+ * Send a prompt request through AD4M's OpenAI-compatible /v1/chat/completions.
+ *
+ * Uses the split context system: the system prompt contains only the core
+ * context (~7K tokens) plus tool definitions for on-demand sections.
+ * The caller (EditorStore) resolves context tool calls from the local
+ * section map and sends results back in the conversation loop.
+ */
+export async function sendPromptRequest(
+  connection: Ad4mConnection,
+  messages: Array<{ role: string; content: unknown }>,
   onTextDelta: (text: string) => void,
   onToolUseStart?: (textSoFar: string) => void,
 ): Promise<StreamResult> {
-  // Abort after 90 seconds to prevent hanging on stalled connections
   const controller = new AbortController();
   const timeout = setTimeout(() => {
-    console.error('[aiInfra] Request timed out after 90s — aborting');
+    console.error('[aiInfra] AD4M request timed out after 180s — aborting');
     controller.abort();
-  }, 90_000);
+  }, 180_000);
 
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const tools = await buildTools();
+    const systemPrompt = await chatCorePrompt();
+
+    // Convert messages from Anthropic content-block format to OpenAI format
+    const openAIMessages = [{ role: 'system', content: systemPrompt }, ...messages.map(toOpenAIMessage)];
+
+    const baseUrl = connection.baseUrl.replace(/\/$/, '');
+
+    const response = await fetch(`${baseUrl}/v1/chat/completions`, {
       method: 'POST',
       signal: controller.signal,
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
+        ...(connection.token ? { Authorization: `Bearer ${connection.token}` } : {}),
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
+        model: 'default',
         max_tokens: 16384,
         stream: true,
-        tools: [updateSchemaTool],
-        system: [
-          {
-            type: 'text',
-            text: await chatSystemPrompt(),
-            cache_control: { type: 'ephemeral' },
-          },
-        ],
-        messages: claudeMessages,
+        tools,
+        messages: openAIMessages,
       }),
     });
 
     if (!response.ok) {
       const errorBody = await response.text().catch(() => '');
-      throw new Error(`Claude API error ${response.status}: ${errorBody}`);
+      throw new Error(`AD4M AI error ${response.status}: ${errorBody}`);
     }
 
     const reader = response.body?.getReader();
     if (!reader) throw new Error('No response body');
 
-    return await parseSSEStream(reader, onTextDelta, onToolUseStart);
+    return await parseOpenAISSE(reader, onTextDelta, onToolUseStart);
   } finally {
     clearTimeout(timeout);
   }
+}
+
+/**
+ * Convert an Anthropic-shaped message to an OpenAI wire message.
+ *
+ * The EditorStore's tool loop builds messages in Anthropic content-block
+ * format ({ type: "text", text }, { type: "tool_use", ... }, { type: "tool_result", ... }).
+ * AD4M's /v1/chat/completions speaks OpenAI format, so each turn needs
+ * translation.
+ */
+function toOpenAIMessage(msg: { role: string; content: unknown }): Record<string, unknown> {
+  const { role, content } = msg;
+
+  // Simple string content
+  if (typeof content === 'string') {
+    return { role, content };
+  }
+
+  // Array of content blocks (Anthropic format)
+  if (Array.isArray(content)) {
+    const textParts: string[] = [];
+    const toolCalls: unknown[] = [];
+    const toolResults: Array<Record<string, unknown>> = [];
+
+    for (const block of content) {
+      if (block.type === 'text') {
+        textParts.push(block.text);
+      } else if (block.type === 'tool_use') {
+        toolCalls.push({
+          id: block.id,
+          type: 'function',
+          function: {
+            name: block.name,
+            arguments: typeof block.input === 'string' ? block.input : JSON.stringify(block.input),
+          },
+        });
+      } else if (block.type === 'tool_result') {
+        toolResults.push({
+          role: 'tool',
+          tool_call_id: block.tool_use_id,
+          content: typeof block.content === 'string' ? block.content : JSON.stringify(block.content),
+        });
+      }
+    }
+
+    // Tool results → return the first as a "tool" message.
+    // The EditorStore builds tool results as user messages with content arrays.
+    // OpenAI expects one "tool" message per tool_call_id.
+    if (toolResults.length > 0 && role === 'user') {
+      return toolResults[0];
+    }
+
+    // Assistant message with tool calls
+    const result: Record<string, unknown> = {
+      role,
+      content: textParts.join('\n') || null,
+    };
+    if (toolCalls.length > 0) {
+      result.tool_calls = toolCalls;
+    }
+    return result;
+  }
+
+  // Fallback
+  return { role, content: typeof content === 'object' ? JSON.stringify(content) : String(content) };
 }

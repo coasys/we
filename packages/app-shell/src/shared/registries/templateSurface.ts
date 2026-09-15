@@ -1196,6 +1196,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     pushSnapshot: WIRING,
     // The editor's own save path. A template rendering itself has no edit to commit.
     commitEdit: WIRING,
+    // Provider selection — internal to the AI settings chrome, not template-facing.
+    providerReady: WIRING,
   },
 
   /**

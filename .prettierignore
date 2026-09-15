@@ -17,3 +17,7 @@ CLAUDE.md
 AGENTS.md
 .cursor/rules/we-schema.mdc
 packages/ai-context/src/schemaContext.ts
+packages/ai-context/src/coreContext.ts
+packages/ai-context/src/contextSections.ts
+packages/ai-context/src/contextToolDefs.ts
+packages/ai-context/context.json

@@ -7,6 +7,51 @@ import type {
   TokenCategory,
 } from './types.js';
 
+// ── Context tool metadata ──────────────────────────────────────────────────
+// Maps fragment keys to the tool names and summaries the model sees in the
+// section directory.  Ordering matches the assembler's output order.
+
+/** One entry in the context tool directory. */
+export interface ContextToolMeta {
+  toolName: string;
+  summary: string;
+}
+
+const SECTION_DIRECTORY: Record<string, ContextToolMeta> = {
+  stores: {
+    toolName: 'we_stores_reference',
+    summary: 'Store members, computed state, actions, and access patterns',
+  },
+  schemaOperators: {
+    toolName: 'we_schema_operators',
+    summary: 'Schema node types, operator catalogue, and function library',
+  },
+  componentRegistry: {
+    toolName: 'we_component_registry',
+    summary: 'Primitive and component tags with props, slots, and descriptions',
+  },
+  patterns: {
+    toolName: 'we_common_patterns',
+    summary: 'Ready-made layout and form template recipes',
+  },
+  designSystemProps: {
+    toolName: 'we_design_props',
+    summary: 'Design system property tables inherited by all primitives',
+  },
+  pluginCatalogs: {
+    toolName: 'we_plugin_registries',
+    summary: 'Plugin catalogues and named-plugin configuration options',
+  },
+  storePatterns: {
+    toolName: 'we_store_patterns',
+    summary: 'Store creation and data-binding usage patterns',
+  },
+  panels: {
+    toolName: 'we_panels',
+    summary: 'Panel types, configuration, and section layout',
+  },
+};
+
 /**
  * Assemble a formatted text reference from structured context.
  * Returns facts only — no framing or persona instructions.
@@ -199,6 +244,96 @@ function formatTokens(tokens: TokenCategory[]): string {
   }
 
   return lines.join('\n');
+}
+
+// ── Split context: core + on-demand sections ──────────────────────────────
+
+/**
+ * Core context: the always-needed sections plus a directory of context tools.
+ *
+ * Contains rules, routing, entity models, design tokens (~29K chars, ~7K tokens),
+ * and a one-line summary per loadable section so the model knows what to call.
+ * The chat preamble lives in `chatSystemPrompt.ts` and gets prepended by the caller.
+ */
+export function assembleCoreContext(ctx: AssembledContext): string {
+  const sections: string[] = [];
+
+  // Rules — constraints and best practices the model needs on every turn
+  sections.push(ctx.fragments.rules.trim());
+
+  // Routing — route arrays, path syntax, $routes outlet
+  sections.push(ctx.fragments.routing.trim());
+
+  // Entity models — data models for $query
+  if (ctx.models.length > 0) {
+    sections.push(formatEntities(ctx.models));
+  }
+
+  // Design tokens — spacing, color, radius values
+  sections.push(formatTokens(ctx.tokens));
+
+  // Section directory — tells the model which context tools exist
+  const directoryLines = [
+    '## Available Context Tools',
+    '',
+    'Call these tools to load reference material relevant to the current task.',
+    'Each returns a section of the schema reference. Only load what you need.',
+    '',
+  ];
+  for (const meta of Object.values(SECTION_DIRECTORY)) {
+    directoryLines.push(`- **${meta.toolName}** — ${meta.summary}`);
+  }
+  sections.push(directoryLines.join('\n'));
+
+  return sections.join('\n\n---\n\n');
+}
+
+/**
+ * Context sections: a map from tool name to section content.
+ *
+ * Each entry becomes a tool the model calls on demand.  The keys match the
+ * tool names in the section directory (core context).
+ */
+export function assembleContextSections(ctx: AssembledContext): Record<string, string> {
+  const sections: Record<string, string> = {};
+
+  sections.we_stores_reference = ctx.fragments.stores.trim();
+  sections.we_schema_operators = ctx.fragments.schemaOperators.trim();
+  sections.we_component_registry = formatComponentRegistry(ctx.primitives, ctx.components);
+  sections.we_common_patterns = ctx.fragments.patterns.trim();
+  sections.we_design_props = ctx.fragments.designSystemProps.trim();
+
+  if (ctx.pluginCatalogs?.length) {
+    sections.we_plugin_registries = formatPluginCatalogs(ctx.pluginCatalogs);
+  }
+
+  sections.we_store_patterns = ctx.fragments.storePatterns.trim();
+  sections.we_panels = ctx.fragments.panels.trim();
+
+  return sections;
+}
+
+/** Tool definition for a context section (no parameters — returns the section text). */
+export interface ContextToolDef {
+  name: string;
+  description: string;
+  parameters: { type: 'object'; properties: Record<string, never> };
+}
+
+/**
+ * Tool definitions for context sections.
+ *
+ * Each tool takes no parameters and returns the corresponding section text.
+ * The caller adapts these to the provider's wire format:
+ * - Anthropic: `{ name, description, input_schema: parameters }`
+ * - Ollama/OpenAI: `{ type: "function", function: { name, description, parameters } }`
+ */
+export function assembleContextToolDefs(): ContextToolDef[] {
+  return Object.values(SECTION_DIRECTORY).map((meta) => ({
+    name: meta.toolName,
+    description: `Load the ${meta.summary.toLowerCase()} section of the WE schema reference.`,
+    parameters: { type: 'object' as const, properties: {} },
+  }));
 }
 
 function formatEntities(models: EntityEntry[]): string {
