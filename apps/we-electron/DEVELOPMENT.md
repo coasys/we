@@ -36,7 +36,24 @@ This will:
 The production build creates:
 
 - AppImage for Linux
-- Can be configured for Windows (NSIS) and Mac (DMG)
+- DMG and ZIP for macOS
+- Can be configured for Windows (NSIS)
+
+### Builds from CI
+
+`.github/workflows/electron-package.yaml` packages both whenever something merges to `dev`. It does
+not run on pull requests. Download the builds from the workflow run's **Artifacts** section in the
+Actions tab (signed-in GitHub account required); they are kept for 14 days.
+
+To package a branch before it merges, or to build against a different AD4M branch, run the workflow
+manually from the Actions tab: pick the branch, and set `ad4m_ref`.
+
+The macOS build is **unsigned**, so a downloaded copy is quarantined and macOS reports it as
+damaged. Clear the quarantine flag after moving the app to Applications:
+
+```bash
+xattr -cr /Applications/WE.app
+```
 
 ## Optional: Embedding External Apps (e.g., Flux)
 
