@@ -2771,6 +2771,8 @@ export const contextData: ContextData = {
         panelSupplied: { type: 'object' },
         layoutNames: { type: 'array' },
         activeLayout: { type: 'string' },
+        panelsHidden: { type: 'boolean' },
+        hasPanels: { type: 'boolean' },
       },
       actions: [
         'openShellView',
@@ -2808,6 +2810,7 @@ export const contextData: ContextData = {
         'toggleCollapseDock',
         'toggleStowLane',
         'revealDock',
+        'togglePanelsHidden',
         'breakOut',
         'returnHome',
         'stackDock',

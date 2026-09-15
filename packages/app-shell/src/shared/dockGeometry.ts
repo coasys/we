@@ -1015,6 +1015,11 @@ export interface DockGeometry {
    */
   contentsFaded?: boolean;
   /**
+   * Every panel is going away or coming back — put away from the rail, or behind a shell overlay. The
+   * frame fades out whole while this is true. See `shellStore.panelsHidden`.
+   */
+  awayFaded?: boolean;
+  /**
    * Letting go of the resize drag in progress would collapse this panel's lane to its strip — it has
    * been pulled past {@link STOW_DRAG_PX}. What dims the lane while the drag says so.
    */

@@ -45,6 +45,8 @@ function stack(shell: ShellStore, edge: 'left' | 'top') {
 
 beforeEach(() => {
   localStorage.clear();
+  // Anywhere but '/', which opens the landing page — and panels are away while any overlay is up.
+  window.history.replaceState({}, '', '/space/test');
 });
 
 afterEach(() => {
@@ -202,5 +204,59 @@ describe('a lane collapsed to its edge', () => {
     expect(away.bottom).toBeDefined();
     expect(away.top).toBeUndefined();
     expect(away.height).toBe(`${STRIP_PX}px`);
+  });
+});
+
+describe('every panel put away at once', () => {
+  it('goes while a shell overlay is up, gives the overlay their room, and comes back when it closes', () => {
+    openBoth('left');
+    const shell = mountShellStore();
+    shell.insertDock(B, 'left', 1, 'lane', 0);
+    const room = shell.contentInset().left;
+    expect(room).toBeGreaterThan(0);
+
+    vi.useFakeTimers();
+    shell.openShellView('settings');
+    // The overlay is somewhere else: no room taken, and the panels fade out and are then hidden.
+    expect(shell.contentInset().left).toBe(0);
+    expect(shell.dockGeometry()[A]).toMatchObject({ awayFaded: true, hidden: false });
+    vi.advanceTimersByTime(400);
+    expect(shell.dockGeometry()[A].hidden && shell.dockGeometry()[B].hidden).toBe(true);
+    // Not a choice anybody made, so the toggle does not light.
+    expect(shell.panelsHidden()).toBe(false);
+
+    shell.closeShellView();
+    expect(shell.contentInset().left).toBe(room);
+    vi.advanceTimersByTime(50);
+    expect(shell.dockGeometry()[A]).toMatchObject({ hidden: false });
+    expect(shell.dockGeometry()[A].awayFaded).toBeFalsy();
+    vi.useRealTimers();
+  });
+
+  it('goes and comes back on the toggle, and does not strand the app’s chrome with a maximised panel', () => {
+    openBoth('left');
+    const shell = mountShellStore();
+    shell.toggleMaximiseDock(A);
+    expect(shell.panelMaximised()).toBe(true);
+
+    shell.togglePanelsHidden();
+    expect(shell.panelsHidden()).toBe(true);
+    expect(shell.panelMaximised()).toBe(false);
+
+    shell.togglePanelsHidden();
+    expect(shell.panelsHidden()).toBe(false);
+    expect(shell.panelMaximised()).toBe(true);
+  });
+
+  it('comes back when one panel is asked for, closing the overlay in front of them', () => {
+    openBoth('left');
+    const shell = mountShellStore();
+    shell.togglePanelsHidden();
+    shell.openShellView('settings');
+
+    shell.revealDock(A);
+
+    expect(shell.panelsHidden()).toBe(false);
+    expect(shell.activeShellView()).toBe(null);
   });
 });

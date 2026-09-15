@@ -7067,6 +7067,12 @@
         },
         "activeLayout": {
           "type": "string"
+        },
+        "panelsHidden": {
+          "type": "boolean"
+        },
+        "hasPanels": {
+          "type": "boolean"
         }
       },
       "actions": [
@@ -7105,6 +7111,7 @@
         "toggleCollapseDock",
         "toggleStowLane",
         "revealDock",
+        "togglePanelsHidden",
         "breakOut",
         "returnHome",
         "stackDock",

@@ -617,6 +617,19 @@ export interface ShellStore {
    */
   revealDock: (id: string) => void;
   /**
+   * Whether somebody has put every panel away at once — the rail's toggle and Cmd/Ctrl+\.
+   *
+   * Only the deliberate half. Panels are also away while a shell overlay (settings, profile, about) is
+   * open, which is not a choice anybody made and must not light the toggle or survive the overlay
+   * closing. Both are one state underneath: every panel hidden, never unmounted, and the content
+   * given back the room they took — then all of it back exactly as it was.
+   */
+  panelsHidden: Accessor<boolean>;
+  /** Put every panel away, or bring them all back. See `panelsHidden`. */
+  togglePanelsHidden: () => void;
+  /** Whether any panel is open on screen to put away — what gates the toggle. */
+  hasPanels: Accessor<boolean>;
+  /**
    * Take a section out of the template and make it a panel.
    *
    * With a pointer position, it appears floating under the pointer — the shape press-and-drag on
@@ -1014,6 +1027,52 @@ export function ShellStoreProvider(props: ParentProps) {
   };
   onCleanup(() => {
     if (landedTimer !== undefined) clearTimeout(landedTimer);
+  });
+
+  /**
+   * Every panel put away — on purpose (`panelsHidden`), or because a shell overlay is up.
+   *
+   * An overlay is drawn inside the content region with every panel layered above it, so a settings page
+   * opened from a space came up squeezed between that space's sidebars with its floating cards over the
+   * top — reading as part of the workshop rather than as somewhere else. Opening one is already the end
+   * of template editing; it is now the end of the panels being on screen, until it closes.
+   */
+  const [panelsHiddenByUser, setPanelsHiddenByUser] = createSignal(false);
+  const panelsAway = createMemo(() => panelsHiddenByUser() || activeShellView() !== null);
+
+  /**
+   * Where the panels are in going away or coming back — so they fade rather than vanish.
+   *
+   * `leaving` fades them out on screen and `away` hides them, the way a closing lane does; `arriving`
+   * holds them at zero for the two frames a fade needs something painted to start from. A quick toggle
+   * back mid-fade reverses from wherever the fade had got to. Starts `away` rather than fading out, for
+   * the boot that opens on the landing page.
+   */
+  const [awayPhase, setAwayPhase] = createSignal<'shown' | 'leaving' | 'away' | 'arriving'>(
+    panelsAway() ? 'away' : 'shown',
+  );
+  let awayTimer: ReturnType<typeof setTimeout> | undefined;
+  let wasAway = panelsAway();
+  createEffect(() => {
+    const away = panelsAway();
+    if (away === wasAway) return;
+    wasAway = away;
+    if (awayTimer !== undefined) clearTimeout(awayTimer);
+    if (away) {
+      setAwayPhase('leaving');
+      awayTimer = setTimeout(() => {
+        awayTimer = undefined;
+        setAwayPhase((phase) => (phase === 'leaving' ? 'away' : phase));
+      }, 340);
+      return;
+    }
+    setAwayPhase('arriving');
+    const show = () => setAwayPhase((phase) => (phase === 'arriving' ? 'shown' : phase));
+    if (typeof requestAnimationFrame !== 'function') return show();
+    requestAnimationFrame(() => requestAnimationFrame(show));
+  });
+  onCleanup(() => {
+    if (awayTimer !== undefined) clearTimeout(awayTimer);
   });
 
   /**
@@ -1653,7 +1712,20 @@ export function ShellStoreProvider(props: ParentProps) {
   */
   if (typeof window !== 'undefined') {
     const onKeyDown = (event: KeyboardEvent) => {
+      /*
+        Cmd/Ctrl+\ puts every panel away, or brings them back — Figma's key for hiding the interface,
+        and one no text field here claims. Not while an overlay is up: the panels are away already, and
+        a toggle flipped where nobody can see it would surprise the next time they came back.
+      */
+      if (event.key === '\\' && (event.metaKey || event.ctrlKey) && !event.altKey && !event.defaultPrevented) {
+        if (activeShellView()) return;
+        event.preventDefault();
+        setPanelsHiddenByUser((hidden) => !hidden);
+        return;
+      }
       if (event.key !== 'Escape' || event.defaultPrevented) return;
+      // A maximised panel that is away is not the mode Escape would be leaving.
+      if (panelsAway()) return;
       const maximised = dockRequests().filter(
         (request) => request.edge && (request.size === 'full' || placementOf(request).maximised),
       );
@@ -1677,8 +1749,12 @@ export function ShellStoreProvider(props: ParentProps) {
    * `display: none` rather than an unmount, so a rail that was expanded and had groups collapsed is
    * in the same state when full screen ends.
    */
-  const panelMaximised = createMemo(() =>
-    dockRequests().some((request) => request.edge && (request.size === 'full' || placementOf(request).maximised)),
+  const panelMaximised = createMemo(
+    () =>
+      // A maximised panel put away with the rest is not covering anything, and the sidebar and rail that
+      // hide for one would otherwise go with it — taking the way back to the panels along too.
+      !panelsAway() &&
+      dockRequests().some((request) => request.edge && (request.size === 'full' || placementOf(request).maximised)),
   );
 
   const floatChrome = createMemo<ContentInset>(() => ({
@@ -2233,10 +2309,38 @@ export function ShellStoreProvider(props: ParentProps) {
     // A hidden tab of an undivided seat takes the front's box. After the walk rather than inside it,
     // because the front is resolved by the same walk. See `shareSeatBox`.
     shareSeatBox(resolved, follows);
+
+    /*
+      Every panel away — see `panelsAway`. Hidden once gone, as a background tab is, so a call keeps its
+      streams and a transcript its scroll; faded on the way out and in. The grips between and beside
+      lanes go at once, being lines rather than surfaces, and a stowed lane's strip fades with its
+      panels.
+    */
+    const phase = awayPhase();
+    if (phase !== 'shown') {
+      for (const [id, geometry] of Object.entries(resolved)) {
+        const {
+          seam: _seam,
+          seamLayer: _seamLayer,
+          laneEdge: _laneEdge,
+          laneEdgeLayer: _edgeLayer,
+          strip,
+          ...rest
+        } = geometry;
+        resolved[id] = {
+          ...rest,
+          ...(strip && phase !== 'away' ? { strip } : {}),
+          hidden: phase === 'away' || rest.hidden,
+          awayFaded: true,
+        };
+      }
+    }
     return resolved;
   });
 
-  const inset = createMemo(() => contentInset(dockRequests(), viewport()));
+  // Nothing taken while the panels are away: the overlay or the content gets the whole region, and
+  // gets it back the moment they return, before they fade in.
+  const inset = createMemo(() => (panelsAway() ? { ...NO_INSET } : contentInset(dockRequests(), viewport())));
   /*
     The same requests, asked the other question: not what the panels take, but what they hide.
 
@@ -2244,7 +2348,7 @@ export function ShellStoreProvider(props: ParentProps) {
     about arithmetic — a strip of displacing panels sums and a column of floating ones takes the
     maximum — and a function answering both would have to explain which number it was returning.
   */
-  const covered = createMemo(() => coveredInset(dockRequests(), viewport()));
+  const covered = createMemo(() => (panelsAway() ? { ...NO_INSET } : coveredInset(dockRequests(), viewport())));
 
   /**
    * Publish where the content's edges are, as CSS custom properties, so chrome can sit against the
@@ -3759,6 +3863,14 @@ export function ShellStoreProvider(props: ParentProps) {
 
     raiseDock: raise,
 
+    panelsHidden: panelsHiddenByUser,
+    togglePanelsHidden: () => {
+      // Not while an overlay is up — see the keyboard shortcut, which says why.
+      if (activeShellView()) return;
+      setPanelsHiddenByUser((hidden) => !hidden);
+    },
+    hasPanels: createMemo(() => dockRequests().some((request) => request.edge && placementOf(request).snap !== 'home')),
+
     layoutPinned: () =>
       Object.fromEntries(
         dockRequests().map((request) => [
@@ -4053,6 +4165,13 @@ export function ShellStoreProvider(props: ParentProps) {
     revealDock: (id) => {
       const request = dockRequests().find((entry) => entry.id === id);
       if (!request?.edge) return;
+      /*
+        A panel asked for is a panel wanted on screen, so the rest come back with it: out of the way
+        on purpose, or behind a shell overlay — which is closed, since what was asked for was the
+        space's panel and not the settings page in front of it.
+      */
+      if (panelsHiddenByUser()) setPanelsHiddenByUser(false);
+      if (activeShellView()) setActiveShellView(null);
       const before = dockGeometry()[id];
       // Out of sight before this, including closed a moment ago — a panel already in front, pressed
       // again, has nothing to point at.

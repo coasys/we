@@ -176,6 +176,22 @@ instead of calling the module; a press that opens a panel reveals it too, so a p
 stack comes back in front. Which dock a launcher is about is `moduleRegistry.dockOfLauncher`: the dock
 named by its `key`, or the module's first.
 
+### Putting every panel away
+
+Every panel can be put away at once — the eye toggle above the rail's gear, or Cmd/Ctrl+\ — and the
+same happens on its own while a shell overlay (settings, profile, about) is up. An overlay is drawn
+inside the content region with every panel layered above it, so a settings page opened from a space
+used to come up squeezed between that space's sidebars with its floating cards on top, reading as part
+of the space rather than somewhere else.
+
+Both are one state (`panelsAway` in the shell store): every panel fades out and is hidden — never
+unmounted, so a call keeps its streams — the content region takes back the room they held, and closing
+the overlay or the toggle brings them all back exactly as they were. Nothing is written, so there is
+nothing to restore. Only the deliberate half is `panelsHidden`, which lights the toggle; an overlay
+does not set it. Asking for one panel — a rail launcher, `revealDock` — brings them all back and
+closes an overlay in front of them, and a maximised panel that is away stops hiding the sidebar and
+rail, or the way back would go with it.
+
 ### Home lanes
 
 A `$panels` outlet is a lane in the template's own flow. A `meta.panels` entry with `home:

@@ -1037,6 +1037,10 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // does on a panel that is open but out of view.
     toggleStowLane: action('host-layout'),
     revealDock: action('host-layout'),
+    // Every panel put away at once, which the rail's toggle reads and presses.
+    panelsHidden: state('host-layout'),
+    hasPanels: state('host-layout'),
+    togglePanelsHidden: action('host-layout'),
     breakOut: action('host-layout'),
     returnHome: action('host-layout'),
     stackDock: action('host-layout'),

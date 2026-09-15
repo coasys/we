@@ -299,7 +299,11 @@ describe('a panel easing in or out of its strip', () => {
   });
 
   it('fades the whole frame while it closes, borders and all', () => {
-    expect(text).toContain(JSON.stringify(`${geo('stowed')} && ${geo('contentsFaded')} ? 0 :`).slice(1, -1));
+    expect(text).toContain(JSON.stringify(`(${geo('stowed')} && ${geo('contentsFaded')}) ||`).slice(1, -1));
+  });
+
+  it('fades the whole frame when every panel is put away', () => {
+    expect(text).toContain(JSON.stringify(`|| ${geo('awayFaded')} ? 0 :`).slice(1, -1));
   });
 
   it('lays a top or bottom strip out as a row, not a column', () => {

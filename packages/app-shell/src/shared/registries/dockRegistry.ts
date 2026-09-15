@@ -395,7 +395,7 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
                 hidden, and then gone in one frame.
               */
               opacity: {
-                $: `${dockGeometryPath(entry.id, 'stowed')} && ${dockGeometryPath(entry.id, 'contentsFaded')} ? 0 : ${dockGeometryPath(entry.id, 'stowPending')} ? 0.5 : 1`,
+                $: `(${dockGeometryPath(entry.id, 'stowed')} && ${dockGeometryPath(entry.id, 'contentsFaded')}) || ${dockGeometryPath(entry.id, 'awayFaded')} ? 0 : ${dockGeometryPath(entry.id, 'stowPending')} ? 0.5 : 1`,
               },
               // Rounded and lifted only while floating. A card over the app should read as being on
               // top; a panel that has taken room *from* the app meets it edge to edge, where a radius
@@ -1635,6 +1635,9 @@ function laneStrip(id: string): SchemaNode {
           border: '1px solid border',
           overflow: 'hidden',
           zIndex: { $: geo('strip.layer') },
+          // Fades with its lane's panels when every panel is put away or brought back.
+          opacity: { $: `${geo('awayFaded')} ? 0 : 1` },
+          transition: 'opacity 300 ease',
         },
         children: [
           {
