@@ -2,9 +2,9 @@
  * Seed-declared module activation.
  *
  * The seed's stated purpose already includes "which modules to include", so this is the deployment
- * layer of the three-part enablement story — the other two (`AgentSettings.installedModules`,
- * `Space.enabledModules`) arrive with the marketplace, when modules become installable rather than
- * bundled.
+ * layer of the three-part enablement story — `AgentSettings.installedModules` and
+ * `Space.enabledModules` are the other two. The map of factories is generated from the seed
+ * (`bundledModules.generated.ts`); what is tested here is the activation over it.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -12,10 +12,10 @@ import { activateSeedModules, bundledModules } from '../src/shared/registries/bu
 import { moduleRegistry } from '../src/shared/registries/moduleRegistry';
 
 const host = { backend: 'ad4m', framework: 'solid' };
-const deps = { components: { CesiumGlobe: () => null } };
+const deps = { components: { CesiumGlobe: () => null, GraphView: () => null } };
 
 beforeEach(() => {
-  for (const { definition } of moduleRegistry.all()) moduleRegistry.unregister(definition.id);
+  for (const { definition } of moduleRegistry.all()) moduleRegistry.unregister(definition.manifest.id);
 });
 
 describe('activateSeedModules', () => {
@@ -57,10 +57,21 @@ describe('activateSeedModules', () => {
     // The globe's definition is built from the CesiumGlobe the host already holds — which is what
     // keeps Solid and @we/widgets single instances.
     activateSeedModules(['globe'], deps, host, moduleRegistry);
-    expect(moduleRegistry.get('globe')?.definition.components?.CesiumGlobe).toBe(deps.components.CesiumGlobe);
+    expect(moduleRegistry.get('globe')?.definition.contributes?.components?.CesiumGlobe).toBe(
+      deps.components.CesiumGlobe,
+    );
   });
 
-  it('exposes the globe as a bundled module', () => {
-    expect(Object.keys(bundledModules)).toContain('globe');
+  it('exposes every module the seed names, in the seed’s order', () => {
+    // The generated map is the seed's list: an unlisted module leaves the bundle, and the order is
+    // the module rail's order.
+    expect(Object.keys(bundledModules)).toEqual(['call', 'transcribe', 'pocket', 'notes', 'globe', 'graph']);
+  });
+
+  it('takes a factory map of its own, so a test can activate a module the seed left out', () => {
+    const custom = { extra: () => ({ manifest: { id: 'extra', name: 'Extra' } }) };
+    const result = activateSeedModules(['extra'], deps, host, moduleRegistry, custom);
+    expect(result.activated).toEqual(['extra']);
+    expect(moduleRegistry.has('extra')).toBe(true);
   });
 });

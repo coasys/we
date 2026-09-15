@@ -187,7 +187,8 @@ export function createPocketStore(deps: ModuleStoreDeps) {
   const [busy, setBusy] = signal(false);
   const [lastError, setLastError] = signal('');
 
-  const agentData = () => deps.agentData;
+  // The kernel this module asked for in its manifest. Absent on a host that has no agent dataset.
+  const agentData = () => deps.kernels.agentData;
 
   /**
    * The root folder's id, creating it on first use.
@@ -481,14 +482,21 @@ export function createPocketStore(deps: ModuleStoreDeps) {
 
   return {
     // ── The panel, as chrome ─────────────────────────────────────────────────
-    open,
-    /** Where the panel would like to open. `null` while closed — one key, so the two cannot disagree. */
-    dockEdge: () => (open() ? 'right' : null),
-    dockSize: () => 'md',
-    dockFloat: () => false,
-    toggle: () => (open() ? setOpen(false) : openPanel()),
-    close: () => setOpen(false),
-    show: openPanel,
+    /*
+      The Pocket owns whether its panel is open, where most modules leave that to the host: opening
+      it is what resolves the root folder (`openPanel`), so the flag is a fact about the Pocket and
+      not only about the screen. These four are the public half — a template offering "put this in
+      your Pocket" wants a button that opens the panel, and the person then drops the thing in
+      themselves. Everything below them stays private: the contents and the folder names are the
+      same private thing seen from the other side, and the writes go to the agent's own dataset.
+    */
+    open: deps.state(open, 'Whether the Pocket panel is open.'),
+    toggle: deps.action(
+      () => (open() ? setOpen(false) : openPanel()),
+      'Opens the Pocket panel, or closes it if it is open.',
+    ),
+    close: deps.action(() => setOpen(false), 'Closes the Pocket panel.'),
+    show: deps.action(openPanel, 'Opens the Pocket panel and resolves the folder it was last looking at.'),
 
     // ── Where in the Pocket you are ──────────────────────────────────────────
     /** The folder being looked at. Empty only until the root has been resolved. */

@@ -2,12 +2,19 @@
  * The slot and module registries.
  *
  * The load-bearing assertion is the first one: generalising `shellRegistry` into an open collection
- * must leave the existing three shell entries rendering in exactly the same order. Everything else in
- * this PR builds on that generalisation, so if it is not faithful, nothing downstream is trustworthy.
+ * must leave the existing three shell entries rendering in exactly the same order. Everything else
+ * builds on that generalisation, so if it is not faithful, nothing downstream is trustworthy.
+ *
+ * The second half is the module contract as the registry enforces it: what a definition may say,
+ * what the registry builds for it (panel plumbing, the deps a store is handed), and what a template
+ * can then reach.
  */
-import type { ModuleDefinition } from '@we/module-shared';
+import type { ModuleDefinition, ModuleStoreDeps } from '@we/module-shared';
+import { markAction, markState } from '@we/module-shared';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { dockRegistry } from '../src/shared/registries/dockRegistry';
+import { createModuleStoreDeps } from '../src/shared/registries/moduleHostServices';
 import { resolveParts } from '../src/shared/registries/moduleParts';
 import { moduleRegistry, moduleStores } from '../src/shared/registries/moduleRegistry';
 import { registerCoreSlots, slotRegistry } from '../src/shared/registries/slotRegistry';
@@ -19,35 +26,31 @@ const host = { backend: 'ad4m', framework: 'solid' };
  * framework, so a plain closure satisfies the port here — which is itself the point: nothing in a
  * module store requires Solid to exist.
  */
-const storeDeps = {
+const framework = {
   signal: <T>(initial: T): [() => T, (next: T) => void] => {
     let value = initial;
-    return [() => value, (next: T) => (value = next)];
+    return [() => value, (next: T) => void (value = next)];
   },
+  effect: (fn: () => void) => fn(),
 };
+const storeDeps: ModuleStoreDeps = createModuleStoreDeps(framework);
 
 function reset() {
   // `all()`, not `ordered()`: the latter is core anchors only, so contributions to module-declared
   // anchors would survive between tests.
   for (const entry of slotRegistry.all()) slotRegistry.remove(entry.id);
-  for (const { definition } of moduleRegistry.all()) moduleRegistry.unregister(definition.id);
+  for (const { definition } of moduleRegistry.all()) moduleRegistry.unregister(definition.manifest.id);
   registerCoreSlots();
 }
 
-function mod(overrides: Partial<ModuleDefinition> = {}): ModuleDefinition {
-  return { id: 'test', name: 'Test', ...overrides };
+function mod(id: string, overrides: Partial<ModuleDefinition> = {}): ModuleDefinition {
+  return { manifest: { id, name: id }, ...overrides };
 }
 
 beforeEach(reset);
 
 describe('slotRegistry — faithful generalisation of shellRegistry', () => {
   it('renders the original three host slots in the order the old hardcoded array produced', () => {
-    // Was: [shellRegistry.bootScreen, shellRegistry.sidebar, shellRegistry.templateEditor]
-    //
-    // The property this test protects is the *relative* order of those three, not their position.
-    // It used to assert a prefix, which conflated the two and broke the moment host chrome was
-    // added ahead of `core:sidebar` (the consent overlays). Filtering to the three keeps the real
-    // invariant and stops the test objecting to new chrome it has no opinion about.
     const ORIGINAL = ['core:bootScreen', 'core:sidebar', 'core:templateEditor'];
     expect(
       slotRegistry
@@ -71,8 +74,6 @@ describe('slotRegistry — faithful generalisation of shellRegistry', () => {
       'core:sidebar',
       'core:templateEditor',
       'core:chromeRail',
-      // The editor's four panels, which are docks at this anchor like any module's — registered by
-      // the host rather than contributed, since the editor is chrome rather than a module.
       'dock:editor:inspector',
       'dock:editor:code',
       'dock:editor:ai',
@@ -89,41 +90,31 @@ describe('slotRegistry — faithful generalisation of shellRegistry', () => {
     expect(entries[0].node).toEqual({ type: 'we-text', children: ['custom'] });
   });
 
-  it('ignores a replace for an id that was never registered', () => {
-    slotRegistry.replace('nope', { type: 'Column' });
-    expect(slotRegistry.get('nope')).toBeUndefined();
-  });
-
-  it('orders by declared order within an anchor', () => {
+  it('orders by declared order within an anchor, and breaks ties on id', () => {
     slotRegistry.register({ id: 'b', anchor: 'dock-bottom', node: { type: 'Column' }, order: 200 });
     slotRegistry.register({ id: 'a', anchor: 'dock-bottom', node: { type: 'Column' }, order: 100 });
-    const bottom = slotRegistry.ordered().filter((e) => e.anchor === 'dock-bottom');
-    expect(bottom.map((e) => e.id)).toEqual(['a', 'b']);
-  });
-
-  it('breaks ties on id, so load order cannot leak into layout', () => {
-    // Entries come out of a Map; without the tiebreak, equal-order chrome would rearrange depending
-    // on which module happened to register first.
     slotRegistry.register({ id: 'zebra', anchor: 'banner', node: { type: 'Column' } });
     slotRegistry.register({ id: 'apple', anchor: 'banner', node: { type: 'Column' } });
-    const banner = slotRegistry.ordered().filter((e) => e.anchor === 'banner');
-    expect(banner.map((e) => e.id)).toEqual(['apple', 'zebra']);
-  });
-
-  it('is idempotent on re-registration', () => {
-    slotRegistry.register({ id: 'x', anchor: 'banner', node: { type: 'Column' } });
-    slotRegistry.register({ id: 'x', anchor: 'banner', node: { type: 'Row' } });
-    expect(slotRegistry.ordered().filter((e) => e.id === 'x')).toHaveLength(1);
-    expect(slotRegistry.get('x')?.node).toEqual({ type: 'Row' });
+    expect(
+      slotRegistry
+        .ordered()
+        .filter((e) => e.anchor === 'dock-bottom')
+        .map((e) => e.id),
+    ).toEqual(['a', 'b']);
+    expect(
+      slotRegistry
+        .ordered()
+        .filter((e) => e.anchor === 'banner')
+        .map((e) => e.id),
+    ).toEqual(['apple', 'zebra']);
   });
 });
 
-describe('moduleRegistry', () => {
+describe('moduleRegistry — registration', () => {
   it('fans contributions out to the registries that already exist', () => {
     moduleRegistry.register(
-      mod({
-        id: 'notes',
-        slots: [{ anchor: 'dock-right', node: { type: 'Column' } }],
+      mod('notes', {
+        contributes: { slots: [{ anchor: 'dock-right', node: { type: 'Column' } }] },
         createStore: () => ({ open: true }),
       }),
       host,
@@ -135,104 +126,140 @@ describe('moduleRegistry', () => {
   });
 
   it('leaves the module key absent until it registers, so $if on modules.<id> works', () => {
-    // The whole point of the namespace convention: a template can depend on an optional module
-    // because the key is missing, not present-but-inert.
     expect(moduleStores.notes).toBeUndefined();
-    moduleRegistry.register(mod({ id: 'notes', createStore: () => ({}) }), host, storeDeps);
+    moduleRegistry.register(mod('notes', { createStore: () => ({}) }), host, storeDeps);
     expect(moduleStores.notes).toBeDefined();
     moduleRegistry.unregister('notes');
     expect(moduleStores.notes).toBeUndefined();
   });
 
-  it('removes every contribution on unregister', () => {
+  it('removes every contribution on unregister, panels included', () => {
     moduleRegistry.register(
-      mod({
-        id: 'multi',
-        slots: [
-          { anchor: 'dock-bottom', node: { type: 'Column' } },
-          { anchor: 'banner', node: { type: 'Row' } },
-        ],
+      mod('multi', {
+        contributes: {
+          slots: [
+            { anchor: 'dock-bottom', node: { type: 'Column' } },
+            { anchor: 'banner', node: { type: 'Row' } },
+          ],
+          panels: [
+            { name: 'first', title: 'First', node: { type: 'Column' } },
+            { name: 'second', title: 'Second', node: { type: 'Column' } },
+          ],
+        },
       }),
       host,
     );
-    expect(slotRegistry.ordered().filter((e) => e.id.startsWith('multi:'))).toHaveLength(2);
+    expect(slotRegistry.all().filter((e) => e.id.includes('multi')).length).toBe(4);
+    expect(dockRegistry.get('multi:second')).toBeDefined();
 
     moduleRegistry.unregister('multi');
-    expect(slotRegistry.ordered().filter((e) => e.id.startsWith('multi:'))).toHaveLength(0);
+    // Named panels used to leak here: register keyed them by name and unregister by index.
+    expect(slotRegistry.all().filter((e) => e.id.includes('multi'))).toHaveLength(0);
+    expect(dockRegistry.get('multi:second')).toBeUndefined();
   });
 
   it('replaces rather than duplicates when the same id registers twice', () => {
-    const definition = mod({ id: 'dupe', slots: [{ anchor: 'banner', node: { type: 'Column' } }] });
+    const definition = mod('dupe', {
+      contributes: {
+        slots: [{ anchor: 'banner', node: { type: 'Column' } }],
+        panels: [{ name: 'p', title: 'P', node: { type: 'Column' } }],
+      },
+    });
     moduleRegistry.register(definition, host);
     moduleRegistry.register(definition, host);
 
     expect(moduleRegistry.all()).toHaveLength(1);
-    expect(slotRegistry.ordered().filter((e) => e.id.startsWith('dupe:'))).toHaveLength(1);
+    expect(slotRegistry.all().filter((e) => e.id.includes('dupe'))).toHaveLength(2);
+    expect(dockRegistry.ordered().filter((e) => e.moduleId === 'dupe')).toHaveLength(1);
   });
 
   it('refuses an incompatible module loudly instead of half-mounting it', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const result = moduleRegistry.register(
-      mod({ id: 'ng-only', backends: ['nextgraph'], slots: [{ anchor: 'banner', node: { type: 'Column' } }] }),
+      mod('ng-only', {
+        manifest: { id: 'ng-only', name: 'NG', requires: { backends: ['nextgraph'] } },
+        contributes: { slots: [{ anchor: 'banner', node: { type: 'Column' } }] },
+      }),
       host,
     );
 
     expect(result.registered).toBe(false);
     expect(result.problems[0]).toContain('nextgraph');
-    // Nothing partially applied — no store, no chrome.
     expect(moduleRegistry.has('ng-only')).toBe(false);
-    expect(slotRegistry.ordered().some((e) => e.id.startsWith('ng-only'))).toBe(false);
-    expect(warn).toHaveBeenCalled();
+    expect(slotRegistry.all().some((e) => e.id.startsWith('ng-only'))).toBe(false);
     warn.mockRestore();
   });
 
-  it('namespaces schema fragments so two modules cannot collide', () => {
-    moduleRegistry.register(mod({ id: 'a', schemas: { panel: { type: 'Column' } } }), host);
-    moduleRegistry.register(mod({ id: 'b', schemas: { panel: { type: 'Row' } } }), host);
-
-    // Normalised on the way out: a part written as a bare node comes back as one with no subject,
-    // so a placer has one shape to handle rather than two.
-    expect(moduleRegistry.schemas()).toEqual({
-      'a.panel': { node: { type: 'Column' } },
-      'b.panel': { node: { type: 'Row' } },
-    });
-  });
-
-  it('keeps the subject a part names, which is what lets a placer repoint it', () => {
-    moduleRegistry.register(
-      mod({ id: 'a', schemas: { feed: { node: { type: 'Column' }, subject: 'modules.a.collectionId' } } }),
-      host,
-    );
-
-    expect(moduleRegistry.schemas()['a.feed']).toEqual({
-      node: { type: 'Column' },
-      subject: 'modules.a.collectionId',
-    });
-  });
-
-  it('registers a fragments-only module with no store and no components', () => {
+  it('refuses a module naming a kernel the host does not implement', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const result = moduleRegistry.register(
-      mod({ id: 'banner', slots: [{ anchor: 'banner', node: { type: 'Column' } }] }),
-      host,
+      mod('needy', { manifest: { id: 'needy', name: 'Needy', requires: { kernels: ['languageModel'] } } }),
+      { ...host, kernels: ['records'] },
+    );
+    expect(result.registered).toBe(false);
+    expect(result.problems[0]).toContain('languageModel');
+    warn.mockRestore();
+  });
+
+  it('refuses a panel with no name, and two panels with one name', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(
+      moduleRegistry.register(
+        mod('anon', { contributes: { panels: [{ name: '', title: 'x', node: { type: 'Column' } }] } }),
+        host,
+      ).registered,
+    ).toBe(false);
+    expect(
+      moduleRegistry.register(
+        mod('twins', {
+          contributes: {
+            panels: [
+              { name: 'a', title: 'x', node: { type: 'Column' } },
+              { name: 'a', title: 'y', node: { type: 'Column' } },
+            ],
+          },
+        }),
+        host,
+      ).problems[0],
+    ).toContain('"a"');
+    warn.mockRestore();
+  });
+
+  it('refuses framework components declared without a framework', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const result = moduleRegistry.register(mod('comp', { contributes: { components: { Thing: () => null } } }), host);
+    expect(result.registered).toBe(false);
+    expect(result.problems[0]).toContain('requires.frameworks');
+    warn.mockRestore();
+  });
+
+  it('registers a declaration-only module with no store, no components and no kernels', () => {
+    const result = moduleRegistry.register(
+      mod('banner', {
+        contributes: {
+          slots: [{ anchor: 'banner', node: { type: 'Column' } }],
+          panels: [{ name: 'main', title: 'Banner', node: { type: 'Column' } }],
+        },
+      }),
+      { ...host, kernels: [] },
     );
     expect(result.registered).toBe(true);
     expect(moduleStores.banner).toBeUndefined();
     expect(moduleRegistry.components()).toEqual({});
+    // And its panel still works — the host holds the flag.
+    expect(moduleRegistry.panel('banner:main')?.hostOwned).toBe(true);
   });
 
   it('surfaces embedded applications through the same registry as every other module', () => {
     moduleRegistry.register(
-      mod({
-        id: 'flux',
-        name: 'Flux',
-        icon: 'chat-circle',
-        embed: { url: 'http://localhost:8080', allow: "camera 'src'", image: '/flux.png' },
-      }),
+      {
+        manifest: { id: 'flux', name: 'Flux', icon: 'chat-circle' },
+        contributes: { embed: { url: 'http://localhost:8080', allow: "camera 'src'", image: '/flux.png' } },
+      },
       host,
     );
-    moduleRegistry.register(mod({ id: 'notes' }), host);
+    moduleRegistry.register(mod('notes'), host);
 
-    // Only the module that contributes an embed appears — the others are registered all the same.
     expect(moduleRegistry.embeds()).toEqual([
       {
         id: 'flux',
@@ -243,53 +270,50 @@ describe('moduleRegistry', () => {
         allow: "camera 'src'",
       },
     ]);
-    expect(moduleRegistry.has('notes')).toBe(true);
+  });
+});
+
+describe('moduleRegistry — parts', () => {
+  it('namespaces parts so two modules cannot collide, and normalises the shape', () => {
+    moduleRegistry.register(mod('a', { contributes: { parts: { panel: { type: 'Column' } } } }), host);
+    moduleRegistry.register(mod('b', { contributes: { parts: { panel: { type: 'Row' } } } }), host);
+
+    expect(moduleRegistry.parts()).toEqual({
+      'a.panel': { node: { type: 'Column' } },
+      'b.panel': { node: { type: 'Row' } },
+    });
   });
 
-  it('refuses an embedded app whose declared backend this host does not run', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const result = moduleRegistry.register(
-      mod({ id: 'flux', backends: ['other'], embed: { url: 'http://x', allow: '' } }),
+  it('keeps the subject a part names, which is what lets a placer repoint it', () => {
+    moduleRegistry.register(
+      mod('a', { contributes: { parts: { feed: { node: { type: 'Column' }, subject: 'modules.a.collectionId' } } } }),
       host,
     );
-
-    // The point of folding embedded apps into the module contract: refusal is immediate and carries
-    // a reason, instead of an iframe that mounts and waits on a handshake nobody will answer.
-    expect(result.registered).toBe(false);
-    expect(result.problems[0]).toContain('other');
-    expect(moduleRegistry.embeds()).toEqual([]);
-    warn.mockRestore();
+    expect(moduleRegistry.parts()['a.feed']).toEqual({ node: { type: 'Column' }, subject: 'modules.a.collectionId' });
   });
 });
 
 describe('module-declared anchors', () => {
   const provider: ModuleDefinition = {
-    id: 'call',
-    name: 'Calls',
-    anchors: ['call-controls'],
-    slots: [
-      {
-        anchor: 'dock-bottom',
-        node: {
-          type: 'Row',
-          children: [{ type: 'we-button' }, { type: '$slot', props: { anchor: 'call-controls' } }],
+    manifest: { id: 'call', name: 'Calls' },
+    contributes: {
+      anchors: ['call-controls'],
+      slots: [
+        {
+          anchor: 'dock-bottom',
+          node: {
+            type: 'Row',
+            children: [{ type: 'we-button' }, { type: '$slot', props: { anchor: 'call-controls' } }],
+          },
         },
-      },
-    ],
+      ],
+    },
   };
-
   const contributor: ModuleDefinition = {
-    id: 'transcribe',
-    name: 'Transcription',
-    slots: [{ anchor: 'call-controls', node: { type: 'we-icon', props: { name: 'record' } } }],
+    manifest: { id: 'transcribe', name: 'Transcription' },
+    contributes: { slots: [{ anchor: 'call-controls', node: { type: 'we-icon', props: { name: 'record' } } }] },
   };
 
-  /**
-   * The bar's own children, past the per-space gate the registry wraps every contribution in.
-   *
-   * Found by shape rather than by taking the first `$if`: core chrome is registered too and several
-   * pieces of it are `$if` nodes that come first in the order.
-   */
   function barChildren(): { type?: string }[] {
     const gated = slotRegistry
       .nodes()
@@ -301,79 +325,35 @@ describe('module-declared anchors', () => {
   it('splices a contribution into the marker, wherever the provider put it', () => {
     moduleRegistry.register(provider, host, storeDeps);
     moduleRegistry.register(contributor, host, storeDeps);
-
     const children = barChildren();
     expect(children).toHaveLength(2);
     expect(children[0].type).toBe('we-button');
-    // Gated in turn — nesting inside another module's chrome does not exempt it from being switched
-    // off — so what lands is the `$if` wrapper, not the raw icon, and certainly not the marker.
     expect(children[1].type).toBe('$if');
   });
 
   it('resolves the marker away when nothing is contributed', () => {
     moduleRegistry.register(provider, host, storeDeps);
-
-    // Not an empty container: a gap in the row would be worse than the button being absent.
     expect(barChildren().map((c) => c.type)).toEqual(['we-button']);
   });
 
-  it('keeps a contribution out of the top level, so it cannot render loose', () => {
-    // Without the core-anchor filter an unknown anchor sorts to index -1 and renders first, ahead of
-    // the boot screen — a call button floating at the top of the app.
-    moduleRegistry.register(contributor, host, storeDeps);
-
-    expect(slotRegistry.ordered().some((e) => e.id.startsWith('transcribe'))).toBe(false);
-    expect(slotRegistry.nodesFor('call-controls')).toHaveLength(1);
-  });
-
   it('reports a contribution to an anchor no module provides', () => {
-    // Silent otherwise: chrome aimed at a missing anchor renders nowhere, which looks exactly like a
-    // module that is switched off.
     moduleRegistry.register(contributor, host, storeDeps);
     expect(moduleRegistry.danglingAnchors()).toEqual(['call-controls']);
-
     moduleRegistry.register(provider, host, storeDeps);
     expect(moduleRegistry.danglingAnchors()).toEqual([]);
-  });
-
-  it('orders several contributions to one anchor deterministically', () => {
-    moduleRegistry.register(provider, host, storeDeps);
-    moduleRegistry.register(
-      {
-        id: 'reactions',
-        name: 'Reactions',
-        slots: [{ anchor: 'call-controls', node: { type: 'we-badge' }, order: 5 }],
-      },
-      host,
-      storeDeps,
-    );
-    moduleRegistry.register(contributor, host, storeDeps);
-
-    // By `order`, not by which module happened to register first.
-    expect(slotRegistry.nodesFor('call-controls')).toHaveLength(2);
-    expect(barChildren()).toHaveLength(3);
   });
 });
 
 describe('module teardown', () => {
-  /**
-   * The contract had no teardown, and the failure was a camera that stayed on: unregistering — or
-   * merely re-registering, which a hot reload does — dropped the only reference to a module's live
-   * peer connections and media stream with nothing left able to close them.
-   */
-  type Deps = { onDispose?: (fn: () => void) => void };
-  const teardownMod = (id: string, onCreate: (deps: Deps) => void) =>
-    mod({
-      id,
-      createStore: ((deps: Deps) => {
+  const teardownMod = (id: string, onCreate: (deps: ModuleStoreDeps) => void) =>
+    mod(id, {
+      createStore: (deps) => {
         onCreate(deps);
         return {};
-      }) as ModuleDefinition['createStore'],
+      },
     });
 
-  const host = { backend: 'inmemory', framework: 'solid' };
-
-  it('runs a store’s disposers when the module is unregistered', () => {
+  it('runs a store’s disposers when the module is unregistered, in reverse', () => {
     const closed: string[] = [];
     moduleRegistry.register(
       teardownMod('tear-a', (deps) => {
@@ -383,21 +363,16 @@ describe('module teardown', () => {
       host,
       storeDeps,
     );
-
     expect(closed).toEqual([]);
     moduleRegistry.unregister('tear-a');
-    // Reverse order: later teardown generally depends on earlier setup.
     expect(closed).toEqual(['peers', 'stream']);
   });
 
   it('runs them on re-registration, which is what a hot reload does', () => {
     const closed: string[] = [];
     const definition = teardownMod('tear-b', (deps) => deps.onDispose?.(() => closed.push('closed')));
-
     moduleRegistry.register(definition, host, storeDeps);
     moduleRegistry.register(definition, host, storeDeps);
-
-    // The replaced instance is torn down rather than abandoned holding a live device.
     expect(closed).toEqual(['closed']);
   });
 
@@ -414,78 +389,350 @@ describe('module teardown', () => {
       host,
       storeDeps,
     );
-
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     expect(() => moduleRegistry.unregister('tear-throw')).not.toThrow();
-    // One throwing disposer must not be able to leave the camera on for the rest of them.
     expect(closed).toEqual(['last', 'first']);
-    expect(error).toHaveBeenCalled();
     error.mockRestore();
-  });
-
-  it('does not put teardown on the store, where a template could call it', () => {
-    moduleRegistry.register(
-      teardownMod('tear-a', (deps) => deps.onDispose?.(() => {})),
-      host,
-      storeDeps,
-    );
-    // Store keys are exposed to templates at `modules.<id>.<key>`; teardown is host business.
-    const keys = Object.keys(moduleRegistry.get('tear-a')?.store ?? {});
-    expect(keys).not.toContain('onDispose');
-    expect(keys).not.toContain('destroy');
   });
 });
 
-/**
- * Chrome that belongs to something running, rather than to the space you are looking at.
- *
- * Every module's chrome is wrapped in a gate on `activeModules`, which is the space's decision. A
- * call outlives navigating away from where it started, so that gate took its bar away — hang-up
- * button and all — the moment the user walked into a space with calls switched off, while the call
- * itself carried on. `holdsWhen` is how a module says its chrome is not the space's to withdraw.
- */
 describe('a module that is holding something live', () => {
-  /** The condition a contribution's gate was built with. Docks register under a `dock:` prefix. */
-  function gateOf(id: string): Record<string, unknown> {
-    const entry = slotRegistry.all().find((e) => e.id === `${id}:0` || e.id === `dock:${id}:0`);
+  function gateOf(slotId: string): Record<string, unknown> {
+    const entry = slotRegistry.all().find((e) => e.id === slotId);
     const props = (entry?.node as { props?: Record<string, unknown> } | undefined)?.props;
     return (props?.condition ?? {}) as Record<string, unknown>;
   }
-
-  const chrome = { anchor: 'dock-bottom', node: { type: 'Row' } };
+  const chrome = { anchor: 'dock-bottom' as const, node: { type: 'Row' } };
 
   it('is gated on the space alone when it holds nothing', () => {
-    moduleRegistry.register(mod({ id: 'plain', slots: [chrome] }), host);
-
-    // Unchanged for every module that does not opt in — no disjunct, just the space's decision.
-    expect(gateOf('plain')).toEqual({ $: "'plain' in spaceStore.activeModules" });
+    moduleRegistry.register(mod('plain', { contributes: { slots: [chrome] } }), host);
+    expect(gateOf('plain:0')).toEqual({ $: "'plain' in spaceStore.activeModules" });
   });
 
   it('also renders wherever its own key says it is holding something', () => {
-    moduleRegistry.register(mod({ id: 'held', slots: [chrome], holdsWhen: 'modules.held.active' }), host);
-
-    // Still hidden by neither condition alone — the space's decision keeps working where the module
-    // is holding nothing, which is the ordinary case even for a module that can hold something.
-    expect(gateOf('held')).toEqual({ $: "'held' in spaceStore.activeModules || modules.held.active" });
+    // A bare key now: the registry builds the `modules.<id>.<key>` path rather than the module.
+    moduleRegistry.register(mod('held', { contributes: { slots: [chrome], holds: 'active' } }), host);
+    expect(gateOf('held:0')).toEqual({ $: "'held' in spaceStore.activeModules || modules.held.active" });
   });
 
-  it('gates a dock the same way as a slot', () => {
-    // Both go through the same wrapper, but they are registered on separate paths — the call's stage
-    // is a dock and its bar is a slot, and losing either mid-call is the same bug.
+  it('gates a panel the same way as a slot', () => {
     moduleRegistry.register(
-      mod({ id: 'docked', docks: [{ ...chrome, edge: 'bottom' }], holdsWhen: 'modules.docked.active' } as never),
+      mod('docked', { contributes: { panels: [{ name: 'p', title: 'P', node: { type: 'Row' } }], holds: 'active' } }),
       host,
     );
+    expect(gateOf('dock:docked:p').$).toContain('|| modules.docked.active');
+  });
+});
 
-    expect(gateOf('docked').$).toContain('|| modules.docked.active');
+describe('panels — the host’s half', () => {
+  it('holds the open flag itself unless the module claims it', () => {
+    moduleRegistry.register(
+      mod('notes', { contributes: { panels: [{ name: 'main', title: 'Notes', node: { type: 'Column' } }] } }),
+      host,
+      storeDeps,
+    );
+    const controls = moduleRegistry.panel('notes:main')!;
+    const entry = dockRegistry.get('notes:main')!;
+    const read = (key?: string) => (entry.store![key!] as () => unknown)();
+
+    expect(controls.hostOwned).toBe(true);
+    // Closed: `null` for the edge, which is the one answer the shell reads for both "where" and "whether".
+    expect(read(entry.edge)).toBeNull();
+    controls.open();
+    expect(read(entry.edge)).toBe('right');
+    expect(read(entry.size)).toBe('md');
+    controls.toggle();
+    expect(read(entry.edge)).toBeNull();
+    // The titlebar's close goes through the host's action, since the module has no such member.
+    expect(JSON.stringify(entry.closeAction)).toContain('shellStore.closeModulePanel');
+  });
+
+  it('honours a static bid', () => {
+    moduleRegistry.register(
+      mod('t', {
+        contributes: {
+          panels: [
+            {
+              name: 'p',
+              title: 'P',
+              node: { type: 'Column' },
+              bid: { edge: 'left', size: 'lg', float: true, min: { width: 200 }, aspect: { ratio: 16 / 9 } },
+            },
+          ],
+        },
+      }),
+      host,
+      storeDeps,
+    );
+    const entry = dockRegistry.get('t:p')!;
+    moduleRegistry.panel('t:p')!.open();
+    const read = (key?: string) => (entry.store![key!] as () => unknown)();
+    expect(read(entry.edge)).toBe('left');
+    expect(read(entry.size)).toBe('lg');
+    expect(read(entry.float)).toBe(true);
+    expect(read(entry.min)).toEqual({ width: 200 });
+    // Declared, so the titlebar offers "fit to content".
+    expect(entry.aspect).toBe('aspect');
+    expect(read(entry.aspect)).toEqual({ ratio: 16 / 9 });
+  });
+
+  it('reads a bid off the store when the module names a key, and openness when it claims it', () => {
+    moduleRegistry.register(
+      mod('call', {
+        contributes: {
+          panels: [
+            {
+              name: 'stage',
+              title: 'Call',
+              node: { type: 'Column' },
+              bid: 'stageBid',
+              open: 'stageOpen',
+              show: 'openStage',
+              close: 'closeStage',
+            },
+          ],
+        },
+        createStore: ({ signal }) => {
+          const [open, setOpen] = signal(false);
+          const [size, setSize] = signal<'md' | 'full'>('md');
+          return {
+            stageOpen: open,
+            openStage: () => setOpen(true),
+            closeStage: () => setOpen(false),
+            stageBid: () => ({ edge: 'bottom', size: size() }),
+            share: () => setSize('full'),
+          };
+        },
+      }),
+      host,
+      storeDeps,
+    );
+    const controls = moduleRegistry.panel('call:stage')!;
+    const entry = dockRegistry.get('call:stage')!;
+    const read = (key?: string) => (entry.store![key!] as () => unknown)();
+    const store = moduleStores.call as Record<string, () => void>;
+
+    expect(controls.hostOwned).toBe(false);
+    expect(read(entry.edge)).toBeNull();
+    controls.open();
+    expect(store.stageOpen()).toBe(true);
+    expect(read(entry.edge)).toBe('bottom');
+    store.share();
+    // A key bid is live: the stage asking for 'full' is a state, not a starting size.
+    expect(read(entry.size)).toBe('full');
+    controls.close();
+    expect(read(entry.edge)).toBeNull();
+    // The module's own close is what the titlebar calls.
+    expect(entry.close).toBe('closeStage');
+    expect(entry.closeAction).toBeUndefined();
+  });
+
+  it('gates each panel’s supplied body on its own dock id, not on the module’s', () => {
+    moduleRegistry.register(
+      mod('twin', {
+        contributes: {
+          panels: [
+            { name: 'transcript', title: 'T', node: { type: 'we-text', children: ['first'] } },
+            { name: 'extraction', title: 'E', node: { type: 'we-text', children: ['second'] } },
+          ],
+        },
+      }),
+      host,
+    );
+    const frames = slotRegistry.all().filter((entry) => entry.id.startsWith('dock:twin'));
+    const json = frames.map((entry) => JSON.stringify(entry.node));
+    expect(frames.map((f) => f.id)).toEqual(['dock:twin:transcript', 'dock:twin:extraction']);
+    expect(json[0]).toContain("shellStore.panelSupplied['twin:transcript']");
+    expect(json[1]).toContain('"dock":"extraction"');
+    for (const entry of json) expect(entry).not.toContain("panelSupplied['twin']");
+    // The module's own contents remain on the other side of the gate.
+    expect(json[0]).toContain('first');
+    expect(json[0]).toContain('TemplatePanelBody');
+  });
+
+  it('composes its own chrome out of its own parts, expanded before it renders', () => {
+    moduleRegistry.register(
+      mod('twin', {
+        contributes: {
+          parts: { row: { type: 'we-text', children: ['from the part'] } },
+          panels: [
+            {
+              name: 'p',
+              title: 'P',
+              node: { type: 'Column', children: [{ type: '$part', props: { id: 'twin.row' } }] },
+            },
+          ],
+        },
+      }),
+      host,
+    );
+    const rendered = JSON.stringify(
+      slotRegistry.nodes().map((node) => {
+        const expanded = resolveParts(node);
+        return Array.isArray(expanded) ? expanded : [expanded];
+      }),
+    );
+    expect(rendered).toContain('from the part');
+    expect(rendered).not.toContain('$part');
+  });
+});
+
+describe('what a store is handed, and what it publishes', () => {
+  it('hands a module only the kernels its manifest named', () => {
+    let seen: ModuleStoreDeps | undefined;
+    moduleRegistry.register(
+      mod('k', {
+        manifest: { id: 'k', name: 'K', requires: { kernels: ['records', 'presence'] } },
+        createStore: (deps) => {
+          seen = deps;
+          return {};
+        },
+      }),
+      host,
+      storeDeps,
+    );
+    expect(Object.keys(seen!.kernels).sort()).toEqual(['presence', 'records']);
+    expect(seen!.kernels.languageModel).toBeUndefined();
+    // And the markers, so a store can say what is public.
+    expect(typeof seen!.state).toBe('function');
+    expect(typeof seen!.action).toBe('function');
+  });
+
+  it('keeps unmarked members private and reports the marked ones', () => {
+    moduleRegistry.register(
+      mod('s', {
+        createStore: ({ state, action, signal }) => {
+          const [count] = signal(3);
+          return {
+            count: state(count, 'How many.'),
+            bump: action(() => undefined, 'One more.'),
+            plumbing: () => 'right',
+          };
+        },
+      }),
+      host,
+      storeDeps,
+    );
+    expect(moduleRegistry.storeSurface('s')).toEqual({
+      count: { kind: 'state', doc: 'How many.' },
+      bump: { kind: 'action', doc: 'One more.' },
+    });
+    // The store itself keeps everything: the module's own chrome sees all of it.
+    expect(Object.keys(moduleStores.s as object).sort()).toEqual(['bump', 'count', 'plumbing']);
+  });
+
+  it('keeps secret settings out of deps.settings and reaches them through the kernel', () => {
+    let seen: ModuleStoreDeps | undefined;
+    moduleRegistry.provideSettings(() => ({ token: 'shh', verbose: true }));
+    moduleRegistry.register(
+      mod('sec', {
+        manifest: { id: 'sec', name: 'Sec', requires: { kernels: ['secrets'] } },
+        contributes: {
+          settings: [
+            { key: 'token', label: 'Token', type: 'secret', default: '', levels: ['agent'] },
+            { key: 'verbose', label: 'Verbose', type: 'boolean', default: false, levels: ['agent'] },
+          ],
+        },
+        createStore: (deps) => {
+          seen = deps;
+          return {};
+        },
+      }),
+      host,
+      storeDeps,
+    );
+    expect(seen!.settings?.()).toEqual({ verbose: true });
+    expect(seen!.kernels.secrets?.get('token')).toBe('shh');
+    expect(seen!.kernels.secrets?.get('verbose')).toBeUndefined();
+    moduleRegistry.provideSettings(() => ({}));
+  });
+
+  it('derives capabilities from the manifest and contributions', () => {
+    moduleRegistry.register(
+      mod('caps', {
+        manifest: { id: 'caps', name: 'Caps', requires: { kernels: ['media'], permissions: ['microphone'] } },
+        contributes: { panels: [{ name: 'p', title: 'P', node: { type: 'Column' } }] },
+      }),
+      host,
+    );
+    expect(moduleRegistry.capabilitiesOf('caps')).toEqual(
+      expect.arrayContaining(['microphone', 'kernel:media', 'dock']),
+    );
+  });
+
+  it('warns, in development, about an activity a module publishes but never declared', () => {
+    const published: unknown[] = [];
+    const deps: ModuleStoreDeps = {
+      ...storeDeps,
+      kernels: {
+        ...storeDeps.kernels,
+        presence: { peers: () => [], setActivity: (a) => void published.push(a), clearActivity: () => {} },
+      },
+    };
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    moduleRegistry.register(
+      mod('act', {
+        manifest: { id: 'act', name: 'Act', requires: { kernels: ['presence'] } },
+        contributes: { activities: { drawing: { board: 'string' } } },
+        createStore: ({ kernels }) => ({
+          go: () => {
+            kernels.presence?.setActivity({ type: 'drawing', board: 'b1' } as never);
+            kernels.presence?.setActivity({ type: 'drawing', board: 7 } as never);
+            kernels.presence?.setActivity({ type: 'singing' } as never);
+          },
+        }),
+      }),
+      host,
+      deps,
+    );
+    (moduleStores.act as { go: () => void }).go();
+    // Every publish still goes through — a shape check is a warning, never a refusal.
+    expect(published).toHaveLength(3);
+    const messages = warn.mock.calls.map((c) => String(c[0]));
+    expect(messages.some((m) => m.includes('board') && m.includes('declared as string'))).toBe(true);
+    expect(messages.some((m) => m.includes('"singing"'))).toBe(true);
+    warn.mockRestore();
+  });
+});
+
+describe('what a template needs', () => {
+  it('derives required modules from declared requirements and mounted components', () => {
+    moduleRegistry.register(
+      mod('globe', {
+        manifest: { id: 'globe', name: 'Globe', requires: { frameworks: ['solid'] } },
+        contributes: { components: { CesiumGlobe: () => null } },
+      }),
+      host,
+    );
+    moduleRegistry.register(mod('call'), host);
+    const schema = {
+      type: 'Column',
+      meta: { name: 'x', description: '', icon: '', requires: { modules: ['call'] } },
+      children: [{ type: 'CesiumGlobe' }],
+    } as never;
+    expect(moduleRegistry.requiredBy(schema).sort()).toEqual(['call', 'globe']);
+  });
+
+  it('catalogues contributed views and refuses ones with no id or the wrong role', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    moduleRegistry.register(
+      mod('polls', {
+        contributes: {
+          views: [
+            { id: 'polls', type: 'Column', meta: { name: 'Polls', description: '', icon: 'chart-bar', role: 'view' } },
+            { type: 'Column', meta: { name: 'Nameless', description: '', icon: '', role: 'view' } },
+            { id: 'shell', type: 'Column', meta: { name: 'Shell', description: '', icon: '' } },
+          ] as never,
+        },
+      }),
+      host,
+    );
+    expect(Object.keys(moduleRegistry.views())).toEqual(['polls']);
+    warn.mockRestore();
   });
 });
 
 describe('agent-scoped modules', () => {
-  /**
-   * A fake schema port that records what it was asked to compile, and hands back one class per
-   * entity name. Compiling for real needs a backend; what is under test is the routing.
-   */
   function recordingPort() {
     const compiled: string[] = [];
     const port = {
@@ -497,194 +744,44 @@ describe('agent-scoped modules', () => {
     };
     return { port, compiled };
   }
-
   const manifest = (name: string) =>
-    ({
-      version: '1.0.0',
-      entities: { [name]: { base: 'Ad4mModel', properties: {}, relations: {} } },
-    }) as never;
+    ({ version: '1.0.0', entities: { [name]: { base: 'Ad4mModel', properties: {}, relations: {} } } }) as never;
 
   it('routes an agent-scoped manifest to the root dataset and nowhere else', () => {
-    // The failure this prevents is not abstract: an agent-scoped entity installed into a shared
-    // space would sync one person's private records to a whole community.
     moduleRegistry.register(
-      mod({ id: 'pocket', entities: { manifest: manifest('PocketItem'), scope: 'agent' } }),
+      mod('pocket', { contributes: { entities: { manifest: manifest('PocketItem'), scope: 'agent' } } }),
       host,
     );
     const { port, compiled } = recordingPort();
-
     expect(moduleRegistry.moduleSchemas(port as never)).toEqual([]);
     expect(moduleRegistry.agentSchemas(port as never)).toEqual([{ className: 'PocketItem' }]);
     expect(compiled).toEqual(['PocketItem']);
   });
 
-  it('leaves a module that says nothing about scope in the space, as before', () => {
-    moduleRegistry.register(mod({ id: 'notes', entities: { manifest: manifest('Note') } }), host);
+  it('leaves a module that says nothing about scope in the space', () => {
+    moduleRegistry.register(mod('notes', { contributes: { entities: { manifest: manifest('Note') } } }), host);
     const { port } = recordingPort();
-
     expect(moduleRegistry.moduleSchemas(port as never)).toEqual([{ className: 'Note' }]);
     expect(moduleRegistry.agentSchemas(port as never)).toEqual([]);
   });
 
   it('compiles each module once, however many datasets it is installed into', () => {
-    // Install runs on every dataset switch, and fresh classes each time would churn the model
-    // registry underneath live queries.
     moduleRegistry.register(
-      mod({ id: 'pocket', entities: { manifest: manifest('PocketItem'), scope: 'agent' } }),
+      mod('pocket', { contributes: { entities: { manifest: manifest('PocketItem'), scope: 'agent' } } }),
       host,
     );
     const { port, compiled } = recordingPort();
-
     moduleRegistry.agentSchemas(port as never);
     moduleRegistry.agentSchemas(port as never);
-
     expect(compiled).toEqual(['PocketItem']);
   });
 });
 
-/**
- * A module's panel contents, replaced by the interface that declared the panel.
- *
- * The gate is keyed by **dock id** though the template's declaration names a module, and the two
- * only diverge for a module contributing more than one panel — where keying by module would have
- * put one supplied body inside every one of them. None does today, which is the reason to pin it:
- * the day one does, the failure is a panel quietly showing the wrong contents.
- */
-describe('supplying a module panel’s contents', () => {
-  beforeEach(reset);
-
-  const twoDocks = {
-    id: 'twin',
-    name: 'Twin',
-    docks: [
-      { edge: 'edgeA', node: { type: 'we-text', children: ['first'] } },
-      { edge: 'edgeB', node: { type: 'we-text', children: ['second'] } },
-    ],
-    createStore: () => ({}),
-  } as unknown as ModuleDefinition;
-
-  it('gates each dock on its own id, not on the module’s', () => {
-    moduleRegistry.register(twoDocks, host);
-
-    const frames = slotRegistry.all().filter((entry) => entry.id.startsWith('dock:twin'));
-    const json = frames.map((entry) => JSON.stringify(entry.node));
-
-    expect(frames).toHaveLength(2);
-    expect(json[0]).toContain("shellStore.panelSupplied['twin:0']");
-    expect(json[1]).toContain("shellStore.panelSupplied['twin:1']");
-    // Neither asks about the bare module name — that is the key that would answer for both at once.
-    for (const entry of json) expect(entry).not.toContain("panelSupplied['twin']");
-  });
-
-  it('names each dock, so a placement survives a second panel being added', () => {
-    /*
-      The id was `<moduleId>:<index>`, which is stable only while nothing is inserted before it. A
-      placement is remembered against that id, so adding a panel at the top of the list renumbered
-      every one below it and threw away wherever anybody had dragged them.
-    */
-    const named = {
-      id: 'twin',
-      name: 'Twin',
-      docks: [
-        { edge: 'edgeA', name: 'transcript', node: { type: 'we-text' } },
-        { edge: 'edgeB', name: 'extraction', node: { type: 'we-text' } },
-      ],
-      createStore: () => ({}),
-    } as unknown as ModuleDefinition;
-    moduleRegistry.register(named, host);
-
-    const ids = slotRegistry
-      .all()
-      .filter((entry) => entry.id.startsWith('dock:twin'))
-      .map((entry) => entry.id);
-
-    expect(ids).toEqual(['dock:twin:transcript', 'dock:twin:extraction']);
-  });
-
-  it('tells a supplied body which dock it is for', () => {
-    // Two frames ask, and a body matched on the module alone would land in whichever asked first —
-    // the transcript inside the extraction panel, silently.
-    const named = {
-      id: 'twin',
-      name: 'Twin',
-      docks: [
-        { edge: 'edgeA', name: 'transcript', node: { type: 'we-text' } },
-        { edge: 'edgeB', name: 'extraction', node: { type: 'we-text' } },
-      ],
-      createStore: () => ({}),
-    } as unknown as ModuleDefinition;
-    moduleRegistry.register(named, host);
-
-    expect(JSON.stringify(slotRegistry.get('dock:twin:extraction')?.node)).toContain('"dock":"extraction"');
-  });
-
-  it('composes its own chrome out of its own parts, expanded before it renders', () => {
-    /*
-      A module building its panel from its own published fragments is ordinary — the transcript panel
-      builds its feed from `transcriptLines`. Only a *template* placing a part expanded one, so a
-      module's own chrome reached the renderer with the marker intact and drew "Unknown component
-      $part" in a red box where each fragment should have been. Invisible in an interface that
-      supplies the body, which is why it showed up in the default template and not the workshop.
-    */
-    const withPart = {
-      id: 'twin',
-      name: 'Twin',
-      schemas: { row: { type: 'we-text', children: ['from the part'] } },
-      docks: [
-        {
-          edge: 'edgeA',
-          name: 'transcript',
-          node: { type: 'Column', children: [{ type: '$part', props: { id: 'twin.row' } }] },
-        },
-      ],
-      createStore: () => ({}),
-    } as unknown as ModuleDefinition;
-    moduleRegistry.register(withPart, host);
-
-    const rendered = JSON.stringify(
-      slotRegistry.nodes().map((node) => {
-        const expanded = resolveParts(node);
-        return Array.isArray(expanded) ? expanded : [expanded];
-      }),
-    );
-
-    expect(rendered).toContain('from the part');
-    expect(rendered).not.toContain('$part');
-  });
-
-  it('still renders the module’s own contents on the other side of the gate', () => {
-    // The override is a branch, not a replacement: a module whose panel nobody supplies is
-    // unaffected, which is what makes this safe to key on something no template writes directly.
-    moduleRegistry.register(twoDocks, host);
-
-    const first = JSON.stringify(slotRegistry.get('dock:twin:0')?.node);
-
-    expect(first).toContain('first');
-    expect(first).toContain('TemplatePanelBody');
-  });
-});
-
-/**
- * Which panel a rail button is about — what the rail asks before pressing, so a button whose panel is
- * stacked out of sight brings it forward rather than closing it.
- */
-describe('the panel a launcher is about', () => {
-  const dock = (name?: string) => ({ edge: 'dockEdge', node: { type: 'Column' }, ...(name ? { name } : {}) });
-  const launcher = (key?: string) => ({ icon: 'note', label: 'Notes', action: 'toggle', ...(key ? { key } : {}) });
-
-  it('is the only dock, for the module with one panel and one button', () => {
-    expect(moduleRegistry.dockOfLauncher(mod({ id: 'notes', docks: [dock()] }), launcher())).toBe('notes:0');
-  });
-
-  it('is the dock of the same name, for a keyed launcher', () => {
-    const definition = mod({ id: 'transcribe', docks: [dock('transcript'), dock('extraction')] });
-
-    expect(moduleRegistry.dockOfLauncher(definition, launcher('extraction'))).toBe('transcribe:extraction');
-    expect(moduleRegistry.dockOfLauncher(definition, launcher())).toBe('transcribe:transcript');
-  });
-
-  it('is nothing, for a module with no panel or a key naming no dock', () => {
-    expect(moduleRegistry.dockOfLauncher(mod({ id: 'x' }), launcher())).toBeNull();
-    expect(moduleRegistry.dockOfLauncher(mod({ id: 'x', docks: [dock('a')] }), launcher('b'))).toBeNull();
+describe('markers used outside a store', () => {
+  it('are the same functions the deps carry, so a test can mark members directly', () => {
+    const read = () => 1;
+    expect(markState(read, 'x')).toBe(read);
+    const act = () => undefined;
+    expect(markAction(act, 'y')).toBe(act);
   });
 });

@@ -25,17 +25,48 @@
  * is not tidiness: a module cannot see the sidebar's width or the rail's, and the call module was
  * carrying `right: '72px'` — a hardcoded copy of geometry it had no way to keep in step.
  */
-import type { DockContribution } from '@we/module-shared';
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
 import { COLLAPSED_PX, FRAME_BORDER_PX, type SnapPoint } from '../dockGeometry';
 import { createRegistry } from './createRegistry';
 
-export interface DockEntry extends DockContribution {
-  /** Unique — `<moduleId>:<index>`, so one module can contribute more than one panel. */
+/**
+ * A dock as the shell sees it: a node, and the string keys its geometry is read through.
+ *
+ * Every geometric field names a **key** into a store rather than carrying a value, because both halves
+ * of the answer change while the app runs and the shell reads them inside a memo. Which store: the one
+ * `store` points at when set, else the module's own (`moduleStores[moduleId]`), else a host store
+ * registered under that id (`hostDockStores`). A module's panel gets a plumbing store the registry
+ * builds; the editor's docks read `editorStore`; the shell's own read `shellStore`.
+ */
+export interface DockEntry {
+  /** Unique — `<moduleId>:<name>`, so one module can contribute more than one panel. */
   id: string;
-  /** The module whose store the `edge` / `size` / `float` keys are read from. */
+  /** The module — or host store — the keys are read from when `store` is not set. */
   moduleId: string;
+  /** Which panel this is, for a module that contributes more than one. */
+  name?: string;
+  /** A key returning `DockEdge`: where the panel would like to open, and `null` while it is closed. */
+  edge: string;
+  /** A key returning `DockSize`. Omit for `'md'`. */
+  size?: string;
+  /** A key returning `true` while the panel should overlay rather than take room. */
+  float?: string;
+  /** A key returning `DockAspect`, where the content has a shape of its own. Enables "fit to content". */
+  aspect?: string;
+  /** A key returning `DockMin`. */
+  min?: string;
+  /** A key naming the action that closes the panel — the host puts a close button on its titlebar. */
+  close?: string;
+  /** The panel itself. */
+  node: SchemaNode;
+  /** Ties break on module id. */
+  order?: number;
+  /**
+   * The store the keys resolve against, when it is neither the module's own nor a registered host
+   * store — a module panel's plumbing, built by the registry. See `moduleRegistry.panel`.
+   */
+  store?: Record<string, unknown>;
   /**
    * How a *schema* addresses that store, where it is not a module's — `'editorStore'`.
    *
@@ -102,7 +133,7 @@ export const hostDockStores: Record<string, Record<string, unknown>> = {};
  * Fixed chrome the host or a template is painting, that floating panels must clear.
  *
  * The sibling of `hostDockStores`, and it exists for the same reason: `moduleChrome` sums
- * `chromeReserve` off every module store, and the app's own chrome is not a module. A shell template
+ * each module's declared `reserve` key, and the app's own chrome is not a module. A shell template
  * pinning a nav strip has exactly the problem the call bar has — a panel snapped to that corner
  * opens underneath it — and no store to publish from, because a template is data.
  *

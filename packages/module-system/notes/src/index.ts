@@ -42,13 +42,16 @@
  * - **Creating one** — `record.create`, already in the stores bag. The module ships no CRUD wrapper.
  * - **The collection** — found by `$query`, not held anywhere. Deriving it every time is what keeps
  *   it correct across a space switch; a cached id would write this space's notes into the last one.
- * - **Panel open/closed** — the store, because this is *chrome*. `$localState` is per-node and would
- *   reset the panel every time the route changed, which is exactly what a docked panel must not do.
+ * - **Panel open/closed** — the host's. A panel's openness is a fact about the screen rather than
+ *   about notes, so the module declares the panel and the host holds the flag: the rail toggles it, a
+ *   template's `meta.panels` opens it, the titlebar closes it. Which is why this module has **no
+ *   store at all** — the six members it used to carry existed only to answer the dock's string keys.
  *
- * The store's reactivity is injected (`deps.signal`) rather than imported, the same port trick that
- * keeps `@we/schema-shared` framework-neutral.
+ * A module that is entirely declaration is the shape the distribution ladder calls rung 2: nothing
+ * here is code, so nothing here has to be trusted. Notes is the proof that the data half of the
+ * contract is complete for the commonest kind of module, and the file a first author should copy.
  */
-import { defineModule, type ModuleStoreDeps } from '@we/module-shared';
+import { defineModule, type ModuleDefinition, type ModuleHost } from '@we/module-shared';
 import { panelScroll, panelShell } from '@we/schema-kit';
 import { type SchemaNode } from '@we/schema-shared';
 
@@ -113,13 +116,9 @@ const panel: SchemaNode = {
   props: {
     // Nothing at all outside a space. Notes are written into the current dataset, so the panel is
     // only meaningful where there is one — offering it on a screen with nowhere to save to would be
-    // an invitation to lose what you typed.
-    //
-    // This is the crude version of a question the module system hasn't answered yet: *which* spaces
-    // should show it. `Space.enabledModules` is the real answer — a community turning the module on
-    // for its space — and it arrives with the marketplace, alongside consent. Until then a module's
-    // chrome appears in every space, which is fine while modules are first-party and bundled.
-    condition: { $: 'datasetStore.currentDataset && modules.notes.open' },
+    // an invitation to lose what you typed. Whether the panel is *open* is the host's question and
+    // the frame around this node already answers it; this is only about whether there is a space.
+    condition: { $: 'datasetStore.currentDataset' },
     /*
       Fills the box the host gave it, and names itself the way every panel does.
 
@@ -275,60 +274,44 @@ const panel: SchemaNode = {
   },
 };
 
-/** A drop-in trigger a template can place wherever it likes. */
+/**
+ * A drop-in trigger a template can place wherever it likes.
+ *
+ * Through the host, because the host holds the flag: `launchModule` takes a panel's dock id and does
+ * what the rail's button does, including bringing a panel that is open but out of sight into view.
+ */
 const toggleButton: SchemaNode = {
   type: 'we-button',
-  props: { variant: 'ghost', size: 'sm', onClick: { $action: 'modules.notes.toggle' } },
+  props: { variant: 'ghost', size: 'sm', onClick: { $action: 'spaceStore.launchModule', args: ['notes:main'] } },
   children: [{ type: 'we-icon', props: { name: 'note' } }],
 };
 
-export const notesModule = defineModule({
-  id: 'notes',
-  name: 'Notes',
-  description: 'A per-space scratchpad in a docked panel.',
-  icon: 'note',
+export const notesModule: ModuleDefinition = defineModule({
+  manifest: {
+    id: 'notes',
+    name: 'Notes',
+    description: 'A per-space scratchpad in a docked panel.',
+    icon: 'note',
+    // No `frameworks` — every piece of UI here is a fragment. No kernels — everything the panel does
+    // goes through `record.create` and `$query`, which are the template's. What a person is told at
+    // install ("stores data in your spaces", "adds a panel") is derived from what is declared below.
+  },
+  contributes: {
+    // Still declared, still never written to. Notes are `TextBlock`s now; this keeps the ones written
+    // before that readable, and removing it would orphan them rather than delete them. See `Note.ts`.
+    entities: { manifest: NOTE_MANIFEST },
 
-  // Displayed at install, never scored. "Store data in your spaces" and "add a panel to your screen"
-  // are the two things a user is actually agreeing to.
-  capabilities: ['storage', 'dock'],
+    parts: { toggleButton },
 
-  // No `frameworks` — every piece of UI here is a fragment, so this module is framework-agnostic.
-
-  // Still declared, still never written to. Notes are `TextBlock`s now; this keeps the ones written
-  // before that readable, and removing it would orphan them rather than delete them. See `Note.ts`.
-  entities: { manifest: NOTE_MANIFEST },
-
-  schemas: { toggleButton },
-
-  /**
-   * A panel that makes room rather than covering. See `DockContribution`.
-   *
-   * `dockEdge` returns null while closed, which is how the host knows there is nothing to place —
-   * one key answering both "where" and "whether", so the two can never disagree.
-   */
-  docks: [{ edge: 'dockEdge', size: 'dockSize', float: 'dockFloat', close: 'close', node: panel }],
-
-  // Drawn by the host's module rail rather than by this module, so every module is opened the same
-  // way. `activeWhen` is what makes the rail tab highlight while the panel is open.
-  launcher: { icon: 'note', label: 'Notes', action: 'toggle', activeWhen: 'open' },
-
-  createStore: ({ signal }: ModuleStoreDeps) => {
-    const [open, setOpen] = signal(false);
-    return {
-      open,
-      /**
-       * Where the host should put this panel — see `docks` above.
-       *
-       * `right` because that is the edge the module rail is on and where this has always opened;
-       * `md` is an opening bid the user overrides by dragging. Never floating: a panel you read
-       * alongside the space is the case docking exists for.
-       */
-      dockEdge: () => (open() ? 'right' : null),
-      dockSize: () => 'md',
-      dockFloat: () => false,
-
-      toggle: () => setOpen(!open()),
-      close: () => setOpen(false),
-    };
+    /**
+     * The panel. One object: what it is called, what it shows, how it would like to open. The host
+     * holds whether it is open, draws its rail button from `icon` and `title`, and remembers wherever
+     * somebody drags it. `right` because that is the edge the module rail is on; `md` is an opening
+     * bid the user overrides by dragging.
+     */
+    panels: [{ name: 'main', title: 'Notes', icon: 'note', node: panel, bid: { edge: 'right', size: 'md' } }],
   },
 });
+
+/** The one factory shape every module package exports — see `bundledModules.ts`. */
+export const createModule = (_host: ModuleHost): ModuleDefinition => notesModule;

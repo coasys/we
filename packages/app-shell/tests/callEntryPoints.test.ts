@@ -25,6 +25,7 @@ import { transcribeModule } from '@we/module-transcribe';
 import { cardsView } from '@we/template-views';
 import { describe, expect, it } from 'vitest';
 
+import { createModuleStoreDeps } from '../src/shared/registries/moduleHostServices';
 import { moduleRegistry, moduleStores } from '../src/shared/registries/moduleRegistry';
 
 /*
@@ -36,13 +37,13 @@ import { moduleRegistry, moduleStores } from '../src/shared/registries/moduleReg
 const view = JSON.stringify(cardsView);
 
 /** The reactivity a host lends a module, reduced to the smallest thing that satisfies it. */
-const storeDeps = {
+const storeDeps = createModuleStoreDeps({
   signal: <T>(initial: T): [() => T, (next: T) => void] => {
     let value = initial;
-    return [() => value, (next: T) => (value = next)];
+    return [() => value, (next: T) => void (value = next)];
   },
   effect: (fn: () => void) => fn(),
-};
+});
 
 /**
  * The conditions of every `$if` whose `then` contains this text — what gates a given control.
@@ -84,7 +85,7 @@ function actionsIn(node: unknown): string[] {
 describe('the rail launcher', () => {
   it('goes to the call rather than joining one', () => {
     // The declaration is the whole of the coupling — the host calls whatever method this names.
-    expect(callModule.launcher!.action).toBe('goToCall');
+    expect(callModule.contributes!.launchers![0].action).toBe('goToCall');
   });
 });
 

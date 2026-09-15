@@ -7,17 +7,45 @@
  * the packing rule that makes "one participant never scrolls" true by construction rather than by
  * inspection.
  */
+import { markAction, markState, storeSurface } from '@we/module-shared';
 import { describe, expect, it } from 'vitest';
 
 import { createCallStore, STAGE_GAP_PX, STAGE_PADDING_PX } from './store';
 
-/** The reactivity a host lends a module, reduced to the smallest thing that satisfies it. */
+/**
+ * The reactivity a host lends a module, reduced to the smallest thing that satisfies it.
+ *
+ * `state` and `action` are the real markers rather than identity functions, so the surface a
+ * template sees can be asserted on the same store the arithmetic is. No kernels: the contract's
+ * degradation mode is a host that lends none, and this store must still answer every geometry
+ * question below.
+ */
 function makeStore() {
   const signal = <T>(initial: T): [() => T, (next: T) => void] => {
     let value = initial;
     return [() => value, (next: T) => (value = next)];
   };
-  return createCallStore({ signal }) as ReturnType<typeof createCallStore> & Record<string, () => unknown>;
+  return createCallStore({ signal, state: markState, action: markAction, kernels: {} }) as ReturnType<
+    typeof createCallStore
+  > &
+    Record<string, () => unknown>;
+}
+
+/**
+ * A `MediaStream` a media controller can drive, for a harness whose `media` kernel answers.
+ *
+ * The test-setup stub covers what the *mesh* constructs; the controller also reads tracks by kind,
+ * flips `enabled` and stops them, and the tile logic asks a video track whether it is live.
+ */
+function fakeMicStream() {
+  const tracks = [{ kind: 'audio', enabled: true, readyState: 'live', stop() {} }];
+  return {
+    getTracks: () => [...tracks],
+    getAudioTracks: () => tracks.filter((t) => t.kind === 'audio'),
+    getVideoTracks: () => tracks.filter((t) => t.kind === 'video'),
+    addTrack: () => {},
+    removeTrack: () => {},
+  } as unknown as MediaStream;
 }
 
 describe('what the call still decides about its own video', () => {
@@ -34,20 +62,34 @@ describe('what the call still decides about its own video', () => {
   });
 
   it('asks for no room until it is opened', () => {
-    // A call you have just joined must not shrink the app on its own. `null` is how the dock says
-    // "not placed", which is the same key the host reads for *where* — one question, one answer.
-    expect(makeStore().dockEdge()).toBeNull();
+    // A call you have just joined must not shrink the app on its own. Openness is the panel's own
+    // `open` key — the module owns it, because whether the stage is up is a fact about the call —
+    // and the bid it makes when it does open is a floating card, which takes nothing from the content.
+    const store = makeStore();
+    expect(store.stageOpen()).toBe(false);
+    expect(store.stageBid().float).toBe(true);
+  });
+
+  it('opens on the panel declaration’s show, and stays open on a second press', () => {
+    // `show` is how a template's `meta.panels` entry opens a module-owned panel — the host cannot
+    // set a flag it does not hold. Idempotent, like `goToCall`'s use of the same setter.
+    const store = makeStore();
+    store.openStage();
+    expect(store.stageOpen()).toBe(true);
+    store.openStage();
+    expect(store.stageOpen()).toBe(true);
+    store.closeStage();
+    expect(store.stageOpen()).toBe(false);
   });
 
   it('always overlays, and leaves everything else about the panel to the host', () => {
-    // The module's whole statement about layout, and it is now one sentence: a card, floating, when
-    // it opens. Position, size, whether it displaces content and whether it covers the screen are all
-    // the host's, on the panel's own titlebar.
+    // The module's whole statement about layout, and it is now one sentence: a card, floating, on
+    // the bottom edge, when it opens. Position, size, whether it displaces content and whether it
+    // covers the screen are all the host's, on the panel's own titlebar.
     const store = makeStore();
     store.toggleStage();
 
-    expect(store.dockFloat()).toBe(true);
-    expect(store.dockSize()).toBe('sm');
+    expect(store.stageBid()).toMatchObject({ edge: 'bottom', size: 'sm', float: true });
   });
 
   it('no longer offers a placement, a size, or a full screen', () => {
@@ -64,6 +106,88 @@ describe('what the call still decides about its own video', () => {
     expect(store.stageFull).toBeUndefined();
     // The bar used to swap ends to dodge a top-docked stage. It cannot know where the stage is now.
     expect(store.barAtBottom).toBeUndefined();
+    // And the four dock keys folded into one bid — the edge doubling as "is it placed" was the
+    // shape that hid the stage from a freshly started call.
+    expect(store.dockEdge).toBeUndefined();
+    expect(store.dockSize).toBeUndefined();
+    expect(store.dockFloat).toBeUndefined();
+    expect(store.dockAspect).toBeUndefined();
+  });
+});
+
+/**
+ * What a space template may read and call — the marked members — against what stays the module's.
+ *
+ * The default is private, so a member left unmarked is invisible to a template rather than exposed
+ * to it. What is asserted here is the *boundary*: the call's domain is public, every key an
+ * existing template already spells as `modules.call.<key>` is public, and the stage's plumbing is
+ * not — a template opens the stage by declaring the panel, never by calling into its geometry.
+ */
+describe('what a template may reach', () => {
+  const surface = storeSurface(makeStore());
+
+  it('publishes the call’s state and actions, each with a sentence', () => {
+    const states = [
+      'callId',
+      'callRecordId',
+      'liveCalls',
+      'tiles',
+      'tileStates',
+      'media',
+      'problem',
+      'active',
+      'elsewhere',
+      'callSpace',
+      'canCall',
+      'ongoing',
+      'focusedId',
+      'solo',
+      'arrangement',
+    ];
+    const actions = [
+      'returnToCall',
+      'goToCall',
+      'startCall',
+      'continueCall',
+      'joinCall',
+      'attachAnchor',
+      'joinAnchoredCall',
+      'leave',
+      'toggleAudio',
+      'toggleVideo',
+      'toggleScreenShare',
+      'focusTile',
+      'toggleSolo',
+      'setArrangement',
+      'dismissProblem',
+    ];
+    for (const name of states) expect(surface[name]?.kind, name).toBe('state');
+    for (const name of actions) expect(surface[name]?.kind, name).toBe('action');
+    for (const [name, member] of Object.entries(surface)) expect(member.doc.length, name).toBeGreaterThan(0);
+  });
+
+  it('keeps the stage’s plumbing to itself', () => {
+    // Read by the panel declaration and this module's own fragments, which render at chrome tier
+    // and see everything; a template has no business with a `MediaStream` or a grid track string.
+    for (const name of [
+      'stageBid',
+      'stageOpen',
+      'openStage',
+      'closeStage',
+      'toggleStage',
+      'chromeReserve',
+      'setStageBox',
+      'stageTemplate',
+      'stageRows',
+      'pictureStyle',
+      'tileCells',
+      'tilePins',
+      'stageOverflow',
+      'tileFaces',
+      'localAudio',
+    ]) {
+      expect(surface[name], name).toBeUndefined();
+    }
   });
 });
 
@@ -98,7 +222,7 @@ describe('tile packing', () => {
     // The host solves `(width - insetX) / ratio + insetY` for "fit to content", so the insets are
     // what stop the answer coming out short — which the tiles then answered by shrinking to the
     // height and leaving a gap down each side, a fit that looked wrong in the other axis.
-    const aspect = makeStore().dockAspect() as { ratio: number; insetX: number; insetY: number };
+    const aspect = makeStore().stageBid().aspect!;
 
     expect(aspect.ratio).toBeCloseTo(16 / 9);
     expect(aspect.insetX).toBe(STAGE_PADDING_PX * 2);
@@ -110,7 +234,7 @@ describe('tile packing', () => {
     // re-solved could rearrange the call under a click that only asked to remove the empty band.
     const store = makeStore();
     store.setArrangement({ columns: 3, rows: 2 });
-    const aspect = store.dockAspect() as { ratio: number; insetX: number; insetY: number };
+    const aspect = store.stageBid().aspect!;
 
     expect(aspect.ratio).toBeCloseTo((3 * 16) / (2 * 9));
     expect(aspect.insetX).toBe(STAGE_PADDING_PX * 2 + 2 * STAGE_GAP_PX);
@@ -171,8 +295,17 @@ describe('transport and device lifetime', () => {
     */
     const effects: Array<() => void> = [];
     let me: string | null = 'did:test:me';
+    /*
+      What the store told the `media` kernel it is capturing, in order. The microphone the controller
+      acquires is the one stream a listening module ever hears, so a join must publish it and a leave
+      must publish `null` — the contract `audioSource` used to meet by string key.
+    */
+    const published: (MediaStream | null)[] = [];
+    const mic = fakeMicStream();
     const store = createCallStore({
       signal,
+      state: markState,
+      action: markAction,
       effect: (fn: () => void) => {
         effects.push(fn);
         fn();
@@ -191,15 +324,28 @@ describe('transport and device lifetime', () => {
         },
       },
       selfId: () => me,
-      ephemeral: () => (options.personal ? null : scope),
-      presence: { peers: () => [], setActivity: () => {}, clearActivity: () => {} },
       onDispose: (fn: () => void) => disposers.push(fn),
-      createEntity: async () => `rec-${++created}`,
-      createPeerConnection: () => ({}) as RTCPeerConnection,
+      // Exactly the kernels the manifest names, as the host would hand them over.
+      kernels: {
+        ephemeral: () => (options.personal ? null : scope),
+        presence: { peers: () => [], setActivity: () => {}, clearActivity: () => {} },
+        records: { create: async () => `rec-${++created}` },
+        peerConnection: { create: () => ({}) as RTCPeerConnection },
+        media: {
+          getUserMedia: async () => mic,
+          getDisplayMedia: async () => {
+            throw new Error('no screen here');
+          },
+          publish: (stream: MediaStream | null) => void published.push(stream),
+          input: () => published.at(-1) ?? null,
+        },
+      },
     } as never) as ReturnType<typeof createCallStore> & Record<string, (...args: unknown[]) => unknown>;
 
     return {
       store,
+      mic,
+      published,
       scopeDisposals: () => disposed,
       recordsCreated: () => created,
       disposers,
@@ -212,9 +358,9 @@ describe('transport and device lifetime', () => {
   }
 
   it('shows the video when the call starts', async () => {
-    // Nothing did this, so pressing the call button produced a control bar and no picture: `dockEdge`
-    // is null while the stage is closed and the host renders no dock for a null edge, so the only
-    // routes to a visible stage were controls that read as ways to change something already there.
+    // Nothing did this, so pressing the call button produced a control bar and no picture: the panel
+    // is placed only while `stageOpen` is true and nothing set it, so the only routes to a visible
+    // stage were controls that read as ways to change something already there.
     const { store } = callable();
 
     await store.startCall();
@@ -222,8 +368,7 @@ describe('transport and device lifetime', () => {
 
     expect(store.stageOpen()).toBe(true);
     // Floating, so showing it costs the space behind it nothing — the two questions stay separate.
-    expect(store.dockFloat()).toBe(true);
-    expect(store.dockEdge()).not.toBeNull();
+    expect(store.stageBid().float).toBe(true);
   });
 
   it('stops showing it when the call ends', async () => {
@@ -235,7 +380,61 @@ describe('transport and device lifetime', () => {
     store.leave();
 
     expect(store.stageOpen()).toBe(false);
-    expect(store.dockEdge()).toBeNull();
+  });
+
+  it('publishes the microphone it opens, and withdraws it when the call ends', async () => {
+    /*
+      What replaced `audioSource: 'localAudio'`. The transcriber reads `media.input()` and never
+      names this module, so the whole handshake is that this store says what it is capturing — once
+      when the device arrives, once more with `null` when it is released. Not on every mute: the
+      stream object is the same one and a listener that was torn down and rebuilt per mute is the
+      churn the `===` dedupe exists to prevent.
+    */
+    const { store, mic, published } = callable();
+
+    await store.startCall();
+    await Promise.resolve();
+    expect(published).toEqual([mic]);
+
+    store.toggleAudio();
+    expect(published).toEqual([mic]);
+
+    store.leave();
+    expect(published).toEqual([mic, null]);
+  });
+
+  it('refuses to join on a host that lends no peer connections, and writes nothing', async () => {
+    // The manifest requires the kernel, so registration should refuse first; this is the degradation
+    // the contract asks for regardless, and it has to land before the record is written.
+    const signal = <T>(initial: T): [() => T, (next: T) => void] => {
+      let value = initial;
+      return [() => value, (next: T) => (value = next)];
+    };
+    let created = 0;
+    const store = createCallStore({
+      signal,
+      state: markState,
+      action: markAction,
+      dataset: () => ({ id: 'ds' }),
+      datasetUri: () => 'inmemory://ds',
+      selfId: () => 'did:test:me',
+      kernels: {
+        ephemeral: () => ({
+          capabilities: { unicast: 'emulated', broadcast: true, coalesce: true, confidential: false },
+          channel: () => ({ publish: () => {}, onMessage: () => () => {} }),
+          dispose: () => {},
+        }),
+        presence: { peers: () => [], setActivity: () => {}, clearActivity: () => {} },
+        records: { create: async () => `rec-${++created}` },
+      },
+    } as never) as ReturnType<typeof createCallStore>;
+
+    await store.startCall();
+    await Promise.resolve();
+
+    expect(store.active()).toBe(false);
+    expect(created).toBe(0);
+    expect(store.problem()).toMatch(/connect/i);
   });
 
   it('writes no call record when the call cannot run', async () => {
@@ -383,19 +582,23 @@ describe('a call and the space it happens in', () => {
 
     const store = createCallStore({
       signal,
+      state: markState,
+      action: markAction,
       effect: (fn: () => void) => effects.push(fn),
       dataset: () => dataset,
       datasetUri: () => uri,
       selfId: () => 'did:test:me',
-      ephemeral: () => scope,
-      presence: {
-        peers: () => [],
-        setActivity: (activity: Record<string, unknown>) => activities.push(activity),
-        clearActivity: () => {},
-      },
       onDispose: () => {},
-      createEntity: async () => `rec-${++created}`,
-      createPeerConnection: () => ({}) as RTCPeerConnection,
+      kernels: {
+        ephemeral: () => scope,
+        presence: {
+          peers: () => [],
+          setActivity: (activity: Record<string, unknown>) => activities.push(activity),
+          clearActivity: () => {},
+        },
+        records: { create: async () => `rec-${++created}` },
+        peerConnection: { create: () => ({}) as RTCPeerConnection },
+      },
     } as never) as ReturnType<typeof createCallStore> & Record<string, (...args: unknown[]) => unknown>;
 
     return {
@@ -513,21 +716,25 @@ describe('going to the call', () => {
 
     const store = createCallStore({
       signal,
+      state: markState,
+      action: markAction,
       effect: (fn: () => void) => effects.push(fn),
       dataset: () => dataset,
       datasetUri: () => uri,
       selfId: () => 'did:test:me',
-      ephemeral: () => scope,
-      presence: {
-        peers: () => [],
-        setActivity: (activity: Record<string, unknown>) => activities.push(activity),
-        clearActivity: () => {},
-      },
       datasets: { get: () => undefined, open: (target: string) => opened.push(target) },
       onDispose: () => {},
-      createEntity: async () => `rec-${++created}`,
-      createPeerConnection: () => ({}) as RTCPeerConnection,
       callOnScreen: () => onScreen,
+      kernels: {
+        ephemeral: () => scope,
+        presence: {
+          peers: () => [],
+          setActivity: (activity: Record<string, unknown>) => activities.push(activity),
+          clearActivity: () => {},
+        },
+        records: { create: async () => `rec-${++created}` },
+        peerConnection: { create: () => ({}) as RTCPeerConnection },
+      },
     } as never) as ReturnType<typeof createCallStore> & Record<string, (...args: unknown[]) => unknown>;
 
     return {
@@ -809,7 +1016,7 @@ describe('the spotlight', () => {
     // The natural thickness makes the strip tiles 16:9 along their axis, which for a single tile is
     // most of the panel — the arrangement spotlight exists to get away from.
     const store = spotlit(wide);
-    const aspect = store.dockAspect() as { ratio: number; insetX: number; insetY: number };
+    const aspect = store.stageBid().aspect!;
 
     expect(aspect.ratio).toBeCloseTo(16 / 9);
     expect(aspect.insetX).toBe(STAGE_PADDING_PX * 2 + wide.width * 0.25 + STAGE_GAP_PX);
@@ -824,7 +1031,7 @@ describe('the spotlight', () => {
     expect(store.stageTemplate()).toBe('1fr');
     expect(store.stageRows()).toBe('1fr');
     // Nothing beside the picture any more, so the fit is the tile's own shape and the padding.
-    const aspect = store.dockAspect() as { insetX: number; insetY: number };
+    const aspect = store.stageBid().aspect!;
     expect(aspect.insetX).toBe(STAGE_PADDING_PX * 2);
   });
 
@@ -909,15 +1116,19 @@ describe('the call record a surface follows', () => {
     const store = createCallStore({
       signal,
       effect,
+      state: markState,
+      action: markAction,
       dataset: () => ({ id: 'ds' }),
       datasetUri: () => 'inmemory://ds',
       datasets: { get: () => undefined, open: () => {}, openRef: () => {}, onRemoved: () => () => {} },
       selfId: () => 'did:test:me',
-      ephemeral: () => scope,
-      presence: { peers: () => [], setActivity: () => {}, clearActivity: () => {} },
       onDispose: () => {},
-      createEntity: async () => `rec-${++created}`,
-      createPeerConnection: () => ({}) as RTCPeerConnection,
+      kernels: {
+        ephemeral: () => scope,
+        presence: { peers: () => [], setActivity: () => {}, clearActivity: () => {} },
+        records: { create: async () => `rec-${++created}` },
+        peerConnection: { create: () => ({}) as RTCPeerConnection },
+      },
     } as never) as ReturnType<typeof createCallStore>;
 
     const seen: string[] = [];

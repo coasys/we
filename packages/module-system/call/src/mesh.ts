@@ -76,7 +76,15 @@ export interface CallMesh {
   close(): void;
 }
 
-const DEFAULT_ICE_SERVERS: RTCIceServer[] = [{ urls: ['stun:stun.l.google.com:19302'] }];
+/**
+ * Public STUN, and no TURN — see `createPeerConnection` above.
+ *
+ * Exported because the store builds connections through the host's `peerConnection` kernel, which
+ * is a bare `new RTCPeerConnection(configuration)`: it lends the constructor and has no opinion about
+ * ICE. The module keeps that opinion, so the config the mesh would have used on its own is the one
+ * it hands the kernel — a connection made either way traverses NAT the same.
+ */
+export const DEFAULT_ICE_SERVERS: RTCIceServer[] = [{ urls: ['stun:stun.l.google.com:19302'] }];
 
 interface PeerSlot {
   pc: RTCPeerConnection;
