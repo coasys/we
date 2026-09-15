@@ -59,6 +59,14 @@ export interface BackendAccountInfo {
   walletAddress?: string;
   /** True when the operator is not charging this agent, so the credit figure means nothing. */
   freeAccess?: boolean;
+  /**
+   * URL to manage billing (Stripe portal, Unyt dashboard, or any external billing surface).
+   *
+   * When present, the settings page offers a "Manage billing" link. Absent for self-hosted nodes
+   * that have no billing provider — the field existing on the type is not the same as the user
+   * having a bill to pay.
+   */
+  billingPortalUrl?: string;
 }
 
 /**
