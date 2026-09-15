@@ -128,6 +128,8 @@ describe('a lane collapsed to its edge', () => {
     expect(geometry[A].hidden && geometry[B].hidden).toBe(true);
     const strip = geometry[A].strip ?? geometry[B].strip;
     expect(strip?.tabs.map((tab) => tab.id).sort()).toEqual([A, B].sort());
+    // Beneath both panels, which shrink onto it over the top.
+    expect(strip?.layer).toBeLessThan(Math.min(geometry[A].layer ?? 0, geometry[B].layer ?? 0));
   });
 
   it('opens again as a whole, with each seat showing the tab it showed before', () => {

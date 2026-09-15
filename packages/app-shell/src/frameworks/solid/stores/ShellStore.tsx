@@ -2199,6 +2199,15 @@ export function ShellStoreProvider(props: ParentProps) {
                   height: px(strip.box.h),
                   vertical: strip.vertical,
                   tabs: strip.tabs,
+                  /*
+                    Beneath every panel in the lane, not level with the first.
+
+                    The panels are on screen over the strip while they shrink onto it, and the strip runs
+                    the edge's whole length. At the first member's own layer it painted over any lane-mate
+                    touched less recently — a band of empty strip down the side of the lower panel, for
+                    the length of the close. At rest the panels are hidden and this changes nothing.
+                  */
+                  layer: Math.min(...(lanes[request.id] ?? [request.id]).map((member) => layers[member] ?? 0)) - 1,
                 },
               }
             : {}),

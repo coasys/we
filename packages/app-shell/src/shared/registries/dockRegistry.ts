@@ -585,6 +585,12 @@ function titleBar(entry: DockEntry): SchemaNode {
       onDblclick: { $action: 'shellStore.toggleMaximiseDock', args: [entry.id] },
     },
     children: [
+      /*
+        First on the bar, ahead of the tabs and the grip: the strip it collapses into leads with its
+        open glyph at the same end — the top of a side strip, the left of a top or bottom one — so the
+        control to put a column away and the one to bring it back sit in about the same place.
+      */
+      whileRestored(entry.id, stowButton(entry.id)),
       tabStrip(entry.id),
       {
         type: 'we-move-handle',
@@ -607,7 +613,6 @@ function titleBar(entry: DockEntry): SchemaNode {
       },
       ...(entry.aspect ? [whileRestored(entry.id, fitButton(entry.id))] : []),
       whileRestored(entry.id, collapseButton(entry.id)),
-      whileRestored(entry.id, stowButton(entry.id)),
       whileRestored(entry.id, displaceButton(entry.id)),
       maximiseButton(entry.id),
       whileRestored(entry.id, positionMenu(entry)),
@@ -1586,7 +1591,7 @@ function laneStrip(id: string): SchemaNode {
           */
           border: '1px solid border',
           overflow: 'hidden',
-          zIndex: { $: geo('layer') },
+          zIndex: { $: geo('strip.layer') },
         },
         children: [
           {

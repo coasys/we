@@ -121,7 +121,8 @@ the second-to-last member would disable the control that undoes it.
 
 A whole displacing lane can be put away (`toggleStowLane`): it becomes a **strip** `STRIP_PX` thick
 against its edge, with one vertical tab per panel in it — every tab of every seat — and the content
-takes the rest. Offered on the lane's first titlebar (`canStow`), as double chevrons pointing at the
+takes the rest. Offered first on the lane's first titlebar (`canStow`), ahead of its tabs and grip —
+the same end the strip's open glyph sits at — as double chevrons pointing at the
 edge, since it acts on the column rather than the panel; and by dragging the lane's inboard edge past
 `STOW_DRAG_PX` and letting go, which dims the lane while the drag says so.
 
@@ -154,7 +155,8 @@ a panel's titlebar and contents are held at the lane's open size (`layoutWidth` 
 through `laidOutAt`), so the frame uncovers or covers them like a drawer, and they fade in or out
 (`contentsFaded`); a closing lane stays on screen until it has shrunk onto its strip. While stowed,
 each seat keeps its place along the edge at the strip's thickness, so only the thickness ever moves —
-a lane of two used to open its lower panel sliding down from the top of the edge. At rest a panel's
+a lane of two used to open its lower panel sliding down from the top of the edge. The strip is layered
+beneath every panel in its lane, which shrink onto it over the top. At rest a panel's
 contents fill its frame as they always have.
 
 ### Bringing a panel into sight

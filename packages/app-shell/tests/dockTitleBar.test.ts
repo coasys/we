@@ -241,6 +241,13 @@ describe('putting a lane away to its edge', () => {
     expect(JSON.stringify(button)).toContain('shellStore.toggleStowLane');
   });
 
+  it('comes first on the bar, ahead of the tabs and the grip', () => {
+    const text = JSON.stringify(frame);
+
+    expect(text.indexOf('shellStore.toggleStowLane')).toBeLessThan(text.indexOf('"label":"Move panel"'));
+    expect(text.indexOf('shellStore.toggleStowLane')).toBeLessThan(text.indexOf('shellStore.beginTabDrag'));
+  });
+
   it('draws the strip from outside the frame, as one button that opens the lane', () => {
     const strip = gatedOn(frame, geo('strip'));
     const text = JSON.stringify(strip);

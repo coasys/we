@@ -985,7 +985,16 @@ export interface DockGeometry {
    * The strip a stowed lane becomes, published on its first member for the frame to draw — one name
    * per panel in the lane. Drawn outside every frame, because every frame in the lane is hidden.
    */
-  strip?: { top: string; left: string; width: string; height: string; vertical: boolean; tabs: DockTab[] };
+  strip?: {
+    top: string;
+    left: string;
+    width: string;
+    height: string;
+    vertical: boolean;
+    tabs: DockTab[];
+    /** Beneath every panel in the lane, which shrink onto it over the top while the lane closes. */
+    layer: number;
+  };
   /**
    * The size to lay the panel's titlebar and contents out at while its box eases in or out of a lane's
    * strip — the box it is heading for when opening, the box it had when closing. Absent at rest, when
