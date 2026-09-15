@@ -45,9 +45,26 @@ vi.mock('../src/frameworks/solid/providers/PlatformProvider', () => ({
 }));
 
 const navigate = vi.fn();
-vi.mock('../src/frameworks/solid/stores/RouteStore', () => ({
-  useRouteStore: () => ({ navigate, segments: () => [], currentPath: () => '/' }),
-}));
+/**
+ * The address, as a signal a test can move. `navigate` deliberately does not write it: the route
+ * effect would then switch datasets on every navigation, and the tests asserting what was asked for
+ * would be asserting what the route effect made of it.
+ */
+const route = vi.hoisted(() => ({ go: (_to: string) => {} }));
+vi.mock('../src/frameworks/solid/stores/RouteStore', async () => {
+  const { createSignal } = await import('solid-js');
+  const [href, setHref] = createSignal('/');
+  route.go = setHref;
+  const url = () => new URL(href(), 'http://we.test');
+  return {
+    useRouteStore: () => ({
+      navigate,
+      segments: () => url().pathname.split('/').filter(Boolean),
+      currentPath: () => url().pathname,
+      params: () => Object.fromEntries(url().searchParams),
+    }),
+  };
+});
 
 // Stubbed rather than mounted: these two pull in the whole template and theme registries, and this
 // file is about the boot and dataset flow. The cost is that they must carry every member SpaceStore
@@ -146,6 +163,7 @@ beforeEach(() => {
   connectFailure = null;
   disconnect = undefined;
   navigate.mockClear();
+  route.go('/');
 });
 
 // ── The suite ─────────────────────────────────────────────────────────────────
@@ -615,5 +633,41 @@ describe('sidebar ordering', () => {
     const root = (await lifecycle.list()).find((d) => d.name === 'we-root')!;
     const settings = await AgentSettings.findOne(root.handle as never);
     expect(JSON.parse(settings!.datasetOrder as string)).toEqual([before[1], before[0]]);
+  }, 10000);
+});
+
+describe('moving between spaces', () => {
+  /*
+    The workshop names its call in `?call=` on a screen below the space's root, and the space's root
+    redirects there without the query — so arriving back at the root lost the call. Walking away and
+    back must land where you were.
+  */
+  it('returns to the screen and query you left a space at', async () => {
+    const stores = mountShell();
+    await ready(stores);
+
+    await stores.spaces.createSpace('Space A', 'x', 'personal', 'hidden');
+    await stores.spaces.createSpace('Space B', 'x', 'personal', 'hidden');
+    const refs = await lifecycle.list();
+    const a = refs.find((d) => d.name === 'Space A')!.id;
+    const b = refs.find((d) => d.name === 'Space B')!.id;
+
+    await stores.spaces.navigateToSpace(a);
+    await vi.waitFor(() => expect(stores.datasets.currentDataset()?.id).toBe(a));
+    route.go(`/space/${a}/canvas?call=c1`);
+
+    await stores.spaces.navigateToSpace(b);
+    await vi.waitFor(() => expect(stores.datasets.currentDataset()?.id).toBe(b));
+    route.go(`/space/${b}/canvas`);
+
+    navigate.mockClear();
+    await stores.spaces.navigateToSpace(a);
+    expect(navigate).toHaveBeenCalledWith(`/space/${a}/canvas?call=c1`);
+
+    // The space already on screen still goes to its root on a click.
+    route.go(`/space/${a}/canvas?call=c1`);
+    navigate.mockClear();
+    await stores.spaces.navigateToSpace(a);
+    expect(navigate).toHaveBeenCalledWith(`/space/${a}`);
   }, 10000);
 });

@@ -1984,6 +1984,29 @@ export function SpaceStoreProvider(props: ParentProps) {
     await deleteBlocks(p, collectionId);
   }
 
+  /**
+   * Where somebody last was in each space this session — the screen and its query — by dataset id.
+   *
+   * A space's address carries what is being looked at: the workshop names its call in `?call=`, a view
+   * its sort and filters. Walking to another space and back used to land on the returning space's
+   * root, and for a self-routing template that root redirects to a screen with no query at all — the
+   * call gone, and every panel about it blank. The router remembers a query per path, but under the
+   * screen's path, which is not the one a sidebar click asks for.
+   *
+   * In memory, not persisted: a reload starts from the address, which is what somebody sharing or
+   * bookmarking a space meant by it.
+   */
+  const lastPlaceInSpace = new Map<string, string>();
+  createEffect(() => {
+    const segs = routeStore.segments();
+    const path = routeStore.currentPath();
+    const params = routeStore.params();
+    const ds = datasetStore.currentDataset();
+    if (!ds || segs[0] !== 'space' || !datasetAddressedBy(ds, segs[1] ?? '')) return;
+    const query = new URLSearchParams(params).toString();
+    lastPlaceInSpace.set(ds.id, query ? `${path}?${query}` : path);
+  });
+
   async function navigateToSpace(spaceId: string, view?: string): Promise<void> {
     // spaceId may be a local id or a shared id — no shape-guessing needed with refs.
     const ds = datasetStore.datasets().find((d) => datasetAddressedBy(d, spaceId));
@@ -2028,6 +2051,10 @@ export function SpaceStoreProvider(props: ParentProps) {
       way; this stops the pointless round trips as well, and keeps the two navigation paths saying
       the same thing.
     */
+    // Asked before the switch below, which makes every space the current one.
+    const arrivingFromHere = Boolean(
+      ds && datasetStore.currentDataset()?.id === ds.id && segs[0] === 'space' && datasetAddressedBy(ds, segs[1] ?? ''),
+    );
     if (ds && datasetStore.currentDataset()?.id !== ds.id) {
       // Pre-load space templates before switching so the template and data arrive together
       await templateStore.preloadSpaceTemplates(ds);
@@ -2070,6 +2097,18 @@ export function SpaceStoreProvider(props: ParentProps) {
     */
     const section = view ?? (ds && !usesSectionsFor(ds.id) ? '' : carried);
     shellStore.closeShellView();
+    /*
+      Back where you were in it, when you have been in it this session and are arriving from somewhere
+      else — see `lastPlaceInSpace`. Not for the space already on screen, where a click is the way to
+      its root; not for a caller naming a view, which knows where it wants to be; and a space not yet
+      visited still carries the section across, as above.
+    */
+    const returning = ds && !view && !arrivingFromHere ? lastPlaceInSpace.get(ds.id) : undefined;
+    if (returning) {
+      routeStore.navigate(returning);
+      broadcastPerspectiveNavigation(spaceId);
+      return;
+    }
     routeStore.navigate(section ? `${base}/${section}` : base);
     // Notify embedded app iframes (e.g. Flux) after the dataset has switched
     broadcastPerspectiveNavigation(spaceId);
