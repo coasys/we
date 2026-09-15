@@ -37,6 +37,7 @@ import type {
 
 import { type Ad4mCapability, CAP_DOMAIN, CAP_VERB, createCapabilityCheck } from './capabilities';
 import { formatNetworkMetrics } from './networkMetrics';
+import { toPeerRecords } from './peerRecords';
 
 /**
  * The languages the executor installs for itself and cannot run without.
@@ -532,7 +533,7 @@ export function createAd4mRuntimeAdmin(backendClient: unknown, options: Ad4mRunt
     */
 
     async peerInfos() {
-      return client.runtime.hcAgentInfos();
+      return toPeerRecords(await client.runtime.hcAgentInfos());
     },
 
     async addPeerInfos(infos) {

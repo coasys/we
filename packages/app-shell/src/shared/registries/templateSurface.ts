@@ -253,6 +253,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     authorizedApps: state('runtime-admin'),
     networkMetrics: state('runtime-admin'),
     peerInfos: state('runtime-admin'),
+    peerInfosReadable: state('runtime-admin'),
     pending: state('runtime-admin'),
     loading: state('runtime-admin'),
     error: state('runtime-admin'),

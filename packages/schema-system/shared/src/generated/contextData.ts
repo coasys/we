@@ -2606,6 +2606,7 @@ export const contextData: ContextData = {
         },
         networkMetrics: { type: 'string' },
         peerInfos: { type: 'array' },
+        peerInfosReadable: { type: 'string' },
         pending: { type: 'array' },
         loading: { type: 'boolean' },
         error: { type: 'string' },

@@ -166,6 +166,7 @@ export type {
   AuthorizedApp,
   ConsentRequest,
   InstalledLanguage,
+  PeerRecords,
   RuntimeAdminPort,
   TokenizerSource,
 } from './runtimeAdmin';

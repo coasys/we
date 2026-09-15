@@ -12,7 +12,7 @@
  */
 import { render } from '@solidjs/testing-library';
 import type { ExecutorHost, ExecutorSettings } from '@we/app-shell/shared';
-import type { AiModel, BackendPorts, ConsentRequest, RuntimeAdminPort } from '@we/backend-shared';
+import type { AiModel, BackendPorts, ConsentRequest, PeerRecords, RuntimeAdminPort } from '@we/backend-shared';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 let ports: Partial<BackendPorts> | null = null;
@@ -563,7 +563,7 @@ describe('what is in flight', () => {
 
   it('names the action a call belongs to, so one control does not spin for another', async () => {
     // Fetching peer records put a spinner on "Restart networking" when both read one flag.
-    const infos = deferred<string[]>();
+    const infos = deferred<PeerRecords>();
     const { port } = stubRuntime({ peerInfos: () => infos.promise, restartNetwork: async () => {} });
     ports = { runtime: port };
     const store = mount();
@@ -572,7 +572,7 @@ describe('what is in flight', () => {
     expect(store.pending()).toEqual(['loadPeerInfos']);
     expect(store.pending()).not.toContain('restartNetwork');
 
-    infos.resolve(['record']);
+    infos.resolve({ records: ['record'], readable: '["record"]' });
     await fetching;
     expect(store.pending()).toEqual([]);
     expect(store.peerInfos()).toEqual(['record']);
@@ -608,7 +608,7 @@ describe('exchanging peer records', () => {
       addPeerInfos: async () => {
         throw new Error('K2SpaceNotFound');
       },
-      peerInfos: async () => [],
+      peerInfos: async () => ({ records: [], readable: '[]' }),
     });
     ports = { runtime: port };
     const store = mount();
@@ -624,14 +624,17 @@ describe('exchanging peer records', () => {
       addPeerInfos: async (infos) => {
         added.push(infos);
       },
-      peerInfos: async () => ['mine', 'theirs'],
+      peerInfos: async () => ({ records: ['mine', 'theirs'], readable: '[\n  "mine",\n  "theirs"\n]' }),
     });
     ports = { runtime: port };
     const store = mount();
 
     expect(await store.addPeerInfos('theirs')).toBe(true);
     expect(added).toEqual([['theirs']]);
+    // The raw records for copying, and the backend's own reading of them for display — kept apart,
+    // since a record reformatted on its way to the clipboard no longer matches its signature.
     expect(store.peerInfos()).toEqual(['mine', 'theirs']);
+    expect(store.peerInfosReadable()).toBe('[\n  "mine",\n  "theirs"\n]');
   });
 
   it('offers a restart only where the backend has one', () => {

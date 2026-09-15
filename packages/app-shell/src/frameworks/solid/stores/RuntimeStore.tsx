@@ -101,7 +101,10 @@ export interface RuntimeStore {
   authorizedApps: Accessor<AuthorizedApp[]>;
   /** Backend diagnostic blob, displayed verbatim. Empty until requested. */
   networkMetrics: Accessor<string>;
+  /** The peer records this node holds, exactly as the backend gave them — what gets copied. */
   peerInfos: Accessor<string[]>;
+  /** The same records decoded for reading, as JSON. Display only; empty until loadPeerInfos(). */
+  peerInfosReadable: Accessor<string>;
   /**
    * The actions with a runtime call in flight, by name — `'loadNetworkMetrics' in runtimeStore.pending`.
    * What a control's spinner should read, so it spins for its own call and not for everyone's.
@@ -193,6 +196,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
   const [authorizedApps, setAuthorizedApps] = createSignal<AuthorizedApp[]>([]);
   const [networkMetrics, setNetworkMetrics] = createSignal('');
   const [peerInfos, setPeerInfos] = createSignal<string[]>([]);
+  const [peerInfosReadable, setPeerInfosReadable] = createSignal('');
   const [pending, setPending] = createSignal<string[]>([]);
   const loading = createMemo(() => pending().length > 0);
   const [error, setError] = createSignal('');
@@ -660,7 +664,12 @@ export function RuntimeStoreProvider(props: ParentProps) {
 
   async function loadPeerInfos(): Promise<void> {
     const infos = await run('loadPeerInfos', () => runtime()?.peerInfos?.());
-    if (infos.ok && infos.value) setPeerInfos(infos.value);
+    if (!infos.ok || !infos.value) return;
+    const { records, readable } = infos.value;
+    batch(() => {
+      setPeerInfos(records);
+      setPeerInfosReadable(readable);
+    });
   }
 
   /**
@@ -725,6 +734,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
     authorizedApps,
     networkMetrics,
     peerInfos,
+    peerInfosReadable,
     pending,
     loading,
     error,

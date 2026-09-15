@@ -741,24 +741,22 @@ const peerExchangeModal: SchemaNode = {
                   type: '$if',
                   props: {
                     condition: { $: 'count(runtimeStore.peerInfos)' },
-                    // One block per record rather than the whole array as children: the array would
-                    // stringify, and a record reads as a unit this way.
+                    /*
+                      The decoded records, not the raw ones. A raw record keeps its useful half as a
+                      JSON document escaped inside a string — the signature is over those bytes — so
+                      shown as it arrives it is one unreadable line. The backend unpacks it for
+                      display; "Copy all" still sends the originals, which is what a peer can add.
+                    */
                     then: {
-                      type: 'we-scroll-area',
-                      props: { maxHeight: '200px' },
-                      children: [
-                        {
-                          type: 'Column',
-                          props: { gap: '200' },
-                          children: [
-                            {
-                              type: '$each',
-                              props: { items: { $: 'runtimeStore.peerInfos' }, as: 'info' },
-                              children: [{ type: 'we-code', props: { block: true }, children: [{ $: 'info' }] }],
-                            },
-                          ],
-                        },
-                      ],
+                      type: 'CodeEditor',
+                      props: {
+                        code: { $: 'runtimeStore.peerInfosReadable' },
+                        language: 'json',
+                        readOnly: true,
+                        // Lower than the metrics viewer's: the paste box shares this modal.
+                        maxHeight: '240px',
+                        styles: { width: '100%' },
+                      },
                     },
                     else: {
                       type: '$if',

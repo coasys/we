@@ -126,6 +126,7 @@ export const storeEntries: StoreEntry[] = [
       },
       networkMetrics: { type: 'string' },
       peerInfos: { type: 'array' },
+      peerInfosReadable: { type: 'string' },
       pending: { type: 'array' },
       loading: { type: 'boolean' },
       error: { type: 'string' },
@@ -683,7 +684,10 @@ export function generateStoresText(entries: StoreEntry[]): string {
           'AuthorizedApp[] — external apps holding credentials (id, name, description, url, iconUrl, capabilities, revoked). Empty until loadAuthorizedApps() runs',
         networkMetrics:
           'string — backend diagnostic blob, already formatted for reading (indented JSON on AD4M, hashes decoded). Show it in a read-only CodeEditor with language json. Empty until requested, and emptied again while a fetch runs',
-        peerInfos: 'string[] — this node peer-discovery records, for out-of-band exchange',
+        peerInfos:
+          "string[] — the peer-discovery records this node holds, exactly as the backend gave them: what copyPeerInfos copies. Opaque — don't display them, show peerInfosReadable",
+        peerInfosReadable:
+          'string — the same records decoded for reading, as indented JSON (on AD4M: agent, space, dates, url, arc, signature). Show it in a read-only CodeEditor with language json. Empty until loadPeerInfos() runs',
         pending:
           "string[] — names of the actions with a runtime call in flight. A control's spinner reads its own: { $: \"'loadPeerInfos' in runtimeStore.pending\" }",
         loading:

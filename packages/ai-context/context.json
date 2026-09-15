@@ -6757,6 +6757,9 @@
         "peerInfos": {
           "type": "array"
         },
+        "peerInfosReadable": {
+          "type": "string"
+        },
         "pending": {
           "type": "array"
         },

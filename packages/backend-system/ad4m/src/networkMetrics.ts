@@ -12,6 +12,8 @@
  * conductor already produced, so a prefix match is enough here and costs no dependency.
  */
 
+import { toReadableJson } from './readableJson';
+
 /**
  * The middle byte of each Holochain hash type's three-byte prefix, `[0x84, type, 0x24]`.
  *
@@ -55,29 +57,6 @@ function decodeHashes(value: unknown): unknown {
 }
 
 /**
- * Indented JSON, with any array of plain numbers kept on one line.
- *
- * `JSON.stringify(value, null, 2)` puts every element of an array on a line of its own, so a byte
- * array that is not a hash — a key, a bitfield — becomes a column of numbers taller than the screen.
- * The launcher kept those arrays inline, and folding in the viewer is for the structure, not for them.
- */
-function render(value: unknown, indent: string): string {
-  const inner = `${indent}  `;
-  if (Array.isArray(value)) {
-    if (value.length === 0) return '[]';
-    if (value.every((item) => typeof item === 'number')) return `[${value.join(', ')}]`;
-    return `[\n${value.map((item) => inner + render(item, inner)).join(',\n')}\n${indent}]`;
-  }
-  if (value && typeof value === 'object') {
-    const entries = Object.entries(value);
-    if (entries.length === 0) return '{}';
-    const lines = entries.map(([key, item]) => `${inner}${JSON.stringify(key)}: ${render(item, inner)}`);
-    return `{\n${lines.join(',\n')}\n${indent}}`;
-  }
-  return JSON.stringify(value) ?? 'null';
-}
-
-/**
  * The executor's metrics JSON, indented and with hashes as strings.
  *
  * Text that does not parse is returned unchanged: an executor that answered with an error message,
@@ -90,5 +69,5 @@ export function formatNetworkMetrics(raw: string): string {
   } catch {
     return raw;
   }
-  return render(decodeHashes(parsed), '');
+  return toReadableJson(decodeHashes(parsed));
 }
