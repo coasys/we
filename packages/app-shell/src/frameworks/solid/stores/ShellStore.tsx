@@ -1007,7 +1007,7 @@ export function ShellStoreProvider(props: ParentProps) {
       landedTimer = setTimeout(() => {
         landedTimer = undefined;
         setLandedTab((was) => (was === id ? '' : was));
-      }, 900);
+      }, 1800);
     };
     if (typeof requestAnimationFrame !== 'function') return light();
     requestAnimationFrame(() => requestAnimationFrame(light));

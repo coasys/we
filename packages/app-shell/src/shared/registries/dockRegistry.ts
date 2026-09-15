@@ -820,9 +820,29 @@ function tabStrip(id: string): SchemaNode {
                     `surface-hover` on top of it darkened a tab into the titlebar behind it.
                   */
                   bg: { $: `${landed} ? 'accent' : tab.active ? 'control-surface' : 'transparent'` },
-                  transition: 'background-color 400 ease',
+                  /*
+                    Quick in, slow out — the fill arrives to be noticed and leaves without drawing the eye
+                    back to it. A transition belongs to the state being entered, so each direction takes
+                    its own. Both from the theme's duration tokens, the slow one three times the longest,
+                    so a theme's animation speed and reduced motion still decide.
+                  */
+                  transition: {
+                    $: `${landed} ? 'background-color 400 ease' : 'background-color calc(var(--we-transition-500) * 3) ease'`,
+                  },
                   styles: {
-                    '--we-move-handle-color': { $: `${landed} ? 'var(--we-role-on-accent)' : 'initial'` },
+                    /*
+                      The tab showing is at full strength at rest, not only under the pointer.
+
+                      Pressing a background tab brings a different frame forward, with its own titlebar and
+                      its own copy of the strip — so the tab under the pointer is a new element, and it came
+                      in at the faint resting colour and eased up to the hover one: the name dimmed on the
+                      click and brightened again. Held bright, the tab you just chose is already the colour
+                      it would be hovered, and there is nothing to ease. It also says which tab is showing,
+                      which the fill alone says quietly.
+                    */
+                    '--we-move-handle-color': {
+                      $: `${landed} ? 'var(--we-role-on-accent)' : tab.active ? 'var(--we-role-text)' : 'initial'`,
+                    },
                     '--we-move-handle-active-color': { $: `${landed} ? 'var(--we-role-on-accent)' : 'initial'` },
                   },
                 },

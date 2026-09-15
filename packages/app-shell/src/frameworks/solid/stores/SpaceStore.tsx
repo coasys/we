@@ -427,6 +427,9 @@ const joinErrorMessage = (error: unknown): string =>
     ? 'This is taking longer than expected. The space may still be joining in the background — try again in a minute.'
     : "Couldn't join this space. Check the link and try again.";
 
+/** One button in the module rail. See `SpaceStore.moduleLaunchers`. */
+type LauncherRow = { id: string; icon: string; label: string; active: boolean; busy: boolean; concealed: boolean };
+
 export interface SpaceStore {
   // State
   memberDids: Accessor<string[]>;
@@ -544,9 +547,7 @@ export interface SpaceStore {
    * not, because a lit button says "pressing me puts this away" — and pressing one whose panel is
    * concealed brings the panel into sight instead. See `launchModule`.
    */
-  moduleLaunchers: Accessor<
-    { id: string; icon: string; label: string; active: boolean; busy: boolean; concealed: boolean }[]
-  >;
+  moduleLaunchers: Accessor<LauncherRow[]>;
   /**
    * This space's sections, resolved: which view renders at which segment, in the space's own order.
    *
@@ -4019,37 +4020,56 @@ export function SpaceStoreProvider(props: ParentProps) {
     save: (schema) => templateStore.saveTemplateAs(schema, 'root'),
   });
 
+  /**
+   * The rows the rail was last handed, so a recompute that changes nothing about a button hands back
+   * the same object.
+   *
+   * The rail draws these through `$each`, which keys rows by reference, and this memo now reads the
+   * shell's dock geometry to answer `concealed` — geometry that changes on every frame of a drag and on
+   * every tab flash. Fresh objects each time rebuilt every rail button under the pointer, so a hovered
+   * button lost its hover fill and got it back: a flicker for as long as anything on screen moved.
+   */
+  let lastLaunchers: LauncherRow[] = [];
   const moduleLaunchers = createMemo(() => {
     const on = new Set(activeModules());
-    return (
-      moduleRegistry
-        .all()
-        .filter(({ definition }) => on.has(definition.id))
-        /*
+    const rows: LauncherRow[] = moduleRegistry
+      .all()
+      .filter(({ definition }) => on.has(definition.id))
+      /*
         A module may offer more than one way in, and transcription is why: recording and extraction
         are two surfaces with different lifetimes — one follows this agent's microphone, the other
         follows a pass that may be somebody else's — so one button cannot open both. The key is the
         plain module id for a module with a single launcher, which is every other one, so nothing
         about their rail entries changes.
       */
-        .flatMap(({ definition }) => moduleRegistry.launchersOf(definition).map((entry) => ({ definition, ...entry })))
-        .filter(({ definition, launcher }) => read(definition.id, launcher.availableWhen, true))
-        .map(({ definition, key, launcher }) => {
-          const active = read(definition.id, launcher.activeWhen, false);
-          return {
-            id: key,
-            icon: launcher.icon,
-            // The active label where there is one, so a tooltip cannot describe an act the button has
-            // stopped performing. Most launchers declare none and this is `label` in both states.
-            label: (active && launcher.activeLabel) || launcher.label,
-            active,
-            // Background work the module reports — a running pass. Read separately from `active`,
-            // since a panel can be shut while its module is busy.
-            busy: read(definition.id, launcher.busyWhen, false),
-            concealed: dockConcealed(moduleRegistry.dockOfLauncher(definition, launcher)),
-          };
-        })
-    );
+      .flatMap(({ definition }) => moduleRegistry.launchersOf(definition).map((entry) => ({ definition, ...entry })))
+      .filter(({ definition, launcher }) => read(definition.id, launcher.availableWhen, true))
+      .map(({ definition, key, launcher }) => {
+        const active = read(definition.id, launcher.activeWhen, false);
+        return {
+          id: key,
+          icon: launcher.icon,
+          // The active label where there is one, so a tooltip cannot describe an act the button has
+          // stopped performing. Most launchers declare none and this is `label` in both states.
+          label: (active && launcher.activeLabel) || launcher.label,
+          active,
+          // Background work the module reports — a running pass. Read separately from `active`,
+          // since a panel can be shut while its module is busy.
+          busy: read(definition.id, launcher.busyWhen, false),
+          concealed: dockConcealed(moduleRegistry.dockOfLauncher(definition, launcher)),
+        };
+      });
+    const same = (a: LauncherRow, b: LauncherRow) =>
+      a.id === b.id &&
+      a.icon === b.icon &&
+      a.label === b.label &&
+      a.active === b.active &&
+      a.busy === b.busy &&
+      a.concealed === b.concealed;
+    const stable = rows.map((row) => lastLaunchers.find((previous) => same(previous, row)) ?? row);
+    if (stable.length !== lastLaunchers.length || stable.some((row, i) => row !== lastLaunchers[i]))
+      lastLaunchers = stable;
+    return lastLaunchers;
   });
 
   /**
