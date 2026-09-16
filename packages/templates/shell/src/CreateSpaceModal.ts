@@ -246,7 +246,7 @@ export const createSpaceModal = {
           children: [
             {
               type: 'we-text',
-              props: { variant: 'body', fontWeight: 'medium' },
+              props: { variant: 'label' },
               children: [{ $: "local.access == 'shared' ? 'Shareable space' : 'Personal space'" }],
             },
             {
@@ -326,20 +326,9 @@ export const createSpaceModal = {
               props: { gap: '100', flex: '1' },
               children: [
                 {
-                  type: '$if',
-                  props: {
-                    condition: { $: "local.access == 'shared' && datasetStore.globalDataset" },
-                    then: {
-                      type: 'we-text',
-                      props: { variant: 'body', fontWeight: 'medium' },
-                      children: [{ $: "local.discovery == 'listed' ? 'Listed in Global Discovery' : 'Unlisted'" }],
-                    },
-                    else: {
-                      type: 'we-text',
-                      props: { variant: 'body', fontWeight: 'medium' },
-                      children: [{ $: "local.discovery == 'listed' ? 'Listed in Global Discovery' : 'Unlisted'" }],
-                    },
-                  },
+                  type: 'we-text',
+                  props: { variant: 'label' },
+                  children: [{ $: "local.discovery == 'listed' ? 'Listed in Global Discovery' : 'Unlisted'" }],
                 },
                 {
                   type: 'we-text',
