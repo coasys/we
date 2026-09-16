@@ -1,3 +1,11 @@
+/*
+  Defines the custom elements the seed's `elements` names — a library's chart, a rating. Imported
+  beside the vocabulary a template renders against, because that is what these tags join: the
+  renderer mounts any hyphenated tag already, and without this import one would mount as an empty
+  element nothing ever upgrades.
+*/
+import '@shared/registries/foreignElements.generated';
+
 import {
   AudioDisplay,
   BlockComposer,

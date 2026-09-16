@@ -27,20 +27,21 @@ Almost every "which surface?" question is that rule applied at a different altit
 list and stop at the first row that fits; the earlier rows are cheaper for everyone, and a
 contribution one rung too high permanently costs more than it should.
 
-| You want to…                                                               | Surface                        | Why not the next rung down                                                                    |
-| -------------------------------------------------------------------------- | ------------------------------ | --------------------------------------------------------------------------------------------- |
-| Change how one space looks                                                 | **Theme**                      | A template fork to change colours abandons every later improvement to the template            |
-| Change what one section of a space _is_                                    | **View**                       | Forking a whole shell to change one page makes every upstream fix a merge conflict            |
-| Change a space's whole chrome, arrangement and route table                 | **Shell template**             | —                                                                                             |
-| Reuse an arrangement across templates                                      | **Fragment**                   | A component would make it opaque to the editor and unforkable by the people using it          |
-| Add a stateless piece of UI that needs measurement, focus or a browser API | **Primitive** or **component** | A fragment cannot express behaviour; this is the line the rule above draws                    |
-| Computation the expression library lacks                                   | **Expression function**        | An operator would be new syntax, and the grammar is closed — see "no new value operators"     |
-| Add a new kind of content a user composes into a page                      | **Block type**                 | —                                                                                             |
-| Add a stateful capability a community turns on                             | **Feature module**             | Modules hold state and talk to ports; if yours holds neither, it is a fragment or a component |
-| Add a new source of nodes, or a new arrangement, in a graph                | **Graph plugin**               | A module would rebuild the engine; expanders and layouts plug into the one that exists        |
-| Add a new kind of thing that gets stored                                   | **Model**                      | —                                                                                             |
-| Ship a differently-shaped deployment of WE                                 | **Seed**                       | Nothing needs to be written at all — a seed selects from what exists                          |
-| Run WE on data that isn't AD4M                                             | **Backend adapter**            | —                                                                                             |
+| You want to…                                                               | Surface                        | Why not the next rung down                                                                                       |
+| -------------------------------------------------------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| Change how one space looks                                                 | **Theme**                      | A template fork to change colours abandons every later improvement to the template                               |
+| Change what one section of a space _is_                                    | **View**                       | Forking a whole shell to change one page makes every upstream fix a merge conflict                               |
+| Change a space's whole chrome, arrangement and route table                 | **Shell template**             | —                                                                                                                |
+| Reuse an arrangement across templates                                      | **Fragment**                   | A component would make it opaque to the editor and unforkable by the people using it                             |
+| Use a visual element a library already ships — a chart, a rating, a map    | **Foreign element** (seed)     | Writing a primitive to wrap one re-implements what the library ships — see `docs/getting-started/seed-system.md` |
+| Add a stateless piece of UI that needs measurement, focus or a browser API | **Primitive** or **component** | A fragment cannot express behaviour; this is the line the rule above draws                                       |
+| Computation the expression library lacks                                   | **Expression function**        | An operator would be new syntax, and the grammar is closed — see "no new value operators"                        |
+| Add a new kind of content a user composes into a page                      | **Block type**                 | —                                                                                                                |
+| Add a stateful capability a community turns on                             | **Feature module**             | Modules hold state and talk to ports; if yours holds neither, it is a fragment or a component                    |
+| Add a new source of nodes, or a new arrangement, in a graph                | **Graph plugin**               | A module would rebuild the engine; expanders and layouts plug into the one that exists                           |
+| Add a new kind of thing that gets stored                                   | **Model**                      | —                                                                                                                |
+| Ship a differently-shaped deployment of WE                                 | **Seed**                       | Nothing needs to be written at all — a seed selects from what exists                                             |
+| Run WE on data that isn't AD4M                                             | **Backend adapter**            | —                                                                                                                |
 
 Three of these pairs come apart in ways worth knowing, because each has been got wrong at least once:
 

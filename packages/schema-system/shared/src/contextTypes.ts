@@ -133,6 +133,28 @@ export interface ContextData {
    * `modules.*` references are admitted unchecked, as they always were.
    */
   modules?: ModuleCatalogEntry[];
+  /**
+   * Custom elements from libraries this deployment bundles, which a schema may name — see
+   * {@link ForeignElementEntry}. Absent or empty when the seed names none.
+   */
+  foreignElements?: ForeignElementEntry[];
+}
+
+/**
+ * A custom element a deployment's seed allows, read from its package's custom-elements manifest.
+ *
+ * Not a primitive: it takes none of the design-system props, since it is not built on the base
+ * classes that apply them, and its events are whatever its library named them — hence `events`, so
+ * a reference can say `on:sl-change` rather than leave an author to guess `onSlChange`.
+ */
+export interface ForeignElementEntry {
+  tagName: string;
+  /** The package it comes from. */
+  package: string;
+  description?: string;
+  props: PropEntry[];
+  /** The events it dispatches, by their exact names. */
+  events: string[];
 }
 
 /**

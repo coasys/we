@@ -31,6 +31,7 @@ import {
 } from './extractors/appShell.js';
 import { extractPrimitives } from './extractors/cem.js';
 import { extractEntities } from './extractors/entities.js';
+import { extractForeignElements } from './extractors/foreignElements.js';
 import { extractModules } from './extractors/modules.js';
 import { extractPluginCatalog } from './extractors/plugins.js';
 import { extractTokens } from './extractors/tokens.js';
@@ -285,6 +286,13 @@ async function main() {
   contextData.modules = await extractModules(repoRoot);
 
   /*
+    Custom elements from libraries the seed says this deployment bundles. Read from each package's
+    own custom-elements manifest, so a chart or a rating a template names is documented beside the
+    primitives and accepted by the validator — see `extractors/foreignElements.ts`.
+  */
+  contextData.foreignElements = extractForeignElements(repoRoot);
+
+  /*
     A component is documented only if something mounts it.
 
     A package's `context` field documents everything it exports, and exporting is not registering.
@@ -410,6 +418,7 @@ async function main() {
     shellComponents: context.shellComponents,
     sources: context.sources,
     modules: context.modules,
+    foreignElements: context.foreignElements,
   };
   await writeFormatted(contextJsonPath, JSON.stringify(contextJson, null, 2));
   console.log(`  Written: ${contextJsonPath}`);

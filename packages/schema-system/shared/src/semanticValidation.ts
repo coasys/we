@@ -311,6 +311,26 @@ export function buildValidationContext(data: ContextData): ValidationContext {
     if (propAllowed.size > 0) componentPropAllowedValues.set(prim.tagName, propAllowed);
   }
 
+  /*
+    Custom elements the seed allows. Their props are whatever their manifest documents, and nothing
+    of the design system's: they are not built on its base classes, so a `p` or a `bg` would be set
+    as a property the element ignores.
+  */
+  for (const element of data.foreignElements ?? []) {
+    componentNames.add(element.tagName);
+    const props = new Set<string>();
+    const propTypes = new Map<string, string>();
+    for (const p of element.props) {
+      props.add(p.name);
+      propTypes.set(p.name, classifyPropType(p.type));
+    }
+    // An element whose manifest documents nothing is judged by name alone, not reported prop by prop.
+    if (props.size) {
+      componentProps.set(element.tagName, props);
+      componentPropTypes.set(element.tagName, propTypes);
+    }
+  }
+
   // Components and widgets
   for (const comp of data.components) {
     componentNames.add(comp.name);

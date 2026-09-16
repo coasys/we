@@ -3584,4 +3584,5 @@ export const contextData: ContextData = {
       ],
     },
   ],
+  foreignElements: [],
 };
