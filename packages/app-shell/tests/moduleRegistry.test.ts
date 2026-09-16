@@ -713,9 +713,23 @@ describe('what a template needs', () => {
     expect(moduleRegistry.requiredBy(schema).sort()).toEqual(['call', 'globe']);
   });
 
-  it('catalogues contributed views and refuses ones with no id or the wrong role', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  it('catalogues contributed views', () => {
     moduleRegistry.register(
+      mod('polls', {
+        contributes: {
+          views: [
+            { id: 'polls', type: 'Column', meta: { name: 'Polls', description: '', icon: 'chart-bar', role: 'view' } },
+          ] as never,
+        },
+      }),
+      host,
+    );
+    expect(Object.keys(moduleRegistry.views())).toEqual(['polls']);
+  });
+
+  it('refuses a module whose view has no id or the wrong role, with a sentence', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const result = moduleRegistry.register(
       mod('polls', {
         contributes: {
           views: [
@@ -727,7 +741,11 @@ describe('what a template needs', () => {
       }),
       host,
     );
-    expect(Object.keys(moduleRegistry.views())).toEqual(['polls']);
+    expect(result.registered).toBe(false);
+    expect(moduleRegistry.get('polls')).toBeUndefined();
+    const messages = warn.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(messages).toContain('no id');
+    expect(messages).toContain("meta.role: 'view'");
     warn.mockRestore();
   });
 });

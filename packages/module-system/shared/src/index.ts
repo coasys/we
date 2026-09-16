@@ -12,6 +12,8 @@
 export { DEV_TOOLS_KEY, devToolsEnabled, setDevToolsMuted } from './devTools';
 export type { InterpretationActivitySummary, InterpretationKernel } from './interpretation';
 export { KERNEL_NAMES } from './kernels';
+export { lintModule } from './lint';
+export type { ModuleLint } from './lint';
 export type {
   AgentDataKernel,
   KernelName,

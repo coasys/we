@@ -22,7 +22,7 @@
  * open and close it. Where the module owns openness it names the keys and the plumbing reads through;
  * where it does not — the ordinary case — the plumbing holds the flag itself. See `panelPlumbing`.
  */
-import { type EntityManifestEntry, type SchemaPort, validateManifest } from '@we/backend-shared';
+import type { EntityManifestEntry, SchemaPort } from '@we/backend-shared';
 import { type BlockEntityStatic, registerBlock, unregisterBlock } from '@we/block-shared';
 import { unregisterEntity } from '@we/entities';
 import {
@@ -31,6 +31,7 @@ import {
   type BlockContribution,
   checkModuleCompatibility,
   KERNEL_NAMES,
+  lintModule,
   markAction,
   markState,
   moduleCapabilities,
@@ -38,8 +39,6 @@ import {
   type ModuleFunction,
   type ModuleHostProfile,
   type ModuleLauncher,
-  modulePredicatePrefix,
-  modulePredicateViolations,
   type ModuleScope,
   type ModuleStore,
   type ModuleStoreDeps,
@@ -459,29 +458,6 @@ function depsFor(
   };
 }
 
-/** Refusals a definition earns before anything is registered. */
-function definitionProblems(definition: ModuleDefinition): string[] {
-  const problems: string[] = [];
-  const { manifest, contributes } = definition;
-  if (!manifest?.id) problems.push('manifest.id is required');
-  if (!manifest?.name) problems.push('manifest.name is required');
-
-  const seen = new Set<string>();
-  for (const panel of contributes?.panels ?? []) {
-    if (!panel.name) problems.push('every panel needs a name — the dock id and a remembered placement are keyed by it');
-    else if (seen.has(panel.name)) problems.push(`two panels are named "${panel.name}"`);
-    seen.add(panel.name);
-  }
-  if (
-    contributes?.components &&
-    Object.keys(contributes.components).length &&
-    !manifest?.requires?.frameworks?.length
-  ) {
-    problems.push('contributes framework components without declaring requires.frameworks');
-  }
-  return problems;
-}
-
 export const moduleRegistry = {
   /**
    * Register a module against this host.
@@ -495,56 +471,19 @@ export const moduleRegistry = {
       return { registered: false, problems };
     };
 
-    const shape = definitionProblems(definition);
-    if (shape.length) return refuse(shape);
+    /*
+      The pure half of the judgement — shape, predicates, manifest, inert declarations — lives in the
+      contract package as `lintModule`, so a module author gets the same sentences in a test before
+      there is a registry. Refusals refuse; warnings are reported and the module registers anyway,
+      since taking a module out of the app over an inert setting is the larger failure.
+    */
+    const lint = lintModule(definition);
+    if (lint.problems.length) return refuse(lint.problems);
+    for (const warning of lint.warnings) console.warn(`module "${definition.manifest.id}": ${warning}`);
 
     const { manifest, contributes } = definition;
     const id = manifest.id;
 
-    // Predicates are how existing data is found, so minting one outside the module's own subtree is
-    // not a bug to fix later — by the time it is noticed, data has been written under a name nobody
-    // can adjudicate. Declared entities mint under the subtree by construction, so the only way a bad
-    // predicate enters is an explicit override.
-    const badPredicates = modulePredicateViolations(id, Object.values(contributes?.entities?.predicates ?? {}));
-    if (badPredicates.length) {
-      return refuse([`declares predicates outside ${modulePredicatePrefix(id)}: ${badPredicates.join(', ')}`]);
-    }
-
-    // Validated here, not when eventually compiled: `declare` runs on the first dataset switch, so a
-    // malformed manifest would otherwise register fine and fail far from the module that shipped it.
-    if (contributes?.entities) {
-      const result = validateManifest(contributes.entities.manifest);
-      if (!result.valid) {
-        return refuse(result.errors.map((e) => `invalid entities manifest at ${e.path}: ${e.message}`));
-      }
-    }
-
-    /*
-      Declarations that are inert, reported rather than refused — a module is still worth having with
-      one dud setting, and taking the whole thing out over a declaration mistake is the larger failure.
-    */
-    for (const setting of contributes?.settings ?? []) {
-      if (setting.resolution === 'restrict' && setting.default === false) {
-        console.warn(
-          `module "${id}" setting "${setting.key}" is restrict and defaults to false, so no level can ever turn it on`,
-        );
-      }
-      if (setting.type === 'enum' && !setting.options?.length) {
-        console.warn(`module "${id}" setting "${setting.key}" is an enum with no options`);
-      }
-      if (setting.type === 'secret' && setting.levels.some((level) => level !== 'agent')) {
-        console.warn(
-          `module "${id}" setting "${setting.key}" is a secret offered above the agent level; only the agent level is honoured`,
-        );
-      }
-    }
-    for (const panel of contributes?.panels ?? []) {
-      if (panel.open && !panel.close) {
-        console.warn(
-          `module "${id}" panel "${panel.name}" owns its open flag but names no close action, so the titlebar cannot dismiss it`,
-        );
-      }
-    }
     for (const type of Object.keys(contributes?.activities ?? {})) {
       const other = declaredActivities().get(type);
       if (other && other.moduleId !== id) {
@@ -761,19 +700,10 @@ export const moduleRegistry = {
 
   /** Views modules contribute, keyed by id — beside the built-in catalogue in `availableViews`. */
   views(): Record<string, TemplateSchema> {
+    // Every view here has an id and the right role: `lintModule` refused the module otherwise.
     const out: Record<string, TemplateSchema> = {};
     for (const { definition } of modules.values()) {
-      for (const view of definition.contributes?.views ?? []) {
-        if (!view.id) {
-          console.warn(`module "${definition.manifest.id}" contributes a view with no id; it cannot be enabled`);
-          continue;
-        }
-        if (view.meta?.role !== 'view') {
-          console.warn(`module "${definition.manifest.id}" view "${view.id}" is not marked meta.role: 'view'; skipped`);
-          continue;
-        }
-        out[view.id] = view;
-      }
+      for (const view of definition.contributes?.views ?? []) out[view.id!] = view;
     }
     return out;
   },

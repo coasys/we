@@ -9,6 +9,7 @@
     "validate:seed": "node scripts/validate-seed.cjs",
     "check:source-consumers": "node scripts/check-source-consumers.mjs",
     "validate:schemas": "pnpm --filter @we/schema-shared validate",
+    "create-module": "node scripts/create-module.mjs",
     "prepare": "pnpm --filter @we/cli run bootstrap && husky && node scripts/install-merge-driver.mjs",
     "clean": "find . -name 'node_modules' -type d -prune -exec rm -rf '{}' + && find . -name 'dist' -type d -prune -exec rm -rf '{}' + && pnpm store prune",
     "build": "pnpm -r --workspace-concurrency=1 run build",
