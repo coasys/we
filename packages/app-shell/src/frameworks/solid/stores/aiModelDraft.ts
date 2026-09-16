@@ -12,7 +12,14 @@
  * equivalent is an eleven-branch `useEffect` at the top of the modal and a matching cascade of
  * `if (newModel.includes(...))` at the bottom, and they do not quite agree.
  */
-import type { AiModel, AiModelDraft, AiModelKind, AiModelSource, AiModelStatus } from '@we/backend-shared';
+import type {
+  AiApiProtocol,
+  AiModel,
+  AiModelDraft,
+  AiModelKind,
+  AiModelSource,
+  AiModelStatus,
+} from '@we/backend-shared';
 
 export type AiSourceKind = AiModelSource['kind'];
 
@@ -23,6 +30,7 @@ export interface AiModelForm {
   kind: AiModelKind;
   sourceKind: AiSourceKind;
   presetName: string;
+  apiProtocol: AiApiProtocol;
   apiBaseUrl: string;
   apiKey: string;
   apiModel: string;
@@ -42,6 +50,7 @@ export const EMPTY_FORM: AiModelForm = {
   sourceKind: 'preset',
   presetName: '',
   // The default the launcher offers, and the one endpoint most users will paste a key for.
+  apiProtocol: 'openai',
   apiBaseUrl: 'https://api.openai.com/v1',
   apiKey: '',
   apiModel: '',
@@ -62,6 +71,7 @@ export function draftFrom(model: AiModel): AiModelForm {
   form.sourceKind = source.kind;
 
   if (source.kind === 'api') {
+    form.apiProtocol = source.protocol;
     form.apiBaseUrl = source.baseUrl;
     form.apiKey = source.apiKey;
     form.apiModel = source.model;
@@ -100,7 +110,13 @@ function toSource(form: AiModelForm): AiModelSource {
 
   switch (form.sourceKind) {
     case 'api':
-      return { kind: 'api', baseUrl: form.apiBaseUrl, apiKey: form.apiKey, model: form.apiModel };
+      return {
+        kind: 'api',
+        protocol: form.apiProtocol,
+        baseUrl: form.apiBaseUrl,
+        apiKey: form.apiKey,
+        model: form.apiModel,
+      };
     case 'huggingface':
       return {
         kind: 'huggingface',
@@ -135,6 +151,35 @@ export function formComplete(form: AiModelForm): boolean {
     default:
       return !!form.presetName.trim();
   }
+}
+
+/**
+ * Endpoints worth not typing, for the remote-API form.
+ *
+ * A starting point and nothing more: choosing one fills in the protocol and base URL, and both stay
+ * editable. Kept to services whose URL is stable and public — anything self-hosted beyond a local
+ * Ollama is somebody's own address, which no list here could know.
+ */
+export const AI_API_PRESETS: { id: string; label: string; protocol: AiApiProtocol; baseUrl: string }[] = [
+  { id: 'anthropic', label: 'Anthropic', protocol: 'anthropic', baseUrl: 'https://api.anthropic.com' },
+  { id: 'openai', label: 'OpenAI', protocol: 'openai', baseUrl: 'https://api.openai.com/v1' },
+  { id: 'openrouter', label: 'OpenRouter', protocol: 'openai', baseUrl: 'https://openrouter.ai/api/v1' },
+  {
+    id: 'gemini',
+    label: 'Google Gemini',
+    protocol: 'openai',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+  },
+  { id: 'groq', label: 'Groq', protocol: 'openai', baseUrl: 'https://api.groq.com/openai/v1' },
+  // Through its OpenAI-compatible surface, which caps the context window it will use; a native
+  // Ollama protocol on the node lifts that.
+  { id: 'ollama', label: 'Ollama on the node’s machine', protocol: 'openai', baseUrl: 'http://localhost:11434/v1' },
+];
+
+/** The preset an endpoint matches, or empty for one somebody typed. */
+export function matchingApiPreset(form: Pick<AiModelForm, 'apiProtocol' | 'apiBaseUrl'>): string {
+  const url = form.apiBaseUrl.trim().replace(/\/+$/, '');
+  return AI_API_PRESETS.find((p) => p.protocol === form.apiProtocol && p.baseUrl === url)?.id ?? '';
 }
 
 const KIND_LABELS: Record<AiModelKind, string> = {
@@ -176,7 +221,8 @@ export function describeModel(model: AiModel, status?: AiModelStatus): AiModelVi
   return {
     ...model,
     kindLabel: KIND_LABELS[model.kind],
-    sourceLabel: SOURCE_LABELS[source.kind],
+    sourceLabel:
+      source.kind === 'api' && source.protocol === 'anthropic' ? 'Anthropic API' : SOURCE_LABELS[source.kind],
     detail,
     statusText: source.kind === 'api' ? '' : statusLine(status),
     // A transcription model is ready once downloaded. AD4M only ever marks a language model

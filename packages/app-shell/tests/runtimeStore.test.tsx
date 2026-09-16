@@ -304,7 +304,7 @@ describe('AI models', () => {
     name: 'GPT',
     kind: 'llm',
     isDefault: true,
-    source: { kind: 'api', baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-x', model: 'gpt-4o' },
+    source: { kind: 'api', protocol: 'openai', baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-x', model: 'gpt-4o' },
   };
   const local: AiModel = {
     id: 'm2',
@@ -340,6 +340,70 @@ describe('AI models', () => {
     };
     return { port, calls };
   }
+
+  it('fills the endpoint from a preset, and knows which preset it is on', () => {
+    ports = { runtime: aiPort().port };
+    const store = mount();
+
+    store.newAiModel();
+    store.setAiFormField('sourceKind', 'api');
+    store.applyAiApiPreset('anthropic');
+
+    expect(store.aiForm()).toMatchObject({ apiProtocol: 'anthropic', apiBaseUrl: 'https://api.anthropic.com' });
+    expect(store.aiApiPreset()).toBe('anthropic');
+
+    store.setAiFormField('apiBaseUrl', 'https://gateway.example/anthropic');
+    expect(store.aiApiPreset()).toBe('');
+  });
+
+  it('offers no model listing where the backend cannot ask', () => {
+    ports = { runtime: aiPort().port };
+    expect(mount().canDiscoverAiModels()).toBe(false);
+  });
+
+  it('lists the models an endpoint serves, and forgets them when the endpoint changes', async () => {
+    const asked: unknown[] = [];
+    const { port } = aiPort({
+      async discoverAiModels(query) {
+        asked.push(query);
+        return ['claude-sonnet-5', 'claude-haiku-4-5'];
+      },
+    });
+    ports = { runtime: port };
+    const store = mount();
+
+    store.newAiModel();
+    store.setAiFormField('sourceKind', 'api');
+    store.applyAiApiPreset('anthropic');
+    store.setAiFormField('apiKey', 'sk-ant');
+    await store.discoverAiModels();
+
+    expect(asked).toEqual([{ protocol: 'anthropic', baseUrl: 'https://api.anthropic.com', apiKey: 'sk-ant' }]);
+    expect(store.aiDiscoveredModelOptions().map((o) => o.value)).toEqual(['claude-haiku-4-5', 'claude-sonnet-5']);
+    // An empty model field takes the first answer, so a working endpoint is one click from saveable.
+    expect(store.aiForm()?.apiModel).toBe('claude-haiku-4-5');
+
+    // The list answered for that key; a different key may see different models, or none.
+    store.setAiFormField('apiKey', 'sk-other');
+    expect(store.aiDiscoveredModelOptions()).toEqual([]);
+  });
+
+  it('says why a listing failed, and offers nothing to pick', async () => {
+    const { port } = aiPort({
+      async discoverAiModels() {
+        throw new Error('Anthropic API error 401: invalid x-api-key');
+      },
+    });
+    ports = { runtime: port };
+    const store = mount();
+
+    store.newAiModel();
+    store.setAiFormField('sourceKind', 'api');
+    await store.discoverAiModels();
+
+    expect(store.error()).toContain('invalid x-api-key');
+    expect(store.aiDiscoveredModelOptions()).toEqual([]);
+  });
 
   it('polls status only for models the backend hosts', async () => {
     const { port, calls } = aiPort();

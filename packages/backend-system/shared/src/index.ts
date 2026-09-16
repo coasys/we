@@ -160,7 +160,9 @@ export type {
   SchemaPort,
 } from './backendPorts';
 export type {
+  AiApiProtocol,
   AiModel,
+  AiModelDiscoveryQuery,
   AiModelDraft,
   AiModelKind,
   AiModelSource,
@@ -190,7 +192,14 @@ export type {
   WriteProperties,
 } from './recordContract';
 export { RECORD_TYPE_KEY, recordTypeOf } from './recordContract';
-export type { LanguageModelPort } from './languageModel';
+export type {
+  ConversationReply,
+  ConversationRequest,
+  ConversationTool,
+  ConversationToolCall,
+  ConversationTurn,
+  LanguageModelPort,
+} from './languageModel';
 export type {
   TranscriptionModelOffer,
   TranscriptionRecord,

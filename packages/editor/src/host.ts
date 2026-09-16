@@ -179,8 +179,8 @@ export interface SessionPort {
   messages: () => EditorChatMessage[];
   isStreaming: () => boolean;
   streamingContent: () => string;
-  apiKeyConfigured: () => boolean;
-  setApiKey: (key: string) => void;
+  /** The node has a language model to talk to. The composer says so when it has not. */
+  assistantAvailable: () => boolean;
   sendMessage: (text: string) => Promise<void>;
   clearHistory: () => void;
   sessions: () => { id: string; name: string }[];

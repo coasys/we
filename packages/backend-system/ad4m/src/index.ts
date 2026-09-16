@@ -49,7 +49,13 @@ export {
 } from './manifestCompiler';
 export { type Ad4mLifecycleOptions, createAd4mAgentSession, createAd4mDatasetLifecycle } from './lifecycleAdapter';
 export { type Ad4mRuntimeOptions, createAd4mRuntimeAdmin } from './runtimeAdminAdapter';
-export { createAd4mBackendPorts, createAd4mProfileDirectory, createAd4mSchemaPort } from './backendPortsAdapter';
+export {
+  type Ad4mConnectionOptions,
+  createAd4mBackendPorts,
+  createAd4mProfileDirectory,
+  createAd4mSchemaPort,
+} from './backendPortsAdapter';
+export type { Ad4mHttpConnection } from './languageModelPort';
 export { connectToLocalExecutor, createLocalAd4mConnector, type LocalExecutorConnection } from './localExecutor';
 export { createAd4mTranscriptionPort } from './transcriptionAdapter';
 export {

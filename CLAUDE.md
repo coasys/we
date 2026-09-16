@@ -2519,7 +2519,7 @@ EditorStore:
   - isOpen: boolean — the AI chat panel is open
   - isStreaming: boolean — an assistant reply is arriving; streamingContent holds what has arrived so far
   - streamingContent: string — the partial assistant reply while isStreaming, empty otherwise
-  - apiKeyConfigured: boolean — the agent has an API key set, so sendMessage can work. Gate the composer on it and say what is missing rather than hiding it
+  - assistantAvailable: boolean — the node has a language model the editor can hold a conversation with, so sendMessage can work. Configured in Settings → AI. Gate the composer on it and say what is missing rather than hiding it
   - templateName: string — the name of the template being edited, for the editor’s own header
   - templateIcon: string — its icon
   - isReadOnly: boolean — the template on screen cannot be saved in place (a built-in, or somebody else's). Edits buffer as pending changes; offer Fork rather than Save. Answers for the template rendered, so do not use it to gate per-row controls in a list — switcherGroups carries `editable` per row
@@ -2694,6 +2694,10 @@ RuntimeStore:
   - aiForm: AiModelForm | null — the model form while it is open, null when closed. One flat field per input; read with runtimeStore.aiForm.<field>
   - aiPresetOptions: { label, value }[] — model names the backend can fetch itself, for the open form kind
   - aiFormComplete: boolean — the open form has every field its chosen source needs
+  - aiApiPresetOptions: { label, value }[] — known remote services (Anthropic, OpenAI, OpenRouter…) for a we-select; pass the value to applyAiApiPreset
+  - aiApiPreset: string — the preset the open form's protocol and base URL match, or empty for an endpoint somebody typed. The preset select's value
+  - canDiscoverAiModels: boolean — the backend can ask a remote endpoint which models it serves. Gate a "List models" control on it; where it is false, the model id is typed
+  - aiDiscoveredModelOptions: { label, value }[] — the models the open form's endpoint said it serves, for a we-select. Empty until discoverAiModels() answers, and empty again once the protocol, URL or key changes
   - aiFormDirty: boolean — the open form has been edited since it opened. What a discard guard reads; compared against a snapshot taken on open, so looking at a model's settings and closing again asks nothing
   - languages: InstalledLanguage[] — language plugins installed in this backend (address, name, system). Empty until loadLanguages() runs
   - trustedAgents: string[] — trusted peer ids. Empty until loadTrustedAgents() runs
@@ -2718,6 +2722,8 @@ RuntimeStore:
   - newAiModel(): opens the model form empty, for a new model
   - editAiModel(id: string): opens the model form on an existing model
   - setAiFormField(field: string, value: string | boolean): sets one field of the open model form. Takes the field name so one action serves every input
+  - applyAiApiPreset(id: string): fills the open form's protocol and base URL from a preset. Both stay editable
+  - discoverAiModels(): asks the open form's endpoint which models it serves, through the node — also the check that the key works. A refusal lands in error; an empty model field takes the first model
   - closeAiForm(): closes the model form, discarding it
   - saveAiModel(): saves the open form — adds or updates depending on whether it has an id
   - removeAiModel(id: string): deletes a model

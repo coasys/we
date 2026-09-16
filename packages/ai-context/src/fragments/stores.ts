@@ -102,6 +102,7 @@ export const storeEntries: StoreEntry[] = [
           'kind',
           'sourceKind',
           'presetName',
+          'apiProtocol',
           'apiBaseUrl',
           'apiKey',
           'apiModel',
@@ -118,6 +119,10 @@ export const storeEntries: StoreEntry[] = [
       aiPresetOptions: { type: 'array', properties: ['label', 'value'] },
       aiFormComplete: { type: 'boolean' },
       aiFormDirty: { type: 'boolean' },
+      aiApiPresetOptions: { type: 'array', properties: ['label', 'value'] },
+      aiApiPreset: { type: 'string' },
+      canDiscoverAiModels: { type: 'boolean' },
+      aiDiscoveredModelOptions: { type: 'array', properties: ['label', 'value'] },
       languages: { type: 'array', properties: ['address', 'name', 'system'] },
       trustedAgents: { type: 'array' },
       authorizedApps: {
@@ -146,6 +151,8 @@ export const storeEntries: StoreEntry[] = [
       'newAiModel',
       'editAiModel',
       'setAiFormField',
+      'applyAiApiPreset',
+      'discoverAiModels',
       'closeAiForm',
       'saveAiModel',
       'removeAiModel',
@@ -505,7 +512,7 @@ export const storeEntries: StoreEntry[] = [
       messages: { type: 'array' },
       isStreaming: { type: 'boolean' },
       streamingContent: { type: 'string' },
-      apiKeyConfigured: { type: 'boolean' },
+      assistantAvailable: { type: 'boolean' },
       templateName: { type: 'string' },
       templateIcon: { type: 'string' },
       isReadOnly: { type: 'boolean' },
@@ -677,6 +684,14 @@ export function generateStoresText(entries: StoreEntry[]): string {
         aiFormComplete: 'boolean — the open form has every field its chosen source needs',
         aiFormDirty:
           "boolean — the open form has been edited since it opened. What a discard guard reads; compared against a snapshot taken on open, so looking at a model's settings and closing again asks nothing",
+        aiApiPresetOptions:
+          '{ label, value }[] — known remote services (Anthropic, OpenAI, OpenRouter…) for a we-select; pass the value to applyAiApiPreset',
+        aiApiPreset:
+          "string — the preset the open form's protocol and base URL match, or empty for an endpoint somebody typed. The preset select's value",
+        canDiscoverAiModels:
+          'boolean — the backend can ask a remote endpoint which models it serves. Gate a "List models" control on it; where it is false, the model id is typed',
+        aiDiscoveredModelOptions:
+          "{ label, value }[] — the models the open form's endpoint said it serves, for a we-select. Empty until discoverAiModels() answers, and empty again once the protocol, URL or key changes",
         languages:
           'InstalledLanguage[] — language plugins installed in this backend (address, name, system). Empty until loadLanguages() runs',
         trustedAgents: 'string[] — trusted peer ids. Empty until loadTrustedAgents() runs',
@@ -712,6 +727,9 @@ export function generateStoresText(entries: StoreEntry[]): string {
         editAiModel: '(id: string): opens the model form on an existing model',
         setAiFormField:
           '(field: string, value: string | boolean): sets one field of the open model form. Takes the field name so one action serves every input',
+        applyAiApiPreset: "(id: string): fills the open form's protocol and base URL from a preset. Both stay editable",
+        discoverAiModels:
+          "(): asks the open form's endpoint which models it serves, through the node — also the check that the key works. A refusal lands in error; an empty model field takes the first model",
         closeAiForm: '(): closes the model form, discarding it',
         saveAiModel: '(): saves the open form — adds or updates depending on whether it has an id',
         removeAiModel: '(id: string): deletes a model',
@@ -1383,8 +1401,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
         isOpen: 'boolean — the AI chat panel is open',
         isStreaming: 'boolean — an assistant reply is arriving; streamingContent holds what has arrived so far',
         streamingContent: 'string — the partial assistant reply while isStreaming, empty otherwise',
-        apiKeyConfigured:
-          'boolean — the agent has an API key set, so sendMessage can work. Gate the composer on it and say what is missing rather than hiding it',
+        assistantAvailable:
+          'boolean — the node has a language model the editor can hold a conversation with, so sendMessage can work. Configured in Settings → AI. Gate the composer on it and say what is missing rather than hiding it',
         templateName: 'string — the name of the template being edited, for the editor’s own header',
         templateIcon: 'string — its icon',
         isReadOnly:

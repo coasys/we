@@ -3,18 +3,25 @@
  * panel visibility and widths, preview/visual mode, unified template+theme undo/redo, pending
  * (buffered) changes for read-only templates, and the fork/fresh picker.
  *
- * The AI half of a session is deliberately elsewhere: the Anthropic client, streaming, prompt
- * assembly and tool definition live in `shared/ai/aiInfra`, and patch application in
- * `shared/ai/schemaPatches` — this store orchestrates them against its own signals. That split is
- * what keeps a future backend-executed assistant a drop-in: it would replace the infra modules
- * and the `sendViaClaude` orchestration, not the session state.
+ * The AI half of a session is deliberately elsewhere: the model runs on the node, reached through
+ * `LanguageModelPort.converse`; prompt assembly and the tool definition live in `shared/ai/aiInfra`,
+ * and patch application in `shared/ai/schemaPatches` — this store orchestrates them against its own
+ * signals, and never learns which model or provider answered.
  */
-import { formatExternalManifestForPrompt, sendClaudeRequest } from '@shared/ai/aiInfra';
+import { chatSystemPrompt, formatExternalManifestForPrompt, updateSchemaTool } from '@shared/ai/aiInfra';
 import { applySchemaPatches, type SchemaPatch } from '@shared/ai/schemaPatches';
 import { registerHostDockStore, unregisterHostDockStore } from '@shared/registries/dockRegistry';
 import { EDITOR_STORE_ID } from '@shared/registries/editorDocks';
 import { deepClone } from '@shared/utils';
-import { type EditingTheme, useDatasetStore, useShapeStore, useTemplateStore, useThemeStore } from '@solid/stores';
+import {
+  type EditingTheme,
+  useDatasetStore,
+  useSessionStore,
+  useShapeStore,
+  useTemplateStore,
+  useThemeStore,
+} from '@solid/stores';
+import type { ConversationTurn } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import { ChatMessage as ChatMessageRecord, ChatSession as ChatSessionRecord } from '@we/entities';
 import type { DockEdge, DockSize } from '@we/module-shared';
@@ -59,7 +66,11 @@ export interface EditorStore {
   isOpen: Accessor<boolean>;
   isStreaming: Accessor<boolean>;
   streamingContent: Accessor<string>;
-  apiKeyConfigured: Accessor<boolean>;
+  /**
+   * The node has a language model this editor can hold a conversation with. What the composer
+   * gates on — and says so, rather than hiding — when it is false.
+   */
+  assistantAvailable: Accessor<boolean>;
 
   // --- Template context ---
   templateName: Accessor<string>;
@@ -165,9 +176,6 @@ export interface EditorStore {
   // --- Chat actions ---
   sendMessage: (text: string) => Promise<void>;
   clearHistory: () => void;
-
-  // --- Settings ---
-  setApiKey: (key: string) => Promise<boolean>;
 }
 
 /**
@@ -225,6 +233,7 @@ const starterTemplate: SchemaNode = {
 };
 
 export function EditorStoreProvider(props: ParentProps) {
+  const session = useSessionStore();
   const datasetStore = useDatasetStore();
   const templateStore = useTemplateStore();
   const themeStore = useThemeStore();
@@ -253,9 +262,26 @@ export function EditorStoreProvider(props: ParentProps) {
   const [isOpen, setIsOpen] = createSignal(false);
   const [isStreaming, setIsStreaming] = createSignal(false);
   const [streamingContent, setStreamingContent] = createSignal('');
-  const [apiKey, setApiKeySignal] = createSignal('');
 
-  const apiKeyConfigured = () => apiKey().length > 0;
+  /*
+    Asked of the node rather than read off the agent. This used to be "the agent pasted an Anthropic
+    key", which made the editor the one AI surface that ignored the models its node runs — and
+    handed a secret to the browser to send from there.
+  */
+  const languageModel = () => session.backendPorts()?.languageModel;
+  const [nodeHasModel, setNodeHasModel] = createSignal(false);
+  createEffect(() => {
+    const port = languageModel();
+    if (!port?.converse) {
+      setNodeHasModel(false);
+      return;
+    }
+    void port
+      .available()
+      .then(setNodeHasModel)
+      .catch(() => setNodeHasModel(false));
+  });
+  const assistantAvailable = () => nodeHasModel() && !!languageModel()?.converse;
 
   // --- Session management ---
   const [sessions, setSessions] = createSignal<ChatSessionRecord[]>([]);
@@ -775,24 +801,6 @@ export function EditorStoreProvider(props: ParentProps) {
   );
 
   // ----------------------------------------------------------------
-  // API key management (persisted to AgentSettings)
-  // ----------------------------------------------------------------
-  // Returns the write rather than dropping it, so a schema's `onError`/`onFinally` can fire and a
-  // caller can await. `updateAgentSettings` toasts a failure of its own; this is the other channel.
-  function setApiKey(key: string): Promise<boolean> {
-    setApiKeySignal(key);
-    return datasetStore.updateAgentSettings({ claudeApiKey: key });
-  }
-
-  // Load persisted API key when agentSettings become available
-  createEffect(() => {
-    const settings = datasetStore.agentSettings();
-    if (settings?.claudeApiKey) {
-      setApiKeySignal(settings.claudeApiKey);
-    }
-  });
-
-  // ----------------------------------------------------------------
   // Template actions — Fork / Start Fresh / Picker
   // ----------------------------------------------------------------
   function startFork() {
@@ -861,7 +869,7 @@ export function EditorStoreProvider(props: ParentProps) {
   }
 
   // ----------------------------------------------------------------
-  // Chat — send message (Claude primary, AD4M fallback)
+  // Chat — send message
   // ----------------------------------------------------------------
   async function sendMessage(text: string) {
     // Lazy session creation for custom templates: if no active session, create one
@@ -883,7 +891,7 @@ export function EditorStoreProvider(props: ParentProps) {
     setStreamingContent('<span class="shimmer">*Thinking...*</span>');
 
     try {
-      await sendViaClaude(text);
+      await sendViaNode(text);
     } catch (err) {
       console.error('[EditorStore] sendMessage caught error:', err);
       const errorText = err instanceof Error ? err.message : 'Unknown error';
@@ -894,7 +902,7 @@ export function EditorStoreProvider(props: ParentProps) {
       /*
         Resolve any placeholder still marked `streaming`.
 
-        `sendViaClaude` creates one before the first token and clears it only on the paths that
+        `sendViaNode` creates one before the first token and clears it only on the paths that
         finish — so a 401, a 429 or a timeout appended an error message *beside* an empty bubble
         that shimmered for the life of the panel. Every escape from that function passes through
         here, which is why the cleanup belongs here and not beside each throw.
@@ -912,11 +920,16 @@ export function EditorStoreProvider(props: ParentProps) {
   }
 
   // ----------------------------------------------------------------
-  // Claude API path (client + streaming live in shared/ai/aiInfra)
+  // The conversation, on the node's language model
   // ----------------------------------------------------------------
 
-  async function sendViaClaude(text: string) {
-    const claudeMessages: Array<{ role: string; content: unknown }> = buildClaudeMessages(text);
+  async function sendViaNode(text: string) {
+    const port = languageModel();
+    if (!port?.converse || !nodeHasModel()) {
+      throw new Error('This node has no language model to talk to. Add one in Settings → AI.');
+    }
+    const turns: ConversationTurn[] = buildTurns(text);
+    const system = await chatSystemPrompt();
 
     // Create a placeholder assistant message — shows streaming content as tokens arrive
     const streamMsg = createMessage('assistant', '', 'streaming');
@@ -951,26 +964,22 @@ export function EditorStoreProvider(props: ParentProps) {
     };
 
     for (let turn = 0; turn <= maxContinuations; turn++) {
-      let streamResult;
+      let reply;
       try {
-        streamResult = await sendClaudeRequest(
-          apiKey(),
-          claudeMessages,
-          (accumulated) => {
+        reply = await port.converse({
+          system,
+          turns,
+          tools: [updateSchemaTool],
+          onText: (accumulated) => {
             const sep = allTextContent && accumulated ? '\n\n' : '';
             setStreamingContent(allTextContent + sep + accumulated);
           },
-          (textSoFar) => {
-            const base = allTextContent + (allTextContent && textSoFar ? '\n\n' : '') + textSoFar;
-            const sep = base ? '\n\n' : '';
-            setStreamingContent(base + sep + '<span class="shimmer">*Updating template...*</span>');
-          },
-        );
+        });
       } catch (err) {
-        console.error(`[EditorStore] Turn ${turn}: sendClaudeRequest threw`, err);
+        console.error(`[EditorStore] Turn ${turn}: the conversation failed`, err);
         throw err;
       }
-      const { textContent, toolCalls, stopReason } = streamResult;
+      const { text: textContent, calls: toolCalls, finish } = reply;
 
       if (textContent) {
         allTextContent += (allTextContent ? '\n\n' : '') + textContent;
@@ -985,7 +994,7 @@ export function EditorStoreProvider(props: ParentProps) {
         be labelled, because the difference between "here is your change" and "here is most of a
         change I did not make" is the whole message.
       */
-      if (stopReason === 'max_tokens') {
+      if (finish === 'truncated') {
         setStreamingContent('');
         updateAssistantMessage(
           streamMsg.id,
@@ -995,30 +1004,19 @@ export function EditorStoreProvider(props: ParentProps) {
       }
 
       // No tool calls — text-only response, we're done
-      if (stopReason === 'end_turn' || toolCalls.length === 0) {
+      if (toolCalls.length === 0) {
         setStreamingContent('');
         updateAssistantMessage(streamMsg.id, allTextContent || 'No response from AI');
         return;
       }
 
-      // Show working indicator while tool calls are processed
-      // (already shown via onToolUseStart callback during streaming)
+      showInlineStatus('Updating template...');
 
-      // Process tool calls (stop_reason === 'tool_use')
-      // Build assistant message content blocks for conversation history
-      const assistantContent: Array<Record<string, unknown>> = [];
-      if (textContent) {
-        assistantContent.push({ type: 'text', text: textContent });
-      }
-      for (const tc of toolCalls) {
-        assistantContent.push({ type: 'tool_use', id: tc.id, name: tc.name, input: tc.input });
-      }
+      // The assistant's turn, calls included, goes into history before their results
+      turns.push({ role: 'assistant', text: textContent, calls: toolCalls });
 
-      // Add assistant message to conversation history
-      claudeMessages.push({ role: 'assistant', content: assistantContent });
-
-      // Execute each tool call and collect results
-      const toolResults: Array<{ type: 'tool_result'; tool_use_id: string; content: string; is_error?: boolean }> = [];
+      // One result per call, in the order they were made
+      const toolResults: Array<{ callId: string; content: string; isError?: boolean }> = [];
 
       // --- Atomic patching: accumulate all patches before applying ---
       // We clone the template once and apply all tool calls' patches to it.
@@ -1034,14 +1032,13 @@ export function EditorStoreProvider(props: ParentProps) {
 
       for (const tc of toolCalls) {
         if (tc.name === 'update_schema') {
-          const patches = (tc.input as { patches: SchemaPatch[] }).patches;
+          const patches = (tc.arguments as { patches?: SchemaPatch[] }).patches;
 
           if (!patches || !Array.isArray(patches)) {
             toolResults.push({
-              type: 'tool_result',
-              tool_use_id: tc.id,
+              callId: tc.id,
               content: 'Invalid input: patches must be an array',
-              is_error: true,
+              isError: true,
             });
             allPatchesValid = false;
             continue;
@@ -1062,10 +1059,9 @@ export function EditorStoreProvider(props: ParentProps) {
             allTextContent += '\n\n<span class="warning">⚠ Template failed validation. Retrying...</span>';
             setStreamingContent(allTextContent);
             toolResults.push({
-              type: 'tool_result',
-              tool_use_id: tc.id,
+              callId: tc.id,
               content: `Patching failed: ${result.error}`,
-              is_error: true,
+              isError: true,
             });
             allPatchesValid = false;
             continue;
@@ -1076,18 +1072,9 @@ export function EditorStoreProvider(props: ParentProps) {
           ensureNodeIds(accumulatedSchema);
 
           // Mark success for this tool call (actual store apply deferred)
-          toolResults.push({
-            type: 'tool_result',
-            tool_use_id: tc.id,
-            content: 'Patches applied.',
-          });
+          toolResults.push({ callId: tc.id, content: 'Patches applied.' });
         } else {
-          toolResults.push({
-            type: 'tool_result',
-            tool_use_id: tc.id,
-            content: `Unknown tool: ${tc.name}`,
-            is_error: true,
-          });
+          toolResults.push({ callId: tc.id, content: `Unknown tool: ${tc.name}`, isError: true });
         }
       }
 
@@ -1111,7 +1098,7 @@ export function EditorStoreProvider(props: ParentProps) {
           setStreamingContent(allTextContent);
           for (const tr of toolResults) {
             tr.content = `Structural validation failed (${structural.errors.length} issues). Top issues: ${top5}. Fix the schema structure and retry.`;
-            tr.is_error = true;
+            tr.isError = true;
           }
         } else {
           devLog('[EditorStore] Structural validation passed');
@@ -1142,7 +1129,7 @@ export function EditorStoreProvider(props: ParentProps) {
             setStreamingContent(allTextContent);
             for (const tr of toolResults) {
               tr.content = `Semantic validation failed (${newIssues.length} issues). Top issues: ${top5}. Fix the invalid tokens/props and retry.`;
-              tr.is_error = true;
+              tr.isError = true;
             }
           } else if (isReadOnly()) {
             if (import.meta.env.DEV)
@@ -1170,11 +1157,13 @@ export function EditorStoreProvider(props: ParentProps) {
         }
       }
 
-      // Add tool results to conversation history
-      claudeMessages.push({ role: 'user', content: toolResults });
+      // Add tool results to conversation history — one turn each, so every call is answered by name
+      for (const tr of toolResults) {
+        turns.push({ role: 'tool', callId: tr.callId, result: tr.isError ? `Error: ${tr.content}` : tr.content });
+      }
 
       // Inject inline status if this round succeeded
-      const hasErrors = toolResults.some((r) => r.is_error);
+      const hasErrors = toolResults.some((r) => r.isError);
       if (!hasErrors) {
         const pended = isReadOnly() && pendingTemplate() !== null;
         const statusLine = pended
@@ -1184,9 +1173,9 @@ export function EditorStoreProvider(props: ParentProps) {
         setStreamingContent(allTextContent);
       }
 
-      // Continue the loop — Claude will either:
+      // Continue the loop — the model will either:
       // - send closing text (end_turn) → caught at top of next iteration
-      // - send more tool_use calls → processed in next iteration
+      // - call the tool again → processed in next iteration
       // - retry after errors → processed in next iteration
       showInlineStatus(hasErrors ? 'Retrying...' : 'Thinking...');
     }
@@ -1200,12 +1189,12 @@ export function EditorStoreProvider(props: ParentProps) {
   }
 
   /**
-   * Build Claude messages array from chat history.
+   * The conversation so far, as turns.
    * The currentSchema is included in the latest user message so the AI
    * always sees the current template state.
    */
-  function buildClaudeMessages(latestText: string): Array<{ role: string; content: unknown }> {
-    const history: Array<{ role: string; content: unknown }> = [];
+  function buildTurns(latestText: string): ConversationTurn[] {
+    const history: ConversationTurn[] = [];
 
     // Include prior conversation (skip system messages)
     for (const msg of messages()) {
@@ -1213,10 +1202,10 @@ export function EditorStoreProvider(props: ParentProps) {
       if (msg.role === 'user') {
         history.push({
           role: 'user',
-          content: JSON.stringify({ request: msg.content, currentSchema: {} }),
+          text: JSON.stringify({ request: msg.content, currentSchema: {} }),
         });
       } else {
-        history.push({ role: 'assistant', content: msg.content });
+        history.push({ role: 'assistant', text: msg.content });
       }
     }
 
@@ -1246,7 +1235,7 @@ export function EditorStoreProvider(props: ParentProps) {
     }
     history.push({
       role: 'user',
-      content: JSON.stringify(payload),
+      text: JSON.stringify(payload),
     });
 
     return history;
@@ -1348,7 +1337,7 @@ export function EditorStoreProvider(props: ParentProps) {
     isOpen,
     isStreaming,
     streamingContent,
-    apiKeyConfigured,
+    assistantAvailable,
 
     // Template context
     templateName,
@@ -1436,9 +1425,6 @@ export function EditorStoreProvider(props: ParentProps) {
     // Chat actions
     sendMessage,
     clearHistory,
-
-    // Settings
-    setApiKey,
   };
 
   /*

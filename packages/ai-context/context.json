@@ -5708,7 +5708,7 @@
         "streamingContent": {
           "type": "string"
         },
-        "apiKeyConfigured": {
+        "assistantAvailable": {
           "type": "boolean"
         },
         "templateName": {
@@ -6056,6 +6056,7 @@
             "kind",
             "sourceKind",
             "presetName",
+            "apiProtocol",
             "apiBaseUrl",
             "apiKey",
             "apiModel",
@@ -6075,6 +6076,20 @@
         },
         "aiFormComplete": {
           "type": "boolean"
+        },
+        "aiApiPresetOptions": {
+          "type": "array",
+          "properties": ["label", "value"]
+        },
+        "aiApiPreset": {
+          "type": "string"
+        },
+        "canDiscoverAiModels": {
+          "type": "boolean"
+        },
+        "aiDiscoveredModelOptions": {
+          "type": "array",
+          "properties": ["label", "value"]
         },
         "aiFormDirty": {
           "type": "boolean"
@@ -6141,6 +6156,8 @@
         "newAiModel",
         "editAiModel",
         "setAiFormField",
+        "applyAiApiPreset",
+        "discoverAiModels",
         "closeAiForm",
         "saveAiModel",
         "removeAiModel",

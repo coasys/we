@@ -77,6 +77,7 @@ export function createLocalAd4mConnector(
         ports: createAd4mBackendPorts(client, ctx, {
           linkServerUrl: options.linkServerUrl,
           devLinkLanguageBundle: options.devLinkLanguageBundle,
+          connection: () => ({ url: `http://localhost:${port}`, token }),
         }),
         // Forwarded to hosted app iframes by the embed bridge.
         connection: { port, token },

@@ -10,7 +10,6 @@ export function AiPanel() {
   const session = useEditorHost().session;
 
   const [inputValue, setInputValue] = createSignal('');
-  const [apiKeyInput, setApiKeyInput] = createSignal('');
   let messagesEndRef: HTMLDivElement | undefined;
 
   // Auto-scroll to bottom when messages change or streaming content updates
@@ -24,7 +23,7 @@ export function AiPanel() {
 
   function handleSend() {
     const text = inputValue().trim();
-    if (!text || session.isStreaming()) return;
+    if (!text || session.isStreaming() || !session.assistantAvailable()) return;
     session.sendMessage(text);
     setInputValue('');
   }
@@ -64,42 +63,19 @@ export function AiPanel() {
         </Row>
       </Row>
 
-      {/* API Key Setup */}
-      <Show when={!session.apiKeyConfigured()}>
+      {/*
+        No model, no chat — said where the chat would be. The editor used to ask for an Anthropic key
+        here; the model is the node's now, configured once in settings for every AI surface.
+      */}
+      <Show when={!session.assistantAvailable()}>
         <Column gap="200" p="400" bg="surface" borderBottom={`1px solid ${tokenVar('color', 'ui-200')}`} flexShrink="0">
           <we-text fontSize="300" fontWeight="600" color="text">
-            Claude API Key
+            No language model
           </we-text>
           <we-text fontSize="200" color="text-muted">
-            Enter your Anthropic API key to enable AI chat. The key is stored locally in your agent settings.
+            This node has no language model to talk to. Add one in Settings → AI — a model the node downloads, or a
+            remote API such as Anthropic's.
           </we-text>
-          <Row gap="200">
-            <we-input
-              type="password"
-              value={apiKeyInput()}
-              placeholder="sk-ant-..."
-              size="sm"
-              bg="surface"
-              flex="1"
-              on:input={(e: CustomEvent) => setApiKeyInput(e.detail)}
-              on:keydown={(e: CustomEvent) => {
-                if (e.detail.key === 'Enter' && apiKeyInput().trim()) {
-                  session.setApiKey(apiKeyInput().trim());
-                  setApiKeyInput('');
-                }
-              }}
-            />
-            <we-button
-              size="sm"
-              disabled={!apiKeyInput().trim()}
-              onClick={() => {
-                session.setApiKey(apiKeyInput().trim());
-                setApiKeyInput('');
-              }}
-            >
-              Save
-            </we-button>
-          </Row>
         </Column>
       </Show>
 
@@ -183,7 +159,7 @@ export function AiPanel() {
         <we-textarea
           value={inputValue()}
           placeholder="Describe a change to the template..."
-          disabled={session.isStreaming()}
+          disabled={session.isStreaming() || !session.assistantAvailable()}
           size="sm"
           rows={1}
           autoGrow
@@ -194,7 +170,11 @@ export function AiPanel() {
           on:input={(e: CustomEvent) => setInputValue(e.detail)}
           on:submit={handleSend}
         />
-        <we-button size="sm" onClick={handleSend} disabled={session.isStreaming() || inputValue().trim() === ''}>
+        <we-button
+          size="sm"
+          onClick={handleSend}
+          disabled={session.isStreaming() || !session.assistantAvailable() || inputValue().trim() === ''}
+        >
           <we-icon name="paper-plane-tilt" size="sm" />
         </we-button>
       </Row>

@@ -249,6 +249,10 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     aiPresetOptions: state('runtime-admin'),
     aiFormComplete: state('runtime-admin'),
     aiFormDirty: state('runtime-admin'),
+    aiApiPresetOptions: state('runtime-admin'),
+    aiApiPreset: state('runtime-admin'),
+    canDiscoverAiModels: state('runtime-admin'),
+    aiDiscoveredModelOptions: state('runtime-admin'),
     languages: state('runtime-admin'),
     trustedAgents: state('runtime-admin'),
     authorizedApps: state('runtime-admin'),
@@ -271,6 +275,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     newAiModel: action('runtime-admin'),
     editAiModel: action('runtime-admin'),
     setAiFormField: action('runtime-admin'),
+    applyAiApiPreset: action('runtime-admin'),
+    discoverAiModels: action('runtime-admin'),
     closeAiForm: action('runtime-admin'),
     saveAiModel: action('runtime-admin'),
     removeAiModel: destructive('runtime-admin'),
@@ -1144,7 +1150,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     isOpen: state('editor'),
     isStreaming: state('editor'),
     streamingContent: state('editor'),
-    apiKeyConfigured: state('editor'),
+    assistantAvailable: state('editor'),
     templateName: state('editor'),
     templateIcon: state('editor'),
     isReadOnly: state('editor'),
@@ -1207,9 +1213,6 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     sendMessage: action('editor'),
     clearHistory: destructive('editor'),
 
-    // The Claude API key. Written through a settings form in chrome, read by this store to make a
-    // request — never a value any template needs to see.
-    setApiKey: WIRING,
     onSchemaEdit: WIRING,
     pushSnapshot: WIRING,
     // The editor's own save path. A template rendering itself has no edit to commit.

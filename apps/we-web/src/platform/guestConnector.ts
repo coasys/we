@@ -72,6 +72,7 @@ export function createGuestConnector(hostUrl: string): BackendConnector {
           administersNode: false,
           capabilities,
           linkServerUrl: (weSeed.ad4m as { linkServerUrl?: string }).linkServerUrl,
+          connection: () => (core.baseUrl ? { url: core.baseUrl, token: core.token } : null),
         }),
         // Ending the session forgets the token and the host choice.
         disconnect: () => core.disconnect(),
