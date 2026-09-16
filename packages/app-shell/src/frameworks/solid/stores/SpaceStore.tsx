@@ -1460,8 +1460,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (!lifecycle?.linkLanguageTemplates) return;
     try {
       const templates = await lifecycle.linkLanguageTemplates();
-      // The backend lists them in its order of preference, and its first is what publishing
-      // uses unprompted — so that is the default. Names are sorted for the picker only.
+      // The backend lists its default first — what publishing uses unprompted. Names are sorted
+      // for the picker only.
       setDefaultLinkLanguageTemplate(templates[0]?.address ?? '');
       setLinkLanguageTemplateOptions(
         templates.map((t) => ({ label: t.name, value: t.address })).sort((a, b) => a.label.localeCompare(b.label)),

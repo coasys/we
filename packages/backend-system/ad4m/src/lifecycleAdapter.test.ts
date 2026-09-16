@@ -27,11 +27,11 @@ function mockClient(templates: Template[]) {
         if (!t) throw new Error('unknown language');
         return { name: t.name, possibleTemplateParams: t.params ?? undefined };
       }),
-      publish: vi.fn(async () => {
+      publish: vi.fn(async (_path: string, meta: { possibleTemplateParams: string[] }) => {
         templates.push({ ...SERVER, address: 'Qm-dev-server' });
-        return { address: 'Qm-dev-server' };
+        return { address: 'Qm-dev-server', possibleTemplateParams: meta.possibleTemplateParams };
       }),
-      applyTemplateAndPublish: vi.fn(async () => ({ address: 'Qm-applied' })),
+      applyTemplateAndPublish: vi.fn(async (_address: string, _templateData: string) => ({ address: 'Qm-applied' })),
     },
     perspective: { byUUID: vi.fn(async () => ({ name: 'Garden' })) },
     neighbourhood: { publishFromPerspective: vi.fn(async () => 'neighbourhood://Qm-hood') },
@@ -40,7 +40,7 @@ function mockClient(templates: Template[]) {
 }
 
 const templateData = (client: ReturnType<typeof mockClient>) =>
-  JSON.parse(client.languages.applyTemplateAndPublish.mock.calls[0][1] as string);
+  JSON.parse(client.languages.applyTemplateAndPublish.mock.calls[0][1]);
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 
@@ -52,8 +52,10 @@ describe('linkLanguageTemplates', () => {
     expect(await lifecycle.linkLanguageTemplates?.()).toEqual([{ address: HOLOCHAIN.address, name: HOLOCHAIN.name }]);
   });
 
-  it('offers it, in the node’s order, once a link server is configured', async () => {
-    const client = mockClient([HOLOCHAIN, SERVER]);
+  it('offers it once a link server is configured, after the peer-to-peer templates', async () => {
+    // AD4M sorts known templates by address, so a server template can come first. It must not
+    // become the default for that.
+    const client = mockClient([SERVER, HOLOCHAIN]);
     const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient, {
       linkServerUrl: 'https://links.example.org',
     });
@@ -96,7 +98,7 @@ describe('publish', () => {
     await lifecycle.publish?.('dataset-2', SERVER.address);
 
     const [first, second] = client.languages.applyTemplateAndPublish.mock.calls.map(
-      (call) => JSON.parse(call[1] as string) as Record<string, string>,
+      (call) => JSON.parse(call[1]) as Record<string, string>,
     );
     expect(Object.keys(first).sort()).toEqual(['ROOM_ID', 'SERVER_URL', 'name']);
     expect(first.SERVER_URL).toBe('https://links.example.org');
@@ -152,6 +154,23 @@ describe('development registration', () => {
     ]);
     expect(client.runtime.addKnownLinkLanguageTemplates).toHaveBeenCalledWith(['Qm-dev-server']);
     expect(templates?.map((t) => t.address)).toEqual([HOLOCHAIN.address, 'Qm-dev-server']);
+  });
+
+  it('does not register a build the language store holds under other parameters', async () => {
+    // A repeat publish of identical bytes returns the meta stored first, whatever was sent.
+    const client = mockClient([HOLOCHAIN]);
+    client.languages.publish.mockResolvedValueOnce({
+      address: 'Qm-stale',
+      possibleTemplateParams: ['uid', 'name', 'linkServerUrl'],
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient, devOptions('/ad4m/bundle.js'));
+
+    await lifecycle.linkLanguageTemplates?.();
+
+    expect(client.runtime.addKnownLinkLanguageTemplates).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('linkServerUrl'));
+    warn.mockRestore();
   });
 
   it('does nothing when the node already knows a server template', async () => {

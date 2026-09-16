@@ -144,6 +144,16 @@ export function createAd4mDatasetLifecycle(
       const metas = await Promise.all(known.map(templateMeta));
       if (metas.some((m) => m.params?.includes('SERVER_URL'))) return;
       const published = await client.languages.publish(bundle, SERVER_LINK_LANGUAGE_META);
+      // The store keeps the first meta published under an address and hands it back for a repeat
+      // publish of the same bytes. Registering a build whose stored meta names other parameters
+      // would add a template the list then hides, with nothing said about why.
+      if (!published.possibleTemplateParams?.includes('SERVER_URL')) {
+        console.warn(
+          `[lifecycle] not registering ${published.address}: the language store already holds that build with ` +
+            `template parameters ${JSON.stringify(published.possibleTemplateParams)}, not SERVER_URL/ROOM_ID.`,
+        );
+        return;
+      }
       await client.runtime.addKnownLinkLanguageTemplates([published.address]);
       console.info(`[lifecycle] registered the local server link language build as ${published.address}`);
     })().catch((error) => {
@@ -154,11 +164,15 @@ export function createAd4mDatasetLifecycle(
   }
 
   /**
-   * The link language templates `publish` can actually instantiate, in the node's own order.
+   * The link language templates `publish` can actually instantiate, peer-to-peer ones first.
    *
    * A template declaring a parameter `publish` cannot fill is left out rather than offered: it
    * would be published with that parameter still a placeholder and never sync. That is what hides
    * the server link language on a deployment that has not named a link server.
+   *
+   * The first entry is the default, and the node's own order says nothing: AD4M sorts known
+   * templates by address, which is a hash. So templates syncing through a server go last. Sending a
+   * community's links to a server should be something somebody chose, not what a hash decided.
    */
   async function publishableTemplates(): Promise<LinkLanguageTemplate[]> {
     await registerDevServerTemplate();
@@ -166,10 +180,14 @@ export function createAd4mDatasetLifecycle(
     const templates = await Promise.all(
       addresses.map(async (address) => {
         const { name, params } = await templateMeta(address);
-        return params && unfillableParams(params).length ? null : { address, name };
+        if (params && unfillableParams(params).length) return null;
+        return { address, name, viaServer: !!params?.includes('SERVER_URL') };
       }),
     );
-    return templates.filter((t): t is LinkLanguageTemplate => t !== null);
+    return templates
+      .filter((t) => t !== null)
+      .sort((a, b) => Number(a.viaServer) - Number(b.viaServer))
+      .map(({ address, name }) => ({ address, name }));
   }
 
   return {

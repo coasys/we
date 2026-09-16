@@ -1051,7 +1051,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         linkLanguageTemplateOptions:
           '{ label, value }[] — the link language templates a shared space can be published with, sorted by name, for a we-select; value is the template address. Only templates publishing can fill in are listed. Empty until the backend answers, and on a backend with no choice to offer',
         defaultLinkLanguageTemplate:
-          'string — address of the template publishing uses when none is chosen: the backend’s own first preference, empty until it answers. Show it as the picker’s value while nothing is chosen — { $: "local.linkLanguage ? local.linkLanguage : spaceStore.defaultLinkLanguageTemplate" } — and pass the bare choice to createSpace, rather than copying it into local state, which freezes whatever it was at that moment',
+          'string — address of the template publishing uses when none is chosen: the backend’s default, empty until it answers. Show it as the picker’s value while nothing is chosen — { $: "local.linkLanguage ? local.linkLanguage : spaceStore.defaultLinkLanguageTemplate" } — and pass the bare choice to createSpace, rather than copying it into local state, which freezes whatever it was at that moment',
         canAdministerCurrentSpace:
           'boolean — whether this agent may change what every member of the space on screen sees. The readable form of canAdministerSpace, which an expression cannot call. Gate an admin-only control on this rather than on `x.author == me.did`, which asks who made the row and not who runs the space',
         spaceThemePinned:

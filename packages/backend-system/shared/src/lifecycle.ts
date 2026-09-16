@@ -72,8 +72,8 @@ export interface DatasetLifecyclePort {
   /** Other agents holding a shared dataset (member roster), by dataset id. */
   members?(id: string): Promise<string[]>;
   /**
-   * The templates `publish` can use, in the backend's order of preference — the first is what
-   * `publish` picks when given none. Templates needing parameters `publish` cannot supply are
+   * The templates `publish` can use, default first — the first is what `publish` picks when given
+   * none. Templates needing parameters `publish` cannot supply are
    * left out.
    */
   linkLanguageTemplates?(): Promise<LinkLanguageTemplate[]>;
