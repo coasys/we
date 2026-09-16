@@ -14,7 +14,7 @@ import { applySchemaPatches, type SchemaPatch } from '@shared/ai/schemaPatches';
 import { registerHostDockStore, unregisterHostDockStore } from '@shared/registries/dockRegistry';
 import { EDITOR_STORE_ID } from '@shared/registries/editorDocks';
 import { deepClone } from '@shared/utils';
-import { type EditingTheme, useDatasetStore, useTemplateStore, useThemeStore } from '@solid/stores';
+import { type EditingTheme, useDatasetStore, useShapeStore, useTemplateStore, useThemeStore } from '@solid/stores';
 import { toastService } from '@we/components/solid';
 import { ChatMessage as ChatMessageRecord, ChatSession as ChatSessionRecord } from '@we/entities';
 import type { DockEdge, DockSize } from '@we/module-shared';
@@ -229,16 +229,23 @@ export function EditorStoreProvider(props: ParentProps) {
   const templateStore = useTemplateStore();
   const themeStore = useThemeStore();
 
-  // Reactive validation context — perspective-accurate model allowlist.
-  // When a perspective is active its full manifest (WE + external) is used to
-  // narrow entityNames to only what is actually registered there.  WE models
-  // not present in the manifest (e.g. CollectionBlock in we-root) are excluded.
-  // Falls back to the all-WE base context when no perspective is set.
+  const shapeStore = useShapeStore();
+
+  /*
+    The models a template edited here may query: WE's own and the modules', plus what the space on
+    screen adds — the models other apps synced into it, and the ones its community defined.
+
+    It used to *replace* the WE names with the dataset's, on the belief that the dataset's list was
+    its full manifest. It is not: `currentDatasetEntities` is the foreign models only, since WE's own
+    are filtered out as native. So in any space holding one synced or community-defined model, every
+    `$query` on a `TaskBlock` read as an unknown model — and in a space with none, a query on the
+    community's own `Sighting` did, which is the case a validator is most needed for.
+  */
   const getValidationCtx = createMemo(() => {
-    const manifest = datasetStore.currentDatasetEntities();
-    if (manifest.length === 0) return baseValidationCtx;
-    const perspectiveEntityNames = new Set(manifest.map((m) => m.name));
-    return { ...baseValidationCtx, entityNames: perspectiveEntityNames };
+    const foreign = datasetStore.currentDatasetEntities().map((m) => m.name);
+    const shapes = shapeStore.spaceShapes().map((s) => s.name);
+    if (foreign.length === 0 && shapes.length === 0) return baseValidationCtx;
+    return { ...baseValidationCtx, entityNames: new Set([...baseValidationCtx.entityNames, ...foreign, ...shapes]) };
   });
 
   // --- Chat state ---
