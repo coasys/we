@@ -92,6 +92,17 @@ export const updateSchemaTool: ConversationTool = {
 };
 
 /**
+ * The message a request is sent as: what was asked, and the template it is asked of.
+ *
+ * The model sees the template as JSON with node ids, which is what its patches target. Earlier
+ * requests in a conversation go with an empty schema — only the latest shows the template as it is
+ * now. `extras` carries the dataset's models when there are any.
+ */
+export function requestMessage(request: string, currentSchema: unknown, extras: Record<string, unknown> = {}): string {
+  return JSON.stringify({ request, currentSchema, ...extras });
+}
+
+/**
  * Format external (non-WE) manifest entries into a human-readable text block.
  * WE models are already described in schemaContext so only their names are sent;
  * external models need full property descriptions because the AI has no other

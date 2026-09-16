@@ -8,7 +8,12 @@
  * and patch application in `shared/ai/schemaPatches` — this store orchestrates them against its own
  * signals, and never learns which model or provider answered.
  */
-import { chatSystemPrompt, formatExternalManifestForPrompt, updateSchemaTool } from '@shared/ai/aiInfra';
+import {
+  chatSystemPrompt,
+  formatExternalManifestForPrompt,
+  requestMessage,
+  updateSchemaTool,
+} from '@shared/ai/aiInfra';
 import { runEditSession } from '@shared/ai/editSession';
 import { registerHostDockStore, unregisterHostDockStore } from '@shared/registries/dockRegistry';
 import { EDITOR_STORE_ID } from '@shared/registries/editorDocks';
@@ -1019,7 +1024,7 @@ export function EditorStoreProvider(props: ParentProps) {
       if (msg.role === 'user') {
         history.push({
           role: 'user',
-          text: JSON.stringify({ request: msg.content, currentSchema: {} }),
+          text: requestMessage(msg.content, {}),
         });
       } else {
         history.push({ role: 'assistant', text: msg.content });
@@ -1036,23 +1041,20 @@ export function EditorStoreProvider(props: ParentProps) {
     */
     const schemaWithIds = ensureNodeIds(deepClone(pendingTemplate() ?? templateStore.currentTemplate) as SchemaNode);
     const manifest = datasetStore.currentDatasetEntities();
-    const payload: Record<string, unknown> = {
-      request: latestText,
-      currentSchema: schemaWithIds,
-    };
+    const extras: Record<string, unknown> = {};
     if (manifest.length > 0) {
       const weEntityNames = new Set(baseValidationCtx.entityNames);
       const weInPerspective = manifest.filter((m) => weEntityNames.has(m.name)).map((m) => m.name);
       const externalInPerspective = manifest.filter((m) => !weEntityNames.has(m.name));
       // WE models: send only names — AI already has their full structure in schemaContext
-      if (weInPerspective.length > 0) payload.availableWeEntities = weInPerspective;
+      if (weInPerspective.length > 0) extras.availableWeEntities = weInPerspective;
       // External models: send full property descriptions — AI has no other knowledge of them
       if (externalInPerspective.length > 0)
-        payload.externalEntities = formatExternalManifestForPrompt(externalInPerspective);
+        extras.externalEntities = formatExternalManifestForPrompt(externalInPerspective);
     }
     history.push({
       role: 'user',
-      text: JSON.stringify(payload),
+      text: requestMessage(latestText, schemaWithIds, extras),
     });
 
     return history;
