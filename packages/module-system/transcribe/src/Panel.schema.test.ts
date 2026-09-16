@@ -295,9 +295,11 @@ describe('a transcript with nothing in it', () => {
       transcript. A clause telling somebody to continue a meeting that nothing will continue is
       worse than no clause, so it is tested before the two that make the offer.
     */
-    const refuses = linesJson.indexOf('!(modules.call.canCall && !modules.call.active)');
+    const refuses = linesJson.indexOf('(!modules.call || modules.transcribe.inCall)');
     expect(refuses).toBeGreaterThan(-1);
     expect(refuses).toBeLessThan(linesJson.indexOf('Continue the call to begin transcribing.'));
+    // Read off this module's own store, derived from presence — never off the call module's members.
+    expect(linesJson).not.toContain('modules.call.');
     // And the same verb the button uses, decided by the same expression.
     expect(linesJson).toContain('Join the call to begin transcribing.');
   });
@@ -504,7 +506,7 @@ describe('what belongs to the live microphone only', () => {
     */
     expect(linesJson).toContain('Continue the call to begin transcribing.');
     expect(linesJson).toContain('Join the call to begin transcribing.');
-    expect(linesJson).toContain('modules.call.canCall && !modules.call.active');
+    expect(linesJson).toContain('modules.transcribe.callOnScreenLive');
   });
 });
 
@@ -1407,18 +1409,16 @@ describe('the panel’s reads reach the store', () => {
                   ? markReactive(() => over.enabled === true)
                   : member === 'available'
                     ? markReactive(() => over.micUp === true)
-                    : undefined,
+                    : member === 'inCall'
+                      ? markReactive(() => over.inACall === true)
+                      : member === 'callOnScreenLive'
+                        ? markReactive(() => (over.liveRecords ?? []).includes(over.address ?? ''))
+                        : undefined,
             )
-          : id === 'call' && over.callModule !== false
-            ? namespace((member) =>
-                member === 'canCall'
-                  ? markReactive(() => true)
-                  : member === 'active'
-                    ? markReactive(() => over.inACall === true)
-                    : member === 'liveCalls'
-                      ? markReactive(() => (over.liveRecords ?? []).map((recordId) => ({ recordId })))
-                      : undefined,
-              )
+          : // The call module's *presence* is all the panel asks about it now; its members are not read.
+            // A plain object, as the real bag holds one: a bare namespace reads as undefined.
+            id === 'call' && over.callModule !== false
+            ? {}
             : undefined,
       ),
       routeStore: namespace((member) =>

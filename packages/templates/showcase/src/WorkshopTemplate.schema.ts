@@ -4285,6 +4285,14 @@ export const workshopTemplate: TemplateSchema = {
     description: 'A call, its transcript, and what came out of it — as a canvas, a task list and a record.',
     icon: 'compass-tool',
     /*
+      This interface is built around two modules and says so. It reads `modules.call.*` and
+      `modules.transcribe.*` throughout, places both transcribe panels in `panels` below, and puts a
+      call part on its own pages — none of which the host can see by walking component types. With
+      the declaration, a deployment that omits either module sees the reason in `missingModules`
+      rather than a canvas with a dead call button and two empty panels.
+    */
+    requires: { modules: ['call', 'transcribe'] },
+    /*
       The band the two floating pills occupy, so panels clear them.
 
       Written as the arithmetic rather than as a number, because it is a number that has already

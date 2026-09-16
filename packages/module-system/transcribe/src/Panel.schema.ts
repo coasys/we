@@ -68,31 +68,20 @@ const SUBJECT = { $: SUBJECT_EXPR };
 const VIEWING_LIVE = { $: VIEWING_LIVE_EXPR };
 
 /**
- * Whether this agent could pick the call on screen up.
+ * The words for an empty transcript, and why they read this module's own store.
  *
- * Two terms, and each is a different kind of refusal. `canCall` is absent — and so falsy — in a
- * deployment without the call module, which is what lets this module name another one at all: the
- * offer is simply not made rather than resolving to an action nothing implements.
+ * Three sentences for three situations: already in a call (nothing to offer), somebody is in the
+ * call on screen (join them), nobody is (continue it). Both facts used to be read off the call
+ * module — `modules.call.active`, `modules.call.liveCalls` — which was the one place this module
+ * named that one, against the rule that capabilities meet in a medium and never in each other. They
+ * are read off presence now, through this module's own `inCall` and `callOnScreenLive`.
  *
- * `!active` is the safety gate, and it is the call store's own rule rather than a preference.
- * Continuing a past call while another is running tears the live one down and re-points every peer's
- * transcript at the old record, since peers adopt an announced record over their own. The rail
- * refuses for the same reason, in the same words, at `goToCall`.
+ * `modules.call` as a bare condition is the one permitted reference: it asks whether the module is
+ * installed at all, which is the documented way to depend on an optional module, and without it the
+ * offer to join or continue would be made in a deployment with nothing to make it with.
  */
-const CAN_PICK_UP = 'modules.call.canCall && !modules.call.active';
-
-/**
- * Whether somebody is in the call on screen right now.
- *
- * The difference between joining a conversation and restarting one, and the only thing separating
- * two presses that are otherwise identical: `continueCall` derives the call's id from its record, so
- * arriving at one somebody is already in *is* joining them. What changes is the word for it, and a
- * button offering to "continue" a meeting three people are sitting in is describing the wrong act.
- *
- * Read off the call module's own roster of what is running here rather than from presence directly,
- * which this module has no view of beyond its own entry.
- */
-const CALL_ON_SCREEN_LIVE = 'modules.call.liveCalls.exists(c, c.recordId == routeStore.params.call)';
+const IN_A_CALL = 'modules.transcribe.inCall';
+const CALL_ON_SCREEN_LIVE = 'modules.transcribe.callOnScreenLive';
 
 /**
  * Which call the *extraction* surface is about.
@@ -2754,7 +2743,7 @@ const noUtterances: SchemaNode = {
       label: 'transcript',
       message: {
         $:
-          `!(${CAN_PICK_UP}) ? 'Nothing has been said here yet.' : ` +
+          `(!modules.call || ${IN_A_CALL}) ? 'Nothing has been said here yet.' : ` +
           `${CALL_ON_SCREEN_LIVE} ? 'Nothing has been said here yet. Join the call to begin transcribing.' : ` +
           `'Nothing has been said here yet. Continue the call to begin transcribing.'`,
       },

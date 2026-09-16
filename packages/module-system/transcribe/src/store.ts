@@ -2359,6 +2359,20 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       const call = myCall();
       return call ? agentsInCall(call.id) : [];
     }, 'Everyone in this call, recording or not — the denominator of coverage; empty outside a call.'),
+    /** Whether this agent is in a call at all — what decides between "join" and "continue" wording. */
+    inCall: state(() => myCall() !== null, 'Whether this agent is in a call right now.'),
+    /**
+     * Whether somebody is in the call the address names, read off presence rather than off the call
+     * module's roster. The panel used to read `modules.call.liveCalls` for this, which was the one
+     * place this module named that one; presence is the medium the two are meant to meet in.
+     */
+    callOnScreenLive: state(() => {
+      const record = deps.callOnScreen?.() ?? null;
+      if (!record || !presence) return false;
+      return activitiesOfType(presence.peers(), 'call').some(
+        ({ activity }) => (activity as { record?: string }).record === record,
+      );
+    }, 'Somebody is in the call the address names right now.'),
     /** Someone in this call is not being transcribed. The gap coverage exists to report. */
     partialCoverage: state(() => {
       const call = myCall();
