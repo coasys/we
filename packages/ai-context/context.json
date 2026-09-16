@@ -7994,6 +7994,7 @@
         {
           "name": "Poll",
           "className": "Poll",
+          "extends": "WeNode",
           "fields": [
             {
               "name": "question",

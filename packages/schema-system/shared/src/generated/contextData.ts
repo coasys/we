@@ -3564,6 +3564,7 @@ export const contextData: ContextData = {
         {
           name: 'Poll',
           className: 'Poll',
+          extends: 'WeNode',
           fields: [
             { name: 'question', type: 'string', predicate: 'we://module/polls/question', required: true },
             { name: 'options', type: 'string', predicate: 'we://module/polls/options', required: true },

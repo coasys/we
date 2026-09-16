@@ -3288,7 +3288,7 @@ Needs: kernels records.
 - Views (sections a space enables): `polls` "Polls" at /polls
 - Blocks: Poll (`_type: "poll"`, drawn by `polls.pollCard`)
 - Entities (queryable with $query):
-  - Poll: question: string (required), options: string (required), closed: boolean, version: number
+  - Poll extends WeNode: question: string (required), options: string (required), closed: boolean, version: number
   - Vote: pollId: string (required), option: string (required)
 
 ---
