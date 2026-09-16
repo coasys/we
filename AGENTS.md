@@ -1450,6 +1450,8 @@ when `relative` is enabled.
   Props: front?: JSX.Element, back?: JSX.Element, width?: string, height?: string, flipOnHover?: boolean, flipDuration?: string, wobbleOnHover?: boolean, wobbleDegree?: number, class?: string, styles?: Record<string, string | number>
 - Grid (DesignSystemElement)
   Props: template?: string, columns?: number, minChildWidth?: string, rows?: string, childAspect?: string | number, onMeasure?: ((box: { width: number; height: number; }) => void), onArrange?: ((tiling: Tiling) => void)
+- ImageLightbox
+  Props: srcs: string[], initialIndex: number, onClose: () => void
 - Row (DesignSystemElement)
 - Search (DesignSystemElement)
   Props: placeholder?: string, value?: string, onSearch?: ((value: string) => void), debounce?: number

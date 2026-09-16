@@ -1048,6 +1048,15 @@ export const contextData: ContextData = {
       ],
       source: 'components',
     },
+    {
+      name: 'ImageLightbox',
+      props: [
+        { name: 'srcs', type: 'string[]', optional: false },
+        { name: 'initialIndex', type: 'number', optional: false },
+        { name: 'onClose', type: '() => void', optional: false },
+      ],
+      source: 'components',
+    },
     { name: 'Row', superclass: 'DesignSystemElement', props: [], source: 'components' },
     {
       name: 'Search',

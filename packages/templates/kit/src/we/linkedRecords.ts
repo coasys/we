@@ -34,28 +34,60 @@ export function linkedRecords({ record, field }: LinkedRecordsOptions): SchemaNo
     type: '$if',
     props: {
       condition: { $: `${field}.target == 'ImageBlock'` },
+      /*
+        Each picture opens the viewer a post's pictures open — `ImageLightbox`, one component — at
+        that picture, with the others a step away. The open index lives on the row, so each relation
+        has its own viewer state.
+      */
       then: {
         type: 'Row',
         props: { gap: '200', wrap: true, width: '100%' },
         $queries: { pictures: lookup('ImageBlock', 24) },
+        $localState: { viewing: { type: 'number', initial: -1 } },
         children: [
           {
             type: '$each',
             props: { items: { $: 'local.pictures' }, as: 'picture' },
             children: [
               {
-                type: 'we-image',
+                type: 'we-button',
                 props: {
-                  src: { $: 'picture.src' },
-                  alt: { $: "picture.altText ?? ''" },
-                  fit: 'cover',
-                  r: 'surface',
-                  // One picture takes the width; several sit as tiles.
+                  variant: 'bare',
+                  label: { $: "picture.altText ? picture.altText : 'Open image'" },
                   width: { $: "count(local.pictures) == 1 ? '100%' : '96px'" },
-                  height: { $: "count(local.pictures) == 1 ? 'auto' : '96px'" },
+                  cursor: 'zoom-in',
+                  onClick: { $setLocal: 'viewing', value: { $: 'index' } },
                 },
+                children: [
+                  {
+                    type: 'we-image',
+                    props: {
+                      src: { $: 'picture.src' },
+                      alt: { $: "picture.altText ?? ''" },
+                      fit: 'cover',
+                      r: 'surface',
+                      // One picture takes the width; several sit as tiles.
+                      width: { $: "count(local.pictures) == 1 ? '100%' : '96px'" },
+                      height: { $: "count(local.pictures) == 1 ? 'auto' : '96px'" },
+                    },
+                  },
+                ],
               },
             ],
+          },
+          {
+            type: '$if',
+            props: {
+              condition: { $: 'local.viewing >= 0' },
+              then: {
+                type: 'ImageLightbox',
+                props: {
+                  srcs: { $: 'local.pictures.map(p, p.src)' },
+                  initialIndex: { $: 'local.viewing' },
+                  onClose: { $setLocal: 'viewing', value: -1 },
+                },
+              },
+            },
           },
         ],
       },
@@ -69,8 +101,11 @@ export function linkedRecords({ record, field }: LinkedRecordsOptions): SchemaNo
             props: { items: { $: 'local.linked' }, as: 'other' },
             children: [
               {
+                // Small, and marked with the model's own icon — a pin beside a place's name.
                 type: 'we-badge',
+                props: { size: 'sm' },
                 children: [
+                  { type: 'we-icon', props: { name: { $: `recordStore.displays[${field}.target].icon ?? 'cube'` } } },
                   {
                     $: `other[recordStore.displays[${field}.target].title] ?? recordStore.displays[${field}.target].label ?? ${field}.target`,
                   },
