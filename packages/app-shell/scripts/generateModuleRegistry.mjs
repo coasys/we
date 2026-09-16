@@ -68,7 +68,18 @@ if (missing.length) {
 }
 
 const ident = (id) => `module_${id.replace(/-/g, '_')}`;
-const imports = resolved.map(({ id, pkg }) => `import { createModule as ${ident(id)} } from '${pkg}';`).join('\n');
+/*
+  Imports sorted by source, as `simple-import-sort` would sort them, so the pre-commit hook and this
+  generator agree on the file byte for byte: CI fails a build that leaves the tree dirty. The
+  *map* below keeps the seed's order, which is the one that means something.
+*/
+const imports = [
+  { from: '@we/module-shared', line: `import type { ModuleDefinition, ModuleHost } from '@we/module-shared';` },
+  ...resolved.map(({ id, pkg }) => ({ from: pkg, line: `import { createModule as ${ident(id)} } from '${pkg}';` })),
+]
+  .sort((a, b) => a.from.localeCompare(b.from, 'en'))
+  .map(({ line }) => line)
+  .join('\n');
 const members = resolved.map(({ id }) => `  ${JSON.stringify(id)}: ${ident(id)},`).join('\n');
 
 const output = `/**
@@ -80,7 +91,6 @@ const output = `/**
  *
  * Key order is the seed's order, and it is load-bearing: it is the module rail's order.
  */
-import type { ModuleDefinition, ModuleHost } from '@we/module-shared';
 ${imports}
 
 export const bundledModules: Record<string, (host: ModuleHost) => ModuleDefinition> = {
