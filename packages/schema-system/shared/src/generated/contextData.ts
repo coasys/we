@@ -48,9 +48,6 @@ export const contextData: ContextData = {
           optional: true,
         },
         { name: 'clickable', type: 'boolean', optional: false, default: 'false' },
-        { name: 'ringColor', type: 'string', optional: false, default: "''" },
-        { name: 'ringWidth', type: 'string', optional: false, default: "''" },
-        { name: 'edgeColor', type: 'string', optional: false, default: "''" },
       ],
     },
     {
@@ -112,7 +109,6 @@ export const contextData: ContextData = {
     {
       tagName: 'we-color-picker',
       className: 'ColorPicker',
-      description: "A colour, chosen from the theme's tokens or picked by hand.",
       superclass: 'DesignSystemElement',
       ownProps: [
         { name: 'value', type: 'string', optional: false, default: "'#000000'" },
@@ -127,7 +123,6 @@ export const contextData: ContextData = {
         },
         { name: 'tokens', type: 'boolean', optional: false, default: 'false' },
         { name: 'alpha', type: 'boolean', optional: false, default: 'false' },
-        { name: 'clearable', type: 'boolean', optional: false, default: 'false' },
       ],
     },
     {
@@ -1691,41 +1686,6 @@ export const contextData: ContextData = {
       relations: [],
     },
     {
-      name: 'Involvement',
-      className: 'Involvement',
-      extends: 'Ad4mModel',
-      fields: [
-        { name: 'agent', type: 'string', predicate: 'we://involved_agent', required: true },
-        { name: 'kind', type: 'string', predicate: 'we://involvement_kind', required: true },
-        { name: 'note', type: 'string', predicate: 'we://description', required: false },
-      ],
-      relations: [{ name: 'node', kind: 'HasOne', predicate: 'we://involved_in' }],
-    },
-    {
-      name: 'InvolvementType',
-      className: 'InvolvementType',
-      extends: 'WeNode',
-      fields: [
-        { name: 'name', type: 'string', predicate: 'we://name', required: true },
-        { name: 'slug', type: 'string', predicate: 'we://slug', required: false },
-        { name: 'description', type: 'string', predicate: 'we://description', required: false },
-        { name: 'icon', type: 'string', predicate: 'we://icon', required: false },
-        { name: 'color', type: 'string', predicate: 'we://color', required: false },
-        {
-          name: 'semantic',
-          type: 'InvolvementSemantic',
-          predicate: 'we://semantic',
-          required: false,
-          default: "'responsible'",
-        },
-        { name: 'reflexive', type: 'boolean', predicate: 'we://reflexive', required: false, default: 'false' },
-        { name: 'appliesTo', type: 'string', predicate: 'we://applies_to', required: false },
-        { name: 'retired', type: 'boolean', predicate: 'we://retired', required: false, default: 'false' },
-        { name: 'schemaVersion', type: 'number', predicate: 'we://schema_version', required: false, default: '1' },
-      ],
-      relations: [],
-    },
-    {
       name: 'LinkBlock',
       className: 'LinkBlock',
       extends: 'WeNode',
@@ -1917,7 +1877,6 @@ export const contextData: ContextData = {
         { name: 'location', kind: 'HasOne', predicate: 'we://location', target: 'LocationBlock' },
         { name: 'board', kind: 'HasOne', predicate: 'we://board', target: 'CollectionBlock' },
         { name: 'taskStates', kind: 'HasMany', predicate: 'we://task_state_order', target: 'TaskState' },
-        { name: 'typeStyles', kind: 'HasMany', predicate: 'we://type_style', target: 'TypeStyle' },
       ],
     },
     {
@@ -2915,6 +2874,8 @@ export const contextData: ContextData = {
         routableViews: { type: 'array' },
         enabledViewIds: { type: 'array' },
         viewNav: { type: 'array' },
+        linkLanguageTemplateOptions: { type: 'array' },
+        defaultLinkLanguageTemplate: { type: 'string' },
         mutedDids: { type: 'array' },
         mutedAgents: { type: 'array' },
         readMarkers: { type: 'array' },

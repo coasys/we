@@ -1048,6 +1048,10 @@ export function generateStoresText(entries: StoreEntry[]): string {
         templateOverrideOptions:
           '{ label, value }[] — options for the per-space template override picker: "Use the space\u2019s default" (space-default), "Use my default" (agent-default), then every template. Each of the first two names what it resolves to. Pre-built because a schema can map a store array into options but cannot prepend one, and without those entries overriding would be one-way',
         themeOverrideOptions: '{ label, value }[] — the same, for themes',
+        linkLanguageTemplateOptions:
+          '{ label, value }[] — available link language templates for publishing shared spaces, formatted for we-select. Fetched from the backend on mount; value is the template address',
+        defaultLinkLanguageTemplate:
+          'string — address of the default link language template (Holochain when available). Pre-selected in the create-space form so the user only changes it when they want a different backend',
         canAdministerCurrentSpace:
           'boolean — whether this agent may change what every member of the space on screen sees. The readable form of canAdministerSpace, which an expression cannot call. Gate an admin-only control on this rather than on `x.author == me.did`, which asks who made the row and not who runs the space',
         spaceThemePinned:
