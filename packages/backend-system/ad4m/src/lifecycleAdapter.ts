@@ -11,12 +11,16 @@ import {
   type DatasetChangeHandlers,
   type DatasetLifecyclePort,
   type DatasetRef,
+  type LinkLanguageTemplate,
   SessionTimeoutError,
 } from '@we/backend-shared';
 
 import { ensureFileStorageLanguage } from './agentHelpers';
 
 const SCHEME = 'neighbourhood://';
+
+/** Template parameters `publish` supplies (`description` is optional and left to its default). */
+const FILLED_TEMPLATE_PARAMS = new Set(['uid', 'name', 'description']);
 
 /**
  * How long past the client's own RPC timeout an unlock or generate is still waited for.
@@ -61,6 +65,31 @@ export function createAd4mDatasetLifecycle(backendClient: unknown): DatasetLifec
   const isBackendBookkeeping = (p: PerspectiveProxy): boolean =>
     p.uuid === ownProfileDatasetId || !!p.name?.toLowerCase().startsWith('agent perspective');
 
+  /**
+   * The link language templates `publish` can actually instantiate, in the node's own order.
+   *
+   * `publish` fills a template with `uid` and `name` only. A template declaring any other
+   * parameter — a server-backed one needs its server URL and room — would be published with
+   * those left as placeholders and never sync, so it is left out rather than offered. A template
+   * whose meta cannot be read is kept: nothing says it needs more.
+   */
+  async function publishableTemplates(): Promise<LinkLanguageTemplate[]> {
+    const addresses = (await client.runtime.knownLinkLanguageTemplates()) ?? [];
+    const templates = await Promise.all(
+      addresses.map(async (address) => {
+        try {
+          const meta = await client.languages.meta(address);
+          const params = meta.possibleTemplateParams ?? [];
+          if (params.some((param) => !FILLED_TEMPLATE_PARAMS.has(param))) return null;
+          return { address, name: meta.name || address };
+        } catch {
+          return { address, name: address };
+        }
+      }),
+    );
+    return templates.filter((t): t is LinkLanguageTemplate => t !== null);
+  }
+
   return {
     async list() {
       await resolveOwnProfileDatasetId();
@@ -80,15 +109,15 @@ export function createAd4mDatasetLifecycle(backendClient: unknown): DatasetLifec
       await client.perspective.remove(id);
     },
 
+    /**
+     * Publish a local dataset as a neighbourhood. The returned URL is captured by the caller —
+     * the proxy's own `sharedUrl` is not updated in place.
+     */
     async publish(id: string, linkLanguageTemplate?: string) {
       const p = await client.perspective.byUUID(id);
       if (!p) throw new Error(`publish: no dataset with id ${id}`);
       const uid = crypto.randomUUID();
-      let templateAddress = linkLanguageTemplate;
-      if (!templateAddress) {
-        const languages = await client.runtime.knownLinkLanguageTemplates();
-        templateAddress = languages?.[0];
-      }
+      const templateAddress = linkLanguageTemplate || (await publishableTemplates())[0]?.address;
       if (!templateAddress) throw new Error('No link language templates available to publish neighbourhood.');
       const templateData = JSON.stringify({ uid, name: `${p.name}-link-language` });
       const linkLanguage = await client.languages.applyTemplateAndPublish(templateAddress, templateData);
@@ -96,22 +125,7 @@ export function createAd4mDatasetLifecycle(backendClient: unknown): DatasetLifec
       return { uri, sharedId: uri.replace(SCHEME, '') };
     },
 
-    async linkLanguageTemplates() {
-      const addresses = await client.runtime.knownLinkLanguageTemplates();
-      if (!addresses?.length) return [];
-      const templates = await Promise.all(
-        addresses.map(async (address) => {
-          try {
-            const meta = await client.languages.meta(address);
-            return { address, name: meta.name || address };
-          } catch {
-            return { address, name: address };
-          }
-        }),
-      );
-      templates.sort((a, b) => a.name.localeCompare(b.name));
-      return templates;
-    },
+    linkLanguageTemplates: publishableTemplates,
 
     async join(idOrUri) {
       // Accept a bare shared id: this backend's URIs carry the neighbourhood scheme.

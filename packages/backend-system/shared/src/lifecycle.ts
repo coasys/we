@@ -41,17 +41,18 @@ export interface DatasetChangeHandlers {
   onRemoved?: (id: string) => void;
 }
 
+/** A template a shared dataset's sync layer can be instantiated from, as `publish` accepts it. */
+export interface LinkLanguageTemplate {
+  address: string;
+  name: string;
+}
+
 /**
  * Dataset lifecycle — list/create/remove/share the containers themselves.
  *
  * `publish` and `join` are optional: a backend with no sharing concept (single-user, in-memory
  * test host) simply omits them, and callers degrade the same way they do for `presence`.
  */
-export interface LinkLanguageTemplate {
-  address: string;
-  name: string;
-}
-
 export interface DatasetLifecyclePort {
   list(): Promise<DatasetRef[]>;
   get(id: string): Promise<DatasetRef | null>;
@@ -59,7 +60,8 @@ export interface DatasetLifecyclePort {
   remove(id: string): Promise<void>;
   /**
    * Publish an existing local dataset for sharing. Pass `linkLanguageTemplate` to choose
-   * which link language backs the neighbourhood; omit to use the first available template.
+   * which link language backs the neighbourhood; omit (or pass '') to use the first of
+   * `linkLanguageTemplates`.
    */
   publish?(id: string, linkLanguageTemplate?: string): Promise<{ uri: string; sharedId: string }>;
   /**
@@ -69,7 +71,11 @@ export interface DatasetLifecyclePort {
   join?(idOrUri: string): Promise<DatasetRef>;
   /** Other agents holding a shared dataset (member roster), by dataset id. */
   members?(id: string): Promise<string[]>;
-  /** Available link language templates this backend can publish with. Sorted by name. */
+  /**
+   * The templates `publish` can use, in the backend's order of preference — the first is what
+   * `publish` picks when given none. Templates needing parameters `publish` cannot supply are
+   * left out.
+   */
   linkLanguageTemplates?(): Promise<LinkLanguageTemplate[]>;
   /** Subscribe to change events. Returns an unsubscribe function. */
   subscribe(handlers: DatasetChangeHandlers): () => void;

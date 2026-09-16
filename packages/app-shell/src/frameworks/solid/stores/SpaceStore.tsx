@@ -574,7 +574,7 @@ export interface SpaceStore {
   viewNav: Accessor<{ id: string; segment: string; label: string; icon: string; path: string }[]>;
   /** Available link language templates for publishing shared spaces, formatted for we-select. */
   linkLanguageTemplateOptions: Accessor<{ label: string; value: string }[]>;
-  /** Address of the default link language template (Holochain when available). */
+  /** Address of the link language template publishing uses when none is chosen. */
   defaultLinkLanguageTemplate: Accessor<string>;
 
   // Actions
@@ -1460,9 +1460,12 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (!lifecycle?.linkLanguageTemplates) return;
     try {
       const templates = await lifecycle.linkLanguageTemplates();
-      setLinkLanguageTemplateOptions(templates.map((t) => ({ label: t.name, value: t.address })));
-      const holochain = templates.find((t) => t.name.toLowerCase().includes('holochain'));
-      setDefaultLinkLanguageTemplate(holochain?.address ?? templates[0]?.address ?? '');
+      // The backend lists them in its order of preference, and its first is what publishing
+      // uses unprompted — so that is the default. Names are sorted for the picker only.
+      setDefaultLinkLanguageTemplate(templates[0]?.address ?? '');
+      setLinkLanguageTemplateOptions(
+        templates.map((t) => ({ label: t.name, value: t.address })).sort((a, b) => a.label.localeCompare(b.label)),
+      );
     } catch (e) {
       console.error('SpaceStore: loadLinkLanguageTemplates error', e);
     }

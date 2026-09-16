@@ -1049,9 +1049,9 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '{ label, value }[] — options for the per-space template override picker: "Use the space\u2019s default" (space-default), "Use my default" (agent-default), then every template. Each of the first two names what it resolves to. Pre-built because a schema can map a store array into options but cannot prepend one, and without those entries overriding would be one-way',
         themeOverrideOptions: '{ label, value }[] — the same, for themes',
         linkLanguageTemplateOptions:
-          '{ label, value }[] — available link language templates for publishing shared spaces, formatted for we-select. Fetched from the backend on mount; value is the template address',
+          '{ label, value }[] — the link language templates a shared space can be published with, sorted by name, for a we-select; value is the template address. Only templates publishing can fill in are listed. Empty until the backend answers, and on a backend with no choice to offer',
         defaultLinkLanguageTemplate:
-          'string — address of the default link language template (Holochain when available). Pre-selected in the create-space form so the user only changes it when they want a different backend',
+          'string — address of the template publishing uses when none is chosen: the backend’s own first preference, empty until it answers. Show it as the picker’s value while nothing is chosen — { $: "local.linkLanguage ? local.linkLanguage : spaceStore.defaultLinkLanguageTemplate" } — and pass the bare choice to createSpace, rather than copying it into local state, which freezes whatever it was at that moment',
         canAdministerCurrentSpace:
           'boolean — whether this agent may change what every member of the space on screen sees. The readable form of canAdministerSpace, which an expression cannot call. Gate an admin-only control on this rather than on `x.author == me.did`, which asks who made the row and not who runs the space',
         spaceThemePinned:
@@ -1103,7 +1103,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         removeSpaceFromGlobal:
           "(spaceUuid: string): withdraws a space's listing from the global discovery space, leaving the space itself alone. Only its author may; removeSpace does this for you",
         createSpace:
-          "(name, description, access: 'personal' | 'shared', discovery: 'hidden' | 'listed', avatarFile?, coverImageFile?, location?): creates a new space with full setup",
+          "(name, description, access: 'personal' | 'shared', discovery: 'hidden' | 'listed', avatarFile?, coverImageFile?, location?, linkLanguageTemplate?): creates a new space with full setup. linkLanguageTemplate is an address from linkLanguageTemplateOptions and only matters for a shared space; empty uses the backend's default",
         joinSpace:
           '(id: string, focus = true): joins a shared space by share link, neighbourhood URL or CID, or focuses it if already joined. Pass focus: false to join without navigating there — for a caller that needs the dataset present rather than open, which is how the marketplace reads its own dataset without moving you out of the space you are in. Rejects when the join could not be completed, so onSuccess means what it says; watch joiningSpace/joinSlow/joinError for what to show while it runs. A join whose network call times out keeps going: the backend usually finishes anyway, and this waits for that before believing the failure',
         initializeAsWeSpace:

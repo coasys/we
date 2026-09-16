@@ -273,23 +273,21 @@ export const createSpaceModal = {
                 },
               },
               { $if: { condition: { $: '!event.detail' }, then: { $setLocal: 'discovery', value: 'hidden' } } },
-              {
-                $if: {
-                  condition: { $: 'event.detail && !local.linkLanguage' },
-                  then: { $setLocal: 'linkLanguage', value: { $: 'spaceStore.defaultLinkLanguageTemplate' } },
-                },
-              },
             ],
           },
         },
       ],
     },
 
-    // Link language selector — shown when creating a shared space and more than one template exists
+    /*
+      Link language selector — shown when creating a shared space and there is a choice to make.
+      Until somebody picks, it shows the store's default live rather than a copy taken when the
+      switch flipped, which would stay empty if the templates had not loaded by then.
+    */
     {
       type: '$if',
       props: {
-        condition: { $: "local.access == 'shared' && spaceStore.linkLanguageTemplateOptions.length > 1" },
+        condition: { $: "local.access == 'shared' && count(spaceStore.linkLanguageTemplateOptions) > 1" },
         then: {
           type: 'we-form-field',
           props: { label: 'Link Language' },
@@ -297,7 +295,7 @@ export const createSpaceModal = {
             {
               type: 'we-select',
               props: {
-                value: { $: 'local.linkLanguage' },
+                value: { $: 'local.linkLanguage ? local.linkLanguage : spaceStore.defaultLinkLanguageTemplate' },
                 options: { $: 'spaceStore.linkLanguageTemplateOptions' },
                 onChange: { $setLocal: 'linkLanguage', value: { $: 'event.detail' } },
               },
@@ -440,7 +438,7 @@ export const createSpaceModal = {
                       { $: 'local.avatar' },
                       { $: 'local.coverImage' },
                       { $: 'local.location' },
-                      { $: 'local.linkLanguage || undefined' },
+                      { $: 'local.linkLanguage' },
                     ],
                     onSuccess: [{ $action: 'shellStore.setCreateSpaceOpen', args: [false] }],
                     onFinally: [{ $setLocal: 'submitting', value: false }],
