@@ -52,8 +52,11 @@ function CustomBlockElement(props: { block: ContentBlock }): JSX.Element {
     Override ??
     (getBlockRegistration(props.block._type)?.display as ((p: Record<string, unknown>) => JSX.Element) | undefined);
   const fields = () => {
-    const { _type: _t, _key: _k, ...rest } = props.block;
-    return rest;
+    const { _type: _t, _key, ...rest } = props.block;
+    // A block's key is its record id (see `serialization.ts`). Handed on as `id` so a display that
+    // asks about the record — a module's declared card querying its votes — can name it; the core
+    // displays take named props and ignore an extra one.
+    return 'id' in rest ? rest : { ...rest, ...(_key ? { id: _key } : {}) };
   };
   return (
     <div class="we-block" data-block-type={props.block._type}>

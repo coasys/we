@@ -65,7 +65,7 @@ describe('activateSeedModules', () => {
   it('exposes every module the seed names, in the seed’s order', () => {
     // The generated map is the seed's list: an unlisted module leaves the bundle, and the order is
     // the module rail's order.
-    expect(Object.keys(bundledModules)).toEqual(['call', 'transcribe', 'pocket', 'notes', 'globe', 'graph']);
+    expect(Object.keys(bundledModules)).toEqual(['call', 'transcribe', 'pocket', 'notes', 'globe', 'graph', 'polls']);
   });
 
   it('takes a factory map of its own, so a test can activate a module the seed left out', () => {
