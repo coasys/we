@@ -42,6 +42,12 @@ describe('adapter.plan — native cases (no gaps)', () => {
     expect(adapter.plan(ir).gaps).toEqual([]);
   });
 
+  it('a numeric range bound is native, and a string one is refused rather than matching nothing', () => {
+    expect(adapter.plan(base({ filter: { field: 'price', op: 'gte', value: 10 } })).gaps).toEqual([]);
+    const plan = adapter.plan(base({ filter: { field: 'dueDate', op: 'lt', value: '2026-10-01' } }));
+    expect(plan.gaps).toContainEqual(expect.objectContaining({ feature: 'operator:lt:string' }));
+  });
+
   it('a relation quantifier is native — it compiles to a SPARQL EXISTS group', () => {
     expect(adapter.plan(base({ filter: { rel: 'comments', op: 'none' } })).gaps).toEqual([]);
     expect(

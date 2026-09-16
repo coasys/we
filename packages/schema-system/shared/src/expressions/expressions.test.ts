@@ -190,6 +190,20 @@ describe('evaluation', () => {
     expect(run('find(items, { tags: { exists: false } }).name', { items })).toBe('Bob');
     expect(run("find(items, { name: 'Zed' }).name", { items })).toBeUndefined();
   });
+  it('takes range bounds in a where-object, with the same meaning a $query gives them', () => {
+    const roots = {
+      events: [
+        { id: 'a', startDate: '2026-09-14', seats: 4 },
+        { id: 'b', startDate: '2026-09-30T18:00', seats: '12' },
+        { id: 'c', startDate: '2026-10-02', seats: 20 },
+      ],
+    };
+    expect(run("filter(events, { startDate: { gte: '2026-09-15', lt: '2026-10-01' } }).map(e, e.id)", roots)).toEqual([
+      'b',
+    ]);
+    // A string stored where a number was meant matches no numeric bound, rather than being coerced.
+    expect(run('filter(events, { seats: { gt: 5 } }).map(e, e.id)', roots)).toEqual(['c']);
+  });
 });
 
 describe('references', () => {

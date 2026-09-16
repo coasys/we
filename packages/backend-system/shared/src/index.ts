@@ -118,6 +118,8 @@ export { combineEntityRows, entityNamesOf } from './queryUnion';
 export type { EntityRows } from './queryUnion';
 export type { QueryDiagnostic, QueryRouting } from './queryRouting';
 export { executeQueryIR } from './queryEngine';
+export { rangeCompare, isRangeOp, RANGE_OPS } from './rangeCompare';
+export type { RangeOp } from './rangeCompare';
 export type { Row, InMemoryDataset, InMemoryRelation } from './queryEngine';
 export type {
   QueryIR,

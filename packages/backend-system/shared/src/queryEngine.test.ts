@@ -339,3 +339,28 @@ describe('relation quantifiers, from the flat where a template writes', () => {
     ).toEqual(['a1', 'a2']);
   });
 });
+
+describe('range bounds in the engine', () => {
+  const tasks: InMemoryDataset = {
+    tables: {
+      TaskBlock: [
+        { id: 't1', dueDate: '2026-09-14', estimate: 2 },
+        { id: 't2', dueDate: '2026-09-30T18:00', estimate: 5 },
+        { id: 't3', dueDate: '2026-10-02', estimate: '8' },
+        { id: 't4', estimate: 13 },
+      ],
+    },
+  };
+  const ids = (where: Record<string, unknown>) =>
+    executeQueryIR(compileQuery({ entity: 'TaskBlock', where }).ir, tasks).map((r) => r.id);
+
+  it('compares ISO dates as text, so a day bound works against a value carrying a time', () => {
+    expect(ids({ dueDate: { gte: '2026-09-15', lt: '2026-10-01' } })).toEqual(['t2']);
+  });
+
+  it('compares numbers numerically and refuses a mixed pair rather than coercing it', () => {
+    // t3 stores its estimate as the string '8'; t4 has no due date at all.
+    expect(ids({ estimate: { gt: 4 } })).toEqual(['t2', 't4']);
+    expect(ids({ dueDate: { lt: '2027' } })).toEqual(['t1', 't2', 't3']);
+  });
+});

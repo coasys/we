@@ -147,9 +147,13 @@ describe('irToFlatQuery', () => {
     expect(() => irToFlatQuery({ irVersion: 1, entity: 'Post', scope: { via: 'posts', anchorId: 'a1' } })).toThrow(
       /scope \(drill-down\)/,
     );
-    expect(() =>
-      irToFlatQuery({ irVersion: 1, entity: 'Post', filter: { field: 'likes', op: 'gt', value: 5 } }),
-    ).toThrow(/operator "gt"/);
+    // A range bound lowers now that the flat grammar has one; only whether the backend compares that
+    // kind of bound natively is left to the adapter's plan.
+    expect(
+      irToFlatQuery({ irVersion: 1, entity: 'Post', filter: { field: 'likes', op: 'gt', value: 5 } }).where,
+    ).toEqual({
+      likes: { gt: 5 },
+    });
     // A relation `exists` is the one quantifier with no flat spelling — `some`/`none` lower fine.
     expect(() => irToFlatQuery({ irVersion: 1, entity: 'Post', filter: { rel: 'signals', op: 'exists' } })).toThrow(
       /relation `exists`/,
@@ -218,5 +222,35 @@ describe('lowering a where clause back to the flat dialect', () => {
   it('emits an explicit AND when the branches collide on a key', () => {
     // Same key on both branches cannot merge into sibling keys without one silently winning.
     expect(flatOf({ AND: [{ title: { contains: 'a' } }, { title: { contains: 'b' } }] })).toHaveProperty('where.AND');
+  });
+});
+
+describe('range bounds', () => {
+  it('compiles a single bound to its operator', () => {
+    expect(compileQuery({ entity: 'TaskBlock', where: { dueDate: { lt: '2026-10-01' } } }).ir.filter).toEqual({
+      field: 'dueDate',
+      op: 'lt',
+      value: '2026-10-01',
+    });
+  });
+
+  it('compiles a pair of bounds on one field to a conjunction, not to whichever was read first', () => {
+    const { ir, unsupported } = compileQuery({ entity: 'Listing', where: { price: { gte: 10, lt: 50 } } });
+    expect(unsupported).toEqual([]);
+    expect(ir.filter).toEqual({
+      and: [
+        { field: 'price', op: 'lt', value: 50 },
+        { field: 'price', op: 'gte', value: 10 },
+      ],
+    });
+    expect(validateQueryIR(ir).valid).toBe(true);
+  });
+
+  it('lowers a range back to one operator object beside its siblings', () => {
+    const where = { status: 'todo', price: { gte: 10, lt: 50 } };
+    expect(irToFlatQuery(compileQuery({ entity: 'Listing', where }).ir).where).toEqual({
+      status: 'todo',
+      price: { lt: 50, gte: 10 },
+    });
   });
 });

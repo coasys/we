@@ -190,6 +190,7 @@ values may be expressions (in an expression) or tokens (in a $query):
   { field: { endsWith: 'text' } }          — anchored suffix match, case-SENSITIVE
   { field: { exists: true } }              — non-null / non-undefined presence check
   { field: { exists: false } }             — null or undefined check
+  { field: { gte: 10, lt: 50 } }           — a range; lt, lte, gt, gte, any of them together
   { relation: { some: {…} } }              — has at least one linked record matching the clause
   { relation: { none: {…} } }              — has no linked record matching it; { none: {} } is "has none at all"
   { OR: [ {…}, {…} ] }  { AND: [ … ] }  { NOT: {…} }   — combinators; sibling keys are implicitly ANDed
@@ -245,6 +246,17 @@ startsWith/endsWith are case-sensitive where contains is not: they match structu
 a known prefix (an ISO date, an id out of a URI). They are NOT native to the AD4M backend either, so
 a $query using one is refused — use contains there; inside filter() they are evaluated client-side.
 
+lt/lte/gt/gte compare a number with a number, and a string with a string as text. Text order is
+what makes dates work: WE writes a day as YYYY-MM-DD and a moment as YYYY-MM-DDTHH:mm, and those sort
+in time order, so { dueDate: { gte: '2026-09-15', lt: '2026-10-01' } } is "due in the second half of
+September" — including a task due '2026-09-30T18:00'. A mixed pair never matches: a number bound
+against a field holding the string '12' answers false, rather than guessing which you meant.
+
+On AD4M a NUMBER bound is native and a STRING bound is refused — the executor compares numbers only.
+So a date range in a $query does not run there yet; fetch the candidates and filter() client-side,
+where it works, or bound the query by something numeric. A numeric range (a price, a count, a
+rating) runs natively on both backends.
+
 OR/AND/NOT no longer cost a query its sort pushdown. They used to: the executor decided pushability
 with a second function that disagreed with what it actually emitted, and an explicit combinator fell
 outside it. One compiler now answers for its own emission, so a filter with an OR and a sort behaves
@@ -254,6 +266,7 @@ Examples:
 { "$": "filter(spaceStore.members, { role: 'admin' })" }
 { "$": "filter(spaceStore.members, { location: { exists: true }, handle: { contains: local.searchText } })" }
 { "$": "filter(local.dayEvents, { startDate: { startsWith: cell.date } }, 2)" }        — the first two only
+{ "$": "filter(local.tasks, { dueDate: { gte: local.weekStart, lt: local.weekEnd } })" }
 { "$": "find(local.signalTypes, { slug: 'like' }).id" }                                — undefined when nothing matches
 { "$": "count(local.rows) > 0 && local.searchText != ''" }
 { "$": "item.author == me.did ? 'mine' : 'theirs'" }

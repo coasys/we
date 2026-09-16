@@ -8,6 +8,7 @@
  * foreign key) — the minimal shape any in-memory dataset can provide.
  */
 import type { Aggregation, Filter, IncludeMap, Op, QueryIR, Scalar, Scope, SortKey } from './queryIR';
+import { rangeCompare } from './rangeCompare';
 import { RECORD_TYPE_KEY } from './recordContract';
 
 export type Row = Record<string, unknown> & { id: string | number };
@@ -41,13 +42,10 @@ function compareOp(actual: unknown, op: Op, value: Scalar | Scalar[], caseSensit
     case 'ne':
       return actual !== value;
     case 'lt':
-      return (actual as number) < (value as number);
     case 'lte':
-      return (actual as number) <= (value as number);
     case 'gt':
-      return (actual as number) > (value as number);
     case 'gte':
-      return (actual as number) >= (value as number);
+      return rangeCompare(actual, op, value);
     case 'in':
       return Array.isArray(value) && value.includes(actual as Scalar);
     case 'nin':
