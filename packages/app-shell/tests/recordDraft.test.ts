@@ -74,6 +74,8 @@ describe('controlFor', () => {
     expect(controlFor({ type: 'boolean' })).toBe('switch');
     expect(controlFor({ type: 'number' })).toBe('number');
     expect(controlFor({ type: 'string' })).toBe('text');
+    // A link is typed as one — the URL keyboard, and a value the browser can check.
+    expect(controlFor({ type: 'string', control: 'url' })).toBe('url');
   });
 });
 

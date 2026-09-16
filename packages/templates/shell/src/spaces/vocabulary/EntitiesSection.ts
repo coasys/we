@@ -241,15 +241,39 @@ const defaultValueControl: SchemaNode = {
               },
             },
             else: {
-              type: 'we-input',
+              type: '$if',
               props: {
-                size: 'sm',
-                width: DEFAULT_CONTROL_WIDTH,
-                placeholder: 'None',
-                value: { $: 'member.defaultValue' },
-                onInput: {
-                  $action: 'shapeStore.setMemberField',
-                  args: [{ $: 'member.rowId' }, 'defaultValue', { $: 'arg.detail' }],
+                // A passage gets room to be one — the one default here that is not a short value.
+                condition: { $: "member.type == 'paragraph'" },
+                then: {
+                  type: 'we-textarea',
+                  props: {
+                    size: 'sm',
+                    width: '100%',
+                    rows: 3,
+                    autoGrow: true,
+                    placeholder: 'None',
+                    value: { $: 'member.defaultValue' },
+                    onInput: {
+                      $action: 'shapeStore.setMemberField',
+                      args: [{ $: 'member.rowId' }, 'defaultValue', { $: 'arg.detail' }],
+                    },
+                  },
+                },
+                else: {
+                  type: 'we-input',
+                  props: {
+                    size: 'sm',
+                    width: DEFAULT_CONTROL_WIDTH,
+                    // A link is typed as one: the browser's URL keyboard, and a placeholder that says so.
+                    type: { $: "member.type == 'link' ? 'url' : 'text'" },
+                    placeholder: { $: "member.type == 'link' ? 'https://…' : 'None'" },
+                    value: { $: 'member.defaultValue' },
+                    onInput: {
+                      $action: 'shapeStore.setMemberField',
+                      args: [{ $: 'member.rowId' }, 'defaultValue', { $: 'arg.detail' }],
+                    },
+                  },
                 },
               },
             },

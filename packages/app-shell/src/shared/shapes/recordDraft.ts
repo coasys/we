@@ -20,7 +20,7 @@ import type { EntityManifest, EntitySchema, PropertySchema } from '@we/backend-s
 
 /** Which control a field is edited with. Resolved once, here, so no consumer re-derives it. */
 export type RecordControl =
-  'text' | 'textarea' | 'number' | 'switch' | 'select' | 'date' | 'datetime' | 'color' | 'file' | 'relation';
+  'text' | 'textarea' | 'url' | 'number' | 'switch' | 'select' | 'date' | 'datetime' | 'color' | 'file' | 'relation';
 
 /**
  * A chosen file, as the file-storage language takes it — what a `format: 'file'` property is written
@@ -151,6 +151,7 @@ export function controlFor(property: PropertySchema): RecordControl {
   // A file is chosen, never typed: a text box on an image's `src` asked for an address nobody has.
   if (property.format === 'file') return 'file';
   if (property.control === 'textarea') return 'textarea';
+  if (property.control === 'url') return 'url';
   if (property.control === 'date') return 'date';
   if (property.control === 'datetime') return 'datetime';
   if (property.control === 'color') return 'color';

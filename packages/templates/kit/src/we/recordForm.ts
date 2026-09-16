@@ -43,6 +43,7 @@ const PLACEHOLDER = { placeholder: { $: 'field.placeholder' } };
 
 const CONTROLS: Record<string, ControlSpec> = {
   text: { tag: 'we-input', event: 'onInput', props: PLACEHOLDER },
+  url: { tag: 'we-input', event: 'onInput', props: { type: 'url', ...PLACEHOLDER } },
   textarea: { tag: 'we-textarea', event: 'onInput', props: { rows: 3, ...PLACEHOLDER } },
   number: { tag: 'we-number-input', event: 'onChange', props: PLACEHOLDER },
   switch: { tag: 'we-switch', event: 'onChange', valueProp: 'checked' },
