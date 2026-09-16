@@ -177,7 +177,8 @@ async function converse(
         ...(target.token ? { Authorization: `Bearer ${target.token}` } : {}),
       },
       body: JSON.stringify({
-        model: 'default',
+        // The executor resolves a model's id or name, and `default` to the configured default LLM.
+        model: request.model || 'default',
         stream: true,
         messages: toOpenAiMessages(request.system, request.turns),
         ...(request.tools?.length ? { tools: toOpenAiTools(request.tools) } : {}),
