@@ -2636,9 +2636,9 @@ export function ShellStoreProvider(props: ParentProps) {
   createEffect(() => {
     dockRegistryVersion();
     const wanted = declaredPanels()
-      // `open: false` places without opening. Opening a panel is not always harmless — the call
-      // module's launcher is `goToCall`, which joins a call when there is not one — so a template
-      // that placed the call window would otherwise start a call on entering the space.
+      // `open: false` places without opening. Opening goes through the panel's own controls — the
+      // host's flag, or the `show` key a module named — and is not always wanted on entering a
+      // space: the call's stage opened with nobody in it is an empty window over the content.
       .filter((panel) => panel.module && panel.open !== false)
       /*
         By dock, not by module. A module with two declared panels used to collapse to one entry

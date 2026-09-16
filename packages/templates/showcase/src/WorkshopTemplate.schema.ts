@@ -50,8 +50,9 @@
  *   one page only — but scoping these to the canvas meant crossing to the kanban *unregistered*
  *   them, throwing away their scroll position, their subscriptions and wherever they had been
  *   dragged. A column of context on a page that did not strictly need it is the cheaper of the two.
- * - **`open: false`** on the call, because the call module's launcher action is `goToCall`, which
- *   *joins a call* when there is not one. Placed, never opened.
+ * - **`open: false`** on the call, because the stage is a window onto a call and there is none on
+ *   entering the space: opening it would put an empty panel over the canvas. Placed, opened by the
+ *   call itself.
  */
 import type { RouteSchema, SchemaNode, SchemaProp, TemplateSchema } from '@we/schema-shared';
 // `field` and `formModal` through the template kit rather than `@we/schema-kit`: this package
@@ -525,10 +526,10 @@ const switcher: SchemaNode = {
  * The way into a call: start one, or go to the one already running.
  *
  * `goToCall` is the call module's own verb and does both — it joins when there is no call and moves
- * to the running one when there is. That is exactly why `meta.panels` declares the call window with
- * `open: false`: placing a panel invokes its launcher, and this verb would have started a call for
- * anyone who opened the template. Here it is a button somebody presses, which is the one place it
- * means what it says.
+ * to the running one when there is. It is a button somebody presses, which is the one place a verb
+ * that starts a call means what it says; `meta.panels` opens a panel through the module's `show`
+ * key, which for the stage only shows the video, and the entry below says `open: false` so even
+ * that waits for a call to exist.
  *
  * ## And it stops naming a call
  *
@@ -4508,9 +4509,10 @@ export const workshopTemplate: TemplateSchema = {
       /*
         The call window: placed, not opened, bottom-centre when a call opens it.
 
-        `open: false` is load-bearing — see `startCallButton`. Where it lands is still this entry's to
-        say, because a declaration outranks the module's own opening bid whenever the module does
-        open it: at the start of a call, not on entering the space.
+        `open: false` because the stage is opened by the call — `join` raises the module's own
+        `stageOpen` — and an empty stage on entering the space would be a window over nothing.
+        Where it lands is still this entry's to say, because a declaration outranks the module's
+        own opening bid whenever the module does open it: at the start of a call.
 
         Along the bottom as a strip, rather than beside the column it was in, because a row of faces
         is wide and low and every other panel here is tall. 860 × 176 of stage, plus the same frame

@@ -63,5 +63,5 @@ export function createGraphModule(graphViewComponent: unknown): ModuleDefinition
   });
 }
 
-/** The one factory shape every module package exports — see `bundledModules.ts`. */
+/** The one factory shape every module package exports — the generated registry imports it. */
 export const createModule = (host: ModuleHost): ModuleDefinition => createGraphModule(host.components.GraphView);

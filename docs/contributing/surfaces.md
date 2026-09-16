@@ -307,23 +307,28 @@ classes are build artifacts — edit the manifest, then run both generators.
 
 ### Feature modules
 
-A bundle of **stateful capability** that installs into a space: calls, notes, transcription, the
-globe, the graph. A module declares what it contributes and the shell decides where it renders.
-A module never imports the shell; the shell never imports a module directly.
+A bundle of **stateful capability** that installs into a space: calls, notes, transcription, polls,
+the globe, the graph. A module is three things — a **manifest** (who it is, what it requires), its
+**contributions** (entities, parts, panels, blocks, views, functions, settings, …) and an optional
+**`createStore`**, the one piece that is code. The shell fans the contributions out to registries it
+already has and decides where everything renders. A module never imports the shell; the shell's
+registry is generated from the seed, so it never names a module by hand either.
 
-Prefer contributing **schema fragments over components**. A module with no framework imports cannot
-suffer the second-runtime problem — an externally-loaded bundle carrying its own copy of a reactive
-framework gets a second one, and reactivity silently stops crossing the boundary, with no error.
-Fragments-first is what will make dynamic loading tractable later.
+**Declare what you can, write only what a declaration cannot say.** The notes module has no store
+at all. A store is built from injected reactivity and only the **kernels** its manifest names
+(`records`, `presence`, `media`, …), and its members are private until `deps.state` / `deps.action`
+publish one with a sentence. A module with no framework imports cannot suffer the second-runtime
+problem — a bundle carrying its own copy of a reactive framework gets a second one, and reactivity
+silently stops crossing the boundary, with no error.
 
-- **Lives in** `packages/module-system/<id>/`
-- **Conventions** the contract itself — `packages/module-system/shared/src/module.ts` is deliberately exhaustive and is the documentation
-- **Copy** `packages/module-system/notes/` — it takes nothing from the host and imports no framework, so it is the honest minimal case
-- **Register** add to `bundledModules` in `packages/app-shell/src/shared/registries/bundledModules.ts`, and add the id to `we-seed.json`'s `modules`
-- **Verify** `pnpm --filter @we/module-shared test`, `pnpm validate:schemas` (it covers `module-system/`)
+- **Lives in** `packages/module-system/<id>/` — or any package exporting `createModule(host)`
+- **Conventions** [`docs/guides/writing-a-module.md`](../guides/writing-a-module.md), then the contract — `packages/module-system/shared/src/module.ts` and `kernels.ts`
+- **Copy** `pnpm create-module <id> "<Name>"` scaffolds one in the shape of **notes** (declaration only); **polls** uses every kind of contribution; **call** is the one built on kernels
+- **Register** `we-seed.json`'s `modules` (an id, or `{ "id", "package"?, "enabled"? }`), the package in `@we/app-shell`'s and `@we/ai-context`'s dependencies, then `pnpm --filter @we/app-shell generate-modules`
+- **Verify** `pnpm --filter @we/module-<id> test` with `lintModule` from `@we/module-testing`, `pnpm validate:schemas` (it covers `module-system/`, and knows the module's members once `generate-context` has run)
 
-> A module needing a specific backend declares it (`backends: ['ad4m']`). Everything else stays
-> backend-neutral through the ports, and `@coasys/*` may not be imported anywhere else.
+> A module needing a specific backend declares it (`requires: { backends: ['ad4m'] }`). Everything
+> else stays backend-neutral through the kernels, and `@coasys/*` may not be imported anywhere else.
 
 ### Graph plugins
 
@@ -429,15 +434,18 @@ as AD4M expressions, and they pass through a real trust boundary on the way in:
   gate: structurally broken schemas are refused outright, and references past the tier are admitted
   but reported, because a quietly half-broken template looks exactly like one that is fine.
 
-**Everything else on this page ships by merging into this repository.** Feature modules are bundled
+**Everything else on this page ships as code a deployment chooses.** Feature modules are bundled
 rather than dynamically loaded. The reason used to be given as the second-runtime problem above; that
 is solved — `createStore(deps)` injects the reactivity primitives — and the reason that remains is
-trust: a store factory is arbitrary JavaScript with access to the ports the host hands it, and the
-capability model covers what a _schema_ may name, not what code may do.
+trust: a store factory is arbitrary JavaScript with access to the kernels the host hands it, and the
+capability model covers what a _schema_ may name, not what code may do. The kernels narrow that —
+a store reaches only what its manifest declared, and an install screen names it — but they do not
+sandbox it.
 
-So: **three of nineteen surfaces have an out-of-repo path** (templates, themes, views), and a module
-author must clone the monorepo. That is the real ceiling on outside contribution right now, and it is
-a code problem rather than a docs one.
+So: **three of nineteen surfaces have a marketplace path** (templates, themes, views), and a module
+has a **deployment path**: publish a package exporting `createModule`, and a deployment names it in
+its seed (`{ "id": "polls", "package": "@acme/we-module-polls" }`) and rebuilds. A module author no
+longer has to clone the monorepo; a person running a deployment still decides which code it runs.
 
 How it changes is the subject of
 [internal/plans/module-marketplace.md](../internal/plans/module-marketplace.md), which places every

@@ -96,5 +96,5 @@ export const pocketModule: ModuleDefinition = defineModule({
   createStore: (deps: ModuleStoreDeps) => createPocketStore(deps),
 });
 
-/** The one factory shape every module package exports — see `bundledModules.ts`. */
+/** The one factory shape every module package exports — the generated registry imports it. */
 export const createModule = (_host: ModuleHost): ModuleDefinition => pocketModule;

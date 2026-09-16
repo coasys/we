@@ -92,8 +92,9 @@ Glossary (these terms pervade stores, models, and `$query`/`perspective` in sche
 | `@we/backend-shared` | backend-system/shared | The backend contract: `DataSource`, query IR + engine, ephemeral, presence & transcription ports, model manifest | **Agnostic** |
 | `@we/backend-ad4m` | backend-system/ad4m | The AD4M adapter: query adapter, ports, agent identity, SDNA install — and the AD4M model classes, generated from @we/entities' manifest (src/models) | Agnostic |
 | `@we/backend-inmemory` | backend-system/inmemory | In-memory adapter — the reference implementation, and how stores test without an executor | Agnostic |
-| `@we/module-shared` | module-system/shared | The feature-module contract — what a module author installs | Agnostic |
-| `@we/module-globe` · `-call` · `-notes` · `-transcribe` · `-graph` | module-system/* | Bundled feature modules; globe is a *family* (module · protocol · layers · widget) | Agnostic (components injected) |
+| `@we/module-shared` | module-system/shared | The feature-module contract — manifest, contributions, kernels, store markers, `lintModule` — what a module author installs | Agnostic |
+| `@we/module-testing` | module-system/testing | Fakes for testing a module store without a host: `fakeDeps`, `fakeRecords`, `fakePresence`, `buildStore` | Agnostic |
+| `@we/module-globe` · `-call` · `-notes` · `-pocket` · `-polls` · `-transcribe` · `-graph` | module-system/* | Bundled feature modules — each exports `createModule(host)` and the seed's `modules` list generates the registry; globe is a *family* (module · protocol · layers · widget) | Agnostic (components injected) |
 | `@we/graph-protocol` · `-core` · `-expanders` · `-layouts` · `-solid` | graph-system/* | The graph engine: expander/layout/renderer contracts, the neutral engine, first-party plugins, and the Solid adapter | **Agnostic** (Solid only in the adapter) |
 | `@we/block-shared` | block-system/shared | Block content types + serialization | Agnostic |
 | `@we/entities` | packages/entities | WE's domain models: the authored neutral manifest (src/manifest, the source of truth), the neutral type contract, and the entity proxies backends register into | **Agnostic** |
@@ -4479,10 +4480,11 @@ Two kinds of entry, one list:
 | `route`    | Only while one of these segments is in the path — a segment or a list. Absent means every route. |
 | `open`     | Whether to open it as well as place it. Absent means yes — see the warning below.               |
 
-**`open: false` when a module's launcher does more than open a panel.** Placing a `module` panel
-invokes the action its launcher declares, and that is not always "open a panel" — the call module's
-is `goToCall`, which *joins a call* when there is not one. Declaring the call window without
-`open: false` would start a call the moment somebody entered the space.
+**`open: false` when a panel should wait for its moment.** Placing a `module` panel opens it as
+well — through the host's own flag, or through the `show` action a module named when it owns
+its panel's openness. That is not always wanted on entering a space: the call module's stage is
+open while there is a call to watch, and declaring it without `open: false` would put an empty
+stage over the content until somebody started one. The declaration still says where it lands.
 
 ### Sizes
 

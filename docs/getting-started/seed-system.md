@@ -28,12 +28,22 @@ Pure metadata.
 
 ### `modules`
 
-The feature modules this deployment ships, by id — e.g.
-`["globe", "graph", "notes", "call", "transcribe"]`. Declaring what the
-deployment includes is what a seed is _for_; ids are matched against the
-bundled module set at boot, and an unknown id is reported rather than silently
-ignored. (Per-agent and per-space choices layer on top:
-`AgentSettings.installedModules` and `Space.enabledModules`.)
+The feature modules this deployment ships — e.g.
+`["globe", "graph", "notes", "call", "transcribe", { "id": "polls", "enabled": false }]`.
+Declaring what the deployment includes is what a seed is _for_, and this list is the
+_source_ of the shell's module registry rather than a filter over a hand-written one:
+`pnpm --filter @we/app-shell generate-modules` reads it and writes the imports, so a
+module nobody listed is not in the build at all. An entry is an id, or an object:
+
+- `id` — the module id. The package is `@we/module-<id>` unless `package` says otherwise.
+- `package` — a package outside this repository that exports `createModule`, e.g.
+  `"@acme/we-module-polls"`. The deployment adds the dependency and rebuilds; the
+  registry trusts it the way it trusts a bundled module.
+- `enabled: false` — ship it for communities to opt into rather than switching it on
+  in every space that has not decided. The default is on.
+
+(Per-agent and per-space choices layer on top: `AgentSettings.installedModules` and
+`Space.enabledModules`.) `pnpm validate:seed` checks the entries.
 
 **The order is load-bearing.** Modules register in the order listed here, and
 the chrome rail renders their launchers in registration order — so this list is
