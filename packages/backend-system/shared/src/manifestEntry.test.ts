@@ -100,7 +100,7 @@ describe('an entity extending a parent the manifest does not declare', () => {
       WeNode: {
         abstract: true,
         properties: {},
-        relations: { comments: { cardinality: 'many', predicate: 'we://comment' } },
+        relations: { comments: { target: '', cardinality: 'many', predicate: 'we://comment' } },
       },
     },
   };
