@@ -305,3 +305,11 @@ describe('a picture held by relation', () => {
     expect(display.mediaRelation).toBe('');
   });
 });
+
+describe("a node's own relations", () => {
+  it('are not fields of the record — a task lists its declared relations, not its reactions', () => {
+    const event = displayFor({ entity: 'EventBlock', schema: CORE_MANIFEST.entities.EventBlock, authorable: false });
+    const relations = event.fields.filter((f) => f.kind === 'relation').map((f) => f.name);
+    expect(relations).toEqual(['location']);
+  });
+});

@@ -1,5 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { pageShell, RECORD_ROUTE_PATH } from '@we/template-kit';
+import { linkedRecords, pageShell, RECORD_ROUTE_PATH } from '@we/template-kit';
 
 /**
  * A page for one record.
@@ -72,45 +72,11 @@ const idExpr = { $: 'routeStore.params.id' };
  * which is the honest default: a value nobody has taught this page to draw is still a value worth
  * showing.
  */
-/*
-  A relation, by the names of what it points at rather than their ids.
-
-  One query per relation row, over the ids the record holds — a to-one is an id and a to-many a list,
-  and the where-object reads a list as membership — named the way every other surface names a record
-  of that model.
-*/
-const relationValue: SchemaNode = {
-  type: 'Row',
-  props: { gap: '200', wrap: true, ax: 'end', minWidth: '0' },
-  $queries: {
-    linked: {
-      entity: { $: 'field.target' },
-      where: { id: { $: 'row[field.name]' } },
-      when: { $: 'row[field.name]' },
-      limit: 50,
-    },
-  },
-  children: [
-    {
-      type: '$each',
-      props: { items: { $: 'local.linked' }, as: 'other' },
-      children: [
-        {
-          type: 'we-badge',
-          children: [
-            { $: 'other[recordStore.displays[field.target].title] ?? recordStore.displays[field.target].label' },
-          ],
-        },
-      ],
-    },
-  ],
-};
-
 const detailValue: SchemaNode = {
   type: '$if',
   props: {
     condition: { $: "field.kind == 'relation' && field.target" },
-    then: relationValue,
+    then: linkedRecords({ record: 'row', field: 'field' }),
     else: {
       type: '$if',
       props: {

@@ -86,5 +86,7 @@ export {
   stateIconFor,
 } from './we/taskStates.ts';
 export type { PeopleRowOptions } from './we/peopleRow.ts';
+export { linkedRecords } from './we/linkedRecords.ts';
+export type { LinkedRecordsOptions } from './we/linkedRecords.ts';
 export { recordFormModal } from './we/recordForm.ts';
 export type { RecordFormModalOptions } from './we/recordForm.ts';
