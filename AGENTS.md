@@ -445,6 +445,7 @@ Nothing is ever added to the grammar above: a new capability is a function here,
 registers (listed last). Wrong-typed input answers with the empty value of its kind, never an error.
   Lists:
     count(items) — How many entries a list has. Anything that is not a list counts as 0.  e.g. count(spaceStore.members)
+    distinct(...lists) — The entries of every list given, each once, in the order first seen. Records compare by `id`, other values by value. Anything that is not a list contributes nothing.  e.g. distinct(local.found.map(r, r.__subjectClass), local.placements.map(p, p.nodeType))
     filter(items, where, limit?) — The entries matching a where-object — the same grammar $query takes. `limit` keeps the first N. Prefer the comprehension `items.filter(x, …)` when the test is not a where-object.  e.g. filter(spaceStore.members, { role: 'admin' }, 5)
     find(items, where?) — The first entry matching a where-object, or undefined. Without `where`, the first entry. Read a field off the result directly: `find(…).id` is undefined when nothing matched.  e.g. find(local.signalTypes, { slug: 'like' }).id
     first(items) — The first entry of a list, or undefined when it is empty.  e.g. first(local.posts).title
@@ -1098,7 +1099,7 @@ Most @we/primitives also accept Design System Props (see next section for detail
 - we-audio (LayoutVisualElement)
   Props: src: string = '', controls: boolean = false, preload: 'none' | 'metadata' | 'auto' = 'metadata', autoplay: boolean = false, loop: boolean = false, muted: boolean = false, stream?: MediaStream | null | undefined
 - we-avatar (LayoutVisualElement)
-  Props: image: string = '', hash: string = '', initials: string = '', icon: string = '', size?: 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '{css-length}' | undefined, clickable: boolean = false
+  Props: image: string = '', hash: string = '', initials: string = '', icon: string = '', size?: 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '{css-length}' | undefined, clickable: boolean = false, ringColor: string = '', ringWidth: string = '', edgeColor: string = ''
 - we-badge (DesignSystemElement)
   Props: variant: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' = 'neutral', appearance: 'soft' | 'solid' = 'soft', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-blockquote (DesignSystemElement)
@@ -1108,8 +1109,8 @@ Most @we/primitives also accept Design System Props (see next section for detail
   Props: checked: boolean = false, disabled: boolean = false, name: string = '', label: string = '', value: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-code (DesignSystemElement)
   Props: block: boolean = false
-- we-color-picker (DesignSystemElement)
-  Props: value: string = '#000000', disabled: boolean = false, name: string = '', palette: array = [ '#000000', '#434343', '#666666', '#999999', '#b7b7b7', '#cccccc', '#d9d9d9', '#ffffff', '#980000', '#ff0000', '#ff9900', '#ffff00', '#00ff00', '#00ffff', '#4a86e8', '#0000ff', '#9900ff', '#ff00ff', '#e6b8af', '#f4cccc', '#fce5cd', '#fff2cc', '#d9ead3', '#d0e0e3', '#c9daf8', '#cfe2f3', '#d9d2e9', '#ead1dc', ], tokens: boolean = false, alpha: boolean = false
+- we-color-picker (DesignSystemElement) — A colour, chosen from the theme's tokens or picked by hand.
+  Props: value: string = '#000000', disabled: boolean = false, name: string = '', palette: array = [ '#000000', '#434343', '#666666', '#999999', '#b7b7b7', '#cccccc', '#d9d9d9', '#ffffff', '#980000', '#ff0000', '#ff9900', '#ffff00', '#00ff00', '#00ffff', '#4a86e8', '#0000ff', '#9900ff', '#ff00ff', '#e6b8af', '#f4cccc', '#fce5cd', '#fff2cc', '#d9ead3', '#d0e0e3', '#c9daf8', '#cfe2f3', '#d9d2e9', '#ead1dc', ], tokens: boolean = false, alpha: boolean = false, clearable: boolean = false
 - we-date-picker (DesignSystemElement)
   Props: value: string = '', showTime: boolean = false, placeholder: string = 'Select date', disabled: boolean = false, name: string = '', label: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-divider (LayoutElement)
@@ -2207,6 +2208,27 @@ ImageBlock extends WeNode:
   - height: number [we://height]
   - version: number [we://version]
 
+Involvement extends Ad4mModel:
+  Fields:
+  - agent: string (required) [we://involved_agent]
+  - kind: string (required) [we://involvement_kind]
+  - note: string [we://description]
+  Relations:
+  - node: HasOne [we://involved_in]
+
+InvolvementType extends WeNode:
+  Fields:
+  - name: string (required) [we://name]
+  - slug: string [we://slug]
+  - description: string [we://description]
+  - icon: string [we://icon]
+  - color: string [we://color]
+  - semantic: InvolvementSemantic = 'responsible' [we://semantic]
+  - reflexive: boolean = false [we://reflexive]
+  - appliesTo: string [we://applies_to]
+  - retired: boolean = false [we://retired]
+  - schemaVersion: number = 1 [we://schema_version]
+
 LinkBlock extends WeNode:
   Fields:
   - url: string (required) [we://url]
@@ -2329,6 +2351,7 @@ Space extends WeNode:
   - location: HasOne → LocationBlock [we://location]
   - board: HasOne → CollectionBlock [we://board]
   - taskStates: HasMany → TaskState [we://task_state_order]
+  - typeStyles: HasMany → TypeStyle [we://type_style]
 
 SpacePreference extends WeNode:
   Fields:
