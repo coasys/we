@@ -50,9 +50,9 @@ const defineEntityTool = {
             name: { type: 'string' as const, description: 'camelCase identifier, e.g. "dueDate".' },
             type: {
               type: 'string' as const,
-              enum: ['text', 'number', 'boolean', 'date', 'select'],
+              enum: ['text', 'paragraph', 'link', 'number', 'boolean', 'date', 'select'],
               description:
-                '"select" is a text field with a fixed set of allowed values — declare them in options. To point at another model, use a relationship instead of a property.',
+                '"paragraph" is text long enough to need several lines (a description, notes); "link" is a web address. "select" is a text field with a fixed set of allowed values — declare them in options. A picture, a file or a place is not a property: point at ImageBlock, FileBlock or LocationBlock with a relationship.',
             },
             required: { type: 'boolean' as const },
             hint: {

@@ -28,9 +28,15 @@ const DEFAULT_CONTROL_WIDTH = '220px';
   which carries alt text and dimensions and can be signalled on, commented on and drawn in the
   graph — none of which a URL in a string can do. The relationship picker already offers every
   block type, so those models are expressible today, by the route that makes them first-class.
+
+  Link and Paragraph are here because they are not content of their own: both are text, differing
+  only in how they are typed and drawn — a web address a card makes clickable, a passage it gives
+  room to.
 */
 const PROPERTY_TYPE_OPTIONS = [
   { label: 'Text', value: 'text' },
+  { label: 'Paragraph', value: 'paragraph' },
+  { label: 'Link', value: 'link' },
   { label: 'Number', value: 'number' },
   { label: 'Boolean', value: 'boolean' },
   { label: 'Date', value: 'date' },
