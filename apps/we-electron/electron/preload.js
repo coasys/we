@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('electron', {
   getPort: () => ipcRenderer.invoke('get-port'),
   getToken: () => ipcRenderer.invoke('get-token'),
   getIsDevelopment: () => ipcRenderer.invoke('get-is-development'),
+  getDevLinkLanguageBundle: () => ipcRenderer.invoke('get-dev-link-language-bundle'),
   getDesktopSources: () => ipcRenderer.invoke('get-desktop-sources'),
 
   // Account management. Every mutation is registry-only until applyAccountSelection() takes effect.

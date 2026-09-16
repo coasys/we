@@ -651,6 +651,31 @@ ipcMain.handle('get-is-development', () => {
   return !!process.env.VITE_DEV_SERVER_URL;
 });
 
+/**
+ * The server link language bundle built in the seed's ad4m checkout, in a development run only.
+ *
+ * Absolute, because the executor reads it from disk when publishing. Null in a packaged build,
+ * with no `repoPath`, or when the language has not been built — `pnpm build` in
+ * `bootstrap-languages/server-link-language` of the ad4m repo produces it.
+ */
+ipcMain.handle('get-dev-link-language-bundle', () => {
+  if (app.isPackaged || !process.env.VITE_DEV_SERVER_URL) return null;
+  try {
+    const runtime = JSON.parse(readFileSync(join(__dirname, 'seed-runtime.json'), 'utf8'));
+    if (!runtime.ad4mRepoPath) return null;
+    const bundle = join(
+      expandHome(runtime.ad4mRepoPath),
+      'bootstrap-languages',
+      'server-link-language',
+      'build',
+      'bundle.js',
+    );
+    return existsSync(bundle) ? bundle : null;
+  } catch {
+    return null;
+  }
+});
+
 // ── Account management ───────────────────────────────────────────────────────
 // Every mutation is registry-only; nothing takes effect until the app relaunches, because the
 // executor is configured with one data path at startup and holds it for its lifetime.

@@ -115,6 +115,16 @@ export interface WeSeedFile {
      */
     dataPath?: string;
     /**
+     * A link server shared spaces can sync through, e.g. `https://links.example.org`. Setting it
+     * is what offers the server link language when creating a shared space; each space gets a
+     * fresh room on it.
+     *
+     * The server has to be reachable by every member, and should run with `AUTO_ADMIT=true`:
+     * otherwise only the space's creator is admitted to its room, and nothing in WE can admit
+     * anyone else. Unset, spaces keep publishing on the node's default link language.
+     */
+    linkServerUrl?: string;
+    /**
      * The `ad4m-executor` binary the desktop hosts bundle, relative to the workspace root (or
      * absolute). Required — `setup-workspace` and `validate-seed` both fail without it.
      */

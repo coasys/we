@@ -93,6 +93,16 @@ function main() {
           `separate agent store. An agent already in ~/.ad4m will NOT be visible there.`,
       );
     }
+
+    // The URL is baked into every space published through it, so a typo is permanent for that
+    // space: its members would sync against nothing.
+    if (seed.ad4m.linkServerUrl) {
+      if (!/^https?:\/\/[^\s/]+/.test(seed.ad4m.linkServerUrl)) {
+        error(`ad4m.linkServerUrl must be an http(s) URL, got: ${seed.ad4m.linkServerUrl}`);
+      } else {
+        success(`ad4m.linkServerUrl is ${seed.ad4m.linkServerUrl} (server link language offered for shared spaces)`);
+      }
+    }
   }
 
   if (!seed.apps || !Array.isArray(seed.apps)) {

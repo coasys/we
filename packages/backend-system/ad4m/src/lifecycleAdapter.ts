@@ -19,8 +19,38 @@ import { ensureFileStorageLanguage } from './agentHelpers';
 
 const SCHEME = 'neighbourhood://';
 
-/** Template parameters `publish` supplies (`description` is optional and left to its default). */
-const FILLED_TEMPLATE_PARAMS = new Set(['uid', 'name', 'description']);
+/** Template parameters a template may declare and still publish without a value. */
+const OPTIONAL_TEMPLATE_PARAMS = ['description'];
+
+/** What a template that declares no parameters has always been given. */
+const pick = ({ uid, name }: Record<string, string>) => ({ uid, name });
+
+export interface Ad4mLifecycleOptions {
+  /**
+   * The link server a shared space can sync through, from the deployment's seed
+   * (`ad4m.linkServerUrl`). Without one, the server link language is never offered: it has
+   * nowhere to connect to.
+   */
+  linkServerUrl?: string;
+  /**
+   * Development only: where this machine's build of the server link language bundle is, or null.
+   *
+   * Until the bootstrap seed ships the server link language (coasys/ad4m#1037), a node does not
+   * know the template, so there is nothing to offer however the deployment is configured. Given a
+   * bundle and a `linkServerUrl`, the adapter publishes it and adds it to the node's known
+   * templates the first time templates are listed — after sign-in, since publishing a language
+   * needs an unlocked agent. Skipped when the node already knows a server template.
+   */
+  devLinkLanguageBundle?: () => Promise<string | null>;
+}
+
+/** The meta the server link language is published with — its declared parameters are what matter. */
+const SERVER_LINK_LANGUAGE_META = {
+  name: 'server-link-language',
+  description: 'AD4M link language that syncs through a self-hosted link-server',
+  sourceCodeLink: 'https://github.com/coasys/ad4m/tree/dev/bootstrap-languages/server-link-language',
+  possibleTemplateParams: ['SERVER_URL', 'ROOM_ID', 'name', 'description'],
+};
 
 /**
  * How long past the client's own RPC timeout an unlock or generate is still waited for.
@@ -40,7 +70,10 @@ function toRef(p: PerspectiveProxy): DatasetRef {
   };
 }
 
-export function createAd4mDatasetLifecycle(backendClient: unknown): DatasetLifecyclePort {
+export function createAd4mDatasetLifecycle(
+  backendClient: unknown,
+  options: Ad4mLifecycleOptions = {},
+): DatasetLifecyclePort {
   const client = backendClient as Ad4mClient;
 
   /**
@@ -66,25 +99,74 @@ export function createAd4mDatasetLifecycle(backendClient: unknown): DatasetLifec
     p.uuid === ownProfileDatasetId || !!p.name?.toLowerCase().startsWith('agent perspective');
 
   /**
+   * The values `publish` can give a template's parameters, for one neighbourhood.
+   *
+   * `uid` and `ROOM_ID` are fresh each time, so every neighbourhood gets its own link language and,
+   * on a link server, its own room — which the server creates when the first agent connects, so
+   * there is nothing to provision. `SERVER_URL` exists only where the deployment named a server.
+   * `description` is absent on purpose: templates declaring it treat it as optional.
+   */
+  function templateValues(datasetName: string): Record<string, string> {
+    return {
+      uid: crypto.randomUUID(),
+      name: `${datasetName}-link-language`,
+      ...(options.linkServerUrl ? { SERVER_URL: options.linkServerUrl, ROOM_ID: crypto.randomUUID() } : {}),
+    };
+  }
+
+  /** Parameters a template declares that `publish` has no value for — empty when it can publish. */
+  function unfillableParams(params: readonly string[]): string[] {
+    const fillable = new Set([...Object.keys(templateValues('')), ...OPTIONAL_TEMPLATE_PARAMS]);
+    return params.filter((param) => !fillable.has(param));
+  }
+
+  /**
+   * A template's name and declared parameters. `params` is null when it declares none or its meta
+   * cannot be read — it is then taken to want what every link language here has always been given.
+   */
+  async function templateMeta(address: string): Promise<{ name: string; params: string[] | null }> {
+    try {
+      const meta = await client.languages.meta(address);
+      return { name: meta.name || address, params: meta.possibleTemplateParams ?? null };
+    } catch {
+      return { name: address, params: null };
+    }
+  }
+
+  /** See `Ad4mLifecycleOptions.devLinkLanguageBundle`. Settles once; a failure is retried next list. */
+  let devRegistration: Promise<void> | undefined;
+  function registerDevServerTemplate(): Promise<void> {
+    if (!options.devLinkLanguageBundle || !options.linkServerUrl) return Promise.resolve();
+    devRegistration ??= (async () => {
+      const bundle = await options.devLinkLanguageBundle?.();
+      if (!bundle) return;
+      const known = (await client.runtime.knownLinkLanguageTemplates()) ?? [];
+      const metas = await Promise.all(known.map(templateMeta));
+      if (metas.some((m) => m.params?.includes('SERVER_URL'))) return;
+      const published = await client.languages.publish(bundle, SERVER_LINK_LANGUAGE_META);
+      await client.runtime.addKnownLinkLanguageTemplates([published.address]);
+      console.info(`[lifecycle] registered the local server link language build as ${published.address}`);
+    })().catch((error) => {
+      devRegistration = undefined;
+      console.warn('[lifecycle] could not register the local server link language build:', error);
+    });
+    return devRegistration;
+  }
+
+  /**
    * The link language templates `publish` can actually instantiate, in the node's own order.
    *
-   * `publish` fills a template with `uid` and `name` only. A template declaring any other
-   * parameter — a server-backed one needs its server URL and room — would be published with
-   * those left as placeholders and never sync, so it is left out rather than offered. A template
-   * whose meta cannot be read is kept: nothing says it needs more.
+   * A template declaring a parameter `publish` cannot fill is left out rather than offered: it
+   * would be published with that parameter still a placeholder and never sync. That is what hides
+   * the server link language on a deployment that has not named a link server.
    */
   async function publishableTemplates(): Promise<LinkLanguageTemplate[]> {
+    await registerDevServerTemplate();
     const addresses = (await client.runtime.knownLinkLanguageTemplates()) ?? [];
     const templates = await Promise.all(
       addresses.map(async (address) => {
-        try {
-          const meta = await client.languages.meta(address);
-          const params = meta.possibleTemplateParams ?? [];
-          if (params.some((param) => !FILLED_TEMPLATE_PARAMS.has(param))) return null;
-          return { address, name: meta.name || address };
-        } catch {
-          return { address, name: address };
-        }
+        const { name, params } = await templateMeta(address);
+        return params && unfillableParams(params).length ? null : { address, name };
       }),
     );
     return templates.filter((t): t is LinkLanguageTemplate => t !== null);
@@ -116,10 +198,18 @@ export function createAd4mDatasetLifecycle(backendClient: unknown): DatasetLifec
     async publish(id: string, linkLanguageTemplate?: string) {
       const p = await client.perspective.byUUID(id);
       if (!p) throw new Error(`publish: no dataset with id ${id}`);
-      const uid = crypto.randomUUID();
       const templateAddress = linkLanguageTemplate || (await publishableTemplates())[0]?.address;
       if (!templateAddress) throw new Error('No link language templates available to publish neighbourhood.');
-      const templateData = JSON.stringify({ uid, name: `${p.name}-link-language` });
+      const { params } = await templateMeta(templateAddress);
+      const missing = params ? unfillableParams(params) : [];
+      if (missing.length) {
+        throw new Error(`publish: the chosen link language needs ${missing.join(', ')}, which is not configured.`);
+      }
+      // Only what the template declares, so a Holochain template is never handed a server URL.
+      const values = templateValues(p.name);
+      const templateData = JSON.stringify(
+        params ? Object.fromEntries(params.filter((k) => k in values).map((k) => [k, values[k]])) : pick(values),
+      );
       const linkLanguage = await client.languages.applyTemplateAndPublish(templateAddress, templateData);
       const uri = await client.neighbourhood.publishFromPerspective(id, linkLanguage.address, new Perspective([]));
       return { uri, sharedId: uri.replace(SCHEME, '') };
