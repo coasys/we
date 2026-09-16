@@ -27,6 +27,28 @@ export interface LanguageModelPort {
    * arriving before then is reported through `onText`.
    */
   converse?(request: ConversationRequest): Promise<ConversationReply>;
+  /**
+   * Which model answers, and whether it can right now — for a surface to say so before somebody
+   * sends a message rather than after it fails. Should cost nothing: no completion, no tokens.
+   * Optional; a backend that cannot tell omits it.
+   */
+  status?(): Promise<LanguageModelStatus>;
+}
+
+/**
+ * The default language model, as a status line shows it.
+ *
+ * `unchecked` is its own answer rather than folded into `ready`: a remote model the backend could
+ * not ask about may well work, and saying "ready" would be a guess dressed as a check.
+ */
+export interface LanguageModelStatus {
+  state: 'ready' | 'loading' | 'error' | 'unchecked' | 'none';
+  /** What the model is called in settings. Empty when there is none. */
+  name: string;
+  /** What is being run — a provider's model id, or the local build's name. */
+  model: string;
+  /** Why, for `error` and `loading`; empty otherwise. */
+  detail: string;
 }
 
 /** A tool the model may call. `parameters` is a JSON Schema object describing the arguments. */

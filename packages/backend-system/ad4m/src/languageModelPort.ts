@@ -1,5 +1,10 @@
-import type { Ad4mClient } from '@coasys/ad4m';
-import type { ConversationReply, ConversationRequest, LanguageModelPort } from '@we/backend-shared';
+import type { Ad4mClient, AIModel } from '@coasys/ad4m';
+import type {
+  ConversationReply,
+  ConversationRequest,
+  LanguageModelPort,
+  LanguageModelStatus,
+} from '@we/backend-shared';
 
 import { readChatStream, toOpenAiMessages, toOpenAiTools } from './openaiChat';
 
@@ -73,10 +78,71 @@ export function createAd4mLanguageModelPort(
       }
       return client.ai.prompt(task.taskId, input);
     },
+
+    status: () => defaultModelStatus(client),
   };
 
   if (connection) port.converse = (request) => converse(connection, request);
   return port;
+}
+
+/**
+ * The default LLM, and whether it can answer — without prompting it.
+ *
+ * A local model reports its own download and load progress. A remote one is checked by asking its
+ * endpoint which models it serves, through the node, which costs no tokens and fails the ways a
+ * completion would: a refused key, an unreachable host, a model id the service does not offer.
+ * Where the client predates model discovery a remote model is `unchecked` rather than assumed fine.
+ */
+async function defaultModelStatus(client: Ad4mClient): Promise<LanguageModelStatus> {
+  let model: AIModel | undefined;
+  try {
+    model = await client.ai.getDefaultModel('LLM');
+  } catch {
+    // No default set reads as an error from the executor; to a status line it is simply none.
+  }
+  if (!model) return { state: 'none', name: '', model: '', detail: '' };
+
+  const name = model.name;
+  if (!model.api) {
+    const build = model.local?.fileName ?? '';
+    try {
+      const loading = await client.ai.modelLoadingStatus(model.id);
+      if (loading.loaded) return { state: 'ready', name, model: build, detail: '' };
+      const detail = loading.downloaded
+        ? loading.status || 'Loading'
+        : `Downloading ${Math.round(loading.progress ?? 0)}%`;
+      return { state: 'loading', name, model: build, detail };
+    } catch (err) {
+      return { state: 'error', name, model: build, detail: messageOf(err) };
+    }
+  }
+
+  const { baseUrl, apiKey, model: id, apiType } = model.api;
+  const ai = client.ai as unknown as {
+    discoverModels?: (baseUrl: string, apiKey?: string, apiType?: string) => Promise<string[]>;
+  };
+  if (typeof ai.discoverModels !== 'function') return { state: 'unchecked', name, model: id, detail: '' };
+
+  try {
+    const offered = await ai.discoverModels(baseUrl, apiKey || undefined, String(apiType));
+    // A listing names dated versions (`claude-x-20250929`) that an alias (`claude-x`) resolves to.
+    const listed = offered.some((candidate) => candidate === id || candidate.startsWith(`${id}-`));
+    if (offered.length && !listed) {
+      return { state: 'error', name, model: id, detail: `The service does not list a model called ${id}` };
+    }
+    return { state: 'ready', name, model: id, detail: '' };
+  } catch (err) {
+    // Discovery needs the AI CREATE grant. A guest without it has asked a question it may not ask,
+    // which says nothing about the model — so that is unchecked, not broken.
+    if (/capabilit|forbidden|unauthori/i.test(messageOf(err)))
+      return { state: 'unchecked', name, model: id, detail: '' };
+    return { state: 'error', name, model: id, detail: messageOf(err) };
+  }
+}
+
+function messageOf(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 /**

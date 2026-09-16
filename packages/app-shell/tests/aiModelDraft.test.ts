@@ -154,6 +154,21 @@ describe('describeModel', () => {
 });
 
 describe('remote API presets', () => {
+  it('opens a model on the service its endpoint matches, or custom for one none describes', () => {
+    const anthropic = draftFrom(
+      model({
+        source: { kind: 'api', protocol: 'anthropic', baseUrl: 'https://api.anthropic.com', apiKey: 'k', model: 'm' },
+      }),
+    );
+    const gateway = draftFrom(
+      model({
+        source: { kind: 'api', protocol: 'anthropic', baseUrl: 'https://llm.corp.example', apiKey: 'k', model: 'm' },
+      }),
+    );
+    expect(anthropic.apiService).toBe('anthropic');
+    expect(gateway.apiService).toBe('custom');
+  });
+
   it('recognises an endpoint as the preset it matches, trailing slash or not', () => {
     expect(matchingApiPreset({ apiProtocol: 'anthropic', apiBaseUrl: 'https://api.anthropic.com/' })).toBe('anthropic');
     expect(matchingApiPreset({ apiProtocol: 'openai', apiBaseUrl: 'https://openrouter.ai/api/v1' })).toBe('openrouter');

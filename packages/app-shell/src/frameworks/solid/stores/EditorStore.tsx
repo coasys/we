@@ -21,7 +21,7 @@ import {
   useTemplateStore,
   useThemeStore,
 } from '@solid/stores';
-import type { ConversationTurn } from '@we/backend-shared';
+import type { ConversationTurn, LanguageModelStatus } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import { ChatMessage as ChatMessageRecord, ChatSession as ChatSessionRecord } from '@we/entities';
 import type { DockEdge, DockSize } from '@we/module-shared';
@@ -71,6 +71,13 @@ export interface EditorStore {
    * gates on — and says so, rather than hiding — when it is false.
    */
   assistantAvailable: Accessor<boolean>;
+  /**
+   * Which model answers the chat and whether it can right now — checked when the panel opens and
+   * after a failed send, without spending tokens. Null until the first check.
+   */
+  assistantStatus: Accessor<LanguageModelStatus | null>;
+  /** Check again — after changing models in settings, or to see whether a failure has cleared. */
+  refreshAssistant: () => Promise<void>;
 
   // --- Template context ---
   templateName: Accessor<string>;
@@ -270,18 +277,35 @@ export function EditorStoreProvider(props: ParentProps) {
   */
   const languageModel = () => session.backendPorts()?.languageModel;
   const [nodeHasModel, setNodeHasModel] = createSignal(false);
-  createEffect(() => {
+  const [assistantStatus, setAssistantStatus] = createSignal<LanguageModelStatus | null>(null);
+  const assistantAvailable = () => nodeHasModel() && !!languageModel()?.converse;
+
+  /*
+    Asked again rather than once at boot: models are added and swapped in settings while the app
+    runs, and a chat panel that only learned about the node on startup went on saying "no model"
+    after one was added.
+  */
+  async function refreshAssistant(): Promise<void> {
     const port = languageModel();
     if (!port?.converse) {
       setNodeHasModel(false);
+      setAssistantStatus(null);
       return;
     }
-    void port
-      .available()
-      .then(setNodeHasModel)
-      .catch(() => setNodeHasModel(false));
+    const [available, status] = await Promise.all([
+      port.available().catch(() => false),
+      port.status?.().catch(() => null) ?? Promise.resolve(null),
+    ]);
+    setNodeHasModel(available);
+    setAssistantStatus(status);
+  }
+
+  createEffect(() => {
+    // When the port arrives — so the answer is ready before anyone opens the chat — and each time
+    // the panel opens, since that is when a stale answer would be read.
+    languageModel();
+    if (isOpen() || !assistantStatus()) void refreshAssistant();
   });
-  const assistantAvailable = () => nodeHasModel() && !!languageModel()?.converse;
 
   // --- Session management ---
   const [sessions, setSessions] = createSignal<ChatSessionRecord[]>([]);
@@ -894,6 +918,9 @@ export function EditorStoreProvider(props: ParentProps) {
       await sendViaNode(text);
     } catch (err) {
       console.error('[EditorStore] sendMessage caught error:', err);
+      // A failure is often the model's — a revoked key, a removed default — so the status line
+      // should stop claiming it is fine.
+      void refreshAssistant();
       const errorText = err instanceof Error ? err.message : 'Unknown error';
       setMessages((prev) => [...prev, createMessage('assistant', `Error: ${errorText}`)]);
     } finally {
@@ -1199,6 +1226,9 @@ export function EditorStoreProvider(props: ParentProps) {
     // Include prior conversation (skip system messages)
     for (const msg of messages()) {
       if (msg.role === 'system') continue;
+      // The request being sent is already in the list, marked `sending`, and goes last below with
+      // the schema attached. Reading it here too sent every request to the model twice.
+      if (msg.status === 'sending') continue;
       if (msg.role === 'user') {
         history.push({
           role: 'user',
@@ -1338,6 +1368,8 @@ export function EditorStoreProvider(props: ParentProps) {
     isStreaming,
     streamingContent,
     assistantAvailable,
+    assistantStatus,
+    refreshAssistant,
 
     // Template context
     templateName,

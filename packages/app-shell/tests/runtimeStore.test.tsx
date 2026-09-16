@@ -341,19 +341,24 @@ describe('AI models', () => {
     return { port, calls };
   }
 
-  it('fills the endpoint from a preset, and knows which preset it is on', () => {
+  it('sets protocol and URL from a named service, and keeps them as a starting point for a custom one', () => {
     ports = { runtime: aiPort().port };
     const store = mount();
 
     store.newAiModel();
     store.setAiFormField('sourceKind', 'api');
-    store.applyAiApiPreset('anthropic');
+    store.setAiService('anthropic');
+    expect(store.aiForm()).toMatchObject({
+      apiService: 'anthropic',
+      apiProtocol: 'anthropic',
+      apiBaseUrl: 'https://api.anthropic.com',
+    });
 
-    expect(store.aiForm()).toMatchObject({ apiProtocol: 'anthropic', apiBaseUrl: 'https://api.anthropic.com' });
-    expect(store.aiApiPreset()).toBe('anthropic');
-
-    store.setAiFormField('apiBaseUrl', 'https://gateway.example/anthropic');
-    expect(store.aiApiPreset()).toBe('');
+    // Custom must stay custom while the fields still hold a preset's values, or choosing it would
+    // hide the very fields it exists to show.
+    store.setAiService('custom');
+    expect(store.aiForm()).toMatchObject({ apiService: 'custom', apiProtocol: 'anthropic' });
+    expect(store.aiServiceOptions().at(-1)).toEqual({ label: 'Custom endpoint', value: 'custom' });
   });
 
   it('offers no model listing where the backend cannot ask', () => {
@@ -374,7 +379,7 @@ describe('AI models', () => {
 
     store.newAiModel();
     store.setAiFormField('sourceKind', 'api');
-    store.applyAiApiPreset('anthropic');
+    store.setAiService('anthropic');
     store.setAiFormField('apiKey', 'sk-ant');
     await store.discoverAiModels();
 

@@ -2520,6 +2520,7 @@ EditorStore:
   - isStreaming: boolean — an assistant reply is arriving; streamingContent holds what has arrived so far
   - streamingContent: string — the partial assistant reply while isStreaming, empty otherwise
   - assistantAvailable: boolean — the node has a language model the editor can hold a conversation with, so sendMessage can work. Configured in Settings → AI. Gate the composer on it and say what is missing rather than hiding it
+  - assistantStatus: { state: 'ready' | 'loading' | 'error' | 'unchecked' | 'none', name, model, detail } | null — which model answers the chat and whether it can right now, checked without spending tokens when the panel opens and after a failed send. `unchecked` means the backend could not ask, not that it failed; `detail` says why for error and loading
   - templateName: string — the name of the template being edited, for the editor’s own header
   - templateIcon: string — its icon
   - isReadOnly: boolean — the template on screen cannot be saved in place (a built-in, or somebody else's). Edits buffer as pending changes; offer Fork rather than Save. Answers for the template rendered, so do not use it to gate per-row controls in a list — switcherGroups carries `editable` per row
@@ -2548,6 +2549,7 @@ EditorStore:
   - editorDockSize: DockSize — the opening size every editor panel shares ('sm' | 'md' | 'lg' | 'full')
   - editorDockFloat: boolean — editor panels open floating over the content rather than pushing it aside
 - Actions:
+  - refreshAssistant(): checks the chat’s model again — after changing models in settings, or to see whether a failure has cleared
   - newChat(): starts a new AI session for this template and switches to it
   - switchSession(sessionId: string): shows another saved session
   - deleteSession(sessionId: string): deletes a saved session and its messages
@@ -2694,8 +2696,7 @@ RuntimeStore:
   - aiForm: AiModelForm | null — the model form while it is open, null when closed. One flat field per input; read with runtimeStore.aiForm.<field>
   - aiPresetOptions: { label, value }[] — model names the backend can fetch itself, for the open form kind
   - aiFormComplete: boolean — the open form has every field its chosen source needs
-  - aiApiPresetOptions: { label, value }[] — known remote services (Anthropic, OpenAI, OpenRouter…) for a we-select; pass the value to applyAiApiPreset
-  - aiApiPreset: string — the preset the open form's protocol and base URL match, or empty for an endpoint somebody typed. The preset select's value
+  - aiServiceOptions: { label, value }[] — the remote services a model can be reached through (Anthropic, OpenAI, OpenRouter…) plus 'Custom endpoint', for a we-select bound to aiForm.apiService. Pass the value to setAiService. Show the protocol and base URL fields only while aiForm.apiService == 'custom'
   - canDiscoverAiModels: boolean — the backend can ask a remote endpoint which models it serves. Gate a "List models" control on it; where it is false, the model id is typed
   - aiDiscoveredModelOptions: { label, value }[] — the models the open form's endpoint said it serves, for a we-select. Empty until discoverAiModels() answers, and empty again once the protocol, URL or key changes
   - aiFormDirty: boolean — the open form has been edited since it opened. What a discard guard reads; compared against a snapshot taken on open, so looking at a model's settings and closing again asks nothing
@@ -2722,7 +2723,7 @@ RuntimeStore:
   - newAiModel(): opens the model form empty, for a new model
   - editAiModel(id: string): opens the model form on an existing model
   - setAiFormField(field: string, value: string | boolean): sets one field of the open model form. Takes the field name so one action serves every input
-  - applyAiApiPreset(id: string): fills the open form's protocol and base URL from a preset. Both stay editable
+  - setAiService(id: string): chooses the open form's service. A named one sets the protocol and base URL; 'custom' keeps what the form holds for editing
   - discoverAiModels(): asks the open form's endpoint which models it serves, through the node — also the check that the key works. A refusal lands in error; an empty model field takes the first model
   - closeAiForm(): closes the model form, discarding it
   - saveAiModel(): saves the open form — adds or updates depending on whether it has an id

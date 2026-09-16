@@ -3,7 +3,7 @@ import { tokenVar } from '@we/design-utils';
 import { PANEL_TITLE_PROPS } from '@we/schema-kit';
 import { createEffect, createSignal, For, Show } from 'solid-js';
 
-import type { EditorChatMessage as ChatMessage } from '../host';
+import type { EditorAssistantStatus, EditorChatMessage as ChatMessage } from '../host';
 import { useEditorHost } from '../host';
 
 export function AiPanel() {
@@ -52,9 +52,12 @@ export function AiPanel() {
       tabIndex={0}
     >
       {/* Header */}
-      <Row ax="between" ay="center" px="300" py="300" flexShrink="0">
-        <we-text {...PANEL_TITLE_PROPS}>AI Chat</we-text>
-        <Row ay="center" gap="100">
+      <Row ax="between" ay="center" gap="200" px="300" py="300" flexShrink="0">
+        <Row ay="center" gap="300" minWidth="0">
+          <we-text {...PANEL_TITLE_PROPS}>AI Chat</we-text>
+          <AssistantStatus />
+        </Row>
+        <Row ay="center" gap="100" flexShrink="0">
           <we-tooltip content="New chat session">
             <we-button variant="ghost" size="sm" onClick={() => session.newChat()}>
               <we-icon name="file-plus" size="sm" />
@@ -179,6 +182,56 @@ export function AiPanel() {
         </we-button>
       </Row>
     </Column>
+  );
+}
+
+const STATUS_COLOR: Record<EditorAssistantStatus['state'], string> = {
+  ready: 'success-text',
+  loading: 'warning-text',
+  error: 'danger-text',
+  unchecked: 'text-faint',
+  none: 'text-faint',
+};
+
+/**
+ * Which model is answering, and whether it can — before a message is sent rather than after it
+ * fails. A press checks again, which is what somebody does after fixing a key in settings.
+ *
+ * Nothing for `none`: the notice below the header already says there is no model, in words.
+ */
+function AssistantStatus() {
+  const session = useEditorHost().session;
+  const status = () => session.assistantStatus();
+
+  const explanation = () => {
+    const current = status();
+    if (!current) return '';
+    const again = 'Click to check again.';
+    switch (current.state) {
+      case 'ready':
+        return `Ready — ${current.model}. ${again}`;
+      case 'loading':
+        return `${current.detail || 'Loading'}. ${again}`;
+      case 'error':
+        return `${current.detail} ${again}`;
+      default:
+        return `${current.model} — not checked: this app cannot ask the service yet. ${again}`;
+    }
+  };
+
+  return (
+    <Show when={status() && status()!.state !== 'none'}>
+      <we-tooltip content={explanation()}>
+        <we-button variant="bare" minWidth="0" onClick={() => void session.refreshAssistant()}>
+          <Row ay="center" gap="100" minWidth="0">
+            <Column width="8px" height="8px" r="full" flexShrink="0" bg={STATUS_COLOR[status()!.state]} />
+            <we-text variant="footnote" color="text-muted" truncate>
+              {status()!.name}
+            </we-text>
+          </Row>
+        </we-button>
+      </we-tooltip>
+    </Show>
   );
 }
 

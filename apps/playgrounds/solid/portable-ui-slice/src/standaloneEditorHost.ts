@@ -154,6 +154,8 @@ export function createStandaloneEditorHost(initial: TemplateSchema): {
       isStreaming: () => false,
       streamingContent: () => '',
       assistantAvailable: () => false,
+      assistantStatus: () => null,
+      refreshAssistant: () => {},
       sendMessage: notImplemented('sendMessage'),
       clearHistory: () => {},
       sessions: () => [],

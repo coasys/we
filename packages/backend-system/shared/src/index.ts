@@ -199,6 +199,7 @@ export type {
   ConversationToolCall,
   ConversationTurn,
   LanguageModelPort,
+  LanguageModelStatus,
 } from './languageModel';
 export type {
   TranscriptionModelOffer,

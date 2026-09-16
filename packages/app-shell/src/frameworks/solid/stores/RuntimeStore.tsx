@@ -27,11 +27,11 @@ import {
   AI_API_PRESETS,
   type AiModelForm,
   type AiModelView,
+  CUSTOM_SERVICE,
   describeModel,
   draftFrom,
   EMPTY_FORM,
   formComplete,
-  matchingApiPreset,
   toDraft,
 } from '@solid/stores/aiModelDraft';
 import { useSessionStore } from '@solid/stores/SessionStore';
@@ -90,10 +90,11 @@ export interface RuntimeStore {
   aiPresetOptions: Accessor<{ label: string; value: string }[]>;
   /** True when the open form has every field its chosen source needs. */
   aiFormComplete: Accessor<boolean>;
-  /** Known remote endpoints for a we-select — choosing one fills in the protocol and base URL. */
-  aiApiPresetOptions: Accessor<{ label: string; value: string }[]>;
-  /** The preset the open form's endpoint matches, or empty for one somebody typed. */
-  aiApiPreset: Accessor<string>;
+  /**
+   * The remote services a model can be reached through, plus "Custom endpoint", for a we-select on
+   * `aiForm.apiService`. A named service sets the protocol and base URL itself.
+   */
+  aiServiceOptions: Accessor<{ label: string; value: string }[]>;
   /** The backend can ask a remote endpoint which models it serves. */
   canDiscoverAiModels: Accessor<boolean>;
   /**
@@ -152,8 +153,8 @@ export interface RuntimeStore {
   editAiModel: (id: string) => void;
   /** Set one form field. Takes the field name so one action serves every input. */
   setAiFormField: (field: string, value: string | boolean) => void;
-  /** Fill the open form's protocol and base URL from a preset. */
-  applyAiApiPreset: (id: string) => void;
+  /** Choose the open form's service — a preset, which sets protocol and base URL, or `custom`. */
+  setAiService: (id: string) => void;
   /** Ask the open form's endpoint which models it serves. Doubles as the check that the key works. */
   discoverAiModels: () => Promise<void>;
   closeAiForm: () => void;
@@ -272,11 +273,10 @@ export function RuntimeStoreProvider(props: ParentProps) {
     return !!form && formComplete(form);
   });
 
-  const aiApiPresetOptions = () => AI_API_PRESETS.map((preset) => ({ label: preset.label, value: preset.id }));
-  const aiApiPreset = createMemo(() => {
-    const form = aiForm();
-    return form ? matchingApiPreset(form) : '';
-  });
+  const aiServiceOptions = () => [
+    ...AI_API_PRESETS.map((preset) => ({ label: preset.label, value: preset.id })),
+    { label: 'Custom endpoint', value: CUSTOM_SERVICE },
+  ];
 
   /**
    * A discovered list, with the endpoint it was asked of.
@@ -597,10 +597,14 @@ export function RuntimeStoreProvider(props: ParentProps) {
     setAiForm((form) => (form ? { ...form, [field]: value } : form));
   }
 
-  function applyAiApiPreset(id: string): void {
+  function setAiService(id: string): void {
     const preset = AI_API_PRESETS.find((candidate) => candidate.id === id);
-    if (!preset) return;
-    setAiForm((form) => (form ? { ...form, apiProtocol: preset.protocol, apiBaseUrl: preset.baseUrl } : form));
+    setAiForm((form) => {
+      if (!form) return form;
+      // Custom keeps whatever protocol and URL the form holds, as a starting point to edit.
+      if (!preset) return { ...form, apiService: CUSTOM_SERVICE };
+      return { ...form, apiService: preset.id, apiProtocol: preset.protocol, apiBaseUrl: preset.baseUrl };
+    });
   }
 
   async function discoverAiModels(): Promise<void> {
@@ -796,8 +800,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
     aiPresetOptions,
     aiFormComplete,
     aiFormDirty,
-    aiApiPresetOptions,
-    aiApiPreset,
+    aiServiceOptions,
     canDiscoverAiModels,
     aiDiscoveredModelOptions,
     languages,
@@ -817,7 +820,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
     newAiModel,
     editAiModel,
     setAiFormField,
-    applyAiApiPreset,
+    setAiService,
     discoverAiModels,
     closeAiForm,
     saveAiModel,

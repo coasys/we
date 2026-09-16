@@ -30,6 +30,11 @@ export interface AiModelForm {
   kind: AiModelKind;
   sourceKind: AiSourceKind;
   presetName: string;
+  /**
+   * Which service the endpoint is — a preset's id, or `custom`. Held rather than derived from the
+   * URL, so choosing "Custom endpoint" shows its fields even while they still hold a preset's values.
+   */
+  apiService: string;
   apiProtocol: AiApiProtocol;
   apiBaseUrl: string;
   apiKey: string;
@@ -50,6 +55,7 @@ export const EMPTY_FORM: AiModelForm = {
   sourceKind: 'preset',
   presetName: '',
   // The default the launcher offers, and the one endpoint most users will paste a key for.
+  apiService: 'openai',
   apiProtocol: 'openai',
   apiBaseUrl: 'https://api.openai.com/v1',
   apiKey: '',
@@ -73,6 +79,7 @@ export function draftFrom(model: AiModel): AiModelForm {
   if (source.kind === 'api') {
     form.apiProtocol = source.protocol;
     form.apiBaseUrl = source.baseUrl;
+    form.apiService = matchingApiPreset(form) || CUSTOM_SERVICE;
     form.apiKey = source.apiKey;
     form.apiModel = source.model;
     return form;
@@ -156,9 +163,10 @@ export function formComplete(form: AiModelForm): boolean {
 /**
  * Endpoints worth not typing, for the remote-API form.
  *
- * A starting point and nothing more: choosing one fills in the protocol and base URL, and both stay
- * editable. Kept to services whose URL is stable and public — anything self-hosted beyond a local
- * Ollama is somebody's own address, which no list here could know.
+ * Choosing one sets the protocol and base URL, and the form asks for neither. Protocol and URL are
+ * genuinely two facts — OpenRouter serves Claude over the OpenAI protocol, and a LiteLLM or company
+ * gateway speaks Anthropic's from its own address — but only an endpoint no preset describes needs
+ * both said, which is what `custom` is for. Kept to services whose URL is stable and public.
  */
 export const AI_API_PRESETS: { id: string; label: string; protocol: AiApiProtocol; baseUrl: string }[] = [
   { id: 'anthropic', label: 'Anthropic', protocol: 'anthropic', baseUrl: 'https://api.anthropic.com' },
@@ -175,6 +183,9 @@ export const AI_API_PRESETS: { id: string; label: string; protocol: AiApiProtoco
   // Ollama protocol on the node lifts that.
   { id: 'ollama', label: 'Ollama on the node’s machine', protocol: 'openai', baseUrl: 'http://localhost:11434/v1' },
 ];
+
+/** The service choice for an endpoint no preset describes, where protocol and URL are asked for. */
+export const CUSTOM_SERVICE = 'custom';
 
 /** The preset an endpoint matches, or empty for one somebody typed. */
 export function matchingApiPreset(form: Pick<AiModelForm, 'apiProtocol' | 'apiBaseUrl'>): string {

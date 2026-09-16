@@ -5711,6 +5711,10 @@
         "assistantAvailable": {
           "type": "boolean"
         },
+        "assistantStatus": {
+          "type": "object",
+          "properties": ["state", "name", "model", "detail"]
+        },
         "templateName": {
           "type": "string"
         },
@@ -5794,6 +5798,7 @@
         }
       },
       "actions": [
+        "refreshAssistant",
         "newChat",
         "switchSession",
         "deleteSession",
@@ -6056,6 +6061,7 @@
             "kind",
             "sourceKind",
             "presetName",
+            "apiService",
             "apiProtocol",
             "apiBaseUrl",
             "apiKey",
@@ -6077,12 +6083,9 @@
         "aiFormComplete": {
           "type": "boolean"
         },
-        "aiApiPresetOptions": {
+        "aiServiceOptions": {
           "type": "array",
           "properties": ["label", "value"]
-        },
-        "aiApiPreset": {
-          "type": "string"
         },
         "canDiscoverAiModels": {
           "type": "boolean"
@@ -6156,7 +6159,7 @@
         "newAiModel",
         "editAiModel",
         "setAiFormField",
-        "applyAiApiPreset",
+        "setAiService",
         "discoverAiModels",
         "closeAiForm",
         "saveAiModel",

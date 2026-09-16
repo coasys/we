@@ -178,44 +178,63 @@ const modelForm: SchemaNode = {
         whenSource('api', [
           {
             type: 'we-form-field',
-            props: { label: 'Service', description: 'Fills in the two fields below. Both stay editable.' },
+            props: { label: 'Service' },
             children: [
               {
                 type: 'we-select',
                 props: {
-                  value: { $: 'runtimeStore.aiApiPreset' },
-                  placeholder: 'Another endpoint',
-                  options: { $: 'runtimeStore.aiApiPresetOptions' },
-                  onChange: { $action: 'runtimeStore.applyAiApiPreset', args: [{ $: 'event.detail' }] },
+                  value: { $: 'runtimeStore.aiForm.apiService' },
+                  options: { $: 'runtimeStore.aiServiceOptions' },
+                  onChange: { $action: 'runtimeStore.setAiService', args: [{ $: 'event.detail' }] },
                 },
               },
             ],
           },
+          /*
+            Protocol and URL only for an endpoint no service describes. They are two facts — OpenRouter
+            serves Claude over the OpenAI protocol, a gateway speaks Anthropic's from its own address —
+            but a named service settles both, and showing them beside it let the two disagree.
+          */
           {
-            type: 'we-form-field',
+            type: '$if',
             props: {
-              label: 'Protocol',
-              // Most services speak OpenAI's format; Anthropic's own is what carries prompt caching and
-              // native tool calls for Claude, so it is worth choosing where it is on offer.
-              description: {
-                $: "runtimeStore.aiForm.apiProtocol == 'anthropic' ? 'Claude’s own API — prompt caching and native tool calls.' : 'The format OpenAI, OpenRouter, Groq, Gemini and local servers share.'",
+              condition: { $: "runtimeStore.aiForm.apiService == 'custom'" },
+              then: {
+                type: 'Column',
+                props: { gap: '300' },
+                children: [
+                  {
+                    type: 'we-form-field',
+                    props: {
+                      label: 'Protocol',
+                      // Most services speak OpenAI's format; Anthropic's own is what carries prompt caching and
+                      // native tool calls for Claude, so it is worth choosing where it is on offer.
+                      description: {
+                        $: "runtimeStore.aiForm.apiProtocol == 'anthropic' ? 'Claude’s own API — prompt caching and native tool calls.' : 'The format OpenAI, OpenRouter, Groq, Gemini and local servers share.'",
+                      },
+                    },
+                    children: [
+                      {
+                        type: 'we-select',
+                        props: {
+                          value: { $: 'runtimeStore.aiForm.apiProtocol' },
+                          options: [
+                            { label: 'OpenAI-compatible', value: 'openai' },
+                            { label: 'Anthropic', value: 'anthropic' },
+                          ],
+                          onChange: {
+                            $action: 'runtimeStore.setAiFormField',
+                            args: ['apiProtocol', { $: 'event.detail' }],
+                          },
+                        },
+                      },
+                    ],
+                  },
+                  field('Base URL', 'apiBaseUrl', 'https://gateway.example.com/v1'),
+                ],
               },
             },
-            children: [
-              {
-                type: 'we-select',
-                props: {
-                  value: { $: 'runtimeStore.aiForm.apiProtocol' },
-                  options: [
-                    { label: 'OpenAI-compatible', value: 'openai' },
-                    { label: 'Anthropic', value: 'anthropic' },
-                  ],
-                  onChange: { $action: 'runtimeStore.setAiFormField', args: ['apiProtocol', { $: 'event.detail' }] },
-                },
-              },
-            ],
           },
-          field('Base URL', 'apiBaseUrl', 'https://api.openai.com/v1'),
           // The key is stored by the backend and sent to the provider; masking it here only stops
           // it being read over a shoulder, which is the threat that applies to a settings page.
           field('API key', 'apiKey', 'sk-…', 'password'),
