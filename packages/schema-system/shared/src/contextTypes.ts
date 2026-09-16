@@ -127,6 +127,54 @@ export interface ContextData {
   pluginCatalogs?: PluginCatalog[];
   /** Functions the host lends to expressions beyond the built-in library — see {@link SourceEntry}. */
   sources?: SourceEntry[];
+  /**
+   * The feature modules this deployment ships, and everything a schema may name of each — see
+   * {@link ModuleCatalogEntry}. Absent when the context was built without a seed, in which case
+   * `modules.*` references are admitted unchecked, as they always were.
+   */
+  modules?: ModuleCatalogEntry[];
+}
+
+/**
+ * One feature module, as a schema author sees it.
+ *
+ * Everything here used to be invisible to both the validator and the generated reference: a module's
+ * store members, its parts, its panel names, its settings keys, the components it contributes and
+ * the functions it lends. So `modules.transcribe.typo` validated clean and rendered nothing, and an
+ * LLM writing a template could not author against any module at all. This is the catalogue — read
+ * off the definitions the seed names, so it cannot drift from what registers.
+ */
+export interface ModuleCatalogEntry {
+  id: string;
+  name: string;
+  description?: string;
+  icon?: string;
+  scope: 'space' | 'agent';
+  /** What it needs from a host — its manifest's `requires`. */
+  requires: { backends?: string[]; frameworks?: string[]; kernels?: string[]; permissions?: string[] };
+  /** What a person agrees to, derived. */
+  capabilities: string[];
+  /** The store's public members — `modules.<id>.<name>` — with what each is and means. */
+  members: { name: string; kind: 'state' | 'action'; doc: string }[];
+  /** Fragments a template may place with `$part` as `<id>.<name>`. */
+  parts: { name: string; subject?: string }[];
+  /** Panels, by the name `meta.panels[].dock` addresses. */
+  panels: { name: string; title: string; icon?: string; hostOwned: boolean }[];
+  /** Rail entries that are not a panel's. */
+  launchers: { key: string; label: string }[];
+  settings: { key: string; label: string; description?: string; type: string; levels: string[] }[];
+  /** Presence activity shapes, by type. */
+  activities: Record<string, Record<string, string>>;
+  /** Framework components, by the name a template mounts them under. */
+  components: string[];
+  /** Functions lent to expressions — listed with the host's own. */
+  functions: SourceEntry[];
+  /** Sections a space may enable. */
+  views: { id: string; name: string; segment?: string }[];
+  /** Content types, by the `_type` a composed block carries. */
+  blocks: { entity: string; nodeType: string; card: string }[];
+  /** Entities the module declares — queryable like any core model. */
+  entities: EntityEntry[];
 }
 
 /**

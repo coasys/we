@@ -203,7 +203,7 @@ export function TemplateLayout(
 
     Registered from here rather than published by the template, because a template is data and has
     no store to publish from. The host reads the declaration and folds it into the same sum a
-    module's `chromeReserve` lands in — see `moduleChrome` in ShellStore.
+    module's declared reserve lands in — see `moduleChrome` in ShellStore.
 
     Keyed on the template, and withdrawn on unmount: a shell that stops declaring a bar must stop
     reserving the band, or every panel keeps dodging chrome that is not there any more.

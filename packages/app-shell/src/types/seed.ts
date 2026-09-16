@@ -7,6 +7,24 @@
 
 import type { SchemaNode } from '@we/schema-shared';
 
+/**
+ * One module a deployment ships, when a bare id is not enough to say.
+ *
+ * `package` names the npm package the module's `createModule` factory comes from, for a module that
+ * is not one of this monorepo's own — the deployment adds the package, names it here, and rebuilds.
+ * Omitted, the id resolves to `@we/module-<id>`.
+ */
+export interface WeSeedModule {
+  id: string;
+  /** The package exporting `createModule`. Defaults to `@we/module-<id>`. */
+  package?: string;
+  /**
+   * Whether a space that has never decided has this module on. Defaults to true. `false` ships the
+   * module for communities to opt into without putting it in every existing space at once.
+   */
+  enabled?: boolean;
+}
+
 export interface WeSeedFile {
   /** Project metadata */
   project: {
@@ -25,17 +43,20 @@ export interface WeSeedFile {
   };
 
   /**
-   * Feature modules this deployment ships, by module id.
+   * Feature modules this deployment ships, by module id — or as an entry naming more.
    *
-   * A deployment declaring what it includes is what the seed is *for* — "which modules to include" is
-   * already in its stated purpose. Ids here are matched against the bundled module set at boot; an id
-   * with no bundled module is reported rather than ignored, since a silently missing module surfaces
-   * later as an unexplained missing component.
+   * A deployment declaring what it includes is what the seed is *for*. Ids are matched against the
+   * bundled module set at boot; an id with no bundled module is reported rather than ignored, since a
+   * silently missing module surfaces later as an unexplained missing component.
    *
-   * Bundled only for now. When modules become installable, this stays the deployment-level list and
-   * `AgentSettings.installedModules` / `Space.enabledModules` carry the per-agent and per-space halves.
+   * **The order is the module rail's order.** And the list is what `pnpm --filter @we/app-shell
+   * generate-modules` bundles: an unlisted module leaves the build rather than merely the rail.
+   *
+   * `AgentSettings.installedModules` and `Space.enabledModules` carry the per-agent and per-space
+   * halves; `enabled: false` here is what a space starts with for a module the deployment ships for
+   * people to opt into. See {@link WeSeedModule}.
    */
-  modules?: string[];
+  modules?: Array<string | WeSeedModule>;
 
   /**
    * What this deployment believes each capability's settings should start as.

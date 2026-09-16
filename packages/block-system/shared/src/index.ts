@@ -40,12 +40,13 @@ export {
   shiftMarks,
   utf16ToCp,
 } from './marks';
-export type { BlockRegistration } from './registry';
+export type { BlockEntityStatic, BlockRegistration } from './registry';
 export {
   getBlockRecord,
   getBlockRegistration,
   getRegisteredBlockEntities,
   registerBlock,
+  unregisterBlock,
   updateBlockRegistration,
 } from './registry';
 export { registerCoreBlocks } from './core-blocks';

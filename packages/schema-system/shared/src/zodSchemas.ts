@@ -246,6 +246,8 @@ export const zTemplateMeta: z.ZodType<TemplateMeta> = z
     segment: z.string().optional(),
     /** A view that stays mounted across sibling navigation. See `TemplateMeta.keepAlive`. */
     keepAlive: z.boolean().optional(),
+    /** The modules this interface reaches by name. See `TemplateMeta.requires`. */
+    requires: z.object({ modules: z.array(z.string()).optional() }).optional(),
     /** Fixed chrome this shell paints, for floating panels to clear. See `TemplateMeta.chromeReserve`. */
     chromeReserve: z
       .object({

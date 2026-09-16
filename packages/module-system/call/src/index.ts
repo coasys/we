@@ -23,7 +23,7 @@
  * - **No SFU.** Mesh only, so roughly four to six participants — see `mesh.ts`.
  * - **No camera *and* screen at once.** Sharing replaces the camera track — see `media.ts`.
  */
-import { defineModule, type ModuleStoreDeps } from '@we/module-shared';
+import { defineModule, type ModuleHost } from '@we/module-shared';
 /*
   A compile-time dependency, and the only kind a module may have on a shape.
 
@@ -49,7 +49,7 @@ export {
   parseCallMessage,
   recordCallId,
 } from './protocol';
-export { type CallDockEdge, type CallTile, type CallTileState, createCallStore } from './store';
+export { type CallTile, type CallTileState, createCallStore } from './store';
 
 /**
  * How far the call's chrome sits off the bottom edge.
@@ -73,7 +73,8 @@ export { type CallDockEdge, type CallTile, type CallTileState, createCallStore }
  *
  * The stage no longer derives an offset from this. It used to: a second constant here restated the
  * bar's height so the two would stack, which is a relationship nothing enforced. The stage is a
- * *dock* now, and where a dock lands is the host's business — see `docks` at the bottom of this file.
+ * *panel* now, and where a panel lands is the host's business — see `contributes.panels` at the
+ * bottom of this file.
  */
 const CALL_BAR_INSET = '10px';
 
@@ -654,7 +655,8 @@ const tile: SchemaNode = {
  * `right: '72px'`, a hardcoded copy of the module rail's width that nothing kept in step, and a
  * `38vh` height that turned out to be a floor rather than a ceiling. Where the panel sits, how big
  * it is, and whether it insets the app or floats over it are all the host's now — this module only
- * says which edge and how much, through the store keys named in `docks` below.
+ * says which edge and how much, through the opening bid the panel declaration names (`stageBid`) —
+ * see `contributes.panels` below.
  *
  * `overflow: hidden`, not `auto`, and that is a statement rather than a detail: the grid divides a
  * definite box, so content that does not fit is a bug to be seen rather than a scrollbar to be
@@ -686,18 +688,18 @@ const stage: SchemaNode = {
 
         Every other panel opens with `panelHeader` — see `@we/schema-kit`. This one draws pictures of
         people, which need every pixel of the panel they are given, and the height maths is exact:
-        `dockAspect` subtracts `STAGE_PADDING_PX` and `STAGE_GAP_PX` so that "fit to content" lands
-        on a box the tiles fit rather than one that squeezes them, and a header row is a height no
-        schema here could tell it about. A stage of faces is also the one panel nobody has to be
-        told the name of.
+        the aspect in `stageBid` subtracts `STAGE_PADDING_PX` and `STAGE_GAP_PX` so that "fit to
+        content" lands on a box the tiles fit rather than one that squeezes them, and a header row
+        is a height no schema here could tell it about. A stage of faces is also the one panel
+        nobody has to be told the name of.
       */
       type: 'Column',
       props: {
         width: '100%',
         height: '100%',
-        // `300` is 12px — `STAGE_PADDING_PX`, which `dockAspect` subtracts so that "fit to content"
-        // lands on a height that fits the pictures rather than one that squeezes them. Change it
-        // here and the constant has to follow.
+        // `300` is 12px — `STAGE_PADDING_PX`, which `stageBid`'s aspect subtracts so that "fit to
+        // content" lands on a height that fits the pictures rather than one that squeezes them.
+        // Change it here and the constant has to follow.
         p: '300',
         overflow: 'hidden',
       },
@@ -707,9 +709,9 @@ const stage: SchemaNode = {
           props: {
             width: '100%',
             height: '100%',
-            // `300` is 12px — `STAGE_GAP_PX`, which `dockAspect` subtracts alongside the wrapper's
-            // padding so that "fit to content" lands on a height that fits the pictures rather than one
-            // that squeezes them. The *solver* needs no telling: the grid reads its own gap.
+            // `300` is 12px — `STAGE_GAP_PX`, which `stageBid`'s aspect subtracts alongside the
+            // wrapper's padding so that "fit to content" lands on a height that fits the pictures rather
+            // than one that squeezes them. The *solver* needs no telling: the grid reads its own gap.
             gap: '300',
             /*
           Scrolls along the strip's axis, and only when the strip is scrolling — see `stageOverflow`.
@@ -1660,95 +1662,159 @@ const startCallButton: SchemaNode = {
 };
 
 export const callModule = defineModule({
-  id: 'call',
-  name: 'Calls',
-  description: 'Audio, video and screen share with the people in a space.',
-  icon: 'phone-call',
-
-  // Displayed at install, never scored. These three are the whole reason a user should think twice
-  // before installing a call module from a stranger.
-  capabilities: ['microphone', 'camera', 'screen-share', 'slot:dock-bottom', 'dock'],
-
-  // No `backends`: signalling goes through the ephemeral port, so this runs on anything that
-  // implements one. No `frameworks`: every piece of UI here is a fragment.
-
-  schemas: { anchoredCallButton, continueCallButton, startCallButton, tile },
-
-  // What the transcriber listens to. Declared rather than wired: this module knows it has a
-  // microphone open, and only the host knows who else might want to hear it.
-  audioSource: 'localAudio',
-
-  // Opens the control bar to other modules. Declared so the registry can report chrome aimed at an
-  // anchor nobody provides, which otherwise renders nowhere and looks like a module switched off.
-  anchors: [CALL_CONTROLS_ANCHOR, CALL_STATUS_ANCHOR],
-
-  /*
-    Drawn by the host's module rail.
-
-    `activeWhen` used to be omitted, on the grounds that this starts a call rather than toggling a
-    panel and the call bar already says one is running — a highlighted rail tab would be saying it
-    twice. Two things were wrong with that.
-
-    The rail is the surface people scan for "where am I", and it is the only chrome that is always
-    there: the bar is a strip at the bottom centre, this is a column at the right edge, and they are
-    not read at the same moment. Being in a call is the most stateful thing this app does, and it was
-    the one row of that rail that could never show it.
-
-    Worse, a launcher with no state is a launcher whose click has to mean one thing, and this one's
-    meant three — dead in the space call, and a silent teardown of any other. `goToCall` is the
-    reading that survives every state, so the button lights up and stays useful rather than becoming
-    an unlabelled hazard. `activeLabel` is what stops the tooltip describing the act it no longer
-    performs; see the store.
-  */
-  launcher: {
+  // ── Who it is ────────────────────────────────────────────────────────────
+  manifest: {
+    id: 'call',
+    name: 'Calls',
+    description: 'Audio, video and screen share with the people in a space.',
     icon: 'phone-call',
-    label: 'Start call',
-    activeLabel: 'Go to the call',
-    action: 'goToCall',
-    activeWhen: 'active',
-    availableWhen: 'canCall',
+
+    // No `backends`: signalling goes through the ephemeral port, so this runs on anything that
+    // implements one. No `frameworks`: every piece of UI here is a fragment.
+    requires: {
+      /*
+        Exactly the kernels the store reaches, and the whole of what it reaches past `signal` and
+        scope. `records` writes the call's record before anyone joins; `presence` is the roster and
+        `ephemeral` the signalling the mesh reconciles against it; `peerConnection` lends the
+        constructor the mesh used to get from a private extension on the deps bag; and `media` is
+        both how the camera and microphone are reached and how the microphone is *published* — the
+        transcriber reads `media.input()` where it used to be handed whatever `audioSource` named.
+        A kernel not listed here is absent from `deps.kernels`, so adding a reach means adding it
+        here first, which is the point.
+      */
+      kernels: ['records', 'presence', 'ephemeral', 'media', 'peerConnection'],
+      // Displayed at install, never scored. These three are the whole reason a user should think
+      // twice before installing a call module from a stranger. The rest of what used to be an
+      // authored `capabilities` list — the dock, the bottom slot — is derived from `contributes`
+      // now, so it cannot go stale.
+      permissions: ['microphone', 'camera', 'screen-share'],
+    },
   },
 
-  /*
-    A call in progress keeps its chrome wherever you go.
+  // ── What it puts in front of a person ────────────────────────────────────
+  contributes: {
+    // Named fragments an interface places. Public API — see the note on `ModuleContributions.parts`.
+    parts: { anchoredCallButton, continueCallButton, startCallButton, tile },
 
-    Module chrome is otherwise gated on the space you are looking at, which is right for chrome that
-    is *about* that space and wrong for this: a call outlives navigating away from where it started,
-    so in a space that has not enabled calls the bar vanished while the call carried on — hang-up
-    button included. Nothing was broken underneath, which is what made it read as a crash.
+    // Opens the control bar to other modules. Declared so the registry can report chrome aimed at an
+    // anchor nobody provides, which otherwise renders nowhere and looks like a module switched off.
+    anchors: [CALL_CONTROLS_ANCHOR, CALL_STATUS_ANCHOR],
 
-    `active` is false the moment the call ends, which is the condition this has to satisfy: a key
-    that stayed true would make the bar permanent.
-  */
-  holdsWhen: 'modules.call.active',
-  slots: [
-    { anchor: 'dock-bottom', node: bar, order: 100 },
-    { anchor: 'dock-bottom', node: problem, order: 80 },
     /*
-      The audio, at the same anchor as the bar rather than in the dock.
+      Drawn by the host's module rail. A launcher of its own rather than a panel's button, because
+      pressing it does more than open one panel — see `goToCall` in the store. The stage panel below
+      has no `icon` for the same reason: this is its rail entry.
 
-      Chrome, not a panel: it renders nothing and takes no room, and it has to outlive every state
-      the stage can be in — including not existing. A slot contribution is mounted for as long as the
-      shell is, which is the property the sound needs and the dock deliberately does not have.
+      `activeWhen` used to be omitted, on the grounds that this starts a call rather than toggling a
+      panel and the call bar already says one is running — a highlighted rail tab would be saying it
+      twice. Two things were wrong with that.
+
+      The rail is the surface people scan for "where am I", and it is the only chrome that is always
+      there: the bar is a strip at the bottom centre, this is a column at the right edge, and they are
+      not read at the same moment. Being in a call is the most stateful thing this app does, and it was
+      the one row of that rail that could never show it.
+
+      Worse, a launcher with no state is a launcher whose click has to mean one thing, and this one's
+      meant three — dead in the space call, and a silent teardown of any other. `goToCall` is the
+      reading that survives every state, so the button lights up and stays useful rather than becoming
+      an unlabelled hazard. `activeLabel` is what stops the tooltip describing the act it no longer
+      performs; see the store.
     */
-    { anchor: 'dock-bottom', node: audioSink, order: 60 },
-  ],
+    launchers: [
+      {
+        icon: 'phone-call',
+        label: 'Start call',
+        activeLabel: 'Go to the call',
+        action: 'goToCall',
+        activeWhen: 'active',
+        availableWhen: 'canCall',
+      },
+    ],
 
-  /**
-   * The stage, as a panel the host places rather than chrome that places itself.
-   *
-   * The distinction the bar above makes clear by contrast. Both are call chrome; only one of them
-   * should take room. You glance at the bar while doing something else, so it overlays — shrinking
-   * the app for a row of buttons would be absurd. You *watch* the stage, usually while reading the
-   * space beside it, and a panel that covers what you are reading is a panel you keep closing.
-   *
-   * Three store keys and no geometry. The module cannot see the sidebar's width, the module rail's,
-   * or the size of the window, and the previous version's `right: '72px'` was a copy of one of
-   * those that nothing kept in step. Saying "the right edge, medium" and letting the host answer is
-   * what makes the same declaration inset on a monitor and float on a laptop.
-   */
-  docks: [
-    { edge: 'dockEdge', size: 'dockSize', float: 'dockFloat', aspect: 'dockAspect', close: 'closeStage', node: stage },
-  ],
-  createStore: (deps: ModuleStoreDeps) => createCallStore(deps),
+    /*
+      A call in progress keeps its chrome wherever you go.
+
+      Module chrome is otherwise gated on the space you are looking at, which is right for chrome that
+      is *about* that space and wrong for this: a call outlives navigating away from where it started,
+      so in a space that has not enabled calls the bar vanished while the call carried on — hang-up
+      button included. Nothing was broken underneath, which is what made it read as a crash.
+
+      `active` is false the moment the call ends, which is the condition this has to satisfy: a key
+      that stayed true would make the bar permanent. A bare store key, like every other key here —
+      it was `modules.call.active`, the one field spelt as a template path.
+    */
+    holds: 'active',
+
+    // The band the bar occupies, for floating panels to keep clear of — see `chromeReserve` in the
+    // store. Named here rather than found by a magic member name, so the host reads what is declared.
+    reserve: 'chromeReserve',
+
+    slots: [
+      { anchor: 'dock-bottom', node: bar, order: 100 },
+      { anchor: 'dock-bottom', node: problem, order: 80 },
+      /*
+        The audio, at the same anchor as the bar rather than in the panel.
+
+        Chrome, not a panel: it renders nothing and takes no room, and it has to outlive every state
+        the stage can be in — including not existing. A slot contribution is mounted for as long as
+        the shell is, which is the property the sound needs and the panel deliberately does not have.
+      */
+      { anchor: 'dock-bottom', node: audioSink, order: 60 },
+    ],
+
+    /**
+     * The stage, as a panel the host places rather than chrome that places itself.
+     *
+     * The distinction the bar above makes clear by contrast. Both are call chrome; only one of them
+     * should take room. You glance at the bar while doing something else, so it overlays — shrinking
+     * the app for a row of buttons would be absurd. You *watch* the stage, usually while reading the
+     * space beside it, and a panel that covers what you are reading is a panel you keep closing.
+     *
+     * One bid and no geometry. The module cannot see the sidebar's width, the module rail's, or the
+     * size of the window, and the previous version's `right: '72px'` was a copy of one of those that
+     * nothing kept in step. Saying "the bottom edge, small, floating" and letting the host answer is
+     * what makes the same declaration inset on a monitor and float on a laptop. `bid` is a store key
+     * rather than a static object because the aspect it carries depends on who is in the call.
+     *
+     * ## Openness is the module's, for this one panel
+     *
+     * Nearly every panel's openness is the host's — a notes panel being open is a fact about the
+     * screen. Whether the stage is up is a fact about the *call*: `join` raises it, leaving lowers
+     * it, and `goToCall` brings it back. So this names `open`, and with it `show` and `close`, or the
+     * titlebar would have no way to dismiss it. No `icon`: the rail entry is the `goToCall` launcher,
+     * which does more than open a panel.
+     */
+    panels: [
+      {
+        name: 'stage',
+        title: 'Call',
+        node: stage,
+        bid: 'stageBid',
+        open: 'stageOpen',
+        show: 'openStage',
+        close: 'closeStage',
+      },
+    ],
+
+    /*
+      What this module publishes on presence, declared so the kernel can check it and the next module
+      to cooperate with a call can read the fields rather than copy this one's guesses. `record` and
+      `continued` are what the transcriber reads to adopt a call's record before anybody speaks —
+      see `publishActivity` in the store; `anchor` is what the call is about; `media` is each
+      participant's mute/camera/share for the roster to render.
+    */
+    activities: {
+      call: { id: 'string', anchor: 'object', media: 'object', record: 'string', continued: 'boolean' },
+    },
+  },
+
+  // ── The one piece that is code ───────────────────────────────────────────
+  createStore: createCallStore,
 });
+
+/**
+ * What a host calls to get the module. Nothing is injected — every piece of UI here is a fragment,
+ * so there are no framework components for the host to lend — but the factory is the shape every
+ * module package exports, and the host loads them all the same way.
+ */
+export const createModule = (_host: ModuleHost) => callModule;

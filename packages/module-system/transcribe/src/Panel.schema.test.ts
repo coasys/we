@@ -10,6 +10,7 @@
  * Serialised and searched rather than walked, the same way the showcase templates are tested. A
  * schema is data; what matters is whether the token is in the tree, not the path it sits at.
  */
+import { markAction, markState, storeSurface } from '@we/module-shared';
 import { SECTION_LABEL_PROPS } from '@we/schema-kit';
 import { evaluateExpression, markReactive, namespace, parseCached, type SchemaNode } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
@@ -29,11 +30,92 @@ import {
   transcriptFeed,
   transcriptLines,
 } from './Panel.schema';
+import { createTranscribeStore } from './store';
 import { VIEWING_LIVE_EXPR } from './subject';
 
 const panelJson = JSON.stringify(panel);
 const feedJson = JSON.stringify(transcriptFeed);
 const linesJson = JSON.stringify(transcriptLines);
+
+/**
+ * The store with nothing lent to it — no kernels, no effects — which is enough to read its surface.
+ *
+ * Which members are public is decided at construction and depends on nothing the host supplies, so
+ * the smallest deps the contract admits answer the question; a fuller harness lives in `store.test`.
+ */
+function bareStore() {
+  return createTranscribeStore({
+    signal: <T>(initial: T): [() => T, (next: T) => void] => {
+      let value = initial;
+      return [() => value, (next: T) => (value = next)];
+    },
+    state: markState,
+    action: markAction,
+    kernels: {},
+  });
+}
+
+describe('the module declaration', () => {
+  it('names exactly the kernels the store reaches', () => {
+    // A kernel not named is absent from the bag, and the store degrades rather than throws — so a
+    // missing name here is a feature silently switched off, not a type error.
+    expect(transcribeModule.manifest.requires?.kernels).toEqual([
+      'records',
+      'presence',
+      'media',
+      'transcription',
+      'interpretation',
+    ]);
+    expect(transcribeModule.manifest.requires?.permissions).toEqual(['microphone']);
+  });
+
+  it('keeps its chrome on screen while recording, by a bare store key', () => {
+    // Recording follows the call and the call survives navigation; the key is `enabled`, which goes
+    // false the moment recording stops, so the hold cannot become permanent.
+    expect(transcribeModule.contributes?.holds).toBe('enabled');
+    expect(storeSurface(bareStore()).enabled?.kind).toBe('state');
+  });
+
+  it('owns whether each panel is open, and names how to open and close it', () => {
+    /*
+      The exception the contract describes rather than the default it offers. The store opens the
+      transcript on a record press and the extraction panel when a pass starts, and reads `open` to
+      keep polling for a model — none of which a host-held flag would let it do. Owning the flag
+      means owning `show` and `close` too, or the rail and the titlebar have nothing to call.
+    */
+    const panels = transcribeModule.contributes?.panels ?? [];
+    const surface = storeSurface(bareStore());
+
+    expect(panels.map((p) => p.name)).toEqual(['transcript', 'extraction']);
+    for (const p of panels) {
+      expect(p.icon).toBeTruthy();
+      expect(surface[p.open ?? '']?.kind).toBe('state');
+      expect(surface[p.show ?? '']?.kind).toBe('action');
+      expect(surface[p.close ?? '']?.kind).toBe('action');
+    }
+    // The rail spins on it while any peer's pass runs — the glance the call bar's square used to give.
+    expect(surface[panels[1].busyWhen ?? '']?.kind).toBe('state');
+    // And no launchers of its own: a panel's rail button is derived from the panel.
+    expect(transcribeModule.contributes?.launchers).toBeUndefined();
+  });
+
+  it('marks every member its own fragments name, so a placed part can still read it', () => {
+    /*
+      Members are private by default now. The module's own panel renders against the chrome bag and
+      would see a private member; a *part* placed by a template may not — so a fragment naming an
+      unmarked member is a fragment that works in the default panel and renders nothing everywhere
+      the parts exist to be placed.
+    */
+    const referenced = new Set<string>();
+    for (const match of JSON.stringify(transcribeModule.contributes).matchAll(/modules\.transcribe\.([A-Za-z_]+)/g)) {
+      referenced.add(match[1]);
+    }
+    const surface = storeSurface(bareStore());
+
+    expect(referenced.size).toBeGreaterThan(20);
+    expect([...referenced].filter((name) => !surface[name])).toEqual([]);
+  });
+});
 
 describe('which call the panel is about', () => {
   it('follows the call the address names, and falls back to the one being recorded', () => {
@@ -55,7 +137,7 @@ describe('which call the panel is about', () => {
       another call would get the live one and no complaint. Naming the bare collection id here — as
       this did before the feed became route-aware — is exactly that failure.
     */
-    const declared = transcribeModule.schemas?.transcriptFeed;
+    const declared = transcribeModule.contributes?.parts?.transcriptFeed;
     const subject = typeof declared === 'object' && 'subject' in declared ? declared.subject : undefined;
 
     expect(subject).toBe(SUBJECT_EXPR);
@@ -213,9 +295,11 @@ describe('a transcript with nothing in it', () => {
       transcript. A clause telling somebody to continue a meeting that nothing will continue is
       worse than no clause, so it is tested before the two that make the offer.
     */
-    const refuses = linesJson.indexOf('!(modules.call.canCall && !modules.call.active)');
+    const refuses = linesJson.indexOf('(!modules.call || modules.transcribe.inCall)');
     expect(refuses).toBeGreaterThan(-1);
     expect(refuses).toBeLessThan(linesJson.indexOf('Continue the call to begin transcribing.'));
+    // Read off this module's own store, derived from presence — never off the call module's members.
+    expect(linesJson).not.toContain('modules.call.');
     // And the same verb the button uses, decided by the same expression.
     expect(linesJson).toContain('Join the call to begin transcribing.');
   });
@@ -422,7 +506,7 @@ describe('what belongs to the live microphone only', () => {
     */
     expect(linesJson).toContain('Continue the call to begin transcribing.');
     expect(linesJson).toContain('Join the call to begin transcribing.');
-    expect(linesJson).toContain('modules.call.canCall && !modules.call.active');
+    expect(linesJson).toContain('modules.transcribe.callOnScreenLive');
   });
 });
 
@@ -1325,18 +1409,16 @@ describe('the panel’s reads reach the store', () => {
                   ? markReactive(() => over.enabled === true)
                   : member === 'available'
                     ? markReactive(() => over.micUp === true)
-                    : undefined,
+                    : member === 'inCall'
+                      ? markReactive(() => over.inACall === true)
+                      : member === 'callOnScreenLive'
+                        ? markReactive(() => (over.liveRecords ?? []).includes(over.address ?? ''))
+                        : undefined,
             )
-          : id === 'call' && over.callModule !== false
-            ? namespace((member) =>
-                member === 'canCall'
-                  ? markReactive(() => true)
-                  : member === 'active'
-                    ? markReactive(() => over.inACall === true)
-                    : member === 'liveCalls'
-                      ? markReactive(() => (over.liveRecords ?? []).map((recordId) => ({ recordId })))
-                      : undefined,
-              )
+          : // The call module's *presence* is all the panel asks about it now; its members are not read.
+            // A plain object, as the real bag holds one: a bare namespace reads as undefined.
+            id === 'call' && over.callModule !== false
+            ? {}
             : undefined,
       ),
       routeStore: namespace((member) =>

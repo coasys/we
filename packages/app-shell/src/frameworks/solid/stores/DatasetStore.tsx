@@ -355,6 +355,16 @@ export function DatasetStoreProvider(props: ParentProps) {
           return install();
         },
       },
+      // The node's own language model, for a module that summarises, translates or tags. The port
+      // existed on the backend and was never handed to a module; this is the whole of handing it over.
+      languageModel: {
+        available: async () => (await session.backendPorts()?.languageModel?.available()) ?? false,
+        prompt: async (system, input) => {
+          const port = session.backendPorts()?.languageModel;
+          if (!port) throw new Error('languageModel: this backend has no language model');
+          return port.prompt(system, input);
+        },
+      },
       // Same late read as transcription, but this one answers `available()` honestly — the wrapper is
       // always published, so a module asking "can this node interpret?" has to be told about the
       // backend behind it rather than about the wrapper's own existence.

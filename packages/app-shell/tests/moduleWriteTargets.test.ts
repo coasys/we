@@ -78,19 +78,19 @@ describe('a module write names its dataset', () => {
       noticed.
     */
     const { deps } = wireHost();
-    expect(deps.createEntity?.length).toBeGreaterThanOrEqual(3);
-    expect(deps.linkEntity?.length).toBeGreaterThanOrEqual(5);
+    expect(deps.kernels.records?.create.length).toBeGreaterThanOrEqual(3);
+    expect(deps.kernels.records?.link.length).toBeGreaterThanOrEqual(5);
   });
 
   it('forwards a named dataset through createEntity', async () => {
     const { writes, deps } = wireHost();
-    await deps.createEntity?.('TextBlock', { text: 'hi' }, { dataset: 'neighbourhood://there' });
+    await deps.kernels.records?.create('TextBlock', { text: 'hi' }, { dataset: 'neighbourhood://there' });
     expect(writes).toEqual([{ call: 'createEntity', dataset: 'neighbourhood://there' }]);
   });
 
   it('forwards a named dataset through linkEntity', async () => {
     const { writes, deps } = wireHost();
-    await deps.linkEntity?.('CollectionBlock', 'c1', 'participants', 'did:x', {
+    await deps.kernels.records?.link('CollectionBlock', 'c1', 'participants', 'did:x', {
       dataset: 'neighbourhood://there',
     });
     expect(writes).toEqual([{ call: 'linkEntity', dataset: 'neighbourhood://there' }]);
@@ -101,9 +101,9 @@ describe('a module write names its dataset', () => {
     // about wherever the reader had wandered to, and accepting one committed it there.
     const { writes, deps } = wireHost();
     const target = { dataset: 'neighbourhood://there' };
-    await deps.interpretation?.proposals(target);
-    await deps.interpretation?.accept('p1', undefined, target);
-    await deps.interpretation?.reject('p1', undefined, target);
+    await deps.kernels.interpretation?.proposals(target);
+    await deps.kernels.interpretation?.accept('p1', undefined, target);
+    await deps.kernels.interpretation?.reject('p1', undefined, target);
 
     expect(writes.map((w) => w.call)).toEqual(['proposals', 'accept', 'reject']);
     for (const write of writes) expect(write.dataset).toBe(THERE);
@@ -113,7 +113,7 @@ describe('a module write names its dataset', () => {
     // The behaviour every existing caller relies on, and the right default for a module whose work
     // is caused by the person looking at it.
     const { writes, deps } = wireHost();
-    await deps.interpretation?.proposals();
+    await deps.kernels.interpretation?.proposals();
     expect(writes[0].dataset).toBe(HERE);
   });
 
@@ -127,8 +127,8 @@ describe('a module write names its dataset', () => {
     const { writes, deps } = wireHost();
     const gone = { dataset: 'neighbourhood://deleted' };
 
-    expect(await deps.interpretation?.proposals(gone)).toEqual([]);
-    expect(await deps.interpretation?.accept('p1', undefined, gone)).toBe(false);
+    expect(await deps.kernels.interpretation?.proposals(gone)).toEqual([]);
+    expect(await deps.kernels.interpretation?.accept('p1', undefined, gone)).toBe(false);
     expect(writes).toEqual([]);
   });
 });

@@ -49,6 +49,7 @@ export type {
   TokenCategory,
   PluginCatalog,
   PluginEntry,
+  ModuleCatalogEntry,
   SourceEntry,
 } from './contextTypes';
 

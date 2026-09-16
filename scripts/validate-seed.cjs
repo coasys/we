@@ -104,6 +104,41 @@ function main() {
     success(`Found ${seed.apps.length} app(s)`);
   }
 
+  // Validate modules — the list `generate-modules` bundles from.
+  console.log('\n🧩 Validating modules...');
+  if (seed.modules === undefined) {
+    info('No modules declared - the build ships none');
+  } else if (!Array.isArray(seed.modules)) {
+    error('Invalid field: modules (must be an array of ids or { id, package?, enabled? } entries)');
+  } else {
+    const moduleIds = new Set();
+    seed.modules.forEach((entry, index) => {
+      const module = typeof entry === 'string' ? { id: entry } : entry;
+      if (!module || typeof module.id !== 'string' || !/^[a-z][a-z0-9-]*$/.test(module.id)) {
+        error(
+          `  Module ${index + 1}: needs an id of lower-case letters, digits and dashes (got ${JSON.stringify(entry)})`,
+        );
+        return;
+      }
+      if (moduleIds.has(module.id)) error(`  Module ${index + 1}: Duplicate module id '${module.id}'`);
+      moduleIds.add(module.id);
+      if (module.package !== undefined && typeof module.package !== 'string') {
+        error(`  Module '${module.id}': package must be a string`);
+      }
+      if (module.enabled !== undefined && typeof module.enabled !== 'boolean') {
+        error(`  Module '${module.id}': enabled must be a boolean`);
+      }
+      const pkg = module.package || `@we/module-${module.id}`;
+      const installed = fs.existsSync(path.join(__dirname, '..', 'packages', 'app-shell', 'node_modules', pkg));
+      if (!installed) {
+        warn(
+          `  Module '${module.id}': package ${pkg} is not installed for @we/app-shell — the build will fail until it is`,
+        );
+      }
+    });
+    if (seed.modules.length) success(`Found ${seed.modules.length} module(s): ${[...moduleIds].join(', ')}`);
+  }
+
   // Validate each app
   console.log('\n📦 Validating apps...');
 

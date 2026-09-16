@@ -243,6 +243,18 @@ export type TemplateMeta = {
    * stray drag somebody made once.
    */
   panels?: TemplatePanel[];
+  /**
+   * What this interface depends on that a deployment might not have.
+   *
+   * `modules` names the feature modules whose stores or parts this template reaches —
+   * `modules.call.*` in an expression, a `$part` of theirs, a `meta.panels` entry placing one. The
+   * host cannot derive that: it can walk the component types a schema mounts, and it does, but an
+   * expression naming a module store and a part naming a module are invisible to that walk. So a
+   * template that leans on one says so, and a deployment omitting the module sees the reason instead
+   * of a blank panel. Reported through `spaceStore.missingModules`, and checked by the validator
+   * against the deployment's module list.
+   */
+  requires?: { modules?: string[] };
   stores?: string[] | StoreDeclaration;
   components?: string[];
 };

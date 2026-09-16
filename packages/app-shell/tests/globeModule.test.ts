@@ -50,12 +50,12 @@ describe('globe module — what it declares', () => {
   it('is backend-agnostic, because it owns no entities', () => {
     // `backends` omitted means portable. The globe has no durable data of its own, so it never meets
     // the manifest→SDNA gap that forces `backends: ['ad4m']` on entity-owning modules.
-    expect(definition.backends).toBeUndefined();
+    expect(definition.manifest.requires?.backends).toBeUndefined();
     expect(checkModuleCompatibility(definition, { backend: 'nextgraph', framework: 'solid' }).compatible).toBe(true);
   });
 
   it('declares solid, because its imperative core genuinely is a framework component', () => {
-    expect(definition.frameworks).toEqual(['solid']);
+    expect(definition.manifest.requires?.frameworks).toEqual(['solid']);
     const plan = checkModuleCompatibility(definition, { backend: 'ad4m', framework: 'react' });
     expect(plan.compatible).toBe(false);
     expect(plan.problems[0]).toContain('react');
@@ -64,7 +64,7 @@ describe('globe module — what it declares', () => {
   it('contributes exactly one component — the imperative core, nothing else', () => {
     // Tier 2 discipline: a Cesium Viewer must be framework code, but that is the *only* part which
     // has to be. Chrome and panels would be fragments.
-    expect(Object.keys(definition.components ?? {})).toEqual(['CesiumGlobe']);
+    expect(Object.keys(definition.contributes?.components ?? {})).toEqual(['CesiumGlobe']);
   });
 
   it('registers cleanly against a solid/ad4m host', () => {

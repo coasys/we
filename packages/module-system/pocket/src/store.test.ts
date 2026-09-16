@@ -59,7 +59,9 @@ function deps(overrides: Partial<ModuleStoreDeps> = {}): {
         let value = initial;
         return [() => value, (next: T) => void (value = next)];
       },
-      agentData: data.port,
+      state: (accessor: unknown) => accessor,
+      action: (fn: unknown) => fn,
+      kernels: { agentData: data.port },
       datasetRefKey: () => 'n:QmSpace',
       datasetUri: () => 'neighbourhood://QmSpace',
       datasets: { get: () => ({ name: 'Design' }), open: vi.fn(), openRef: vi.fn() },
@@ -264,7 +266,7 @@ describe('going to what you gathered', () => {
 describe('degrading', () => {
   it('writes nothing on a host with no agent dataset, rather than throwing', async () => {
     // Boot, or a presentation-only host. A module must degrade when a port is absent.
-    const { deps: d } = deps({ agentData: undefined });
+    const { deps: d } = deps({ kernels: {} });
     const store = createPocketStore(d);
 
     await expect(store.gather(drop({ entity: 'CollectionBlock', id: 'ad4m://obj/abc' }))).resolves.toBeUndefined();
