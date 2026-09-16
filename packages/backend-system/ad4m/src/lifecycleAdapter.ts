@@ -80,21 +80,37 @@ export function createAd4mDatasetLifecycle(backendClient: unknown): DatasetLifec
       await client.perspective.remove(id);
     },
 
-    /**
-     * Publish a local dataset as a neighbourhood. The returned URL is captured by the caller —
-     * the proxy's own `sharedUrl` is not updated in place.
-     */
-    async publish(id) {
+    async publish(id: string, linkLanguageTemplate?: string) {
       const p = await client.perspective.byUUID(id);
       if (!p) throw new Error(`publish: no dataset with id ${id}`);
       const uid = crypto.randomUUID();
-      const languages = await client.runtime.knownLinkLanguageTemplates();
-      const templateAddress = languages?.[0];
+      let templateAddress = linkLanguageTemplate;
+      if (!templateAddress) {
+        const languages = await client.runtime.knownLinkLanguageTemplates();
+        templateAddress = languages?.[0];
+      }
       if (!templateAddress) throw new Error('No link language templates available to publish neighbourhood.');
       const templateData = JSON.stringify({ uid, name: `${p.name}-link-language` });
       const linkLanguage = await client.languages.applyTemplateAndPublish(templateAddress, templateData);
       const uri = await client.neighbourhood.publishFromPerspective(id, linkLanguage.address, new Perspective([]));
       return { uri, sharedId: uri.replace(SCHEME, '') };
+    },
+
+    async linkLanguageTemplates() {
+      const addresses = await client.runtime.knownLinkLanguageTemplates();
+      if (!addresses?.length) return [];
+      const templates = await Promise.all(
+        addresses.map(async (address) => {
+          try {
+            const meta = await client.languages.meta(address);
+            return { address, name: meta.name || address };
+          } catch {
+            return { address, name: address };
+          }
+        }),
+      );
+      templates.sort((a, b) => a.name.localeCompare(b.name));
+      return templates;
     },
 
     async join(idOrUri) {

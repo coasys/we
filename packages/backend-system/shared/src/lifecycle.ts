@@ -47,13 +47,21 @@ export interface DatasetChangeHandlers {
  * `publish` and `join` are optional: a backend with no sharing concept (single-user, in-memory
  * test host) simply omits them, and callers degrade the same way they do for `presence`.
  */
+export interface LinkLanguageTemplate {
+  address: string;
+  name: string;
+}
+
 export interface DatasetLifecyclePort {
   list(): Promise<DatasetRef[]>;
   get(id: string): Promise<DatasetRef | null>;
   create(name: string): Promise<DatasetRef>;
   remove(id: string): Promise<void>;
-  /** Publish an existing local dataset for sharing. Returns its shared URI and scheme-less id. */
-  publish?(id: string): Promise<{ uri: string; sharedId: string }>;
+  /**
+   * Publish an existing local dataset for sharing. Pass `linkLanguageTemplate` to choose
+   * which link language backs the neighbourhood; omit to use the first available template.
+   */
+  publish?(id: string, linkLanguageTemplate?: string): Promise<{ uri: string; sharedId: string }>;
   /**
    * Join a shared dataset. Accepts the backend's full URI or a bare shared id — normalization is
    * the adapter's dialect, not the caller's.
@@ -61,6 +69,8 @@ export interface DatasetLifecyclePort {
   join?(idOrUri: string): Promise<DatasetRef>;
   /** Other agents holding a shared dataset (member roster), by dataset id. */
   members?(id: string): Promise<string[]>;
+  /** Available link language templates this backend can publish with. Sorted by name. */
+  linkLanguageTemplates?(): Promise<LinkLanguageTemplate[]>;
   /** Subscribe to change events. Returns an unsubscribe function. */
   subscribe(handlers: DatasetChangeHandlers): () => void;
 }

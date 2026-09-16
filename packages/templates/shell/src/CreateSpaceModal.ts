@@ -40,6 +40,7 @@ export const createSpaceModal = {
     avatar: { type: 'file', initial: null },
     coverImage: { type: 'file', initial: null },
     location: { type: 'object', initial: null },
+    linkLanguage: { type: 'string', initial: '' },
     submitting: { type: 'boolean', initial: false },
     ...guard.localState,
   },
@@ -272,10 +273,38 @@ export const createSpaceModal = {
                 },
               },
               { $if: { condition: { $: '!event.detail' }, then: { $setLocal: 'discovery', value: 'hidden' } } },
+              {
+                $if: {
+                  condition: { $: 'event.detail && !local.linkLanguage' },
+                  then: { $setLocal: 'linkLanguage', value: { $: 'spaceStore.defaultLinkLanguageTemplate' } },
+                },
+              },
             ],
           },
         },
       ],
+    },
+
+    // Link language selector — shown when creating a shared space and more than one template exists
+    {
+      type: '$if',
+      props: {
+        condition: { $: "local.access == 'shared' && spaceStore.linkLanguageTemplateOptions.length > 1" },
+        then: {
+          type: 'we-form-field',
+          props: { label: 'Link Language' },
+          children: [
+            {
+              type: 'we-select',
+              props: {
+                value: { $: 'local.linkLanguage' },
+                options: { $: 'spaceStore.linkLanguageTemplateOptions' },
+                onChange: { $setLocal: 'linkLanguage', value: { $: 'event.detail' } },
+              },
+            },
+          ],
+        },
+      },
     },
 
     // Discovery toggle (Hidden vs Listed)
@@ -411,6 +440,7 @@ export const createSpaceModal = {
                       { $: 'local.avatar' },
                       { $: 'local.coverImage' },
                       { $: 'local.location' },
+                      { $: 'local.linkLanguage || undefined' },
                     ],
                     onSuccess: [{ $action: 'shellStore.setCreateSpaceOpen', args: [false] }],
                     onFinally: [{ $setLocal: 'submitting', value: false }],

@@ -572,6 +572,10 @@ export interface SpaceStore {
   enabledViewIds: Accessor<string[]>;
   /** The same list as a nav strip reads it — one source, so routes and nav cannot disagree. */
   viewNav: Accessor<{ id: string; segment: string; label: string; icon: string; path: string }[]>;
+  /** Available link language templates for publishing shared spaces, formatted for we-select. */
+  linkLanguageTemplateOptions: Accessor<{ label: string; value: string }[]>;
+  /** Address of the default link language template (Holochain when available). */
+  defaultLinkLanguageTemplate: Accessor<string>;
 
   // Actions
   createSpace: (
@@ -582,6 +586,7 @@ export interface SpaceStore {
     avatarFile?: File,
     coverImageFile?: File,
     location?: LocationData | null,
+    linkLanguageTemplate?: string,
   ) => Promise<void>;
   /**
    * Join a shared dataset. `focus` defaults to true; pass false to join without navigating to it.
@@ -1439,8 +1444,27 @@ export function SpaceStoreProvider(props: ParentProps) {
         .filter((s): s is Space => !!s)
         .sort((a, b) => Number(a.createdAt) - Number(b.createdAt));
       setMySpaces(filteredSpaces);
+      void loadLinkLanguageTemplates();
     } catch (error) {
       console.error('SpaceStore: loadSpaces error', error);
+    }
+  }
+
+  const [linkLanguageTemplateOptions, setLinkLanguageTemplateOptions] = createSignal<
+    { label: string; value: string }[]
+  >([]);
+  const [defaultLinkLanguageTemplate, setDefaultLinkLanguageTemplate] = createSignal('');
+
+  async function loadLinkLanguageTemplates(): Promise<void> {
+    const lifecycle = session.lifecycle();
+    if (!lifecycle?.linkLanguageTemplates) return;
+    try {
+      const templates = await lifecycle.linkLanguageTemplates();
+      setLinkLanguageTemplateOptions(templates.map((t) => ({ label: t.name, value: t.address })));
+      const holochain = templates.find((t) => t.name.toLowerCase().includes('holochain'));
+      setDefaultLinkLanguageTemplate(holochain?.address ?? templates[0]?.address ?? '');
+    } catch (e) {
+      console.error('SpaceStore: loadLinkLanguageTemplates error', e);
     }
   }
 
@@ -1465,6 +1489,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     avatarFile?: File,
     coverImageFile?: File,
     location?: LocationData | null,
+    linkLanguageTemplate?: string,
   ): Promise<void> {
     const lifecycle = session.lifecycle();
     if (!lifecycle) return;
@@ -1484,7 +1509,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       // (the dataset handle's own sharedUrl is not updated in-place).
       if (access === 'shared') {
         if (!lifecycle.publish) throw new Error('This backend cannot publish shared datasets.');
-        const published = await lifecycle.publish(spaceRef.id);
+        const published = await lifecycle.publish(spaceRef.id, linkLanguageTemplate);
         publishedSharedId = published.sharedId;
         // Patch the ref so trackDataset sees the sharedId — the proxy's sharedUrl is not
         // updated in-place by publish, so the ref captured at create time would otherwise
@@ -4746,6 +4771,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     enabledViewIds,
     viewNav,
     foreignSpacePrefill,
+    linkLanguageTemplateOptions,
+    defaultLinkLanguageTemplate,
 
     // Actions
     createSpace,
