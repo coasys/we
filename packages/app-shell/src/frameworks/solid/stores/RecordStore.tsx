@@ -29,6 +29,7 @@ import {
   compressImageToFileData,
   dataURIToFileData,
   EdgeRoute,
+  getEntitiesForPerspective,
   getEntity,
   Placement,
   PREDICATES,
@@ -281,6 +282,15 @@ export interface RecordStore {
   pickRelation: (field: string, id: unknown) => Promise<void>;
   /** Take one entry off a relation field, by its `key`. */
   removeRelationEntry: (field: string, key: string) => void;
+  /**
+   * Point a location relation at the place a `we-location-picker` reports — pass its `arg.detail`.
+   * The place is made when the form saves; its name follows the city unless one was typed.
+   */
+  setRelationLocation: (field: string, detail: unknown) => void;
+  /** Edit one field of a relation entry still to be made — the name or address under a picked place. */
+  setRelationEntryField: (field: string, key: string, name: string, value: unknown) => void;
+  /** Add a chosen, cropped image to an image relation — pass an `EditableImage`'s `onImageChange` event. */
+  addRelationImage: (field: string, file: unknown) => Promise<void>;
   /**
    * Which named kind the pending connection is, or empty for one carrying only a label.
    *
@@ -539,6 +549,19 @@ export function RecordStoreProvider(props: ParentProps) {
   }
 
   /**
+   * The class a record of `entity` is written through, in the dataset on screen.
+   *
+   * `getEntity` alone reads the global registry, which holds WE's own models and the modules'. A
+   * model a community defined is registered *per dataset* on AD4M — that is how two spaces can each
+   * have a `Sighting` — so saving one through this form failed with "Model "UfoSighting" not found in
+   * registry" while the model sat listed in the space's settings. The per-dataset lookup prefers the
+   * global class and falls back to the space's own, so every caller here goes through it.
+   */
+  function entityClass(entity: string, handle: unknown): ReturnType<typeof getEntity> {
+    return (getEntitiesForPerspective(entity, handle) ?? getEntity(entity)) as ReturnType<typeof getEntity>;
+  }
+
+  /**
    * What a relation field pointing at `target` may do.
    *
    * Make one when the target has a form of its own. Pick an existing one when the target is not a
@@ -552,6 +575,7 @@ export function RecordStoreProvider(props: ParentProps) {
       canCreate: fieldsFor(found.schema, found.authorable).length > 0,
       canPick: !found.schema.blockable,
       label: found.label,
+      inline: inlineEditorFor(target, found.schema),
     };
   }
 
@@ -729,6 +753,102 @@ export function RecordStoreProvider(props: ParentProps) {
     return dataURIToFileData(uri, file.name);
   }
 
+  /**
+   * Whether a relation's target is better made where the relation is than in a form of its own.
+   *
+   * A place is picked on a map, and a picture is chosen and cropped — neither is a list of fields.
+   * The generic nested form asked for a location as two number boxes and showed nothing of an image
+   * once it was chosen. So those two targets get the controls WE already has for them, inline: the
+   * location picker (with its name and address beneath, as the profile page has) and the image
+   * editor with its cropper and a preview.
+   */
+  function inlineEditorFor(target: string, schema: EntitySchema): RelationTargetAbilities['inline'] {
+    if (target === 'LocationBlock') return 'location';
+    const properties = schema.properties;
+    const picture = imagePropertyOf(schema);
+    return picture && properties[picture]?.required ? 'image' : '';
+  }
+
+  /** The property that holds a target's picture — a file whose name reads as one. */
+  function imagePropertyOf(schema: EntitySchema): string {
+    return (
+      Object.keys(schema.properties).find(
+        (name) =>
+          schema.properties[name].format === 'file' &&
+          /image|avatar|photo|picture|thumbnail|cover|poster|src/i.test(name),
+      ) ?? ''
+    );
+  }
+
+  function setRelationLocation(field: string, detail: unknown): void {
+    const relation = relationFieldOf(field);
+    const found = relation ? schemaFor(relation.target) : undefined;
+    const current = recordDraft();
+    if (!relation || !found || !current || !detail || typeof detail !== 'object') return;
+    const picked = detail as Record<string, unknown>;
+    if (typeof picked.latitude !== 'number' || typeof picked.longitude !== 'number') return;
+
+    const existing = relation.many ? undefined : relation.entries[0];
+    // Only what the target declares: a picker reporting a field the model lacks is not a write.
+    const fields: Record<string, unknown> = { ...(existing?.fields ?? {}) };
+    for (const key of ['latitude', 'longitude', 'city', 'country', 'countryCode', 'address']) {
+      if (found.schema.properties[key] && picked[key] !== undefined) fields[key] = picked[key];
+    }
+    // A name the author typed survives moving the pin; otherwise the place names itself.
+    if (found.schema.properties.name && !(typeof fields.name === 'string' && fields.name.trim())) {
+      const named = picked.city ?? picked.address;
+      if (typeof named === 'string' && named) fields.name = named;
+    }
+    const label =
+      (typeof fields.name === 'string' && fields.name) ||
+      `${(picked.latitude as number).toFixed(4)}, ${(picked.longitude as number).toFixed(4)}`;
+    setRecordDraft(
+      withRelationEntry(current, field, {
+        key: existing?.key ?? `new-${++entrySeq}`,
+        label,
+        entity: relation.target,
+        fields,
+      }),
+    );
+  }
+
+  /**
+   * Edit one field of an entry still to be made — the name under a picked place.
+   *
+   * In place, as a typed form field is, so the input keeps focus; the chip's label follows the name.
+   */
+  function setRelationEntryField(field: string, key: string, name: string, value: unknown): void {
+    const entry = relationFieldOf(field)?.entries.find((candidate) => candidate.key === key);
+    if (!entry?.fields) return;
+    entry.fields[name] = value;
+    if (name === 'name' && typeof value === 'string' && value.trim()) entry.label = value.trim();
+  }
+
+  async function addRelationImage(field: string, file: unknown): Promise<void> {
+    const relation = relationFieldOf(field);
+    const found = relation ? schemaFor(relation.target) : undefined;
+    const property = found ? imagePropertyOf(found.schema) : '';
+    const picked = Array.isArray(file) ? file[0] : file;
+    if (!relation || !property || typeof File === 'undefined' || !(picked instanceof File)) return;
+    try {
+      const payload = (await readFile(picked)) as { data_base64: string; file_type: string; name: string };
+      const current = recordDraft();
+      if (!current) return;
+      setRecordDraft(
+        withRelationEntry(current, field, {
+          key: `new-${++entrySeq}`,
+          label: picked.name,
+          entity: relation.target,
+          fields: { [property]: payload },
+          preview: `data:${payload.file_type};base64,${payload.data_base64}`,
+        }),
+      );
+    } catch (error) {
+      console.error('RecordStore: reading an image failed', error);
+      toastService.error('Could not read that image.');
+    }
+  }
+
   function relationFieldOf(name: string): RecordField | undefined {
     return recordDraft()?.fields.find((field) => field.name === name && field.control === 'relation');
   }
@@ -799,10 +919,9 @@ export function RecordStoreProvider(props: ParentProps) {
     const nameProperty = found ? namePropertyOf(found.schema) : '';
     if (dataset && nameProperty) {
       try {
-        const row = (await getEntity(relation.target).findOne(dataset.handle, { where: { id: picked } })) as Record<
-          string,
-          unknown
-        > | null;
+        const row = (await entityClass(relation.target, dataset.handle).findOne(dataset.handle, {
+          where: { id: picked },
+        })) as Record<string, unknown> | null;
         const name = row?.[nameProperty];
         if (typeof name === 'string' && name.trim()) label = name.trim();
       } catch (error) {
@@ -833,7 +952,7 @@ export function RecordStoreProvider(props: ParentProps) {
     handle: unknown,
   ): Promise<void> {
     if (!created.id) return;
-    const Model = getEntity(draft.entity);
+    const Model = entityClass(draft.entity, handle);
     for (const field of draft.fields) {
       if (field.control !== 'relation' || !field.entries.length) continue;
       const ids: string[] = [];
@@ -842,7 +961,7 @@ export function RecordStoreProvider(props: ParentProps) {
           ids.push(entry.id);
           continue;
         }
-        const made = (await getEntity(entry.entity).create(handle, entry.fields ?? {})) as { id?: string };
+        const made = (await entityClass(entry.entity, handle).create(handle, entry.fields ?? {})) as { id?: string };
         if (made?.id) ids.push(made.id);
       }
       if (!ids.length) continue;
@@ -1351,7 +1470,7 @@ export function RecordStoreProvider(props: ParentProps) {
     else if (raw !== null && raw !== undefined && typeof raw !== 'string') next = String(raw);
     if (next === undefined || (typeof next === 'number' && Number.isNaN(next))) return;
     try {
-      await getEntity(entity).update(dataset.handle, id, { [field]: next });
+      await entityClass(entity, dataset.handle).update(dataset.handle, id, { [field]: next });
     } catch (error) {
       console.error('RecordStore: updating a record field failed', error);
       toastService.error('Could not save that change.');
@@ -1425,7 +1544,7 @@ export function RecordStoreProvider(props: ParentProps) {
 
     setSavingRecord(true);
     try {
-      const Model = getEntity(draft.entity);
+      const Model = entityClass(draft.entity, dataset.handle);
       const link = pendingLink();
       /*
         The endpoint *types* go in with the fields; the endpoints themselves are linked after.
@@ -1552,6 +1671,9 @@ export function RecordStoreProvider(props: ParentProps) {
     cancelRelationForm,
     pickRelation,
     removeRelationEntry,
+    setRelationLocation,
+    setRelationEntryField,
+    addRelationImage,
     relationshipKind,
     setRelationshipKind,
     cancelRecordForm,

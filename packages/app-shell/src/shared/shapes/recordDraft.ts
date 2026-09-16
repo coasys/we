@@ -51,6 +51,8 @@ export interface RelationEntry {
   entity: string;
   id?: string;
   fields?: Record<string, unknown>;
+  /** A picture of it to draw on its chip — the chosen image, as a data URI. */
+  preview?: string;
 }
 
 /** What a relation's target allows a form to do, answered by whoever knows the space's models. */
@@ -64,6 +66,11 @@ export interface RelationTargetAbilities {
   canPick: boolean;
   /** The target's display name — "Image", not `ImageBlock`. */
   label: string;
+  /**
+   * A control that makes the target in place instead of in a form of its own: a map for a place, an
+   * image editor for a picture. Empty for the generic form.
+   */
+  inline?: '' | 'location' | 'image';
 }
 
 export interface RecordField {
@@ -95,6 +102,8 @@ export interface RecordField {
   many: boolean;
   canCreate: boolean;
   canPick: boolean;
+  /** For a `relation` field: the in-place control its target is made with, or empty. See `RelationTargetAbilities`. */
+  inline: '' | 'location' | 'image';
   /** For a `relation` field: what it will point at once saved. Empty for every other control. */
   entries: RelationEntry[];
 }
@@ -168,7 +177,15 @@ function acceptFor(name: string): string {
 }
 
 /** The fields every kind of row carries, so a consumer can read any of them off any field. */
-const NO_RELATION = { target: '', targetLabel: '', many: false, canCreate: false, canPick: false, entries: [] };
+const NO_RELATION = {
+  target: '',
+  targetLabel: '',
+  many: false,
+  canCreate: false,
+  canPick: false,
+  inline: '' as const,
+  entries: [],
+};
 
 function fieldFrom(name: string, property: PropertySchema): RecordField {
   const control = controlFor(property);
@@ -211,6 +228,7 @@ function relationFieldFrom(
     many,
     canCreate: abilities.canCreate,
     canPick: abilities.canPick,
+    inline: abilities.inline ?? '',
     entries: [],
   };
 }

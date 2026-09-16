@@ -89,6 +89,275 @@ function controlRow(control: string, spec: ControlSpec, setter = 'recordStore.se
   };
 }
 
+/** A picked place's name or address, typed over what the map reverse-geocoded. */
+function placeInput(property: string, label: string): SchemaNode {
+  return {
+    type: 'we-form-field',
+    props: { label, flex: '1 1 12rem', minWidth: '0' },
+    children: [
+      {
+        type: 'we-input',
+        props: {
+          size: 'sm',
+          value: { $: `first(field.entries).fields.${property} ?? ''` },
+          onInput: {
+            $action: 'recordStore.setRelationEntryField',
+            args: [{ $: 'field.name' }, { $: 'first(field.entries).key' }, property, { $: 'event.detail' }],
+          },
+        },
+      },
+    ],
+  };
+}
+
+/**
+ * A place, picked on the map where the relation is — not a form of latitude and longitude boxes.
+ * The same shape as the profile page: the picker, then the words beneath it for the person to
+ * correct. A to-many relation adds a place per pick and lists them as chips.
+ */
+const locationEditor: SchemaNode = {
+  type: 'Column',
+  props: { gap: '200', width: '100%' },
+  children: [
+    {
+      type: 'we-location-picker',
+      props: {
+        width: '100%',
+        latitude: { $: 'field.many ? null : first(field.entries).fields.latitude' },
+        longitude: { $: 'field.many ? null : first(field.entries).fields.longitude' },
+        placeholder: { $: '`Pin ${lower(field.label)} on the map…`' },
+        onChange: { $action: 'recordStore.setRelationLocation', args: [{ $: 'field.name' }, { $: 'arg.detail' }] },
+      },
+    },
+    {
+      type: '$if',
+      props: {
+        condition: { $: '!field.many && count(field.entries)' },
+        then: {
+          type: 'Row',
+          props: { gap: '300', wrap: true, width: '100%' },
+          children: [placeInput('name', 'Name'), placeInput('address', 'Address')],
+        },
+      },
+    },
+  ],
+};
+
+/**
+ * A picture, chosen and cropped where the relation is, and shown once chosen. One editor for a
+ * to-one — change it or take it away in place — and a tile per picture plus one to add for a to-many.
+ */
+const imageEditor: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'field.many' },
+    then: {
+      type: 'Row',
+      props: { gap: '200', wrap: true, width: '100%' },
+      children: [
+        {
+          type: '$each',
+          props: { items: { $: 'field.entries' }, as: 'entry' },
+          children: [
+            {
+              type: 'Column',
+              props: { position: 'relative', width: '96px', height: '96px', r: 'surface', overflow: 'hidden' },
+              children: [
+                {
+                  type: 'we-image',
+                  props: {
+                    src: { $: 'entry.preview' },
+                    alt: { $: 'entry.label' },
+                    fit: 'cover',
+                    width: '96px',
+                    height: '96px',
+                  },
+                },
+                {
+                  type: 'Row',
+                  props: { position: 'absolute', top: '100', right: '100' },
+                  children: [
+                    {
+                      type: 'we-button',
+                      props: {
+                        variant: 'secondary',
+                        size: 'xs',
+                        square: true,
+                        label: { $: '`Remove ${entry.label}`' },
+                        onClick: {
+                          $action: 'recordStore.removeRelationEntry',
+                          args: [{ $: 'field.name' }, { $: 'entry.key' }],
+                        },
+                      },
+                      children: [{ type: 'we-icon', props: { name: 'x' } }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        {
+          type: 'EditableImage',
+          props: {
+            fit: 'cover',
+            width: '96px',
+            height: '96px',
+            r: 'surface',
+            placeholderIcon: 'image',
+            uploadLabel: { $: '`Add ${lower(field.targetLabel)}`' },
+            onImageChange: { $action: 'recordStore.addRelationImage', args: [{ $: 'field.name' }, { $: 'event' }] },
+          },
+        },
+      ],
+    },
+    else: {
+      type: 'EditableImage',
+      props: {
+        src: { $: 'first(field.entries).preview' },
+        alt: { $: 'field.label' },
+        fit: 'cover',
+        width: '100%',
+        height: '200px',
+        r: 'surface',
+        placeholderIcon: 'image',
+        uploadLabel: { $: '`Add ${lower(field.targetLabel)}`' },
+        editLabel: { $: '`Change ${lower(field.targetLabel)}`' },
+        onImageChange: { $action: 'recordStore.addRelationImage', args: [{ $: 'field.name' }, { $: 'event' }] },
+        onImageRemove: {
+          $action: 'recordStore.removeRelationEntry',
+          args: [{ $: 'field.name' }, { $: 'first(field.entries).key' }],
+        },
+      },
+    },
+  },
+};
+
+/** Chips, a picker and "Add" — for a target with no control of its own. */
+const genericRelationEditor: SchemaNode = {
+  type: 'Column',
+  props: { gap: '200', width: '100%' },
+  children: [
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'count(field.entries)' },
+        then: {
+          type: 'Row',
+          props: { gap: '200', wrap: true, width: '100%' },
+          children: [
+            {
+              type: '$each',
+              props: { items: { $: 'field.entries' }, as: 'entry' },
+              children: [
+                {
+                  type: 'Row',
+                  props: {
+                    gap: '100',
+                    ay: 'center',
+                    bg: 'surface-sunken',
+                    r: 'control',
+                    pl: '300',
+                    pr: '100',
+                    py: '100',
+                    maxWidth: '100%',
+                  },
+                  children: [
+                    {
+                      type: 'we-icon',
+                      props: {
+                        name: { $: "recordStore.displays[entry.entity].icon ?? 'cube'" },
+                        size: 'xs',
+                        color: 'text-muted',
+                      },
+                    },
+                    {
+                      type: 'we-text',
+                      props: { variant: 'label', truncate: true, minWidth: '0' },
+                      children: [{ $: 'entry.label' }],
+                    },
+                    {
+                      type: 'we-button',
+                      props: {
+                        variant: 'ghost',
+                        size: 'xs',
+                        square: true,
+                        label: { $: '`Remove ${entry.label}`' },
+                        onClick: {
+                          $action: 'recordStore.removeRelationEntry',
+                          args: [{ $: 'field.name' }, { $: 'entry.key' }],
+                        },
+                      },
+                      children: [{ type: 'we-icon', props: { name: 'x' } }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    },
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'field.many || !count(field.entries)' },
+        then: {
+          type: 'Row',
+          props: { gap: '200', ay: 'center', width: '100%', wrap: true },
+          children: [
+            {
+              type: '$if',
+              props: {
+                condition: { $: 'field.canPick' },
+                then: {
+                  type: 'Row',
+                  props: { flex: '1 1 12rem', minWidth: '0' },
+                  // One subscription per picker, mounted only where there is a picker.
+                  $queries: { candidates: { entity: { $: 'field.target' }, limit: 200 } },
+                  children: [
+                    {
+                      type: 'we-select',
+                      props: {
+                        width: '100%',
+                        searchable: true,
+                        placeholder: { $: '`Choose ${lower(field.targetLabel)}…`' },
+                        options: {
+                          $: 'local.candidates.map(row, { label: row[recordStore.displays[field.target].title] ?? row.id, value: row.id })',
+                        },
+                        value: '',
+                        onChange: {
+                          $action: 'recordStore.pickRelation',
+                          args: [{ $: 'field.name' }, { $: 'event.detail' }],
+                        },
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+            {
+              type: '$if',
+              props: {
+                condition: { $: 'field.canCreate' },
+                then: {
+                  type: 'we-button',
+                  props: {
+                    variant: 'secondary',
+                    size: 'sm',
+                    onClick: { $action: 'recordStore.openRelationForm', args: [{ $: 'field.name' }] },
+                  },
+                  children: [{ type: 'we-icon', props: { name: 'plus' } }, { $: '`Add ${lower(field.targetLabel)}`' }],
+                },
+              },
+            },
+          ],
+        },
+      },
+    },
+  ],
+};
+
 /**
  * A relation: what it will point at, as chips, and the ways to give it something.
  *
@@ -108,130 +377,15 @@ const relationRow: SchemaNode = {
       props: { label: { $: 'field.label' }, width: '100%' },
       children: [
         {
-          type: 'Column',
-          props: { gap: '200', width: '100%' },
-          children: [
-            {
+          type: '$if',
+          props: {
+            condition: { $: "field.inline == 'location'" },
+            then: locationEditor,
+            else: {
               type: '$if',
-              props: {
-                condition: { $: 'count(field.entries)' },
-                then: {
-                  type: 'Row',
-                  props: { gap: '200', wrap: true, width: '100%' },
-                  children: [
-                    {
-                      type: '$each',
-                      props: { items: { $: 'field.entries' }, as: 'entry' },
-                      children: [
-                        {
-                          type: 'Row',
-                          props: {
-                            gap: '100',
-                            ay: 'center',
-                            bg: 'surface-sunken',
-                            r: 'control',
-                            pl: '300',
-                            pr: '100',
-                            py: '100',
-                            maxWidth: '100%',
-                          },
-                          children: [
-                            {
-                              type: 'we-icon',
-                              props: {
-                                name: { $: "recordStore.displays[entry.entity].icon ?? 'cube'" },
-                                size: 'xs',
-                                color: 'text-muted',
-                              },
-                            },
-                            {
-                              type: 'we-text',
-                              props: { variant: 'label', truncate: true, minWidth: '0' },
-                              children: [{ $: 'entry.label' }],
-                            },
-                            {
-                              type: 'we-button',
-                              props: {
-                                variant: 'ghost',
-                                size: 'xs',
-                                square: true,
-                                label: { $: '`Remove ${entry.label}`' },
-                                onClick: {
-                                  $action: 'recordStore.removeRelationEntry',
-                                  args: [{ $: 'field.name' }, { $: 'entry.key' }],
-                                },
-                              },
-                              children: [{ type: 'we-icon', props: { name: 'x' } }],
-                            },
-                          ],
-                        },
-                      ],
-                    },
-                  ],
-                },
-              },
+              props: { condition: { $: "field.inline == 'image'" }, then: imageEditor, else: genericRelationEditor },
             },
-            {
-              type: '$if',
-              props: {
-                condition: { $: 'field.many || !count(field.entries)' },
-                then: {
-                  type: 'Row',
-                  props: { gap: '200', ay: 'center', width: '100%', wrap: true },
-                  children: [
-                    {
-                      type: '$if',
-                      props: {
-                        condition: { $: 'field.canPick' },
-                        then: {
-                          type: 'Row',
-                          props: { flex: '1 1 12rem', minWidth: '0' },
-                          // One subscription per picker, mounted only where there is a picker.
-                          $queries: { candidates: { entity: { $: 'field.target' }, limit: 200 } },
-                          children: [
-                            {
-                              type: 'we-select',
-                              props: {
-                                width: '100%',
-                                searchable: true,
-                                placeholder: { $: '`Choose ${lower(field.targetLabel)}…`' },
-                                options: {
-                                  $: 'local.candidates.map(row, { label: row[recordStore.displays[field.target].title] ?? row.id, value: row.id })',
-                                },
-                                value: '',
-                                onChange: {
-                                  $action: 'recordStore.pickRelation',
-                                  args: [{ $: 'field.name' }, { $: 'event.detail' }],
-                                },
-                              },
-                            },
-                          ],
-                        },
-                      },
-                    },
-                    {
-                      type: '$if',
-                      props: {
-                        condition: { $: 'field.canCreate' },
-                        then: {
-                          type: 'we-button',
-                          props: {
-                            variant: 'secondary',
-                            size: 'sm',
-                            onClick: { $action: 'recordStore.openRelationForm', args: [{ $: 'field.name' }] },
-                          },
-                          children: [
-                            { type: 'we-icon', props: { name: 'plus' } },
-                            { $: '`Add ${lower(field.targetLabel)}`' },
-                          ],
-                        },
-                      },
-                    },
-                  ],
-                },
-              },
-            },
-          ],
+          },
         },
       ],
     },

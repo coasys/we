@@ -183,7 +183,7 @@ describe('relations and files in a form', () => {
   };
   const abilities = (target: string) =>
     target === 'ImageBlock'
-      ? { canCreate: true, canPick: false, label: 'Image' }
+      ? { canCreate: true, canPick: false, label: 'Image', inline: 'image' as const }
       : target === 'Site'
         ? { canCreate: true, canPick: true, label: 'Site' }
         : undefined;
@@ -202,7 +202,8 @@ describe('relations and files in a form', () => {
       canCreate: true,
       canPick: false,
     });
-    expect(fields[2]).toMatchObject({ many: false, canPick: true });
+    expect(fields[1].inline).toBe('image');
+    expect(fields[2]).toMatchObject({ many: false, canPick: true, inline: '' });
   });
 
   it('offers no relations when the caller cannot say what a target allows', () => {
