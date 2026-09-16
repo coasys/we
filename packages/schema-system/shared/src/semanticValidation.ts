@@ -21,6 +21,19 @@ export type ValidationContext = {
   dsPropToLayer: Map<string, string>;
   /** Functions the host lends to expressions, from the generated context's `sources`. */
   hostFunctions: Set<string>;
+  /**
+   * The module catalogue, when the context carries one. Every check keyed on it is skipped when it
+   * is absent, so a context built without a seed judges `modules.*`, `$part` and `meta.panels` as
+   * leniently as it always did.
+   */
+  modules?: {
+    /** Public store members by module id — or `null` for the module whose own chrome is being judged. */
+    members: Map<string, Set<string> | null>;
+    /** Part ids, `<moduleId>.<name>`. */
+    parts: Set<string>;
+    /** Panel names by module id. */
+    panels: Map<string, Set<string>>;
+  };
 };
 
 // ── Constants ──────────────────────────────────────────────────────
@@ -385,6 +398,24 @@ export function buildValidationContext(data: ContextData): ValidationContext {
 
   const hostFunctions = new Set((data.sources ?? []).map((source) => source.name));
 
+  /*
+    The module catalogue, folded into every list a module can add to — and kept as its own map for
+    the checks only a module has. Entities a module declares are queryable like core ones; functions
+    it lends are callable like host sources; components it contributes are mountable like the shell's.
+  */
+  let modules: ValidationContext['modules'];
+  if (data.modules) {
+    modules = { members: new Map<string, Set<string> | null>(), parts: new Set(), panels: new Map() };
+    for (const entry of data.modules) {
+      modules.members.set(entry.id, new Set(entry.members.map((member) => member.name)));
+      for (const part of entry.parts) modules.parts.add(`${entry.id}.${part.name}`);
+      modules.panels.set(entry.id, new Set(entry.panels.map((panel) => panel.name)));
+      for (const entity of entry.entities) entityNames.add(entity.name);
+      for (const fn of entry.functions) hostFunctions.add(fn.name);
+      for (const component of entry.components) componentNames.add(component);
+    }
+  }
+
   return {
     componentNames,
     componentProps,
@@ -397,6 +428,7 @@ export function buildValidationContext(data: ContextData): ValidationContext {
     entityNames,
     dsPropToLayer,
     hostFunctions,
+    ...(modules ? { modules } : {}),
   };
 }
 
@@ -475,6 +507,32 @@ function walkNode(
     checkRoutes(n, path, ctx, state, errors);
     const childState = Array.isArray(n.routes) ? { ...state, hasRoutesAncestor: true } : state;
     walkChildren(n, path, ctx, childState, errors);
+    return;
+  }
+
+  /**
+   * `$part` — a module's named fragment, placed by an interface.
+   *
+   * The host expands the marker before the renderer sees it, so an unknown id renders nothing and
+   * warns once in a console nobody is reading. With a catalogue the id is checked here, where the
+   * author is; without one only its shape is.
+   */
+  if (type === '$part') {
+    const id = (n.props as { id?: unknown } | undefined)?.id;
+    if (typeof id !== 'string' || !id.includes('.')) {
+      errors.push({
+        path: `${path}.props.id`,
+        message: '{ type: "$part" } needs an "id" of the form "<moduleId>.<partName>"',
+        severity: 'error',
+      });
+    } else if (ctx.modules && !ctx.modules.parts.has(id)) {
+      const hint = suggest(id, ctx.modules.parts);
+      errors.push({
+        path: `${path}.props.id`,
+        message: `No module publishes part "${id}"${hint ? ` — did you mean "${hint}"?` : ''}`,
+        severity: 'error',
+      });
+    }
     return;
   }
 
@@ -691,6 +749,7 @@ function checkExpressionToken(
     contextNames: state.contextScope,
     strict: !state.isFragment,
     hostFunctions: ctx.hostFunctions,
+    moduleMembers: ctx.modules?.members,
   });
   for (const issue of issues) {
     errors.push({
@@ -1357,6 +1416,29 @@ function checkActionRef(ref: string, path: string, ctx: ValidationContext, error
     return;
   }
 
+  // A module's action is one segment deeper: `modules.<id>.<member>`.
+  if (storeName === 'modules' && ctx.modules) {
+    const at = methodName.indexOf('.');
+    const id = at === -1 ? methodName : methodName.slice(0, at);
+    const member = at === -1 ? undefined : methodName.slice(at + 1);
+    const known = ctx.modules.members.get(id);
+    if (known === undefined) {
+      errors.push({
+        path,
+        message: `Unknown module "${id}" in $action "${ref}". This deployment ships: ${[...ctx.modules.members.keys()].join(', ')}`,
+        severity: 'error',
+      });
+    } else if (known !== null && (!member || !known.has(member))) {
+      const hint = member ? suggest(member, known) : undefined;
+      errors.push({
+        path,
+        message: `Unknown action "${member ?? ''}" on modules.${id}${hint ? ` — did you mean "${hint}"?` : ''}. A module's store is private unless it marks a member public`,
+        severity: 'error',
+      });
+    }
+    return;
+  }
+
   const members = ctx.storeMembers.get(storeName);
   if (members && !members.has(methodName)) {
     // Filter to actions only (not state)
@@ -1711,6 +1793,22 @@ function walkChildren(
 
 // ── Public API ─────────────────────────────────────────────────────
 
+/**
+ * The context for judging a module's **own** chrome.
+ *
+ * A module's panels and parts render against the chrome bag and see every member of its store,
+ * marked or not — that is what "private" means: private to the module's own chrome. A space
+ * template reaches only the public members, and that is what the catalogue holds. So a module's own
+ * schema files are judged with its member set left open, and every other module's as public. Without
+ * this the pocket's own panel failed on twenty reads of members it deliberately keeps to itself.
+ */
+export function withOwnModule(context: ValidationContext, moduleId: string): ValidationContext {
+  if (!context.modules) return context;
+  const members = new Map(context.modules.members);
+  members.set(moduleId, null);
+  return { ...context, modules: { ...context.modules, members } };
+}
+
 export function validateSemantic(schema: unknown, context: ValidationContext): ValidationResult {
   // If the schema declares custom stores/components in meta, extend the known sets for this validation
   // meta.stores supports two formats:
@@ -1782,10 +1880,60 @@ export function validateSemantic(schema: unknown, context: ValidationContext): V
     `$localState`, nothing of the route it happens to render in — and marked so that a `$panels`
     outlet inside one is refused. That is the one rule that keeps the arrangement model flat.
   */
-  const panels = (schema as { meta?: { panels?: { id?: unknown; node?: unknown; open?: unknown }[] } })?.meta?.panels;
+  /*
+    The modules an interface says it needs, checked against the deployment's catalogue where there
+    is one. A declaration naming a module this deployment does not ship is the case the declaration
+    exists to make visible — reported here rather than left to `missingModules` at runtime.
+  */
+  const requires = (schema as { meta?: { requires?: { modules?: unknown } } })?.meta?.requires?.modules;
+  if (context.modules && Array.isArray(requires)) {
+    requires.forEach((id, index) => {
+      if (typeof id === 'string' && !context.modules!.members.has(id)) {
+        errors.push({
+          path: `meta.requires.modules[${index}]`,
+          message: `Requires module "${id}", which this deployment does not ship. This deployment ships: ${[...context.modules!.members.keys()].join(', ')}`,
+          severity: 'warning',
+        });
+      }
+    });
+  }
+
+  const panels = (
+    schema as {
+      meta?: { panels?: { id?: unknown; node?: unknown; open?: unknown; module?: unknown; dock?: unknown }[] };
+    }
+  )?.meta?.panels;
   if (Array.isArray(panels)) {
     panels.forEach((panel, index) => {
       if (!panel || typeof panel !== 'object') return;
+
+      /*
+        A placed module panel names a module and, where the module has several, which panel. Both
+        used to fail silently — an entry naming a panel the module does not have fell back to the
+        module's own bid and nothing said so. With a catalogue, both are checked here.
+      */
+      if (context.modules && typeof panel.module === 'string') {
+        const names = context.modules.panels.get(panel.module);
+        if (!names) {
+          errors.push({
+            path: `meta.panels[${index}].module`,
+            message: `Places a panel of module "${panel.module}", which this deployment does not ship`,
+            severity: 'warning',
+          });
+        } else if (typeof panel.dock === 'string' && !names.has(panel.dock)) {
+          errors.push({
+            path: `meta.panels[${index}].dock`,
+            message: `Module "${panel.module}" has no panel named "${panel.dock}". It has: ${[...names].join(', ') || 'none'}`,
+            severity: 'error',
+          });
+        } else if (panel.dock === undefined && names.size > 1) {
+          errors.push({
+            path: `meta.panels[${index}]`,
+            message: `Module "${panel.module}" has ${names.size} panels; name one with "dock": ${[...names].join(', ')}`,
+            severity: 'error',
+          });
+        }
+      }
 
       /*
         `open` is a module's word, and on anything else it is a declaration that does nothing.

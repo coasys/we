@@ -31,6 +31,7 @@ import {
 } from './extractors/appShell.js';
 import { extractPrimitives } from './extractors/cem.js';
 import { extractEntities } from './extractors/entities.js';
+import { extractModules } from './extractors/modules.js';
 import { extractPluginCatalog } from './extractors/plugins.js';
 import { extractTokens } from './extractors/tokens.js';
 import { extractComponentProps } from './extractors/typescript.js';
@@ -280,6 +281,14 @@ async function main() {
   */
   contextData.sources = extractHostSources(resolve(repoRoot, 'packages/app-shell/src/shared/sources/index.ts'));
 
+  /*
+    The modules this deployment ships, read off the definitions the seed names. Everything a schema
+    may name of a module — its public store members, parts, panels, settings, activities, components,
+    functions, views, blocks and entities — reaches the reference and the validator from here, which
+    is what turns `modules.transcribe.typo` from a silent nothing into an error with a suggestion.
+  */
+  contextData.modules = await extractModules(repoRoot);
+
   const context = {
     ...contextData,
     fragments: {
@@ -377,6 +386,7 @@ async function main() {
     storeEntries: context.storeEntries,
     shellComponents: context.shellComponents,
     sources: context.sources,
+    modules: context.modules,
   };
   await writeFormatted(contextJsonPath, JSON.stringify(contextJson, null, 2));
   console.log(`  Written: ${contextJsonPath}`);

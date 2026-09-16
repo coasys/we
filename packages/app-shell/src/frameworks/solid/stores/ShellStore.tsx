@@ -617,6 +617,19 @@ export interface ShellStore {
    */
   revealDock: (id: string) => void;
   /**
+   * Open one of a module's panels, by dock id (`<moduleId>:<name>`).
+   *
+   * Whether a panel is open is the host's unless the module said otherwise, so this is where the
+   * flag lives for most panels — what the rail, a template's `meta.panels` and the titlebar's close
+   * button all go through. A module that owns its flag is asked instead, through the actions it
+   * named. See `PanelContribution.open`.
+   */
+  openModulePanel: (dockId: string) => void;
+  /** Close one of a module's panels. What the titlebar's close button calls for a host-owned panel. */
+  closeModulePanel: (dockId: string) => void;
+  /** Open it if closed, close it if open — what the rail's button does for a panel that is in sight. */
+  toggleModulePanel: (dockId: string) => void;
+  /**
    * Whether somebody has put every panel away at once — the rail's toggle and Cmd/Ctrl+\.
    *
    * Only the deliberate half. Panels are also away while a shell overlay (settings, profile, about) is
@@ -693,19 +706,20 @@ function initialShellView(): string | null {
 }
 
 /**
- * Read one of a dock's declared store keys off the contributing module's store.
+ * Read one of a dock's declared store keys.
  *
- * A module publishes accessors, so the value has to be *called* — and reading it inside a memo is
+ * A store publishes accessors, so the value has to be *called* — and reading it inside a memo is
  * what makes dock geometry track a panel opening, moving or resizing with no subscription wiring
- * between the module and the shell. A module that has not registered, or that names a key it does
- * not have, resolves to undefined and falls back, because a dock whose module is absent must render
- * nothing rather than throw at boot.
+ * between the module and the shell. Which store: the entry's own plumbing where the registry built
+ * one (every module panel), else the module's store, else the host's own for a dock the host
+ * contributed — the editor's panels are docks and the editor is not a module. See `DockEntry.store`
+ * and `hostDockStores`. A key the store does not have resolves to undefined and falls back, because a
+ * dock whose module is absent must render nothing rather than throw at boot.
  */
-function readModuleKey(moduleId: string, key: string | undefined): unknown {
+function readDockKey(entry: { moduleId: string; store?: Record<string, unknown> }, key: string | undefined): unknown {
   if (!key) return undefined;
-  // A module's store, or the host's own for a dock the host contributed — the editor's panels are
-  // docks and the editor is not a module. See `hostDockStores`.
-  const store = (moduleStores[moduleId] ?? hostDockStores[moduleId]) as Record<string, unknown> | undefined;
+  const store = (entry.store ?? moduleStores[entry.moduleId] ?? hostDockStores[entry.moduleId]) as
+    Record<string, unknown> | undefined;
   const value = store?.[key];
   return typeof value === 'function' ? (value as () => unknown)() : value;
 }
@@ -1565,7 +1579,7 @@ export function ShellStoreProvider(props: ParentProps) {
    * space B: the frame goes, the room it took does not, and the close button is inside the frame
    * that went. A reload was the only way out.
    *
-   * The same predicate as the frame's, so the two cannot disagree — including the `holdsWhen`
+   * The same predicate as the frame's, so the two cannot disagree — including the `holds` key
    * escape hatch, which is how a call keeps its bar in a space that never enabled calls.
    *
    * Defaults to "everything is active", so a host that never injects behaves exactly as before.
@@ -1590,10 +1604,10 @@ export function ShellStoreProvider(props: ParentProps) {
         .map((entry) => {
           const request: DockRequest = {
             id: entry.id,
-            edge: (readModuleKey(entry.moduleId, entry.edge) as DockEdge) ?? null,
-            size: (readModuleKey(entry.moduleId, entry.size) as DockSize) ?? 'md',
-            float: Boolean(readModuleKey(entry.moduleId, entry.float)),
-            min: readModuleKey(entry.moduleId, entry.min) as DockMin | undefined,
+            edge: (readDockKey(entry, entry.edge) as DockEdge) ?? null,
+            size: (readDockKey(entry, entry.size) as DockSize) ?? 'md',
+            float: Boolean(readDockKey(entry, entry.float)),
+            min: readDockKey(entry, entry.min) as DockMin | undefined,
           };
           /*
             A seat-mate of the panel being dragged has left its lane along with the leader.
@@ -1658,9 +1672,13 @@ export function ShellStoreProvider(props: ParentProps) {
     // The registration dependency, for the same reason `dockRequests` takes it: a module store read
     // before its module registers has no accessor to have tracked, and so nothing to re-run for.
     dockRegistryVersion();
+    // Declared: a module names the key its reserve is published under (`contributes.reserve`),
+    // rather than the shell scanning every store for a member of a magic name.
     return sumReserves(
-      Object.values(moduleStores).map((store) => {
-        const reserve = (store as Record<string, unknown> | undefined)?.chromeReserve;
+      moduleRegistry.all().map(({ definition, store }) => {
+        const key = definition.contributes?.reserve;
+        if (!key || !store) return undefined;
+        const reserve = (store as Record<string, unknown>)[key];
         return (typeof reserve === 'function' ? (reserve as () => unknown)() : reserve) as ChromeReserve | undefined;
       }),
     );
@@ -2600,54 +2618,27 @@ export function ShellStoreProvider(props: ParentProps) {
   */
   const layoutOpened = new Set<string>();
   /**
-   * Put one of a module's panels into the state a declaration asks for.
+   * Put one of a module's panels into the state asked for.
    *
-   * By **dock**, not by module, and that is what broke when transcription grew a second panel. This
-   * used to invoke the module's `launcher.action`, which answers "how is this module opened" — a
-   * question with no answer once a module has two panels, and one that stopped having an answer at
-   * all the moment transcription moved from `launcher` to `launchers`. Neither of the workshop's
-   * declared panels opened, silently, because a missing launcher is also what a module with no
-   * panels looks like.
-   *
-   * A dock knows how to open and close itself: `close` was already declared, and `open` is the half
-   * it was missing. The launcher stays as the fallback, so every module with one panel keeps working
-   * with nothing added — and where a dock names neither, `edge` still answers whether it is open,
-   * which is the one question that never needed a launcher.
+   * By **dock**, not by module: a module with two panels has two answers. The registry holds the
+   * host's controls for every panel — its own flag where the module did not claim one, the module's
+   * named actions where it did — so this asks the registry and never a store. From the module
+   * registry rather than the dock registry, for `dockIdFor`'s reason: reading the dock registry
+   * inside an effect that registers into it is what closed the loop.
    */
-  const toggleModulePanel = (dockId: string, wantOpen: boolean): void => {
-    // From the definition rather than the registry, for `dockIdFor`'s reason: reading the dock
-    // registry inside an effect that registers into it is what closed the loop.
-    const moduleId = dockId.slice(0, dockId.lastIndexOf(':'));
-    const docks = moduleRegistry.get(moduleId)?.definition.docks ?? [];
-    const dock = docks.find((entry, index) => `${moduleId}:${entry.name ?? index}` === dockId);
-    if (!dock) return;
-    const store = moduleStores[moduleId] as Record<string, unknown> | undefined;
-    // The dock's own `edge` key: null is closed, which is the same one answer the host reads for
-    // geometry, so a layout cannot disagree with the panel about whether it is up.
-    const isOpen = readModuleKey(moduleId, dock.edge) !== null;
-    if (isOpen === wantOpen) return;
-
-    const named = wantOpen ? dock.open : dock.close;
-    if (named) {
-      const fn = store?.[named];
-      if (typeof fn === 'function') (fn as () => void)();
-      return;
-    }
-
-    // No key of its own — the module's single launcher, as before.
-    const launcher = moduleRegistry.get(moduleId)?.definition.launcher;
-    if (!launcher?.action) return;
-    if (!wantOpen && launcher.activeWhen === undefined) return;
-    const fn = store?.[launcher.action];
-    if (typeof fn === 'function') (fn as () => void)();
+  const setModulePanel = (dockId: string, wantOpen: boolean): void => {
+    const controls = moduleRegistry.panel(dockId);
+    if (!controls || controls.isOpen() === wantOpen) return;
+    if (wantOpen) controls.open();
+    else controls.close();
   };
 
   createEffect(() => {
     dockRegistryVersion();
     const wanted = declaredPanels()
-      // `open: false` places without opening. Opening a panel is not always harmless — the call
-      // module's launcher is `goToCall`, which joins a call when there is not one — so a template
-      // that placed the call window would otherwise start a call on entering the space.
+      // `open: false` places without opening. Opening goes through the panel's own controls — the
+      // host's flag, or the `show` key a module named — and is not always wanted on entering a
+      // space: the call's stage opened with nobody in it is an empty window over the content.
       .filter((panel) => panel.module && panel.open !== false)
       /*
         By dock, not by module. A module with two declared panels used to collapse to one entry
@@ -2660,12 +2651,12 @@ export function ShellStoreProvider(props: ParentProps) {
     for (const dockId of wanted) {
       if (layoutOpened.has(dockId)) continue;
       layoutOpened.add(dockId);
-      toggleModulePanel(dockId, true);
+      setModulePanel(dockId, true);
     }
     for (const dockId of [...layoutOpened]) {
       if (wanted.includes(dockId)) continue;
       layoutOpened.delete(dockId);
-      toggleModulePanel(dockId, false);
+      setModulePanel(dockId, false);
     }
   });
 
@@ -3118,7 +3109,7 @@ export function ShellStoreProvider(props: ParentProps) {
       const entry = dockRegistry.get(id);
       const request = dockRequests().find((item) => item.id === id);
       if (!entry || !request?.edge) return;
-      const aspect = readModuleKey(entry.moduleId, entry.aspect) as DockAspect | undefined;
+      const aspect = readDockKey(entry, entry.aspect) as DockAspect | undefined;
       if (!aspect) return;
 
       // Measured from the resolved rect, because that is the panel you are looking at — a docked one
@@ -4160,6 +4151,13 @@ export function ShellStoreProvider(props: ParentProps) {
       }
       if (!geometry.canStow) return;
       setLaneStowed(members, true);
+    },
+
+    openModulePanel: (dockId) => setModulePanel(dockId, true),
+    closeModulePanel: (dockId) => setModulePanel(dockId, false),
+    toggleModulePanel: (dockId) => {
+      const controls = moduleRegistry.panel(dockId);
+      if (controls) setModulePanel(dockId, !controls.isOpen());
     },
 
     revealDock: (id) => {

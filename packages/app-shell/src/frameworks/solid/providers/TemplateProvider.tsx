@@ -5,7 +5,7 @@ import { provideModuleHostServices } from '@shared/registries/moduleHostServices
 import { resolveParts, resolvePartsInRoutes } from '@shared/registries/moduleParts';
 import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry';
 import { onSlotRegistryChanged, slotRegistry } from '@shared/registries/slotRegistry';
-import { provideTemplateBag } from '@shared/registries/templateBag';
+import { provideChromeBag, provideTemplateBag } from '@shared/registries/templateBag';
 import { buildTemplateBag, CHROME_TIER, SPACE_TIER } from '@shared/registries/templateSurface';
 import { hostSourceBag } from '@shared/sources';
 
@@ -35,7 +35,7 @@ import {
 import type { Stores } from '@solid/types';
 import { Route, Router } from '@solidjs/router';
 import { manifestEntries } from '@we/backend-shared';
-import { BlockHostProvider, colorFor } from '@we/block-solid';
+import { BlockDisplayOverrides, BlockHostProvider, colorFor } from '@we/block-solid';
 import { toastService } from '@we/components/solid';
 import type { DatasetProxy } from '@we/entities';
 import { getEntity } from '@we/entities';
@@ -49,6 +49,7 @@ import { RECORD_ROUTE_PATH, recordPage } from '@we/template-views';
 import { createEffect, createMemo, createSignal, onCleanup, onMount, Show, untrack } from 'solid-js';
 
 import { createCollabSession } from '../collab/collabSession';
+import { moduleBlockDisplays } from '../components/moduleBlockDisplays';
 import { registerRecordGhost } from '../drag/recordGhost';
 import { PersistentAppFrames } from '../layouts/PersistentAppFrames';
 import { SHELL_SIDEBAR_WIDTH, TemplateLayout } from '../layouts/TemplateLayout';
@@ -249,6 +250,48 @@ export default function TemplateProvider() {
         if (!p) return;
         await updateInDataset(entity, id, fields, p);
       },
+
+      removeEntity: async (entity, id, options) => {
+        const p = moduleTarget(options?.dataset);
+        if (!p) return;
+        await getEntity(entity).delete(p, id);
+      },
+
+      /*
+        The read half of the records kernel — what a module that observes records had no way to do.
+
+        Bounded by the same query a `$query` takes, and resolved against the same entity class the
+        renderer uses, so a module can read nothing a template rendering the same space could not.
+        `subscribe` is the one trigger a module has: the entity's live query, whose subscription
+        resolves with the first page and fires again on change. The dispose is handed back so a store
+        can register it through `deps.onDispose`.
+      */
+      findEntities: async (entity, query, options) => {
+        const p = moduleTarget(options?.dataset);
+        if (!p) return [];
+        const Model = getEntity(entity) as unknown as {
+          findAll: (perspective: unknown, opts: unknown) => Promise<Record<string, unknown>[]>;
+        };
+        return (await Model.findAll(p, query ?? {})) ?? [];
+      },
+      subscribeEntities: (entity, query, cb, options) => {
+        const p = moduleTarget(options?.dataset);
+        if (!p) return () => {};
+        const Model = getEntity(entity) as unknown as {
+          query: (
+            perspective: unknown,
+            opts: unknown,
+          ) => { subscribe: (cb: (rows: Record<string, unknown>[]) => void) => Promise<unknown>; dispose: () => void };
+        };
+        const subscription = Model.query(p, query ?? {});
+        void subscription.subscribe(cb).then(
+          (rows) => cb(rows as Record<string, unknown>[]),
+          (error: unknown) => {
+            console.warn(`module host: subscription to ${entity} failed`, error);
+          },
+        );
+        return () => subscription.dispose();
+      },
     }),
   );
 
@@ -368,7 +411,22 @@ export default function TemplateProvider() {
     Deferred to a microtask because this runs inside a memo, and writing a signal during a render is
     how a re-entrancy bug starts.
   */
-  const sources = hostSourceBag();
+  /*
+    The host's own functions, then the ones registered modules lend — `contributes.functions`. A
+    module may not shadow a host function: the host's vocabulary is what every template was written
+    against, and a module redefining `calendarMonth` would change every calendar at once. Reported,
+    since a silently ignored contribution is the failure this codebase most often meets.
+  */
+  const hostSources = hostSourceBag();
+  const moduleSources: Record<string, (options: unknown) => unknown> = {};
+  for (const fn of moduleRegistry.functions()) {
+    if (fn.name in hostSources) {
+      console.warn(`module "${fn.moduleId}" function "${fn.name}" would shadow a host function and was not registered`);
+      continue;
+    }
+    moduleSources[fn.name] = fn.fn as (options: unknown) => unknown;
+  }
+  const sources = { ...hostSources, ...moduleSources };
   const arrangedBoardSource = sources.arrangedBoard;
   stores.$sources = {
     ...sources,
@@ -536,12 +594,11 @@ export default function TemplateProvider() {
   const templateBag = buildTemplateBag(stores, {
     grants: SPACE_TIER,
     onDestructive: (path, args) => shellStore.requestDestructive(path, args),
-    // What each module keeps for chrome. Declared by the module, since only it knows which of its
-    // members reach past the space on screen — see `ModuleStoreSurface`.
-    moduleChromeOnly: moduleRegistry.chromeOnlyStoreMembers(),
   });
 
   onCleanup(provideTemplateBag(templateBag));
+  // And the chrome bag, for a module's declared card drawn inside a template's post. See `templateBag.ts`.
+  onCleanup(provideChromeBag(chromeBag));
 
   /*
     What a drag looks like. Registered from here because it is the same kind of knowledge as
@@ -1037,33 +1094,37 @@ export default function TemplateProvider() {
       // threading a handler from every call site is the `perspective` string all over again.
       openRef={(ref) => void spaceStore.openRecordRef(ref)}
     >
-      <VisualEditorProvider value={visualEditorCtx}>
-        {/* Shell chrome — stable, never remounts. Chrome tier: this is host-authored. */}
-        <RenderSchema node={shellSchema} stores={chromeBag} registry={registry} />
+      <BlockDisplayOverrides overrides={moduleBlockDisplays()}>
+        <VisualEditorProvider value={visualEditorCtx}>
+          {/* Shell chrome — stable, never remounts. Chrome tier: this is host-authored. */}
+          <RenderSchema node={shellSchema} stores={chromeBag} registry={registry} />
 
-        {/* Router — keyed on the template ID *and* the resolved section list, since both decide what
+          {/* Router — keyed on the template ID *and* the resolved section list, since both decide what
            `buildRoutes` produces. Adding, removing or reordering a section remounts the space's
            content, which is the same trade template switching already makes: both are rare,
            deliberate acts, and a router whose route table changed underneath it is worse. */}
-        <Show when={routeKey()} keyed>
-          {(_key) => (
-            <Router root={Layout}>
-              {buildRoutes(templateBag, routesWithViews())}
-              <Route
-                path="*"
-                component={() =>
-                  routesWithViews().length ? RenderSchema({ node: notFoundNode, stores: templateBag, registry }) : null
-                }
-              />
-            </Router>
-          )}
-        </Show>
+          <Show when={routeKey()} keyed>
+            {(_key) => (
+              <Router root={Layout}>
+                {buildRoutes(templateBag, routesWithViews())}
+                <Route
+                  path="*"
+                  component={() =>
+                    routesWithViews().length
+                      ? RenderSchema({ node: notFoundNode, stores: templateBag, registry })
+                      : null
+                  }
+                />
+              </Router>
+            )}
+          </Show>
 
-        {/* Persistent app iframes (e.g. Flux) — stable, never remounts. Rendered after the
+          {/* Persistent app iframes (e.g. Flux) — stable, never remounts. Rendered after the
            keyed Router (both are DOM order stacking, so this preserves the original
            on-top-of-template paint order) so switching templates doesn't reload embedded apps. */}
-        <PersistentAppFrames stores={stores} />
-      </VisualEditorProvider>
+          <PersistentAppFrames stores={stores} />
+        </VisualEditorProvider>
+      </BlockDisplayOverrides>
     </BlockHostProvider>
   );
 }

@@ -186,6 +186,8 @@ export interface CardSelection {
  * *made* it ({@link UNCONFIRMED}), and an agreed card with a change suggested ({@link CHANGED}) is not.
  * Kept for a surface that genuinely asks "is anything waiting on this record".
  */
+// The transcribe module's list, so a template placing a board with suggestion controls depends on
+// that module and should declare it: `meta.requires.modules: ['transcribe']`. See `suggestions.ts`.
 export const PENDING = 'modules.transcribe.pendingIds';
 
 /** Whether the card in scope is the selected one, as expression source — `false` where nothing selects. */

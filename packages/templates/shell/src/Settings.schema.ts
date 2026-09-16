@@ -500,6 +500,22 @@ function moduleRow(control: SchemaNode): SchemaNode {
                 props: { variant: 'footnote', color: 'text-faint' },
                 children: [{ $: 'mod.description' }],
               },
+              /*
+                What the module can reach — derived by the host from its manifest and what it
+                contributes, so it cannot go stale. The contract used to carry a list every module
+                wrote and nothing read; this is the row that reads it.
+              */
+              {
+                type: '$if',
+                props: {
+                  condition: { $: 'count(mod.capabilities)' },
+                  then: {
+                    type: 'we-text',
+                    props: { variant: 'footnote', color: 'text-faint' },
+                    children: [{ $: "`Can: ${join(mod.capabilities, ', ')}`" }],
+                  },
+                },
+              },
             ],
           },
         ],

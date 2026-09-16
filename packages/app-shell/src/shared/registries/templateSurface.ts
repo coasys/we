@@ -37,6 +37,7 @@
  * store member fails that test until it is classified, so this cannot quietly fall behind the code
  * it describes — the failure mode an allowlist beside the thing it allows usually has.
  */
+import { memberKind } from '@we/module-shared';
 import { isExpressionToken, markReactive, parseExpression, referencedPaths } from '@we/schema-shared';
 
 /**
@@ -1044,6 +1045,10 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // does on a panel that is open but out of view.
     toggleStowLane: action('host-layout'),
     revealDock: action('host-layout'),
+    // The host's half of a module panel's openness. Chrome — the rail, a titlebar — is what asks.
+    openModulePanel: action('host-layout'),
+    closeModulePanel: action('host-layout'),
+    toggleModulePanel: action('host-layout'),
     // Every panel put away at once, which the rail's toggle reads and presses.
     panelsHidden: state('host-layout'),
     hasPanels: state('host-layout'),
@@ -1241,35 +1246,36 @@ const ALWAYS_PRESENT = new Set([
 ]);
 
 /**
- * Module stores, with every function tagged so an expression can still read module state.
+ * Module stores, tagged by what each member was marked as.
  *
- * **This is deliberately permissive, and the one place the boundary is not yet drawn.** A module's
- * store is a flat record whose members are a mix of raw signals, derived closures and actions, and
- * nothing distinguishes them — so tagging selectively is not possible without the module saying
- * which is which. Tagging all of them keeps `{ $: 'modules.transcribe.level' }` working and
- * leaves `modules.call.leave` callable during paint, exactly as before.
+ * A module says which of its members are public and which kind each is — `deps.state` and
+ * `deps.action` in its `createStore`; see `store.ts` in `@we/module-shared`. Below the chrome tier
+ * only marked members are present at all: **private by default**, which is the default a second
+ * author needs, and the inverse of the opt-out list it replaces. A marked state member is tagged
+ * reactive so `{ $: 'modules.transcribe.level' }` reads it; a marked action is left untagged so
+ * `{ $: 'modules.call.leave' }` reads a function rather than *calling* it during paint, and `$action`
+ * still calls it.
  *
- * The reason that is acceptable *today* is that modules are bundled: they are chosen by the
- * deployment's seed and ship with the app, at the same trust level as the app itself. It stops being
- * acceptable the moment modules are installable, which the module docs already anticipate — and the
- * fix has a clear shape: `ModuleStoreDeps` grows a `state()` marker, modules wrap their accessors in
- * it, and this function tags only what was marked. Left as a follow-up rather than done here because
- * it is a contract change across five modules, and doing it badly would be worse than doing it late.
+ * The chrome tier — the module's own panels, and the host's — sees every member. An unmarked
+ * function there is tagged reactive, which is the behaviour every module's own chrome was written
+ * against; a marked one is tagged by its kind, so a module that marks its actions stops having them
+ * called by a stray read in its own panel too.
  */
 function taggedModuleStores(
   modules: Record<string, Record<string, unknown>>,
-  chromeOnly?: Record<string, readonly string[]>,
+  publicOnly: boolean,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [id, store] of Object.entries(modules ?? {})) {
     if (!store || typeof store !== 'object') continue;
-    // Members this module keeps for host chrome — absent below, not blocked. See `ModuleStoreSurface`.
-    const withheld = new Set(chromeOnly?.[id] ?? []);
-    out[id] = Object.fromEntries(
-      Object.entries(store)
-        .filter(([name]) => !withheld.has(name))
-        .map(([name, member]) => [name, typeof member === 'function' ? markReactive(member) : member]),
-    );
+    const tagged: Record<string, unknown> = {};
+    for (const [name, member] of Object.entries(store)) {
+      const kind = memberKind(member);
+      if (publicOnly && !kind) continue;
+      if (kind === 'action') tagged[name] = member;
+      else tagged[name] = typeof member === 'function' ? markReactive(member) : member;
+    }
+    out[id] = tagged;
   }
   return out;
 }
@@ -1292,15 +1298,6 @@ export interface BuildBagOptions {
    * resolves — so `onSuccess` does not fire on a cancel.
    */
   onDestructive?: (path: string, args: unknown[]) => boolean | Promise<boolean>;
-  /**
-   * Store members each module withholds from a space template, keyed by module id.
-   *
-   * Passed by the host from the module registry, rather than read here, for the reason this whole
-   * file exists to serve: what a module publishes is the module's declaration, and the boundary
-   * should not have to know the names. Only meaningful below the chrome tier — chrome *is* the
-   * audience these members are kept for. See `ModuleStoreSurface`.
-   */
-  moduleChromeOnly?: Record<string, readonly string[]>;
 }
 
 /**
@@ -1329,11 +1326,9 @@ export function buildTemplateBag<T extends Record<string, unknown>>(stores: T, o
     if (key === 'modules') {
       Object.defineProperty(bag, key, {
         enumerable: true,
+        // Chrome sees every member; anything below it sees what the module marked public.
         get: () =>
-          taggedModuleStores(
-            stores[key] as Record<string, Record<string, unknown>>,
-            granted.has('host-layout') ? undefined : options.moduleChromeOnly,
-          ),
+          taggedModuleStores(stores[key] as Record<string, Record<string, unknown>>, !granted.has('host-layout')),
       });
       continue;
     }

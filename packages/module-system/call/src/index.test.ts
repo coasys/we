@@ -10,10 +10,11 @@
  * silent. Structural rather than behavioural, because the failure is structural — every piece
  * rendered exactly as written, in the wrong dependency.
  */
+import { moduleCapabilities } from '@we/module-shared';
 import type { SchemaNode } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
-import { callModule } from './index';
+import { callModule, createModule } from './index';
 
 /** Every node in a tree, so a test can ask about a subtree without knowing where it sits. */
 function walk(node: unknown, out: SchemaNode[] = []): SchemaNode[] {
@@ -30,7 +31,8 @@ function walk(node: unknown, out: SchemaNode[] = []): SchemaNode[] {
   return out;
 }
 
-const slotNodes = (): SchemaNode[] => (callModule.slots ?? []).map((slot) => slot.node);
+const slotNodes = (): SchemaNode[] => (callModule.contributes?.slots ?? []).map((slot) => slot.node);
+const part = (name: string) => callModule.contributes?.parts?.[name];
 
 describe('audio', () => {
   it('plays from the chrome, which is mounted for the whole call', () => {
@@ -61,7 +63,7 @@ describe('audio', () => {
 
   it('keeps every tile silent, so nobody is decoded twice', () => {
     // An unmuted tile beside the sink is the same voice from two decoders, slightly apart.
-    const videos = walk(callModule.schemas?.tile).filter((node) => node.type === 'we-video');
+    const videos = walk(part('tile')).filter((node) => node.type === 'we-video');
 
     expect(videos).not.toHaveLength(0);
     for (const video of videos) expect((video.props as Record<string, unknown>).muted).toBe(true);
@@ -211,13 +213,13 @@ describe('the compact bar', () => {
  * this is where the node is, and the panel's own suite asserts the button has not grown back there.
  */
 describe('picking a call back up', () => {
-  const part = () => callModule.schemas?.continueCallButton;
-  const json = () => JSON.stringify(part());
+  const button = () => part('continueCallButton');
+  const json = () => JSON.stringify(button());
 
   it('is published for an interface to place', () => {
     // A template cannot be reached into: the pill that draws a call's name is the Workshop shell's
     // own chrome and has no anchor. A named part is how a module offers chrome somebody else places.
-    expect(part()).toBeDefined();
+    expect(button()).toBeDefined();
   });
 
   it('refuses a pick-up that would tear down a call in progress, rather than hiding', () => {
@@ -267,9 +269,9 @@ describe('picking a call back up', () => {
   it('names itself for a screen reader, having no visible word to do it', () => {
     // Icon-only, so the accessible name has to be said rather than inherited from a label. The same
     // expression as the tooltip, so the two cannot drift into describing different acts.
-    const button = walk(part()).find((node) => node.type === 'we-button');
-    const label = (button?.props as { label?: { $?: string } } | undefined)?.label?.$;
-    const tooltip = walk(part()).find((node) => node.type === 'we-tooltip');
+    const pressed = walk(button()).find((node) => node.type === 'we-button');
+    const label = (pressed?.props as { label?: { $?: string } } | undefined)?.label?.$;
+    const tooltip = walk(button()).find((node) => node.type === 'we-tooltip');
     expect(label).toBeDefined();
     expect(label).toBe((tooltip?.props as { content?: { $?: string } } | undefined)?.content?.$);
   });
@@ -280,9 +282,72 @@ describe('picking a call back up', () => {
       whole point of a button that survives a call starting and ending underneath it. Choosing at
       render time would bake in whichever state the pill first drew in.
     */
-    const onClick = (walk(part()).find((n) => n.type === 'we-button')?.props as { onClick?: unknown })?.onClick;
+    const onClick = (walk(button()).find((n) => n.type === 'we-button')?.props as { onClick?: unknown })?.onClick;
     expect(Array.isArray(onClick)).toBe(true);
     expect(JSON.stringify(onClick)).toContain('modules.call.goToCall');
     expect(JSON.stringify(onClick)).toContain('modules.call.continueCall');
+  });
+});
+
+/**
+ * The declaration — what the manifest asks for and what the contributions name.
+ *
+ * These pin the places things moved to when the contract split one flat interface into a manifest,
+ * a set of contributions and a store. Each is a string the host reads, so a rename here fails
+ * silently at runtime as a launcher that does nothing or a panel that never opens; asserting them
+ * turns that into a test failure.
+ */
+describe('the declaration', () => {
+  const contributes = callModule.contributes!;
+
+  it('asks for exactly the kernels the store reaches', () => {
+    // A kernel not named here is absent from `deps.kernels`, so this list is the store's reach.
+    expect([...(callModule.manifest.requires?.kernels ?? [])].sort()).toEqual(
+      ['ephemeral', 'media', 'peerConnection', 'presence', 'records'].sort(),
+    );
+  });
+
+  it('declares the devices it opens, and derives the rest of what a person agrees to', () => {
+    // The three permissions are authored — they are the reason to think twice about a call module
+    // from a stranger. The dock and the slot used to be authored beside them and could go stale.
+    expect(callModule.manifest.requires?.permissions).toEqual(['microphone', 'camera', 'screen-share']);
+    const capabilities = moduleCapabilities(callModule);
+    expect(capabilities).toEqual(
+      expect.arrayContaining(['microphone', 'camera', 'screen-share', 'dock', 'slot:dock-bottom']),
+    );
+  });
+
+  it('owns whether its stage is up, and so declares how to close it', () => {
+    // A panel naming `open` must name `close`, or the titlebar cannot dismiss it. No `icon`: the
+    // rail entry is the launcher, whose press does more than open a panel.
+    const stage = contributes.panels?.find((panel) => panel.name === 'stage');
+    expect(stage).toMatchObject({ bid: 'stageBid', open: 'stageOpen', show: 'openStage', close: 'closeStage' });
+    expect(stage?.icon).toBeUndefined();
+  });
+
+  it('keeps its chrome up while a call runs, by a bare store key', () => {
+    // `holds` and `reserve` are keys into the store, not template paths — the one field that was
+    // spelt `modules.call.active` now reads like every other.
+    expect(contributes.holds).toBe('active');
+    expect(contributes.reserve).toBe('chromeReserve');
+    for (const key of [contributes.holds, contributes.reserve]) expect(key).not.toContain('.');
+  });
+
+  it('has one launcher, and it goes to the call', () => {
+    expect(contributes.launchers).toHaveLength(1);
+    expect(contributes.launchers?.[0]).toMatchObject({
+      action: 'goToCall',
+      activeWhen: 'active',
+      availableWhen: 'canCall',
+    });
+  });
+
+  it('declares the activity the transcriber reads off its roster', () => {
+    // `record` and `continued` were the two fields another module read by convention.
+    expect(contributes.activities?.call).toMatchObject({ record: 'string', continued: 'boolean', anchor: 'object' });
+  });
+
+  it('is what the package factory hands a host', () => {
+    expect(createModule({ components: {} })).toBe(callModule);
   });
 });

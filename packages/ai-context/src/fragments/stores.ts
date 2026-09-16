@@ -349,7 +349,7 @@ export const storeEntries: StoreEntry[] = [
       canAdministerCurrentSpace: { type: 'boolean' },
       moduleInstallSettings: {
         type: 'array',
-        properties: ['id', 'name', 'description', 'icon', 'installed'],
+        properties: ['id', 'name', 'description', 'icon', 'installed', 'surface', 'switchable', 'capabilities'],
       },
       moduleLaunchers: {
         type: 'array',
@@ -1063,9 +1063,9 @@ export function generateStoresText(entries: StoreEntry[]): string {
         activeModules:
           'string[] — what actually renders here for this agent: registered \u2229 installed \u2229 enabled, less the modules muted in this space. Module chrome and the launcher rail gate on this; enabledModules alone is not sufficient',
         moduleInstallSettings:
-          "{ id, name, description, icon, installed, surface, switchable }[] — every registered module and whether this agent wants it anywhere. The global Settings → Modules list, and the only place an 'app' or 'capability' module is decided about: a contribution is gated at the layer where it renders, and only 'chrome' renders inside a space. `surface` is derived from what the module contributes. Its per-space counterpart is `modules` on each spaceList row, which carries enabled/installed/visible/active together and lists chrome modules only",
+          "{ id, name, description, icon, installed, surface, switchable, capabilities }[] — every registered module and whether this agent wants it anywhere. `capabilities` is what a person is agreeing to — derived from the module's manifest (its permissions and the kernels it reaches) and what it contributes (a panel, storage in the space), never authored, so it cannot go stale. The global Settings → Modules list, and the only place an 'app' or 'capability' module is decided about: a contribution is gated at the layer where it renders, and only 'chrome' renders inside a space. `surface` is derived from what the module contributes. Its per-space counterpart is `modules` on each spaceList row, which carries enabled/installed/visible/active together and lists chrome modules only",
         moduleLaunchers:
-          '{ id, icon, label, active, busy, concealed }[] — launchers for the modules enabled here and available in this space; what the host module rail renders. `active` is the module reporting its surface open; `concealed` says that panel is open and out of sight — a background tab of a stack, folded to its bar, or in a lane collapsed to its edge — so light the button on `mod.active && !mod.concealed`, since pressing a concealed one brings the panel forward rather than closing it. `busy` says the module is working in the background — an extraction pass running — and is independent of `active`, so a rail can show work going on behind a closed panel. Pair with { $action: "spaceStore.launchModule", args: [{ $: "mod.id" }] }',
+          '{ id, icon, label, active, busy, concealed }[] — one entry per module panel that asks for a rail button, plus the launchers a module declares of its own; what the host module rail renders. `id` is a panel’s dock id (`<moduleId>:<name>`) or a launcher’s key, and is what launchModule takes. `active` is the module reporting its surface open; `concealed` says that panel is open and out of sight — a background tab of a stack, folded to its bar, or in a lane collapsed to its edge — so light the button on `mod.active && !mod.concealed`, since pressing a concealed one brings the panel forward rather than closing it. `busy` says the module is working in the background — an extraction pass running — and is independent of `active`, so a rail can show work going on behind a closed panel. Pair with { $action: "spaceStore.launchModule", args: [{ $: "mod.id" }] }',
       },
       actions: {
         moveChild:
@@ -1519,6 +1519,12 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(): puts every panel away at once, or brings them all back exactly as they were — hidden, never unmounted, with the content given their room while they are away. Does nothing while a shell overlay is up, when the panels are away already. Asking for one panel (revealDock, a rail launcher) brings them all back',
         toggleStowLane:
           "(id: string): collapses the whole displacing lane this panel is in to a strip at its edge naming its panels, or opens it again. Every panel keeps its size, which tab is showing and whether it is folded; the content is hidden, never unmounted. Offered on the lane's first titlebar — read dockGeometry[id].canStow — and a press anywhere on the strip opens it",
+        openModulePanel:
+          '(dockId: string): opens one of a module’s panels, by its dock id (`<moduleId>:<name>`). The host holds whether most panels are open, so this is where the flag lives; a module that owns its own flag is asked through the actions it named instead',
+        closeModulePanel:
+          '(dockId: string): closes one of a module’s panels. What the titlebar’s close button calls for a host-owned panel',
+        toggleModulePanel:
+          '(dockId: string): opens a module’s panel if it is closed, closes it if it is open — what the rail’s button does for a panel that is in sight. Prefer spaceStore.launchModule from a template, which also brings a concealed panel into view',
         revealDock:
           '(id: string): brings an open panel into sight wherever it is hidden — to the front of its stack, unfolded, or by opening the lane it is collapsed into — and flashes its tab when it came forward in a stack. Leaves a closed panel alone. What the module rail does for a panel that is open and concealed, instead of the module\u2019s own toggle',
         breakOut:

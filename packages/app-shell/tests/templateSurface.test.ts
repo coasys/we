@@ -14,6 +14,8 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { markAction, markState } from '@we/module-shared';
+import { REACTIVE_ACCESSOR } from '@we/schema-shared';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { CapabilityGroup } from '../src/shared/registries/templateSurface';
@@ -296,36 +298,40 @@ describe('space-configuring actions are pinned to the space on screen', () => {
   });
 });
 
-describe('modules — what a space template may reach in the one unfiltered namespace', () => {
+describe('modules — private by default, public by marking', () => {
   /*
-    `modules` is handed over whole, because the boundary classifies members it can see in interfaces
-    it knows and a module's store is a flat record it has never heard of. That was acceptable while
-    every module's store touched only the space on screen. The Pocket broke it: its actions write
-    `PocketItem`/`PocketFolder` into the agent's *private root dataset*, so a synced space template
-    calling `modules.pocket.gather` writes into a store belonging to no space at all.
+    `modules` used to be handed over whole, because the boundary classifies members it can see in
+    interfaces it knows and a module's store is a flat record it has never heard of. The Pocket broke
+    that: its actions write into the agent's *private root dataset*, so a synced space template
+    calling `modules.pocket.gather` wrote into a store belonging to no space at all. The fix was an
+    opt-out list, and the shape of the fix showed the default was wrong.
 
-    A module declares what it keeps, since only it knows. Withheld, not blocked — absent from the
-    bag exactly as an ungranted store member is, leaving no error channel to probe.
+    A module marks what is public now — `deps.state` and `deps.action` — and everything else is
+    withheld from a space template. Withheld, not blocked: absent from the bag exactly as an
+    ungranted store member is, leaving no error channel to probe.
   */
   const modules = {
-    pocket: { open: () => true, toggle: () => {}, gather: () => {}, refs: () => ['a'] },
+    pocket: {
+      open: markState(() => true, 'open'),
+      toggle: markAction(() => {}, 'toggle'),
+      gather: () => {},
+      refs: () => ['a'],
+    },
     notes: { open: () => true, close: () => {} },
   };
-  const chromeOnly = { pocket: ['gather', 'refs'] };
 
   const bagFor = (grants: readonly CapabilityGroup[]) =>
-    buildTemplateBag({ modules }, { grants, moduleChromeOnly: chromeOnly }).modules as Record<
-      string,
-      Record<string, unknown>
-    >;
+    buildTemplateBag({ modules }, { grants }).modules as Record<string, Record<string, unknown>>;
+  const isReactive = (member: unknown) =>
+    typeof member === 'function' && Boolean((member as unknown as Record<symbol, unknown>)[REACTIVE_ACCESSOR]);
 
-  it('withholds a module’s chrome-only members from the space tier', () => {
+  it('withholds a module’s unmarked members from the space tier', () => {
     const space = bagFor(SPACE_TIER);
     expect('gather' in space.pocket).toBe(false);
     expect('refs' in space.pocket).toBe(false);
   });
 
-  it('leaves the module reachable as chrome — open, toggle, and what it is', () => {
+  it('leaves the marked members reachable — open, toggle, and what it is', () => {
     // Withholding the contents must not withhold the panel: a template offering "put this in your
     // Pocket" opens it and lets the person drop the thing in, which is the whole interaction.
     const space = bagFor(SPACE_TIER);
@@ -333,14 +339,26 @@ describe('modules — what a space template may reach in the one unfiltered name
     expect('toggle' in space.pocket).toBe(true);
   });
 
-  it('gives host chrome everything, since chrome is who they are kept for', () => {
+  it('tags state reactive and leaves an action callable but not readable', () => {
+    // `{ $: 'modules.pocket.toggle' }` used to *call* toggle during paint. A marked action is the
+    // function itself, untagged, so an expression reads a function and `$action` calls it.
+    const space = bagFor(SPACE_TIER);
+    expect(isReactive(space.pocket.open as never)).toBe(true);
+    expect(isReactive(space.pocket.toggle as never)).toBe(false);
+  });
+
+  it('gives host chrome everything, since chrome is who the private members are kept for', () => {
     const chrome = bagFor(CHROME_TIER);
     expect('gather' in chrome.pocket).toBe(true);
     expect('refs' in chrome.pocket).toBe(true);
+    // An unmarked function at chrome tier keeps the tagging the module's own panel was written against.
+    expect(isReactive(chrome.pocket.gather as never)).toBe(true);
   });
 
-  it('leaves a module that declares nothing exactly as it was', () => {
+  it('exposes nothing of a module that marks nothing', () => {
+    // The inverse of the old default. A module that says nothing has said "private".
     const space = bagFor(SPACE_TIER);
-    expect(Object.keys(space.notes).sort()).toEqual(['close', 'open']);
+    expect(Object.keys(space.notes)).toEqual([]);
+    expect(Object.keys(bagFor(CHROME_TIER).notes).sort()).toEqual(['close', 'open']);
   });
 });

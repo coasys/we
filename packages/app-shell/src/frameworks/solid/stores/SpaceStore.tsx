@@ -34,6 +34,7 @@ import { resolveRecordRef } from '@shared/recordNavigation';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { moduleRegistry, moduleStores, type ModuleSurface, moduleSurface } from '@shared/registries/moduleRegistry';
 import { defaultViewOrder, viewRegistry } from '@shared/registries/viewRegistry';
+import { seedDefaultEnabledModules } from '@shared/seedModules';
 import { getSeed } from '@shared/seedRegistry';
 import {
   isSpaceSelf,
@@ -216,10 +217,28 @@ function resolveEnabledModules(raw: string | undefined): string[] {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) return parsed.filter((id): id is string => typeof id === 'string');
     } catch {
-      console.warn('space.enabledModules is not valid JSON; falling back to the registered set');
+      console.warn('space.enabledModules is not valid JSON; falling back to the deployment default');
     }
   }
-  return moduleRegistry.all().map((entry) => entry.definition.id);
+  return defaultEnabledModules();
+}
+
+/**
+ * What a space has on until its community decides: the deployment's default, among what registered.
+ *
+ * The seed's, not "every registered module" — which is what it was, and which put the first module a
+ * deployment added into every existing space until somebody opened settings. A host with no seed (a
+ * test) falls back to the registered set, which is the old answer and the right one when nobody has
+ * said otherwise.
+ */
+function defaultEnabledModules(): string[] {
+  const registered = moduleRegistry.all().map((entry) => entry.definition.manifest.id);
+  try {
+    const shipped = new Set(seedDefaultEnabledModules(getSeed()));
+    return registered.filter((id) => shipped.has(id));
+  } catch {
+    return registered;
+  }
 }
 
 /**
@@ -239,15 +258,15 @@ function moduleSettingsFrom(raw: string | undefined, installed: Set<string>, mut
       // renders inside a space — an app switcher is shell-level, and a capability is mounted by
       // whatever template asks for it. Neither is a community's decision. See `moduleSurface`.
       .filter(({ definition }) => moduleSurface(definition) === 'chrome')
-      .map(({ definition }) => {
-        const enabled = on.has(definition.id);
-        const isInstalled = installed.has(definition.id);
-        const isMuted = muted.has(definition.id);
+      .map(({ definition: { manifest } }) => {
+        const enabled = on.has(manifest.id);
+        const isInstalled = installed.has(manifest.id);
+        const isMuted = muted.has(manifest.id);
         return {
-          id: definition.id,
-          name: definition.name,
-          description: definition.description ?? '',
-          icon: definition.icon ?? 'puzzle-piece',
+          id: manifest.id,
+          name: manifest.name,
+          description: manifest.description ?? '',
+          icon: manifest.icon ?? 'puzzle-piece',
           enabled,
           installed: isInstalled,
           visible: !isMuted,
@@ -1142,6 +1161,21 @@ export function SpaceStoreProvider(props: ParentProps) {
    */
   const availableViews = createMemo<Map<string, TemplateSchema>>(() => {
     const out = new Map<string, TemplateSchema>(Object.entries(viewRegistry));
+    /*
+      Views a module contributes, beside the built-ins and ahead of anything installed.
+
+      An experience pack — a board view with its task block, an events view with its RSVP — ships as a
+      module, and its view is what the space enables exactly as it enables a built-in. The built-in
+      wins a collision on id for the reason it wins one below: a module must not be able to replace
+      "About" by naming a view `about`.
+    */
+    for (const [id, view] of Object.entries(moduleRegistry.views())) {
+      if (out.has(id)) {
+        console.warn(`module view "${id}" shares its id with a built-in section and will not be used`);
+        continue;
+      }
+      out.set(id, view);
+    }
     for (const template of templateStore.allTemplates()) {
       if (template.meta?.role !== 'view' || !template.id) continue;
       /*
@@ -3474,8 +3508,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     */
     const byAgent = moduleRegistry
       .all()
-      .filter(({ definition }) => definition.scope === 'agent' && installed.has(definition.id))
-      .map(({ definition }) => definition.id);
+      .filter(({ definition }) => definition.manifest.scope === 'agent' && installed.has(definition.manifest.id))
+      .map(({ definition }) => definition.manifest.id);
     return [...new Set([...bySpace, ...byAgent])];
   });
 
@@ -3567,13 +3601,20 @@ export function SpaceStoreProvider(props: ParentProps) {
     const installed = installedSet();
     return moduleRegistry.all().map(({ definition }) => {
       const surface = moduleSurface(definition);
+      const { manifest } = definition;
       return {
-        id: definition.id,
-        name: definition.name,
-        description: definition.description ?? '',
-        icon: definition.icon ?? 'puzzle-piece',
-        installed: installed.has(definition.id),
+        id: manifest.id,
+        name: manifest.name,
+        description: manifest.description ?? '',
+        icon: manifest.icon ?? 'puzzle-piece',
+        installed: installed.has(manifest.id),
         surface,
+        /**
+         * What a person is agreeing to — derived from the manifest and what the module contributes,
+         * never authored, so it cannot go stale. The list a module used to declare was written by
+         * six modules and read by nothing; this is read here, and is the honest version.
+         */
+        capabilities: moduleRegistry.capabilitiesOf(manifest.id),
         /**
          * A capability module is listed but not switchable.
          *
@@ -3875,7 +3916,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     // component out from under it, and the route stops rendering with nothing to explain why. This
     // guard is what makes a capability module safe to offer a switch for at all.
     if (!installed && requiredModules().includes(moduleId)) {
-      const name = moduleRegistry.get(moduleId)?.definition.name ?? moduleId;
+      const name = moduleRegistry.get(moduleId)?.definition.manifest.name ?? moduleId;
       const template = templateStore.currentTemplate.meta?.name ?? 'current';
       toastService.error(`${name} can't be turned off — the ${template} template uses it`);
       return;
@@ -4082,7 +4123,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     Tell the shell which modules' chrome is live here.
 
     The same predicate `gateOnSpace` wraps every module slot in — enabled here, *or* the module says
-    it is holding on regardless (`holdsWhen`, which is how a call keeps its bar in a space that
+    it is holding on regardless (`holds`, which is how a call keeps its bar in a space that
     never enabled calls). Only this store can answer it, and `ShellStore` mounts above this one, so
     it is injected rather than read.
 
@@ -4094,10 +4135,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     const on = new Set(activeModules());
     shellStore.provideModuleGate((moduleId: string) => {
       if (on.has(moduleId)) return true;
-      const definition = moduleRegistry.all().find((m) => m.definition.id === moduleId)?.definition;
-      // `holdsWhen` is a full store path (`modules.call.active`); only its final key is a store member.
-      const key = definition?.holdsWhen?.split('.').pop();
-      return read(moduleId, key, false);
+      // `holds` is a bare key on the module's own store. See `ModuleContributions.holds`.
+      return read(moduleId, moduleRegistry.get(moduleId)?.definition.contributes?.holds, false);
     });
   });
 
@@ -4124,30 +4163,50 @@ export function SpaceStoreProvider(props: ParentProps) {
     const on = new Set(activeModules());
     const rows: LauncherRow[] = moduleRegistry
       .all()
-      .filter(({ definition }) => on.has(definition.id))
-      /*
-        A module may offer more than one way in, and transcription is why: recording and extraction
-        are two surfaces with different lifetimes — one follows this agent's microphone, the other
-        follows a pass that may be somebody else's — so one button cannot open both. The key is the
-        plain module id for a module with a single launcher, which is every other one, so nothing
-        about their rail entries changes.
-      */
-      .flatMap(({ definition }) => moduleRegistry.launchersOf(definition).map((entry) => ({ definition, ...entry })))
-      .filter(({ definition, launcher }) => read(definition.id, launcher.availableWhen, true))
-      .map(({ definition, key, launcher }) => {
-        const active = read(definition.id, launcher.activeWhen, false);
-        return {
-          id: key,
-          icon: launcher.icon,
-          // The active label where there is one, so a tooltip cannot describe an act the button has
-          // stopped performing. Most launchers declare none and this is `label` in both states.
-          label: (active && launcher.activeLabel) || launcher.label,
-          active,
-          // Background work the module reports — a running pass. Read separately from `active`,
-          // since a panel can be shut while its module is busy.
-          busy: read(definition.id, launcher.busyWhen, false),
-          concealed: dockConcealed(moduleRegistry.dockOfLauncher(definition, launcher)),
-        };
+      .filter(({ definition }) => on.has(definition.manifest.id))
+      .flatMap(({ definition }) => {
+        const id = definition.manifest.id;
+        /*
+          A rail entry per panel that asks for one, then the module's own launchers.
+
+          A panel's button is derived from the panel — its icon, its title, whether it is open — so a
+          module with a panel declares nothing about the rail. A launcher that is not a panel's (the
+          call's "start a call" / "go to the call") is declared separately, and reads its state off
+          the store as it always did.
+        */
+        const panels = moduleRegistry
+          .panelsOf(id)
+          .filter(({ panel }) => panel.icon && read(id, panel.availableWhen, true))
+          .map(({ dockId, panel, isOpen }) => {
+            const active = isOpen();
+            return {
+              id: dockId,
+              icon: panel.icon!,
+              // The active label where there is one, so a tooltip cannot describe an act the button
+              // has stopped performing.
+              label: (active && panel.activeLabel) || panel.label || panel.title,
+              active,
+              // Background work the module reports — a running pass. Read separately from `active`,
+              // since a panel can be shut while its module is busy.
+              busy: read(id, panel.busyWhen, false),
+              concealed: dockConcealed(dockId),
+            };
+          });
+        const launchers = moduleRegistry
+          .launchersOf(definition)
+          .filter(({ launcher }) => read(id, launcher.availableWhen, true))
+          .map(({ key, launcher }) => {
+            const active = read(id, launcher.activeWhen, false);
+            return {
+              id: key,
+              icon: launcher.icon,
+              label: (active && launcher.activeLabel) || launcher.label,
+              active,
+              busy: read(id, launcher.busyWhen, false),
+              concealed: false,
+            };
+          });
+        return [...panels, ...launchers];
       });
     const same = (a: LauncherRow, b: LauncherRow) =>
       a.id === b.id &&
@@ -4184,49 +4243,44 @@ export function SpaceStoreProvider(props: ParentProps) {
    * over modules cannot build `modules.<id>.<method>` per entry. The rail passes the id instead and
    * this dereferences it.
    */
-  function launchModule(moduleId: string) {
+  function launchModule(entryId: string) {
     /*
-      The rail's key, which is the module id for a module with one launcher and `<id>:<key>` for one
-      with several. Split rather than looked up twice: the whole of the addressing is in the key, so
-      a rail iterating over entries needs nothing else, which is the constraint that put this here
-      rather than in a schema in the first place.
+      The rail's key: a panel's dock id (`<module>:<name>`) or a launcher's key (`<module>:<key>`, or
+      the bare module id). The whole of the addressing is in the key, so a rail iterating over entries
+      needs nothing else, which is the constraint that put this here rather than in a schema.
     */
-    const [id] = moduleId.split(':');
-    const definition = moduleRegistry.get(id)?.definition;
-    if (!definition) return;
-    const launcher = moduleRegistry.launchersOf(definition).find((entry) => entry.key === moduleId)?.launcher;
-    const action = launcher?.action;
-    if (!launcher || !action) return;
-    const dockId = moduleRegistry.dockOfLauncher(definition, launcher);
+    const panel = moduleRegistry.panel(entryId);
+    if (panel) {
+      /*
+        The panel is open and out of sight: bring it into sight, and do not toggle it.
 
-    /*
-      The panel is open and out of sight: bring it into sight, and do not ask the module.
-
-      The module's action is usually a toggle, and a toggle reads "open" and closes. So a button lit for
-      a panel stacked behind another tab put that panel away when pressed — the one thing the person
-      pressing it could not have wanted, since they could not see it to want it gone. Only the shell
-      knows where the panel is, so the shell answers; the module keeps its one plain action for the
-      cases it can mean something.
-    */
-    if (dockConcealed(dockId)) {
-      shellStore.revealDock(dockId as string);
+        A toggle reads "open" and closes, so a button lit for a panel stacked behind another tab put
+        that panel away when pressed — the one thing the person pressing it could not have wanted.
+        Only the shell knows where the panel is, so the shell answers.
+      */
+      if (dockConcealed(panel.dockId)) {
+        shellStore.revealDock(panel.dockId);
+        return;
+      }
+      shellStore.toggleModulePanel(panel.dockId);
+      // A panel the press just opened comes to the front of wherever it opened. `revealDock` leaves a
+      // panel that is still closed alone.
+      shellStore.revealDock(panel.dockId);
       return;
     }
 
+    const [id] = entryId.split(':');
+    const definition = moduleRegistry.get(id)?.definition;
+    if (!definition) return;
+    const launcher = moduleRegistry.launchersOf(definition).find((entry) => entry.key === entryId)?.launcher;
+    if (!launcher?.action) return;
     const store = moduleStores[id] as Record<string, unknown> | undefined;
-    const fn = store?.[action];
+    const fn = store?.[launcher.action];
     if (typeof fn !== 'function') {
-      console.warn(`module "${id}" declares launcher action "${action}" but its store has no such method`);
+      console.warn(`module "${id}" declares launcher action "${launcher.action}" but its store has no such method`);
       return;
     }
     (fn as () => void)();
-    /*
-      And a panel the press just opened comes to the front of wherever it opened. A panel reopening into
-      a stack otherwise shows only if it happens to be the most recently touched tab there, which it
-      rarely is — it was closed. `revealDock` leaves a panel that is still closed alone, so an action
-      that closed it, or opens it asynchronously, costs nothing here.
-    */
-    if (dockId) shellStore.revealDock(dockId);
   }
 
   /**

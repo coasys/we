@@ -11,6 +11,7 @@
  * just the roster the module reads and the two write calls it makes.
  */
 import type { Activity, Peer } from '@we/backend-shared';
+import { markAction, markState, type ModuleStoreDeps } from '@we/module-shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createTranscribeStore, TRANSCRIBE_ACTIVITY } from './store';
@@ -42,7 +43,26 @@ function peer(agentId: string, ...activities: Activity[]): Peer {
   return { agentId, updatedAt: 0, availability: 'available', activities, liveness: 'online' };
 }
 
-function harness(peers: Peer[] = [], extraDeps: Record<string, unknown> = {}) {
+/**
+ * What a test may hand the store, over what the harness supplies.
+ *
+ * The kernels by their contract names — a test overriding `transcription` puts a port under
+ * `deps.kernels.transcription`, and `records` merges over the harness's recording writes so a test
+ * can replace one of the three without restating the others. Loosely typed on purpose: most tests
+ * hand over the two or three members they are about, not a whole kernel.
+ */
+interface HarnessDeps {
+  transcription?: Record<string, unknown>;
+  interpretation?: Record<string, unknown>;
+  media?: { input: () => MediaStream | null };
+  records?: Partial<Record<'create' | 'link' | 'update', unknown>>;
+  presence?: Record<string, unknown>;
+  dataset?: () => unknown;
+  settings?: (() => Record<string, boolean | string | number>) | undefined;
+  onDispose?: (fn: () => void) => void;
+}
+
+function harness(peers: Peer[] = [], extraDeps: HarnessDeps = {}) {
   const created: Created[] = [];
   const linked: Linked[] = [];
   const published: Activity[] = [];
@@ -51,6 +71,46 @@ function harness(peers: Peer[] = [], extraDeps: Record<string, unknown> = {}) {
   const notified: { tone: string; message: string }[] = [];
   let nextId = 1;
   const effects: Array<() => void> = [];
+
+  const { transcription, interpretation, media, records, presence, ...core } = extraDeps;
+  /**
+   * The kernels the manifest names, as far as a test needs them.
+   *
+   * The smallest thing that satisfies the contract — the roster the module reads, the three write
+   * calls it makes, and a microphone. A kernel a test does not mention is still here where the store
+   * needs one to do anything at all (`records`, `presence`, `media`), and absent where its absence is
+   * a state worth testing (`transcription`, `interpretation`).
+   */
+  const kernels = {
+    /**
+     * Something to listen to, so the audio effect does not tear the session down on every tick.
+     *
+     * Without it that effect reads "no audio" and calls `stop`, which flushes — so any test that
+     * changes the roster while words are buffered had a second, concurrent flush racing its own for
+     * the buffer, and whichever lost saw nothing to write. The stream is never read here: the store
+     * only hands it to an `AudioContext`, which these tests never reach.
+     */
+    media: media ?? { input: () => ({}) as MediaStream },
+    presence: presence ?? {
+      peers: () => peers,
+      setActivity: (activity: Activity) => published.push(activity),
+      clearActivity: (type: string) => cleared.push(type),
+    },
+    records: {
+      create: async (entity: string, fields: Record<string, unknown>, options?: Created['options']) => {
+        created.push({ entity, fields, options });
+        return `id-${nextId++}`;
+      },
+      link: async (entity: string, id: string, relation: string, value: string) => {
+        linked.push({ entity, id, relation, value });
+      },
+      ...records,
+    },
+    ...(transcription ? { transcription } : {}),
+    ...(interpretation ? { interpretation } : {}),
+    // Through `unknown`: a test's `records` is the two or three writes it is about, never the whole
+    // kernel, and the store feature-tests each member it reaches.
+  } as unknown as ModuleStoreDeps['kernels'];
 
   const store = createTranscribeStore({
     signal: <T>(initial: T): [() => T, (next: T) => void] => {
@@ -63,30 +123,14 @@ function harness(peers: Peer[] = [], extraDeps: Record<string, unknown> = {}) {
       effects.push(fn);
       fn();
     },
+    // The real markers, so a test reads the store the way the host's bag does — and so a member
+    // marked with the wrong kind, or none, is the same object here as there.
+    state: markState,
+    action: markAction,
     selfId: () => ME,
-    /**
-     * Something to listen to, so the audio effect does not tear the session down on every tick.
-     *
-     * Without it that effect reads "no audio" and calls `stop`, which flushes — so any test that
-     * changes the roster while words are buffered had a second, concurrent flush racing its own for
-     * the buffer, and whichever lost saw nothing to write. The stream is never read here: the store
-     * only hands it to an `AudioContext`, which these tests never reach.
-     */
-    audioInput: () => ({}) as MediaStream,
     notify: (tone: string, message: string) => notified.push({ tone, message }),
-    presence: {
-      peers: () => peers,
-      setActivity: (activity) => published.push(activity),
-      clearActivity: (type) => cleared.push(type),
-    },
-    createEntity: async (entity, fields, options) => {
-      created.push({ entity, fields, options });
-      return `id-${nextId++}`;
-    },
-    linkEntity: async (entity, id, relation, value) => {
-      linked.push({ entity, id, relation, value });
-    },
-    ...extraDeps,
+    kernels,
+    ...core,
   }) as ReturnType<typeof createTranscribeStore> & Record<string, (...args: unknown[]) => unknown>;
 
   return {
@@ -540,7 +584,11 @@ describe('recording the call you are in', () => {
   });
 
   it('does not start when there is nothing to listen to', () => {
-    const h = harness(THEIR_TRANSCRIPT, { ...IN_A_SPACE, transcription: CAN_TRANSCRIBE, audioInput: () => null });
+    const h = harness(THEIR_TRANSCRIPT, {
+      ...IN_A_SPACE,
+      transcription: CAN_TRANSCRIBE,
+      media: { input: () => null },
+    });
 
     expect(h.store.enabled()).toBe(false);
   });
@@ -1432,9 +1480,11 @@ describe('staged suggestions', () => {
     const updates: Array<{ entity: string; id: string; fields: Record<string, unknown> }> = [];
     const h = harness(inCall, {
       interpretation: i.port,
-      updateEntity: async (entity: string, id: string, fields: Record<string, unknown>) => {
-        order.push('update');
-        updates.push({ entity, id, fields });
+      records: {
+        update: async (entity: string, id: string, fields: Record<string, unknown>) => {
+          order.push('update');
+          updates.push({ entity, id, fields });
+        },
       },
     });
     await h.say('hello');
@@ -1455,7 +1505,7 @@ describe('staged suggestions', () => {
     const i = interpreterWith([
       { id: 'task-1', kind: 'create', entity: 'TaskBlock', values: { title: 'One', status: 'todo' } },
     ]);
-    const h = harness(inCall, { interpretation: i.port, updateEntity: async () => void wrote++ });
+    const h = harness(inCall, { interpretation: i.port, records: { update: async () => void wrote++ } });
     await h.say('hello');
     await h.store.extract();
 
@@ -1471,8 +1521,10 @@ describe('staged suggestions', () => {
     const i = interpreterWith([{ id: 'task-1', kind: 'create', entity: 'TaskBlock', values: { title: 'One' } }]);
     const h = harness(inCall, {
       interpretation: i.port,
-      updateEntity: async () => {
-        throw new Error('offline');
+      records: {
+        update: async () => {
+          throw new Error('offline');
+        },
       },
     });
     await h.say('hello');
@@ -1489,7 +1541,7 @@ describe('staged suggestions', () => {
   it('forgets the draft when the suggestion it belonged to is rejected', async () => {
     // Otherwise a card's worth of edits stays attached to an id that no longer resolves.
     const i = interpreterWith([{ id: 'task-1', kind: 'create', entity: 'TaskBlock', values: { title: 'One' } }]);
-    const h = harness(inCall, { interpretation: i.port, updateEntity: async () => {} });
+    const h = harness(inCall, { interpretation: i.port, records: { update: async () => {} } });
     await h.say('hello');
     await h.store.extract();
 
@@ -1836,9 +1888,11 @@ describe('what is shown while an utterance is being written', () => {
     const written = new Promise<void>((resolve) => (release = resolve));
     let nextId = 1;
     const h = harness(peers, {
-      createEntity: async () => {
-        await written;
-        return `id-${nextId++}`;
+      records: {
+        create: async () => {
+          await written;
+          return `id-${nextId++}`;
+        },
       },
     });
     return { h, release: () => release() };
@@ -2151,14 +2205,16 @@ describe('typing into a transcript', () => {
 describe('mending a line somebody misheard', () => {
   let inCall: Peer[];
   let updates: Array<{ entity: string; id: string; fields: Record<string, unknown> }>;
-  let deps: Record<string, unknown>;
+  let deps: HarnessDeps;
 
   beforeEach(() => {
     inCall = [peer(ME, { type: 'call', id: CALL, record: RECORD })];
     updates = [];
     deps = {
-      updateEntity: async (entity: string, id: string, fields: Record<string, unknown>) => {
-        updates.push({ entity, id, fields });
+      records: {
+        update: async (entity: string, id: string, fields: Record<string, unknown>) => {
+          updates.push({ entity, id, fields });
+        },
       },
     };
   });
@@ -2262,7 +2318,8 @@ describe('models', () => {
     const p = port([]);
     const h = harness([], { transcription: p.transcription });
 
-    h.store.togglePanel();
+    // The panel's `show`, as the rail calls it: the module owns the flag so it can read it here.
+    h.store.openPanel();
     await h.settle();
 
     expect(h.store.modelMissing()).toBe(true);
@@ -2273,7 +2330,7 @@ describe('models', () => {
     const p = port([]);
     const h = harness([], { transcription: p.transcription });
 
-    h.store.togglePanel();
+    h.store.openPanel();
     h.setPeers([]);
     await vi.advanceTimersByTimeAsync(0);
     expect(h.store.modelMissing()).toBe(true);

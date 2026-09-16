@@ -69,10 +69,11 @@ Two kinds of entry, one list:
 | \`route\`    | Only while one of these segments is in the path — a segment or a list. Absent means every route. |
 | \`open\`     | Whether to open it as well as place it. Absent means yes — see the warning below.               |
 
-**\`open: false\` when a module's launcher does more than open a panel.** Placing a \`module\` panel
-invokes the action its launcher declares, and that is not always "open a panel" — the call module's
-is \`goToCall\`, which *joins a call* when there is not one. Declaring the call window without
-\`open: false\` would start a call the moment somebody entered the space.
+**\`open: false\` when a panel should wait for its moment.** Placing a \`module\` panel opens it as
+well — through the host's own flag, or through the \`show\` action a module named when it owns
+its panel's openness. That is not always wanted on entering a space: the call module's stage is
+open while there is a call to watch, and declaring it without \`open: false\` would put an empty
+stage over the content until somebody started one. The declaration still says where it lands.
 
 ### Sizes
 

@@ -1,13 +1,14 @@
 /**
  * The transcription panel — live feedback while transcribing, and nothing when not.
  *
- * Keyed on `open`, not on whether we are recording. Those were one flag to begin with, which meant
- * the transcript disappeared the instant you stopped recording — exactly when you want to read it —
- * and left no way to check what had been captured without starting again.
+ * Shown while the store's `open` says so, not while we are recording. Those were one flag to begin
+ * with, which meant the transcript disappeared the instant you stopped recording — exactly when you
+ * want to read it — and left no way to check what had been captured without starting again.
  *
  * So: the call bar's button records, this panel shows, and either can be true without the other.
  * Recording does open the panel once, because starting something invisible and saying nothing about
- * it is how a feature comes to look broken.
+ * it is how a feature comes to look broken — which is also why the module owns the flag rather than
+ * leaving it to the host; see `panels` in `index.ts`.
  *
  * In its own `.schema.ts` file so `pnpm --filter @we/schema-shared validate` checks it. The validator
  * walks files by that name, and module fragments declared inline in an `index.ts` were invisible to
@@ -67,31 +68,20 @@ const SUBJECT = { $: SUBJECT_EXPR };
 const VIEWING_LIVE = { $: VIEWING_LIVE_EXPR };
 
 /**
- * Whether this agent could pick the call on screen up.
+ * The words for an empty transcript, and why they read this module's own store.
  *
- * Two terms, and each is a different kind of refusal. `canCall` is absent — and so falsy — in a
- * deployment without the call module, which is what lets this module name another one at all: the
- * offer is simply not made rather than resolving to an action nothing implements.
+ * Three sentences for three situations: already in a call (nothing to offer), somebody is in the
+ * call on screen (join them), nobody is (continue it). Both facts used to be read off the call
+ * module — `modules.call.active`, `modules.call.liveCalls` — which was the one place this module
+ * named that one, against the rule that capabilities meet in a medium and never in each other. They
+ * are read off presence now, through this module's own `inCall` and `callOnScreenLive`.
  *
- * `!active` is the safety gate, and it is the call store's own rule rather than a preference.
- * Continuing a past call while another is running tears the live one down and re-points every peer's
- * transcript at the old record, since peers adopt an announced record over their own. The rail
- * refuses for the same reason, in the same words, at `goToCall`.
+ * `modules.call` as a bare condition is the one permitted reference: it asks whether the module is
+ * installed at all, which is the documented way to depend on an optional module, and without it the
+ * offer to join or continue would be made in a deployment with nothing to make it with.
  */
-const CAN_PICK_UP = 'modules.call.canCall && !modules.call.active';
-
-/**
- * Whether somebody is in the call on screen right now.
- *
- * The difference between joining a conversation and restarting one, and the only thing separating
- * two presses that are otherwise identical: `continueCall` derives the call's id from its record, so
- * arriving at one somebody is already in *is* joining them. What changes is the word for it, and a
- * button offering to "continue" a meeting three people are sitting in is describing the wrong act.
- *
- * Read off the call module's own roster of what is running here rather than from presence directly,
- * which this module has no view of beyond its own entry.
- */
-const CALL_ON_SCREEN_LIVE = 'modules.call.liveCalls.exists(c, c.recordId == routeStore.params.call)';
+const IN_A_CALL = 'modules.transcribe.inCall';
+const CALL_ON_SCREEN_LIVE = 'modules.transcribe.callOnScreenLive';
 
 /**
  * Which call the *extraction* surface is about.
@@ -2753,7 +2743,7 @@ const noUtterances: SchemaNode = {
       label: 'transcript',
       message: {
         $:
-          `!(${CAN_PICK_UP}) ? 'Nothing has been said here yet.' : ` +
+          `(!modules.call || ${IN_A_CALL}) ? 'Nothing has been said here yet.' : ` +
           `${CALL_ON_SCREEN_LIVE} ? 'Nothing has been said here yet. Join the call to begin transcribing.' : ` +
           `'Nothing has been said here yet. Continue the call to begin transcribing.'`,
       },
@@ -4153,17 +4143,18 @@ export const extractionPanel: SchemaNode = {
   It used to position itself — `fixed`, `right: 48px`, a hardcoded copy of the module rail's width —
   which meant it overlaid the space rather than making room in it, sat on top of the editor's
   controls, and stayed put when a docked call panel took the edge out from under it. All three are
-  the host's job; see `docks` in `index.ts`. The box is `panelShell`'s now, as is the header: this
+  the host's job; see `panels` in `index.ts`. The box is `panelShell`'s now, as is the header: this
   drew a `heading-sm` where the panels beside it drew a quiet capitalised label, which is the kind
   of difference nobody chooses and everybody notices.
+
+  No `$if` of its own around it. The extraction panel shed the same wrapper first, and the reason
+  carries: the host renders a panel only while its `open` key says so and gates the module's chrome
+  on the space, so `datasetStore.currentDataset && modules.transcribe.open` was a second copy of
+  both — and one a template supplying this panel's body had to know to repeat.
 */
-export const panel: SchemaNode = {
-  type: '$if',
-  props: {
-    condition: { $: 'datasetStore.currentDataset && modules.transcribe.open' },
-    then: panelShell({
-      // Says which call this is about, because the panel can be about either.
-      /*
+export const panel: SchemaNode = panelShell({
+  // Says which call this is about, because the panel can be about either.
+  /*
         One word, whichever call this is about.
 
         It said "Past call" when the address named one, which was the panel answering a question
@@ -4172,18 +4163,18 @@ export const panel: SchemaNode = {
         the heading went back to describing what the panel *is* — and a title that changes as you
         move between calls is a heading that has to be re-read to learn nothing.
       */
-      title: 'Transcript',
-      /*
+  title: 'Transcript',
+  /*
         The same glyph the extraction panel carries, with the three facts about a transcript that
         nothing on screen says: whose machine hears whom, why every line has a name, and that a
         finished call reads back into the same surface. See `docs/architecture/transcripts.md`.
       */
-      help:
-        "What is said on the call is written down here, by whoever says it: each person's " +
-        'microphone is transcribed on their own machine and the lines join into one shared record. ' +
-        'Press Transcribe to add your own voice to it. A finished call is read back here, and can ' +
-        'be picked up again.',
-      /*
+  help:
+    "What is said on the call is written down here, by whoever says it: each person's " +
+    'microphone is transcribed on their own machine and the lines join into one shared record. ' +
+    'Press Transcribe to add your own voice to it. A finished call is read back here, and can ' +
+    'be picked up again.',
+  /*
         One control, not a control and a badge saying the same thing.
 
         There was a solid red REC chip beside the button here, and between them they made one point
@@ -4200,11 +4191,11 @@ export const panel: SchemaNode = {
         Nothing loses a signal. The chip showed only while capturing, and capturing means armed, so
         the button is on screen wherever the chip was.
       */
-      aside: {
-        type: 'Row',
-        props: { gap: '200', ay: 'center' },
-        children: [
-          /*
+  aside: {
+    type: 'Row',
+    props: { gap: '200', ay: 'center' },
+    children: [
+      /*
             Take the transcript with you — the calls list has offered this all along, and the panel
             reading the transcript is where somebody is when they want it.
 
@@ -4213,37 +4204,37 @@ export const panel: SchemaNode = {
             button that answers with a warning. Live or looked back at alike — the file is the shared
             record, not this agent's microphone.
           */
-          {
-            type: '$if',
-            props: {
-              condition: SUBJECT,
-              then: {
-                type: 'we-tooltip',
-                props: { content: 'Export the transcript' },
-                children: [
-                  {
-                    type: 'we-button',
-                    props: {
-                      variant: 'ghost',
-                      size: 'sm',
-                      square: true,
-                      label: 'Export the transcript',
-                      onClick: { $action: 'spaceStore.exportCallTranscript', args: [SUBJECT] },
-                    },
-                    children: [{ type: 'we-icon', props: { name: 'download' } }],
-                  },
-                ],
+      {
+        type: '$if',
+        props: {
+          condition: SUBJECT,
+          then: {
+            type: 'we-tooltip',
+            props: { content: 'Export the transcript' },
+            children: [
+              {
+                type: 'we-button',
+                props: {
+                  variant: 'ghost',
+                  size: 'sm',
+                  square: true,
+                  label: 'Export the transcript',
+                  onClick: { $action: 'spaceStore.exportCallTranscript', args: [SUBJECT] },
+                },
+                children: [{ type: 'we-icon', props: { name: 'download' } }],
               },
-            },
+            ],
           },
-          {
-            /*
+        },
+      },
+      {
+        /*
               Recording is about the call you are *in*, so the control is only offered there. A call
               being looked back at gets the way back into it instead — see the `else`.
             */
-            type: '$if',
-            props: {
-              /*
+        type: '$if',
+        props: {
+          /*
                 One question, and the audio one is asked *inside* it rather than beside it.
 
                 These were one condition — live, and there is something to record — which reads
@@ -4255,9 +4246,9 @@ export const panel: SchemaNode = {
                 Nested, each branch keeps one meaning: the live view offers recording or nothing,
                 and only a call being looked back at reaches the offer to pick it up.
               */
-              condition: VIEWING_LIVE,
-              then: {
-                /*
+          condition: VIEWING_LIVE,
+          then: {
+            /*
                   Absent where it could not work, rather than present and dead.
 
                   This was a `disabled` on the button, true in exactly one situation: outside a
@@ -4287,22 +4278,22 @@ export const panel: SchemaNode = {
                   drops mid-call would otherwise take the stop button with it and leave this agent
                   recording with nothing on screen to say so.
                 */
-                type: '$if',
+            type: '$if',
+            props: {
+              condition: { $: 'modules.transcribe.enabled || modules.transcribe.available' },
+              then: {
+                type: 'we-tooltip',
                 props: {
-                  condition: { $: 'modules.transcribe.enabled || modules.transcribe.available' },
-                  then: {
-                    type: 'we-tooltip',
+                  content: { $: "modules.transcribe.enabled ? 'Stop transcribing' : 'Start transcribing'" },
+                },
+                children: [
+                  {
+                    // The panel's own record control. The call bar is the natural place for it
+                    // during a call, but the panel has to be self-sufficient: it opens outside a
+                    // call too, and a template may place neither the bar nor the rail.
+                    type: 'we-button',
                     props: {
-                      content: { $: "modules.transcribe.enabled ? 'Stop transcribing' : 'Start transcribing'" },
-                    },
-                    children: [
-                      {
-                        // The panel's own record control. The call bar is the natural place for it
-                        // during a call, but the panel has to be self-sufficient: it opens outside a
-                        // call too, and a template may place neither the bar nor the rail.
-                        type: 'we-button',
-                        props: {
-                          /*
+                      /*
                             Three states, the call bar's own — and the third is why the REC chip
                             beside this is gone.
 
@@ -4313,14 +4304,14 @@ export const panel: SchemaNode = {
                             being looked for. It is also the off switch, so the loudest thing here is
                             the way out of the thing nobody switched on.
                           */
-                          variant: {
-                            $: "modules.transcribe.listening ? 'danger' : modules.transcribe.enabled ? 'secondary' : 'ghost'",
-                          },
-                          size: 'sm',
-                          gap: '200',
-                          onClick: { $action: 'modules.transcribe.toggle' },
-                        },
-                        /*
+                      variant: {
+                        $: "modules.transcribe.listening ? 'danger' : modules.transcribe.enabled ? 'secondary' : 'ghost'",
+                      },
+                      size: 'sm',
+                      gap: '200',
+                      onClick: { $action: 'modules.transcribe.toggle' },
+                    },
+                    /*
                           A glyph and a word, the shape the Continue button beside it already has.
 
                           Icon-only, this asked a newcomer to know that a mark means transcription,
@@ -4334,9 +4325,9 @@ export const panel: SchemaNode = {
                           accessible name is the visible word rather than a second string that has to
                           be kept containing it.
                         */
-                        children: [
-                          {
-                            /*
+                    children: [
+                      {
+                        /*
                               The record dot, and it can be one here because the word beside it says
                               which kind of recording.
 
@@ -4350,10 +4341,10 @@ export const panel: SchemaNode = {
                               red — the second of the two bugs the bar's note says were fixed there
                               and left standing on this copy.
                             */
-                            type: 'we-icon',
-                            props: { name: 'record' },
-                          },
-                          /*
+                        type: 'we-icon',
+                        props: { name: 'record' },
+                      },
+                      /*
                             A bare string, not a `footnote`.
 
                             It was wrapped in one, which is `fontSize: '100'` — a step below the
@@ -4363,14 +4354,14 @@ export const panel: SchemaNode = {
                             button already knows what size its text is; saying it again is how they
                             drifted apart.
                           */
-                          { $: "modules.transcribe.enabled ? 'Transcribing' : 'Transcribe'" },
-                        ],
-                      },
+                      { $: "modules.transcribe.enabled ? 'Transcribing' : 'Transcribe'" },
                     ],
                   },
-                },
+                ],
               },
-              /*
+            },
+          },
+          /*
                 No `else`, and the way back into a past call is why there used to be one.
 
                 A Continue button lived here — went once because the rail does the same thing, came
@@ -4383,12 +4374,12 @@ export const panel: SchemaNode = {
                 placed against the call's own name, where it is on screen whether or not either
                 panel is. What is left here is Transcribe, which is what this panel does.
               */
-            },
-          },
-        ],
+        },
       },
-      children: [
-        /*
+    ],
+  },
+  children: [
+    /*
           Everything about this agent's own microphone, and so only about the live call.
 
           One `$if` around the three of them rather than three conditions: they answer one question
@@ -4424,44 +4415,42 @@ export const panel: SchemaNode = {
           Fading it out instead would have hidden the symptom by holding the gap on purpose for the
           length of the fade. Nothing needs to animate once it all leaves together.
         */
-        {
-          type: '$if',
-          props: {
-            condition: {
-              $: `(${VIEWING_LIVE_EXPR}) && (modules.transcribe.enabled || modules.transcribe.available)`,
-            },
-            // The section arrives and leaves the way its contents do, and must outlast them on the
-            // way out: unmounting on time would cut their fades short and drop the height anyway.
-            // See `MIC_FADE`.
-            enterTransition: MIC_FADE,
-            exitTransition: MIC_FADE,
-            then: {
-              type: 'Column',
-              props: { gap: '300' },
-              children: [
-                // ── Is it hearing me? ────────────────────────────────────────
-                captureMeter,
-
-                // ── Is it hearing everyone else? ─────────────────────────────
-                coverage,
-
-                // ── Why nothing is happening, when nothing is ────────────────
-                captureStatus,
-              ],
-            },
-          },
+    {
+      type: '$if',
+      props: {
+        condition: {
+          $: `(${VIEWING_LIVE_EXPR}) && (modules.transcribe.enabled || modules.transcribe.available)`,
         },
+        // The section arrives and leaves the way its contents do, and must outlast them on the
+        // way out: unmounting on time would cut their fades short and drop the height anyway.
+        // See `MIC_FADE`.
+        enterTransition: MIC_FADE,
+        exitTransition: MIC_FADE,
+        then: {
+          type: 'Column',
+          props: { gap: '300' },
+          children: [
+            // ── Is it hearing me? ────────────────────────────────────────
+            captureMeter,
 
-        // ── What has been heard, and what is still being said ────────────────
-        // One node, not two: the unsaved line lives inside the feed's scroll region, immediately
-        // after the last saved row. See `transcriptFeed`.
-        transcriptFeed,
+            // ── Is it hearing everyone else? ─────────────────────────────
+            coverage,
 
-        // ── And a place to write into it ─────────────────────────────────────
-        // Outside the scroll area, so it holds the foot of the panel instead of following the last
-        // thing anybody said. See `transcriptComposer`.
-        transcriptComposer,
-      ],
-    }),
-  },
-};
+            // ── Why nothing is happening, when nothing is ────────────────
+            captureStatus,
+          ],
+        },
+      },
+    },
+
+    // ── What has been heard, and what is still being said ────────────────
+    // One node, not two: the unsaved line lives inside the feed's scroll region, immediately
+    // after the last saved row. See `transcriptFeed`.
+    transcriptFeed,
+
+    // ── And a place to write into it ─────────────────────────────────────
+    // Outside the scroll area, so it holds the foot of the panel instead of following the last
+    // thing anybody said. See `transcriptComposer`.
+    transcriptComposer,
+  ],
+});
