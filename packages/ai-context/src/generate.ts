@@ -268,11 +268,6 @@ async function main() {
   const registered = extractRegisteredComponents(
     resolve(repoRoot, 'packages/app-shell/src/frameworks/solid/registries/componentRegistry.tsx'),
   );
-  const documented = new Set([
-    ...(contextData.primitives ?? []).map((p) => p.tagName),
-    ...(contextData.components ?? []).map((c) => c.name),
-  ]);
-  contextData.shellComponents = registered.filter((name) => !documented.has(name));
 
   /*
     The functions the host lends to expressions, read from its registry. Listed beside the built-in
@@ -288,6 +283,34 @@ async function main() {
     is what turns `modules.transcribe.typo` from a silent nothing into an error with a suggestion.
   */
   contextData.modules = await extractModules(repoRoot);
+
+  /*
+    A component is documented only if something mounts it.
+
+    A package's `context` field documents everything it exports, and exporting is not registering.
+    `@we/block-solid` exports every block's input half, its placeholder and its toolbar for the
+    composer's own use; `@we/components` exports the media helpers its block displays are built
+    from. None of those is in the registry, so all of them were documented as schema components,
+    accepted by the validator — which reads this same list — and rendered as nothing. Twenty-one
+    names, each a template an author or a model could write correctly by the reference and see
+    fail silently: the failure the `CodeEditor` entry in the registry records fixing once, by hand.
+
+    Filtered here rather than per package, because the registry is the only thing that knows, and a
+    package cannot: whether a component is a schema word is the host's decision. What a module
+    contributes counts as mounted, since the host registers it at boot.
+  */
+  const mountable = new Set([...registered, ...(contextData.modules ?? []).flatMap((m) => m.components ?? [])]);
+  const unmounted = (contextData.components ?? []).filter((c) => !mountable.has(c.name)).map((c) => c.name);
+  if (unmounted.length) {
+    contextData.components = (contextData.components ?? []).filter((c) => mountable.has(c.name));
+    console.log(`  Left out ${unmounted.length} exported components nothing registers: ${unmounted.join(', ')}`);
+  }
+
+  const documented = new Set([
+    ...(contextData.primitives ?? []).map((p) => p.tagName),
+    ...(contextData.components ?? []).map((c) => c.name),
+  ]);
+  contextData.shellComponents = registered.filter((name) => !documented.has(name));
 
   const context = {
     ...contextData,

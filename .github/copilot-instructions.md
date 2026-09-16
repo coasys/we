@@ -1387,70 +1387,32 @@ when `relative` is enabled.
 @we/components:
 - AudioDisplay
   Props: title: string | undefined, artist: string | undefined, audioUrl: string | undefined, duration: number | undefined, albumArt: string | undefined
-- AudioInput
-  Props: title: string | undefined, artist: string | undefined, audioUrl: string | FileData | undefined, duration: number | undefined, albumArt: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - BlockComposer (DesignSystemElement)
   Props: editorState?: EditorStateInput, perspective?: unknown, onSave?: ((document: ContentDocument) => void), onReady?: ((api: { save: () => void; }) => void), onDirtyChange?: ((dirty: boolean) => void), mentions?: MentionCandidate[], collaborate?: string
-- BlockPlaceholder
-  Props: icon: string, label: string, hint?: string, accept?: string, onFileDrop?: ((file: File) => void), onClick?: (() => void)
 - BlockRenderer (DesignSystemElement)
   Props: editorState?: EditorStateInput, perspective?: unknown, rootClass?: string
-- BlockToolbar
-  Props: placement?: BlockToolbarPlacement, children: JSX.Element, stopPropagation?: boolean
 - CalloutDisplay
   Props: text: string | undefined, variant: string | undefined, icon: string | undefined
-- CalloutInput
-  Props: text: string | undefined, variant: string | undefined, icon: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - CodeDisplay
   Props: code: string | undefined, language: string | undefined, title: string | undefined
-- CodeInput
-  Props: code: string | undefined, language: string | undefined, title: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
-- CollectionDisplay
-  Props: layout?: string, columnCount?: number, gap?: string, content?: ContentBlock[]
-- CollectionInput
-  Props: layout?: string, columnCount?: number, gap?: string, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
-- DividerDisplay
-  Props: style: "solid" | "dashed" | "dotted" | undefined
-- DividerInput
-  Props: style: DividerVariant | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - EmbedDisplay
   Props: url: string | undefined, target: string | undefined, targetType: string | undefined, displayMode: string | undefined, label?: string, thumbnail?: string, onOpenRef?: ((ref: string) => void)
-- EmbedInput
-  Props: url: string | undefined, target: string | undefined, targetType: string | undefined, displayMode: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - EventDisplay
   Props: title: string | undefined, description: string | undefined, startDate: string | undefined, endDate: string | undefined, location: string | undefined, allDay: boolean | undefined
-- EventInput
-  Props: title: string | undefined, description: string | undefined, startDate: string | undefined, endDate: string | undefined, location: string | undefined, allDay: boolean | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - FileDisplay
   Props: title: string | undefined, name: string | undefined, url: string | undefined, mimeType: string | undefined, size: number | undefined
-- FileInput
-  Props: title: string | undefined, name: string | undefined, url: string | FileData | undefined, mimeType: string | undefined, size: number | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - ImageDisplay
   Props: src: string | undefined, altText: string | undefined, width: number | undefined, height: number | undefined
-- ImageInput
-  Props: src: string | FileData | undefined, altText: string | undefined, width: number | undefined, height: number | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - LinkDisplay
   Props: url: string | undefined, title: string | undefined, description: string | undefined, thumbnail: string | undefined
-- LinkInput
-  Props: url: string | undefined, title: string | undefined, description: string | undefined, thumbnail: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - LocationDisplay
   Props: name: string | undefined, latitude: number | undefined, longitude: number | undefined, address: string | undefined
-- LocationInput
-  Props: name: string | undefined, latitude: number | undefined, longitude: number | undefined, address: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - TagDisplay
   Props: name: string | undefined, color: string | undefined
-- TagInput
-  Props: name: string | undefined, color: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - TaskDisplay
   Props: title: string | undefined, description: string | undefined, status: string | undefined, priority: string | undefined, dueDate: string | undefined, assignee: string | undefined
-- TaskInput
-  Props: title: string | undefined, description: string | undefined, status: string | undefined, priority: string | undefined, dueDate: string | undefined, assignee: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - VideoDisplay
   Props: url: string | undefined, title: string | undefined, thumbnail: string | undefined, provider: string | undefined, width: number | undefined
-- VideoInput
-  Props: url: string | undefined, title: string | undefined, thumbnail: string | undefined, provider: string | undefined, width: number | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
-- AudioVisualiser
-  Props: src: string | undefined, bars?: number, height?: number, color?: string, activeColor?: string
 - AvatarStack
   Props: avatars: AvatarInfo[], max?: number, size?: "xs" | "sm" | "md" | "lg" | "xl" | "xxs" | "xxl", overlap?: number, edge?: string, ringWidth?: string, styles?: Record<string, string | number>
 - Calendar
@@ -1473,12 +1435,6 @@ when `relative` is enabled.
   Props: front?: JSX.Element, back?: JSX.Element, width?: string, height?: string, flipOnHover?: boolean, flipDuration?: string, wobbleOnHover?: boolean, wobbleDegree?: number, class?: string, styles?: Record<string, string | number>
 - Grid (DesignSystemElement)
   Props: template?: string, columns?: number, minChildWidth?: string, rows?: string, childAspect?: string | number, onMeasure?: ((box: { width: number; height: number; }) => void), onArrange?: ((tiling: Tiling) => void)
-- ImageCrop
-  Props: src: string, fileName?: string, aspect?: number, maxSize?: number, outputType?: string, quality?: number, onReady?: ((ref: ImageCropRef) => void)
-- ImageLightbox
-  Props: srcs: string[], initialIndex: number, onClose: () => void
-- RerenderLog
-  Props: location: string
 - Row (DesignSystemElement)
 - Search (DesignSystemElement)
   Props: placeholder?: string, value?: string, onSearch?: ((value: string) => void), debounce?: number
