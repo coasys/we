@@ -93,13 +93,29 @@ export type AiModelKind = 'llm' | 'embedding' | 'transcription';
  * up guessing.
  */
 export type AiModelSource =
-  /** An OpenAI-compatible endpoint. */
-  | { kind: 'api'; baseUrl: string; apiKey: string; model: string }
+  /** A remote endpoint, spoken to in the wire format `protocol` names. */
+  | { kind: 'api'; protocol: AiApiProtocol; baseUrl: string; apiKey: string; model: string }
   /** A build the backend knows by name and fetches itself — see `aiModelPresets`. */
   | { kind: 'preset'; name: string }
   | { kind: 'huggingface'; repo: string; revision: string; fileName: string; tokenizer?: TokenizerSource }
   /** A file already on the machine running the backend. */
   | { kind: 'file'; fileName: string; tokenizer?: TokenizerSource };
+
+/**
+ * The wire format a remote model is reached through.
+ *
+ * Not the vendor: OpenRouter, Groq, Gemini's compatibility surface and a local vLLM all speak
+ * `openai`. `anthropic` exists because Claude's own format carries things the OpenAI one cannot —
+ * prompt-cache breakpoints and native tool calls among them.
+ */
+export type AiApiProtocol = 'openai' | 'anthropic';
+
+/** The endpoint details a model list is asked for, before any model exists to hold them. */
+export interface AiModelDiscoveryQuery {
+  protocol: AiApiProtocol;
+  baseUrl: string;
+  apiKey: string;
+}
 
 /** An explicit tokenizer, for the local sources whose weights do not carry one. */
 export interface TokenizerSource {
@@ -143,6 +159,12 @@ export interface RuntimeAdminPort {
   aiModels?(): Promise<AiModel[]>;
   /** Model names this backend can fetch on its own, for the kind asked about. */
   aiModelPresets?(kind: AiModelKind): Promise<string[]>;
+  /**
+   * The models a remote endpoint serves, asked of the endpoint itself. Rejects when it cannot be
+   * reached or refuses the key, with the endpoint's own reason — which makes this the credential
+   * check too. Omitted where the backend cannot ask.
+   */
+  discoverAiModels?(query: AiModelDiscoveryQuery): Promise<string[]>;
   addAiModel?(draft: AiModelDraft): Promise<void>;
   updateAiModel?(id: string, draft: AiModelDraft): Promise<void>;
   removeAiModel?(id: string): Promise<void>;

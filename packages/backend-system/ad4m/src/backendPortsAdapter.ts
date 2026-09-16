@@ -33,7 +33,7 @@ import { installClearOnEmpty } from './clearOnEmpty';
 import { Space } from './entities';
 import { createAd4mInterpretationPort } from './interpretationAdapter';
 import { readInterpretationHints, resetInterpretationHints, writeInterpretationHints } from './interpretationHints';
-import { createAd4mLanguageModelPort } from './languageModelPort';
+import { type Ad4mHttpConnection, createAd4mLanguageModelPort } from './languageModelPort';
 import { type Ad4mLifecycleOptions, createAd4mAgentSession, createAd4mDatasetLifecycle } from './lifecycleAdapter';
 import { compileManifest, manifestToEntries } from './manifestCompiler';
 import { buildEntityClasses, buildEntityManifest, getForeignShacl } from './perspectiveHelpers';
@@ -114,13 +114,23 @@ export function createAd4mProfileDirectory(backendClient: unknown): ProfileDirec
   };
 }
 
+/**
+ * How to reach the executor over plain HTTP, for the surfaces its RPC client does not cover.
+ *
+ * `Ad4mClient` keeps its base URL and token private, and a tool-calling conversation goes through
+ * `/v1/chat/completions` rather than an RPC. So the connector — which chose both — hands them over.
+ */
+export interface Ad4mConnectionOptions {
+  connection?: () => Ad4mHttpConnection | null;
+}
+
 export function createAd4mBackendPorts(
   backendClient: unknown,
   ctx: BackendPortsContext,
   // Everything a host knows about the connection that the ports cannot see for themselves: whether
   // the node is ours to administer (`Ad4mRuntimeOptions`), and the deployment's sharing
   // infrastructure (`Ad4mLifecycleOptions`).
-  options: Ad4mRuntimeOptions & Ad4mLifecycleOptions = {},
+  options: Ad4mRuntimeOptions & Ad4mLifecycleOptions & Ad4mConnectionOptions = {},
 ): BackendPorts {
   // `''` clears a property, which is what four separate call sites in WE already assumed and none
   // of them got. Installed before any model is registered so every class inherits it — generated,
@@ -162,7 +172,7 @@ export function createAd4mBackendPorts(
     profiles: createAd4mProfileDirectory(backendClient),
     runtime: createAd4mRuntimeAdmin(backendClient, options),
     transcription: createAd4mTranscriptionPort(backendClient, options),
-    languageModel: createAd4mLanguageModelPort(backendClient),
+    languageModel: createAd4mLanguageModelPort(backendClient, options.connection),
     // Takes no client: interpretation is entirely a per-dataset operation, and every call already
     // carries the dataset handle it needs.
     interpretation: createAd4mInterpretationPort(ctx.selfId),

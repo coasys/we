@@ -72,6 +72,8 @@ export const ad4mConnector: BackendConnector = {
         administersNode: administersNode && !isGuest,
         capabilities,
         linkServerUrl: (weSeed.ad4m as { linkServerUrl?: string }).linkServerUrl,
+        // Read on each use: ad4m-connect replaces the token when a session is re-authorised.
+        connection: () => (core.baseUrl ? { url: core.baseUrl, token: core.token } : null),
       }),
       ...(isGuest ? { guest: true as const } : {}),
       // Only for a host chosen from the directory. A local executor is not somewhere the user needs

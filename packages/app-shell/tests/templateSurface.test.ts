@@ -138,7 +138,6 @@ describe('what the space tier can reach', () => {
       'sessionStore.serverUrl',
       'sessionStore.backendPorts',
       'datasetStore.agentSettings',
-      'editorStore.setApiKey',
     ]) {
       expect(reaches(spaceBag, path), `space: ${path}`).toBe(false);
       expect(reaches(chromeBag, path), `chrome: ${path}`).toBe(false);

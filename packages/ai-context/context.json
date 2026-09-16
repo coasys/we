@@ -5708,8 +5708,12 @@
         "streamingContent": {
           "type": "string"
         },
-        "apiKeyConfigured": {
+        "assistantAvailable": {
           "type": "boolean"
+        },
+        "assistantStatus": {
+          "type": "object",
+          "properties": ["state", "name", "model", "detail"]
         },
         "templateName": {
           "type": "string"
@@ -5794,6 +5798,7 @@
         }
       },
       "actions": [
+        "refreshAssistant",
         "newChat",
         "switchSession",
         "deleteSession",
@@ -6056,6 +6061,8 @@
             "kind",
             "sourceKind",
             "presetName",
+            "apiService",
+            "apiProtocol",
             "apiBaseUrl",
             "apiKey",
             "apiModel",
@@ -6075,6 +6082,17 @@
         },
         "aiFormComplete": {
           "type": "boolean"
+        },
+        "aiServiceOptions": {
+          "type": "array",
+          "properties": ["label", "value"]
+        },
+        "canDiscoverAiModels": {
+          "type": "boolean"
+        },
+        "aiDiscoveredModelOptions": {
+          "type": "array",
+          "properties": ["label", "value"]
         },
         "aiFormDirty": {
           "type": "boolean"
@@ -6141,6 +6159,8 @@
         "newAiModel",
         "editAiModel",
         "setAiFormField",
+        "setAiService",
+        "discoverAiModels",
         "closeAiForm",
         "saveAiModel",
         "removeAiModel",

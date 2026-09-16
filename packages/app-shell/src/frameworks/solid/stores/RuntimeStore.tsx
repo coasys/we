@@ -24,8 +24,10 @@ import type { ExecutorSettings } from '@shared/platform/types';
 import { copyText } from '@shared/utils';
 import { usePlatform } from '@solid/providers/PlatformProvider';
 import {
+  AI_API_PRESETS,
   type AiModelForm,
   type AiModelView,
+  CUSTOM_SERVICE,
   describeModel,
   draftFrom,
   EMPTY_FORM,
@@ -89,6 +91,18 @@ export interface RuntimeStore {
   /** True when the open form has every field its chosen source needs. */
   aiFormComplete: Accessor<boolean>;
   /**
+   * The remote services a model can be reached through, plus "Custom endpoint", for a we-select on
+   * `aiForm.apiService`. A named service sets the protocol and base URL itself.
+   */
+  aiServiceOptions: Accessor<{ label: string; value: string }[]>;
+  /** The backend can ask a remote endpoint which models it serves. */
+  canDiscoverAiModels: Accessor<boolean>;
+  /**
+   * The models the open form's endpoint said it serves, for a we-select — empty until asked, and
+   * empty again once the protocol, URL or key changes, since the list answered for those.
+   */
+  aiDiscoveredModelOptions: Accessor<{ label: string; value: string }[]>;
+  /**
    * The open model form has been edited since it opened — what a discard guard reads.
    *
    * Compared against a snapshot taken when the form opened, so opening a model to look at its
@@ -139,6 +153,10 @@ export interface RuntimeStore {
   editAiModel: (id: string) => void;
   /** Set one form field. Takes the field name so one action serves every input. */
   setAiFormField: (field: string, value: string | boolean) => void;
+  /** Choose the open form's service — a preset, which sets protocol and base URL, or `custom`. */
+  setAiService: (id: string) => void;
+  /** Ask the open form's endpoint which models it serves. Doubles as the check that the key works. */
+  discoverAiModels: () => Promise<void>;
   closeAiForm: () => void;
   saveAiModel: () => Promise<void>;
   removeAiModel: (id: string) => Promise<void>;
@@ -229,6 +247,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
    * whole section vanished on a node that was perfectly happy to answer what models it runs.
    */
   const canConfigureAi = createMemo(() => !!runtime()?.addAiModel);
+  const canDiscoverAiModels = createMemo(() => !!runtime()?.discoverAiModels);
 
   const executorHost = () => platform.executor;
   const canConfigureExecutor = createMemo(() => !!executorHost());
@@ -252,6 +271,26 @@ export function RuntimeStoreProvider(props: ParentProps) {
   const aiFormComplete = createMemo(() => {
     const form = aiForm();
     return !!form && formComplete(form);
+  });
+
+  const aiServiceOptions = () => [
+    ...AI_API_PRESETS.map((preset) => ({ label: preset.label, value: preset.id })),
+    { label: 'Custom endpoint', value: CUSTOM_SERVICE },
+  ];
+
+  /**
+   * A discovered list, with the endpoint it was asked of.
+   *
+   * Keyed rather than cleared by each field setter, so the list cannot outlive the endpoint it
+   * describes whichever way the form changes — a preset, a pasted URL, a new key.
+   */
+  const [aiDiscovered, setAiDiscovered] = createSignal<{ endpoint: string; models: string[] } | null>(null);
+  const endpointOf = (form: AiModelForm) => JSON.stringify([form.apiProtocol, form.apiBaseUrl.trim(), form.apiKey]);
+  const aiDiscoveredModelOptions = createMemo(() => {
+    const form = aiForm();
+    const found = aiDiscovered();
+    if (!form || !found || found.endpoint !== endpointOf(form)) return [];
+    return found.models.map((model) => ({ label: model, value: model }));
   });
 
   /**
@@ -558,8 +597,40 @@ export function RuntimeStoreProvider(props: ParentProps) {
     setAiForm((form) => (form ? { ...form, [field]: value } : form));
   }
 
+  function setAiService(id: string): void {
+    const preset = AI_API_PRESETS.find((candidate) => candidate.id === id);
+    setAiForm((form) => {
+      if (!form) return form;
+      // Custom keeps whatever protocol and URL the form holds, as a starting point to edit.
+      if (!preset) return { ...form, apiService: CUSTOM_SERVICE };
+      return { ...form, apiService: preset.id, apiProtocol: preset.protocol, apiBaseUrl: preset.baseUrl };
+    });
+  }
+
+  async function discoverAiModels(): Promise<void> {
+    const form = aiForm();
+    if (!form?.apiBaseUrl.trim()) return;
+    const endpoint = endpointOf(form);
+    const found = await run('discoverAiModels', () =>
+      runtime()?.discoverAiModels?.({
+        protocol: form.apiProtocol,
+        baseUrl: form.apiBaseUrl.trim(),
+        apiKey: form.apiKey,
+      }),
+    );
+    if (!found.ok) {
+      setAiDiscovered(null);
+      return;
+    }
+    const models = [...(found.value ?? [])].sort((a, b) => a.localeCompare(b));
+    setAiDiscovered({ endpoint, models });
+    // An empty model field takes the first answer, so a working endpoint is one click from saveable.
+    if (models.length && !aiForm()?.apiModel.trim()) setAiFormField('apiModel', models[0]);
+  }
+
   function closeAiForm(): void {
     setAiForm(null);
+    setAiDiscovered(null);
   }
 
   async function saveAiModel(): Promise<void> {
@@ -729,6 +800,9 @@ export function RuntimeStoreProvider(props: ParentProps) {
     aiPresetOptions,
     aiFormComplete,
     aiFormDirty,
+    aiServiceOptions,
+    canDiscoverAiModels,
+    aiDiscoveredModelOptions,
     languages,
     trustedAgents,
     authorizedApps,
@@ -746,6 +820,8 @@ export function RuntimeStoreProvider(props: ParentProps) {
     newAiModel,
     editAiModel,
     setAiFormField,
+    setAiService,
+    discoverAiModels,
     closeAiForm,
     saveAiModel,
     removeAiModel,

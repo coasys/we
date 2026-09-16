@@ -41,3 +41,73 @@ describe('the AD4M language-model port', () => {
     expect(client.ai.removeTask).not.toHaveBeenCalled();
   });
 });
+
+describe('the default model’s status', () => {
+  const claude = {
+    id: 'm1',
+    name: 'Claude Sonnet 5',
+    modelType: 'LLM',
+    api: { baseUrl: 'https://api.anthropic.com', apiKey: 'sk-ant', model: 'claude-sonnet-5', apiType: 'ANTHROPIC' },
+  };
+
+  function statusClient(ai: Record<string, unknown>) {
+    return createAd4mLanguageModelPort({ ai });
+  }
+
+  it('is none when no default is set', async () => {
+    const port = statusClient({ getDefaultModel: vi.fn(async () => Promise.reject(new Error('No default'))) });
+    await expect(port.status!()).resolves.toMatchObject({ state: 'none' });
+  });
+
+  it('is unchecked for a remote model on a client that cannot ask the endpoint', async () => {
+    const port = statusClient({ getDefaultModel: vi.fn(async () => claude) });
+    await expect(port.status!()).resolves.toEqual({
+      state: 'unchecked',
+      name: 'Claude Sonnet 5',
+      model: 'claude-sonnet-5',
+      detail: '',
+    });
+  });
+
+  it('is ready when the endpoint lists the model, dated versions included', async () => {
+    const discoverModels = vi.fn(async () => ['claude-sonnet-5-20260801', 'claude-opus-5']);
+    const port = statusClient({ getDefaultModel: vi.fn(async () => claude), discoverModels });
+
+    await expect(port.status!()).resolves.toMatchObject({ state: 'ready' });
+    expect(discoverModels).toHaveBeenCalledWith('https://api.anthropic.com', 'sk-ant', 'ANTHROPIC');
+  });
+
+  it('is an error, with the endpoint’s reason, when the key is refused', async () => {
+    const port = statusClient({
+      getDefaultModel: vi.fn(async () => claude),
+      discoverModels: vi.fn(async () => Promise.reject(new Error('Anthropic API error 401: invalid x-api-key'))),
+    });
+    await expect(port.status!()).resolves.toMatchObject({ state: 'error', detail: expect.stringContaining('401') });
+  });
+
+  it('is an error when the service does not offer that model', async () => {
+    const port = statusClient({
+      getDefaultModel: vi.fn(async () => ({ ...claude, api: { ...claude.api, model: 'claude-sonet-5' } })),
+      discoverModels: vi.fn(async () => ['claude-sonnet-5']),
+    });
+    await expect(port.status!()).resolves.toMatchObject({ state: 'error' });
+  });
+
+  it('reports a local model’s download progress', async () => {
+    const port = statusClient({
+      getDefaultModel: vi.fn(async () => ({
+        id: 'm2',
+        name: 'Llama',
+        modelType: 'LLM',
+        local: { fileName: 'llama_8b' },
+      })),
+      modelLoadingStatus: vi.fn(async () => ({ downloaded: false, loaded: false, progress: 41.6, status: '' })),
+    });
+    await expect(port.status!()).resolves.toEqual({
+      state: 'loading',
+      name: 'Llama',
+      model: 'llama_8b',
+      detail: 'Downloading 42%',
+    });
+  });
+});

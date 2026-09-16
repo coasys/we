@@ -3,14 +3,13 @@ import { tokenVar } from '@we/design-utils';
 import { PANEL_TITLE_PROPS } from '@we/schema-kit';
 import { createEffect, createSignal, For, Show } from 'solid-js';
 
-import type { EditorChatMessage as ChatMessage } from '../host';
+import type { EditorAssistantStatus, EditorChatMessage as ChatMessage } from '../host';
 import { useEditorHost } from '../host';
 
 export function AiPanel() {
   const session = useEditorHost().session;
 
   const [inputValue, setInputValue] = createSignal('');
-  const [apiKeyInput, setApiKeyInput] = createSignal('');
   let messagesEndRef: HTMLDivElement | undefined;
 
   // Auto-scroll to bottom when messages change or streaming content updates
@@ -24,7 +23,7 @@ export function AiPanel() {
 
   function handleSend() {
     const text = inputValue().trim();
-    if (!text || session.isStreaming()) return;
+    if (!text || session.isStreaming() || !session.assistantAvailable()) return;
     session.sendMessage(text);
     setInputValue('');
   }
@@ -53,9 +52,12 @@ export function AiPanel() {
       tabIndex={0}
     >
       {/* Header */}
-      <Row ax="between" ay="center" px="300" py="300" flexShrink="0">
-        <we-text {...PANEL_TITLE_PROPS}>AI Chat</we-text>
-        <Row ay="center" gap="100">
+      <Row ax="between" ay="center" gap="200" px="300" py="300" flexShrink="0">
+        <Row ay="center" gap="300" minWidth="0">
+          <we-text {...PANEL_TITLE_PROPS}>AI Chat</we-text>
+          <AssistantStatus />
+        </Row>
+        <Row ay="center" gap="100" flexShrink="0">
           <we-tooltip content="New chat session">
             <we-button variant="ghost" size="sm" onClick={() => session.newChat()}>
               <we-icon name="file-plus" size="sm" />
@@ -64,42 +66,19 @@ export function AiPanel() {
         </Row>
       </Row>
 
-      {/* API Key Setup */}
-      <Show when={!session.apiKeyConfigured()}>
+      {/*
+        No model, no chat — said where the chat would be. The editor used to ask for an Anthropic key
+        here; the model is the node's now, configured once in settings for every AI surface.
+      */}
+      <Show when={!session.assistantAvailable()}>
         <Column gap="200" p="400" bg="surface" borderBottom={`1px solid ${tokenVar('color', 'ui-200')}`} flexShrink="0">
           <we-text fontSize="300" fontWeight="600" color="text">
-            Claude API Key
+            No language model
           </we-text>
           <we-text fontSize="200" color="text-muted">
-            Enter your Anthropic API key to enable AI chat. The key is stored locally in your agent settings.
+            This node has no language model to talk to. Add one in Settings → AI — a model the node downloads, or a
+            remote API such as Anthropic's.
           </we-text>
-          <Row gap="200">
-            <we-input
-              type="password"
-              value={apiKeyInput()}
-              placeholder="sk-ant-..."
-              size="sm"
-              bg="surface"
-              flex="1"
-              on:input={(e: CustomEvent) => setApiKeyInput(e.detail)}
-              on:keydown={(e: CustomEvent) => {
-                if (e.detail.key === 'Enter' && apiKeyInput().trim()) {
-                  session.setApiKey(apiKeyInput().trim());
-                  setApiKeyInput('');
-                }
-              }}
-            />
-            <we-button
-              size="sm"
-              disabled={!apiKeyInput().trim()}
-              onClick={() => {
-                session.setApiKey(apiKeyInput().trim());
-                setApiKeyInput('');
-              }}
-            >
-              Save
-            </we-button>
-          </Row>
         </Column>
       </Show>
 
@@ -183,7 +162,7 @@ export function AiPanel() {
         <we-textarea
           value={inputValue()}
           placeholder="Describe a change to the template..."
-          disabled={session.isStreaming()}
+          disabled={session.isStreaming() || !session.assistantAvailable()}
           size="sm"
           rows={1}
           autoGrow
@@ -194,11 +173,65 @@ export function AiPanel() {
           on:input={(e: CustomEvent) => setInputValue(e.detail)}
           on:submit={handleSend}
         />
-        <we-button size="sm" onClick={handleSend} disabled={session.isStreaming() || inputValue().trim() === ''}>
+        <we-button
+          size="sm"
+          onClick={handleSend}
+          disabled={session.isStreaming() || !session.assistantAvailable() || inputValue().trim() === ''}
+        >
           <we-icon name="paper-plane-tilt" size="sm" />
         </we-button>
       </Row>
     </Column>
+  );
+}
+
+const STATUS_COLOR: Record<EditorAssistantStatus['state'], string> = {
+  ready: 'success-text',
+  loading: 'warning-text',
+  error: 'danger-text',
+  unchecked: 'text-faint',
+  none: 'text-faint',
+};
+
+/**
+ * Which model is answering, and whether it can — before a message is sent rather than after it
+ * fails. A press checks again, which is what somebody does after fixing a key in settings.
+ *
+ * Nothing for `none`: the notice below the header already says there is no model, in words.
+ */
+function AssistantStatus() {
+  const session = useEditorHost().session;
+  const status = () => session.assistantStatus();
+
+  const explanation = () => {
+    const current = status();
+    if (!current) return '';
+    const again = 'Click to check again.';
+    switch (current.state) {
+      case 'ready':
+        return `Ready — ${current.model}. ${again}`;
+      case 'loading':
+        return `${current.detail || 'Loading'}. ${again}`;
+      case 'error':
+        return `${current.detail} ${again}`;
+      default:
+        return `${current.model} — not checked: this app cannot ask the service yet. ${again}`;
+    }
+  };
+
+  return (
+    <Show when={status() && status()!.state !== 'none'}>
+      <we-tooltip content={explanation()}>
+        <we-button variant="bare" minWidth="0" onClick={() => void session.refreshAssistant()}>
+          <Row ay="center" gap="100" minWidth="0">
+            <Column width="8px" height="8px" r="full" flexShrink="0" bg={STATUS_COLOR[status()!.state]} />
+            <we-text variant="footnote" color="text-muted" truncate>
+              {status()!.name}
+            </we-text>
+          </Row>
+        </we-button>
+      </we-tooltip>
+    </Show>
   );
 }
 
