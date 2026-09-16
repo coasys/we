@@ -62,9 +62,11 @@ describe('draftToManifest', () => {
     const result = draftToManifest(sightingDraft(), UUID);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(validateManifest(result.manifest, { externalEntities: ['LocationBlock'] }).valid).toBe(true);
+    expect(validateManifest(result.manifest, { externalEntities: ['LocationBlock', 'WeNode'] }).valid).toBe(true);
 
     const entity = result.manifest.entities.Sighting;
+    // A community's model is a node, so it can be commented on and reacted to like any post.
+    expect(entity.extends).toBe('WeNode');
     expect(entity.flag).toEqual({ predicate: 'we://flag', value: 'we://shape/abc-123/sighting' });
     expect(entity.interpretationHint).toBe('A specific observation of a bird.');
     expect(entity.properties.species).toMatchObject({

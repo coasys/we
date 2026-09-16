@@ -434,6 +434,18 @@ export function draftToManifest(draft: ShapeDraft, shapeUuid: string): DraftLowe
   if (errors.length) return { ok: false, errors, rows: [...errorRows] };
 
   const entity: EntitySchema = {
+    /*
+      Every model a community defines is a node, as every built-in content type is.
+
+      Without it a `Sighting` had no `comments`, `signals`, `participants` or `mentions`: it could
+      not be reacted to, replied to or RSVP'd, so the argument that every level of WE is a complete
+      social object stopped at the one level a community authors itself. Not a wizard choice — a
+      model that opted out would be the only kind of record a template cannot put a like button on,
+      and nobody defining one is deciding that. Written on every save, so a model defined before this
+      becomes a node the next time it is edited; the relations are the parent's, under the parent's
+      own predicates, so nothing already stored changes meaning.
+    */
+    extends: 'WeNode',
     properties,
     relations,
     flag: { predicate: 'we://flag', value: `${prefix}${snakeCase(name)}` },

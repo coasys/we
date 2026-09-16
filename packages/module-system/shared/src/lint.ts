@@ -19,7 +19,19 @@ export interface ModuleLint {
   warnings: string[];
 }
 
-export function lintModule(definition: ModuleDefinition): ModuleLint {
+/**
+ * The host entity every module entity may extend without saying so: the node that carries
+ * comments, signals, participants and mentions. Named here, rather than looked up, so a module
+ * author's own test judges `extends: 'WeNode'` the way the registry does without importing WE's
+ * whole vocabulary. Anything else outside the module — a relation to `LocationBlock` — is named by
+ * the caller through `externalEntities`, as the registry does with the core manifest.
+ */
+const HOST_BASE_ENTITIES = ['WeNode'];
+
+export function lintModule(
+  definition: ModuleDefinition,
+  opts: { externalEntities?: Iterable<string> } = {},
+): ModuleLint {
   const problems: string[] = [];
   const warnings: string[] = [];
   const { manifest, contributes } = definition;
@@ -68,7 +80,9 @@ export function lintModule(definition: ModuleDefinition): ModuleLint {
 
     // Validated here, not when eventually compiled: compilation runs on the first dataset switch, so
     // a malformed manifest would otherwise register fine and fail far from the module that shipped it.
-    const result = validateManifest(contributes.entities.manifest);
+    const result = validateManifest(contributes.entities.manifest, {
+      externalEntities: [...HOST_BASE_ENTITIES, ...(opts.externalEntities ?? [])],
+    });
     if (!result.valid) {
       for (const error of result.errors) problems.push(`invalid entities manifest at ${error.path}: ${error.message}`);
     }

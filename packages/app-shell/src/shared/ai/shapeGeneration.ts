@@ -170,7 +170,8 @@ function toolInputToDraft(input: ToolInput): ShapeDraft {
 function draftProblems(draft: ShapeDraft, existingEntities: string[], referenceTargets: string[]): string[] {
   const lowered = draftToManifest(draft, 'preview');
   if (!lowered.ok) return lowered.errors;
-  const gate = validateManifest(lowered.manifest, { externalEntities: referenceTargets });
+  // `WeNode` is what every lowered draft extends, and is never a reference target the model is offered.
+  const gate = validateManifest(lowered.manifest, { externalEntities: [...referenceTargets, 'WeNode'] });
   const problems = gate.valid ? [] : gate.errors.map((e) => `${e.path}: ${e.message}`);
   const entityName = Object.keys(lowered.manifest.entities)[0];
   if (existingEntities.includes(entityName)) {

@@ -1,4 +1,5 @@
 /**
+import type { EntityManifest } from '@we/backend-shared';
  * Golden test: the compiler is faithful on everything the manifest layer can express.
  *
  * Every hand-written WE model is projected to its manifest entry (the neutral-expressible
@@ -225,5 +226,26 @@ describe('compileManifest — module-declared entities', () => {
       const allowed = predicate.startsWith('we://module/notes/') || /^we:\/\/[a-z_]+$/.test(predicate);
       expect(allowed, `unexpected predicate ${predicate}`).toBe(true);
     }
+  });
+});
+
+describe('a manifest extending the core vocabulary', () => {
+  it('inherits WeNode’s relations under their core predicates, though the manifest does not declare WeNode', () => {
+    // How a space shape arrives: a manifest holding only itself, naming a parent in the core manifest.
+    const shape: EntityManifest = {
+      version: '1',
+      entities: {
+        Sighting: {
+          extends: 'WeNode',
+          properties: { species: { type: 'string', predicate: 'we://shape/abc/species' } },
+          relations: {},
+        },
+      },
+    };
+    const [entry] = manifestToEntries(shape, { moduleId: 'shape/abc' });
+    const byName = Object.fromEntries(entry.properties.map((p) => [p.name, p.predicate]));
+    expect(byName.species).toBe('we://shape/abc/species');
+    expect(byName.comments).toBe('we://comment');
+    expect(byName.signals).toBe('we://signal');
   });
 });
