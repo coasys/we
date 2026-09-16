@@ -15,11 +15,13 @@ Calling actions:
 Example: { "$action": "routeStore.navigate", "args": ["/home"] }
 
 Feature-module stores:
-{ "$": "modules.<moduleId>.<key>" } and { "$action": "modules.<moduleId>.<method>" }
-Each installed feature module publishes its store under its own id — modules.call.tiles,
-modules.notes.open, modules.transcribe.pending. Which ids exist depends on the deployment's seed,
-so these are not listed in the Stores section below and are never checked against a known-member
-list. A reference to a module that is not installed simply resolves to nothing.
+{ "$": "modules.<moduleId>.<member>" } and { "$action": "modules.<moduleId>.<action>" }
+Each feature module this deployment ships publishes its PUBLIC store members under its own id —
+modules.call.active, modules.transcribe.proposals, modules.polls.vote. The modules, their members,
+parts, panels, settings and functions are listed in the Feature Modules section below, and the
+validator checks every modules.* reference against it: a member a module did not mark public is as
+unknown as one it never had. { "$": "modules.<moduleId>" } as a bare condition is the way to depend
+on an optional module — it resolves to nothing where the module is not installed.
 
 Iterating over store data:
 {

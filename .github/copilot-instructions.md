@@ -272,7 +272,7 @@ the seed's list is correct code that never appears.
 | Expression function | `schema-system/shared/src/expressions/functions.ts` | `schema-system/CONVENTIONS.md` ("Adding a function") | `defineFunction()` — the registry feeds the validator, the evaluator and the generated context | `--filter @we/schema-shared test`, then `generate-context` |
 | Store | `app-shell/src/frameworks/solid/stores/` | `app-shell/CONVENTIONS.md` | classify in `templateSurface.ts` **and** describe in `fragments/stores.ts` — both fail the build if you don't | `--filter @we/app-shell test`, then `generate-context` |
 | Entity | `entities/src/manifest/` | `entities/CONVENTIONS.md` + `docs/architecture/relations.md` | `--filter @we/entities generate:types` **and** `--filter @we/backend-ad4m generate:classes` | `--filter @we/backend-ad4m test` |
-| Feature module | `module-system/<id>/` | `module-system/shared/src/module.ts` (the contract is the documentation) | `bundledModules.ts` + seed `modules` | `--filter @we/module-shared test`, `validate:schemas` |
+| Feature module | `module-system/<id>/` (or any package exporting `createModule`) | `docs/guides/writing-a-module.md`, then `module-system/shared/src/module.ts` | seed `modules` — the registry is generated from it by `--filter @we/app-shell generate-modules` | `--filter @we/module-shared test`, `validate:schemas`, then `generate-context` |
 | Graph plugin | `graph-system/expanders/src/`, `layouts/src/` | `graph-system/CONVENTIONS.md` | package index **and** `GRAPH_PLUGIN_CATALOG` in `module-system/graph/src/catalog.ts` | `--filter @we/graph-core test`, then `generate-context` |
 | Globe layer | `module-system/globe/layers/src/` | its `README.md` / `EXAMPLES.md` | export from `index.ts` | `--filter @we/globe-layers typecheck` |
 | Seed | `we-seed.json` | `docs/getting-started/seed-system.md` | — | `pnpm validate:seed` |
@@ -2903,6 +2903,9 @@ ShellStore:
   - toggleCollapseDock(id: string): folds a panel, and every tab stacked with it, down to its titlebar — or opens it again. A fold always takes height: down a side lane the lane-mates take the room, and across a top or bottom lane the lane is as thick as its tallest open member, so folding the last one hands the room back to the content. The content is hidden, never unmounted. Refused where there is nowhere for that room to go — a sidebar alone on its edge, or the last open member of a side lane; collapse that lane to its edge instead. Read dockGeometry[id].canCollapse
   - toggleStowLane(id: string): collapses the whole displacing lane this panel is in to a strip at its edge naming its panels, or opens it again. Every panel keeps its size, which tab is showing and whether it is folded; the content is hidden, never unmounted. Offered on the lane's first titlebar — read dockGeometry[id].canStow — and a press anywhere on the strip opens it
   - revealDock(id: string): brings an open panel into sight wherever it is hidden — to the front of its stack, unfolded, or by opening the lane it is collapsed into — and flashes its tab when it came forward in a stack. Leaves a closed panel alone. What the module rail does for a panel that is open and concealed, instead of the module’s own toggle
+  - openModulePanel(dockId: string): opens one of a module’s panels, by its dock id (`<moduleId>:<name>`). The host holds whether most panels are open, so this is where the flag lives; a module that owns its own flag is asked through the actions it named instead
+  - closeModulePanel(dockId: string): closes one of a module’s panels. What the titlebar’s close button calls for a host-owned panel
+  - toggleModulePanel(dockId: string): opens a module’s panel if it is closed, closes it if it is open — what the rail’s button does for a panel that is in sight. Prefer spaceStore.launchModule from a template, which also brings a concealed panel into view
   - togglePanelsHidden(): puts every panel away at once, or brings them all back exactly as they were — hidden, never unmounted, with the content given their room while they are away. Does nothing while a shell overlay is up, when the panels are away already. Asking for one panel (revealDock, a rail launcher) brings them all back
   - breakOut(panelId: string, x?: number, y?: number): takes a section out of the template and makes it a panel — floating under the pointer when given one, else at the snap its meta.panels entry named. Refused for a section declared `fixed`. Takes the panel's own id, not the dock id
   - returnHome(panelId: string): puts a broken-out section back in the template at the outlet it came from. What the placeholder’s "Bring back" and the position menu’s "Return to page" call
@@ -2943,8 +2946,8 @@ SpaceStore:
   - requiredModules: string[] — module ids the template on screen mounts components from, derived by walking the schema rather than read from meta.components (which no template fills in). What makes uninstalling a capability module refusable
   - missingModules: string[] — of those, the ones this agent has not installed. Non-empty means the template is mounting a component nothing provides, so part of the page silently renders nothing. Empty in the ordinary case
   - activeModules: string[] — what actually renders here for this agent: registered ∩ installed ∩ enabled, less the modules muted in this space. Module chrome and the launcher rail gate on this; enabledModules alone is not sufficient
-  - moduleInstallSettings: { id, name, description, icon, installed, surface, switchable }[] — every registered module and whether this agent wants it anywhere. The global Settings → Modules list, and the only place an 'app' or 'capability' module is decided about: a contribution is gated at the layer where it renders, and only 'chrome' renders inside a space. `surface` is derived from what the module contributes. Its per-space counterpart is `modules` on each spaceList row, which carries enabled/installed/visible/active together and lists chrome modules only
-  - moduleLaunchers: { id, icon, label, active, busy, concealed }[] — launchers for the modules enabled here and available in this space; what the host module rail renders. `active` is the module reporting its surface open; `concealed` says that panel is open and out of sight — a background tab of a stack, folded to its bar, or in a lane collapsed to its edge — so light the button on `mod.active && !mod.concealed`, since pressing a concealed one brings the panel forward rather than closing it. `busy` says the module is working in the background — an extraction pass running — and is independent of `active`, so a rail can show work going on behind a closed panel. Pair with { $action: "spaceStore.launchModule", args: [{ $: "mod.id" }] }
+  - moduleInstallSettings: { id, name, description, icon, installed, surface, switchable, capabilities }[] — every registered module and whether this agent wants it anywhere. `capabilities` is what a person is agreeing to — derived from the module's manifest (its permissions and the kernels it reaches) and what it contributes (a panel, storage in the space), never authored, so it cannot go stale. The global Settings → Modules list, and the only place an 'app' or 'capability' module is decided about: a contribution is gated at the layer where it renders, and only 'chrome' renders inside a space. `surface` is derived from what the module contributes. Its per-space counterpart is `modules` on each spaceList row, which carries enabled/installed/visible/active together and lists chrome modules only
+  - moduleLaunchers: { id, icon, label, active, busy, concealed }[] — one entry per module panel that asks for a rail button, plus the launchers a module declares of its own; what the host module rail renders. `id` is a panel’s dock id (`<moduleId>:<name>`) or a launcher’s key, and is what launchModule takes. `active` is the module reporting its surface open; `concealed` says that panel is open and out of sight — a background tab of a stack, folded to its bar, or in a lane collapsed to its edge — so light the button on `mod.active && !mod.concealed`, since pressing a concealed one brings the panel forward rather than closing it. `busy` says the module is working in the background — an extraction pass running — and is independent of `active`, so a rail can show work going on behind a closed panel. Pair with { $action: "spaceStore.launchModule", args: [{ $: "mod.id" }] }
   - spaceViews: ResolvedView[] — this space's sections resolved: which view renders at which segment, in the space's order, each carrying its schema. The host builds the route tree from it; a nav strip reads viewNav, which is this without the payload
   - routableViews: ResolvedView[] — every view that could render here, at its permanent segment — what routes are built from. Separate from spaceViews because it changes when a view is installed, not when a switch is flicked
   - enabledViewIds: string[] — ids of the sections the community has turned on here. What a route body is gated on; not the nav list, which also drops this agent's hidden ones — hiding a section for yourself must not make its URL refuse you
@@ -3122,6 +3125,192 @@ Record:
 
 ---
 
+## Feature Modules
+
+The modules this deployment ships. A module publishes a store at `modules.<id>` (public members only),
+parts a template places with `{ "type": "$part", "props": { "id": "<id>.<part>" } }`, panels a
+template places or supplies through `meta.panels` (`{ "module": "<id>", "dock": "<panel>" }`), and
+functions expressions call like the host functions above. A template that reaches a module by name
+declares it: `meta.requires.modules: ["<id>"]`. Reading `{ "$": "modules.<id>" }` bare is how a template
+depends on a module that may not be installed.
+
+### Calls (`call`)
+Audio, video and screen share with the people in a space.
+Needs: kernels records, presence, ephemeral, media, peerConnection; permissions microphone, camera, screen-share.
+- State (read in an expression as `modules.call.<name>`):
+  - active — Whether this agent is in a call right now.
+  - arrangement — The { columns, rows } the stage is currently laid out in.
+  - callId — The id of the call this agent is in, or null between calls.
+  - callRecordId — The id of the call record this agent's call writes into — what a transcript, a board or a call's page follows — or empty between calls.
+  - callSpace — The space the call is in as { uri, name, avatar } — name and avatar empty until the host knows them — or null between calls.
+  - canCall — Whether a call could be started here — false in a personal space, which has nobody to call.
+  - elsewhere — Whether the call this agent is in belongs to a space other than the one on screen.
+  - focusedId — Whose tile the stage is giving most of its room to, or null for an even grid.
+  - liveCalls — Every call running in the space on screen, whichever this agent is in — { id, recordId, anchorNodeId, peers, faces, count, mine, label } per call.
+  - media — This agent's own { audioEnabled, videoEnabled, screenShareEnabled } — what the mute, camera and share toggles reflect.
+  - ongoing — Everyone in any call in the space on screen, as avatar faces { image, hash, initials, did }, whether or not this agent has joined.
+  - problem — Why the call could not start or a device could not be reached, as a sentence to show, or null.
+  - solo — Whether the spotlight has the stage to itself, with everyone else hidden.
+  - tiles — One entry per participant in the call — { id, did, stream, isSelf } — changing only when somebody joins, leaves or their stream changes.
+  - tileStates — Each participant's volatile flags by id — muted, camera, screen, connection, focused, hasPicture — looked up with find() so a tile never remounts.
+- Actions (`{ "$action": "modules.call.<name>" }`):
+  - attachAnchor — Make the running call about the record whose id is given, without rejoining it.
+  - continueCall — Pick a past call back up by its record id, joining anyone already in it and writing no new record.
+  - dismissProblem — Dismiss the problem message.
+  - focusTile — Give the participant with this id the spotlight, or take it back if they already have it.
+  - goToCall — Go to the call: join the one running here, pick up the one on screen, or start one; in a call already, bring it up.
+  - joinAnchoredCall — Join the call already happening about the record whose id is given, or start one about it.
+  - joinCall — Join a running call by its id, as liveCalls lists it, leaving any call this agent is in.
+  - leave — Leave the call, releasing the camera, the microphone and every connection.
+  - returnToCall — Go back to the space the call is in; does nothing outside a call.
+  - setArrangement — Report the { columns, rows } a stage grid settled on, so fit-to-content can solve for it.
+  - startCall — Start a new call in the space on screen, optionally about the record whose id is given; resolves once joined.
+  - toggleAudio — Mute or unmute this agent’s microphone.
+  - toggleScreenShare — Start or stop sharing this agent’s screen; sharing replaces the camera until it stops.
+  - toggleSolo — Hide everyone but the spotlight, or bring them back; does nothing while nobody is focused.
+  - toggleVideo — Turn this agent’s camera on or off, reporting through problem when it is refused.
+- Parts: `call.anchoredCallButton`, `call.continueCallButton`, `call.startCallButton`, `call.tile`
+- Panels (`meta.panels[].dock`): `stage` "Call" (module-owned openness)
+- Presence activities: `call` { id: string, anchor: object, media: object, record: string, continued: boolean }
+
+### Transcription (`transcribe`)
+Turns what is said in a call into text blocks in the space.
+Needs: kernels records, presence, media, transcription, interpretation; permissions microphone.
+- State (read in an expression as `modules.transcribe.<name>`):
+  - autoExtract — Whether this call is extracted as it happens — its participants’ answer, else the space’s.
+  - autoJoined — Recording was started by the call rather than by this agent pressing record.
+  - available — There is audio to listen to — a microphone the host is capturing.
+  - callAgents — Everyone in this call, recording or not — the denominator of coverage; empty outside a call.
+  - callId — The record extraction decisions for this call are written against — the call’s own record from its first second.
+  - callOnScreenLive — Somebody is in the call the address names right now.
+  - canEditProposals — Whether an edited suggestion can be written back on accept.
+  - canInstallModel — Whether this connection may install the model the backend offers.
+  - changedIds — Agreed records carrying a suggested change, by id.
+  - collectionId — The record this call’s transcript lives in, or null until something has been said.
+  - editingProposal — The suggestion open for editing, or empty when none is.
+  - enabled — Whether this agent is recording their own microphone into the call.
+  - error — Why the session stopped, when status is error; empty otherwise.
+  - extractable — Whether this node can interpret at all — false when it has no language model.
+  - extractCount — How many records the last pass wrote.
+  - extractedId — The collection the last finished pass ran on, or empty.
+  - extractError — Why the last pass failed; empty otherwise.
+  - extractingId — The collection a pass is running on right now, or empty.
+  - extractionFor — What one call can extract, by record id — { targets, canChoose, canExtract }, read as extractionFor[id].
+  - extractionOpen — Whether the extraction panel is open.
+  - extractStatus — How the last one-shot extraction pass went — idle, running, done or error.
+  - extractTurns — How many transcript turns the last pass read.
+  - heard — Something has been said that the record does not hold yet — buffered, being written or still with the model.
+  - inCall — Whether this agent is in a call right now.
+  - installError — Why the last model install failed; empty otherwise.
+  - installingModel — A one-click model install is registering its model.
+  - installModelLabel — The install button’s words, naming the offered model and its size; empty when none is offered.
+  - invited — Somebody else in this call is recording and this agent is not, having not opted out.
+  - invitedBy — The agent id of the first peer recording this call, or empty when none is.
+  - level — Microphone loudness as the voice detector measures it, 0–1.
+  - levelPercent — The microphone level as a CSS width for a meter.
+  - listening — True only while actually transcribing — what a record button highlights on.
+  - liveCollectionId — The record the call this agent is in is writing into, or empty when there is none.
+  - modelDownloading — A transcription model is installed and its weights are still arriving.
+  - modelDownloadText — The download line, ready to show — "Downloading the speech model — 45%".
+  - modelMissing — No transcription model is installed on this node, as last read.
+  - open — Whether the transcript panel is open.
+  - partialCoverage — Someone in this call is not being transcribed.
+  - passRunning — Whether any extraction pass is running right now, this node’s or a peer’s.
+  - pending — Words heard that are not yet a row in the transcript — buffered or being written, newest last.
+  - pendingIds — Every record still awaiting a decision, by id, across every call asked about.
+  - pendingProposals — The same suggestions as rows — { id, kind, entity, fields, summary }.
+  - proposalDraft — What has been typed into the open suggestion, keyed by property name.
+  - proposals — Suggestions staged on the live call — prefer proposalsFor with the call named.
+  - proposalsFor — Suggestions staged on one conversation, by record id — read as proposalsFor[id].
+  - speaking — Whether the microphone level currently counts as speech.
+  - status — What the session is doing — idle, no-backend, no-model, no-audio, downloading, starting, listening or error.
+  - thresholdPercent — The speech-onset threshold as a CSS width, to mark on the same meter.
+  - transcribers — Everyone recording this call, this agent included — the numerator of coverage.
+  - transcribing — Speech has gone to the model and its text has not come back yet.
+  - unconfirmedIds — Records a pass made that nobody has kept yet, by id.
+  - watchProblem — Why the standing extraction watch is not running here; empty when it is.
+- Actions (`{ "$action": "modules.transcribe.<name>" }`):
+  - acceptProposal — Keeps a suggestion, as proposed or as edited.
+  - addMessage — Writes something a person typed into a transcript, as a typed line.
+  - applyChange — Applies one suggested change to an agreed record.
+  - cancelProposalEdit — Closes the open draft, discarding what was typed.
+  - closeExtractionPanel — Closes the extraction panel.
+  - closePanel — Closes the transcript panel.
+  - dismissChange — Dismisses one suggested change, leaving the record as it was.
+  - editProposal — Opens one suggestion for editing, seeded with what the model proposed.
+  - editUtterance — Corrects the words on a line of the transcript, marking a spoken line as corrected.
+  - extract — Runs one extraction pass over the call this agent is transcribing.
+  - extractCollection — Runs one extraction pass over any call’s record, by id.
+  - flushNow — Writes what has been heard so far without waiting for the buffer to fill.
+  - installModel — Installs the model the backend offers and resumes recording that was waiting on one.
+  - openExtractionPanel — Opens the extraction panel.
+  - openPanel — Opens the transcript panel.
+  - refreshProposals — Re-reads what is staged on a call, or on the live one.
+  - rejectProposal — Drops a suggestion.
+  - setProposalField — Sets one field of the open draft, by property name.
+  - toggle — Starts or stops recording this agent’s microphone into the call, and opens the transcript when starting.
+  - toggleAutoExtract — Turns automatic extraction on or off for this call, for everyone in it.
+  - toggleExtractionTarget — Includes or excludes one model from what a call extracts, for everyone in it; defaults to the live call.
+- Parts: `transcribe.transcriptFeed` (subject: routeStore.params.call ? routeStore.params.call : modules.transcribe.collectionId), `transcribe.transcriptLines` (subject: modules.transcribe.collectionId), `transcribe.transcriptComposer`, `transcribe.captureMeter`, `transcribe.captureStatus`, `transcribe.coverage`, `transcribe.extractionTargets`, `transcribe.pendingUtterance`
+- Panels (`meta.panels[].dock`): `transcript` "Transcript" (module-owned openness), `extraction` "Extraction" (module-owned openness)
+- Settings: `recordCalls` (boolean; deployment, agent, space, agent-in-space) — Record calls automatically
+
+### Pocket (`pocket`) — the agent’s, not a space’s
+Keep things from any space — posts, people, spaces — in a panel that follows you.
+Needs: kernels agentData.
+- State (read in an expression as `modules.pocket.<name>`):
+  - open — Whether the Pocket panel is open.
+- Actions (`{ "$action": "modules.pocket.<name>" }`):
+  - close — Closes the Pocket panel.
+  - show — Opens the Pocket panel and resolves the folder it was last looking at.
+  - toggle — Opens the Pocket panel, or closes it if it is open.
+- Parts: `pocket.toggleButton`
+- Panels (`meta.panels[].dock`): `main` "Pocket" (module-owned openness)
+- Entities (queryable with $query):
+  - PocketFolder: name: string, icon: string, color: string, root: boolean, createdOrder: number; relations folders: HasMany → PocketFolder, items: HasMany → PocketItem
+  - PocketItem: ref: string (required), entity: string, datasetKey: string, recordId: string, label: string, icon: string, thumbnail: string, sourceName: string, sourceAuthor: string, gatheredAt: string, note: string
+
+### Notes (`notes`)
+A per-space scratchpad in a docked panel.
+- No store: everything this module does is declared.
+- Parts: `notes.toggleButton`
+- Panels (`meta.panels[].dock`): `main` "Notes"
+- Entities (queryable with $query):
+  - Note: text: string
+
+### Globe (`globe`)
+3D globe with a modular layer system — locations, country outlines, H3 hexagons.
+Needs: permissions network:cesium-ion.
+- No store: everything this module does is declared.
+- Components: CesiumGlobe
+
+### Graph (`graph`)
+A general-purpose graph engine — knowledge maps, schema maps, hierarchies and diagrams, with pluggable expanders, layouts and behaviours.
+- No store: everything this module does is declared.
+- Parts: `graph.schemaMap`, `graph.contentTree`, `graph.staticDiagram`, `graph.knowledgeMapPosts`
+- Components: GraphView
+
+### Polls (`polls`)
+Ask the space a question and watch the answer arrive.
+Needs: kernels records.
+- State (read in an expression as `modules.polls.<name>`):
+  - lastError — Why the last vote could not be recorded, or empty.
+  - revealBeforeVoting — Whether a poll shows its counts before this agent has voted — the community’s setting here.
+  - voting — The id of the poll a vote is being written for, or empty.
+- Actions (`{ "$action": "modules.polls.<name>" }`):
+  - vote — Casts this agent’s vote on a poll, or changes it — one vote per person per poll.
+- Parts: `polls.pollCard`, `polls.pollComposer`
+- Settings: `revealBeforeVoting` (boolean; space) — Show counts before voting
+- Functions:
+  - tally(options) — Votes counted per choice — { option, count, share, leading }[] — one row per choice the poll offers, in its order, plus a row for any choice a vote names that the poll no longer does. Options: votes (a Vote query), options (the poll’s comma-separated choices).  e.g. tally({ votes: local.votes, options: block.options })
+- Views (sections a space enables): `polls` "Polls" at /polls
+- Blocks: Poll (`_type: "poll"`, drawn by `polls.pollCard`)
+- Entities (queryable with $query):
+  - Poll: question: string (required), options: string (required), closed: boolean, version: number
+  - Vote: pollId: string (required), option: string (required)
+
+---
+
 ## Store Usage Patterns
 
 Reading state — an expression naming the store:
@@ -3133,11 +3322,13 @@ Calling actions:
 Example: { "$action": "routeStore.navigate", "args": ["/home"] }
 
 Feature-module stores:
-{ "$": "modules.<moduleId>.<key>" } and { "$action": "modules.<moduleId>.<method>" }
-Each installed feature module publishes its store under its own id — modules.call.tiles,
-modules.notes.open, modules.transcribe.pending. Which ids exist depends on the deployment's seed,
-so these are not listed in the Stores section below and are never checked against a known-member
-list. A reference to a module that is not installed simply resolves to nothing.
+{ "$": "modules.<moduleId>.<member>" } and { "$action": "modules.<moduleId>.<action>" }
+Each feature module this deployment ships publishes its PUBLIC store members under its own id —
+modules.call.active, modules.transcribe.proposals, modules.polls.vote. The modules, their members,
+parts, panels, settings and functions are listed in the Feature Modules section below, and the
+validator checks every modules.* reference against it: a member a module did not mark public is as
+unknown as one it never had. { "$": "modules.<moduleId>" } as a bare condition is the way to depend
+on an optional module — it resolves to nothing where the module is not installed.
 
 Iterating over store data:
 {

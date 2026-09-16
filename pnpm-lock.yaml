@@ -437,6 +437,30 @@ importers:
       '@we/cli':
         specifier: workspace:*
         version: link:../cli
+      '@we/module-call':
+        specifier: workspace:*
+        version: link:../module-system/call
+      '@we/module-globe':
+        specifier: workspace:*
+        version: link:../module-system/globe/module
+      '@we/module-graph':
+        specifier: workspace:*
+        version: link:../module-system/graph
+      '@we/module-notes':
+        specifier: workspace:*
+        version: link:../module-system/notes
+      '@we/module-pocket':
+        specifier: workspace:*
+        version: link:../module-system/pocket
+      '@we/module-polls':
+        specifier: workspace:*
+        version: link:../module-system/polls
+      '@we/module-shared':
+        specifier: workspace:*
+        version: link:../module-system/shared
+      '@we/module-transcribe':
+        specifier: workspace:*
+        version: link:../module-system/transcribe
       prettier:
         specifier: 3.9.6
         version: 3.9.6
