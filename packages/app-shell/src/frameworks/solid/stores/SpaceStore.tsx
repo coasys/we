@@ -19,6 +19,7 @@ import {
   parseAppliesTo,
   resolveInvolvementTypes,
 } from '@shared/involvements';
+import { type LinkLanguageOption, linkLanguageOptions } from '@shared/linkLanguageOptions';
 import {
   clearSetting,
   type LevelValues,
@@ -572,8 +573,8 @@ export interface SpaceStore {
   enabledViewIds: Accessor<string[]>;
   /** The same list as a nav strip reads it — one source, so routes and nav cannot disagree. */
   viewNav: Accessor<{ id: string; segment: string; label: string; icon: string; path: string }[]>;
-  /** Available link language templates for publishing shared spaces, formatted for we-select. */
-  linkLanguageTemplateOptions: Accessor<{ label: string; value: string }[]>;
+  /** How a shared space can sync, as picker entries: label, icon and a description per template. */
+  linkLanguageTemplateOptions: Accessor<LinkLanguageOption[]>;
   /** Address of the link language template publishing uses when none is chosen. */
   defaultLinkLanguageTemplate: Accessor<string>;
 
@@ -1450,9 +1451,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
   }
 
-  const [linkLanguageTemplateOptions, setLinkLanguageTemplateOptions] = createSignal<
-    { label: string; value: string }[]
-  >([]);
+  const [linkLanguageTemplateOptions, setLinkLanguageTemplateOptions] = createSignal<LinkLanguageOption[]>([]);
   const [defaultLinkLanguageTemplate, setDefaultLinkLanguageTemplate] = createSignal('');
 
   async function loadLinkLanguageTemplates(): Promise<void> {
@@ -1460,12 +1459,10 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (!lifecycle?.linkLanguageTemplates) return;
     try {
       const templates = await lifecycle.linkLanguageTemplates();
-      // The backend lists its default first — what publishing uses unprompted. Names are sorted
-      // for the picker only.
+      // The backend lists its default first — what publishing uses unprompted — and the picker
+      // keeps that order, so the default is also the first option.
       setDefaultLinkLanguageTemplate(templates[0]?.address ?? '');
-      setLinkLanguageTemplateOptions(
-        templates.map((t) => ({ label: t.name, value: t.address })).sort((a, b) => a.label.localeCompare(b.label)),
-      );
+      setLinkLanguageTemplateOptions(linkLanguageOptions(templates));
     } catch (e) {
       console.error('SpaceStore: loadLinkLanguageTemplates error', e);
     }

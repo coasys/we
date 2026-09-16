@@ -44,7 +44,15 @@ export interface DatasetChangeHandlers {
 /** A template a shared dataset's sync layer can be instantiated from, as `publish` accepts it. */
 export interface LinkLanguageTemplate {
   address: string;
+  /** The backend's own name for it — technical, for a detail line rather than a label. */
   name: string;
+  /**
+   * How a dataset published with it syncs: directly between members' devices, or through a server.
+   * What a person choosing between templates actually needs to know, so it is what a picker labels.
+   */
+  kind: 'peer-to-peer' | 'server';
+  /** The server it syncs through, for `kind: 'server'`. */
+  serverUrl?: string;
 }
 
 /**

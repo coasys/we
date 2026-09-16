@@ -49,7 +49,9 @@ describe('linkLanguageTemplates', () => {
     const client = mockClient([HOLOCHAIN, SERVER]);
     const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);
 
-    expect(await lifecycle.linkLanguageTemplates?.()).toEqual([{ address: HOLOCHAIN.address, name: HOLOCHAIN.name }]);
+    expect(await lifecycle.linkLanguageTemplates?.()).toEqual([
+      { address: HOLOCHAIN.address, name: HOLOCHAIN.name, kind: 'peer-to-peer' },
+    ]);
   });
 
   it('offers it once a link server is configured, after the peer-to-peer templates', async () => {
@@ -60,9 +62,9 @@ describe('linkLanguageTemplates', () => {
       linkServerUrl: 'https://links.example.org',
     });
 
-    expect((await lifecycle.linkLanguageTemplates?.())?.map((t) => t.address)).toEqual([
-      HOLOCHAIN.address,
-      SERVER.address,
+    expect(await lifecycle.linkLanguageTemplates?.()).toEqual([
+      { address: HOLOCHAIN.address, name: HOLOCHAIN.name, kind: 'peer-to-peer' },
+      { address: SERVER.address, name: SERVER.name, kind: 'server', serverUrl: 'https://links.example.org' },
     ]);
   });
 

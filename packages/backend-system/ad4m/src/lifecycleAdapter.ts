@@ -181,13 +181,14 @@ export function createAd4mDatasetLifecycle(
       addresses.map(async (address) => {
         const { name, params } = await templateMeta(address);
         if (params && unfillableParams(params).length) return null;
-        return { address, name, viaServer: !!params?.includes('SERVER_URL') };
+        return params?.includes('SERVER_URL')
+          ? { address, name, kind: 'server' as const, serverUrl: options.linkServerUrl }
+          : { address, name, kind: 'peer-to-peer' as const };
       }),
     );
     return templates
       .filter((t) => t !== null)
-      .sort((a, b) => Number(a.viaServer) - Number(b.viaServer))
-      .map(({ address, name }) => ({ address, name }));
+      .sort((a, b) => Number(a.kind === 'server') - Number(b.kind === 'server'));
   }
 
   return {

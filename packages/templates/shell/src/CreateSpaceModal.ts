@@ -280,9 +280,11 @@ export const createSpaceModal = {
     },
 
     /*
-      Link language selector — shown when creating a shared space and there is a choice to make.
-      Until somebody picks, it shows the store's default live rather than a copy taken when the
-      switch flipped, which would stay empty if the templates had not loaded by then.
+      How the space syncs (its link language) — shown when creating a shared space and there is a
+      choice to make. Until somebody picks, it shows the store's default live rather than a copy
+      taken when the switch flipped, which would stay empty if the templates had not loaded by then.
+      The description follows the selection, so what each choice means is read where it is made —
+      a hover tooltip would be missed, and absent on a touchscreen.
     */
     {
       type: '$if',
@@ -290,7 +292,12 @@ export const createSpaceModal = {
         condition: { $: "local.access == 'shared' && count(spaceStore.linkLanguageTemplateOptions) > 1" },
         then: {
           type: 'we-form-field',
-          props: { label: 'Link Language' },
+          props: {
+            label: 'How this space syncs',
+            description: {
+              $: 'find(spaceStore.linkLanguageTemplateOptions, { value: local.linkLanguage ? local.linkLanguage : spaceStore.defaultLinkLanguageTemplate }).description',
+            },
+          },
           children: [
             {
               type: 'we-select',
