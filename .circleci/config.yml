@@ -53,14 +53,57 @@ version: 2.1
 #
 # ## What has no equivalent and is a project setting instead
 #
+# Verified against the project settings API on 2026-09-16; the values below are
+# what the project actually reports, not what it ought to be.
+#
 # `concurrency: cancel-in-progress` — CircleCI expresses this as the project's
 # "Auto-cancel redundant workflows" toggle (Project Settings → Advanced), not in
-# config. It must be turned on to match the GitHub behaviour.
+# config. **Currently off.** It must be turned on to match the GitHub behaviour;
+# on a four-instance pool a push storm otherwise occupies the pool with runs
+# nobody is waiting for.
+#
+# **Build forked pull requests — currently off, and should stay off.** This
+# repository is public and every job here runs directly on the Coasys host as
+# `marvin`, beside `~/.cargo`, `~/.nvm`, the pnpm store and `$CI_ARTIFACT_DIR`,
+# on the machine that also builds AD4M. Turning it on would execute an arbitrary
+# stranger's pull request there. Nine pull requests in this repository's history
+# came from forks, so this is a live path and not a hypothetical one.
+#
+# Because it is off, forks get no CI from CircleCI at all. That is why
+# `build.yaml` keeps its `pull_request` trigger with every job gated on
+# `github.event.pull_request.head.repo.fork`: a fork is tested on GitHub's
+# hosted runners with a restricted token, a same-repo branch is tested here, and
+# no pull request ever shows two check lists.
+#
+# **Only build pull requests — currently off.** GitHub ran `build.yaml` on
+# `pull_request` plus pushes to `dev`; config-level branch filters cannot express
+# that shape, so the `ci` workflow below currently runs on every push to every
+# branch. Turning this on is the closest equivalent (it also always builds the
+# default branch), and it matters on a four-instance pool.
+#
+#
+# ## One genuine behavioural difference, with no setting to fix it
+#
+# **CircleCI builds the branch head; Actions built the merge commit.**
+# `pull_request` on GitHub checks out `refs/pull/N/merge` — the pull request as
+# it would be *after* merging into `dev`. CircleCI checks out `CIRCLE_SHA1`, the
+# branch as it is. Nothing forces branches up to date, so a pull request that is
+# green on its own can still break `dev` on merge, and no check will have said
+# so. Worth knowing when reading a green check list; the mitigation is keeping
+# branches current, not a config change.
 
 # ---------------------------------------------------------------------------
 # Executor
 # ---------------------------------------------------------------------------
 
+# All four instances in this pool run on one physical host. That is not a
+# nicety: `restore_build` reads the build's output back from a local directory
+# rather than a CircleCI workspace, which only works because the job that wrote
+# it and the job that reads it share a filesystem. If the pool is ever spread
+# across machines, that hand-off breaks first — loudly, since the restore fails
+# on a missing path rather than silently rebuilding, but it breaks. Treat
+# single-host as a constraint on changes to this pool, not an implementation
+# detail of it.
 executors:
   marvin:
     machine: true
@@ -71,6 +114,38 @@ executors:
 # ---------------------------------------------------------------------------
 
 commands:
+  node_from_nvmrc:
+    description: >
+      Put the Node version named in `.nvmrc` on PATH, for this step and every
+      later one. The translation of `actions/setup-node` with
+      `node-version-file: .nvmrc`.
+    steps:
+      # The GitHub action reads `node-version-file: .nvmrc`; nvm reads the same
+      # file natively, so the version stays declared in exactly one place.
+      #
+      # `nvm install` is a no-op when the version is already present, so this
+      # costs nothing on a warm host and self-heals a cold one.
+      #
+      # Three jobs needed this and each carried its own copy. Two of those copies
+      # wrote `$BASH_ENV` without sourcing it, which works only because CircleCI
+      # sources that file between steps — so `node` was on PATH for the *next*
+      # step but not the rest of this one. That is a trap rather than a bug: it
+      # holds until someone adds a `node` call beside the install and cannot see
+      # why it is not found. Sourcing here makes the command correct within its
+      # own step as well as after it.
+      - run:
+          name: Node from .nvmrc
+          command: |
+            export NVM_DIR="$HOME/.nvm"
+            # shellcheck disable=SC1091
+            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" --no-use
+            nvm install >/dev/null
+            NODE_BIN_DIR="$(dirname "$(nvm which "$(cat .nvmrc)")")"
+            echo "export PATH=\"$NODE_BIN_DIR:\$PATH\"" >> "$BASH_ENV"
+            # shellcheck disable=SC1090
+            . "$BASH_ENV"
+            echo "Node: $(node --version)   (.nvmrc: $(cat .nvmrc))"
+
   clean_checkout:
     description: >
       Check out the commit under test into a tree with no leftovers from the
@@ -131,23 +206,7 @@ commands:
       Node, pnpm, a warm pnpm store and a frozen install — the translation of
       `.github/actions/setup`.
     steps:
-      # The GitHub action reads `node-version-file: .nvmrc`; nvm reads the same
-      # file natively, so the version stays declared in exactly one place.
-      #
-      # `nvm install` is a no-op when the version is already present, so this
-      # costs nothing on a warm host and self-heals a cold one.
-      - run:
-          name: Node from .nvmrc
-          command: |
-            export NVM_DIR="$HOME/.nvm"
-            # shellcheck disable=SC1091
-            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" --no-use
-            nvm install >/dev/null
-            NODE_BIN_DIR="$(dirname "$(nvm which "$(cat .nvmrc)")")"
-            echo "export PATH=\"$NODE_BIN_DIR:\$PATH\"" >> "$BASH_ENV"
-            # shellcheck disable=SC1090
-            . "$BASH_ENV"
-            echo "Node: $(node --version)   (.nvmrc: $(cat .nvmrc))"
+      - node_from_nvmrc
 
       # `pnpm/action-setup` with no `version` reads the repo's `packageManager`
       # field. corepack does the same thing from the same field, so CI resolves
@@ -301,14 +360,7 @@ jobs:
       # standard library, so this job needs neither `pnpm install` nor the
       # workspace — which is why it stays independent of Build.
       - clean_checkout
-      - run:
-          name: Node from .nvmrc
-          command: |
-            export NVM_DIR="$HOME/.nvm"
-            # shellcheck disable=SC1091
-            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" --no-use
-            nvm install >/dev/null
-            echo "export PATH=\"$(dirname "$(nvm which "$(cat .nvmrc)")"):\$PATH\"" >> "$BASH_ENV"
+      - node_from_nvmrc
 
       # rustfmt for the toolchain the crate pins, which is not the default one.
       # The channel is read out of `rust-toolchain.toml` rather than written here,
@@ -382,14 +434,7 @@ jobs:
     executor: marvin
     steps:
       - clean_checkout
-      - run:
-          name: Node from .nvmrc
-          command: |
-            export NVM_DIR="$HOME/.nvm"
-            # shellcheck disable=SC1091
-            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" --no-use
-            nvm install >/dev/null
-            echo "export PATH=\"$(dirname "$(nvm which "$(cat .nvmrc)")"):\$PATH\"" >> "$BASH_ENV"
+      - node_from_nvmrc
       - run:
           name: pnpm from packageManager
           command: |
@@ -479,7 +524,11 @@ jobs:
               echo "(no log captured — the failure happened before the build started)"
             fi
             echo
-            echo "Full log kept on the runner at: ${CI_ARTIFACT_DIR:-/var/lib/ci-artifacts}/we/compat-${CIRCLE_SHA1}.log"
+            # "for a day", not "kept": the `build` job sweeps this same directory
+            # with `-mtime +1`, so this file is gone within about 24 hours. Long
+            # enough to read after a nightly, not an archive — say so rather than
+            # imply a permanence the sweep removes.
+            echo "Full log on the runner for a day at: ${CI_ARTIFACT_DIR:-/var/lib/ci-artifacts}/we/compat-${CIRCLE_SHA1}.log"
             cp compat.log "${CI_ARTIFACT_DIR:-/var/lib/ci-artifacts}/we/compat-${CIRCLE_SHA1}.log" 2>/dev/null || true
 
 # ---------------------------------------------------------------------------

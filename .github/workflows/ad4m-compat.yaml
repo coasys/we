@@ -45,10 +45,20 @@ name: AD4M compatibility
 # The reasoning for why that control exists is in the header above, and is worth
 # reading before deciding which of the two should own this job long-term.
 #
-# To reactivate, restore:
-#   schedule:
-#     - cron: '0 3 * * *'
+# The `schedule` stays here for now, and deliberately so. The CircleCI
+# translation of this job cannot replace it yet: it has no `GH_TOKEN`, so it
+# cannot open, update or close the tracking issue, and nothing is configured to
+# tell a person when it fails. Deactivating the schedule here would freeze issue
+# #176 open — only the scheduled path closes it — and would leave the nightly
+# answer going into a build log nobody reads.
+#
+# A red nightly that files a slightly wrong issue is bad. A red nightly nobody is
+# told about is worse. So the nightly moves in its own pull request, once the
+# CircleCI side has a channel that reaches a person and the control is resolved
+# from commit statuses rather than Actions run history.
 on:
+  schedule:
+    - cron: '0 3 * * *'
   workflow_dispatch:
     inputs:
       ad4m_branch:
