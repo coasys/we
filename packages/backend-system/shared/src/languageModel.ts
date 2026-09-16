@@ -79,6 +79,11 @@ export type ConversationTurn =
   | { role: 'tool'; callId: string; result: string };
 
 export interface ConversationRequest {
+  /**
+   * A model other than the default, as the backend names it. Absent means whatever this backend
+   * treats as its default language model, which is what every surface uses unless told otherwise.
+   */
+  model?: string;
   system: string;
   turns: ConversationTurn[];
   tools?: ConversationTool[];
