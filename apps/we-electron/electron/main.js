@@ -2,7 +2,7 @@ import { execSync, spawn, spawnSync } from 'child_process';
 import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, shell } from 'electron';
 import contextMenu from 'electron-context-menu';
 import express from 'express';
-import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import http from 'http';
 import net from 'net';
 import { homedir } from 'os';
@@ -649,6 +649,41 @@ ipcMain.handle('get-token', () => {
 
 ipcMain.handle('get-is-development', () => {
   return !!process.env.VITE_DEV_SERVER_URL;
+});
+
+/**
+ * The server link language bundle built in the seed's ad4m checkout, in a development run only.
+ *
+ * Absolute, because the executor reads it from disk when publishing. Null in a packaged build,
+ * with no `repoPath`, or when the language has not been built — `pnpm build` in
+ * `bootstrap-languages/server-link-language` of the ad4m repo produces it.
+ *
+ * Returns a copy with one comment line appended, not the build itself. A language's address is
+ * the hash of its bundle, and the language store keeps the first meta published under an address:
+ * a later publish of identical bytes is ignored and hands back the earlier meta. A build that was
+ * ever published by hand with different template parameters is therefore stuck with them. The
+ * marker gives WE development its own address, the same one for everyone on the same build.
+ */
+ipcMain.handle('get-dev-link-language-bundle', () => {
+  if (app.isPackaged || !process.env.VITE_DEV_SERVER_URL) return null;
+  try {
+    const runtime = JSON.parse(readFileSync(join(__dirname, 'seed-runtime.json'), 'utf8'));
+    if (!runtime.ad4mRepoPath) return null;
+    const bundle = join(
+      expandHome(runtime.ad4mRepoPath),
+      'bootstrap-languages',
+      'server-link-language',
+      'build',
+      'bundle.js',
+    );
+    if (!existsSync(bundle)) return null;
+    const copy = join(app.getPath('temp'), 'we-dev-server-link-language', 'bundle.js');
+    mkdirSync(dirname(copy), { recursive: true });
+    writeFileSync(copy, `${readFileSync(bundle, 'utf8')}\n// Published for WE development.\n`);
+    return copy;
+  } catch {
+    return null;
+  }
 });
 
 // ── Account management ───────────────────────────────────────────────────────

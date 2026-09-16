@@ -139,6 +139,7 @@ export type {
   DatasetChangeHandlers,
   DatasetLifecyclePort,
   DatasetRef,
+  LinkLanguageTemplate,
 } from './lifecycle';
 export { isSessionTimeout, SessionTimeoutError } from './lifecycle';
 export { manifestEntries } from './manifestEntry';

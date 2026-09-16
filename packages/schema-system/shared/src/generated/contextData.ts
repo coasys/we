@@ -2921,6 +2921,8 @@ export const contextData: ContextData = {
         routableViews: { type: 'array' },
         enabledViewIds: { type: 'array' },
         viewNav: { type: 'array' },
+        linkLanguageTemplateOptions: { type: 'array' },
+        defaultLinkLanguageTemplate: { type: 'string' },
         mutedDids: { type: 'array' },
         mutedAgents: { type: 'array' },
         readMarkers: { type: 'array' },

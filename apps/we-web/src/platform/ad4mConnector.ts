@@ -2,6 +2,7 @@ import { getAd4mConnect } from '@coasys/ad4m-connect';
 import type { BackendConnector, BackendInitResult } from '@we/app-shell/shared';
 import { capabilitiesFromToken, createAd4mBackendPorts } from '@we/backend-ad4m';
 
+import weSeed from '../../../../we-seed.json';
 import { storedGuestHost } from './storedSession';
 
 export const ad4mConnector: BackendConnector = {
@@ -70,6 +71,7 @@ export const ad4mConnector: BackendConnector = {
       ports: createAd4mBackendPorts(client, ctx, {
         administersNode: administersNode && !isGuest,
         capabilities,
+        linkServerUrl: (weSeed.ad4m as { linkServerUrl?: string }).linkServerUrl,
       }),
       ...(isGuest ? { guest: true as const } : {}),
       // Only for a host chosen from the directory. A local executor is not somewhere the user needs

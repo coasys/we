@@ -533,6 +533,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     spaceDefaultThemeId: state('space-settings'),
     creatingSpace: state('space-admin'),
     foreignSpacePrefill: state('space-settings'),
+    linkLanguageTemplateOptions: state('space-admin'),
+    defaultLinkLanguageTemplate: state('space-admin'),
     enabledModules: state('space-admin'),
     /*
       Reading it is `space-settings`, writing it is still admin-gated below.

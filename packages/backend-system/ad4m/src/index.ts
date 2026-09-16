@@ -47,7 +47,7 @@ export {
   CORE_VOCABULARY,
   manifestToEntries,
 } from './manifestCompiler';
-export { createAd4mAgentSession, createAd4mDatasetLifecycle } from './lifecycleAdapter';
+export { type Ad4mLifecycleOptions, createAd4mAgentSession, createAd4mDatasetLifecycle } from './lifecycleAdapter';
 export { type Ad4mRuntimeOptions, createAd4mRuntimeAdmin } from './runtimeAdminAdapter';
 export { createAd4mBackendPorts, createAd4mProfileDirectory, createAd4mSchemaPort } from './backendPortsAdapter';
 export { connectToLocalExecutor, createLocalAd4mConnector, type LocalExecutorConnection } from './localExecutor';

@@ -34,7 +34,7 @@ import { Space } from './entities';
 import { createAd4mInterpretationPort } from './interpretationAdapter';
 import { readInterpretationHints, resetInterpretationHints, writeInterpretationHints } from './interpretationHints';
 import { createAd4mLanguageModelPort } from './languageModelPort';
-import { createAd4mAgentSession, createAd4mDatasetLifecycle } from './lifecycleAdapter';
+import { type Ad4mLifecycleOptions, createAd4mAgentSession, createAd4mDatasetLifecycle } from './lifecycleAdapter';
 import { compileManifest, manifestToEntries } from './manifestCompiler';
 import { buildEntityClasses, buildEntityManifest, getForeignShacl } from './perspectiveHelpers';
 import { installRelationWrites } from './relationWrites';
@@ -117,9 +117,10 @@ export function createAd4mProfileDirectory(backendClient: unknown): ProfileDirec
 export function createAd4mBackendPorts(
   backendClient: unknown,
   ctx: BackendPortsContext,
-  // Everything a host knows about the connection that the ports cannot see for themselves. Only
-  // runtime administration cares so far — see `Ad4mRuntimeOptions.administersNode`.
-  options: Ad4mRuntimeOptions = {},
+  // Everything a host knows about the connection that the ports cannot see for themselves: whether
+  // the node is ours to administer (`Ad4mRuntimeOptions`), and the deployment's sharing
+  // infrastructure (`Ad4mLifecycleOptions`).
+  options: Ad4mRuntimeOptions & Ad4mLifecycleOptions = {},
 ): BackendPorts {
   // `''` clears a property, which is what four separate call sites in WE already assumed and none
   // of them got. Installed before any model is registered so every class inherits it — generated,
@@ -156,7 +157,7 @@ export function createAd4mBackendPorts(
 
   return {
     agentSession: createAd4mAgentSession(backendClient),
-    lifecycle: createAd4mDatasetLifecycle(backendClient),
+    lifecycle: createAd4mDatasetLifecycle(backendClient, options),
     schemas: createAd4mSchemaPort(backendClient),
     profiles: createAd4mProfileDirectory(backendClient),
     runtime: createAd4mRuntimeAdmin(backendClient, options),

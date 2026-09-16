@@ -7302,6 +7302,12 @@
         "viewNav": {
           "type": "array"
         },
+        "linkLanguageTemplateOptions": {
+          "type": "array"
+        },
+        "defaultLinkLanguageTemplate": {
+          "type": "string"
+        },
         "mutedDids": {
           "type": "array"
         },

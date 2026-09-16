@@ -327,6 +327,18 @@ export default class Select extends DesignSystemElement {
    * carries an id.
    */
   @state() private _active = -1;
+  /**
+   * Whether the keyboard has been used since the listbox opened — what decides if the highlight is
+   * drawn.
+   *
+   * The highlight starts on the current value so that opening and pressing Enter changes nothing,
+   * and it was drawn from that first frame however the list opened. Opened with a click, that put a
+   * focus-coloured ring on the chosen row that nothing the person did had asked for — it read as a
+   * stray focus ring, or as a second selection. It is the keyboard's cursor, so it appears once the
+   * keyboard is in use, the same distinction `:focus-visible` makes for focus. `_active` itself is
+   * unchanged, so `aria-activedescendant` still tells a screen reader where it is.
+   */
+  @state() private _keyboard = false;
 
   static getDefaultProps() {
     return DEFAULT_PROPS;
@@ -430,6 +442,7 @@ export default class Select extends DesignSystemElement {
   }
 
   private _toggle() {
+    this._keyboard = false;
     this._open = !this._open;
     if (this._open) this._syncActive();
     else this._active = -1;
@@ -467,6 +480,7 @@ export default class Select extends DesignSystemElement {
    */
   private _onKeyDown(e: KeyboardEvent) {
     if (this.disabled) return;
+    if (['ArrowDown', 'ArrowUp', 'Home', 'End', 'Enter', ' '].includes(e.key)) this._keyboard = true;
 
     switch (e.key) {
       case 'ArrowDown':
@@ -564,7 +578,10 @@ export default class Select extends DesignSystemElement {
                     aria-controls="listbox"
                     aria-activedescendant=${activeId}
                     @input=${this._onInput}
-                    @focus=${() => (this._open = true)}
+                    @focus=${() => {
+                      this._keyboard = false;
+                      this._open = true;
+                    }}
                     @keydown=${this._onKeyDown}
                   />
                 `
@@ -628,7 +645,7 @@ export default class Select extends DesignSystemElement {
                               part="option"
                               role="option"
                               id=${this._optionId(index)}
-                              data-active=${index === this._active ? 'true' : nothing}
+                              data-active=${this._keyboard && index === this._active ? 'true' : nothing}
                               aria-selected=${opt.value === this.value ? 'true' : 'false'}
                               aria-disabled=${opt.disabled ? 'true' : nothing}
                               @click=${() => this._select(opt)}

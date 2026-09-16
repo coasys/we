@@ -17,6 +17,8 @@ import type { BackendConnector, BackendInitResult, GuestJoinTarget } from '@we/a
 import { parseGuestLink } from '@we/app-shell/shared';
 import { capabilitiesFromToken, createAd4mBackendPorts } from '@we/backend-ad4m';
 
+import weSeed from '../../../../we-seed.json';
+
 export type { GuestJoinTarget };
 export { hasStoredSession } from './storedSession';
 
@@ -69,6 +71,7 @@ export function createGuestConnector(hostUrl: string): BackendConnector {
         ports: createAd4mBackendPorts(client, ctx, {
           administersNode: false,
           capabilities,
+          linkServerUrl: (weSeed.ad4m as { linkServerUrl?: string }).linkServerUrl,
         }),
         // Ending the session forgets the token and the host choice.
         disconnect: () => core.disconnect(),

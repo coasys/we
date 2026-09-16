@@ -63,6 +63,20 @@ describe('opening', () => {
     await press('ArrowDown');
     expect(active()).toBe('Gamma');
   });
+
+  it('draws no highlight when opened with a click, until the keyboard is used', async () => {
+    el.value = 'c';
+    await el.updateComplete;
+    (el.shadowRoot!.querySelector('[role="combobox"]') as HTMLElement).click();
+    await el.updateComplete;
+
+    expect(listbox()).not.toBeNull();
+    expect(active()).toBeUndefined();
+
+    // The keyboard's cursor was on the current value all along, so the first arrow moves from it.
+    await press('ArrowUp');
+    expect(active()).toBe('Alpha');
+  });
 });
 
 describe('moving', () => {

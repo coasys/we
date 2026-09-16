@@ -19,6 +19,7 @@ import {
   parseAppliesTo,
   resolveInvolvementTypes,
 } from '@shared/involvements';
+import { type LinkLanguageOption, linkLanguageOptions } from '@shared/linkLanguageOptions';
 import {
   clearSetting,
   type LevelValues,
@@ -591,6 +592,10 @@ export interface SpaceStore {
   enabledViewIds: Accessor<string[]>;
   /** The same list as a nav strip reads it — one source, so routes and nav cannot disagree. */
   viewNav: Accessor<{ id: string; segment: string; label: string; icon: string; path: string }[]>;
+  /** How a shared space can sync, as picker entries: label, icon and a description per template. */
+  linkLanguageTemplateOptions: Accessor<LinkLanguageOption[]>;
+  /** Address of the link language template publishing uses when none is chosen. */
+  defaultLinkLanguageTemplate: Accessor<string>;
 
   // Actions
   createSpace: (
@@ -601,6 +606,7 @@ export interface SpaceStore {
     avatarFile?: File,
     coverImageFile?: File,
     location?: LocationData | null,
+    linkLanguageTemplate?: string,
   ) => Promise<void>;
   /**
    * Join a shared dataset. `focus` defaults to true; pass false to join without navigating to it.
@@ -1473,8 +1479,26 @@ export function SpaceStoreProvider(props: ParentProps) {
         .filter((s): s is Space => !!s)
         .sort((a, b) => Number(a.createdAt) - Number(b.createdAt));
       setMySpaces(filteredSpaces);
+      void loadLinkLanguageTemplates();
     } catch (error) {
       console.error('SpaceStore: loadSpaces error', error);
+    }
+  }
+
+  const [linkLanguageTemplateOptions, setLinkLanguageTemplateOptions] = createSignal<LinkLanguageOption[]>([]);
+  const [defaultLinkLanguageTemplate, setDefaultLinkLanguageTemplate] = createSignal('');
+
+  async function loadLinkLanguageTemplates(): Promise<void> {
+    const lifecycle = session.lifecycle();
+    if (!lifecycle?.linkLanguageTemplates) return;
+    try {
+      const templates = await lifecycle.linkLanguageTemplates();
+      // The backend lists its default first — what publishing uses unprompted — and the picker
+      // keeps that order, so the default is also the first option.
+      setDefaultLinkLanguageTemplate(templates[0]?.address ?? '');
+      setLinkLanguageTemplateOptions(linkLanguageOptions(templates));
+    } catch (e) {
+      console.error('SpaceStore: loadLinkLanguageTemplates error', e);
     }
   }
 
@@ -1499,6 +1523,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     avatarFile?: File,
     coverImageFile?: File,
     location?: LocationData | null,
+    linkLanguageTemplate?: string,
   ): Promise<void> {
     const lifecycle = session.lifecycle();
     if (!lifecycle) return;
@@ -1518,7 +1543,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       // (the dataset handle's own sharedUrl is not updated in-place).
       if (access === 'shared') {
         if (!lifecycle.publish) throw new Error('This backend cannot publish shared datasets.');
-        const published = await lifecycle.publish(spaceRef.id);
+        const published = await lifecycle.publish(spaceRef.id, linkLanguageTemplate);
         publishedSharedId = published.sharedId;
         // Patch the ref so trackDataset sees the sharedId — the proxy's sharedUrl is not
         // updated in-place by publish, so the ref captured at create time would otherwise
@@ -4800,6 +4825,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     enabledViewIds,
     viewNav,
     foreignSpacePrefill,
+    linkLanguageTemplateOptions,
+    defaultLinkLanguageTemplate,
 
     // Actions
     createSpace,
