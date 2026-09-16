@@ -82,3 +82,36 @@ describe('manifestEntries', () => {
     expect(entry('Image').targetClass).toBe('');
   });
 });
+
+describe('an entity extending a parent the manifest does not declare', () => {
+  const shape: EntityManifest = {
+    version: '1',
+    entities: {
+      Sighting: {
+        extends: 'WeNode',
+        properties: { species: { type: 'string', predicate: 'we://shape/x/species' } },
+        relations: {},
+      },
+    },
+  };
+  const parents: EntityManifest = {
+    version: '1',
+    entities: {
+      WeNode: {
+        abstract: true,
+        properties: {},
+        relations: { comments: { cardinality: 'many', predicate: 'we://comment' } },
+      },
+    },
+  };
+
+  it('inherits from the parents it is given', () => {
+    const [entry] = manifestEntries(shape, { parents });
+    expect(entry.properties.map((p) => p.name)).toEqual(['species', 'comments']);
+  });
+
+  it('keeps its own members rather than throwing when the parent is nowhere', () => {
+    const [entry] = manifestEntries(shape);
+    expect(entry.properties.map((p) => p.name)).toEqual(['species']);
+  });
+});
