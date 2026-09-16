@@ -246,7 +246,7 @@ export const createSpaceModal = {
           children: [
             {
               type: 'we-text',
-              props: { variant: 'label' },
+              props: { variant: 'body', fontWeight: 'medium' },
               children: [{ $: "local.access == 'shared' ? 'Shareable space' : 'Personal space'" }],
             },
             {
@@ -285,23 +285,44 @@ export const createSpaceModal = {
       taken when the switch flipped, which would stay empty if the templates had not loaded by then.
       The description follows the selection, so what each choice means is read where it is made —
       a hover tooltip would be missed, and absent on a touchscreen.
+
+      Titled like the toggles beside it rather than as a we-form-field: these rows are choices about
+      the space, not fields of it, and a form-field's label is the smaller size the name and
+      description above use. The select carries the title as its accessible name, which the
+      form-field would otherwise have given it.
     */
     {
       type: '$if',
       props: {
         condition: { $: "local.access == 'shared' && count(spaceStore.linkLanguageTemplateOptions) > 1" },
         then: {
-          type: 'we-form-field',
-          props: {
-            label: 'How this space syncs',
-            description: {
-              $: 'find(spaceStore.linkLanguageTemplateOptions, { value: local.linkLanguage ? local.linkLanguage : spaceStore.defaultLinkLanguageTemplate }).description',
-            },
-          },
+          type: 'Column',
+          props: { gap: '200' },
           children: [
+            {
+              type: 'Column',
+              props: { gap: '100' },
+              children: [
+                {
+                  type: 'we-text',
+                  props: { variant: 'body', fontWeight: 'medium' },
+                  children: ['How this space syncs'],
+                },
+                {
+                  type: 'we-text',
+                  props: { variant: 'footnote', color: 'text-faint' },
+                  children: [
+                    {
+                      $: 'find(spaceStore.linkLanguageTemplateOptions, { value: local.linkLanguage ? local.linkLanguage : spaceStore.defaultLinkLanguageTemplate }).description',
+                    },
+                  ],
+                },
+              ],
+            },
             {
               type: 'we-select',
               props: {
+                label: 'How this space syncs',
                 value: { $: 'local.linkLanguage ? local.linkLanguage : spaceStore.defaultLinkLanguageTemplate' },
                 options: { $: 'spaceStore.linkLanguageTemplateOptions' },
                 onChange: { $setLocal: 'linkLanguage', value: { $: 'event.detail' } },
@@ -327,7 +348,7 @@ export const createSpaceModal = {
               children: [
                 {
                   type: 'we-text',
-                  props: { variant: 'label' },
+                  props: { variant: 'body', fontWeight: 'medium' },
                   children: [{ $: "local.discovery == 'listed' ? 'Listed in Global Discovery' : 'Unlisted'" }],
                 },
                 {
